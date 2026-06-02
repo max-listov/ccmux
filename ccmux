@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+# ccmux — Cloud Code MUX
+# Persistent, self-healing tmux sessions for Claude Code, with deterministic resume.
+# One script. One daemon. No build, no deps beyond bash + tmux. https://github.com/…
+set -u
+
+VERSION=1.0.0
+
+# ── Config ──────────────────────────────────────────────────────────────────
+# One artifact, many machines: everything machine-specific is overridable via
+# ~/.config/ccmux/config (sourced) or env. Sensible per-OS defaults + autodetect
+# so a fresh box needs ~zero config. Sessions live in a separate data file so
+# `ccmux new` never edits this script (code and data stay separated).
+CONFIG_FILE="${CCMUX_CONFIG:-$HOME/.config/ccmux/config}"
+# shellcheck disable=SC1090
+[ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+
+_have() { command -v "$1" 2>/dev/null; }
+CLAUDE_BIN="${CLAUDE_BIN:-$(_have claude || echo "$HOME/.local/bin/claude")}"
+TMUX_BIN="${TMUX_BIN:-$(_have tmux || echo /opt/homebrew/bin/tmux)}"
+PROJECTS_DIR="${PROJECTS_DIR:-$HOME/.claude/projects}"
+SESSIONS_FILE="${CCMUX_SESSIONS:-$HOME/.ccmux-sessions}"
+RC_PREFIX="${RC_PREFIX:-local}"          # Remote-Control name prefix: local|dev|prod
+PERMISSION_MODE="${PERMISSION_MODE:-auto}"
+ENSURE_INTERVAL="${ENSURE_INTERVAL:-30}" # daemon heal period (seconds)
+BOOT_LABEL="${BOOT_LABEL:-com.ccmux.daemon}"
+LOG_FILE="${CCMUX_LOG:-$HOME/.ccmux.log}"
+
+# Absolute, symlink-friendly path to this script (mac has no `readlink -f`).
+SELF="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
+
+# ── tmux helpers ────────────────────────────────────────────────────────────
+# EXACT match (=) is critical: names share prefixes (cc-gecko vs cc-gecko-eve);
+# without '=' tmux prefix-matches and silently hits the wrong session.
+tgt()  { printf '=%s' "$1"; }
+pane() { printf '=%s:0.0' "$1"; }        # explicit pane; '=NAME' alone won't resolve
+# RC name shown in Claude's Remote Control, so a phone/desktop client can tell
+# which box a session lives on: cc-gecko -> prod-gecko.
+rc_name() { printf '%s-%s' "$RC_PREFIX" "${1#cc-}"; }
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG_FILE" 2>/dev/null; }
+
+# ── Sessions data (name|dir|uuid) ───────────────────────────────────────────
+# Read FRESH every call — the daemon must see `ccmux new` immediately (the bug a
+# read-once `mapfile` would cause). uuid pins the conversation so resume is
+# deterministic even for two sessions in the same directory.
+_rows() { grep -vE '^[[:space:]]*(#|$)' "$SESSIONS_FILE" 2>/dev/null; }
+session_names() { _rows | cut -d'|' -f1; }
+session_field() { # $1=name $2=field(2=dir,3=uuid) -> value, nonzero if missing
+  local out
+  out="$(_rows | awk -F'|' -v n="$1" -v i="$2" '$1==n{print $i; f=1} END{exit !f}')" || return 1
+  printf '%s' "$out"
+}
+session_dir()  { session_field "$1" 2; }
+session_uuid() { session_field "$1" 3; }
+hist_file() { printf '%s/%s/%s.jsonl' "$PROJECTS_DIR" "$(printf '%s' "$1" | sed 's#/#-#g')" "$2"; }
+
+humanize() { # seconds -> 45s | 3m | 2h10m | 5d3h | —
+  local s="$1" d h m
+  [ "$s" -le 0 ] 2>/dev/null && { printf '—'; return; }
+  d=$((s/86400)); h=$(((s%86400)/3600)); m=$(((s%3600)/60))
+  if   [ "$d" -gt 0 ]; then [ "$h" -gt 0 ] && printf '%dd%dh' "$d" "$h" || printf '%dd' "$d"
+  elif [ "$h" -gt 0 ]; then [ "$m" -gt 0 ] && printf '%dh%dm' "$h" "$m" || printf '%dh' "$h"
+  elif [ "$m" -gt 0 ]; then printf '%dm' "$m"
+  else printf '%ds' "$s"; fi
+}
+
+# Refuse to stop/rm the session you're calling from (an agent shouldn't kill its
+# own conversation). CCMUX_SESSION is exported into each session by cmd_run.
+refuse_self() { # $1=verb $2=name $3=force
+  if [ "${3:-}" != "--force" ] && [ -n "${CCMUX_SESSION:-}" ] && [ "$2" = "$CCMUX_SESSION" ]; then
+    echo "refusing to $1 '$2': you are calling from inside it. pass --force to override."
+    return 0
+  fi
+  return 1
+}
+
+# ── Injected system prompt ──────────────────────────────────────────────────
+# Lets the in-session Claude manage its siblings through ccmux — drivable from
+# Remote Control / Telegram in any language.
+build_prompt() { # $1=name
+  cat <<PROMPT
+You are running inside tmux session '$1', managed by ccmux ($SELF).
+Manage Claude sessions by running ccmux (always the absolute path above):
+- "list sessions"                      -> $SELF list
+- "create NAME in DIR" / "new session" -> $SELF new NAME DIR
+- "restart this" / "restart NAME"      -> $SELF restart NAME   (this session: $1)
+- "stop NAME" / "start NAME" / "remove NAME" -> $SELF stop|start|rm NAME
+- "compact NAME" / slash to a session  -> $SELF send NAME '/compact'
+- "send /model opus to this"           -> $SELF send $1 '/model opus'
+Rules:
+- Always print command output verbatim — Remote Control users cannot see tool output.
+- Use ccmux, not raw tmux/ls, for session management (avoids permission prompts).
+- These triggers work in any language; infer intent.
+PROMPT
+}
+
+# ── Launch loop (runs inside the tmux session) ──────────────────────────────
+cmd_run() { # $1=name
+  local name="$1" dir uuid hist prompt
+  dir="$(session_dir "$name")"  || { echo "unknown session: $name"; exit 1; }
+  uuid="$(session_uuid "$name")"
+  cd "$dir" || exit 1
+  export CCMUX_SESSION="$name"               # self-guard marker, inherited by claude
+  unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT     # env hygiene: don't confuse a nested claude
+  # Boot daemons start with a minimal PATH; give the session a usable one so the
+  # agent (and its hooks) can find ccmux, tmux, node, etc.
+  export PATH="$(dirname "$SELF"):$(dirname "$CLAUDE_BIN"):$(dirname "$TMUX_BIN"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
+  while true; do
+    prompt="$(build_prompt "$name")"
+    hist="$(hist_file "$dir" "$uuid")"
+    if [ -f "$hist" ]; then                    # resume the pinned conversation…
+      "$CLAUDE_BIN" --resume "$uuid" -n "$(rc_name "$name")" \
+        --permission-mode "$PERMISSION_MODE" --append-system-prompt "$prompt"
+    else                                       # …or start it at that exact uuid
+      "$CLAUDE_BIN" --session-id "$uuid" -n "$(rc_name "$name")" \
+        --permission-mode "$PERMISSION_MODE" --append-system-prompt "$prompt"
+    fi
+    sleep 2                                    # crashed/exited -> relaunch (same uuid)
+  done
+}
+
+# ── Session control ─────────────────────────────────────────────────────────
+cmd_start() { # $1=name
+  local name="$1" dir t
+  dir="$(session_dir "$name")" || { echo "unknown session: $name"; return 1; }
+  t="$(tgt "$name")"
+  "$TMUX_BIN" has-session -t "$t" 2>/dev/null && { echo "$name already running"; return 0; }
+  "$TMUX_BIN" new-session -d -s "$name" -c "$dir" "$SELF" _run "$name"
+  # Lock the window name so Claude's escape codes can't rename it and break the
+  # =NAME exact-match invariant; then quality-of-life pane options.
+  "$TMUX_BIN" set-option   -t "$t" automatic-rename off  2>/dev/null
+  "$TMUX_BIN" set-option   -t "$t" allow-rename off      2>/dev/null
+  "$TMUX_BIN" set-option   -t "$t" mouse on              2>/dev/null
+  "$TMUX_BIN" set-option   -t "$t" history-limit 50000   2>/dev/null
+  "$TMUX_BIN" set-option -p -t "$(pane "$name")" allow-passthrough on 2>/dev/null
+  echo "started $name ($(rc_name "$name"))"
+}
+
+cmd_stop() { # $1=name [$2=--force]
+  local name="$1"
+  refuse_self stop "$name" "${2:-}" && return 1
+  "$TMUX_BIN" kill-session -t "$(tgt "$name")" 2>/dev/null && echo "stopped $name" || echo "$name not running"
+}
+
+cmd_restart() { # $1=name  (detached so it survives killing the calling session)
+  local name="$1"
+  "$TMUX_BIN" kill-session -t "$(tgt "$name")" 2>/dev/null
+  # Detached + SIGHUP-immune so it survives killing the calling session. `setsid`
+  # is Linux-only; `nohup … &` is portable (macOS has no setsid).
+  nohup bash -c "sleep 1; '$SELF' start '$name'" </dev/null >/dev/null 2>&1 &
+  echo "restarting $name"
+}
+
+cmd_ensure() { # one fork for the running set, then heal anything missing
+  local running n
+  running="$("$TMUX_BIN" list-sessions -F '#{session_name}' 2>/dev/null)"
+  while IFS= read -r n; do
+    [ -z "$n" ] && continue
+    grep -qxF "$n" <<<"$running" || cmd_start "$n"
+  done < <(session_names)
+}
+
+cmd_daemon() {
+  trap 'log "daemon stopping"; exit 0' TERM INT   # clean exit -> no restart thrash
+  [ -x "$CLAUDE_BIN" ] || { log "claude not executable: $CLAUDE_BIN — daemon exiting"; \
+    echo "claude bin invalid: $CLAUDE_BIN"; exit 0; }
+  log "ccmux daemon up (rc=$RC_PREFIX interval=${ENSURE_INTERVAL}s)"
+  while true; do
+    cmd_ensure || log "ensure pass failed"      # one bad pass never kills the daemon
+    sleep "$ENSURE_INTERVAL"
+  done
+}
+
+# ── Read commands ───────────────────────────────────────────────────────────
+cmd_list() {
+  local created now n c st up
+  created="$("$TMUX_BIN" list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)"
+  now="$(date +%s)"
+  printf '%-20s %-9s %-8s %-14s %s\n' SESSION STATUS UPTIME RC DIR
+  while IFS= read -r n; do
+    [ -z "$n" ] && continue
+    c="$(awk -v s="$n" '$1==s{print $2}' <<<"$created")"
+    if [ -n "$c" ]; then st=running; up="$(humanize $((now - c)))"; else st=stopped; up='—'; fi
+    printf '%-20s %-9s %-8s %-14s %s\n' "$n" "$st" "$up" "$(rc_name "$n")" "$(session_dir "$n")"
+  done < <(session_names)
+}
+
+cmd_send() { # $1=name $2..=keys (e.g. '/compact')
+  local name="$1" p; shift
+  p="$(pane "$name")"
+  "$TMUX_BIN" send-keys -t "$p" -l "$*" && "$TMUX_BIN" send-keys -t "$p" Enter \
+    && echo "sent to $name: $*" || echo "send failed: $name not running?"
+}
+
+cmd_logs() { "$TMUX_BIN" capture-pane -t "$(pane "$1")" -p -S -"${2:-100}"; }
+
+# ── Registry ────────────────────────────────────────────────────────────────
+cmd_new() { # $1=name $2=dir
+  local name="${1:-}" dir="${2:-}" uuid
+  { [ -z "$name" ] || [ -z "$dir" ]; } && { echo "usage: ccmux new <name> <dir>"; return 1; }
+  case "$name" in *['|'' ''#']*) echo "name: no '|', space, or '#'"; return 1;; esac
+  case "$dir"  in /*) ;; *) echo "dir must be absolute: $dir"; return 1;; esac
+  [ -d "$dir" ] || { echo "dir not found: $dir"; return 1; }
+  session_dir "$name" >/dev/null 2>&1 && { echo "'$name' already registered"; return 1; }
+  uuid="$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')" || uuid="$(cat /proc/sys/kernel/random/uuid)"
+  mkdir -p "$(dirname "$SESSIONS_FILE")"
+  printf '%s|%s|%s\n' "$name" "$dir" "$uuid" >> "$SESSIONS_FILE"
+  echo "added: $name|$dir|$uuid"
+  cmd_start "$name"
+}
+
+cmd_rm() { # $1=name [$2=--force]
+  local name="${1:-}"
+  [ -z "$name" ] && { echo "usage: ccmux rm <name>"; return 1; }
+  refuse_self rm "$name" "${2:-}" && return 1
+  session_dir "$name" >/dev/null 2>&1 || { echo "'$name' not registered"; return 1; }
+  cmd_stop "$name" --force
+  local tmp; tmp="$(mktemp)"
+  awk -F'|' -v n="$name" '$1!=n' "$SESSIONS_FILE" > "$tmp" && mv "$tmp" "$SESSIONS_FILE"
+  echo "removed $name (jsonl history kept on disk)"
+}
+
+# ── Boot install (one daemon unit; systemd on Linux, launchd on macOS) ───────
+cmd_install() {
+  mkdir -p "$(dirname "$SESSIONS_FILE")" "$(dirname "$CONFIG_FILE")"
+  [ -f "$SESSIONS_FILE" ] || printf '# ccmux sessions — name|dir|uuid (add via `ccmux new`)\n' > "$SESSIONS_FILE"
+  case "$(uname)" in
+    Darwin) _install_launchd ;;
+    Linux)  _install_systemd ;;
+    *) echo "unsupported OS: $(uname)"; return 1 ;;
+  esac
+}
+_install_launchd() {
+  local plist="$HOME/Library/LaunchAgents/$BOOT_LABEL.plist"
+  mkdir -p "$(dirname "$plist")"
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$BOOT_LABEL</string>
+  <key>ProgramArguments</key><array><string>$SELF</string><string>daemon</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$LOG_FILE</string>
+  <key>StandardErrorPath</key><string>$LOG_FILE</string>
+  <key>EnvironmentVariables</key><dict><key>HOME</key><string>$HOME</string></dict>
+</dict></plist>
+PLIST
+  launchctl bootout "gui/$(id -u)/$BOOT_LABEL" 2>/dev/null
+  launchctl bootstrap "gui/$(id -u)" "$plist"
+  echo "installed launchd $BOOT_LABEL -> $plist"
+}
+_install_systemd() {
+  local unit="/etc/systemd/system/$BOOT_LABEL.service"
+  cat > "$unit" <<UNIT
+[Unit]
+Description=ccmux — persistent Claude Code tmux sessions
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=$HOME
+ExecStart=$SELF daemon
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now "$BOOT_LABEL"
+  echo "installed systemd $BOOT_LABEL"
+}
+cmd_uninstall() {
+  case "$(uname)" in
+    Darwin) launchctl bootout "gui/$(id -u)/$BOOT_LABEL" 2>/dev/null
+            rm -f "$HOME/Library/LaunchAgents/$BOOT_LABEL.plist" ;;
+    Linux)  systemctl disable --now "$BOOT_LABEL" 2>/dev/null
+            rm -f "/etc/systemd/system/$BOOT_LABEL.service"; systemctl daemon-reload ;;
+  esac
+  echo "uninstalled $BOOT_LABEL (sessions file + jsonl history kept)"
+}
+
+# ── Help ────────────────────────────────────────────────────────────────────
+cmd_help() {
+  cat <<HELP
+ccmux $VERSION — Cloud Code MUX
+persistent, self-healing Claude Code sessions in tmux · deterministic resume
+
+  ccmux list                        sessions + status / uptime
+  ccmux new <name> <dir>            register + start a session (pins a uuid)
+  ccmux rm <name> [--force]         stop + unregister (jsonl history kept)
+  ccmux start|stop|restart <name>   lifecycle  (stop/rm of self needs --force)
+  ccmux send <name> <keys...>       type into a session (text or /slash)
+  ccmux logs <name> [lines]         print a session's pane
+  ccmux install | uninstall         boot unit for the daemon (systemd/launchd)
+  ccmux daemon | ensure             run / single-pass the heal supervisor
+  ccmux help | version
+
+sessions persist across logout & reboot; one daemon heals them every ${ENSURE_INTERVAL}s.
+config: $CONFIG_FILE   data: $SESSIONS_FILE
+HELP
+}
+
+# ── Dispatch ────────────────────────────────────────────────────────────────
+case "${1:-help}" in
+  _run)            shift; cmd_run "$@" ;;
+  start)           cmd_start "${2:-}" ;;
+  stop)            cmd_stop "${2:-}" "${3:-}" ;;
+  restart)         cmd_restart "${2:-}" ;;
+  ensure)          cmd_ensure ;;
+  daemon)          cmd_daemon ;;
+  list|ls|l)       cmd_list ;;
+  new)             cmd_new "${2:-}" "${3:-}" ;;
+  rm|remove)       cmd_rm "${2:-}" "${3:-}" ;;
+  send)            shift; cmd_send "$@" ;;
+  logs)            cmd_logs "${2:-}" "${3:-}" ;;
+  install)         cmd_install ;;
+  uninstall)       cmd_uninstall ;;
+  help|-h|--help)  cmd_help ;;
+  version|-v|--version) echo "ccmux $VERSION" ;;
+  *) cmd_help; exit 1 ;;
+esac

@@ -1,0 +1,12 @@
+# ccmux config — copy to ~/.config/ccmux/config and edit. All values are optional;
+# anything unset is autodetected with sane per-OS defaults.
+
+RC_PREFIX=local                       # Remote-Control name prefix: local | dev | prod
+
+# CLAUDE_BIN=/root/.bun/bin/claude     # default: $(command -v claude) or ~/.local/bin/claude
+# TMUX_BIN=/usr/bin/tmux               # default: $(command -v tmux) or /opt/homebrew/bin/tmux
+# PROJECTS_DIR=/root/.claude/projects  # default: ~/.claude/projects
+# CCMUX_SESSIONS=~/.ccmux-sessions     # session registry (name|dir|uuid per line)
+# ENSURE_INTERVAL=30                   # daemon heal period, seconds
+# PERMISSION_MODE=auto                 # claude --permission-mode
+# BOOT_LABEL=com.ccmux.daemon          # launchd label / systemd unit name
