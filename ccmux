@@ -30,12 +30,12 @@ LOG_FILE="${CCMUX_LOG:-$HOME/.ccmux.log}"
 SELF="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
 
 # ── tmux helpers ────────────────────────────────────────────────────────────
-# EXACT match (=) is critical: names share prefixes (cc-gecko vs cc-gecko-eve);
+# EXACT match (=) is critical: names share prefixes (cc-api vs cc-api-v2);
 # without '=' tmux prefix-matches and silently hits the wrong session.
 tgt()  { printf '=%s' "$1"; }
 pane() { printf '=%s:0.0' "$1"; }        # explicit pane; '=NAME' alone won't resolve
 # RC name shown in Claude's Remote Control, so a phone/desktop client can tell
-# which box a session lives on: cc-gecko -> prod-gecko.
+# which box a session lives on: cc-api -> prod-api.
 rc_name() { printf '%s-%s' "$RC_PREFIX" "${1#cc-}"; }
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG_FILE" 2>/dev/null; }
 
@@ -52,7 +52,12 @@ session_field() { # $1=name $2=field(2=dir,3=uuid) -> value, nonzero if missing
 }
 session_dir()  { session_field "$1" 2; }
 session_uuid() { session_field "$1" 3; }
-hist_file() { printf '%s/%s/%s.jsonl' "$PROJECTS_DIR" "$(printf '%s' "$1" | sed 's#/#-#g')" "$2"; }
+# Claude encodes the REALPATH of the dir (symlinks resolved: /tmp→/private/tmp on
+# mac, network mounts, any symlinked project dir or home). Encoding the raw path would miss
+# the jsonl and wrongly fall back to --session-id ("already in use"). `pwd -P` is
+# the portable realpath; a not-yet-existing dir falls back to the raw path.
+real_dir() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"; }
+hist_file() { printf '%s/%s/%s.jsonl' "$PROJECTS_DIR" "$(real_dir "$1" | sed 's#/#-#g')" "$2"; }
 
 humanize() { # seconds -> 45s | 3m | 2h10m | 5d3h | —
   local s="$1" d h m
@@ -96,7 +101,7 @@ PROMPT
 
 # ── Launch loop (runs inside the tmux session) ──────────────────────────────
 cmd_run() { # $1=name
-  local name="$1" dir uuid hist prompt
+  local name="$1" dir uuid prompt
   dir="$(session_dir "$name")"  || { echo "unknown session: $name"; exit 1; }
   uuid="$(session_uuid "$name")"
   cd "$dir" || exit 1
@@ -105,17 +110,30 @@ cmd_run() { # $1=name
   # Boot daemons start with a minimal PATH; give the session a usable one so the
   # agent (and its hooks) can find ccmux, tmux, node, etc.
   export PATH="$(dirname "$SELF"):$(dirname "$CLAUDE_BIN"):$(dirname "$TMUX_BIN"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
+  local backoff=2 fastfails=0 fork=0 started elapsed
   while true; do
     prompt="$(build_prompt "$name")"
-    hist="$(hist_file "$dir" "$uuid")"
-    if [ -f "$hist" ]; then                    # resume the pinned conversation…
-      "$CLAUDE_BIN" --resume "$uuid" -n "$(rc_name "$name")" \
-        --permission-mode "$PERMISSION_MODE" --append-system-prompt "$prompt"
-    else                                       # …or start it at that exact uuid
-      "$CLAUDE_BIN" --session-id "$uuid" -n "$(rc_name "$name")" \
-        --permission-mode "$PERMISSION_MODE" --append-system-prompt "$prompt"
+    # resume the pinned conversation if its transcript exists, else create it at this uuid.
+    local -a resume
+    if [ -f "$(hist_file "$dir" "$uuid")" ]; then resume=(--resume "$uuid"); else resume=(--session-id "$uuid"); fi
+    [ "$fork" = 1 ] && { resume+=(--fork-session); fork=0; }   # one-shot wedge recovery
+    started="$(date +%s)"
+    "$CLAUDE_BIN" "${resume[@]}" -n "$(rc_name "$name")" \
+      --permission-mode "$PERMISSION_MODE" --append-system-prompt "$prompt"
+    # Relaunch with backoff judged by ELAPSED TIME, not exit code — claude exits 0 even
+    # on a `--session-id already in use` error. A healthy long run resets to 2s; a fast
+    # death (bad config, no credits) backs off 2s→60s instead of hot-looping. After 3
+    # fast deaths, try once with --fork-session to recover a wedged conversation.
+    elapsed=$(( $(date +%s) - started ))
+    if [ "$elapsed" -lt 5 ]; then
+      fastfails=$((fastfails + 1))
+      backoff=$(( backoff * 2 > 60 ? 60 : backoff * 2 ))
+      log "relaunch $name: fast exit ${elapsed}s (fail #$fastfails) backoff ${backoff}s"
+      [ "$fastfails" -ge 3 ] && { fork=1; fastfails=0; log "relaunch $name: --fork-session recovery"; }
+    else
+      backoff=2; fastfails=0
     fi
-    sleep 2                                    # crashed/exited -> relaunch (same uuid)
+    sleep "$backoff"
   done
 }
 
@@ -188,8 +206,12 @@ cmd_list() {
 cmd_send() { # $1=name $2..=keys (e.g. '/compact')
   local name="$1" p; shift
   p="$(pane "$name")"
-  "$TMUX_BIN" send-keys -t "$p" -l "$*" && "$TMUX_BIN" send-keys -t "$p" Enter \
-    && echo "sent to $name: $*" || echo "send failed: $name not running?"
+  # Send the literal text, let readline drain it, THEN a separate Enter. Without the
+  # gap, Enter can arrive before the text is buffered and the line goes empty/split.
+  "$TMUX_BIN" send-keys -t "$p" -l "$*" || { echo "send failed: $name not running?"; return 1; }
+  sleep 0.15
+  "$TMUX_BIN" send-keys -t "$p" Enter
+  echo "sent to $name: $*"
 }
 
 cmd_logs() { "$TMUX_BIN" capture-pane -t "$(pane "$1")" -p -S -"${2:-100}"; }

@@ -10,16 +10,16 @@
 
 **Persistent, self-healing [Claude Code](https://claude.com/claude-code) sessions in [tmux](https://github.com/tmux/tmux) — with deterministic resume.**
 
-A tiny tmux orchestrator / session multiplexer for terminal AI agents. Your Claude
-Code sessions survive crashes, logouts and reboots, each pinned to a stable
-conversation so it always resumes *exactly* where it left off — drivable from your
-phone over Remote Control. One script. One daemon. No build step, no dependencies
+A tiny tmux orchestrator / session multiplexer for terminal AI agents. Each session
+is pinned to a stable conversation, so it survives crashes, logouts and reboots and
+always resumes *exactly* where it left off — and you can drive every session from
+your phone (see below). One script. One daemon. No build step, no dependencies
 beyond `bash` + `tmux`.
 
 ```
 SESSION              STATUS    UPTIME   RC             DIR
-cc-main              running   3h2m     prod-main      /home/ml
-cc-gecko-chat        running   1d4h     prod-gecko-chat /home/ml/gecko-chat-bot
+cc-api               running   3h2m     prod-api       /home/you/code/api
+cc-web               running   1d4h     prod-web       /home/you/code/web
 ```
 
 ## Why
@@ -33,18 +33,23 @@ command, never by editing a unit file.
 - **Deterministic resume** — uuid-pinned conversations, even two in the same dir.
 - **Self-healing** — a single daemon re-spawns any session that dies, every 30s.
 - **Survives reboot** — installs a `systemd` (Linux) / `launchd` (macOS) boot unit.
-- **Phone-drivable** — each session is told how to manage its siblings via ccmux,
-  so "restart gecko" from Remote Control / Telegram just works, in any language.
-- **One file, ~280 lines of bash** — read it in five minutes, edit it in place.
+- **Phone-drivable** — drive any session from the Claude Code app (see below).
+- **One file of bash** — no build, no deps; read it in five minutes, edit it in place.
 
 ## Install
 
+Requires [Claude Code](https://claude.com/claude-code), `tmux`, and `bash` on `PATH`.
+
 ```bash
 git clone https://github.com/you/ccmux ~/ccmux && cd ~/ccmux
-ln -s "$PWD/ccmux" /usr/local/bin/ccmux     # or anywhere on PATH
+ln -s "$PWD/ccmux" /usr/local/bin/ccmux           # or anywhere on PATH
+mkdir -p ~/.config/ccmux
 echo 'RC_PREFIX=local' > ~/.config/ccmux/config   # local | dev | prod
-ccmux install                                # boot unit + daemon
+                                                  # (or: cp config.example ~/.config/ccmux/config && edit)
+ccmux install                                     # boot unit + daemon
 ```
+
+Remove it all later with `ccmux uninstall` (your sessions file + history stay on disk).
 
 > **macOS:** don't clone under `~/Desktop`, `~/Documents` or `~/Downloads` — those
 > are TCC-protected and the `launchd` daemon can't *exec* a script located there
@@ -62,7 +67,26 @@ ccmux restart cc-api             # bounce it (survives killing the caller)
 ccmux rm cc-api                  # stop + unregister (history kept on disk)
 ```
 
-Attach to watch/interact: `tmux attach -t =cc-api` (detach with `Ctrl-b d`).
+Attach from the same machine: `tmux attach -t =cc-api` (detach with `Ctrl-b d`).
+
+## Drive it from your phone
+
+Turn Remote Control on **once** — add `"remoteControlAtStartup": true` to
+`~/.claude/settings.json` — and every session ccmux launches comes up
+Remote-Control-enabled automatically, under a stable display name
+(`prod-api`, `dev-web`, …, set by `RC_PREFIX`). No per-session step.
+
+Then open the **Claude Code app on your phone**: every session across all your
+machines shows up by name, and you get full access to any of them — exactly as if
+you were sitting at the terminal.
+
+Each session is also told how to manage its *siblings* through ccmux, so
+plain-language commands work from the app too, in any language:
+
+> "list sessions" · "restart api" · "compact web" · "send /model opus to api"
+
+So from one phone you can watch a long-running agent, bounce a wedged one, or spin
+up a new session in another repo — without touching a terminal.
 
 ## How it works
 
@@ -74,7 +98,7 @@ Attach to watch/interact: `tmux attach -t =cc-api` (detach with `Ctrl-b d`).
   relaunch loop; the daemon only *heals* — so it can be bounced/updated without
   dropping a live conversation.
 - **Exact targeting.** Every tmux op uses `=name` exact-match, and window renaming
-  is locked off — so prefix-sharing names (`cc-gecko` vs `cc-gecko-eve`) never hit
+  is locked off — so prefix-sharing names (`cc-api` vs `cc-api-v2`) never hit
   the wrong session.
 
 ## Config
@@ -89,8 +113,27 @@ PROJECTS_DIR=/root/.claude/projects
 ENSURE_INTERVAL=30
 ```
 
-One script, many machines: the binary is identical everywhere — only this file
+One script, many machines: the script is identical everywhere — only this config
 differs. Update the whole fleet with `git pull`.
+
+## Security
+
+ccmux runs Claude Code sessions unattended and lets you reach them remotely, so
+treat access to it as **shell access to the machine**:
+
+- **Sessions run with `--permission-mode auto`** — they take actions without a
+  human approving each step. Run ccmux only on machines and accounts you trust.
+- **Remote Control = full access.** With `remoteControlAtStartup` on, anyone who
+  can reach your Claude account can drive every session on every machine. Protect
+  that account (2FA) — RC is effectively a remote shell.
+- **Sessions can manage their siblings.** Through the injected prompt an agent can
+  `start` / `stop` / `rm` / `send` to other sessions. The self-guard only stops a
+  session from killing *itself* (`--force` overrides); it can still affect the fleet.
+- **The config is sourced shell.** `~/.config/ccmux/config` is executed by the
+  daemon, so write access to it is code execution — keep it owned by you (`chmod 600`).
+- **No network listener.** ccmux opens no ports; the attack surface is your Claude
+  account, local tmux, and that config file. Conversation transcripts live in
+  cleartext under `~/.claude/projects`.
 
 ## License
 
