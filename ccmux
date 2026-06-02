@@ -4,7 +4,7 @@
 # One script. One daemon. No build, no deps beyond bash + tmux. https://github.com/…
 set -u
 
-VERSION=1.0.2
+VERSION=1.1.0
 
 # ── Config ──────────────────────────────────────────────────────────────────
 # One artifact, many machines: everything machine-specific is overridable via
@@ -23,13 +23,16 @@ SESSIONS_FILE="${CCMUX_SESSIONS:-$HOME/.ccmux-sessions}"
 RC_PREFIX="${RC_PREFIX:-local}"          # Remote-Control name prefix: local|dev|prod
 PERMISSION_MODE="${PERMISSION_MODE:-auto}"
 ENSURE_INTERVAL="${ENSURE_INTERVAL:-30}" # daemon heal period (seconds)
-BOOT_LABEL="${BOOT_LABEL:-com.ccmux.daemon}"
+BOOT_LABEL="${BOOT_LABEL:-ccmux}"        # systemd unit / launchd label — same name everywhere
 LOG_FILE="${CCMUX_LOG:-$HOME/.ccmux.log}"
 
 # Absolute, symlink-friendly path to this script (mac has no `readlink -f`).
 SELF="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
 
 # ── tmux helpers ────────────────────────────────────────────────────────────
+# Plain default tmux socket — so `tmux ls` / `tmux attach -t <name>` work exactly as a
+# user expects, no `-L` needed. ccmux is the sole owner of the default socket on the box.
+tmux_c() { "$TMUX_BIN" "$@"; }
 # EXACT match (=) is critical: names share prefixes (cc-api vs cc-api-v2);
 # without '=' tmux prefix-matches and silently hits the wrong session.
 tgt()  { printf '=%s' "$1"; }
@@ -78,7 +81,7 @@ humanize() { # seconds -> 45s | 3m | 2h10m | 5d3h | —
 # stays '-' (we never invent a context window).
 pane_status() { # $1=name
   local p model ctx state
-  p="$("$TMUX_BIN" capture-pane -t "$(pane "$1")" -p 2>/dev/null | tail -n 30)"
+  p="$(tmux_c capture-pane -t "$(pane "$1")" -p 2>/dev/null | tail -n 30)"
   if printf '%s' "$p" | grep -qE 'esc to interrupt|… \([0-9]+m? ?[0-9]*s ·'; then state=working; else state=idle; fi
   model="$(printf '%s' "$p" | grep -oE '(Opus|Sonnet|Haiku) [0-9.]+' | head -1)"
   ctx="$(printf '%s' "$p" | grep -oE '[0-9.]+[kKMG]/[0-9.]+[kKMG] +[0-9]+%' | head -1)"
@@ -180,27 +183,27 @@ cmd_start() { # $1=name
   local name="$1" dir t
   dir="$(session_dir "$name")" || { echo "unknown session: $name"; return 1; }
   t="$(tgt "$name")"
-  "$TMUX_BIN" has-session -t "$t" 2>/dev/null && { echo "$name already running"; return 0; }
-  "$TMUX_BIN" new-session -d -s "$name" -c "$dir" "$SELF" _run "$name"
+  tmux_c has-session -t "$t" 2>/dev/null && { echo "$name already running"; return 0; }
+  tmux_c new-session -d -s "$name" -c "$dir" "$SELF" _run "$name"
   # Lock the window name so Claude's escape codes can't rename it and break the
   # =NAME exact-match invariant; then quality-of-life pane options.
-  "$TMUX_BIN" set-option   -t "$t" automatic-rename off  2>/dev/null
-  "$TMUX_BIN" set-option   -t "$t" allow-rename off      2>/dev/null
-  "$TMUX_BIN" set-option   -t "$t" mouse on              2>/dev/null
-  "$TMUX_BIN" set-option   -t "$t" history-limit 50000   2>/dev/null
-  "$TMUX_BIN" set-option -p -t "$(pane "$name")" allow-passthrough on 2>/dev/null
+  tmux_c set-option   -t "$t" automatic-rename off  2>/dev/null
+  tmux_c set-option   -t "$t" allow-rename off      2>/dev/null
+  tmux_c set-option   -t "$t" mouse on              2>/dev/null
+  tmux_c set-option   -t "$t" history-limit 50000   2>/dev/null
+  tmux_c set-option -p -t "$(pane "$name")" allow-passthrough on 2>/dev/null
   echo "started $name ($(rc_name "$name"))"
 }
 
 cmd_stop() { # $1=name [$2=--force]
   local name="$1"
   refuse_self stop "$name" "${2:-}" && return 1
-  "$TMUX_BIN" kill-session -t "$(tgt "$name")" 2>/dev/null && echo "stopped $name" || echo "$name not running"
+  tmux_c kill-session -t "$(tgt "$name")" 2>/dev/null && echo "stopped $name" || echo "$name not running"
 }
 
 cmd_restart() { # $1=name  (detached so it survives killing the calling session)
   local name="$1"
-  "$TMUX_BIN" kill-session -t "$(tgt "$name")" 2>/dev/null
+  tmux_c kill-session -t "$(tgt "$name")" 2>/dev/null
   # Detached + SIGHUP-immune so it survives killing the calling session. `setsid`
   # is Linux-only; `nohup … &` is portable (macOS has no setsid).
   nohup bash -c "sleep 1; '$SELF' start '$name'" </dev/null >/dev/null 2>&1 &
@@ -209,7 +212,7 @@ cmd_restart() { # $1=name  (detached so it survives killing the calling session)
 
 cmd_ensure() { # one fork for the running set, then heal anything missing
   local running n
-  running="$("$TMUX_BIN" list-sessions -F '#{session_name}' 2>/dev/null)"
+  running="$(tmux_c list-sessions -F '#{session_name}' 2>/dev/null)"
   while IFS= read -r n; do
     [ -z "$n" ] && continue
     grep -qxF "$n" <<<"$running" || cmd_start "$n"
@@ -230,7 +233,7 @@ cmd_daemon() {
 # ── Read commands ───────────────────────────────────────────────────────────
 cmd_list() {
   local created now n c up model ctx state used
-  created="$("$TMUX_BIN" list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)"
+  created="$(tmux_c list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)"
   now="$(date +%s)"
   printf '%-12s %-9s %-16s %-8s %-7s %-14s %s\n' SESSION MODEL CTX STATE UPTIME RC DIR
   while IFS= read -r n; do
@@ -257,13 +260,13 @@ cmd_send() { # $1=name $2..=keys (e.g. '/compact')
   # Send the literal text, let readline drain it, THEN a separate Enter. Without the
   # gap, Enter can arrive before the text is buffered and the line goes empty/split.
   # `--` so payloads starting with '-' (e.g. a flag-like prompt) aren't parsed as options.
-  "$TMUX_BIN" send-keys -t "$p" -l -- "$*" || { echo "send failed: $name not running?"; return 1; }
+  tmux_c send-keys -t "$p" -l -- "$*" || { echo "send failed: $name not running?"; return 1; }
   sleep 0.15
-  "$TMUX_BIN" send-keys -t "$p" Enter
+  tmux_c send-keys -t "$p" Enter
   echo "sent to $name: $*"
 }
 
-cmd_logs() { "$TMUX_BIN" capture-pane -t "$(pane "$1")" -p -S -"${2:-100}"; }
+cmd_logs() { tmux_c capture-pane -t "$(pane "$1")" -p -S -"${2:-100}"; }
 
 # ── Registry ────────────────────────────────────────────────────────────────
 cmd_new() { # $1=name $2=dir
@@ -350,6 +353,10 @@ Environment=HOME=$HOME
 ExecStart=$SELF daemon
 Restart=on-failure
 RestartSec=3
+# Only kill the daemon's own pid on stop/restart — leave the tmux server (and every live
+# session it hosts) running, so bouncing the daemon never drops a conversation. Matches
+# macOS, where the tmux server detaches from the launchd job on its own.
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target
@@ -385,6 +392,7 @@ persistent, self-healing Claude Code sessions in tmux · deterministic resume
   ccmux help | version
 
 sessions persist across logout & reboot; one daemon heals them every ${ENSURE_INTERVAL}s.
+attach by hand: tmux attach -t <name>
 config: $CONFIG_FILE   data: $SESSIONS_FILE
 HELP
 }
