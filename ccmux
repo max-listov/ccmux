@@ -69,6 +69,31 @@ humanize() { # seconds -> 45s | 3m | 2h10m | 5d3h | —
   else printf '%ds' "$s"; fi
 }
 
+# Model + context% + working/idle, scraped straight from what claude renders in the
+# pane (the model banner / statusline + the working-spinner). One read, no jq/jsonl.
+# Prints TAB-separated "model<TAB>ctx<TAB>state"; any field claude doesn't surface
+# stays '-' (we never invent a context window).
+pane_status() { # $1=name
+  local p model ctx state
+  p="$("$TMUX_BIN" capture-pane -t "$(pane "$1")" -p 2>/dev/null | tail -n 30)"
+  if printf '%s' "$p" | grep -qE 'esc to interrupt|… \([0-9]+m? ?[0-9]*s ·'; then state=working; else state=idle; fi
+  model="$(printf '%s' "$p" | grep -oE '(Opus|Sonnet|Haiku) [0-9.]+' | head -1)"
+  ctx="$(printf '%s' "$p" | grep -oE '[0-9.]+[kKMG]/[0-9.]+[kKMG] +[0-9]+%' | head -1)"
+  printf '%s\t%s\t%s' "${model:--}" "${ctx:--}" "$state"
+}
+
+fmt_tok() { awk -v t="$1" 'BEGIN{ if(t>=1e6)printf"%.1fM",t/1e6; else if(t>=1000)printf"%dk",t/1000; else printf"%d",t }'; }
+
+# Context tokens USED — from the transcript, so it works with NO statusline (universal).
+# The window/% only exists in claude's live statusline; without it we still show size.
+# Needs jq; prints the number or nothing.
+session_used() { # $1=dir $2=uuid
+  local jf; jf="$(hist_file "$1" "$2")"; [ -f "$jf" ] || return 1
+  tail -n 400 "$jf" 2>/dev/null | jq -r 'select(.message.role=="assistant" and .message.usage)
+    | (.message.usage.input_tokens//0)+(.message.usage.cache_read_input_tokens//0)
+    +(.message.usage.cache_creation_input_tokens//0)' 2>/dev/null | tail -1
+}
+
 # Refuse to stop/rm the session you're calling from (an agent shouldn't kill its
 # own conversation). CCMUX_SESSION is exported into each session by cmd_run.
 refuse_self() { # $1=verb $2=name $3=force
@@ -107,9 +132,14 @@ cmd_run() { # $1=name
   cd "$dir" || exit 1
   export CCMUX_SESSION="$name"               # self-guard marker, inherited by claude
   unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT     # env hygiene: don't confuse a nested claude
-  # Boot daemons start with a minimal PATH; give the session a usable one so the
-  # agent (and its hooks) can find ccmux, tmux, node, etc.
-  export PATH="$(dirname "$SELF"):$(dirname "$CLAUDE_BIN"):$(dirname "$TMUX_BIN"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
+  # Boot daemons start with a minimal PATH. Re-derive the user's real login-shell PATH
+  # so the session resolves bun/node, statusline scripts and hooks exactly as a normal
+  # terminal launch (e.g. a statusLine `bun …` script needs ~/.bun/bin). Universal — we
+  # read $SHELL's PATH instead of hardcoding any tool dir; sane fallback otherwise.
+  local ush login_path
+  ush="${SHELL:-}"; [ -x "$ush" ] || ush="$(command -v zsh || command -v bash || echo /bin/sh)"
+  login_path="$("$ush" -lc 'printf %s "$PATH"' 2>/dev/null)"
+  export PATH="$(dirname "$SELF"):$(dirname "$CLAUDE_BIN"):$(dirname "$TMUX_BIN"):${login_path:+$login_path:}/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
   local backoff=2 fastfails=0 fork=0 started elapsed
   while true; do
     prompt="$(build_prompt "$name")"
@@ -191,15 +221,25 @@ cmd_daemon() {
 
 # ── Read commands ───────────────────────────────────────────────────────────
 cmd_list() {
-  local created now n c st up
+  local created now n c up model ctx state used
   created="$("$TMUX_BIN" list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)"
   now="$(date +%s)"
-  printf '%-20s %-9s %-8s %-14s %s\n' SESSION STATUS UPTIME RC DIR
+  printf '%-12s %-9s %-16s %-8s %-7s %-14s %s\n' SESSION MODEL CTX STATE UPTIME RC DIR
   while IFS= read -r n; do
     [ -z "$n" ] && continue
     c="$(awk -v s="$n" '$1==s{print $2}' <<<"$created")"
-    if [ -n "$c" ]; then st=running; up="$(humanize $((now - c)))"; else st=stopped; up='—'; fi
-    printf '%-20s %-9s %-8s %-14s %s\n' "$n" "$st" "$up" "$(rc_name "$n")" "$(session_dir "$n")"
+    model='-'; ctx='-'; state=stopped; up='-'
+    if [ -n "$c" ]; then
+      up="$(humanize $((now - c)))"
+      IFS=$'\t' read -r model ctx state < <(pane_status "$n")
+      # statusline gives the full window/% when present; else fall back to the
+      # universal USED size from the transcript — size is known with or without a statusline.
+      if [ "$ctx" = '-' ]; then
+        used="$(session_used "$(session_dir "$n")" "$(session_uuid "$n")")"
+        [ "${used:-0}" -gt 0 ] 2>/dev/null && ctx="$(fmt_tok "$used")"
+      fi
+    fi
+    printf '%-12s %-9s %-16s %-8s %-7s %-14s %s\n' "$n" "$model" "$ctx" "$state" "$up" "$(rc_name "$n")" "$(session_dir "$n")"
   done < <(session_names)
 }
 
@@ -243,9 +283,24 @@ cmd_rm() { # $1=name [$2=--force]
 }
 
 # ── Boot install (one daemon unit; systemd on Linux, launchd on macOS) ───────
+# Best-effort: jq powers the universal context-SIZE in `list` (used tokens from the
+# transcript, shown even with no statusline). Missing jq is non-fatal — CTX just falls
+# back to whatever the statusline surfaces, or '-'.
+ensure_deps() {
+  _have jq >/dev/null && return 0
+  echo "ccmux: installing jq (for context size in list)…"
+  if   _have brew    >/dev/null; then brew install jq
+  elif _have apt-get >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y jq
+  elif _have dnf     >/dev/null; then sudo dnf install -y jq
+  elif _have yum     >/dev/null; then sudo yum install -y jq
+  elif _have pacman  >/dev/null; then sudo pacman -S --noconfirm jq
+  elif _have apk     >/dev/null; then sudo apk add jq
+  else echo "ccmux: no known package manager — install jq manually for context size."; fi
+}
 cmd_install() {
   mkdir -p "$(dirname "$SESSIONS_FILE")" "$(dirname "$CONFIG_FILE")"
   [ -f "$SESSIONS_FILE" ] || printf '# ccmux sessions — name|dir|uuid (add via `ccmux new`)\n' > "$SESSIONS_FILE"
+  ensure_deps
   case "$(uname)" in
     Darwin) _install_launchd ;;
     Linux)  _install_systemd ;;
