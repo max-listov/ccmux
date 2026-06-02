@@ -4,7 +4,7 @@
 # One script. One daemon. No build, no deps beyond bash + tmux. https://github.com/…
 set -u
 
-VERSION=1.0.1
+VERSION=1.0.2
 
 # ── Config ──────────────────────────────────────────────────────────────────
 # One artifact, many machines: everything machine-specific is overridable via
@@ -57,7 +57,10 @@ session_uuid() { session_field "$1" 3; }
 # the jsonl and wrongly fall back to --session-id ("already in use"). `pwd -P` is
 # the portable realpath; a not-yet-existing dir falls back to the raw path.
 real_dir() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"; }
-hist_file() { printf '%s/%s/%s.jsonl' "$PROJECTS_DIR" "$(real_dir "$1" | sed 's#/#-#g')" "$2"; }
+# Claude replaces EVERY non-alphanumeric char (/, ., _, space, …) with '-', not just '/'.
+# Verified empirically: /Users/x/cc.dot_test -> -Users-x-cc-dot-test. Replacing only '/'
+# would miss the jsonl for any dir containing a '.' or '_' and silently break resume.
+hist_file() { printf '%s/%s/%s.jsonl' "$PROJECTS_DIR" "$(real_dir "$1" | sed 's#[^a-zA-Z0-9]#-#g')" "$2"; }
 
 humanize() { # seconds -> 45s | 3m | 2h10m | 5d3h | —
   local s="$1" d h m
@@ -253,7 +256,8 @@ cmd_send() { # $1=name $2..=keys (e.g. '/compact')
   p="$(pane "$name")"
   # Send the literal text, let readline drain it, THEN a separate Enter. Without the
   # gap, Enter can arrive before the text is buffered and the line goes empty/split.
-  "$TMUX_BIN" send-keys -t "$p" -l "$*" || { echo "send failed: $name not running?"; return 1; }
+  # `--` so payloads starting with '-' (e.g. a flag-like prompt) aren't parsed as options.
+  "$TMUX_BIN" send-keys -t "$p" -l -- "$*" || { echo "send failed: $name not running?"; return 1; }
   sleep 0.15
   "$TMUX_BIN" send-keys -t "$p" Enter
   echo "sent to $name: $*"

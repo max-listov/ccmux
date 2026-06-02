@@ -71,6 +71,9 @@ mkdir -p ~/.config/ccmux && echo 'RC_PREFIX=local' > ~/.config/ccmux/config
 ccmux install            # boot unit (systemd / launchd) + daemon
 ```
 
+> `install` also grabs `jq` (used for context size in `list`) — on Linux that
+> step may invoke `sudo`. Missing `jq` is non-fatal; CTX just falls back to `-`.
+
 > **macOS:** keep the script out of `~/Desktop`, `~/Documents`, `~/Downloads` — TCC
 > blocks `launchd` from exec'ing there. Session *working dirs* under those are fine.
 
@@ -89,7 +92,7 @@ ccmux send <name> <keys>   type text or a /slash into a session
 ccmux logs <name> [n]      dump its pane
 ccmux start|stop|restart   lifecycle (stop/rm of self needs --force)
 ccmux rm <name>            unregister · jsonl history kept on disk
-ccmux install|uninstall    daemon boot unit (install also grabs jq, for context size)
+ccmux install|uninstall    daemon boot unit (install also grabs jq — may sudo on Linux)
 ```
 
 **Invariants that make it correct — keep these if you rebuild it:**
