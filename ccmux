@@ -4,7 +4,7 @@
 # One script. One daemon. No build, no deps beyond bash + tmux. https://github.com/…
 set -u
 
-VERSION=1.1.0
+VERSION=1.2.0
 
 # ── Config ──────────────────────────────────────────────────────────────────
 # One artifact, many machines: everything machine-specific is overridable via
@@ -119,7 +119,7 @@ You are running inside tmux session '$1', managed by ccmux ($SELF).
 Manage Claude sessions by running ccmux (always the absolute path above):
 - "list sessions"                      -> $SELF list
 - "create NAME in DIR" / "new session" -> $SELF new NAME DIR
-- "restart this" / "restart NAME"      -> $SELF restart NAME   (this session: $1)
+- "restart this" / "restart NAME"      -> $SELF restart NAME [--then "<note>"]   (this session: $1; --then pings you back once the session is ready again)
 - "stop NAME" / "start NAME" / "remove NAME" -> $SELF stop|start|rm NAME
 - "compact NAME" / slash to a session  -> $SELF send NAME '/compact'
 - "send /model opus to this"           -> $SELF send $1 '/model opus'
@@ -201,13 +201,46 @@ cmd_stop() { # $1=name [$2=--force]
   tmux_c kill-session -t "$(tgt "$name")" 2>/dev/null && echo "stopped $name" || echo "$name not running"
 }
 
-cmd_restart() { # $1=name  (detached so it survives killing the calling session)
-  local name="$1"
+# Wait until a (re)started session is ready for input: claude's banner is up (model
+# surfaced) AND it's idle (no working-spinner). Gated on real pane state, not a blind
+# sleep, so a wake-note never lands in a half-loaded pane. Two consecutive idle reads
+# guard against a transient idle between load frames. Returns nonzero on timeout.
+wait_ready() { # $1=name [$2=timeout_s]
+  local name="$1" deadline model state ok=0
+  deadline=$(( $(date +%s) + ${2:-120} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    IFS=$'\t' read -r model _ state < <(pane_status "$name")
+    if [ "$model" != '-' ] && [ "$state" = idle ]; then
+      ok=$((ok + 1)); [ "$ok" -ge 2 ] && return 0
+    else ok=0; fi
+    sleep 2
+  done
+  return 1
+}
+
+# Internal: relaunch a session, then (optionally) deliver a wake-note once it's ready.
+# Runs detached (see cmd_restart) so it outlives the session that triggered the restart —
+# letting an agent restart ITSELF (e.g. to re-enumerate MCP tools after a deploy) and still
+# get pinged back to continue, instead of dying silently.
+cmd_restart_worker() { # $1=name [$2=note]
+  local name="$1" note="${2:-}"
+  sleep 1                                   # let the kill settle before relaunch (race-safe)
+  cmd_start "$name" >/dev/null 2>&1
+  [ -z "$note" ] && return 0
+  wait_ready "$name" || log "restart $name: ready-wait timed out — sending note anyway"
+  cmd_send "$name" "$note" >/dev/null 2>&1
+  log "restart $name: wake-note delivered"
+}
+
+cmd_restart() { # $1=name [--then <note>]  (detached so it survives killing the calling session)
+  local name="$1" note=""; shift || true
+  [ "${1:-}" = "--then" ] && note="${2:-}"
   tmux_c kill-session -t "$(tgt "$name")" 2>/dev/null
-  # Detached + SIGHUP-immune so it survives killing the calling session. `setsid`
-  # is Linux-only; `nohup … &` is portable (macOS has no setsid).
-  nohup bash -c "sleep 1; '$SELF' start '$name'" </dev/null >/dev/null 2>&1 &
-  echo "restarting $name"
+  # Detached + SIGHUP-immune so it survives killing the calling session. `nohup … &` is
+  # portable (macOS has no setsid). The note is passed as a single clean arg — no re-quoting,
+  # so spaces / quotes / non-ASCII in the note survive intact.
+  nohup "$SELF" _restart_worker "$name" "$note" </dev/null >/dev/null 2>&1 &
+  echo "restarting $name${note:+ (will ping when ready)}"
 }
 
 cmd_ensure() { # one fork for the running set, then heal anything missing
@@ -385,6 +418,7 @@ persistent, self-healing Claude Code sessions in tmux · deterministic resume
   ccmux new <name> <dir>            register + start a session (pins a uuid)
   ccmux rm <name> [--force]         stop + unregister (jsonl history kept)
   ccmux start|stop|restart <name>   lifecycle  (stop/rm of self needs --force)
+  ccmux restart <name> --then "<note>"   restart, then type <note> once the session is ready
   ccmux send <name> <keys...>       type into a session (text or /slash)
   ccmux logs <name> [lines]         print a session's pane
   ccmux install | uninstall         boot unit for the daemon (systemd/launchd)
@@ -400,9 +434,10 @@ HELP
 # ── Dispatch ────────────────────────────────────────────────────────────────
 case "${1:-help}" in
   _run)            shift; cmd_run "$@" ;;
+  _restart_worker) cmd_restart_worker "${2:-}" "${3:-}" ;;
   start)           cmd_start "${2:-}" ;;
   stop)            cmd_stop "${2:-}" "${3:-}" ;;
-  restart)         cmd_restart "${2:-}" ;;
+  restart)         shift; cmd_restart "$@" ;;
   ensure)          cmd_ensure ;;
   daemon)          cmd_daemon ;;
   list|ls|l)       cmd_list ;;

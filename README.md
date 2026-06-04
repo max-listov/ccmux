@@ -91,6 +91,7 @@ ccmux list                 model · context fill % · working/idle · uptime · 
 ccmux send <name> <keys>   type text or a /slash into a session
 ccmux logs <name> [n]      dump its pane
 ccmux start|stop|restart   lifecycle (stop/rm of self needs --force)
+ccmux restart <name> --then "<note>"   restart, then type <note> once it's ready again
 ccmux rm <name>            unregister · jsonl history kept on disk
 ccmux install|uninstall    daemon boot unit (install also grabs jq — may sudo on Linux)
 ```
