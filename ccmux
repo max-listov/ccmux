@@ -4,7 +4,7 @@
 # One script. One daemon. No build, no deps beyond bash + tmux. https://github.com/…
 set -u
 
-VERSION=1.4.0
+VERSION=1.4.1
 
 # ── Config ──────────────────────────────────────────────────────────────────
 # One artifact, many machines: everything machine-specific is overridable via
@@ -167,7 +167,10 @@ session_used() { # $1=dir $2=uuid
 
 file_mtime_ms() { # $1=file -> unix ms, empty if unavailable
   local seconds
-  seconds="$(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || true)"
+  case "$(uname)" in
+    Darwin) seconds="$(stat -f %m "$1" 2>/dev/null || true)" ;;
+    *)      seconds="$(stat -c %Y "$1" 2>/dev/null || true)" ;;
+  esac
   [ -n "$seconds" ] && printf '%s000' "$seconds"
 }
 
