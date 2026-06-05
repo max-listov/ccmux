@@ -4,7 +4,7 @@
 # One script. One daemon. No build, no deps beyond bash + tmux. https://github.com/…
 set -u
 
-VERSION=1.2.0
+VERSION=1.3.0
 
 # ── Config ──────────────────────────────────────────────────────────────────
 # One artifact, many machines: everything machine-specific is overridable via
@@ -41,6 +41,69 @@ pane() { printf '=%s:0.0' "$1"; }        # explicit pane; '=NAME' alone won't re
 # which box a session lives on: cc-api -> prod-api.
 rc_name() { printf '%s-%s' "$RC_PREFIX" "${1#cc-}"; }
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG_FILE" 2>/dev/null; }
+
+# ── JSON helpers ────────────────────────────────────────────────────────────
+# Keep machine-readable output in this script so callers don't scrape the human table.
+# No jq dependency here: jq remains optional for context-size extraction only.
+json_escape() {
+  awk 'BEGIN{ORS=""}
+    {
+      if (NR > 1) printf "\\n"
+      gsub(/\\/,"\\\\")
+      gsub(/"/,"\\\"")
+      gsub(/\t/,"\\t")
+      gsub(/\r/,"\\r")
+      gsub(/\n/,"\\n")
+      printf "%s", $0
+    }'
+}
+json_string() { printf '"%s"' "$(printf '%s' "$1" | json_escape)"; }
+json_nullable_string() { [ -n "${1:-}" ] && [ "$1" != "-" ] && json_string "$1" || printf 'null'; }
+json_nullable_number() { [ -n "${1:-}" ] && printf '%s' "$1" || printf 'null'; }
+json_bool() { [ "${1:-}" = 1 ] && printf 'true' || printf 'false'; }
+
+tok_num() { # 850.0k -> 850000, 1.0M -> 1000000; empty on unknown
+  awk -v v="$1" 'BEGIN{
+    if (v == "" || v == "-") exit
+    unit = substr(v, length(v), 1)
+    n = v
+    mult = 1
+    if (unit == "k" || unit == "K") { mult = 1000; n = substr(v, 1, length(v)-1) }
+    else if (unit == "m" || unit == "M") { mult = 1000000; n = substr(v, 1, length(v)-1) }
+    else if (unit == "g" || unit == "G") { mult = 1000000000; n = substr(v, 1, length(v)-1) }
+    if (n !~ /^[0-9]+([.][0-9]+)?$/) exit
+    printf "%.0f", n * mult
+  }'
+}
+
+context_json() { # $1=context text ("850.0k/1.0M 85%" | "40k" | "-")
+  local ctx="$1" pair used_label limit_label percent_label used_tokens limit_tokens percent
+  if [ -z "$ctx" ] || [ "$ctx" = "-" ]; then
+    printf '{"text":null,"usedTokens":null,"limitTokens":null,"percent":null}'
+    return
+  fi
+  if [[ "$ctx" == */* ]]; then
+    pair="${ctx%% *}"
+    used_label="${pair%%/*}"
+    limit_label="${pair#*/}"
+    percent_label="${ctx##* }"
+    [ "$percent_label" != "$ctx" ] && percent="${percent_label%%%}"
+    used_tokens="$(tok_num "$used_label")"
+    limit_tokens="$(tok_num "$limit_label")"
+  else
+    used_label="$ctx"
+    used_tokens="$(tok_num "$used_label")"
+  fi
+  printf '{"text":'
+  json_string "$ctx"
+  printf ',"usedTokens":'
+  json_nullable_number "$used_tokens"
+  printf ',"limitTokens":'
+  json_nullable_number "$limit_tokens"
+  printf ',"percent":'
+  json_nullable_number "$percent"
+  printf '}'
+}
 
 # ── Sessions data (name|dir|uuid) ───────────────────────────────────────────
 # Read FRESH every call — the daemon must see `ccmux new` immediately (the bug a
@@ -265,6 +328,7 @@ cmd_daemon() {
 
 # ── Read commands ───────────────────────────────────────────────────────────
 cmd_list() {
+  [ "${1:-}" = "--json" ] && { cmd_list_json; return; }
   local created now n c up model ctx state used
   created="$(tmux_c list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)"
   now="$(date +%s)"
@@ -287,6 +351,64 @@ cmd_list() {
   done < <(session_names)
 }
 
+cmd_list_json() {
+  local created now n c up up_seconds model ctx state used uuid first=1 running created_at
+  created="$(tmux_c list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)"
+  now="$(date +%s)"
+  printf '{"version":'
+  json_string "$VERSION"
+  printf ',"generatedAt":'
+  json_string "$(date -u +%FT%TZ)"
+  printf ',"rcPrefix":'
+  json_string "$RC_PREFIX"
+  printf ',"sessionsFile":'
+  json_string "$SESSIONS_FILE"
+  printf ',"sessions":['
+  while IFS= read -r n; do
+    [ -z "$n" ] && continue
+    c="$(awk -v s="$n" '$1==s{print $2}' <<<"$created")"
+    uuid="$(session_uuid "$n")"
+    model='-'; ctx='-'; state=stopped; up='-'; up_seconds=''; running=0; created_at=''
+    if [ -n "$c" ]; then
+      running=1
+      up_seconds=$((now - c))
+      up="$(humanize "$up_seconds")"
+      created_at="$(date -u -r "$c" +%FT%TZ 2>/dev/null || date -u -d "@$c" +%FT%TZ 2>/dev/null || true)"
+      IFS=$'\t' read -r model ctx state < <(pane_status "$n")
+      if [ "$ctx" = '-' ]; then
+        used="$(session_used "$(session_dir "$n")" "$uuid")"
+        [ "${used:-0}" -gt 0 ] 2>/dev/null && ctx="$(fmt_tok "$used")"
+      fi
+    fi
+    [ "$first" = 1 ] && first=0 || printf ','
+    printf '{"name":'
+    json_string "$n"
+    printf ',"dir":'
+    json_string "$(session_dir "$n")"
+    printf ',"uuid":'
+    json_string "$uuid"
+    printf ',"rc":'
+    json_string "$(rc_name "$n")"
+    printf ',"running":'
+    json_bool "$running"
+    printf ',"state":'
+    json_string "$state"
+    printf ',"model":'
+    json_nullable_string "$model"
+    printf ',"context":'
+    context_json "$ctx"
+    printf ',"uptime":{"text":'
+    json_nullable_string "$up"
+    printf ',"seconds":'
+    json_nullable_number "$up_seconds"
+    printf '},"createdAt":'
+    json_nullable_string "$created_at"
+    printf '}'
+  done < <(session_names)
+  printf ']}'
+  printf '\n'
+}
+
 cmd_send() { # $1=name $2..=keys (e.g. '/compact')
   local name="$1" p; shift
   p="$(pane "$name")"
@@ -299,7 +421,91 @@ cmd_send() { # $1=name $2..=keys (e.g. '/compact')
   echo "sent to $name: $*"
 }
 
-cmd_logs() { tmux_c capture-pane -t "$(pane "$1")" -p -S -"${2:-100}"; }
+cmd_logs() {
+  local name="${1:-}" lines="${2:-100}" format="${3:-}"
+  if [ "$lines" = "--json" ]; then lines=100; format="--json"; fi
+  if [ "$format" = "--json" ]; then
+    local text
+    text="$(tmux_c capture-pane -t "$(pane "$name")" -p -S -"$lines")" || return 1
+    printf '{"session":'
+    json_string "$name"
+    printf ',"capturedAt":'
+    json_string "$(date -u +%FT%TZ)"
+    printf ',"lines":%s,"text":' "$lines"
+    json_string "$text"
+    printf '}\n'
+    return
+  fi
+  tmux_c capture-pane -t "$(pane "$name")" -p -S -"$lines"
+}
+
+cmd_doctor() {
+  [ "${1:-}" = "--json" ] && { cmd_doctor_json; return; }
+  echo "ccmux $VERSION"
+  echo "self: $SELF"
+  echo "config: $CONFIG_FILE"
+  echo "sessions: $SESSIONS_FILE"
+  echo "rc prefix: $RC_PREFIX"
+  echo "boot label: $BOOT_LABEL"
+  echo "claude: $CLAUDE_BIN ($(if [ -x "$CLAUDE_BIN" ]; then echo ok; else echo missing; fi))"
+  echo "tmux: $TMUX_BIN ($(if [ -x "$TMUX_BIN" ] || command -v "$TMUX_BIN" >/dev/null 2>&1; then echo ok; else echo missing; fi))"
+  echo "jq: $(command -v jq 2>/dev/null || echo missing)"
+  case "$(uname)" in
+    Darwin) launchctl list 2>/dev/null | grep -q "[[:space:]]$BOOT_LABEL$" && echo "daemon: active" || echo "daemon: inactive" ;;
+    Linux)  systemctl is-active "$BOOT_LABEL" 2>/dev/null | awk '{print "daemon: "$0}' ;;
+    *)      echo "daemon: unknown" ;;
+  esac
+}
+
+cmd_doctor_json() {
+  local os daemon_state tmux_ok claude_ok jq_path
+  os="$(uname)"
+  if [ -x "$CLAUDE_BIN" ]; then claude_ok=1; else claude_ok=0; fi
+  if [ -x "$TMUX_BIN" ] || command -v "$TMUX_BIN" >/dev/null 2>&1; then tmux_ok=1; else tmux_ok=0; fi
+  jq_path="$(command -v jq 2>/dev/null || true)"
+  daemon_state="unknown"
+  case "$os" in
+    Darwin) launchctl list 2>/dev/null | grep -q "[[:space:]]$BOOT_LABEL$" && daemon_state=active || daemon_state=inactive ;;
+    Linux)  daemon_state="$(systemctl is-active "$BOOT_LABEL" 2>/dev/null || true)" ;;
+  esac
+  printf '{"version":'
+  json_string "$VERSION"
+  printf ',"generatedAt":'
+  json_string "$(date -u +%FT%TZ)"
+  printf ',"os":'
+  json_string "$os"
+  printf ',"self":'
+  json_string "$SELF"
+  printf ',"configFile":'
+  json_string "$CONFIG_FILE"
+  printf ',"sessionsFile":'
+  json_string "$SESSIONS_FILE"
+  printf ',"rcPrefix":'
+  json_string "$RC_PREFIX"
+  printf ',"bootLabel":'
+  json_string "$BOOT_LABEL"
+  printf ',"logFile":'
+  json_string "$LOG_FILE"
+  printf ',"claudeBin":'
+  json_string "$CLAUDE_BIN"
+  printf ',"tmuxBin":'
+  json_string "$TMUX_BIN"
+  printf ',"deps":{"claude":'
+  json_bool "$claude_ok"
+  printf ',"tmux":'
+  json_bool "$tmux_ok"
+  printf ',"jq":'
+  json_bool "$(if [ -n "$jq_path" ]; then echo 1; else echo 0; fi)"
+  printf '},"daemon":{"manager":'
+  case "$os" in
+    Darwin) json_string launchd ;;
+    Linux)  json_string systemd ;;
+    *)      printf 'null' ;;
+  esac
+  printf ',"state":'
+  json_string "$daemon_state"
+  printf '}}\n'
+}
 
 # ── Registry ────────────────────────────────────────────────────────────────
 cmd_new() { # $1=name $2=dir
@@ -414,13 +620,14 @@ cmd_help() {
 ccmux $VERSION — Cloud Code MUX
 persistent, self-healing Claude Code sessions in tmux · deterministic resume
 
-  ccmux list                        sessions + status / uptime
+  ccmux list [--json]               sessions + status / uptime
+  ccmux doctor [--json]             local install + daemon diagnostics
   ccmux new <name> <dir>            register + start a session (pins a uuid)
   ccmux rm <name> [--force]         stop + unregister (jsonl history kept)
   ccmux start|stop|restart <name>   lifecycle  (stop/rm of self needs --force)
   ccmux restart <name> --then "<note>"   restart, then type <note> once the session is ready
   ccmux send <name> <keys...>       type into a session (text or /slash)
-  ccmux logs <name> [lines]         print a session's pane
+  ccmux logs <name> [lines] [--json] print a session's pane
   ccmux install | uninstall         boot unit for the daemon (systemd/launchd)
   ccmux daemon | ensure             run / single-pass the heal supervisor
   ccmux help | version
@@ -440,11 +647,12 @@ case "${1:-help}" in
   restart)         shift; cmd_restart "$@" ;;
   ensure)          cmd_ensure ;;
   daemon)          cmd_daemon ;;
-  list|ls|l)       cmd_list ;;
+  list|ls|l)       shift; cmd_list "$@" ;;
+  doctor)          cmd_doctor "${2:-}" ;;
   new)             cmd_new "${2:-}" "${3:-}" ;;
   rm|remove)       cmd_rm "${2:-}" "${3:-}" ;;
   send)            shift; cmd_send "$@" ;;
-  logs)            cmd_logs "${2:-}" "${3:-}" ;;
+  logs)            cmd_logs "${2:-}" "${3:-}" "${4:-}" ;;
   install)         cmd_install ;;
   uninstall)       cmd_uninstall ;;
   help|-h|--help)  cmd_help ;;

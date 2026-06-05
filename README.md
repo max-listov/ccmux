@@ -24,6 +24,7 @@ cc-web     Opus 4.8  310k/1.0M 31%    idle     1d4h    prod-web    ~/code/web
 - ♻️ **Self-healing** — a daemon respawns any dead session every 30s, and re-creates them all on reboot.
 - ⚓ **Deterministic resume** — each conversation pinned to a uuid; a relaunch is the *same thread*, never fresh.
 - 📊 **Live fleet view** — `list` shows each session's model, context fill (used / window %) and working/idle state at a glance.
+- 🧩 **Machine-readable CLI** — `list --json`, `logs --json`, and `doctor --json` for dashboards and agents.
 - 📱 **Phone-driveable** — every session shows up in the Claude Code app by name, full access — plus plain-language control.
 - 📄 **One file of bash** — read it in five minutes, fork it in ten.
 
@@ -87,9 +88,10 @@ Drive it, or reimplement it. **Command surface:**
 
 ```
 ccmux new <name> <dir>     register + start · pins a fresh uuid
-ccmux list                 model · context fill % · working/idle · uptime · RC
+ccmux list [--json]        model · context fill % · working/idle · uptime · RC
+ccmux doctor [--json]      install paths · deps · daemon health
 ccmux send <name> <keys>   type text or a /slash into a session
-ccmux logs <name> [n]      dump its pane
+ccmux logs <name> [n] [--json] dump its pane
 ccmux start|stop|restart   lifecycle (stop/rm of self needs --force)
 ccmux restart <name> --then "<note>"   restart, then type <note> once it's ready again
 ccmux rm <name>            unregister · jsonl history kept on disk
