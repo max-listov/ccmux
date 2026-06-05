@@ -24,7 +24,7 @@ cc-web     Opus 4.8  310k/1.0M 31%    idle     1d4h    prod-web    ~/code/web
 - ♻️ **Self-healing** — a daemon respawns any dead session every 30s, and re-creates them all on reboot.
 - ⚓ **Deterministic resume** — each conversation pinned to a uuid; a relaunch is the *same thread*, never fresh.
 - 📊 **Live fleet view** — `list` shows each session's model, context fill (used / window %) and working/idle state at a glance.
-- 🧩 **Machine-readable CLI** — `list --json`, `logs --json`, and `doctor --json` for dashboards and agents.
+- 🧩 **Machine-readable CLI** — `list --json`, `transcript --json`, `logs --json`, and `doctor --json` for dashboards and agents.
 - 📱 **Phone-driveable** — every session shows up in the Claude Code app by name, full access — plus plain-language control.
 - 📄 **One file of bash** — read it in five minutes, fork it in ten.
 
@@ -92,6 +92,7 @@ ccmux list [--json]        model · context fill % · working/idle · uptime · 
 ccmux doctor [--json]      install paths · deps · daemon health
 ccmux send <name> <keys>   type text or a /slash into a session
 ccmux logs <name> [n] [--json] dump its pane
+ccmux transcript <name> --json [--tail N] [--cursor LINE] structured chat transcript
 ccmux start|stop|restart   lifecycle (stop/rm of self needs --force)
 ccmux restart <name> --then "<note>"   restart, then type <note> once it's ready again
 ccmux rm <name>            unregister · jsonl history kept on disk
@@ -104,6 +105,9 @@ ccmux install|uninstall    daemon boot unit (install also grabs jq — may sudo 
   `--resume <uuid>` when the transcript exists, else `--session-id <uuid>`. Same thread, always.
 - 🔗 **realpath the dir** before encoding the transcript path — Claude resolves symlinks
   (`/tmp`→`/private/tmp`, mounts), so a raw path misses the `.jsonl` and silently forks.
+- 🧾 **transcript JSON is the chat view.** `transcript --json` normalizes Claude JSONL
+  into user/assistant/tool messages. `list --json` only reads a bounded tail per session
+  to expose `lastMessage`, so dashboards get "where it stopped" without scraping full history.
 - 🎯 **`=name` exact tmux targeting** + window-rename locked off — so `cc-api` never hits `cc-api-v2`.
 - 🛟 **sessions outlive the daemon** — each runs its own relaunch loop (backoff 2s→60s, then
   one `--fork-session` to unwedge). The daemon only *heals*, so it can be bounced without

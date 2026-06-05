@@ -4,7 +4,7 @@
 # One script. One daemon. No build, no deps beyond bash + tmux. https://github.com/…
 set -u
 
-VERSION=1.3.0
+VERSION=1.4.0
 
 # ── Config ──────────────────────────────────────────────────────────────────
 # One artifact, many machines: everything machine-specific is overridable via
@@ -61,6 +61,8 @@ json_string() { printf '"%s"' "$(printf '%s' "$1" | json_escape)"; }
 json_nullable_string() { [ -n "${1:-}" ] && [ "$1" != "-" ] && json_string "$1" || printf 'null'; }
 json_nullable_number() { [ -n "${1:-}" ] && printf '%s' "$1" || printf 'null'; }
 json_bool() { [ "${1:-}" = 1 ] && printf 'true' || printf 'false'; }
+
+json_null() { printf 'null'; }
 
 tok_num() { # 850.0k -> 850000, 1.0M -> 1000000; empty on unknown
   awk -v v="$1" 'BEGIN{
@@ -161,6 +163,98 @@ session_used() { # $1=dir $2=uuid
   tail -n 400 "$jf" 2>/dev/null | jq -r 'select(.message.role=="assistant" and .message.usage)
     | (.message.usage.input_tokens//0)+(.message.usage.cache_read_input_tokens//0)
     +(.message.usage.cache_creation_input_tokens//0)' 2>/dev/null | tail -1
+}
+
+file_mtime_ms() { # $1=file -> unix ms, empty if unavailable
+  local seconds
+  seconds="$(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || true)"
+  [ -n "$seconds" ] && printf '%s000' "$seconds"
+}
+
+transcript_messages_json() { # $1=jsonl $2=start_line $3=text_limit
+  local file="$1" start="${2:-1}" text_limit="${3:-4000}"
+  awk -v start="$start" 'NR>=start { printf "%d\t%s\n", NR, $0 }' "$file" 2>/dev/null \
+    | jq -R -s -c --argjson textLimit "$text_limit" '
+      def clip($limit):
+        if . == null then null
+        else tostring | if length > $limit then .[0:$limit] + "…" else . end
+        end;
+      def as_text:
+        if . == null then null
+        elif type == "string" then .
+        else tojson
+        end;
+      def content_items($entry):
+        ($entry.message.content // null) as $content
+        | if ($content | type) == "array" then $content
+          elif ($content | type) == "string" then [{type:"text", text:$content}]
+          else []
+          end;
+      def role_for($entry; $item):
+        if ($item.type // "") == "tool_result" then "tool"
+        elif ($entry.message.role // "") == "user" then "user"
+        elif ($entry.message.role // "") == "assistant" then "assistant"
+        elif ($entry.message.role // "") == "system" then "system"
+        elif ($entry.type // "") == "user" then "user"
+        elif ($entry.type // "") == "assistant" then "assistant"
+        elif ($entry.type // "") == "system" then "system"
+        else "unknown"
+        end;
+      def kind_for($item):
+        if ($item.type // "") == "text" then "message"
+        elif ($item.type // "") == "tool_use" then "tool_call"
+        elif ($item.type // "") == "tool_result" then "tool_result"
+        elif ($item.type // "") == "thinking" then "thinking"
+        elif ($item.type // "") == "" then "unknown"
+        else "event"
+        end;
+      def text_for($item):
+        if ($item.type // "") == "text" then ($item.text // "")
+        elif ($item.type // "") == "tool_use" then
+          ($item.input.description // $item.input.command // $item.input.file_path // ($item.input | as_text) // $item.name // "")
+        elif ($item.type // "") == "tool_result" then ($item.content | as_text)
+        elif ($item.type // "") == "thinking" then ($item.thinking // "")
+        else ($item | as_text)
+        end;
+      [
+        split("\n")[]
+        | select(length > 0)
+        | (capture("^(?<seq>[0-9]+)\t(?<raw>.*)$")? // empty) as $line
+        | ($line.seq | tonumber) as $seq
+        | ($line.raw | fromjson? // empty) as $entry
+        | (content_items($entry) | to_entries[]) as $wrapped
+        | ($wrapped.value) as $item
+        | (kind_for($item)) as $kind
+        | (text_for($item) | clip($textLimit)) as $text
+        | select($kind == "tool_call" or ($text != null and $text != ""))
+        | {
+            id: (($entry.uuid // ($seq|tostring)) + ":" + (($wrapped.key|tostring))),
+            seq: $seq,
+            createdAt: ($entry.timestamp // null),
+            role: role_for($entry; $item),
+            kind: $kind,
+            text: $text,
+            title: (if $kind == "tool_call" then ($item.name // "tool")
+                    elif $kind == "tool_result" then "tool result"
+                    else null end),
+            toolName: (if $kind == "tool_call" then ($item.name // null) else null end),
+            toolCallId: ($item.id // $item.tool_use_id // null),
+            status: (if ($item.is_error // false) then "error" else null end),
+            rawType: ($item.type // $entry.type // null)
+          }
+      ]' 2>/dev/null || printf '[]'
+}
+
+last_transcript_message_json() { # $1=dir $2=uuid
+  _have jq >/dev/null || { json_null; return; }
+  local dir="$1" uuid="$2" jf total start messages
+  jf="$(hist_file "$dir" "$uuid")"
+  [ -f "$jf" ] || { json_null; return; }
+  total="$(wc -l < "$jf" 2>/dev/null | tr -d '[:space:]')"
+  [ "${total:-0}" -gt 0 ] 2>/dev/null || { json_null; return; }
+  start=$(( total > 120 ? total - 119 : 1 ))
+  messages="$(transcript_messages_json "$jf" "$start" 280)"
+  printf '%s' "$messages" | jq -c 'last // null' 2>/dev/null || json_null
 }
 
 # Refuse to stop/rm the session you're calling from (an agent shouldn't kill its
@@ -352,7 +446,7 @@ cmd_list() {
 }
 
 cmd_list_json() {
-  local created now n c up up_seconds model ctx state used uuid first=1 running created_at
+  local created now n c up up_seconds model ctx state used uuid first=1 running created_at dir last_message
   created="$(tmux_c list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)"
   now="$(date +%s)"
   printf '{"version":'
@@ -367,7 +461,9 @@ cmd_list_json() {
   while IFS= read -r n; do
     [ -z "$n" ] && continue
     c="$(awk -v s="$n" '$1==s{print $2}' <<<"$created")"
+    dir="$(session_dir "$n")"
     uuid="$(session_uuid "$n")"
+    last_message="$(last_transcript_message_json "$dir" "$uuid")"
     model='-'; ctx='-'; state=stopped; up='-'; up_seconds=''; running=0; created_at=''
     if [ -n "$c" ]; then
       running=1
@@ -376,7 +472,7 @@ cmd_list_json() {
       created_at="$(date -u -r "$c" +%FT%TZ 2>/dev/null || date -u -d "@$c" +%FT%TZ 2>/dev/null || true)"
       IFS=$'\t' read -r model ctx state < <(pane_status "$n")
       if [ "$ctx" = '-' ]; then
-        used="$(session_used "$(session_dir "$n")" "$uuid")"
+        used="$(session_used "$dir" "$uuid")"
         [ "${used:-0}" -gt 0 ] 2>/dev/null && ctx="$(fmt_tok "$used")"
       fi
     fi
@@ -384,7 +480,7 @@ cmd_list_json() {
     printf '{"name":'
     json_string "$n"
     printf ',"dir":'
-    json_string "$(session_dir "$n")"
+    json_string "$dir"
     printf ',"uuid":'
     json_string "$uuid"
     printf ',"rc":'
@@ -403,6 +499,8 @@ cmd_list_json() {
     json_nullable_number "$up_seconds"
     printf '},"createdAt":'
     json_nullable_string "$created_at"
+    printf ',"lastMessage":'
+    printf '%s' "$last_message"
     printf '}'
   done < <(session_names)
   printf ']}'
@@ -437,6 +535,102 @@ cmd_logs() {
     return
   fi
   tmux_c capture-pane -t "$(pane "$name")" -p -S -"$lines"
+}
+
+cmd_transcript() {
+  local name="${1:-}" format="" tail_count=200 cursor="" arg
+  [ -n "$name" ] || { echo "usage: ccmux transcript <name> --json [--tail N] [--cursor LINE]"; return 1; }
+  shift || true
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --json) format="--json" ;;
+      --tail)
+        shift
+        tail_count="${1:-}"
+        ;;
+      --cursor)
+        shift
+        cursor="${1:-}"
+        ;;
+      *)
+        if [[ "$arg" =~ ^[0-9]+$ ]]; then tail_count="$arg"
+        else echo "unknown transcript arg: $arg"; return 1
+        fi
+        ;;
+    esac
+    shift || true
+  done
+  [ "$format" = "--json" ] || { echo "usage: ccmux transcript <name> --json [--tail N] [--cursor LINE]"; return 1; }
+  [[ "$tail_count" =~ ^[0-9]+$ ]] || tail_count=200
+  [ "$tail_count" -gt 0 ] 2>/dev/null || tail_count=200
+  [ "$tail_count" -le 1000 ] 2>/dev/null || tail_count=1000
+
+  local dir uuid jf generated_at source_kind source_available source_error total_lines start_line messages mtime_ms
+  dir="$(session_dir "$name")" || { echo "unknown session: $name"; return 1; }
+  uuid="$(session_uuid "$name")"
+  jf="$(hist_file "$dir" "$uuid")"
+  generated_at="$(date -u +%FT%TZ)"
+  source_kind=claude-jsonl
+  source_available=1
+  source_error=""
+  total_lines=0
+  start_line=1
+  messages='[]'
+  mtime_ms=''
+
+  if ! _have jq >/dev/null; then
+    source_kind=unavailable
+    source_available=0
+    source_error="jq missing"
+  elif [ ! -f "$jf" ]; then
+    source_kind=unavailable
+    source_available=0
+    source_error="transcript file not found"
+  else
+    total_lines="$(wc -l < "$jf" 2>/dev/null | tr -d '[:space:]')"
+    [ "${total_lines:-0}" -ge 0 ] 2>/dev/null || total_lines=0
+    if [[ "$cursor" =~ ^[0-9]+$ ]]; then
+      start_line=$(( cursor + 1 ))
+    else
+      start_line=$(( total_lines > tail_count ? total_lines - tail_count + 1 : 1 ))
+    fi
+    [ "$start_line" -ge 1 ] 2>/dev/null || start_line=1
+    messages="$(transcript_messages_json "$jf" "$start_line" 6000)"
+    mtime_ms="$(file_mtime_ms "$jf")"
+  fi
+
+  printf '{"version":'
+  json_string "$VERSION"
+  printf ',"generatedAt":'
+  json_string "$generated_at"
+  printf ',"session":{"name":'
+  json_string "$name"
+  printf ',"uuid":'
+  json_string "$uuid"
+  printf ',"rc":'
+  json_string "$(rc_name "$name")"
+  printf ',"dir":'
+  json_string "$dir"
+  printf ',"machine":'
+  json_string "$RC_PREFIX"
+  printf '},"source":{"kind":'
+  json_string "$source_kind"
+  printf ',"path":'
+  json_string "$jf"
+  printf ',"available":'
+  json_bool "$source_available"
+  printf ',"error":'
+  json_nullable_string "$source_error"
+  printf '},"cursor":{"opaque":'
+  [ "$source_available" = 1 ] && json_string "$total_lines" || printf 'null'
+  printf ',"line":'
+  [ "$source_available" = 1 ] && json_nullable_number "$total_lines" || printf 'null'
+  printf ',"byteOffset":null,"mtimeMs":'
+  json_nullable_number "$mtime_ms"
+  printf '},"messages":'
+  printf '%s' "$messages"
+  printf '}\n'
 }
 
 cmd_doctor() {
@@ -628,6 +822,8 @@ persistent, self-healing Claude Code sessions in tmux · deterministic resume
   ccmux restart <name> --then "<note>"   restart, then type <note> once the session is ready
   ccmux send <name> <keys...>       type into a session (text or /slash)
   ccmux logs <name> [lines] [--json] print a session's pane
+  ccmux transcript <name> --json [--tail N] [--cursor LINE]
+                                      structured Claude chat transcript
   ccmux install | uninstall         boot unit for the daemon (systemd/launchd)
   ccmux daemon | ensure             run / single-pass the heal supervisor
   ccmux help | version
@@ -653,6 +849,7 @@ case "${1:-help}" in
   rm|remove)       cmd_rm "${2:-}" "${3:-}" ;;
   send)            shift; cmd_send "$@" ;;
   logs)            cmd_logs "${2:-}" "${3:-}" "${4:-}" ;;
+  transcript)      shift; cmd_transcript "$@" ;;
   install)         cmd_install ;;
   uninstall)       cmd_uninstall ;;
   help|-h|--help)  cmd_help ;;
