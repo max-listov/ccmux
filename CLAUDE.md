@@ -1,0 +1,135 @@
+---
+description: Use Bun instead of Node.js, npm, pnpm, or vite.
+globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
+alwaysApply: false
+---
+
+# ccmux — project conventions
+
+## 🚫 Don't deploy without explicit approval
+ccmux is a production tool that supervises live agent sessions, so a bad release affects real
+running work. Do NOT autonomously: bump the version, build, `ccmux update`, restart/touch the
+prod daemon, or publish a release.
+- Code changes (edits, types, tests) — fine.
+- When ready to ship — **ASK** ("version X.Y.Z ready, ship to prod?") and wait for an explicit yes.
+- Only after that — `build` + `update`/publish. The human decides *when* to deploy, not the agent.
+
+## ⚠️ TUI: горячий цикл и сироты (если «комп горячий»)
+Интерактивный TUI (Ink) умеет жечь ядро и сиротеть — это **реальный инцидент** (`ccmux-dev -f`
+держал ~84% ядра 14ч). Полный разбор + инварианты + пошаговый дебаг — **`docs/architecture/tui-and-dev-flow.md`
+→ «Производительность рендера и время жизни»**. Кратко:
+- Первый шаг при «комп горячий»: `ps aux | grep -E "src/cli.ts|ccmux.js" | grep -v grep` → `bun run
+  src/cli.ts` на ~целом ядре часами = горячий рендер; `PPID=1` = осиротевший TUI (терминал закрыт, а
+  он жив). Убивать `kill -9` (обычный `kill` сирота глушит). Демон при этом НЕ трогать — он отдельный.
+- Инварианты, которые НЕЛЬЗЯ ломать: спиннер (`useSpinner`) тикает только при `status.active`;
+  `ChatMessage`/`Markdown` мемоизированы; `useTranscript` гейтит по mtime; `installExitOnTerminalDeath`
+  в `run.tsx` форсит выход на SIGHUP/SIGTERM/EIO-stdout. Правишь рендер-путь — проверь, что idle-CPU
+  остался ~0% и что TUI умирает при закрытии pty (рецепты замера — в арх-доке).
+
+---
+
+Default to using Bun instead of Node.js.
+
+- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
+- Use `bun test` instead of `jest` or `vitest`
+- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
+- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
+- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
+- Use `bunx <package> <command>` instead of `npx <package> <command>`
+- Bun automatically loads .env, so don't use dotenv.
+
+## APIs
+
+- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
+- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
+- `Bun.redis` for Redis. Don't use `ioredis`.
+- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
+- `WebSocket` is built-in. Don't use `ws`.
+- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
+- Bun.$`ls` instead of execa.
+
+## Testing
+
+Use `bun test` to run tests.
+
+```ts#index.test.ts
+import { test, expect } from "bun:test";
+
+test("hello world", () => {
+  expect(1).toBe(1);
+});
+```
+
+## Frontend
+
+Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+
+Server:
+
+```ts#index.ts
+import index from "./index.html"
+
+Bun.serve({
+  routes: {
+    "/": index,
+    "/api/users/:id": {
+      GET: (req) => {
+        return new Response(JSON.stringify({ id: req.params.id }));
+      },
+    },
+  },
+  // optional websocket support
+  websocket: {
+    open: (ws) => {
+      ws.send("Hello, world!");
+    },
+    message: (ws, message) => {
+      ws.send(message);
+    },
+    close: (ws) => {
+      // handle close
+    }
+  },
+  development: {
+    hmr: true,
+    console: true,
+  }
+})
+```
+
+HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+
+```html#index.html
+<html>
+  <body>
+    <h1>Hello, world!</h1>
+    <script type="module" src="./frontend.tsx"></script>
+  </body>
+</html>
+```
+
+With the following `frontend.tsx`:
+
+```tsx#frontend.tsx
+import React from "react";
+import { createRoot } from "react-dom/client";
+
+// import .css files directly and it works
+import './index.css';
+
+const root = createRoot(document.body);
+
+export default function Frontend() {
+  return <h1>Hello, world!</h1>;
+}
+
+root.render(<Frontend />);
+```
+
+Then, run index.ts
+
+```sh
+bun --hot ./index.ts
+```
+
+For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
