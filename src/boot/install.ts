@@ -10,6 +10,9 @@ const isMac = PLATFORM === "darwin";
 
 function pathEnv(m: MachineConfig): string {
   const dirs = [
+    dirname(process.execPath), // the bun binary's dir (e.g. ~/.bun/bin) — so the daemon's restricted
+    // launchd/systemd PATH can still find `bun` for any bare-name spawn. Defense-in-depth alongside
+    // spawning bun by absolute path in code; without it, auto-update preflight failed silently.
     dirname(m.claudeBin),
     dirname(m.tmuxBin),
     "/usr/local/bin",
