@@ -26,25 +26,35 @@ function isRcPrefix(v: string | undefined): v is "local" | "dev" | "prod" {
 
 export async function cmdInstall(args: string[]): Promise<number> {
   const cfg = configPath();
-  if (!existsSync(cfg)) {
-    const rc = parseRcPrefix(args);
-    if (!isRcPrefix(rc)) {
-      console.log("no machine.json yet — run: ccmux install --rc-prefix <local|dev|prod>");
-      return 1;
-    }
-    try {
+  const rc = parseRcPrefix(args);
+  const releaseUrl = parseReleaseUrl(args);
+  try {
+    if (!existsSync(cfg)) {
+      if (!isRcPrefix(rc)) {
+        console.log("no machine.json yet — run: ccmux install --rc-prefix <local|dev|prod>");
+        return 1;
+      }
       const scaffolded = scaffoldMachineConfig(rc);
       // --release-url wires self-update on first install: point at a release.json + turn
       // autoUpdate on, so a client tracks the published fleet version from the start.
-      const releaseUrl = parseReleaseUrl(args);
       const withUpdate = releaseUrl ? { ...scaffolded, releaseUrl, autoUpdate: true } : scaffolded;
       mkdirSync(dirname(cfg), { recursive: true });
       await atomicWrite(cfg, JSON.stringify(withUpdate, null, 2) + "\n");
       console.log(`wrote ${cfg} (rcPrefix=${rc}${releaseUrl ? `, autoUpdate→${releaseUrl}` : ""})`);
-    } catch (e) {
-      console.log(e instanceof Error ? e.message : String(e));
-      return 1;
+    } else if (isRcPrefix(rc) || releaseUrl !== undefined) {
+      // Re-install over an EXISTING config: apply the passed flags (the rest is preserved), so
+      // `install --release-url …` actually rewires self-update instead of being silently ignored.
+      const updated = {
+        ...loadMachineConfig(),
+        ...(isRcPrefix(rc) ? { rcPrefix: rc } : {}),
+        ...(releaseUrl !== undefined ? { releaseUrl, autoUpdate: true } : {}),
+      };
+      await atomicWrite(cfg, JSON.stringify(updated, null, 2) + "\n");
+      console.log(`updated ${cfg}${isRcPrefix(rc) ? ` (rcPrefix=${rc})` : ""}${releaseUrl !== undefined ? `, autoUpdate→${releaseUrl}` : ""}`);
     }
+  } catch (e) {
+    console.log(e instanceof Error ? e.message : String(e));
+    return 1;
   }
   const m = loadMachineConfig();
   console.log(`detected: claude=${m.claudeBin} tmux=${m.tmuxBin} projects=${m.projectsDir}`);

@@ -23,6 +23,13 @@ type Mode = "stage" | "local" | "publish";
 
 async function bundle(outfile: string): Promise<boolean> {
   mkdirSync(dirname(outfile), { recursive: true });
+  // `--external react-devtools-core`: Ink imports it ONLY in devtools mode (gated on
+  // `process.env.DEV === 'true'` in ink/reconciler.js) and it's an OPTIONAL peer dep that isn't
+  // installed. Without external, the bundler can't resolve the import and the build fails. The
+  // left-in runtime import is never reached in prod, so the deployed bundle (~/.ccmux/app, outside
+  // any node_modules) runs fine. NOTE: only run the bundle from OUTSIDE the project tree — running
+  // it from inside (e.g. dist/) makes Bun eagerly resolve the external against the project's
+  // node_modules, which lacks the package, and errors. This is the canonical Ink-bundling pattern.
   const proc = Bun.spawn(
     ["bun", "build", "--target=bun", "--external", "react-devtools-core", SRC_CLI, "--outfile", outfile],
     { stdout: "inherit", stderr: "inherit" },
