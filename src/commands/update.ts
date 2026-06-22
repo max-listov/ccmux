@@ -18,14 +18,24 @@ function parseOpts(args: string[]): UpdateOpts {
   };
 }
 
-/** Run a bundle's `version` to read what we're about to install (for nice 0.0.1→0.0.2 logs). */
+/** Run a bundle's `version` to read what we're about to install (for nice 0.0.1→0.0.2 logs).
+ *  Spawns bun by ABSOLUTE path (`process.execPath`), never bare "bun": the daemon runs under
+ *  launchd/systemd with a restricted PATH that does NOT include ~/.bun/bin, so bare "bun" is "not
+ *  found" → empty output → preflight reads version "?" → every auto-update aborts. This is the
+ *  whole self-update feature; it must not depend on PATH. stderr is surfaced on failure so a future
+ *  breakage isn't silently swallowed (the original bug hid here for exactly that reason). */
 async function bundleVersion(path: string): Promise<string> {
   try {
-    const proc = Bun.spawn(["bun", path, "version"], { stdout: "pipe", stderr: "ignore" });
-    const out = await new Response(proc.stdout).text();
-    await proc.exited;
-    return out.trim().replace(/^ccmux\s+/, "") || "?";
-  } catch {
+    const proc = Bun.spawn([process.execPath, path, "version"], { stdout: "pipe", stderr: "pipe" });
+    const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    const code = await proc.exited;
+    const version = out.trim().replace(/^ccmux\s+/, "");
+    if (version === "" && (code !== 0 || err.trim() !== "")) {
+      log.warn({ msg: "bundleVersion: candidate failed to report version", path, code, stderr: err.trim().slice(0, 300) });
+    }
+    return version || "?";
+  } catch (e) {
+    log.warn({ msg: "bundleVersion: spawn failed", path, err: String(e) });
     return "?";
   }
 }
