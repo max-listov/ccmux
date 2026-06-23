@@ -39,6 +39,23 @@ export function parsePs(out: string): PsProc[] {
   return procs;
 }
 
+const RESUME_UUID_RE = /--(?:resume|session-id)[= ]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
+
+/** Every conversation uuid that a live process is currently resuming, from a ps snapshot.
+ *  This is the AUTHORITATIVE "is a session running right now" signal — far more reliable than a
+ *  transcript's file mtime (which a desktop-app open/delete can bump without the session being
+ *  alive). Covers both CLI (`~/.local/bin/claude --resume X`) and desktop
+ *  (`claude.app/.../claude … --resume X`) — both carry the uuid on their command line. */
+export function resumingUuids(procs: PsProc[]): Set<string> {
+  const out = new Set<string>();
+  for (const p of procs) {
+    for (const m of p.command.matchAll(RESUME_UUID_RE)) {
+      if (m[1] !== undefined) out.add(m[1]);
+    }
+  }
+  return out;
+}
+
 /** Walk the parent chain of `fromPid` and collect every ancestor pid (incl. itself). */
 function ancestorsOf(procs: PsProc[], fromPid: number): Set<number> {
   const byPid = new Map(procs.map((p) => [p.pid, p]));

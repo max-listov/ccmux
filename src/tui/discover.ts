@@ -2,14 +2,17 @@ import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from
 import { basename } from "node:path";
 import type { MachineConfig, TranscriptMessage } from "../types.ts";
 import { parse, usedTokens } from "../agent/claude/transcript.ts";
+import { parsePs, resumingUuids } from "../agent/claude/writers.ts";
 import { readTailLines } from "../agent/index.ts";
 import { loadSessions } from "../config/sessions.ts";
 import { rec, str } from "../agent/normalize.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
 
-// Discover LIVE Claude sessions running OUTSIDE ccmux. We scan ~/.claude/projects for
-// transcripts whose file was written recently (= actively in use), skip the ones ccmux
-// already manages, and read just enough to show them: cwd, last activity, model, tokens,
+// Discover LIVE Claude sessions running OUTSIDE ccmux. A session is "live" iff a process is
+// actually RESUMING its uuid right now (ps scan) — NOT merely "the jsonl file was touched
+// recently". File mtime lies: a desktop-app open/delete bumps it without the session running, so
+// the old mtime<20min heuristic surfaced dead sessions. We take the authoritative signal (a live
+// process), then read just enough of its transcript to show it: cwd, last activity, model, tokens,
 // last message. Read-only — we never touch these sessions.
 
 export interface DiscoveredSession {
@@ -22,9 +25,19 @@ export interface DiscoveredSession {
   lastMessage: TranscriptMessage | null;
 }
 
-const DEFAULT_MAX_AGE_MS = 20 * 60 * 1000; // "active" = touched in the last 20 min
 const HEAD_BYTES = 64 * 1024; // enough to hold the session's cwd (usually line 1) without a full read
 const TAIL_LINES = 2000; // model / tokens / last message all live in the tail (matches managed window)
+
+/** uuids with a live `claude --resume`/`--session-id` process right now (sync — discover is sync). */
+function liveUuids(): Set<string> {
+  try {
+    const r = Bun.spawnSync(["ps", "-ax", "-o", "pid=,ppid=,command="]);
+    if (!r.success) return new Set();
+    return resumingUuids(parsePs(r.stdout.toString()));
+  } catch {
+    return new Set();
+  }
+}
 
 /** First chunk of the file → find the session cwd WITHOUT reading the whole (multi-MB) transcript. */
 function readHead(path: string, bytes: number): string[] {
@@ -77,11 +90,15 @@ function lastModel(lines: string[]): string | null {
 // (chunked from the end) plus a 64KB head, only when the file actually moved.
 const cache = new MtimeCache<DiscoveredSession | null>();
 
-export function discoverActive(m: MachineConfig, maxAgeMs: number = DEFAULT_MAX_AGE_MS): DiscoveredSession[] {
+export function discoverActive(m: MachineConfig): DiscoveredSession[] {
   const root = m.projectsDir;
   if (!existsSync(root)) return [];
   const managed = new Set(loadSessions(m).map((s) => s.uuid));
-  const now = Date.now();
+  // AUTHORITATIVE liveness: only uuids with a running process, minus the ones ccmux manages
+  // (those have their own section). No live external process → nothing to discover, and we skip
+  // the whole directory scan + file reads. This is also the cheap common case.
+  const targets = new Set([...liveUuids()].filter((u) => !managed.has(u)));
+  if (targets.size === 0) return [];
   const out: DiscoveredSession[] = [];
 
   let projects: string[];
@@ -101,28 +118,33 @@ export function discoverActive(m: MachineConfig, maxAgeMs: number = DEFAULT_MAX_
     for (const fn of files) {
       if (!fn.endsWith(".jsonl")) continue;
       const uuid = fn.slice(0, -6);
-      if (managed.has(uuid)) continue; // managed sessions are shown in their own section
+      if (!targets.has(uuid)) continue; // only sessions with a LIVE process
       const path = `${projDir}/${fn}`;
-      let mtimeMs: number;
-      try {
-        mtimeMs = statSync(path).mtimeMs;
-      } catch {
-        continue;
-      }
-      if (now - mtimeMs > maxAgeMs) continue; // only recently-active
       const ds = cache.get(path, () => {
         const tail = readTailLines(path, TAIL_LINES);
         if (tail.length === 0) return null;
         const msgLines = tail.length > 120 ? tail.slice(-120) : tail;
         const msgs = parse(msgLines, 1, 280);
+        const lastMessage = msgs.length > 0 ? (msgs[msgs.length - 1] ?? null) : null;
+        // "last activity" = the last MESSAGE's timestamp, not the file mtime (which a UI touch can
+        // bump without a real turn). Falls back to mtime only if the message carries no timestamp.
+        const msgTs = lastMessage?.createdAt ? Date.parse(lastMessage.createdAt) : NaN;
+        let lastActivityMs = msgTs;
+        if (!Number.isFinite(lastActivityMs)) {
+          try {
+            lastActivityMs = statSync(path).mtimeMs;
+          } catch {
+            lastActivityMs = Date.now();
+          }
+        }
         return {
           uuid,
           dir: firstCwd(readHead(path, HEAD_BYTES)) ?? firstCwd(tail) ?? "?",
           path,
-          lastActivityMs: mtimeMs,
+          lastActivityMs,
           model: lastModel(tail),
           usedTokens: usedTokens(tail),
-          lastMessage: msgs.length > 0 ? (msgs[msgs.length - 1] ?? null) : null,
+          lastMessage,
         };
       });
       if (ds) out.push(ds);

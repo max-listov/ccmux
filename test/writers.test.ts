@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { addEnvSelf, classifyWriters, parsePs, type PsProc, type Writer } from "../src/agent/claude/writers.ts";
+import { addEnvSelf, classifyWriters, parsePs, resumingUuids, type PsProc, type Writer } from "../src/agent/claude/writers.ts";
 
 const UUID = "4e117aea-caf4-4502-aab6-6da088b0345b";
 
@@ -32,6 +32,16 @@ test("classifyWriters: a writer that is MY ancestor is 'self'", () => {
 test("classifyWriters: matches --session-id too (first boot, no history yet)", () => {
   const procs: PsProc[] = [{ pid: 7, ppid: 1, command: `/Users/user/.local/bin/claude --session-id ${UUID}` }];
   expect(classifyWriters(procs, UUID, 99999).length).toBe(1);
+});
+
+test("resumingUuids: every live-process uuid (CLI + desktop + session-id), deduped, ignores non-claude", () => {
+  const live = resumingUuids(PROCS);
+  // both uuids that have a process are present (the launcher + app + cli all share UUID → one entry)
+  expect(live.has(UUID)).toBe(true);
+  expect(live.has("99999999-9999-4999-8999-999999999999")).toBe(true);
+  expect(live.size).toBe(2); // /usr/sbin/somethingelse contributes nothing
+  // a uuid whose process is GONE is NOT reported — this is the discover liveness gate
+  expect(live.has("deadbeef-0000-4000-8000-000000000000")).toBe(false);
 });
 
 test("addEnvSelf: marks the env-matched conversation as self (plain-`claude` host, no uuid on cmdline)", () => {
