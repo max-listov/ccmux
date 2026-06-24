@@ -43,6 +43,11 @@ export const SessionSchema = z.object({
 /** Agent CLI backing a session — the registry key for transcript adapters. */
 export const AgentKindSchema = z.enum(["claude", "codex"]);
 
+/** A machine's RC/display-name prefix — a free-form lowercase slug (local, dev, prod, staging, …).
+ *  NOT a fixed enum: the fleet grows past 3 machines. This pattern still loud-fails on garbage,
+ *  which was the only real value of the old `z.enum(["local","dev","prod"])`. */
+export const RC_PREFIX_RE = /^[a-z][a-z0-9-]*$/;
+
 /**
  * Per-machine config: the ONE-artifact / many-configs split. Everything that
  * differs between local/dev/prod lives here, never in code.
@@ -59,10 +64,10 @@ export const MachineConfigSchema = z.object({
   // Codex's rollout-session root — basis for the Codex transcript locator.
   // default: ~/.codex/sessions. Optional; only needed for agent="codex" sessions.
   codexSessionsDir: z.string().startsWith("/").optional(),
-  // RC display-name prefix so the phone/Telegram client knows which box a session
-  // is on. REQUIRED enum, not free string — a mislabeled fleet box is worse than a
-  // loud failure, so `install` refuses if it can't be set.
-  rcPrefix: z.enum(["local", "dev", "prod"]),
+  // RC display-name prefix so the phone/Telegram client knows which box a session is on. A
+  // free-form lowercase slug (local, dev, prod, staging, …) — see RC_PREFIX_RE. The regex
+  // loud-fails on garbage (the real intent), and `install` refuses if it can't be set.
+  rcPrefix: z.string().regex(RC_PREFIX_RE, "rcPrefix must be a lowercase slug (e.g. local, dev, prod, staging)"),
   // Sessions data file (env CCMUX_SESSIONS overrides). Per-machine default.
   sessionsFile: z.string().startsWith("/"),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.

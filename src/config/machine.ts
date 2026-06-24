@@ -78,7 +78,7 @@ export function rcName(m: MachineConfig, name: string): string {
 
 /** Build a full, validated machine config from detection + defaults (for `install`).
  *  We pin the resolved paths into machine.json rather than re-detecting every load. */
-export function scaffoldMachineConfig(rcPrefix: "local" | "dev" | "prod"): MachineConfig {
+export function scaffoldMachineConfig(rcPrefix: string): MachineConfig {
   const merged: Record<string, unknown> = { ...resolveDefaults(PLATFORM), rcPrefix };
   merged.claudeBin = detectClaudeBin();
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();

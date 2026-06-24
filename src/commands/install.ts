@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { HOME, PLATFORM } from "../env.ts";
 import { loadMachineConfig, scaffoldMachineConfig } from "../config/machine.ts";
+import { RC_PREFIX_RE } from "../config/schema.ts";
 import { installBoot, uninstallBoot } from "../boot/install.ts";
 import { atomicWrite } from "../util/atomic.ts";
 
@@ -20,8 +21,8 @@ function parseReleaseUrl(args: string[]): string | undefined {
   return i !== -1 ? args[i + 1] : undefined;
 }
 
-function isRcPrefix(v: string | undefined): v is "local" | "dev" | "prod" {
-  return v === "local" || v === "dev" || v === "prod";
+function isRcPrefix(v: string | undefined): v is string {
+  return v !== undefined && RC_PREFIX_RE.test(v);
 }
 
 export async function cmdInstall(args: string[]): Promise<number> {
@@ -31,7 +32,7 @@ export async function cmdInstall(args: string[]): Promise<number> {
   try {
     if (!existsSync(cfg)) {
       if (!isRcPrefix(rc)) {
-        console.log("no machine.json yet — run: ccmux install --rc-prefix <local|dev|prod>");
+        console.log("no machine.json yet — run: ccmux install --rc-prefix <name> (lowercase slug, e.g. local, dev, prod)");
         return 1;
       }
       const scaffolded = scaffoldMachineConfig(rc);

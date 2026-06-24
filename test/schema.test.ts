@@ -42,7 +42,7 @@ test("MachineConfig: permissionMode is locked to auto — config cannot escalate
   expect(() => MachineConfigSchema.parse({ ...base, permissionMode: "yolo" })).toThrow();
 });
 
-test("MachineConfig: rcPrefix is a required enum", () => {
+test("MachineConfig: rcPrefix is a required lowercase slug (any machine label, not a fixed enum)", () => {
   const base = {
     claudeBin: "/bin/claude",
     tmuxBin: "/bin/tmux",
@@ -50,6 +50,14 @@ test("MachineConfig: rcPrefix is a required enum", () => {
     sessionsFile: "/home/user/.ccmux-sessions",
     bootLabel: "ccmux.service",
   };
-  expect(() => MachineConfigSchema.parse({ ...base, rcPrefix: "staging" })).toThrow();
-  expect(MachineConfigSchema.parse({ ...base, rcPrefix: "dev" }).rcPrefix).toBe("dev");
+  // any lowercase slug is valid — the fleet isn't capped at local/dev/prod
+  for (const p of ["local", "dev", "prod", "staging", "edge-1"]) {
+    expect(MachineConfigSchema.parse({ ...base, rcPrefix: p }).rcPrefix).toBe(p);
+  }
+  // but garbage still loud-fails (the real intent of the old enum)
+  for (const bad of ["", "Dev", "a b", "-x", "1box"]) {
+    expect(() => MachineConfigSchema.parse({ ...base, rcPrefix: bad })).toThrow();
+  }
+  // required: missing throws
+  expect(() => MachineConfigSchema.parse(base)).toThrow();
 });

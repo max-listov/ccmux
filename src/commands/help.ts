@@ -16,7 +16,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "transcript", args: "<name> --json [--tail N] [--cursor LINE]", desc: "conversation history as JSON (incremental reads via --cursor)", example: "ccmux transcript cc-api --json --tail 50" },
   { verb: "doctor", args: "[--json]", desc: "health check: bins, config, daemon" },
   { verb: "update", args: "[--check|--rollback|--force]", desc: "self-update binary + bounce daemon (sessions live)" },
-  { verb: "install", args: "[--rc-prefix local|dev|prod] [--release-url URL]", desc: "write config + boot unit; start daemon (--release-url wires autoUpdate)" },
+  { verb: "install", args: "[--rc-prefix <name>] [--release-url URL]", desc: "write config + boot unit; start daemon (--rc-prefix = this machine's label, e.g. local/dev/prod; --release-url wires autoUpdate)" },
   { verb: "uninstall", args: "", desc: "remove boot unit (sessions + history kept)" },
   { verb: "ensure", args: "", desc: "run one heal pass now" },
   { verb: "tui", args: "[-f|--fullscreen]", desc: "interactive fleet TUI (bare `ccmux` does this too)" },
