@@ -25,12 +25,26 @@ export function buildArgv(
     "-n",
     rcName(m, s.name),
     "--permission-mode",
-    m.permissionMode,
+    resolvePermissionMode(m.permissionMode),
     "--append-system-prompt",
     buildPrompt(s.name, self),
     ...flags,
     ...m.extraFlags,
   ];
+}
+
+// Escalated modes that bypass permission gating entirely — a compromised session under
+// root could touch the whole host, so we refuse them for the root daemon (servers).
+const ESCALATED_MODES = new Set(["bypassPermissions", "dontAsk"]);
+
+/**
+ * Root guard for permission mode: on the root daemon (servers) an escalated mode is
+ * downgraded to "auto" so a config edit can't hand a server session host-wide power.
+ * Non-root daemons (personal Macs) honor whatever the machine config asks for.
+ */
+function resolvePermissionMode(mode: string): string {
+  if (UID === 0 && ESCALATED_MODES.has(mode)) return "auto";
+  return mode;
 }
 
 /** Defensive: we never add it, but strip it if a config tries to, when running as root. */

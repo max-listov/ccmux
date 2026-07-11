@@ -11,12 +11,20 @@ test("resume branch flips on historyPresent", () => {
   expect(buildArgv(s, m, "SELF", false)).not.toContain("--resume");
 });
 
-test("argv is always auto permission-mode, never a bypass token", () => {
+test("default permission-mode is auto, never a bypass token", () => {
   const argv = buildArgv(makeSession(), makeMachine(), "SELF", true);
   const i = argv.indexOf("--permission-mode");
   expect(argv[i + 1]).toBe("auto");
   expect(argv).not.toContain("--dangerously-skip-permissions");
   expect(argv).not.toContain("--yolo");
+});
+
+test("non-root daemon honors the configured permission mode (incl. escalated)", () => {
+  // The test runner is non-root, so escalated modes pass through unchanged.
+  for (const mode of ["acceptEdits", "plan", "bypassPermissions", "dontAsk"] as const) {
+    const argv = buildArgv(makeSession(), makeMachine({ permissionMode: mode }), "SELF", true);
+    expect(argv[argv.indexOf("--permission-mode") + 1]).toBe(mode);
+  }
 });
 
 test("weird flags survive verbatim — the [1m] glob bug class is structurally gone", () => {
