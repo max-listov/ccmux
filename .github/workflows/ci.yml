@@ -113,10 +113,26 @@ jobs:
             exit 1
           fi
 
+      # Releases are immutable: a re-pushed tag (e.g. a history-remediation re-point) must
+      # never rebuild or overwrite published assets — publish only if the release is absent.
+      - name: Check release doesn't exist yet
+        id: fresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::release $GITHUB_REF_NAME already exists — tag re-point only, nothing to publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build release assets
+        if: steps.fresh.outputs.exists != 'true'
         run: bun scripts/release.ts --ci-assets "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/ccmux.js"
 
       - name: Extract changelog section
+        if: steps.fresh.outputs.exists != 'true'
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BODY=$(awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
@@ -125,6 +141,7 @@ jobs:
 
       # draft → publish: the release appears atomically, the fleet never sees a half-upload
       - name: GitHub Release
+        if: steps.fresh.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
