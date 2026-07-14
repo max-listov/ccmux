@@ -6,11 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-07-14
+
+release pipeline v2 — CI-only publishing
+
 - Release pipeline v2: releases are born only from tags via CI (gate: typecheck + tests +
   bundle smoke); local `--publish` removed; `bun run release X.Y.Z "notes"` is the one
   ceremony (clean-tree guard → check → bump + changelog → commit → tag → push).
 - Pre-push git hook runs `bun run check` (wired via `core.hooksPath`).
-
 ## [0.1.7] — 2026-07-14
 
 - Follow the fork: the registry re-pins a session to the new session id when Claude Code
