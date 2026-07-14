@@ -62,8 +62,10 @@ jobs:
         run: bun scripts/release.ts --stage
 
       # Run the BUILT artifact, not the source: `version` proves it loads at all,
-      # `list --json` proves the command path works on a machine with no config
-      # (scaffolded defaults, empty registry). CI twin of the fleet-side preflight.
+      # `list --json` proves the command path works end-to-end. The runner has no claude
+      # or tmux, so a stub machine.json (CCMUX_CONFIG) stands in for `ccmux install` —
+      # /bin/false binaries exercise the "nothing running" path with an empty registry.
+      # CI twin of the fleet-side preflight.
       - name: Smoke the bundle
         run: |
           BUNDLE="$HOME/.ccmux/staged/ccmux.js"
@@ -72,7 +74,18 @@ jobs:
           OUT="$(bun "$BUNDLE" version)"
           echo "bundle reports: $OUT (package.json: $PKG)"
           [ "$OUT" = "ccmux $PKG" ]
-          bun "$BUNDLE" list --json | bun -e 'const d = await new Response(Bun.stdin.stream()).json(); if (!Array.isArray(d.sessions)) { console.error("bad list --json shape"); process.exit(1); }'
+          cat > "$RUNNER_TEMP/machine.json" <<EOF
+          {
+            "claudeBin": "/bin/false",
+            "tmuxBin": "/bin/false",
+            "projectsDir": "$RUNNER_TEMP/projects",
+            "rcPrefix": "ci",
+            "sessionsFile": "$RUNNER_TEMP/sessions",
+            "bootLabel": "ccmux.ci"
+          }
+          EOF
+          CCMUX_CONFIG="$RUNNER_TEMP/machine.json" bun "$BUNDLE" list --json | bun -e 'const d = await new Response(Bun.stdin.stream()).json(); if (!Array.isArray(d.sessions)) { console.error("bad list --json shape"); process.exit(1); }'
+          echo "list --json OK"
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
