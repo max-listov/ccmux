@@ -2,9 +2,10 @@
 title: Follow the fork — реестр догоняет форкнутую беседу
 description: Claude Code форкает беседу на новый session id (out-of-context) — ccmux должен детектить переезд и перепривязывать uuid в реестре
 type: task
-status: in-progress
+status: done
 created: 2026-07-14
 updated: 2026-07-14
+completed: 2026-07-14 14:16 +08:00
 ---
 
 # Follow the fork

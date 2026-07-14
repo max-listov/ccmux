@@ -2,9 +2,10 @@
 title: Release-пайплайн (GitHub Releases, авто-флот) + системный лог с ротацией
 description: «Сделал релиз — весь флот сам подхватил»: publish через GitHub Releases без своего бэкенда, самолечение кривого бандла, чистая установка для клиентов; плюс внутренний системный лог (уровни, ротация, события update/sessions) для прод-дебага
 type: task
-status: in-progress
+status: done
 created: 2026-06-11
 updated: 2026-07-14
+completed: 2026-07-14 14:16 +08:00
 related: docs/backlog/planned/2026-06-09-ccmux-v1-polish.md
 ---
 
@@ -175,3 +176,25 @@ GitHub Actions release.yml (on: push tag v*):
 - [x] Паблиш работает с любой машины без локального gh — v0.1.8 опубликован целиком в CI
 - [x] Флот подхватывает CI-релиз так же, как локальные — все машины на 0.1.8 за ~4 мин,
       sha256 сошёлся, сессии целы
+
+## Что сделано
+
+- **Фаза 1 (раздача/самолечение/лог, 2026-06):** GitHub Releases-дистрибуция с версионным
+  asset-url + sha256 (`scripts/release.ts`, `src/commands/update.ts`), preflight +
+  boot-guard (`src/util/bootGuard.ts`), системный лог с уровнями/ротацией (`src/util/log.ts`),
+  `scripts/install.sh`, `ccmux install --release-url`. Роллаут на серверы состоялся,
+  авто-апдейты 0.1.5→0.1.8 подхвачены флотом без рук.
+- **Фаза 2 (коммит↔релиз, CI-only publish, 2026-07-14):**
+  - CI: `.github/workflows/ci.yml` — jobs ci (check на каждый push/PR), smoke (запуск
+    собранного бандла со стаб-конфигом), release (тег `v*`, guard tag==version,
+    graceful-skip существующих релизов, атомарный publish)
+  - Церемония: `scripts/release.ts` — дефолтный режим `bun run release X.Y.Z "notes"`
+    (guards → check → бамп → CHANGELOG-ролл → commit → tag → push); `--ci-assets` для CI;
+    `--publish` удалён
+  - `CHANGELOG.md` (ретро v0.1.0…v0.1.7 + `[Unreleased]`-дисциплина),
+    `.githooks/pre-push` + `prepare`-hooksPath, README «Updates»/«Build & release»,
+    арх-док `tui-and-dev-flow.md` → «Раздача на флот»
+  - Прогнано вживую: v0.1.8 — первый полностью CI-релиз; тег v0.1.7 передвинут на честный
+    коммит
+- **Что НЕ делалось:** Biome/lint-слой (вводить отдельным решением, вне пайплайна);
+  событийные логи restart/adopt (низкий приоритет, см. фазу 1).
