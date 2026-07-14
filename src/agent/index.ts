@@ -1,9 +1,11 @@
-import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import type { AgentKind, ContextInfo, MachineConfig, Session, TranscriptMessage } from "../types.ts";
 import { claudeProvider } from "./claude/index.ts";
 import { codexProvider } from "./codex/index.ts";
 import { rec, str } from "./normalize.ts";
+import { rcName } from "../config/machine.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
+import { readLines, readTailLines } from "../util/readLines.ts";
 
 /** Live status scraped from a rendered pane (pure: text → status). */
 export interface PaneScan {
@@ -27,6 +29,10 @@ export interface AgentProvider {
   launchEnv(m: MachineConfig, sessionName: string): Record<string, string>;
   // history / resume
   historyFile(s: Session, m: MachineConfig): string | null;
+  // Some agents (Claude) silently FORK a conversation to a new uuid (e.g. out-of-context
+  // continuation) — this reports where the conversation lives NOW, or null if unmoved.
+  // Optional: agents whose session ids are actually stable don't implement it.
+  detectFork?(s: Session, m: MachineConfig, rcTitle: string, takenUuids: ReadonlySet<string>): string | null;
   // transcript (raw JSONL → shared contract)
   parse(lines: string[], startLine: number, textLimit?: number): TranscriptMessage[];
   usedTokens(lines: string[]): number | null;
@@ -71,56 +77,6 @@ export function detect(lines: string[]): AgentKind | null {
 
 const LAST_MESSAGE_WINDOW = 120;
 const LAST_MESSAGE_TEXT_LIMIT = 280;
-
-function readLines(path: string): string[] {
-  const lines = readFileSync(path, "utf8").split("\n");
-  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-  return lines;
-}
-
-const TAIL_CHUNK = 512 * 1024;
-
-/** Read just the last `maxLines` lines — transcripts grow to tens of MB and the hot
- *  paths (list row, TUI pane, CTX fallback) only ever parse a tail window, so reading
- *  the whole file each poll tick was the dominant I/O cost of the entire app.
- *  Pulls 512KB slices from the file end until enough newlines are seen; newline
- *  counting is byte-level (0x0A never occurs inside a UTF-8 multi-byte char) and
- *  decoding happens once over the joined buffer, so slice borders can't split chars.
- *  Absolute line NUMBERS are lost — the `transcript --cursor` contract keeps going
- *  through readLines (exact, full read). */
-export function readTailLines(path: string, maxLines: number): string[] {
-  let size: number;
-  try {
-    size = statSync(path).size;
-  } catch {
-    return [];
-  }
-  if (size <= TAIL_CHUNK) {
-    const lines = readLines(path);
-    return lines.length > maxLines ? lines.slice(-maxLines) : lines;
-  }
-  const fd = openSync(path, "r");
-  const slices: Buffer[] = [];
-  try {
-    let start = size;
-    let newlines = 0;
-    // maxLines+1 newlines: the first line of a mid-file window is dropped as possibly partial.
-    while (start > 0 && newlines <= maxLines) {
-      const from = Math.max(0, start - TAIL_CHUNK);
-      const buf = Buffer.alloc(start - from);
-      readSync(fd, buf, 0, buf.length, from);
-      slices.unshift(buf);
-      start = from;
-      for (const byte of buf) if (byte === 10) newlines++;
-    }
-    const lines = Buffer.concat(slices).toString("utf8").split("\n");
-    if (start > 0) lines.shift();
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-    return lines.length > maxLines ? lines.slice(-maxLines) : lines;
-  } finally {
-    closeSync(fd);
-  }
-}
 
 export interface TranscriptRead {
   agent: AgentKind;
@@ -213,4 +169,14 @@ export function sessionUsedTokens(session: Session, m: MachineConfig): number | 
   const path = provider.historyFile(session, m);
   if (!path) return null;
   return usedTokensCache.get(path, () => provider.usedTokens(readTailLines(path, USED_TOKENS_WINDOW)));
+}
+
+/** Where the session's conversation lives NOW, if the agent forked it away from the
+ *  pinned uuid (see AgentProvider.detectFork) — null when unmoved or not detectable.
+ *  `all` = every managed session, so another session's pinned uuid is never claimed. */
+export function forkedUuid(session: Session, m: MachineConfig, all: Session[]): string | null {
+  const provider = providerFor(session);
+  if (!provider.detectFork) return null;
+  const taken = new Set(all.filter((x) => x.name !== session.name).map((x) => x.uuid));
+  return provider.detectFork(session, m, rcName(m, session.name), taken);
 }

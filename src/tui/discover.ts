@@ -1,12 +1,12 @@
-import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import type { MachineConfig, TranscriptMessage } from "../types.ts";
 import { parse, usedTokens } from "../agent/claude/transcript.ts";
-import { parsePs, resumingUuids } from "../agent/claude/writers.ts";
-import { readTailLines } from "../agent/index.ts";
+import { externalResumingUuids, parsePs } from "../agent/claude/writers.ts";
 import { loadSessions } from "../config/sessions.ts";
 import { rec, str } from "../agent/normalize.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
+import { readHeadLines, readTailLines } from "../util/readLines.ts";
 
 // Discover LIVE Claude sessions running OUTSIDE ccmux. A session is "live" iff a process is
 // actually RESUMING its uuid right now (ps scan) — NOT merely "the jsonl file was touched
@@ -28,33 +28,17 @@ export interface DiscoveredSession {
 const HEAD_BYTES = 64 * 1024; // enough to hold the session's cwd (usually line 1) without a full read
 const TAIL_LINES = 2000; // model / tokens / last message all live in the tail (matches managed window)
 
-/** uuids with a live `claude --resume`/`--session-id` process right now (sync — discover is sync). */
+/** uuids with a live `claude --resume`/`--session-id` process OUTSIDE managed panes right
+ *  now (sync — discover is sync). Processes inside a `ccmux _run` pane never count: after
+ *  a conversation fork the pane's stale `--resume <old>` argv would otherwise surface the
+ *  DEAD old conversation as a live external session (see writers.externalResumingUuids). */
 function liveUuids(): Set<string> {
   try {
     const r = Bun.spawnSync(["ps", "-ax", "-o", "pid=,ppid=,command="]);
     if (!r.success) return new Set();
-    return resumingUuids(parsePs(r.stdout.toString()));
+    return externalResumingUuids(parsePs(r.stdout.toString()));
   } catch {
     return new Set();
-  }
-}
-
-/** First chunk of the file → find the session cwd WITHOUT reading the whole (multi-MB) transcript. */
-function readHead(path: string, bytes: number): string[] {
-  let fd: number;
-  try {
-    fd = openSync(path, "r");
-  } catch {
-    return [];
-  }
-  try {
-    const buf = Buffer.alloc(bytes);
-    const n = readSync(fd, buf, 0, bytes, 0);
-    return buf.toString("utf8", 0, n).split("\n");
-  } catch {
-    return [];
-  } finally {
-    closeSync(fd);
   }
 }
 
@@ -139,7 +123,7 @@ export function discoverActive(m: MachineConfig): DiscoveredSession[] {
         }
         return {
           uuid,
-          dir: firstCwd(readHead(path, HEAD_BYTES)) ?? firstCwd(tail) ?? "?",
+          dir: firstCwd(readHeadLines(path, HEAD_BYTES)) ?? firstCwd(tail) ?? "?",
           path,
           lastActivityMs,
           model: lastModel(tail),
@@ -150,7 +134,8 @@ export function discoverActive(m: MachineConfig): DiscoveredSession[] {
       if (ds) out.push(ds);
     }
   }
-  // Stable order: by display name (dir basename, then uuid). Sorting by lastActivityMs
-  // made cards swap places on every poll tick as different agents wrote — unusable nav.
+  // Deterministic BASE order (dir basename, then uuid). The display order — by last
+  // activity, minute-bucketed against the old every-tick reshuffle — is applied in
+  // fleet.buildItems for managed and external alike.
   return out.sort((a, b) => basename(a.dir).localeCompare(basename(b.dir)) || a.uuid.localeCompare(b.uuid));
 }

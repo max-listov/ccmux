@@ -1,0 +1,123 @@
+# CI + Release — one workflow for everything.
+#
+# Jobs:
+#   ci      — typecheck + full test suite (every push / PR)
+#   smoke   — build the prod bundle and RUN it (`version`, `list --json`): a bundle that
+#             cannot even load dies here, before it can ever reach the fleet
+#   release — GitHub Release with the 3 fleet assets (only on a `v*` tag, needs ci+smoke)
+#
+# Release invariants (docs/architecture/tui-and-dev-flow.md → «Раздача на флот»):
+#   - a release is born ONLY from a tag, and the tag must equal package.json version;
+#   - a red check = the release physically cannot happen;
+#   - the manifest url points at the VERSIONED asset (manifest+bundle are an atomic pair);
+#   - publishing uses the repo-scoped GITHUB_TOKEN — no stored secrets.
+#
+# Release flow (ceremony is local, publish is CI):
+#   bun run release X.Y.Z "notes"   # clean-tree guard → check → bump + CHANGELOG → commit → tag → push
+#   → this workflow builds, verifies and publishes; the fleet self-updates via releaseUrl.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck + tests
+        run: bun run check
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build bundle
+        run: bun scripts/release.ts --stage
+
+      # Run the BUILT artifact, not the source: `version` proves it loads at all,
+      # `list --json` proves the command path works on a machine with no config
+      # (scaffolded defaults, empty registry). CI twin of the fleet-side preflight.
+      - name: Smoke the bundle
+        run: |
+          BUNDLE="$HOME/.ccmux/staged/ccmux.js"
+          test -f "$BUNDLE"
+          PKG="$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
+          OUT="$(bun "$BUNDLE" version)"
+          echo "bundle reports: $OUT (package.json: $PKG)"
+          [ "$OUT" = "ccmux $PKG" ]
+          bun "$BUNDLE" list --json | bun -e 'const d = await new Response(Bun.stdin.stream()).json(); if (!Array.isArray(d.sessions)) { console.error("bad list --json shape"); process.exit(1); }'
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [ci, smoke]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history — release notes read the CHANGELOG section for this tag
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Verify tag matches package version
+        run: |
+          PKG="$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Build release assets
+        run: bun scripts/release.ts --ci-assets "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/ccmux.js"
+
+      - name: Extract changelog section
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BODY=$(awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
+          if [ -z "$BODY" ]; then BODY="ccmux $GITHUB_REF_NAME"; fi
+          echo "$BODY" > /tmp/release-notes.md
+
+      # draft → publish: the release appears atomically, the fleet never sees a half-upload
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "ccmux $GITHUB_REF_NAME" \
+            --notes-file /tmp/release-notes.md \
+            --draft \
+            "$HOME/.ccmux/releases/ccmux.js" "$HOME/.ccmux/releases/release.json" scripts/install.sh
+          gh release edit "$GITHUB_REF_NAME" --draft=false

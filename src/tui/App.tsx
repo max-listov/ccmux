@@ -56,7 +56,9 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   // window is known. A ref so the poll reads the latest without re-subscribing on every scroll.
   const liveNamesRef = useRef<Set<string> | undefined>(undefined);
   const { rows, reload } = useFleet(m, liveNamesRef);
-  const [cursor, setCursor] = useState(0);
+  // Selection follows the SESSION (uuid), not a list position: the list re-sorts live by
+  // last activity, so an index would silently slide onto a different card mid-navigation.
+  const [selKey, setSelKey] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(initialFullscreen);
   const [focus, setFocus] = useState<Focus>("list");
   const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH);
@@ -81,7 +83,12 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   const anyActive = items.some((it) => it.status.active);
   const spin = useSpinner(anyActive);
   const count = items.length;
-  const cur = count > 0 ? Math.min(cursor, count - 1) : 0;
+  // Resolve the selected uuid to wherever the activity sort put it this render; if the
+  // session is gone (deleted / adopted away) fall back to the same list position.
+  const lastCurRef = useRef(0);
+  const foundIdx = selKey === null ? -1 : items.findIndex((it) => it.row.session.uuid === selKey);
+  const cur = foundIdx >= 0 ? foundIdx : Math.min(lastCurRef.current, Math.max(0, count - 1));
+  lastCurRef.current = cur;
   const selItem = items[cur];
   const selected = selItem?.row;
   const isExternal = selItem?.external ?? false;
@@ -115,10 +122,19 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     });
   };
 
+  // Select by INDEX → store the card's uuid. Reads itemsRef (not the closure) so the
+  // long-lived mouse listener can call it without going stale.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const selectAt = (idx: number): void => {
+    const it = itemsRef.current[idx];
+    if (it) setSelKey(it.row.session.uuid);
+  };
+
   const moveCursor = (delta: number): void => {
     if (count === 0) return;
     const next = (((cur + delta) % count) + count) % count;
-    setCursor(next);
+    selectAt(next);
     revealCursor(next);
     setOffset(0); // new session → reset transcript scroll
   };
@@ -162,6 +178,13 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullscreen, stdout]);
 
+  // When the activity re-sort MOVES the selected card (cur changed without navigation),
+  // follow it — the selection must never sit outside the scroll window.
+  useEffect(() => {
+    revealCursor(cur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur]);
+
   // ── mouse: wheel scrolls the pane under the cursor (zone by x, independent of focus);
   //    the divider is a hover/drag handle for live resize. ?1003h (any-motion) gives
   //    hover+drag — events are processed IN MEMORY ONLY (never logged → no disk flood).
@@ -197,7 +220,7 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
           if (nearHandle) { draggingRef.current = true; setHoverHandle(true); }
           else if (zone === "list") {
             const idx = cardIndexAtY(y, winStartRef.current, visibleRef.current, countRef.current, externalStartRef.current);
-            if (idx !== null) { setCursor(idx); setOffset(0); }
+            if (idx !== null) { selectAt(idx); setOffset(0); }
             setFocus("list");
           } else setFocus(zone);
           continue;

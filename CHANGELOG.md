@@ -1,0 +1,56 @@
+# Changelog
+
+All notable changes to ccmux. The `[Unreleased]` section accumulates as work lands;
+`bun run release X.Y.Z "notes"` rolls it into a dated version section, and CI publishes
+the GitHub Release with that section as the notes.
+
+## [Unreleased]
+
+- Release pipeline v2: releases are born only from tags via CI (gate: typecheck + tests +
+  bundle smoke); local `--publish` removed; `bun run release X.Y.Z "notes"` is the one
+  ceremony (clean-tree guard → check → bump + changelog → commit → tag → push).
+- Pre-push git hook runs `bun run check` (wired via `core.hooksPath`).
+
+## [0.1.7] — 2026-07-14
+
+- Follow the fork: the registry re-pins a session to the new session id when Claude Code
+  forks the conversation (out-of-context continuation) — previews, transcripts, activity
+  and the next restart follow the live conversation instead of a dead file.
+- External discovery ignores processes living inside managed panes (a fork leaves the
+  pane's stale `--resume` argv looking like a live external session showing a dead
+  conversation).
+- TUI: fleet sorts by last conversation activity (minute-bucketed, no per-tick reshuffle);
+  cards show the activity age (`5m ago`) next to uptime; selection follows the session
+  (uuid), not the list position.
+
+## [0.1.6] — 2026-07-11
+
+- Configurable permission mode (all Claude Code modes) in machine.json; escalated modes
+  are downgraded to `auto` under a root daemon (server safety guard).
+
+## [0.1.5] — 2026-06-24
+
+- `rcPrefix` is a free-form slug, not a `local|dev|prod` enum — the fleet grows past
+  three machines.
+
+## [0.1.4] — 2026-06-23
+
+- Discover live external sessions by process (ps scan), not file mtime — a desktop-app
+  open no longer surfaces dead sessions as live.
+
+## [0.1.3] — 2026-06-22
+
+- Add the bun bin dir to the daemon PATH (defense-in-depth for auto-update).
+
+## [0.1.2] — 2026-06-22
+
+- Fix daemon auto-update preflight (bare `bun` not in the launchd PATH).
+
+## [0.1.1] — 2026-06-22
+
+- Fix `ccmux install` ignoring `--release-url` over an existing config.
+
+## [0.1.0] — 2026-06-22
+
+- First public release: persistent self-healing Claude Code tmux sessions with
+  deterministic resume, fleet daemon, TUI, GitHub Releases auto-update.

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readTailLines } from "../src/agent/index.ts";
+import { readTailLines } from "../src/util/readLines.ts";
 
 function tmpFile(content: string): string {
   const dir = mkdtempSync(join(tmpdir(), "ccmux-tail-"));

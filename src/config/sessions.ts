@@ -42,6 +42,16 @@ export async function appendSession(m: MachineConfig, s: Session): Promise<void>
   await writeSessions(m, [...current, s]);
 }
 
+/** Re-pin a session to a new conversation uuid (follow-the-fork). Returns false if the
+ *  name wasn't present. History files are never touched — both jsonls stay on disk. */
+export async function updateSessionUuid(m: MachineConfig, name: string, uuid: string): Promise<boolean> {
+  const current = loadSessions(m);
+  const target = findSession(current, name);
+  if (!target) return false;
+  await writeSessions(m, current.map((s) => (s.name === name ? { ...s, uuid } : s)));
+  return true;
+}
+
 /** Returns false if the name wasn't present. Never touches the jsonl history. */
 export async function removeSession(m: MachineConfig, name: string): Promise<boolean> {
   const current = loadSessions(m);

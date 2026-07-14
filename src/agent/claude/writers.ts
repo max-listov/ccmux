@@ -56,6 +56,40 @@ export function resumingUuids(procs: PsProc[]): Set<string> {
   return out;
 }
 
+const RUN_SUPERVISOR_RE = /(?:^|\s)_run\s/;
+
+/** Like resumingUuids, but only uuids carried by at least one process OUTSIDE any
+ *  ccmux-managed pane. A pane's own process tree — the `ccmux _run` supervisor and
+ *  everything under it (the claude TUI, plus Claude's transient `daemon run`/bg-pty-host
+ *  children it spawns) — never counts as external: those uuids are the managed session
+ *  itself, or its fork in transit, which follow-the-fork re-pins within one daemon tick.
+ *  Without this, a fork leaves the pane's STALE `--resume <old>` argv looking like a
+ *  live external session showing a days-dead conversation. */
+export function externalResumingUuids(procs: PsProc[]): Set<string> {
+  const byPid = new Map(procs.map((p) => [p.pid, p]));
+  const underRun = (fromPid: number): boolean => {
+    const seen = new Set<number>();
+    let pid = fromPid;
+    while (pid > 1 && !seen.has(pid)) {
+      seen.add(pid);
+      const p = byPid.get(pid);
+      if (!p) return false;
+      if (RUN_SUPERVISOR_RE.test(p.command)) return true;
+      pid = p.ppid;
+    }
+    return false;
+  };
+  const out = new Set<string>();
+  for (const p of procs) {
+    const uuids = [...p.command.matchAll(RESUME_UUID_RE)]
+      .map((m) => m[1])
+      .filter((u): u is string => u !== undefined);
+    if (uuids.length === 0 || underRun(p.pid)) continue;
+    for (const u of uuids) out.add(u);
+  }
+  return out;
+}
+
 /** Walk the parent chain of `fromPid` and collect every ancestor pid (incl. itself). */
 function ancestorsOf(procs: PsProc[], fromPid: number): Set<number> {
   const byPid = new Map(procs.map((p) => [p.pid, p]));

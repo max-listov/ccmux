@@ -1,25 +1,28 @@
 #!/usr/bin/env bun
 // DEV release tooling — runs ONLY from the source checkout (package.json scripts). This is
 // NOT part of the `ccmux` tool that ships to the fleet: clients have a bundle, no repo, no
-// package.json, so they can never build or publish a release. Like `npm publish`.
+// package.json, so they can never build or publish a release.
 //
-//   bun run stage            → build bundle → ~/.ccmux/staged (for local `ccmux update` test)
-//   bun run release          → build bundle + local file:// manifest (~/.ccmux/releases)
-//   bun run release:publish  → build + push to GitHub Releases (tag vX.Y.Z, 3 assets)
-//
-// The fleet consumes the published manifest via machine.json `releaseUrl` + autoUpdate.
+//   bun run release X.Y.Z "notes"  → git CEREMONY (the only human release entrypoint):
+//                                    clean-tree guard → bun run check → bump package.json
+//                                    → CHANGELOG section → commit "X.Y.Z: notes" → tag
+//                                    vX.Y.Z → push. Publishing happens in CI off the tag —
+//                                    there is NO local publish path (tag ↔ code ↔ assets
+//                                    stay one atomic story; see .github/workflows/ci.yml).
+//   bun run stage                  → build bundle → ~/.ccmux/staged (local `ccmux update` test)
+//   bun scripts/release.ts --local          → bundle + file:// manifest (sandbox e2e)
+//   bun scripts/release.ts --ci-assets URL  → bundle + manifest at URL (CI release job only)
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RELEASES_DIR, RELEASE_BUNDLE, RELEASE_MANIFEST, STAGED_BUNDLE } from "../src/config/paths.ts";
-import { VERSION } from "../src/util/version.ts";
+import { VERSION, compareSemver } from "../src/util/version.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC_CLI = join(ROOT, "src", "cli.ts");
-const INSTALL_SCRIPT = join(ROOT, "scripts", "install.sh");
-
-type Mode = "stage" | "local" | "publish";
+const PKG_JSON = join(ROOT, "package.json");
+const CHANGELOG = join(ROOT, "CHANGELOG.md");
 
 async function bundle(outfile: string): Promise<boolean> {
   mkdirSync(dirname(outfile), { recursive: true });
@@ -49,14 +52,13 @@ async function writeManifest(url: string, notes: string): Promise<string> {
   return hex;
 }
 
-async function gh(argv: string[], capture = false): Promise<{ ok: boolean; out: string }> {
-  try {
-    const proc = Bun.spawn(["gh", ...argv], { stdout: capture ? "pipe" : "inherit", stderr: capture ? "pipe" : "inherit" });
-    const out = capture ? (await new Response(proc.stdout).text()).trim() : "";
-    return { ok: (await proc.exited) === 0, out };
-  } catch {
-    return { ok: false, out: "" };
-  }
+async function git(argv: string[], capture = false): Promise<{ ok: boolean; out: string }> {
+  const proc = Bun.spawn(["git", "-C", ROOT, ...argv], {
+    stdout: capture ? "pipe" : "inherit",
+    stderr: capture ? "pipe" : "inherit",
+  });
+  const out = capture ? (await new Response(proc.stdout).text()).trim() : "";
+  return { ok: (await proc.exited) === 0, out };
 }
 
 async function doStage(): Promise<number> {
@@ -66,6 +68,7 @@ async function doStage(): Promise<number> {
   return 0;
 }
 
+/** file:// release for the sandbox e2e (isolated HOME) — never for the real fleet. */
 async function doLocal(notes: string): Promise<number> {
   mkdirSync(RELEASES_DIR, { recursive: true });
   if (!(await bundle(RELEASE_BUNDLE))) return fail("build failed");
@@ -76,32 +79,95 @@ async function doLocal(notes: string): Promise<number> {
   return 0;
 }
 
-async function doPublish(notes: string): Promise<number> {
-  if (!(await gh(["--version"], true)).ok) return fail("gh CLI not found (brew install gh)");
-  const repo = (await gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], true)).out;
-  if (!repo) return fail("could not resolve GitHub repo (run in the repo, gh authed)");
-
-  const tag = `v${VERSION}`;
-  if ((await gh(["release", "view", tag, "--repo", repo], true)).ok) {
-    return fail(`${tag} already exists on ${repo} — releases are immutable; bump version in package.json`);
-  }
-
-  // url must point at the VERSIONED asset so manifest+bundle are an atomic pair (no latest race)
+/** CI-only: build the two fleet assets with the manifest pointing at the VERSIONED
+ *  GitHub asset url (atomic manifest+bundle pair). Publishing itself is the workflow's job. */
+async function doCiAssets(url: string): Promise<number> {
+  if (!url.startsWith("https://")) return fail("--ci-assets needs the versioned https bundle url");
   mkdirSync(RELEASES_DIR, { recursive: true });
   if (!(await bundle(RELEASE_BUNDLE))) return fail("build failed");
-  await writeManifest(`https://github.com/${repo}/releases/download/${tag}/ccmux.js`, notes);
+  const notes = changelogSection(VERSION) ?? `ccmux v${VERSION}`;
+  const hex = await writeManifest(url, notes.split("\n")[0] ?? "");
+  console.log(`assets ready: ${RELEASE_BUNDLE} + ${RELEASE_MANIFEST} (sha256 ${hex.slice(0, 12)}…)`);
+  return 0;
+}
 
-  const assets = [RELEASE_BUNDLE, RELEASE_MANIFEST, ...(existsSync(INSTALL_SCRIPT) ? [INSTALL_SCRIPT] : [])];
-  // draft → upload all assets → publish: the release appears atomically, fleet never sees a half-upload
-  if (!(await gh(["release", "create", tag, "--repo", repo, "--title", tag, "--notes", notes || `ccmux ${tag}`, "--draft", ...assets])).ok) {
-    return fail("gh release create (draft) failed");
+/** The section body for `## [X.Y.Z]` in CHANGELOG.md, or null. */
+function changelogSection(version: string): string | null {
+  if (!existsSync(CHANGELOG)) return null;
+  const lines = readFileSync(CHANGELOG, "utf8").split("\n");
+  const out: string[] = [];
+  let found = false;
+  for (const line of lines) {
+    if (line.startsWith(`## [${version}]`)) {
+      found = true;
+      continue;
+    }
+    if (found && line.startsWith("## [")) break;
+    if (found) out.push(line);
   }
-  if (!(await gh(["release", "edit", tag, "--repo", repo, "--draft=false"])).ok) {
-    return fail(`draft uploaded but publish failed — finish: gh release edit ${tag} --draft=false`);
+  return found ? out.join("\n").trim() : null;
+}
+
+/** Move `[Unreleased]` content into a dated `[X.Y.Z]` section (notes line prepended). */
+function rollChangelog(version: string, notes: string, today: string): string | null {
+  const src = readFileSync(CHANGELOG, "utf8");
+  const marker = "## [Unreleased]";
+  const at = src.indexOf(marker);
+  if (at === -1) return null;
+  const afterHeader = at + marker.length;
+  const nextSection = src.indexOf("\n## [", afterHeader);
+  const bodyEnd = nextSection === -1 ? src.length : nextSection;
+  const unreleased = src.slice(afterHeader, bodyEnd).trim();
+  const merged = [notes, unreleased].filter((s) => s !== "").join("\n\n");
+  if (merged === "") return null; // nothing to release — keep the discipline loud
+  const section = `${marker}\n\n## [${version}] — ${today}\n\n${merged}\n`;
+  return `${src.slice(0, at)}${section}${src.slice(bodyEnd === src.length ? bodyEnd : bodyEnd + 1)}`;
+}
+
+/**
+ * The one human entrypoint: `bun run release X.Y.Z "notes"`. Local side is ONLY the git
+ * ceremony — guards, bump, changelog, commit, tag, push. CI builds and publishes off the
+ * tag, so the tag always points at exactly the commit the assets are built from.
+ */
+async function doCeremony(version: string, notes: string): Promise<number> {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) return fail(`bad version '${version}' (expected X.Y.Z)`);
+  if (compareSemver(version, VERSION) <= 0) return fail(`version ${version} must be > current ${VERSION}`);
+
+  const branch = (await git(["rev-parse", "--abbrev-ref", "HEAD"], true)).out;
+  if (branch !== "main" && branch !== "master") return fail(`releases cut from main only (on '${branch}')`);
+  const dirty = (await git(["status", "--porcelain"], true)).out;
+  if (dirty !== "") return fail(`working tree is dirty — commit or stash first:\n${dirty}`);
+  if ((await git(["rev-parse", "--verify", "--quiet", `refs/tags/v${version}`], true)).ok) {
+    return fail(`tag v${version} already exists — releases are immutable`);
   }
-  console.log(`\npublished ${tag} → https://github.com/${repo}/releases/tag/${tag}`);
-  console.log(`  fleet releaseUrl: https://github.com/${repo}/releases/latest/download/release.json`);
-  console.log(`  new client: curl -fsSL https://github.com/${repo}/releases/latest/download/install.sh | bash`);
+
+  console.log("pre-gate: bun run check …");
+  const check = Bun.spawn(["bun", "run", "check"], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+  if ((await check.exited) !== 0) return fail("check failed — nothing released");
+
+  // bump version — targeted textual replace keeps package.json formatting untouched
+  const pkg = readFileSync(PKG_JSON, "utf8");
+  const bumped = pkg.replace(`"version": "${VERSION}"`, `"version": "${version}"`);
+  if (bumped === pkg) return fail(`could not find "version": "${VERSION}" in package.json`);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const rolled = rollChangelog(version, notes, today);
+  if (rolled === null) return fail("CHANGELOG.md: no [Unreleased] content and no notes — nothing to release");
+
+  writeFileSync(PKG_JSON, bumped);
+  writeFileSync(CHANGELOG, rolled);
+
+  const msg = notes === "" ? `${version}` : `${version}: ${notes}`;
+  for (const step of [
+    ["add", "package.json", "CHANGELOG.md"],
+    ["commit", "-m", msg],
+    ["tag", `v${version}`],
+    ["push", "origin", "HEAD", `refs/tags/v${version}`],
+  ]) {
+    if (!(await git(step)).ok) return fail(`git ${step[0]} failed — resolve manually (tree may hold the bump)`);
+  }
+  console.log(`\nv${version} tagged and pushed — CI takes it from here (gate → build → publish).`);
+  console.log("watch: gh run watch   ·   fleet picks the release up via releaseUrl within ~5 min");
   return 0;
 }
 
@@ -111,6 +177,19 @@ function fail(msg: string): number {
 }
 
 const args = Bun.argv.slice(2);
-const mode: Mode = args.includes("--stage") ? "stage" : args.includes("--publish") ? "publish" : "local";
-const notes = args.filter((a) => !a.startsWith("--")).join(" ");
-process.exit(await (mode === "stage" ? doStage() : mode === "publish" ? doPublish(notes) : doLocal(notes)));
+const positional = args.filter((a) => !a.startsWith("--"));
+let code: number;
+if (args.includes("--stage")) {
+  code = await doStage();
+} else if (args.includes("--local")) {
+  code = await doLocal(positional.join(" "));
+} else if (args.includes("--ci-assets")) {
+  const url = positional[0];
+  code = url === undefined ? fail("--ci-assets <bundle-url>") : await doCiAssets(url);
+} else if (positional.length > 0 && positional[0] !== undefined) {
+  code = await doCeremony(positional[0], positional.slice(1).join(" "));
+} else {
+  console.log("usage: bun run release X.Y.Z \"notes\"   (or: --stage · --local · --ci-assets URL)");
+  code = 1;
+}
+process.exit(code);

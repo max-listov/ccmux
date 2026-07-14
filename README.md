@@ -62,17 +62,30 @@ ccmux adopt <uuid> --takeover   # take over the original (kills the live writer)
   supervisor loop that launches `claude` and relaunches it on crash (exponential backoff). So an
   agent crash just comes back; killing a session is the only way to stop it.
 - **Deterministic resume:** every session pins a fixed uuid (`--session-id` first, `--resume`
-  after) → no resume-picker, no forked conversation.
+  after) → no resume-picker, no accidental second conversation.
+- **Follow the fork:** Claude itself does NOT keep a uuid forever — running out of context
+  forks the conversation to a new session id (new jsonl, old tail copied). Each heal pass
+  detects that the conversation moved (the fork inherits the session's `-n` title in its first
+  lines) and re-pins the registry, so previews, transcripts and the next restart follow the
+  live conversation instead of a dead file.
 - **jsonl is the source of truth** for the conversation (transcript, tokens, "where it stopped");
   the pane is scraped only for live status.
 
 ## Updates
 
-Both paths share one safe core: download → **sha256-verify** against the manifest → **preflight**
-(`bun <candidate> version` must load and report the right version) → atomic swap of the prod
-bundle (`.bak` kept) → bounce the daemon. **Sessions survive the bounce** (tmux is independent of
-the daemon); each picks up the new code on its next restart. A boot-guard reverts to `.bak` if a
-bad bundle crash-loops the daemon.
+**Releases are born only from tags, in CI.** `bun run release X.Y.Z "notes"` is the one
+release entrypoint: it refuses a dirty tree, runs the full check, bumps the version, rolls
+the `[Unreleased]` CHANGELOG section, commits, tags `vX.Y.Z` and pushes. The CI workflow
+then re-runs the gate (typecheck + tests + a smoke run of the BUILT bundle), verifies the
+tag matches `package.json`, builds the assets and publishes the GitHub Release atomically —
+so the tag always points at exactly the code the fleet receives, and a red check means the
+release physically cannot happen. There is no local publish path.
+
+Fleet-side, both update paths share one safe core: download → **sha256-verify** against the
+manifest → **preflight** (`bun <candidate> version` must load and report the right version)
+→ atomic swap of the prod bundle (`.bak` kept) → bounce the daemon. **Sessions survive the
+bounce** (tmux is independent of the daemon); each picks up the new code on its next
+restart. A boot-guard reverts to `.bak` if a bad bundle crash-loops the daemon.
 
 ```bash
 ccmux update             # update now to the latest published release
@@ -105,14 +118,17 @@ bundle. See `docs/architecture/` for the TUI, IO/perf model, and dev flow.
 The release tooling lives in the source checkout only — clients ship a single bundle, no repo:
 
 ```bash
-bun run stage            # build → ~/.ccmux/staged/ccmux.js, then `ccmux update` to test locally
-bun run release:publish "notes"   # build → sha256 → GitHub Release vX.Y.Z (3 assets, atomic)
+bun run stage                   # build → ~/.ccmux/staged/ccmux.js, then `ccmux update` to test locally
+bun run release X.Y.Z "notes"   # the ONE release entrypoint: guards → check → bump + CHANGELOG
+                                # → commit → tag vX.Y.Z → push; CI builds, gates and publishes
 ```
 
-A release is a tag `vX.Y.Z` with three assets: the `ccmux.js` bundle, a `release.json` manifest
-(version + sha256 + versioned bundle url), and `install.sh`. Tags are immutable — bump the
-version in `package.json` to cut a new one. The fleet tracks
-`releases/latest/download/release.json`.
+Publishing happens only in CI (`.github/workflows/ci.yml`), off the tag: gate (typecheck +
+tests + a smoke run of the built bundle) → tag==version guard → assets → atomic GitHub
+Release. A release is a tag `vX.Y.Z` with three assets: the `ccmux.js` bundle, a
+`release.json` manifest (version + sha256 + versioned bundle url), and `install.sh`. Tags
+are immutable, and the tag always points at exactly the commit the assets were built from.
+The fleet tracks `releases/latest/download/release.json`.
 
 ## License
 

@@ -90,7 +90,8 @@ function SessionCardImpl({
           <Txt color={provColor(s.agent)}>{s.agent}</Txt>
           <Txt dim>{" · "}</Txt>
           <Txt>{row.model ?? "—"}</Txt>
-          <Txt dim>{` · ${row.contextLabel} · ${row.uptimeText}`}</Txt>
+          {/* uptime ("up 2d") only when there IS a running pane; the activity age is always last */}
+          <Txt dim>{` · ${row.contextLabel}${row.uptimeSeconds !== null ? ` · up ${row.uptimeText}` : ""}${item.activityText ? ` · ${item.activityText}` : ""}`}</Txt>
           <Box flexGrow={1} />
           <Txt color={bc}>{"│"}</Txt>
         </Box>
@@ -205,6 +206,7 @@ export const SessionCard = memo(SessionCardImpl, (a, b) => {
   const y = b.item;
   if (x.external !== y.external || x.row.lastMessage !== y.row.lastMessage) return false;
   if (x.row.model !== y.row.model || x.row.contextLabel !== y.row.contextLabel || x.row.uptimeText !== y.row.uptimeText) return false;
+  if (x.activityText !== y.activityText) return false;
   if (x.row.session.name !== y.row.session.name || x.row.session.dir !== y.row.session.dir || x.row.session.agent !== y.row.session.agent) return false;
   const ps = x.status;
   const qs = y.status;

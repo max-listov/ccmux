@@ -1,6 +1,6 @@
 {
   "name": "ccmux",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Persistent, self-healing Claude Code tmux sessions with deterministic resume — across a fleet of machines.",
   "type": "module",
   "license": "MIT",
@@ -8,6 +8,7 @@
     "ccmux": "./dist/ccmux"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev": "bun run src/cli.ts",
     "tui": "bun run src/cli.ts",
     "tui:hot": "bun --hot src/cli.ts",
@@ -15,7 +16,6 @@
     "check": "tsc --noEmit && bun test",
     "stage": "bun scripts/release.ts --stage",
     "release": "bun scripts/release.ts",
-    "release:publish": "bun scripts/release.ts --publish",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

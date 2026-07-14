@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { addEnvSelf, classifyWriters, parsePs, resumingUuids, type PsProc, type Writer } from "../src/agent/claude/writers.ts";
+import { addEnvSelf, classifyWriters, externalResumingUuids, parsePs, resumingUuids, type PsProc, type Writer } from "../src/agent/claude/writers.ts";
 
 const UUID = "4e117aea-caf4-4502-aab6-6da088b0345b";
 
@@ -42,6 +42,28 @@ test("resumingUuids: every live-process uuid (CLI + desktop + session-id), dedup
   expect(live.size).toBe(2); // /usr/sbin/somethingelse contributes nothing
   // a uuid whose process is GONE is NOT reported — this is the discover liveness gate
   expect(live.has("deadbeef-0000-4000-8000-000000000000")).toBe(false);
+});
+
+test("externalResumingUuids: pane-internal processes never surface as external", () => {
+  const OLD = "aaaaaaaa-0000-4000-8000-000000000001"; // stale argv of the pane TUI after a fork
+  const FORK = "bbbbbbbb-0000-4000-8000-000000000002"; // the fork, hosted by claude's daemon UNDER the pane
+  const OUTSIDE = "cccccccc-0000-4000-8000-000000000003"; // a genuinely external session in a plain terminal
+  // mirrors the REAL 2026-07-14 tree: tmux pane → ccmux _run → claude TUI (--resume OLD)
+  //   → claude daemon run → bg-pty-host (--session-id FORK); plus one unrelated terminal claude
+  const procs: PsProc[] = [
+    { pid: 1300, ppid: 1, command: "tmux pane shell" },
+    { pid: 1301, ppid: 1300, command: "/Users/u/.bun/bin/bun /Users/u/.ccmux/app/ccmux.js _run alpha" },
+    { pid: 1342, ppid: 1301, command: `/Users/u/.local/bin/claude --resume ${OLD} -n prod-alpha` },
+    { pid: 99421, ppid: 1342, command: '/Users/u/.local/bin/claude daemon run --origin transient' },
+    { pid: 99437, ppid: 99421, command: `/Users/u/.local/bin/claude --bg-pty-host /tmp/cc/pty.sock -- x --session-id ${FORK}` },
+    { pid: 500, ppid: 1, command: `/Users/u/.local/bin/claude --resume ${OUTSIDE}` },
+  ];
+  const live = externalResumingUuids(procs);
+  expect(live.has(OLD)).toBe(false); // stale pane argv — not an external session
+  expect(live.has(FORK)).toBe(false); // fork in transit under the pane — follow-the-fork's job
+  expect(live.has(OUTSIDE)).toBe(true); // genuinely external stays discoverable
+  // resumingUuids (the raw liveness signal) still sees all three — only DISCOVERY filters
+  expect(resumingUuids(procs).size).toBe(3);
 });
 
 test("addEnvSelf: marks the env-matched conversation as self (plain-`claude` host, no uuid on cmdline)", () => {

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Full local gate before code reaches the remote — the same suite CI runs
+# (typecheck + tests). A broken push never turns CI red.
+#
+# Wired via `core.hooksPath` (root `prepare` script). Bypass once with `git push --no-verify`.
+set -e
+
+bun run check

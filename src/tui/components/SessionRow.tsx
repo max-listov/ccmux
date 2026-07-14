@@ -16,7 +16,7 @@ export function SessionRow({ item, selected, spin, showStatus = true }: { item: 
       <Txt color={provColor(s.agent)}>{pad(s.agent, 7)}</Txt>
       <Txt>{pad(row.model ?? "—", 10)}</Txt>
       {showStatus ? <Txt color={status.color} bold={status.active}>{pad(status.label, 11)}</Txt> : null}
-      <Txt dim>{`${pad(row.contextLabel, 9)} ${row.uptimeText}`}</Txt>
+      <Txt dim>{`${pad(row.contextLabel, 9)} ${pad(row.uptimeText, 7)} ${item.activityText ?? ""}`}</Txt>
     </Box>
   );
 }

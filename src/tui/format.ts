@@ -80,6 +80,17 @@ export function wrapText(s: string, width: number): string[] {
   return lines;
 }
 
+/** Age of a timestamp for display: "now" (<60s), then "5m ago" / "3h ago" / "2d ago".
+ *  Minute granularity past the first tier — the label changes at most once a minute, so
+ *  memoized cards don't re-render on every poll tick just to repaint the same age. */
+export function fmtAge(ms: number): string {
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
 /** 1_200_000 → "1.2M", 40_000 → "40k", 850 → "850". */
 export function fmtTokens(t: number): string {
   if (t >= 1e6) return `${(t / 1e6).toFixed(1)}M`;
