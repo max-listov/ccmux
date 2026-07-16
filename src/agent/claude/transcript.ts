@@ -97,8 +97,9 @@ export function parse(lines: string[], startLine: number, textLimit: number = DE
       const text0 = textFor(item);
       const text = text0 === "" ? null : clip(text0, textLimit);
       const callId = str(item.id) ?? str(item.tool_use_id);
+      const rawInput = rec(item.input);
       if (kind === "tool_call" && callId) {
-        callInput.set(callId, rec(item.input));
+        callInput.set(callId, rawInput);
         callName.set(callId, str(item.name) ?? "tool");
       }
       if (kind === "tool_result" && callId) {
@@ -119,10 +120,14 @@ export function parse(lines: string[], startLine: number, textLimit: number = DE
         rawType: str(item.type) ?? str(entry.type),
         done: false,
         result: null,
+        // Full tool input (the actual command/args) for the expanded card; result output is
+        // filled in by foldResults once its tool_result arrives.
+        input: kind === "tool_call" && rawInput ? clip(JSON.stringify(rawInput, null, 2), textLimit) : null,
+        resultText: null,
       });
     });
   }
-  return foldResults(out, callInput, callName, results);
+  return foldResults(out, callInput, callName, results, textLimit);
 }
 
 /** Merge each tool_result into the tool_call it answers: set `done`/`status`/`result` on the
@@ -133,6 +138,7 @@ function foldResults(
   callInput: Map<string, Record<string, unknown> | null>,
   callName: Map<string, string>,
   results: Map<string, RawResult>,
+  textLimit: number,
 ): TranscriptMessage[] {
   const folded = new Set<string>(); // call-ids whose result got absorbed
   for (const m of msgs) {
@@ -142,6 +148,7 @@ function foldResults(
     m.done = true;
     m.status = r.isError ? "error" : null;
     m.result = resultSummary(callName.get(m.toolCallId) ?? m.toolName ?? "tool", callInput.get(m.toolCallId) ?? null, r.content, r.isError);
+    m.resultText = clip(r.content, textLimit); // full output for the expanded card
     folded.add(m.toolCallId);
   }
   return msgs.filter((m) => !(m.kind === "tool_result" && m.toolCallId !== null && folded.has(m.toolCallId)));

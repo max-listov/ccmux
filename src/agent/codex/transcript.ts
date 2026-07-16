@@ -128,6 +128,8 @@ export function parse(lines: string[], startLine: number, textLimit: number = DE
       results.set(callId, { content: asText(o?.content ?? payload.output) ?? "", isError: o?.success === false });
     }
     fromPayload(payload, textLimit).forEach((p, key) => {
+      const args =
+        p.kind === "tool_call" && p.toolCallId ? (callArgs.get(p.toolCallId) ?? null) : null;
       out.push({
         id: `${p.toolCallId ?? String(seq)}:${key}`,
         seq,
@@ -142,10 +144,13 @@ export function parse(lines: string[], startLine: number, textLimit: number = DE
         rawType: p.rawType,
         done: false,
         result: null,
+        // Full tool input for the expanded card; result output filled in by foldResults.
+        input: args ? clip(JSON.stringify(args, null, 2), textLimit) : null,
+        resultText: null,
       });
     });
   }
-  return foldResults(out, callArgs, callName, results);
+  return foldResults(out, callArgs, callName, results, textLimit);
 }
 
 interface RawResult {
@@ -170,6 +175,7 @@ function foldResults(
   callArgs: Map<string, Record<string, unknown> | null>,
   callName: Map<string, string>,
   results: Map<string, RawResult>,
+  textLimit: number,
 ): TranscriptMessage[] {
   const folded = new Set<string>();
   for (const m of msgs) {
@@ -179,6 +185,7 @@ function foldResults(
     m.done = true;
     m.status = r.isError ? "error" : null;
     m.result = resultSummary(callName.get(m.toolCallId) ?? m.toolName ?? "tool", callArgs.get(m.toolCallId) ?? null, r.content, r.isError);
+    m.resultText = clip(r.content, textLimit); // full output for the expanded card
     folded.add(m.toolCallId);
   }
   return msgs.filter((m) => !(m.kind === "tool_result" && m.toolCallId !== null && folded.has(m.toolCallId)));

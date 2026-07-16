@@ -60,6 +60,9 @@ test("parse folds tool_result into its tool_call (one card, no stray result)", (
   expect(calls[0]?.status).toBe(null);
   expect(calls[0]?.text).toBe("/foo.ts"); // request = file_path
   expect(calls[0]?.result).toBe("+1 −2"); // outcome = diff
+  expect(calls[0]?.input).toContain('"file_path": "/foo.ts"'); // full input for expanded card
+  expect(calls[0]?.input).toContain('"new_string": "c"');
+  expect(calls[0]?.resultText).toBe("The file /foo.ts has been updated."); // full output
 });
 
 test("parse leaves a tool_call PENDING when its result hasn't arrived yet", () => {
@@ -69,4 +72,6 @@ test("parse leaves a tool_call PENDING when its result hasn't arrived yet", () =
   const call = parse(lines, 1).find((m) => m.kind === "tool_call");
   expect(call?.done).toBe(false);
   expect(call?.result).toBe(null);
+  expect(call?.input).toContain('"command": "sleep 5"'); // input present even while pending
+  expect(call?.resultText).toBe(null); // no output yet
 });

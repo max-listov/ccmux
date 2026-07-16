@@ -133,6 +133,11 @@ export const TranscriptMessageSchema = z.object({
   // (else still running → spinner); `result` = the short outcome ("+12 −3", "248 lines").
   done: z.boolean(),
   result: z.string().nullable(),
+  // Full request/response for the EXPANDED tool card: `input` = the tool_use input as pretty
+  // JSON (the actual command/args), `resultText` = the paired tool_result's full output. Both
+  // clipped to the display text limit; null for non-tool messages / still-running calls.
+  input: z.string().nullable(),
+  resultText: z.string().nullable(),
 });
 
 export const TranscriptJsonSchema = z.object({
