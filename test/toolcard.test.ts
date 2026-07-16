@@ -75,3 +75,13 @@ test("parse leaves a tool_call PENDING when its result hasn't arrived yet", () =
   expect(call?.input).toContain('"command": "sleep 5"'); // input present even while pending
   expect(call?.resultText).toBe(null); // no output yet
 });
+
+test("parse honors endLine — bounded window for backward pagination", () => {
+  const line = (uuid: string, text: string) =>
+    JSON.stringify({ type: "assistant", uuid, timestamp: uuid, message: { role: "assistant", content: [{ type: "text", text }] } });
+  const lines = [line("u1", "one"), line("u2", "two"), line("u3", "three")];
+  const texts = (start: number, endLine?: number) => parse(lines, start, undefined, endLine).map((m) => m.text);
+  expect(texts(1)).toEqual(["one", "two", "three"]); // no bound → through end
+  expect(texts(1, 2)).toEqual(["one", "two"]); // upper bound drops line 3
+  expect(texts(2, 2)).toEqual(["two"]); // a single-line older page [2..2]
+});

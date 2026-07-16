@@ -33,8 +33,9 @@ export interface AgentProvider {
   // continuation) — this reports where the conversation lives NOW, or null if unmoved.
   // Optional: agents whose session ids are actually stable don't implement it.
   detectFork?(s: Session, m: MachineConfig, rcTitle: string, takenUuids: ReadonlySet<string>): string | null;
-  // transcript (raw JSONL → shared contract)
-  parse(lines: string[], startLine: number, textLimit?: number): TranscriptMessage[];
+  // transcript (raw JSONL → shared contract). endLine bounds the upper edge of the window
+  // for backward pagination; omit to parse through the end of the file.
+  parse(lines: string[], startLine: number, textLimit?: number, endLine?: number): TranscriptMessage[];
   usedTokens(lines: string[]): number | null;
   // live pane status
   scanPane(paneText: string): PaneScan;
@@ -86,35 +87,52 @@ export interface TranscriptRead {
   totalLines: number;
   messages: TranscriptMessage[];
   mtimeMs: number | null;
+  // Window bounds for pagination: `firstLine` = absolute line the parse started at,
+  // `reachedStart` = that window reaches the very first line (nothing older to load).
+  firstLine: number;
+  reachedStart: boolean;
 }
 
-/** Read + normalize a transcript with tail / cursor windowing. */
+/**
+ * Read + normalize a transcript window. Three modes:
+ *   default        → last `tail` lines (fresh open).
+ *   { cursor }     → forward: everything after line `cursor` (live tail growth).
+ *   { before, limit } → backward: the `limit` lines ending just before line `before`
+ *                       (infinite-scroll-up; line-based so it's robust to lines that
+ *                       carry no message — blank / folded tool_result).
+ */
 export function readTranscript(
   session: Session,
   m: MachineConfig,
-  opts: { tail: number; cursor?: number },
+  opts: { tail: number; cursor?: number; before?: number; limit?: number },
 ): TranscriptRead {
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path || !existsSync(path)) {
-    return { agent: provider.id, available: false, error: "transcript file not found", path: path ?? "", totalLines: 0, messages: [], mtimeMs: null };
+    return { agent: provider.id, available: false, error: "transcript file not found", path: path ?? "", totalLines: 0, messages: [], mtimeMs: null, firstLine: 1, reachedStart: true };
   }
   const lines = readLines(path);
   const total = lines.length;
-  const start =
-    opts.cursor !== undefined && Number.isFinite(opts.cursor)
-      ? opts.cursor + 1
-      : total > opts.tail
-        ? total - opts.tail + 1
-        : 1;
-  const messages = provider.parse(lines, Math.max(1, start));
+  let start: number;
+  let endLine: number | undefined;
+  if (opts.before !== undefined && Number.isFinite(opts.before)) {
+    const limit = opts.limit !== undefined && Number.isFinite(opts.limit) ? opts.limit : opts.tail;
+    endLine = opts.before - 1;
+    start = opts.before - limit;
+  } else if (opts.cursor !== undefined && Number.isFinite(opts.cursor)) {
+    start = opts.cursor + 1;
+  } else {
+    start = total > opts.tail ? total - opts.tail + 1 : 1;
+  }
+  start = Math.max(1, start);
+  const messages = provider.parse(lines, start, undefined, endLine);
   let mtimeMs: number | null = null;
   try {
     mtimeMs = Math.floor(statSync(path).mtimeMs);
   } catch {
     mtimeMs = null;
   }
-  return { agent: provider.id, available: true, error: null, path, totalLines: total, messages, mtimeMs };
+  return { agent: provider.id, available: true, error: null, path, totalLines: total, messages, mtimeMs, firstLine: start, reachedStart: start <= 1 };
 }
 
 // mtime-keyed caches: skip the tail-read + JSON parse when the transcript hasn't moved, and (just

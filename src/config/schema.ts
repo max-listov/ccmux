@@ -162,6 +162,14 @@ export const TranscriptJsonSchema = z.object({
     byteOffset: z.null(),
     mtimeMs: z.number().nullable(),
   }),
+  // Window bounds of THIS response, for backward pagination (infinite-scroll-up):
+  // `firstLine` = absolute line the window starts at, `lastLine` = total lines,
+  // `reachedStart` = firstLine reaches line 1 (nothing older to load).
+  window: z.object({
+    firstLine: z.number(),
+    lastLine: z.number(),
+    reachedStart: z.boolean(),
+  }),
   messages: z.array(TranscriptMessageSchema),
 });
 
