@@ -6,12 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-07-16
+
+transcript: full tool input + result output for the expanded card
+
 - transcript: `TranscriptMessage` gains `input` (the tool_use input as pretty JSON — the actual
   command/args) and `resultText` (the paired tool_result's full output), both clipped to the
   display text limit. Consumers can now render a real request→response body per tool call
   instead of only the one-line summary. Claude + Codex parsers emit both; null for non-tool
   messages and still-running calls.
-
 ## [0.1.8] — 2026-07-14
 
 release pipeline v2 — CI-only publishing
