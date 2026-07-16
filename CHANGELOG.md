@@ -6,12 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-07-16
+
+transcript backward pagination — infinite-scroll-up
+
 - transcript: backward pagination for infinite-scroll-up. `transcript --json --before <line>
   --limit <n>` returns the `n` lines ending just before `<line>` (line-based, so it's robust to
   lines that carry no message — blank / folded tool_result), and every response now carries
   `window { firstLine, lastLine, reachedStart }` so a consumer can page older until line 1.
   `parse` gained an optional `endLine` upper bound (claude + codex parsers).
-
 ## [0.1.9] — 2026-07-16
 
 transcript: full tool input + result output for the expanded card
