@@ -76,6 +76,24 @@ test("parse leaves a tool_call PENDING when its result hasn't arrived yet", () =
   expect(call?.resultText).toBe(null); // no output yet
 });
 
+test("transcript composition — the counts stats sums (folded result is not a message)", () => {
+  const asst = (uuid: string, blocks: unknown[]) =>
+    JSON.stringify({ type: "assistant", uuid, timestamp: uuid, message: { role: "assistant", content: blocks } });
+  const lines = [
+    JSON.stringify({ type: "user", uuid: "u1", timestamp: "u1", message: { role: "user", content: [{ type: "text", text: "hi" }] } }),
+    asst("a1", [{ type: "thinking", thinking: "hmm" }, { type: "text", text: "reply" }, { type: "tool_use", id: "t1", name: "Bash", input: { command: "ls" } }]),
+    JSON.stringify({ type: "user", uuid: "u2", timestamp: "u2", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } }),
+    asst("a2", [{ type: "text", text: "done" }]),
+  ];
+  const msgs = parse(lines, 1);
+  const count = (pred: (m: (typeof msgs)[number]) => boolean) => msgs.filter(pred).length;
+  expect(count((m) => m.kind === "tool_call")).toBe(1);
+  expect(count((m) => m.kind === "thinking")).toBe(1);
+  expect(count((m) => m.kind === "message" && m.role === "user")).toBe(1);
+  expect(count((m) => m.kind === "message" && m.role === "assistant")).toBe(2); // "reply" + "done"
+  expect(count((m) => m.kind === "tool_result")).toBe(0); // folded, never double-counted
+});
+
 test("parse honors endLine — bounded window for backward pagination", () => {
   const line = (uuid: string, text: string) =>
     JSON.stringify({ type: "assistant", uuid, timestamp: uuid, message: { role: "assistant", content: [{ type: "text", text }] } });

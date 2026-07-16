@@ -6,6 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- transcript: whole-session `stats { messages, user, assistant, toolCalls, thinking }` on every
+  `--json` response, counted over the ENTIRE JSONL (not just the loaded window) and cached by
+  mtime — idle sessions cost nothing, active ones recompute only when they move. Lets a viewer
+  show true session composition that doesn't drift as you paginate.
+
 ## [0.1.10] — 2026-07-16
 
 transcript backward pagination — infinite-scroll-up

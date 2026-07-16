@@ -10,6 +10,7 @@ import type {
   TranscriptRoleSchema,
   TranscriptKindSchema,
   TranscriptMessageSchema,
+  TranscriptStatsSchema,
   TranscriptJsonSchema,
   AgentKindSchema,
 } from "./config/schema.ts";
@@ -26,5 +27,6 @@ export type ListJson = z.infer<typeof ListJsonSchema>;
 export type TranscriptRole = z.infer<typeof TranscriptRoleSchema>;
 export type TranscriptKind = z.infer<typeof TranscriptKindSchema>;
 export type TranscriptMessage = z.infer<typeof TranscriptMessageSchema>;
+export type TranscriptStats = z.infer<typeof TranscriptStatsSchema>;
 export type TranscriptJson = z.infer<typeof TranscriptJsonSchema>;
 export type AgentKind = z.infer<typeof AgentKindSchema>;

@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import type { AgentKind, ContextInfo, MachineConfig, Session, TranscriptMessage } from "../types.ts";
+import type { AgentKind, ContextInfo, MachineConfig, Session, TranscriptMessage, TranscriptStats } from "../types.ts";
 import { claudeProvider } from "./claude/index.ts";
 import { codexProvider } from "./codex/index.ts";
 import { rec, str } from "./normalize.ts";
@@ -79,6 +79,27 @@ export function detect(lines: string[]): AgentKind | null {
 const LAST_MESSAGE_WINDOW = 120;
 const LAST_MESSAGE_TEXT_LIMIT = 280;
 
+const EMPTY_STATS: TranscriptStats = { messages: 0, user: 0, assistant: 0, toolCalls: 0, thinking: 0 };
+const statsCache = new MtimeCache<TranscriptStats>();
+
+/** Whole-session composition, counted by re-parsing the full JSONL. Cached by mtime, so an idle
+ *  session costs nothing and an active one recomputes only when it actually moves. */
+function computeStats(provider: AgentProvider, lines: string[]): TranscriptStats {
+  let user = 0;
+  let assistant = 0;
+  let toolCalls = 0;
+  let thinking = 0;
+  for (const msg of provider.parse(lines, 1)) {
+    if (msg.kind === "tool_call") toolCalls++;
+    else if (msg.kind === "thinking") thinking++;
+    else if (msg.kind === "message") {
+      if (msg.role === "user") user++;
+      else if (msg.role === "assistant") assistant++;
+    }
+  }
+  return { messages: user + assistant, user, assistant, toolCalls, thinking };
+}
+
 export interface TranscriptRead {
   agent: AgentKind;
   available: boolean;
@@ -91,6 +112,8 @@ export interface TranscriptRead {
   // `reachedStart` = that window reaches the very first line (nothing older to load).
   firstLine: number;
   reachedStart: boolean;
+  // Whole-session composition (all lines, cached by mtime) — true totals for the header.
+  stats: TranscriptStats;
 }
 
 /**
@@ -109,7 +132,7 @@ export function readTranscript(
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path || !existsSync(path)) {
-    return { agent: provider.id, available: false, error: "transcript file not found", path: path ?? "", totalLines: 0, messages: [], mtimeMs: null, firstLine: 1, reachedStart: true };
+    return { agent: provider.id, available: false, error: "transcript file not found", path: path ?? "", totalLines: 0, messages: [], mtimeMs: null, firstLine: 1, reachedStart: true, stats: EMPTY_STATS };
   }
   const lines = readLines(path);
   const total = lines.length;
@@ -126,13 +149,14 @@ export function readTranscript(
   }
   start = Math.max(1, start);
   const messages = provider.parse(lines, start, undefined, endLine);
+  const stats = statsCache.get(path, () => computeStats(provider, lines)) ?? EMPTY_STATS;
   let mtimeMs: number | null = null;
   try {
     mtimeMs = Math.floor(statSync(path).mtimeMs);
   } catch {
     mtimeMs = null;
   }
-  return { agent: provider.id, available: true, error: null, path, totalLines: total, messages, mtimeMs, firstLine: start, reachedStart: start <= 1 };
+  return { agent: provider.id, available: true, error: null, path, totalLines: total, messages, mtimeMs, firstLine: start, reachedStart: start <= 1, stats };
 }
 
 // mtime-keyed caches: skip the tail-read + JSON parse when the transcript hasn't moved, and (just

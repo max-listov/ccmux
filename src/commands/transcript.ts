@@ -93,6 +93,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
       lastLine: read.totalLines,
       reachedStart: read.reachedStart,
     },
+    stats: read.stats,
     messages: read.messages,
   };
   console.log(JSON.stringify(out));

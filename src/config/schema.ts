@@ -140,6 +140,16 @@ export const TranscriptMessageSchema = z.object({
   resultText: z.string().nullable(),
 });
 
+// Whole-session composition (counted over the ENTIRE JSONL, not just the loaded window),
+// so the header reads true totals that don't drift as you scroll/paginate.
+export const TranscriptStatsSchema = z.object({
+  messages: z.number(), // conversational turns (user + assistant)
+  user: z.number(),
+  assistant: z.number(),
+  toolCalls: z.number(),
+  thinking: z.number(),
+});
+
 export const TranscriptJsonSchema = z.object({
   version: z.string(),
   generatedAt: z.string(),
@@ -170,6 +180,7 @@ export const TranscriptJsonSchema = z.object({
     lastLine: z.number(),
     reachedStart: z.boolean(),
   }),
+  stats: TranscriptStatsSchema,
   messages: z.array(TranscriptMessageSchema),
 });
 
