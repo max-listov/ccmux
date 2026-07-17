@@ -24,8 +24,9 @@ export interface PaneScan {
  */
 export interface AgentProvider {
   id: AgentKind;
-  // launch
-  buildArgv(s: Session, m: MachineConfig, selfDisplay: string, historyPresent: boolean): string[];
+  // launch — `cli` is how the injected prompt should tell the agent to invoke ccmux
+  // (bare shim when installed, else absolute; see env.promptInvocation)
+  buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[];
   launchEnv(m: MachineConfig, sessionName: string): Record<string, string>;
   // history / resume
   historyFile(s: Session, m: MachineConfig): string | null;

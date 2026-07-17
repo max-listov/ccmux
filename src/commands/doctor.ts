@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { loadMachineConfig } from "../config/machine.ts";
 import { run } from "../util/spawn.ts";
 import { VERSION } from "../util/version.ts";
-import { SELF_DISPLAY, PLATFORM, HOME } from "../env.ts";
+import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME } from "../env.ts";
 
 /** Is the boot daemon registered + running? launchd on macOS, systemd on Linux. */
 async function daemonState(os: NodeJS.Platform, bootLabel: string): Promise<{ manager: string | null; state: string }> {
@@ -35,6 +35,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         generatedAt: new Date().toISOString(),
         os: PLATFORM,
         self: SELF_DISPLAY,
+        promptInvocation: promptInvocation(),
         configFile,
         sessionsFile: m.sessionsFile,
         rcPrefix: m.rcPrefix,
@@ -49,6 +50,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
 
   console.log(`ccmux ${VERSION}`);
   console.log(`self:       ${SELF_DISPLAY}`);
+  console.log(`agent cli:  ${promptInvocation()}`);
   console.log(`config:     ${configFile}`);
   console.log(`sessions:   ${m.sessionsFile}`);
   console.log(`rc prefix:  ${m.rcPrefix}`);

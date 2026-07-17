@@ -14,7 +14,7 @@ import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath
 export function buildArgv(
   s: Session,
   m: MachineConfig,
-  self: string,
+  cli: string,
   historyPresent: boolean,
 ): string[] {
   const resume = historyPresent ? ["--resume", s.uuid] : ["--session-id", s.uuid];
@@ -28,7 +28,7 @@ export function buildArgv(
     // per-session override wins over the machine default; undefined → machine default.
     resolvePermissionMode(s.permissionMode ?? m.permissionMode),
     "--append-system-prompt",
-    buildPrompt(s.name, self),
+    buildPrompt(s.name, cli),
     ...flags,
     ...m.extraFlags,
   ];

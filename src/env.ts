@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, basename } from "node:path";
@@ -27,8 +28,33 @@ function resolveSelfArgv(): string[] {
 }
 
 export const SELF_ARGV: readonly string[] = resolveSelfArgv();
-/** Human/shell-readable form for the injected prompt text. */
+/** Absolute, always-spawnable invocation of THIS tool (bun+bundle / compiled binary). Correct
+ *  for machine re-execs — the `_run` supervisor, the boot unit, the detached restart-worker —
+ *  which must not depend on any PATH. NOT what we teach an in-session agent (see below). */
 export const SELF_DISPLAY: string = SELF_ARGV.join(" ");
+
+/** Fixed install location of the `ccmux` PATH shim (`scripts/install.sh` → `~/.local/bin/ccmux`,
+ *  a 2-line `exec bun <bundle>`). Kept in sync with that installer by convention. */
+const SHIM_PATH = join(HOME, ".local", "bin", "ccmux");
+
+/** Decide which form to teach: bare `ccmux` when the shim is installed, else the absolute
+ *  invocation. Pure — separated from the filesystem check so it's unit-testable. */
+export function pickInvocation(shimInstalled: boolean, absolute: string): string {
+  return shimInstalled ? "ccmux" : absolute;
+}
+
+/**
+ * The ccmux invocation to teach an in-session agent (injected prompt). Prefer the bare
+ * `ccmux` shim so fleet agents call it cleanly, instead of copying an absolute path prefix
+ * into every command — the crutch `workflow.md §13` forbids. The shim's presence is checked
+ * by its FIXED install path, NOT the daemon's own PATH: the prompt is built in the daemon
+ * process (thin launchd/systemd PATH that may not see the shim), while the child session runs
+ * with an aligned login PATH that does. Falls back to the absolute invocation only when the
+ * shim isn't installed (fresh machine before bootstrap, or the bundle was run directly).
+ */
+export function promptInvocation(): string {
+  return pickInvocation(existsSync(SHIM_PATH), SELF_DISPLAY);
+}
 
 /** Running from live source (`ccmux-dev` → bun src/cli.ts) vs the frozen prod bundle/binary.
  *  Source modules are `.ts`; the prod bundle is a single `.js` (compiled binary is neither).

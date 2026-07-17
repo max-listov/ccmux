@@ -12,7 +12,7 @@ import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath
  * Codex yet — Codex has no `--append-system-prompt`. Reading (transcript/pane/locate)
  * is already 1:1; this is the one place that needs runtime verification.
  */
-export function buildArgv(s: Session, m: MachineConfig, _self: string, historyPresent: boolean): string[] {
+export function buildArgv(s: Session, m: MachineConfig, _cli: string, historyPresent: boolean): string[] {
   const bin = m.codexBin;
   if (!bin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
   const resume = historyPresent ? ["resume", s.uuid] : [];

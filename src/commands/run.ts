@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { loadMachineConfig } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { providerFor } from "../agent/index.ts";
-import { SELF_DISPLAY } from "../env.ts";
+import { promptInvocation } from "../env.ts";
 import { log } from "../util/log.ts";
 
 const MIN_BACKOFF_MS = 2_000;
@@ -43,7 +43,10 @@ export async function cmdRun(name: string | undefined): Promise<number> {
   for (;;) {
     const hf = provider.historyFile(s, m);
     const present = hf !== null && existsSync(hf); // re-checked every loop
-    const argv = provider.buildArgv(s, m, SELF_DISPLAY, present);
+    // The invocation TAUGHT to the agent (bare `ccmux` shim when installed) — NOT the
+    // absolute self re-exec; those are different concerns (see env.ts). Re-evaluated each
+    // loop so a shim installed after boot is picked up on the next relaunch.
+    const argv = provider.buildArgv(s, m, promptInvocation(), present);
     if (forkNext) {
       if (provider.id === "claude") argv.push("--fork-session"); // wedge recovery (Claude only)
       forkNext = false;
