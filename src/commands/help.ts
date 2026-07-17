@@ -11,6 +11,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "start", args: "<name>", desc: "start a registered session" },
   { verb: "stop", args: "<name> [--force]", desc: "kill it (daemon re-heals unless archived)" },
   { verb: "restart", args: "<name>", desc: "bounce it (survives killing the caller)" },
+  { verb: "mode", args: "<name> <mode|default>", desc: "per-session permission-mode override (default = inherit machine); restart to apply", example: "ccmux mode cc-api auto" },
   { verb: "send", args: "<name> <keys...>", desc: "type into a session (text or /slash)", example: "ccmux send cc-api '/compact'" },
   { verb: "logs", args: "<name> [lines]", desc: "print a session's pane buffer" },
   { verb: "transcript", args: "<name> --json [--tail N] [--cursor LINE]", desc: "conversation history as JSON (incremental reads via --cursor)", example: "ccmux transcript cc-api --json --tail 50" },

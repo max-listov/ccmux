@@ -5,6 +5,17 @@ import { z } from "zod";
 // no `as` — every type below is `z.infer` of one of these schemas (see types.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Any Claude Code permission mode (matches `claude --permission-mode` choices).
+ *  Shared by the machine default and the per-session override so the two can't drift. */
+export const PermissionModeSchema = z.enum([
+  "auto",
+  "manual",
+  "plan",
+  "acceptEdits",
+  "dontAsk",
+  "bypassPermissions",
+]);
+
 /**
  * One managed Claude conversation.
  *
@@ -38,6 +49,12 @@ export const SessionSchema = z.object({
   // locator, and (later) the launch binary. Defaulted so every existing session row
   // stays valid and reads as "claude" with no migration.
   agent: z.enum(["claude", "codex"]).default("claude"),
+  // Per-session permission-mode OVERRIDE. Undefined → inherit the machine default
+  // (MachineConfig.permissionMode). Set it to gate ONE session differently from the box
+  // default — e.g. the box is bypassPermissions but a client-prod session stays "auto".
+  // The root-guard still applies at launch (buildArgv): escalated modes downgrade to
+  // "auto" under a root daemon, whether they came from the machine or the session.
+  permissionMode: PermissionModeSchema.optional(),
 });
 
 /** Agent CLI backing a session — the registry key for transcript adapters. */
@@ -72,12 +89,11 @@ export const MachineConfigSchema = z.object({
   sessionsFile: z.string().startsWith("/"),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.
   ensureInterval: z.number().int().positive().default(30),
-  // Any Claude Code permission mode (matches `claude --permission-mode` choices).
-  // Escalated modes (bypassPermissions/dontAsk) are honored ONLY for non-root daemons:
-  // under root, launch.ts downgrades them to "auto" (servers stay guarded — see buildArgv).
-  permissionMode: z
-    .enum(["auto", "manual", "plan", "acceptEdits", "dontAsk", "bypassPermissions"])
-    .default("auto"),
+  // Machine-wide DEFAULT permission mode (matches `claude --permission-mode` choices).
+  // A session can override it per-session (Session.permissionMode). Escalated modes
+  // (bypassPermissions/dontAsk) are honored ONLY for non-root daemons: under root,
+  // launch.ts downgrades them to "auto" (servers stay guarded — see buildArgv).
+  permissionMode: PermissionModeSchema.default("auto"),
   // Boot-unit label so install + update-bounce can target it.
   // launchd: "com.ccmux.daemon"; systemd: "ccmux.service".
   bootLabel: z.string().min(1),

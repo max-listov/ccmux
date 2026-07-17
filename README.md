@@ -35,6 +35,7 @@ ccmux list                 # managed sessions + live status/uptime
 ccmux new cc-api ~/code/api   # create + start a session (pins a fresh uuid)
 ccmux send cc-api '/compact'  # type into a session (text or a /slash command)
 ccmux restart cc-api       # bounce it (survives killing the caller)
+ccmux mode cc-api auto     # per-session permission-mode override (see Permissions)
 ccmux stop|start|rm cc-api # lifecycle (rm keeps the jsonl history)
 ccmux transcript cc-api --json --tail 50   # conversation history as JSON
 ccmux doctor               # health check: bins, config, daemon
@@ -70,6 +71,25 @@ ccmux adopt <uuid> --takeover   # take over the original (kills the live writer)
   live conversation instead of a dead file.
 - **jsonl is the source of truth** for the conversation (transcript, tokens, "where it stopped");
   the pane is scraped only for live status.
+
+## Permissions
+
+Two levels — a machine default plus an optional per-session override:
+
+- **Machine default** — `permissionMode` in the machine config (`~/.config/ccmux/config` /
+  `machine.json`). Applies to every session the daemon launches. A personal box typically runs
+  `bypassPermissions`; a shared/server box stays `auto`.
+- **Per-session override** — `ccmux mode <name> <mode|default>` pins one session to a different
+  mode than the box (e.g. box is `bypassPermissions`, but a client-prod session stays `auto`).
+  `default` clears the override → the session inherits the machine default again. The mode is a
+  launch-time flag, so **`ccmux restart <name>` applies it** (a running session keeps whatever it
+  started with — you can't switch into `bypassPermissions` at runtime).
+- **Root guard (servers):** under a root daemon, escalated modes (`bypassPermissions`/`dontAsk`)
+  are downgraded to `auto` at launch — whether they came from the machine default or a session
+  override — so a config edit can't hand a server session host-wide power.
+
+Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`, `dontAsk`,
+`bypassPermissions`.
 
 ## Updates
 

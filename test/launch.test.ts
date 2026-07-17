@@ -27,6 +27,16 @@ test("non-root daemon honors the configured permission mode (incl. escalated)", 
   }
 });
 
+test("per-session permissionMode overrides the machine default; undefined inherits it", () => {
+  const m = makeMachine({ permissionMode: "bypassPermissions" });
+  // override → the session's mode wins
+  const over = buildArgv(makeSession({ permissionMode: "auto" }), m, "SELF", true);
+  expect(over[over.indexOf("--permission-mode") + 1]).toBe("auto");
+  // no override → machine default
+  const inherit = buildArgv(makeSession(), m, "SELF", true);
+  expect(inherit[inherit.indexOf("--permission-mode") + 1]).toBe("bypassPermissions");
+});
+
 test("weird flags survive verbatim — the [1m] glob bug class is structurally gone", () => {
   const s = makeSession({ flags: ["--model", "claude-opus-4-8[1m]"] });
   const argv = buildArgv(s, makeMachine(), "SELF", true);

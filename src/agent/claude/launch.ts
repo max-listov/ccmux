@@ -25,7 +25,8 @@ export function buildArgv(
     "-n",
     rcName(m, s.name),
     "--permission-mode",
-    resolvePermissionMode(m.permissionMode),
+    // per-session override wins over the machine default; undefined → machine default.
+    resolvePermissionMode(s.permissionMode ?? m.permissionMode),
     "--append-system-prompt",
     buildPrompt(s.name, self),
     ...flags,

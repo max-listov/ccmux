@@ -6,6 +6,18 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+per-session permission-mode override
+
+- Sessions get an optional `permissionMode` that overrides the machine-wide default
+  (`MachineConfig.permissionMode`). Undefined → inherit the machine default, so existing
+  sessions and configs are unchanged. Lets one box run bypass by default while a specific
+  session (client-prod, untrusted-input) stays gated at `auto`/`plan`.
+- New `ccmux mode <name> <mode|default>` sets/clears the override (`default` = inherit the
+  machine default). It's a launch-time flag → `ccmux restart <name>` applies it.
+- The root-guard is unchanged and still applies to the resolved mode: under a root daemon,
+  escalated modes (`bypassPermissions`/`dontAsk`) still downgrade to `auto`, whether they came
+  from the machine or the session.
+
 ## [0.1.11] — 2026-07-16
 
 transcript whole-session composition stats

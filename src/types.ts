@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type {
   SessionSchema,
+  PermissionModeSchema,
   MachineConfigSchema,
   ReleaseSchema,
   SessionStateSchema,
@@ -18,6 +19,7 @@ import type {
 // Single import surface for the inferred types. No bare interfaces anywhere — these
 // are the only shapes, and they come straight from the Zod schemas.
 export type Session = z.infer<typeof SessionSchema>;
+export type PermissionMode = z.infer<typeof PermissionModeSchema>;
 export type MachineConfig = z.infer<typeof MachineConfigSchema>;
 export type Release = z.infer<typeof ReleaseSchema>;
 export type SessionState = z.infer<typeof SessionStateSchema>;

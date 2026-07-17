@@ -5,6 +5,7 @@ import { cmdNew } from "./commands/new.ts";
 import { cmdRm } from "./commands/rm.ts";
 import { cmdStart, cmdStop, cmdRestart, cmdRestartWorker } from "./commands/lifecycle.ts";
 import { cmdSend } from "./commands/send.ts";
+import { cmdMode } from "./commands/mode.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdTranscript } from "./commands/transcript.ts";
 import { cmdDoctor } from "./commands/doctor.ts";
@@ -68,6 +69,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     }
     case "restart":
       return cmdRestart(rest);
+    case "mode":
+      return cmdMode(rest[0], rest[1]);
     case "send":
       return cmdSend(rest[0], rest.slice(1));
     case "logs":

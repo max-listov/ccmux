@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { SessionSchema } from "./schema.ts";
-import type { Session, MachineConfig } from "../types.ts";
+import type { Session, MachineConfig, PermissionMode } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
 
 const HEADER = "# managed Claude sessions — ccmux owns this file (JSONL)";
@@ -49,6 +49,24 @@ export async function updateSessionUuid(m: MachineConfig, name: string, uuid: st
   const target = findSession(current, name);
   if (!target) return false;
   await writeSessions(m, current.map((s) => (s.name === name ? { ...s, uuid } : s)));
+  return true;
+}
+
+/** Set (or clear) a session's per-session permission-mode override. `mode === undefined`
+ *  clears it → the session falls back to the machine default. Returns false if the name
+ *  wasn't present. Takes effect on the next (re)start — the mode is a launch-time flag. */
+export async function setSessionPermissionMode(
+  m: MachineConfig,
+  name: string,
+  mode: PermissionMode | undefined,
+): Promise<boolean> {
+  const current = loadSessions(m);
+  if (!findSession(current, name)) return false;
+  // mode:undefined omits the key on JSON.stringify → the override is truly cleared.
+  await writeSessions(
+    m,
+    current.map((s) => (s.name === name ? { ...s, permissionMode: mode } : s)),
+  );
   return true;
 }
 
