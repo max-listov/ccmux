@@ -6,11 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-07-17
+
+injected prompt teaches bare ccmux shim, not the absolute bun path
+
 - The sibling-management prompt injected into each session now teaches the bare `ccmux`
   command (the PATH shim) instead of an absolute `bun …/ccmux.js` path, so fleet agents
   call it cleanly. Falls back to the absolute invocation only when the shim isn't
   installed. The machine re-execs (supervisor, boot unit, restart-worker) stay absolute.
-
 ## [0.1.12] — 2026-07-17
 
 per-session permission-mode override
