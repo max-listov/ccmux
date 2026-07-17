@@ -6,6 +6,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-07-17
+
 per-session permission-mode override
 
 - Sessions get an optional `permissionMode` that overrides the machine-wide default
@@ -17,7 +19,6 @@ per-session permission-mode override
 - The root-guard is unchanged and still applies to the resolved mode: under a root daemon,
   escalated modes (`bypassPermissions`/`dontAsk`) still downgrade to `auto`, whether they came
   from the machine or the session.
-
 ## [0.1.11] — 2026-07-16
 
 transcript whole-session composition stats
