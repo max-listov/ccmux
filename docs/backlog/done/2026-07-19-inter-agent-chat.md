@@ -2,9 +2,10 @@
 title: ccmux inter-agent chat — межагентский чат с доставкой-без-перебивания
 description: Любая ccmux-сессия шлёт сообщение любой другой по имени (флот-wide, кросс-машинно); per-session вкл/выкл; лента + прочтение/непрочитанное + чёткий лог from→to + рендер; главный инвариант — сообщение НИКОГДА не перебивает работающего агента (очередь до idle)
 type: task
-status: inbox
+status: done
 created: 2026-07-19
 updated: 2026-07-19
+completed: 2026-07-19 15:06 +08:00
 related: docs/backlog/inbox/2026-06-09-ccmux-live-web-mobile-client.md
 ---
 
@@ -372,3 +373,26 @@ telegram: {
    демон-доставка с анти-рейсом → тег → само-дисциплина (Stop-хук/рубеж) → рендер.
 4. Тест на 2 сессиях по сценариям выше.
 5. Доки: `docs/architecture/inter-agent-chat.md` (модель, потоки, гарантия не-перебивания, команды).
+
+## Что сделано (проверено вживую e2e в изолированном dev-инстансе 2026-07-19)
+- **Модель/стор** (`src/chat/store.ts`, `src/config/schema.ts`, `src/types.ts`): append-only лента
+  `~/.ccmux-chat.jsonl` (O_APPEND, атомарно), курсоры `~/.ccmux-chat-cursors.json` (read/delivered
+  per-session + telegram broadcast), `chatEnabled` на сессии (default OFF). Reserved: `owner`
+  (человек, TG-only), `cli` (оператор шелла).
+- **Команды** (`src/commands/{msg,inbox,chat}.ts`, `cli.ts`, `help.ts`): `msg <to|owner>` (**отправитель
+  автоматический, `--from` НЕТ** — агент шлёт как себя, шелл как `cli`), `inbox`, `chat log|on|off`.
+- **Push-доставка** (`src/chat/deliver.ts`, `src/commands/daemon.ts`): демон 3с-петлёй доставляет в
+  пейн получателя `[chat from X]`; **menu-safe гейт** (`chatDeliverable`/`atInteractiveMenu` — не
+  впрыскиваем на `❯ N.` меню, Пробник B), working→CC квинит (Пробник A), аттач человека → ждём;
+  in-order per-recipient, без double-push; loop/rate-guard. `owner` в пейн не доставляется.
+- **Фрейминг** (`src/agent/managePrompt.ts`): агент знает `[chat from peer/owner/cli]`, применяет
+  суждение (не слепо) — dev-b вживую отказался спамить owner.
+- **Telegram-мост, ОДНОСТОРОННИЙ** (`src/chat/telegram.ts`): broadcast-сток, `telegram` в machine.json
+  (botToken/chatId/topicId), fail-soft, HTML-болд хедер + escape тела, таймаут, классификация ошибок.
+- **Транспорт**: bracketed-paste для multiline (`tmux.ts pasteText`).
+- **Тесты**: `test/chat*.test.ts` (стор/доставка/telegram) — 120/0 зелено.
+- **НЕ делалось (осознанно):** Stage 3b — обратка TG→chat (владелец отменил, Telegram только
+  исходящий); Stage 4 — кросс-машина (отдельная задача); Notification-хук как менюдетектор
+  (исследовано — регресс, скрейп-гейт `❯ N.` правильнее); own-frontend (будущее, live-client-таска).
+- **Ссылки на код:** `src/chat/{store,deliver,telegram}.ts`, `src/commands/{msg,inbox,chat}.ts`,
+  `src/agent/{managePrompt.ts,claude/pane.ts}`, `src/commands/daemon.ts`, `src/config/schema.ts`.
