@@ -70,6 +70,15 @@ export async function setSessionPermissionMode(
   return true;
 }
 
+/** Toggle a session's inter-agent chat opt-in. Returns false if the name wasn't present.
+ *  Effective immediately (the store re-reads sessions on every send/deliver) — not a launch flag. */
+export async function setSessionChatEnabled(m: MachineConfig, name: string, enabled: boolean): Promise<boolean> {
+  const current = loadSessions(m);
+  if (!findSession(current, name)) return false;
+  await writeSessions(m, current.map((s) => (s.name === name ? { ...s, chatEnabled: enabled } : s)));
+  return true;
+}
+
 /** Returns false if the name wasn't present. Never touches the jsonl history. */
 export async function removeSession(m: MachineConfig, name: string): Promise<boolean> {
   const current = loadSessions(m);

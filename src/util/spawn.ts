@@ -21,6 +21,22 @@ export async function run(argv: string[], opts?: { cwd?: string }): Promise<RunR
   return { code, stdout, stderr };
 }
 
+/** Like `run`, but pipes `input` to the child's stdin — for `tmux load-buffer -` (payload via
+ *  stdin avoids argv length limits and any escaping). */
+export async function runWithInput(argv: string[], input: string): Promise<RunResult> {
+  const proc = Bun.spawn(argv, {
+    stdin: new TextEncoder().encode(input),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const code = await proc.exited;
+  return { code, stdout, stderr };
+}
+
 /**
  * Fire-and-forget a fully detached child in its OWN process group.
  *

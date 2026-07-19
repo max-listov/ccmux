@@ -15,6 +15,9 @@ import { cmdRun } from "./commands/run.ts";
 import { cmdInstall, cmdUninstall } from "./commands/install.ts";
 import { cmdUpdate } from "./commands/update.ts";
 import { cmdAdopt } from "./commands/adopt.ts";
+import { cmdMsg } from "./commands/msg.ts";
+import { cmdInbox } from "./commands/inbox.ts";
+import { cmdChat } from "./commands/chat.ts";
 import { cmdHelp, COMMANDS } from "./commands/help.ts";
 
 /** Lazy-load the TUI (ink/react) only when actually launching it — keeps every plain
@@ -73,6 +76,12 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdMode(rest[0], rest[1]);
     case "send":
       return cmdSend(rest[0], rest.slice(1));
+    case "msg":
+      return cmdMsg(rest);
+    case "inbox":
+      return cmdInbox(rest);
+    case "chat":
+      return cmdChat(rest);
     case "logs":
       return cmdLogs(rest[0], rest.slice(1));
     case "transcript":

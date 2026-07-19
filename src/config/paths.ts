@@ -4,7 +4,9 @@ import { HOME } from "../env.ts";
 // `ccmux` command run APP_BUNDLE; `ccmux update` atomically swaps it. A local dev build
 // lands in STAGED_BUNDLE and `ccmux update` prefers it over a remote release (the
 // "test an update locally before publishing" flow).
-export const CCMUX_HOME = `${HOME}/.ccmux`;
+// `CCMUX_HOME` env override lets an ISOLATED instance (dev) keep its own app/staged/boot-state/log
+// under e.g. `~/.ccmux-dev`, never sharing the boot-guard counter or log with prod. Default = prod.
+export const CCMUX_HOME = process.env.CCMUX_HOME ?? `${HOME}/.ccmux`;
 export const APP_BUNDLE = `${CCMUX_HOME}/app/ccmux.js`;
 export const STAGED_BUNDLE = `${CCMUX_HOME}/staged/ccmux.js`;
 // A published release (bundle + manifest) the daemon pulls via a file:// or http releaseUrl

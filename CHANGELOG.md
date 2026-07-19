@@ -6,6 +6,35 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Isolated dev instance: run a full second ccmux (daemon + sessions + chat) beside prod on one
+  machine, fully isolated — a `tmuxSocket` config scopes every tmux call to its own server (`-L`),
+  `CCMUX_HOME` overridable for its own app/log/boot-state, `remoteControl:false` keeps its sessions
+  out of the claude.ai app. tmux doesn't propagate env into panes, so `new-session -e` pins the
+  instance's `CCMUX_HOME/CONFIG/SESSIONS`, and the injected prompt teaches the instance's own cli
+  (not the prod shim) when `CCMUX_HOME` is non-default. Scaffold + teardown via `scripts/dev-instance.sh`.
+- Inter-agent chat, sender identity: the sender is automatic and unspoofable — an agent sends as its
+  own session, a command-line invocation as `cli`; there is no `--from`. `owner` is a reserved
+  recipient (the human — Telegram-only, no pane); the injected prompt frames `[chat from owner|cli]`
+  as the human side (user-level trust) vs `[chat from <peer>]` as a fellow agent.
+- Dev daemon hot-reload: `bun daemon:watch` (= `bun --watch src/cli.ts daemon`) restarts the
+  process on any source change — fresh timers each time, unlike `--hot`, which re-runs the entry
+  WITHOUT tearing down the old `ensure`/chat loops (they'd accumulate; proven with a `Bun.sleep`
+  probe). The boot-loop guard is now skipped when running from live source (`IS_DEV`): it protects
+  the auto-updated prod bundle (revert to `.bak`), has no bundle to revert in dev, and would only
+  churn false "boot-loop" errors under rapid `--watch` restarts.
+- Telegram chat mirror: the routing header (`from → to`, or `📩 for you — from …` for a message to
+  the human) is now bold (HTML parse_mode) so who-is-talking-to-whom reads at a glance; the message
+  body is HTML-escaped so `<`/`>`/`&` render verbatim and never trip a 400 that would drop the message.
+- Inter-agent chat: opt-in messaging between managed sessions. `ccmux msg <to> "..."` /
+  `ccmux inbox` / `ccmux chat log|on|off`, with a per-session `chatEnabled` flag (default off).
+  The daemon push-delivers into the recipient's pane on a fast cadence, tagged `[chat from X]`
+  (framed to the agent as a peer, not the user), gated so it never injects at a selection menu
+  (would auto-pick an option — proven live) or while a human is attached; a busy recipient just
+  gets it queued at its next turn boundary. In-order per recipient, no double-push across daemon
+  bounces; loop/rate guards cap a runaway A→B→A. An append-only ledger (`~/.ccmux-chat.jsonl`) is
+  the source of truth; multi-line bodies deliver via bracketed paste. Optional one-way Telegram
+  mirror (`telegram` in machine.json → group/DM/topic; fail-soft, outbound only).
+
 ## [0.1.14] — 2026-07-19
 
 auto-answer Claude's resume-from-summary picker so daemon-healed reboots don't strand large sessions at the menu

@@ -1,5 +1,7 @@
 import { render } from "ink";
 import { loadMachineConfig } from "../config/machine.ts";
+import type { MachineConfig } from "../types.ts";
+import { tmuxArgv } from "../tmux/tmux.ts";
 import { App } from "./App.tsx";
 import type { Intent } from "./App.tsx";
 import { createSession, waitReady } from "./actions.ts";
@@ -37,10 +39,10 @@ function cleanTerminalForAttach(): void {
  *  reproduces exactly that: it freezes our event loop until tmux exits, so the tmux client is
  *  the sole owner of the terminal. Inherited fd 0/1/2 (not /dev/tty — VS Code's pty has no
  *  usable controlling terminal, so `open /dev/tty` fails there). */
-function attachTmux(tmuxBin: string, name: string): void {
+function attachTmux(m: MachineConfig, name: string): void {
   const args = insideTmux() ? ["switch-client", "-t", `=${name}`] : ["attach", "-t", `=${name}`];
   log.info({ msg: "attach", name, mode: args[0], tty: process.stdout.isTTY, term: process.env.TERM });
-  const r = Bun.spawnSync([tmuxBin, ...args], { stdin: "inherit", stdout: "inherit", stderr: "pipe" });
+  const r = Bun.spawnSync(tmuxArgv(m, ...args), { stdin: "inherit", stdout: "inherit", stderr: "pipe" });
   const err = r.stderr ? r.stderr.toString().trim() : "";
   log.info({ msg: "attach exited", name, code: r.exitCode, stderr: err.slice(0, 300) });
 }
@@ -116,7 +118,7 @@ export async function runTui(fullscreen: boolean): Promise<number> {
         await waitReady(m, created); // attach to a drawn agent, not a half-booted blank pane
         log.info({ msg: "waitReady done", name: created.name, ms: Date.now() - t0 });
       }
-      attachTmux(m.tmuxBin, intent.name);
+      attachTmux(m, intent.name);
       if (insideTmux()) return 0; // switch-client doesn't block — no menu to come back to
     } catch (err) {
       app?.unmount();

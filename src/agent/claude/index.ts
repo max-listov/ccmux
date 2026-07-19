@@ -3,7 +3,7 @@ import { buildArgv, launchEnv } from "./launch.ts";
 import { detectFork } from "./fork.ts";
 import { historyFile } from "./resume.ts";
 import { parse, usedTokens } from "./transcript.ts";
-import { scanPane, resumePickerAnswer } from "./pane.ts";
+import { scanPane, resumePickerAnswer, chatDeliverable } from "./pane.ts";
 
 /** Claude Code provider — everything agent-specific for `agent: "claude"`. */
 export const claudeProvider: AgentProvider = {
@@ -16,4 +16,5 @@ export const claudeProvider: AgentProvider = {
   usedTokens,
   scanPane,
   resumePickerAnswer,
+  chatDeliverable,
 };

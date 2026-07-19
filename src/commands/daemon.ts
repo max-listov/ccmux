@@ -2,8 +2,31 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { APP_BUNDLE, BOOT_ATTEMPTS } from "../config/paths.ts";
 import { cmdEnsure } from "./ensure.ts";
 import { autoUpdateOnce } from "./update.ts";
+import { deliverPending } from "../chat/deliver.ts";
+import { mirrorPending } from "../chat/telegram.ts";
 import { bootGuardStart, clearBootGuard } from "../util/bootGuard.ts";
+import { IS_DEV } from "../env.ts";
 import { log, setLogLevel } from "../util/log.ts";
+
+// Chat delivery runs on its OWN fast cadence, not the 30s heal tick — a message should reach an
+// idle peer within a few seconds, not up to half a minute. Cheap when idle (only recipients with
+// a pending message ever scrape a pane), so a tight interval costs nothing on a quiet fleet.
+const CHAT_DELIVER_INTERVAL_MS = 3_000;
+
+/** Independent push-delivery loop (fire-and-forget from the daemon). Bounces with the daemon on
+ *  auto-update; one bad pass never stops it. */
+async function chatDeliveryLoop(): Promise<void> {
+  for (;;) {
+    try {
+      const m = loadMachineConfig();
+      await deliverPending(m); // push to peer panes (menu-safe)
+      await mirrorPending(m); // mirror to Telegram (fail-soft; no-op when unconfigured)
+    } catch (e) {
+      log.warn({ msg: "chat delivery pass failed", err: String(e) });
+    }
+    await Bun.sleep(CHAT_DELIVER_INTERVAL_MS);
+  }
+}
 
 /**
  * The session-level supervisor. A plain foreground loop that creates tmux sessions
@@ -15,8 +38,10 @@ export async function cmdDaemon(): Promise<number> {
 
   // Boot-loop guard: a crash-looping (freshly auto-updated) bundle reverts itself to .bak
   // after MAX_ATTEMPTS starts without one good ensure pass. Exit non-zero → boot unit
-  // relaunches onto the restored bundle.
-  if (bootGuardStart(BOOT_ATTEMPTS, APP_BUNDLE) === "revert") return 1;
+  // relaunches onto the restored bundle. It guards the PROD BUNDLE only: from live source
+  // (dev, esp. under `bun --watch`) there is no bundle/.bak to revert, and rapid edit-driven
+  // restarts would only churn the counter into false "boot-loop" errors — so skip it in dev.
+  if (!IS_DEV && bootGuardStart(BOOT_ATTEMPTS, APP_BUNDLE) === "revert") return 1;
 
   // P1-7: validate config at startup. On failure exit 0 + loud log so launchd/systemd
   // don't thrash-respawn a misconfigured box — it stays down loudly-once.
@@ -31,12 +56,15 @@ export async function cmdDaemon(): Promise<number> {
     return 0;
   }
 
+  // Start the chat push-delivery loop alongside the heal loop (independent fast cadence).
+  void chatDeliveryLoop();
+
   let lastUpdateCheck = 0;
   let guardCleared = false;
   for (;;) {
     try {
       await cmdEnsure();
-      if (!guardCleared) {
+      if (!IS_DEV && !guardCleared) {
         clearBootGuard(BOOT_ATTEMPTS); // first good pass — this bundle works
         guardCleared = true;
       }
