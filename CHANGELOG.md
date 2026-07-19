@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.15] — 2026-07-19
+
+inter-agent chat (menu-safe pane delivery + one-way Telegram mirror) + isolated dev instance
+
 - Isolated dev instance: run a full second ccmux (daemon + sessions + chat) beside prod on one
   machine, fully isolated — a `tmuxSocket` config scopes every tmux call to its own server (`-L`),
   `CCMUX_HOME` overridable for its own app/log/boot-state, `remoteControl:false` keeps its sessions
@@ -34,7 +38,6 @@ the GitHub Release with that section as the notes.
   bounces; loop/rate guards cap a runaway A→B→A. An append-only ledger (`~/.ccmux-chat.jsonl`) is
   the source of truth; multi-line bodies deliver via bracketed paste. Optional one-way Telegram
   mirror (`telegram` in machine.json → group/DM/topic; fail-soft, outbound only).
-
 ## [0.1.14] — 2026-07-19
 
 auto-answer Claude's resume-from-summary picker so daemon-healed reboots don't strand large sessions at the menu
