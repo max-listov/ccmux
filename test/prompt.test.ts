@@ -25,3 +25,13 @@ test("pickInvocation prefers the bare shim, else the absolute invocation", () =>
   expect(pickInvocation(true, "/abs/bun /abs/cli.js")).toBe("ccmux");
   expect(pickInvocation(false, "/abs/bun /abs/cli.js")).toBe("/abs/bun /abs/cli.js");
 });
+
+test("buildPrompt adds inter-agent chat framing ONLY when chat is enabled", () => {
+  const off = buildPrompt("cc-x", "ccmux");
+  expect(off).not.toContain("Inter-agent chat");
+  const on = buildPrompt("cc-x", "ccmux", true);
+  expect(on).toContain("Inter-agent chat (enabled for this session)");
+  expect(on).toContain("ccmux msg <session>");
+  expect(on).toContain("PEER AGENT"); // framed as a peer, not the human
+  expect(on).toContain("do NOT blindly"); // apply own judgment, not blind obedience
+});

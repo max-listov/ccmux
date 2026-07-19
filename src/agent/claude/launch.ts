@@ -28,7 +28,10 @@ export function buildArgv(
     // per-session override wins over the machine default; undefined → machine default.
     resolvePermissionMode(s.permissionMode ?? m.permissionMode),
     "--append-system-prompt",
-    buildPrompt(s.name, cli),
+    buildPrompt(s.name, cli, s.chatEnabled),
+    // dev/isolated instances turn RC off so their sessions don't surface in the claude.ai app
+    // (they'd sit next to prod sessions and get switched into by accident).
+    ...(m.remoteControl ? [] : ["--settings", JSON.stringify({ disableRemoteControl: true })]),
     ...flags,
     ...m.extraFlags,
   ];

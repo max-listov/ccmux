@@ -37,6 +37,10 @@ export const SELF_DISPLAY: string = SELF_ARGV.join(" ");
  *  a 2-line `exec bun <bundle>`). Kept in sync with that installer by convention. */
 const SHIM_PATH = join(HOME, ".local", "bin", "ccmux");
 
+/** Default prod home. The `ccmux` shim points at THIS home's bundle, so an isolated instance with
+ *  its own CCMUX_HOME must not teach that shim (it would run the wrong code/config). */
+const DEFAULT_CCMUX_HOME = join(HOME, ".ccmux");
+
 /** Decide which form to teach: bare `ccmux` when the shim is installed, else the absolute
  *  invocation. Pure — separated from the filesystem check so it's unit-testable. */
 export function pickInvocation(shimInstalled: boolean, absolute: string): string {
@@ -53,7 +57,10 @@ export function pickInvocation(shimInstalled: boolean, absolute: string): string
  * shim isn't installed (fresh machine before bootstrap, or the bundle was run directly).
  */
 export function promptInvocation(): string {
-  return pickInvocation(existsSync(SHIM_PATH), SELF_DISPLAY);
+  // An isolated instance (its own CCMUX_HOME) must teach its OWN re-exec, not the prod shim — the
+  // shim runs the DEFAULT home's bundle, i.e. the wrong code/config for a dev instance.
+  const ownDefaultHome = (process.env.CCMUX_HOME ?? DEFAULT_CCMUX_HOME) === DEFAULT_CCMUX_HOME;
+  return pickInvocation(ownDefaultHome && existsSync(SHIM_PATH), SELF_DISPLAY);
 }
 
 /** Running from live source (`ccmux-dev` → bun src/cli.ts) vs the frozen prod bundle/binary.

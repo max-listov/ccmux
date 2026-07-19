@@ -96,6 +96,34 @@ Two levels — a machine default plus an optional per-session override:
 Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`, `dontAsk`,
 `bypassPermissions`.
 
+## Inter-agent chat
+
+Opt-in messaging between managed sessions, so one agent can hand off to another without you relaying.
+
+- `ccmux chat on <name>` — enable chat for a session (**default OFF**; nothing sends or receives
+  until it's on, for both ends).
+- `ccmux msg <to|owner> "<text>"` — message another session (delivered to its pane) or `owner`
+  (you — Telegram-only, no pane); `--task X` pins a pointer. The sender is **automatic** — a session
+  sends as itself, a shell as `cli`; there is no `--from`.
+- `ccmux inbox [name]` — read a session's unread messages and mark them read (`--peek` doesn't).
+- `ccmux chat log [-n N]` — the append-only ledger (the full debug log).
+
+**Delivery.** The daemon push-delivers each message into the recipient's pane as its next turn,
+tagged `[chat from <name>]` so the agent treats it as a peer, not you. It **never injects while the
+recipient is at a selection menu** (that would pick an option it didn't choose) or while a human is
+attached; a *busy* recipient just gets it queued at its next turn boundary. Loop/rate guards cap a
+runaway ping-pong. Source of truth: `~/.ccmux-chat.jsonl` (+ `~/.ccmux-chat-cursors.json`).
+
+**Telegram mirror (one-way).** Add to machine.json to forward every message to a bot — a group, a
+DM, or a forum topic:
+
+```json
+"telegram": { "botToken": "<@BotFather token>", "chatId": "<group/DM id>", "topicId": 42 }
+```
+
+`topicId` is optional. Absent → no mirroring (fail-soft). It's outbound only — ccmux sends to
+Telegram, never reads from it.
+
 ## Updates
 
 **Releases are born only from tags, in CI.** `bun run release X.Y.Z "notes"` is the one

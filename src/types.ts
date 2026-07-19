@@ -14,6 +14,9 @@ import type {
   TranscriptStatsSchema,
   TranscriptJsonSchema,
   AgentKindSchema,
+  ChatMessageSchema,
+  ChatCursorsSchema,
+  TelegramConfigSchema,
 } from "./config/schema.ts";
 
 // Single import surface for the inferred types. No bare interfaces anywhere — these
@@ -32,3 +35,6 @@ export type TranscriptMessage = z.infer<typeof TranscriptMessageSchema>;
 export type TranscriptStats = z.infer<typeof TranscriptStatsSchema>;
 export type TranscriptJson = z.infer<typeof TranscriptJsonSchema>;
 export type AgentKind = z.infer<typeof AgentKindSchema>;
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+export type ChatCursors = z.infer<typeof ChatCursorsSchema>;
+export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;

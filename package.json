@@ -12,6 +12,7 @@
     "dev": "bun run src/cli.ts",
     "tui": "bun run src/cli.ts",
     "tui:hot": "bun --hot src/cli.ts",
+    "daemon:watch": "bun --watch src/cli.ts daemon",
     "smoke": "bash scripts/tui-smoke.sh",
     "check": "tsc --noEmit && bun test",
     "stage": "bun scripts/release.ts --stage",

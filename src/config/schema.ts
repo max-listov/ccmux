@@ -55,10 +55,23 @@ export const SessionSchema = z.object({
   // The root-guard still applies at launch (buildArgv): escalated modes downgrade to
   // "auto" under a root daemon, whether they came from the machine or the session.
   permissionMode: PermissionModeSchema.optional(),
+  // Inter-agent chat opt-in. Default OFF so no session sends or receives until you turn it on
+  // (`ccmux chat on <name>`) — chat traffic is never implicit. Gates BOTH sending from this
+  // session and delivering peer messages to it. Defaulted so existing session rows stay valid.
+  chatEnabled: z.boolean().default(false),
 });
 
 /** Agent CLI backing a session — the registry key for transcript adapters. */
 export const AgentKindSchema = z.enum(["claude", "codex"]);
+
+/** Optional Telegram mirror of the inter-agent chat: forward every message to a bot — a group, a
+ *  DM, or a specific forum topic. Any ccmux user drops in their own @BotFather token + target;
+ *  absent → no mirroring (fail-soft). Set in machine.json. */
+export const TelegramConfigSchema = z.object({
+  botToken: z.string().min(1), // @BotFather token (secret)
+  chatId: z.string().min(1), // numeric group/DM id (a string — supergroups are negative)
+  topicId: z.number().int().positive().optional(), // message_thread_id of a forum topic
+});
 
 /** A machine's RC/display-name prefix — a free-form lowercase slug (local, dev, prod, staging, …).
  *  NOT a fixed enum: the fleet grows past 3 machines. This pattern still loud-fails on garbage,
@@ -75,6 +88,15 @@ export const MachineConfigSchema = z.object({
   // Codex CLI binary — optional; only required for agent="codex" sessions.
   codexBin: z.string().startsWith("/").optional(),
   tmuxBin: z.string().startsWith("/"),
+  // Optional dedicated tmux SOCKET (`tmux -L <socket>`). Unset → the default socket (prod). Set →
+  // every tmux call is scoped to this socket, so an ISOLATED instance gets its OWN tmux server:
+  // own panes, no name collisions, and — key — that server inherits the launching env, so `_run`
+  // panes read THIS instance's CCMUX_CONFIG. This is how a dev instance runs beside prod cleanly.
+  tmuxSocket: z.string().min(1).optional(),
+  // Remote Control visibility. Default true = sessions show in the claude.ai app (drive from phone).
+  // A dev/isolated instance sets false so its throwaway sessions don't clutter the app or get
+  // confused with prod ones (turns RC off via claude's `disableRemoteControl` setting at launch).
+  remoteControl: z.boolean().default(true),
   // Claude's project-history root; basis for the resume existence check.
   // local: /Users/user/.claude/projects, servers: /root/.claude/projects.
   projectsDir: z.string().startsWith("/"),
@@ -116,6 +138,8 @@ export const MachineConfigSchema = z.object({
   // ALL context (default — never lose work); "summary" = resume compacted; "off" = never
   // auto-answer (a human will). Claude-only; other agents have no such picker.
   resumePicker: z.enum(["full", "summary", "off"]).default("full"),
+  // Optional Telegram mirror of the inter-agent chat (see TelegramConfigSchema). Absent → off.
+  telegram: TelegramConfigSchema.optional(),
 });
 
 /**
@@ -128,6 +152,38 @@ export const ReleaseSchema = z.object({
   // verify the artifact bytes BEFORE swapping it in (supply-chain safety).
   sha256: z.string().length(64),
   url: z.url(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inter-agent chat — an append-only message ledger (the source of truth) plus a
+// separate cursors file. A message is immutable once written; delivery/read state
+// lives in the cursors (single writer = the daemon), never mutated back into the
+// ledger. This keeps the ledger a clean, replayable, exportable log for debugging.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One chat message. `from`/`to` are session names; `task` is an optional pointer so the
+ *  channel stays a "phone call" (details live in the task). Immutable once appended. */
+export const ChatMessageSchema = z.object({
+  id: z.string().min(1), // unique per message (uuid)
+  ts: z.string(), // ISO-8601 send time
+  from: z.string().min(1),
+  to: z.string().min(1),
+  body: z.string(),
+  task: z.string().nullable().default(null),
+});
+
+/** Delivery/read bookkeeping, kept OUT of the append-only ledger. `read[name]` = the ledger
+ *  LENGTH a recipient has read its inbox up to (unread = TO-me messages at/after that index).
+ *  Grows with delivery sinks (pane/telegram) in later phases; the daemon is the single writer. */
+export const ChatCursorsSchema = z.object({
+  read: z.record(z.string(), z.number()).default({}),
+  // per-recipient: ledger LENGTH the daemon has PUSH-delivered a session's inbox up to. Distinct
+  // from `read` (advanced by `ccmux inbox` too) so a push and a manual pull don't double-count.
+  // The daemon is the sole writer; survives restarts so a bounce never re-pushes old messages.
+  delivered: z.record(z.string(), z.number()).default({}),
+  // Telegram mirror progress: ledger LENGTH mirrored to the bot (a BROADCAST sink — every message,
+  // in order). Persisted so a restart resends only the un-mirrored backlog, never the whole history.
+  telegram: z.number().default(0),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

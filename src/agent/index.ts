@@ -47,6 +47,11 @@ export interface AgentProvider {
   // config → key. The supervisor polls this right after launch and sends the key (+Enter only if
   // the number key didn't already confirm). Optional: agents without such a picker omit it.
   resumePickerAnswer?(paneText: string, m: MachineConfig): string | null;
+  // Inter-agent chat: is it safe to inject a chat message into this pane RIGHT NOW? Pure: pane
+  // text → bool. False when the session sits at a selection menu (injecting would pick an option
+  // it never chose — proven live), so the daemon holds and retries. Optional: an agent with no
+  // readiness detector is never delivered to (safe default). Used by src/chat/deliver.ts.
+  chatDeliverable?(paneText: string): boolean;
 }
 
 const REGISTRY: Record<AgentKind, AgentProvider> = {
