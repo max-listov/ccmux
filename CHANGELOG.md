@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-07-19
+
+auto-answer Claude's resume-from-summary picker so daemon-healed reboots don't strand large sessions at the menu
+
 - Auto-answer Claude's blocking "Resume from summary?" picker on an unattended resume. Claude
   2.1.x shows this menu on `--resume` of a large/old session; a daemon-healed reboot had nobody
   to answer it, so big sessions stranded at the menu (typed input — app or tmux — landed on the
@@ -14,7 +18,6 @@ the GitHub Release with that section as the notes.
   (`full` = keep all context [default] · `summary` = compact · `off` = leave for a human). It reads
   the option NUMBER from the pane (robust to reordering) and confirms with Enter only if the number
   key didn't. Claude-only; other agents have no such picker.
-
 ## [0.1.13] — 2026-07-17
 
 injected prompt teaches bare ccmux shim, not the absolute bun path
