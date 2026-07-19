@@ -6,6 +6,17 @@ alwaysApply: false
 
 # ccmux — project conventions
 
+## 🔒 This is a PUBLIC repo — never leak the maintainer's private identifiers
+Everything committed here (code, docs, backlog, tests, comments) is published. NEVER write into
+this repo the maintainer's private fleet/machine names, hostnames, machine `rcPrefix` values,
+concrete session names, project names, usernames, email, or absolute home paths. This holds even
+in examples, motivation text, and backlog notes.
+- Use generic placeholders instead: `agent-A`/`agent-B` for sessions, `host-A`/`host-B` for
+  machines, `<target>`/`<name>` for arguments, `/Users/u/...` or `~/...` for paths, `<prefix>` for
+  an rcPrefix.
+- Before finishing any edit that touches `.md`/comments, sweep the changed lines for private tokens.
+- If unsure whether a term is private, treat it as private and use a placeholder.
+
 ## 🚫 Don't deploy without explicit approval
 ccmux is a production tool that supervises live agent sessions, so a bad release affects real
 running work. Do NOT autonomously: bump the version, build, `ccmux update`, restart/touch the
