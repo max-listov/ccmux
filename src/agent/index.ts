@@ -40,6 +40,13 @@ export interface AgentProvider {
   usedTokens(lines: string[]): number | null;
   // live pane status
   scanPane(paneText: string): PaneScan;
+  // Claude 2.1.x shows a BLOCKING "Resume from summary?" picker on `--resume` of a large session;
+  // an unattended resume strands there. Given the current pane text, return the keystroke that
+  // dismisses it per the machine's resumePicker policy — the option NUMBER read from the pane, so
+  // a reordered menu still gets the right key — or null when no picker is showing. Pure: text +
+  // config → key. The supervisor polls this right after launch and sends the key (+Enter only if
+  // the number key didn't already confirm). Optional: agents without such a picker omit it.
+  resumePickerAnswer?(paneText: string, m: MachineConfig): string | null;
 }
 
 const REGISTRY: Record<AgentKind, AgentProvider> = {

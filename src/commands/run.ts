@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 import { loadMachineConfig } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
-import { providerFor } from "../agent/index.ts";
+import { providerFor, type AgentProvider } from "../agent/index.ts";
+import { capturePane, sendKeysNamed } from "../tmux/tmux.ts";
+import type { MachineConfig, Session } from "../types.ts";
 import { promptInvocation } from "../env.ts";
 import { log } from "../util/log.ts";
 
@@ -9,6 +11,46 @@ const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
 const FAST_FAIL_MS = 5_000; // exited sooner than this == suspicious
 const FAST_FAILS_BEFORE_FORK = 3;
+
+const PICKER_WATCH_MS = 30_000; // give up watching for the resume picker after this
+const PICKER_POLL_MS = 1_000;
+
+/**
+ * Dismiss Claude's BLOCKING "Resume from summary?" picker on an unattended resume, so a
+ * daemon-healed reboot doesn't strand a big session at a menu (typed input would land on the
+ * menu, not the conversation). One-shot + bounded: the first time the picker is seen we send
+ * the policy choice (the option NUMBER), then confirm with Enter ONLY if the number key didn't
+ * already select-and-confirm (re-check avoids a stray Enter submitting an empty turn). A session
+ * that never shows a picker just costs a few cheap captures until PICKER_WATCH_MS. Provider-
+ * agnostic: a no-op when the provider has no picker or the policy is "off". Not awaited by the
+ * supervisor — it self-terminates while the loop blocks on the agent's exit.
+ */
+async function settleResumePicker(m: MachineConfig, s: Session, provider: AgentProvider): Promise<void> {
+  const answer = provider.resumePickerAnswer;
+  if (!answer) return;
+  const deadline = Date.now() + PICKER_WATCH_MS;
+  while (Date.now() < deadline) {
+    await Bun.sleep(PICKER_POLL_MS);
+    let key: string | null = null;
+    try {
+      key = answer(await capturePane(m, s.name, 40), m);
+    } catch {
+      continue; // pane not capturable yet (still spawning) — retry
+    }
+    if (key === null) continue;
+    await sendKeysNamed(m, s.name, key);
+    await Bun.sleep(500); // let the menu register the selection
+    let stillUp = false;
+    try {
+      stillUp = answer(await capturePane(m, s.name, 40), m) !== null;
+    } catch {
+      stillUp = false;
+    }
+    if (stillUp) await sendKeysNamed(m, s.name, "Enter"); // number only moved the cursor → confirm
+    log.info({ msg: "answered resume picker", name: s.name, agent: provider.id, choice: m.resumePicker });
+    return;
+  }
+}
 
 /**
  * The in-session conversation-level supervisor. ccmux (this loop) — NOT the agent — is
@@ -61,6 +103,9 @@ export async function cmdRun(name: string | undefined): Promise<number> {
         stderr: "inherit",
         env,
       });
+      // Only a resume (history present) can hit the "Resume from summary?" picker; a fresh
+      // session never shows it. Fire-and-forget — the watcher self-terminates and bounds itself.
+      if (present) void settleResumePicker(m, s, provider);
       await proc.exited;
     } catch (e) {
       crashed = true;

@@ -109,6 +109,13 @@ export const MachineConfigSchema = z.object({
   // System-log threshold (~/.ccmux/ccmux.log). Re-read live by the daemon each tick —
   // flip to "debug" on a misbehaving box without restarting anything.
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  // Claude 2.1.x shows a BLOCKING "Resume from summary?" picker on `--resume` of a large/old
+  // session; an unattended (daemon-healed) resume would strand at that menu — typed input lands
+  // on the MENU, not the conversation, so after a reboot every big session sits dead until a
+  // human answers it. The supervisor auto-answers per this policy: "full" = resume full, keep
+  // ALL context (default — never lose work); "summary" = resume compacted; "off" = never
+  // auto-answer (a human will). Claude-only; other agents have no such picker.
+  resumePicker: z.enum(["full", "summary", "off"]).default("full"),
 });
 
 /**

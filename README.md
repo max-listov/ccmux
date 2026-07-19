@@ -63,7 +63,12 @@ ccmux adopt <uuid> --takeover   # take over the original (kills the live writer)
   supervisor loop that launches `claude` and relaunches it on crash (exponential backoff). So an
   agent crash just comes back; killing a session is the only way to stop it.
 - **Deterministic resume:** every session pins a fixed uuid (`--session-id` first, `--resume`
-  after) → no resume-picker, no accidental second conversation.
+  after) → no session-selection picker, no accidental second conversation. Claude 2.1.x adds a
+  *separate* blocking "Resume from summary?" prompt for large/old sessions that would strand an
+  unattended (daemon-healed) resume at a menu — input then lands on the menu, not the
+  conversation. The supervisor auto-answers it per `resumePicker` in the machine config:
+  `full` = resume full, keep ALL context (default) · `summary` = resume compacted · `off` =
+  leave it for a human.
 - **Follow the fork:** Claude itself does NOT keep a uuid forever — running out of context
   forks the conversation to a new session id (new jsonl, old tail copied). Each heal pass
   detects that the conversation moved (the fork inherits the session's `-n` title in its first
