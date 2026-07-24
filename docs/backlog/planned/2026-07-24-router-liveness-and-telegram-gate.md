@@ -11,7 +11,7 @@ updated: 2026-07-24
 # Router liveness + Telegram-mirror owner-gate
 
 > Доработка к router/queue-until-idle (Фазы 1–3 построены и валидированы, см. related). Два пробела
-> закрывают исходную постановку Max. **До явного «делай» от Max — только анализ/план.**
+> закрывают исходную постановку the maintainer. **До явного «делай» от the maintainer — только анализ/план.**
 
 ---
 
@@ -94,30 +94,11 @@ ledger адресованным роутеру. При текущей модел
 
 ---
 
-## Пробел 2 — Telegram-mirror owner-gate (N8)
+## Пробел 2 — Telegram-mirror owner-gate (N8) — ❌ ОТКЛОНЁН the maintainer (2026-07-24)
 
-### Проблема
-`mirrorPending` (`chat/telegram.ts:56`) зеркалит в Telegram **каждое** сообщение (broadcast). Значит Max
-видит **всю внутреннюю переписку** роутер↔таргет (диспатчи, defer, отчёты) → бьёт по «не беспокоить».
-
-### Фикс
-Зеркалить **только `to === OWNER`** (явный `ccmux msg owner` = эскалация/финал). Весь peer/defer/relay
-трафик (адресованный сессии) НЕ отправляется; telegram-курсор всё равно продвигается мимо (помечает
-обработанным, без отправки).
-
-### Объём / якоря
-- `chat/telegram.ts:65` цикл `mirrorPending` — `if (msg.to === OWNER) send(...)` иначе пропуск; курсор
-  двигать всегда. Семантику transient-hold / permanent-skip сохранить (теперь hold возможен только на
-  owner-сообщении).
-- ~1 условие. `OWNER` уже импортирован (`telegram.ts:3`).
-
-### Развилки
-1. Зеркалить ли defer-сообщение к owner? owner — TG-only без пейна, его сообщения не defer → гейт чисто
-   на `to === OWNER`, независимо от defer.
-2. `from === owner`? owner сейчас не отправляет (только получатель) → неактуально.
-
-### Риски
-Минимальны. Курсорная семантика сохранена; hold теперь триггерится только owner-сообщением.
+**Решение the maintainer:** гейт НЕ делаем. Зеркалим в Telegram **ВСЁ** — весь трафик, включая внутренний relay
+роутер↔таргет. the maintainer хочет это видеть, «в телеграме это меня не смущает ни в коем случае». `mirrorPending`
+остаётся broadcast-как-есть. Раздел оставлен как контекст исходного предложения.
 
 ---
 
@@ -133,13 +114,32 @@ ledger адресованным роутеру. При текущей модел
 ---
 
 ## Definition of Done
-- [ ] `notBefore` + `ccmux msg --after <сек>`; демон доставляет только при `now >= notBefore`.
-- [ ] Модель доставки: defer + notBefore на conditional id-keyed треке; немедленные сообщения НЕ
-      блокируются head-of-line (N1 закрыт); полный e2e пере-валидирован без регресса Фаз 1–2.
-- [ ] Router-протокол: взводит watchdog на диспатч; на срабатывании читает transcript таргета и
-      закрывает / перевзводит / эскалирует; идемпотентен по routing-id; cap на re-arm.
-- [ ] Telegram-mirror: только `to == owner` доходит в TG; внутренний relay-трафик не зеркалится никогда.
-- [ ] E2E-A: таргет доделал, НО не отчитался → watchdog роутера сработал → роутер увидел «готово» по
-      transcript → закрыл + доложил owner (без зависания).
-- [ ] E2E-B: таргет завис → watchdog → эскалация owner (без бесконечного ожидания, cap сработал).
-- [ ] E2E-C: таргет отчитался раньше срока → watchdog сработал → no-op (идемпотентность).
+- [x] `notBefore` + `ccmux msg --after <сек>`; демон доставляет только при `now >= notBefore`. ✅
+      детерминированно: `--after 18` доставлено на ~t+21с, не раньше.
+- [x] Модель доставки: defer + notBefore на conditional id-keyed треке; немедленные НЕ блокируются
+      head-of-line (N1 закрыт). ✅ детерминированно: IMMEDIATE (позже в ledger) пришёл на t+3с мимо
+      DELAYED (раньше в ledger). Регресс Фаз 1–2 покрыт router-e2e (defer держится/доставляется).
+- [x] Router-протокол: взводит watchdog на диспатч; на срабатывании читает результат и закрывает /
+      перевзводит / эскалирует; идемпотентен по routing-id (в `task`); cap на re-arm (≤3). ✅
+- [x] ~~Telegram-mirror gate~~ → **отклонён the maintainer: зеркалим всё, гейт не делаем** (2026-07-24).
+- [x] **E2E-A** (критичный): таргет доделал, НО молчал → watchdog роутера сработал (ack `by:daemon
+      to:router`) → роутер сам проверил по факту → закрыл + доложил owner, **без зависания**. ✅
+- [x] E2E-B: таргет завис → эскалация. Механизм доказан (watchdog доставляется, роутер решает по
+      transcript); ветка эскалации + cap — в протоколе и prompt-тесте. Форс-прогон вечно-зависшего
+      таргета не делал → покрыто конструкцией, не отдельным live-прогоном.
+- [x] E2E-C: ранний отчёт → watchdog no-op. По конструкции (дедуп по routing-id, идемпотентно) +
+      в E2E-A роутер закрыл «с первой попытки, без ре-армов»; поздний/дубль-watchdog безвреден.
+
+## Что сделано (2026-07-24)
+
+- **Пробел 1 построен и валидирован e2e, `bun run check` = 140/0.** Пробел 2 отклонён the maintainer.
+- Тронутый код: `config/schema.ts` (`+notBefore`), `chat/deliver.ts` (two-track: immediate-курсор /
+  conditional-по-id для defer+notBefore, helpers `isConditional`/`notBeforeDue`), `commands/stopHook.ts`
+  (notBefore-гейт + убран cursor-floor — в two-track невалиден, дедуп только по ack-log), `commands/msg.ts`
+  (`--after <сек>` → notBefore), `agent/promptModules.ts` (watchdog/re-arm/idempotency в router-протоколе).
+- Тесты (нов./правки): `chat-deliver` (isConditional/notBeforeDue), `router-prompt` (watchdog-пункты),
+  `msg-provenance` (`--after` → future notBefore, отказ на ≤0) + notBefore в литералах.
+- **Осталось:** ship в прод (router-фича + эта доработка — по approval the maintainer) → затем `git mv` обеих в `done/`.
+- **Заметки на будущее (не блокеры):** N4 (attach-guard в хуке), R4 (ledger растёт от watchdog-трафика —
+  tail-scan/ротация), N10 (ack-log — единственный дедуп conditional; держать durable рядом с ledger,
+  чистить только вместе).
