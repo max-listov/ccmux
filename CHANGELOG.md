@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-07-24
+
+fix: 'ccmux update --check' is now read-only and a stale/older staged bundle can't silently downgrade a machine
+
 - Fix `ccmux update --check` mutating the machine. With a leftover staged bundle present (a forgotten
   `bun run stage`), `--check` applied it instead of just reporting — and applied it even when it was
   OLDER than the running version, silently downgrading. Two root fixes: (1) the update decision is now
@@ -14,7 +18,6 @@ the GitHub Release with that section as the notes.
   unreadable one counts as not-newer) — a stale/older staged build is refused as a downgrade unless
   `--force`, with a message pointing at the forgotten file. The legit "test a newer build locally"
   path is unchanged.
-
 ## [0.1.17] — 2026-07-24
 
 chat-layer follow-ups from acceptance testing: cancellable watchdogs (msg cancel + --task dedup), honest single-source usage, stdin body, --after+--defer trap warning
