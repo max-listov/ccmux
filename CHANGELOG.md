@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-07-24
+
+inter-agent deferred chat + autonomous router sessions + time-delayed watchdog delivery
+
 - Deferred chat delivery: `ccmux msg <to> --defer` holds a follow-up until the recipient
   VOLUNTARILY finishes its turn, then delivers it as if a human typed it — never interrupting
   mid-work (Claude's native queue is steering; it flushes between tool calls). Delivered by a
@@ -33,7 +37,6 @@ the GitHub Release with that section as the notes.
   (or the cli) may relay, never a plain peer.
 - Owner-language: sessions reply to `owner` in the owner's own language by default; an optional
   `ownerLang` in machine.json forces a fixed language.
-
 ## [0.1.15] — 2026-07-19
 
 inter-agent chat (menu-safe pane delivery + one-way Telegram mirror) + isolated dev instance
