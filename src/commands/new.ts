@@ -15,9 +15,10 @@ export async function cmdNew(
   name: string | undefined,
   dir: string | undefined,
   flags: string[],
+  opts: { router?: boolean } = {},
 ): Promise<number> {
   if (!name || !dir) {
-    console.log("usage: ccmux new <name> <dir> [-- claude flags...]");
+    console.log("usage: ccmux new <name> <dir> [--router] [-- claude flags...]");
     return 1;
   }
   if (name.includes("|")) {
@@ -31,7 +32,16 @@ export async function cmdNew(
   }
   const m = loadMachineConfig();
   try {
-    const session = SessionSchema.parse({ name, dir: abs, uuid: randomUUID(), flags });
+    // --router: this session carries the router protocol module and, since it drives ccmux chat,
+    // has chat enabled. Just DATA (a module key + a bool), resolved to live code at launch.
+    const router = opts.router === true;
+    const session = SessionSchema.parse({
+      name,
+      dir: abs,
+      uuid: randomUUID(),
+      flags,
+      ...(router ? { promptModules: ["router"], chatEnabled: true } : {}),
+    });
     await appendSession(m, session);
     log.info({ msg: "session registered", name, dir: abs, uuid: session.uuid });
     console.log(`added: ${JSON.stringify(session)}`);

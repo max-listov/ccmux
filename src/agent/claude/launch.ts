@@ -28,13 +28,32 @@ export function buildArgv(
     // per-session override wins over the machine default; undefined → machine default.
     resolvePermissionMode(s.permissionMode ?? m.permissionMode),
     "--append-system-prompt",
-    buildPrompt(s.name, cli, s.chatEnabled),
-    // dev/isolated instances turn RC off so their sessions don't surface in the claude.ai app
-    // (they'd sit next to prod sessions and get switched into by accident).
-    ...(m.remoteControl ? [] : ["--settings", JSON.stringify({ disableRemoteControl: true })]),
+    buildPrompt(s.name, cli, s.chatEnabled, s.promptModules, m.ownerLang),
+    ...settingsArg(m, s, cli),
     ...flags,
     ...m.extraFlags,
   ];
+}
+
+/**
+ * The single `--settings` object (or nothing). Two independent needs merge here so we never pass
+ * `--settings` twice:
+ *  - RC off (dev/isolated instances) → `disableRemoteControl` so their sessions don't surface in
+ *    the claude.ai app next to prod ones.
+ *  - chat enabled → a Stop hook (`<cli> stop-hook`) that delivers DEFERRED mail at end-of-turn. The
+ *    command is the same `cli` invocation the injected prompt uses, so it resolves to the dev source
+ *    in an isolated instance and the prod shim otherwise (never a versioned bundle path). Claude
+ *    merges this PER-EVENT with the user's own settings — verified it does not clobber their other
+ *    hooks (e.g. a global PostToolUse). Gated on chatEnabled so the chat-off fleet pays nothing;
+ *    like the chat prompt-framing, it takes effect on the next restart after `ccmux chat on`.
+ */
+function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
+  const settings: Record<string, unknown> = {};
+  if (!m.remoteControl) settings.disableRemoteControl = true;
+  if (s.chatEnabled) {
+    settings.hooks = { Stop: [{ hooks: [{ type: "command", command: `${cli} stop-hook` }] }] };
+  }
+  return Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : [];
 }
 
 // Escalated modes that bypass permission gating entirely — a compromised session under

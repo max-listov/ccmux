@@ -31,7 +31,7 @@ function tempConfig() {
 let seq = 0;
 function msg(from: string, to: string, body: string, task: string | null = null): ChatMessage {
   seq += 1;
-  return { id: `id-${seq}`, ts: "2026-07-19T10:00:00.000Z", from, to, body, task };
+  return { id: `id-${seq}`, ts: "2026-07-19T10:00:00.000Z", from, to, body, task, defer: false, onBehalfOf: null, notBefore: null };
 }
 
 test("append + loadLedger round-trips in order", () => {

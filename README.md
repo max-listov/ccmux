@@ -104,15 +104,37 @@ Opt-in messaging between managed sessions, so one agent can hand off to another 
   until it's on, for both ends).
 - `ccmux msg <to|owner> "<text>"` — message another session (delivered to its pane) or `owner`
   (you — Telegram-only, no pane); `--task X` pins a pointer. The sender is **automatic** — a session
-  sends as itself, a shell as `cli`; there is no `--from`.
+  sends as itself, a shell as `cli`; there is no `--from`. Flags: `--defer` (hold until the recipient
+  voluntarily finishes its turn — never mid-work), `--after <sec>` (deliver no sooner than N seconds
+  from now — a timer), `--on-behalf-of <who>` (relay someone's authority honestly, without spoofing
+  the sender; router/cli only).
 - `ccmux inbox [name]` — read a session's unread messages and mark them read (`--peek` doesn't).
 - `ccmux chat log [-n N]` — the append-only ledger (the full debug log).
 
 **Delivery.** The daemon push-delivers each message into the recipient's pane as its next turn,
 tagged `[chat from <name>]` so the agent treats it as a peer, not you. It **never injects while the
 recipient is at a selection menu** (that would pick an option it didn't choose) or while a human is
-attached; a *busy* recipient just gets it queued at its next turn boundary. Loop/rate guards cap a
-runaway ping-pong. Source of truth: `~/.ccmux-chat.jsonl` (+ `~/.ccmux-chat-cursors.json`).
+attached; a *busy* recipient just gets it queued at its next turn boundary. Delivery is two-track:
+immediate mail flows in order, while **deferred** (`--defer`) and **time-delayed** (`--after`) mail is
+delivered by id when its condition holds — a Claude Stop hook fires a deferred message the instant the
+turn ends, or the daemon delivers it once the target is stably idle — so a pending conditional message
+never blocks an immediate reply behind it. Loop/rate guards cap a runaway ping-pong. Source of truth:
+`~/.ccmux-chat.jsonl` (+ `~/.ccmux-chat-cursors.json`, `~/.ccmux-chat-ack.jsonl`).
+
+### Router sessions
+
+A router is a session with a built-in **manager protocol** — it takes a follow-up you dictate, routes
+it to the right session, waits, validates the result, re-asks on a gap, and escalates to you **only**
+when genuinely stuck (never nagging "continue?").
+
+- `ccmux new <name> <dir> --router` — create a router (enables chat + carries the protocol).
+- `ccmux router on|off <name>` — promote/demote an existing session (applies on next `restart`).
+
+It delivers every follow-up with `--defer` (so targets are never interrupted), carries your authority
+with `--on-behalf-of owner`, and arms a `--after` **watchdog** per dispatch — so a target that finishes
+but forgets to report back doesn't strand it: the timer wakes the router, it checks the target's
+transcript, and closes or escalates on its own. The protocol lives in code (`promptModules`), resolved
+fresh at each launch, so an update reaches every router on its next restart.
 
 **Telegram mirror (one-way).** Add to machine.json to forward every message to a bot — a group, a
 DM, or a forum topic:

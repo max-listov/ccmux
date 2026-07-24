@@ -8,7 +8,7 @@ const MIN = 60_000;
 
 function row(name: string, lastActivityMs: number | null, createdAt: string | null = null): ListRow {
   return {
-    session: { name, dir: `/tmp/${name}`, uuid: `00000000-0000-4000-8000-${name.padStart(12, "0")}`, flags: [], archived: false, resumeText: "continue", agent: "claude", chatEnabled: false },
+    session: { name, dir: `/tmp/${name}`, uuid: `00000000-0000-4000-8000-${name.padStart(12, "0")}`, flags: [], archived: false, resumeText: "continue", agent: "claude", chatEnabled: false, promptModules: [] },
     running: true,
     state: "idle",
     model: null,

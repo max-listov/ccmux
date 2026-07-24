@@ -39,6 +39,7 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
       resumeText: "continue",
       agent: "claude",
       chatEnabled: false,
+      promptModules: [],
     },
     running: true, // an external session in the list is a LIVE one (recent activity)
     state: "external",
