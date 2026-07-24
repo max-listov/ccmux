@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-07-24
+
+chat-layer follow-ups from acceptance testing: cancellable watchdogs (msg cancel + --task dedup), honest single-source usage, stdin body, --after+--defer trap warning
+
 - `ccmux msg cancel <task>` — drop a sender's still-undelivered mail for a task (an armed `--after`
   watchdog or a queued `--defer` that hasn't fired). Cancellation is a tombstone in the append-only
   ack-log (`by: "cancel"`), the same log the daemon and the Stop hook already consult — so a cancel
@@ -29,7 +33,6 @@ the GitHub Release with that section as the notes.
 - Diagnostic: the daemon now logs when it HOLDS a pending message solely because a human is attached
   to the recipient's pane (delivery resumes on detach) — so "the message never arrived" is traceable
   to that transient cause instead of looking like a broken chat.
-
 ## [0.1.16] — 2026-07-24
 
 inter-agent deferred chat + autonomous router sessions + time-delayed watchdog delivery
