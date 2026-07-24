@@ -89,36 +89,77 @@ async function fetchRelease(url: string): Promise<Release | string> {
   }
 }
 
-async function applyRemote(m: MachineConfig, o: UpdateOpts): Promise<number> {
-  if (m.releaseUrl === undefined) {
-    console.log("update: nothing staged (~/.ccmux/staged/ccmux.js) and no releaseUrl. Stage one (dev checkout): bun run stage");
-    return 1;
+/** The outcome of an update decision. Pure `decideUpdate` returns one of these; `cmdUpdate` only
+ *  EXECUTES it — so `--check` is guaranteed read-only (it can only ever produce a `print`). */
+export type UpdateDecision =
+  | { kind: "apply-staged" }
+  | { kind: "apply-remote" }
+  | { kind: "print"; code: number; text: string };
+
+/**
+ * Decide what `ccmux update` should do — PURE (no fs, no network, no side effects), so it's fully
+ * testable and `--check` can never mutate by construction. Inputs are already-resolved versions:
+ * `staged` = the local staged bundle's version ("?" if present-but-unreadable, null if absent),
+ * `release` = the fetched release version (null if no releaseUrl / not fetched).
+ *
+ * Two rules this encodes (the 0.1.17 landmine):
+ *  1. `--check` ALWAYS returns a `print` — it never applies anything, staged or remote.
+ *  2. A staged bundle only wins if it is NEWER than (or equal to) the running version. A stale/older
+ *     or unreadable staged build ("forgotten `bun run stage`") is REFUSED as a downgrade unless
+ *     `--force` — it no longer silently downgrades the machine.
+ */
+export function decideUpdate(i: {
+  check: boolean;
+  force: boolean;
+  current: string;
+  staged: string | null;
+  release: string | null;
+  releaseNotes?: string | undefined;
+  hasReleaseUrl: boolean;
+}): UpdateDecision {
+  const stagedPath = STAGED_BUNDLE;
+  if (i.staged !== null) {
+    // Unreadable ("?") counts as "not newer" — never apply a bundle whose version we can't confirm.
+    const notNewer = i.staged === "?" || compareSemver(i.staged, i.current) < 0;
+    if (i.check) {
+      return {
+        kind: "print",
+        code: 0,
+        text: notNewer
+          ? `staged local build ${i.staged} present but NOT newer than current ${i.current} — 'ccmux update' would refuse it as a downgrade (a forgotten 'bun run stage'?). remove: rm ${stagedPath}  ·  or force: ccmux update --force`
+          : `staged local build ${i.staged} present — 'ccmux update' would apply it (local test build), NOT the release. remove to track releases again: rm ${stagedPath}`,
+      };
+    }
+    if (notNewer && !i.force) {
+      return {
+        kind: "print",
+        code: 1,
+        text: `update: staged local build ${i.staged} is not newer than current ${i.current} — refusing to downgrade (usually a forgotten 'bun run stage'). remove it: rm ${stagedPath}  ·  or force: ccmux update --force`,
+      };
+    }
+    return { kind: "apply-staged" };
   }
-  const release = await fetchRelease(m.releaseUrl);
-  if (typeof release === "string") {
-    console.log(`update: ${release}`);
-    return 1;
+
+  // No staged bundle → the release path.
+  if (!i.hasReleaseUrl || i.release === null) {
+    return {
+      kind: "print",
+      code: i.check ? 0 : 1,
+      text: "update: nothing staged (~/.ccmux/staged/ccmux.js) and no releaseUrl. Stage one (dev checkout): bun run stage",
+    };
   }
-  const cmp = compareSemver(VERSION, release.version);
-  if (!o.force && cmp >= 0) {
-    console.log(cmp === 0 ? `already on latest (${VERSION})` : `local ${VERSION} ahead of release ${release.version} (--force to override)`);
-    return 0;
+  const cmp = compareSemver(i.current, i.release);
+  if (!i.force && cmp >= 0) {
+    return {
+      kind: "print",
+      code: 0,
+      text: cmp === 0 ? `already on latest (${i.current})` : `local ${i.current} ahead of release ${i.release}${i.check ? "" : " (--force to override)"}`,
+    };
   }
-  if (o.check) {
-    console.log(`update available: ${VERSION} → ${release.version}${release.notes ? ` — ${release.notes}` : ""}`);
-    console.log("run: ccmux update");
-    return 0;
+  if (i.check) {
+    return { kind: "print", code: 0, text: `update available: ${i.current} → ${i.release}${i.releaseNotes ? ` — ${i.releaseNotes}` : ""}\nrun: ccmux update` };
   }
-  console.log(`updating ${VERSION} → ${release.version}…`);
-  log.info({ msg: "update: applying remote release", from: VERSION, to: release.version });
-  const err = await downloadVerifyApply(m, release);
-  if (err) {
-    log.error({ msg: "update failed", to: release.version, err });
-    console.log(`update: ${err}`);
-    return 1;
-  }
-  console.log(`updated to ${release.version}. daemon bounced; sessions keep running. rollback: ccmux update --rollback`);
-  return 0;
+  return { kind: "apply-remote" };
 }
 
 /** Load-test a candidate bundle BEFORE it replaces the live one: `bun candidate version`
@@ -177,14 +218,61 @@ export async function autoUpdateOnce(m: MachineConfig): Promise<void> {
 }
 
 /**
- * Self-update. A LOCAL staged build wins (the "test locally first" path); otherwise pull
- * the remote release. Always swaps the prod APP_BUNDLE atomically + bounces the daemon —
- * sessions outlive the bounce, each _run picks up the new code on its next restart.
+ * Self-update. A LOCAL staged build wins ONLY if newer (the "test locally first" path); otherwise
+ * pull the remote release. `--check` is read-only (reports, never applies — the decision is made by
+ * the pure `decideUpdate`, which can only return `print` for a check). A successful apply swaps the
+ * prod APP_BUNDLE atomically + bounces the daemon — sessions outlive the bounce, each _run picks up
+ * the new code on its next restart.
  */
 export async function cmdUpdate(args: string[]): Promise<number> {
   const o = parseOpts(args);
   const m = loadMachineConfig();
   if (o.rollback) return rollback(m);
-  if (existsSync(STAGED_BUNDLE)) return applyLocal(m);
-  return applyRemote(m, o);
+
+  // Resolve the two candidate versions (this is the only IO; the DECISION is pure below).
+  const stagedPresent = existsSync(STAGED_BUNDLE);
+  const staged = stagedPresent ? await bundleVersion(STAGED_BUNDLE) : null;
+  let release: Release | null = null;
+  if (!stagedPresent && m.releaseUrl !== undefined) {
+    const r = await fetchRelease(m.releaseUrl);
+    if (typeof r === "string") {
+      console.log(`update: ${r}`);
+      return 1;
+    }
+    release = r;
+  }
+
+  const decision = decideUpdate({
+    check: o.check,
+    force: o.force,
+    current: VERSION,
+    staged,
+    release: release?.version ?? null,
+    releaseNotes: release?.notes,
+    hasReleaseUrl: m.releaseUrl !== undefined,
+  });
+
+  switch (decision.kind) {
+    case "print":
+      console.log(decision.text);
+      return decision.code;
+    case "apply-staged":
+      return applyLocal(m);
+    case "apply-remote": {
+      if (release === null) {
+        console.log("update: internal — apply-remote with no release resolved");
+        return 1;
+      }
+      console.log(`updating ${VERSION} → ${release.version}…`);
+      log.info({ msg: "update: applying remote release", from: VERSION, to: release.version });
+      const err = await downloadVerifyApply(m, release);
+      if (err) {
+        log.error({ msg: "update failed", to: release.version, err });
+        console.log(`update: ${err}`);
+        return 1;
+      }
+      console.log(`updated to ${release.version}. daemon bounced; sessions keep running. rollback: ccmux update --rollback`);
+      return 0;
+    }
+  }
 }
