@@ -59,6 +59,14 @@ export const SessionSchema = z.object({
   // (`ccmux chat on <name>`) — chat traffic is never implicit. Gates BOTH sending from this
   // session and delivering peer messages to it. Defaulted so existing session rows stay valid.
   chatEnabled: z.boolean().default(false),
+  // Named prompt modules composed INTO the injected system prompt (buildPrompt) at every
+  // launch/heal, on top of the base management prompt. Each key is resolved against the in-code
+  // module registry (agent/promptModules.ts) — the module TEXT is versioned CODE; only the NAME
+  // is persisted here, so an updated module reaches every session on its next restart and NEVER
+  // goes stale (unlike snapshotting text). Unknown key → loud fail at launch. This is data (a
+  // free-form key), not a role enum: a new capability = a new registry entry, no schema change.
+  // Today's one module is "router" (the autonomous-manager protocol). Defaulted so old rows stay valid.
+  promptModules: z.array(z.string()).default([]),
 });
 
 /** Agent CLI backing a session — the registry key for transcript adapters. */
@@ -140,6 +148,11 @@ export const MachineConfigSchema = z.object({
   resumePicker: z.enum(["full", "summary", "off"]).default("full"),
   // Optional Telegram mirror of the inter-agent chat (see TelegramConfigSchema). Absent → off.
   telegram: TelegramConfigSchema.optional(),
+  // Optional owner language OVERRIDE for messages a session sends to `owner`. Unset (default) →
+  // sessions mirror the language the owner wrote in (zero-config, adapts per message). Set (e.g.
+  // "Russian") → the injected prompt tells sessions to reply to the owner in that language. No
+  // hardcoded default value (public repo). Purely advisory prompt guidance, not enforced.
+  ownerLang: z.string().min(1).optional(),
 });
 
 /**
@@ -170,6 +183,22 @@ export const ChatMessageSchema = z.object({
   to: z.string().min(1),
   body: z.string(),
   task: z.string().nullable().default(null),
+  // Deferred delivery: hold until the recipient VOLUNTARILY finishes its turn — delivered by the
+  // Stop hook at end-of-turn, or by the daemon once the target is STABLY idle. Never pasted while
+  // the target is working (Claude's steering queue would flush it mid-turn — the whole bug this
+  // fixes). Default false → normal peer-chat behavior + old ledger lines stay valid.
+  defer: z.boolean().default(false),
+  // Honest provenance for a RELAYED message: who the instruction truly came from (e.g. "owner")
+  // when `from` is only the courier (the router). Null → `from` is the real origin. Rendered as
+  // "on behalf of <x>" so the recipient sees the true authority WITHOUT `from` ever being spoofed.
+  onBehalfOf: z.string().nullable().default(null),
+  // Time-delayed delivery: an ISO-8601 instant before which the daemon must NOT deliver this message
+  // (skipped while now < notBefore). Powers a router's self-`watchdog` (`msg <self> --after N`) so it
+  // wakes on a TIMER, not only on an inbound reply — the backbone of "the router finishes the job on
+  // its own". Null → deliver as soon as eligible. A defer message can also carry notBefore (both must
+  // hold). `defer || notBefore !== null` makes a message CONDITIONAL — delivered by id, off the
+  // in-order cursor, so it never head-of-line-blocks immediate mail.
+  notBefore: z.string().nullable().default(null),
 });
 
 /** Delivery/read bookkeeping, kept OUT of the append-only ledger. `read[name]` = the ledger

@@ -18,6 +18,8 @@ import { cmdAdopt } from "./commands/adopt.ts";
 import { cmdMsg } from "./commands/msg.ts";
 import { cmdInbox } from "./commands/inbox.ts";
 import { cmdChat } from "./commands/chat.ts";
+import { cmdRouter } from "./commands/router.ts";
+import { cmdStopHook } from "./commands/stopHook.ts";
 import { cmdHelp, COMMANDS } from "./commands/help.ts";
 
 /** Lazy-load the TUI (ink/react) only when actually launching it — keeps every plain
@@ -57,7 +59,9 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdList(rest);
     case "new": {
       const { positionals, flags } = splitDashDash(rest);
-      return cmdNew(positionals[0], positionals[1], flags);
+      const router = positionals.includes("--router");
+      const pos = positionals.filter((a) => a !== "--router");
+      return cmdNew(pos[0], pos[1], flags, { router });
     }
     case "rm":
     case "remove": {
@@ -82,6 +86,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdInbox(rest);
     case "chat":
       return cmdChat(rest);
+    case "router":
+      return cmdRouter(rest);
     case "logs":
       return cmdLogs(rest[0], rest.slice(1));
     case "transcript":
@@ -104,6 +110,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdRun(rest[0]); // hidden: in-session relaunch loop (tmux invokes this)
     case "_restart-worker":
       return cmdRestartWorker(rest[0], rest[1]); // hidden: detached restart helper (name, note)
+    case "stop-hook":
+      return cmdStopHook(); // hidden: Claude Stop-hook — injects deferred chat mail at end-of-turn
     case "version":
     case "-v":
     case "--version":

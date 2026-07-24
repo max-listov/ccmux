@@ -6,6 +6,34 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Deferred chat delivery: `ccmux msg <to> --defer` holds a follow-up until the recipient
+  VOLUNTARILY finishes its turn, then delivers it as if a human typed it — never interrupting
+  mid-work (Claude's native queue is steering; it flushes between tool calls). Delivered by a
+  Claude Stop hook the instant the turn ends, or by the daemon once the target is stably idle
+  (spinner off + assistant-message-last + transcript quiet for a grace window). The Stop hook is
+  auto-provisioned at launch, merged into a single `--settings` object (verified it does not
+  clobber the user's own hooks). Coordination is an append-only ack-log keyed by message id —
+  the daemon stays the sole writer of the delivery cursor, so there is no lost-update race and no
+  `block`-loop.
+- Router sessions — an autonomous manager. `ccmux new <name> <dir> --router` / `ccmux router
+  on|off <name>` gives a session a versioned "manager protocol": it routes an owner-dictated
+  follow-up to the right target with `--defer`, waits, validates the result against a stated
+  done-criterion, re-asks on a gap (bounded), and escalates to the human ONLY when genuinely
+  stuck — never nagging with "continue?". Activated via a `promptModules` data field (a key into
+  an in-code module registry, resolved fresh at every launch — no stale snapshot), so it's a
+  capability toggle, not a persisted role.
+- Time-delayed delivery: `ccmux msg <to> --after <sec>` (a `notBefore` instant). A router arms a
+  self-`watchdog` per dispatch, so a target that finishes but never reports back no longer hangs
+  it — the timer returns control, the router checks the transcript and closes or escalates on its
+  own. Delivery is now two-track — immediate mail flows in order through the cursor, while
+  deferred / time-delayed mail is delivered by id off the cursor, so a pending conditional message
+  never head-of-line-blocks an immediate reply behind it.
+- Honest relay provenance: `ccmux msg --on-behalf-of <who>` renders "on behalf of <who>" so a
+  router can carry the owner's authority without ever spoofing the sender — gated so only a router
+  (or the cli) may relay, never a plain peer.
+- Owner-language: sessions reply to `owner` in the owner's own language by default; an optional
+  `ownerLang` in machine.json forces a fixed language.
+
 ## [0.1.15] — 2026-07-19
 
 inter-agent chat (menu-safe pane delivery + one-way Telegram mirror) + isolated dev instance

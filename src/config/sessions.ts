@@ -79,6 +79,26 @@ export async function setSessionChatEnabled(m: MachineConfig, name: string, enab
   return true;
 }
 
+/** Enable/disable ROUTER mode on a session: add/remove the "router" prompt module, and — since a
+ *  router drives ccmux chat (`msg`/`inbox`) — also enable chat when turning it on (leaving chat as-is
+ *  when turning off). Launch-time, like the other prompt-affecting fields: applies on next restart.
+ *  Returns false if the name wasn't present. */
+export async function setSessionRouter(m: MachineConfig, name: string, on: boolean): Promise<boolean> {
+  const current = loadSessions(m);
+  if (!findSession(current, name)) return false;
+  await writeSessions(
+    m,
+    current.map((s) => {
+      if (s.name !== name) return s;
+      const mods = new Set(s.promptModules);
+      if (on) mods.add("router");
+      else mods.delete("router");
+      return { ...s, promptModules: [...mods], chatEnabled: on ? true : s.chatEnabled };
+    }),
+  );
+  return true;
+}
+
 /** Returns false if the name wasn't present. Never touches the jsonl history. */
 export async function removeSession(m: MachineConfig, name: string): Promise<boolean> {
   const current = loadSessions(m);

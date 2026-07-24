@@ -25,6 +25,41 @@ export function chatPaths(m: MachineConfig): { ledger: string; cursors: string }
   return { ledger: join(dir, ".ccmux-chat.jsonl"), cursors: join(dir, ".ccmux-chat-cursors.json") };
 }
 
+/**
+ * Defer-delivery ack-log: an append-only record of which DEFER messages have been injected, keyed by
+ * message id. This is how the Stop hook and the daemon coordinate WITHOUT sharing a mutable cursor
+ * (which would lose-update — see the design doc's R5): each appends one O_APPEND line (atomic across
+ * processes, like the ledger), and both check it before delivering so a message is injected exactly
+ * once. The daemon stays the SOLE writer of `cursors`; the hook only ever touches this file.
+ */
+export function ackPath(m: MachineConfig): string {
+  return join(dirname(m.sessionsFile), ".ccmux-chat-ack.jsonl");
+}
+
+/** Set of message ids already delivered (defer channel). Lenient: a corrupt line is skipped, not
+ *  thrown — the hook must never wedge a session's ability to stop over a bad ack line. */
+export function loadAckedIds(m: MachineConfig): Set<string> {
+  const p = ackPath(m);
+  const ids = new Set<string>();
+  if (!existsSync(p)) return ids;
+  for (const raw of readFileSync(p, "utf8").split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    try {
+      const o: unknown = JSON.parse(line);
+      if (o && typeof o === "object" && "id" in o && typeof o.id === "string") ids.add(o.id);
+    } catch {
+      // skip — best-effort dedup log, not authoritative history
+    }
+  }
+  return ids;
+}
+
+/** Record a defer delivery. O_APPEND single-line write is atomic across the hook + daemon processes. */
+export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon", to: string): void {
+  appendFileSync(ackPath(m), `${JSON.stringify({ id, ts: new Date().toISOString(), by, to })}\n`);
+}
+
 /** Read + validate the whole ledger in order. A corrupt line fails LOUD with its number — the
  *  append-only history is never silently dropped. */
 export function loadLedger(m: MachineConfig): ChatMessage[] {

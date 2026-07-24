@@ -14,6 +14,9 @@ const msg = (from: string, to: string, body: string, task: string | null = null)
   to,
   body,
   task,
+  defer: false,
+  onBehalfOf: null,
+  notBefore: null,
 });
 
 test("formatForTg bolds the routing header and renders task + multi-line body verbatim", () => {

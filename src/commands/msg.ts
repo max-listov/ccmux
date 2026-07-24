@@ -19,19 +19,43 @@ export async function cmdMsg(args: string[]): Promise<number> {
 
   const positionals: string[] = [];
   let task: string | null = null;
+  let defer = false;
+  let onBehalfOf: string | null = null;
+  let afterSec: number | null = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--task") {
       task = args[++i] ?? null;
       continue;
     }
+    // Deferred delivery: hold until the recipient voluntarily finishes its turn (never mid-work).
+    if (a === "--defer") {
+      defer = true;
+      continue;
+    }
+    // Honest provenance for a relayed instruction (router → target on behalf of the owner).
+    if (a === "--on-behalf-of") {
+      onBehalfOf = args[++i] ?? null;
+      continue;
+    }
+    // Time-delayed delivery: not before N seconds from now (a router's self-watchdog timer).
+    if (a === "--after") {
+      const n = Number.parseInt(args[++i] ?? "", 10);
+      if (!Number.isFinite(n) || n <= 0) {
+        console.log("msg: --after needs a positive number of seconds");
+        return 1;
+      }
+      afterSec = n;
+      continue;
+    }
     if (a !== undefined) positionals.push(a);
   }
+  const notBefore = afterSec !== null ? new Date(Date.now() + afterSec * 1000).toISOString() : null;
   const to = positionals[0];
   const body = positionals.slice(1).join(" ").trim();
 
   if (to === undefined || body === "") {
-    console.log("usage: ccmux msg <to|owner> <text...> [--task <name>]   (sender is automatic: this session, or 'cli')");
+    console.log("usage: ccmux msg <to|owner> <text...> [--task <name>] [--defer] [--after <sec>] [--on-behalf-of <who>]   (sender is automatic: this session, or 'cli')");
     return 1;
   }
 
@@ -39,12 +63,18 @@ export async function cmdMsg(args: string[]): Promise<number> {
   const sessions = loadSessions(m);
 
   // A sending SESSION must exist and be chat-enabled; `cli` (the command line) is always allowed.
-  if (from !== CLI) {
-    const sender = findSession(sessions, from);
-    if (!sender || !sender.chatEnabled) {
-      console.log(`msg: this session '${from}' has chat disabled — enable with: ccmux chat on ${from}`);
-      return 1;
-    }
+  const sender = from === CLI ? undefined : findSession(sessions, from);
+  if (from !== CLI && (!sender || !sender.chatEnabled)) {
+    console.log(`msg: this session '${from}' has chat disabled — enable with: ccmux chat on ${from}`);
+    return 1;
+  }
+
+  // Provenance gate: relaying "--on-behalf-of" (elevating a message to someone else's authority) is
+  // limited to the human at the CLI and to ROUTER sessions. A plain peer must not be able to forge
+  // owner authority — `from` is always the true unspoofable sender, but the AUTHORITY tag is gated.
+  if (onBehalfOf !== null && from !== CLI && !sender?.promptModules.includes("router")) {
+    console.log(`msg: only a router session may use --on-behalf-of (this session '${from}' is not a router)`);
+    return 1;
   }
 
   // Recipient: `owner` = the human (Telegram-only, no pane); otherwise a chat-enabled session.
@@ -64,9 +94,10 @@ export async function cmdMsg(args: string[]): Promise<number> {
     }
   }
 
-  appendMessage(m, { id: randomUUID(), ts: new Date().toISOString(), from, to, body, task });
-  log.info({ msg: "chat message sent", from, to, task });
+  appendMessage(m, { id: randomUUID(), ts: new Date().toISOString(), from, to, body, task, defer, onBehalfOf, notBefore });
+  log.info({ msg: "chat message sent", from, to, task, defer, onBehalfOf, notBefore });
   const preview = body.length > 80 ? `${body.slice(0, 80)}…` : body;
-  console.log(`sent ${from} → ${to}: ${preview}`);
+  const when = notBefore !== null ? ` (after ${afterSec}s)` : defer ? " (deferred)" : "";
+  console.log(`sent ${from} → ${to}${when}: ${preview}`);
   return 0;
 }
