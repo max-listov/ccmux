@@ -55,9 +55,33 @@ export function loadAckedIds(m: MachineConfig): Set<string> {
   return ids;
 }
 
-/** Record a defer delivery. O_APPEND single-line write is atomic across the hook + daemon processes. */
-export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon", to: string): void {
+/** Record a conditional-message resolution in the ack-log. `by`:
+ *   - `hook`/`daemon` — DELIVERED (injected into the pane by that process);
+ *   - `cancel`        — CANCELLED before delivery (`msg cancel`, or replaced by a re-armed watchdog).
+ * All three suppress future delivery identically (both the daemon and the Stop hook skip any id in
+ * this log), so a cancel is just a delivery that will never happen — the honest `by` keeps the log
+ * readable. O_APPEND single-line write is atomic across the hook + daemon + sender processes. */
+export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon" | "cancel", to: string): void {
   appendFileSync(ackPath(m), `${JSON.stringify({ id, ts: new Date().toISOString(), by, to })}\n`);
+}
+
+/** Undelivered CONDITIONAL messages (deferred or time-delayed), optionally filtered by sender /
+ *  recipient / task. "Undelivered" = not yet in the ack-log (neither delivered nor already
+ *  cancelled). This is the set `msg cancel` tombstones and the set a re-armed `--task` replaces.
+ *  notBefore due-ness is intentionally NOT considered — a future-dated watchdog is still pending. */
+export function pendingConditional(
+  ledger: ChatMessage[],
+  acked: Set<string>,
+  filter: { from?: string; to?: string; task?: string },
+): ChatMessage[] {
+  return ledger.filter((msg) => {
+    if (!(msg.defer || msg.notBefore !== null)) return false; // immediate mail is delivered at once
+    if (acked.has(msg.id)) return false; // already delivered or cancelled
+    if (filter.from !== undefined && msg.from !== filter.from) return false;
+    if (filter.to !== undefined && msg.to !== filter.to) return false;
+    if (filter.task !== undefined && msg.task !== filter.task) return false;
+    return true;
+  });
 }
 
 /** Read + validate the whole ledger in order. A corrupt line fails LOUD with its number — the

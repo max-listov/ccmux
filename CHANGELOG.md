@@ -6,6 +6,30 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `ccmux msg cancel <task>` — drop a sender's still-undelivered mail for a task (an armed `--after`
+  watchdog or a queued `--defer` that hasn't fired). Cancellation is a tombstone in the append-only
+  ack-log (`by: "cancel"`), the same log the daemon and the Stop hook already consult — so a cancel
+  suppresses delivery in BOTH channels with no new coordination surface and no ledger rewrite.
+  Scoped to the sender, so a session can never cancel another's dispatch; already-delivered mail
+  can't be un-sent.
+- Watchdog dedup by task: re-arming a conditional (`--defer`/`--after`) with the same
+  `(sender, recipient, task)` now REPLACES the sender's prior undelivered one instead of piling up a
+  duplicate ping — closing the router's "two identical watchdogs both fired" gap. Immediate mail is
+  never replaced (it's delivered at once).
+- `--after` + `--defer` now prints a note on send: the two multiply to "not before T AND only at a
+  turn boundary", so a self-watchdog armed that way won't arrive on time in a long turn — a watchdog
+  should use bare `--after` (delivered between tool calls). Not blocked; the flags are compatible.
+- `ccmux msg` reads the body from stdin (`echo "…" | ccmux msg <to>`) when no inline text is given
+  and stdin isn't a TTY — matching the rest of the toolchain.
+- `ccmux msg --help` now shows the full flag set (`--defer`/`--after`/`--on-behalf-of`/`cancel`). The
+  short help and the arg-error usage were two separate strings that had drifted; they now render from
+  one source, so they can't diverge again.
+- `ccmux inbox` help clarifies it's the fallback for held/offline mail, not an archive — a message
+  already pushed into a pane doesn't sit there.
+- Diagnostic: the daemon now logs when it HOLDS a pending message solely because a human is attached
+  to the recipient's pane (delivery resumes on detach) — so "the message never arrived" is traceable
+  to that transient cause instead of looking like a broken chat.
+
 ## [0.1.16] — 2026-07-24
 
 inter-agent deferred chat + autonomous router sessions + time-delayed watchdog delivery

@@ -143,7 +143,13 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       log.warn({ msg: "chat rate limit — holding delivery (possible loop)", to: s.name });
       continue; // hold; retries once the burst subsides
     }
-    if (await hasAttachedClient(m, s.name)) continue; // a human is driving it — don't interleave
+    if (await hasAttachedClient(m, s.name)) {
+      // Diagnostic: a pending message is being HELD only because a human is attached to the pane
+      // (we don't type under their hands). It flows the instant they detach — this is not a stuck
+      // chat. Logged so "the message never arrived" is traceable to the real, transient cause.
+      log.info({ msg: "chat delivery held — human attached to pane", to: s.name, from: pick.msg.from });
+      continue;
+    }
     const pane = await capturePane(m, s.name, 40);
     if (!provider.chatDeliverable(pane)) continue; // at a menu → hold, retry next pass
     // A DEFERRED message additionally waits for the target to be STABLY idle (voluntarily finished).

@@ -104,11 +104,17 @@ Opt-in messaging between managed sessions, so one agent can hand off to another 
   until it's on, for both ends).
 - `ccmux msg <to|owner> "<text>"` — message another session (delivered to its pane) or `owner`
   (you — Telegram-only, no pane); `--task X` pins a pointer. The sender is **automatic** — a session
-  sends as itself, a shell as `cli`; there is no `--from`. Flags: `--defer` (hold until the recipient
-  voluntarily finishes its turn — never mid-work), `--after <sec>` (deliver no sooner than N seconds
-  from now — a timer), `--on-behalf-of <who>` (relay someone's authority honestly, without spoofing
-  the sender; router/cli only).
-- `ccmux inbox [name]` — read a session's unread messages and mark them read (`--peek` doesn't).
+  sends as itself, a shell as `cli`; there is no `--from`. The body may also come from stdin
+  (`echo "…" | ccmux msg <to>`). Flags: `--defer` (hold until the recipient voluntarily finishes its
+  turn — never mid-work), `--after <sec>` (deliver no sooner than N seconds from now — a timer;
+  a self-watchdog should use bare `--after`, not `--after --defer`), `--on-behalf-of <who>` (relay
+  someone's authority honestly, without spoofing the sender; router/cli only).
+- `ccmux msg cancel <task>` — drop your still-undelivered mail for a task (an armed `--after`
+  watchdog or a queued `--defer`). Re-arming a conditional message with the same `--task` also
+  replaces the prior undelivered one automatically, so watchdogs don't pile up.
+- `ccmux inbox [name]` — read a session's still-undelivered messages and mark them read (`--peek`
+  doesn't). It's the fallback for held/offline mail, **not** an archive — a message already pushed
+  into a pane isn't here.
 - `ccmux chat log [-n N]` — the append-only ledger (the full debug log).
 
 **Delivery.** The daemon push-delivers each message into the recipient's pane as its next turn,

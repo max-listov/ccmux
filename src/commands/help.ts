@@ -1,6 +1,6 @@
 import { VERSION } from "../util/version.ts";
 
-type HelpEntry = { verb: string; args: string; desc: string; example?: string };
+type HelpEntry = { verb: string; args: string; desc: string; example?: string; note?: string };
 
 /** Public command surface (hidden internals `_run`/`_restart-worker` are intentionally omitted). */
 export const COMMANDS: HelpEntry[] = [
@@ -13,8 +13,8 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "restart", args: "<name>", desc: "bounce it (survives killing the caller)" },
   { verb: "mode", args: "<name> <mode|default>", desc: "per-session permission-mode override (default = inherit machine); restart to apply", example: "ccmux mode cc-api auto" },
   { verb: "send", args: "<name> <keys...>", desc: "type into a session (text or /slash)", example: "ccmux send cc-api '/compact'" },
-  { verb: "msg", args: "<to|owner> <text...> [--task X]", desc: "chat a session (delivered to its pane) or 'owner' (you, Telegram-only); sender is automatic (this session, or 'cli')", example: "ccmux msg cc-api 'build is green — deploy when ready'" },
-  { verb: "inbox", args: "[name] [--peek]", desc: "read a session's unread chat + mark read (--peek doesn't); name = this session", example: "ccmux inbox" },
+  { verb: "msg", args: "<to|owner> <text...> [--task X] [--defer] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>", desc: "chat a session (delivered to its pane) or 'owner' (you, Telegram-only); --defer holds until the target finishes its turn, --after N is a timer, cancel drops your still-undelivered mail for a task; body may also come from stdin (echo … | ccmux msg <to>)", note: "sender is automatic: this session, or 'cli'", example: "ccmux msg cc-api 'build is green — deploy when ready'" },
+  { verb: "inbox", args: "[name] [--peek]", desc: "read a session's still-UNDELIVERED chat + mark read (--peek doesn't); a message already pushed to the pane isn't here — inbox is the fallback for offline/held mail, not an archive", example: "ccmux inbox" },
   { verb: "chat", args: "<log [-n N] | on <name> | off <name>>", desc: "chat ledger (full log) + per-session enable (default off)", example: "ccmux chat on cc-api" },
   { verb: "logs", args: "<name> [lines]", desc: "print a session's pane buffer" },
   { verb: "transcript", args: "<name> --json [--tail N] [--cursor LINE]", desc: "conversation history as JSON (incremental reads via --cursor)", example: "ccmux transcript cc-api --json --tail 50" },
@@ -30,6 +30,15 @@ export const COMMANDS: HelpEntry[] = [
 
 function sig(e: HelpEntry): string {
   return `${e.verb} ${e.args}`.trimEnd();
+}
+
+/** The ONE usage line for a verb — the single source `<cmd> --help` and a command's own arg-error
+ *  both render, so they can never drift (the exact divergence that shipped in 0.1.16). */
+export function usageLine(verb: string): string {
+  const e = COMMANDS.find((c) => c.verb === verb);
+  if (e === undefined) return `usage: ccmux ${verb}`;
+  const note = e.note !== undefined ? `   (${e.note})` : "";
+  return `usage: ccmux ${sig(e)}${note}`;
 }
 
 /** Pure renderer (testable). Returns null for an unknown command verb. */
