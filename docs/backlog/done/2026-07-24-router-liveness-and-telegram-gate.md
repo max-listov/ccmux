@@ -2,10 +2,11 @@
 title: Router liveness (time-watchdog) + Telegram-mirror owner-gate
 description: Две обязательные доработки router/queue-until-idle, без которых постановка «роутер сам доводит, меня не беспокоит» не закрывается — (1) живучесть await-лупа роутера через отложенную по времени доставку + self-watchdog; (2) гейт Telegram-зеркала: owner'у уходит только явный msg owner, не внутренний relay-трафик.
 type: task
-status: planned
-related: docs/backlog/planned/2026-07-24-router-session-queue-until-idle.md
+status: done
+related: docs/backlog/done/2026-07-24-router-session-queue-until-idle.md
 created: 2026-07-24
 updated: 2026-07-24
+completed: 2026-07-24 20:55 +07:00
 ---
 
 # Router liveness + Telegram-mirror owner-gate
@@ -96,8 +97,8 @@ ledger адресованным роутеру. При текущей модел
 
 ## Пробел 2 — Telegram-mirror owner-gate (N8) — ❌ ОТКЛОНЁН the maintainer (2026-07-24)
 
-**Решение the maintainer:** гейт НЕ делаем. Зеркалим в Telegram **ВСЁ** — весь трафик, включая внутренний relay
-роутер↔таргет. the maintainer хочет это видеть, «в телеграме это меня не смущает ни в коем случае». `mirrorPending`
+**Решение:** гейт НЕ делаем. Зеркалим в Telegram **ВСЁ** — весь трафик, включая внутренний relay
+роутер↔таргет. Владелец хочет видеть всю переписку роутера в Telegram; ничего не режем. `mirrorPending`
 остаётся broadcast-как-есть. Раздел оставлен как контекст исходного предложения.
 
 ---
