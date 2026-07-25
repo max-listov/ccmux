@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.1.19] — 2026-07-25
+
+session-reader library seam — expose the tested block-parser as 'ccmux/session-reader' for external consumers (readSession/parseSession/detect + types), lean (no ink/react), inert for the fleet bundle
+
 - Expose the transcript reader as a library — `ccmux/session-reader` (`src/lib.ts` + a package.json
   `exports` subpath). `readSession(path, agent, textLimit?)` / `parseSession(lines, agent, textLimit?)`
   / `detect(lines)` plus the `TranscriptMessage` types, so an external consumer reuses the tested,
@@ -16,7 +20,6 @@ the GitHub Release with that section as the notes.
   the shipped bundle is built from `cli.ts`, and `exports` only affects external `import "ccmux/…"`
   resolution. The format sniff moved to `src/agent/detect.ts` (normalize-only deps) and is re-exported
   from `agent/index.ts` under its existing name.
-
 ## [0.1.18] — 2026-07-24
 
 fix: 'ccmux update --check' is now read-only and a stale/older staged bundle can't silently downgrade a machine
