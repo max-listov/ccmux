@@ -6,6 +6,17 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Expose the transcript reader as a library — `ccmux/session-reader` (`src/lib.ts` + a package.json
+  `exports` subpath). `readSession(path, agent, textLimit?)` / `parseSession(lines, agent, textLimit?)`
+  / `detect(lines)` plus the `TranscriptMessage` types, so an external consumer reuses the tested,
+  agent-agnostic (Claude + Codex) block-parser instead of duplicating it. `textLimit` is a passthrough
+  (default 6000; pass higher for full-text indexing). Lean by construction: the seam wires only the
+  PURE parsers + `readLines` + types, so importing it pulls in `zod` + `node:fs` — not ink/react/tmux
+  (verified: `src/lib.ts` bundles to ~15 KB with zero ink/react in the subgraph). Inert for the fleet:
+  the shipped bundle is built from `cli.ts`, and `exports` only affects external `import "ccmux/…"`
+  resolution. The format sniff moved to `src/agent/detect.ts` (normalize-only deps) and is re-exported
+  from `agent/index.ts` under its existing name.
+
 ## [0.1.18] — 2026-07-24
 
 fix: 'ccmux update --check' is now read-only and a stale/older staged bundle can't silently downgrade a machine

@@ -7,6 +7,9 @@
   "bin": {
     "ccmux": "./dist/ccmux"
   },
+  "exports": {
+    "./session-reader": "./src/lib.ts"
+  },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
     "dev": "bun run src/cli.ts",

@@ -2,10 +2,13 @@ import { existsSync, statSync } from "node:fs";
 import type { AgentKind, ContextInfo, MachineConfig, Session, TranscriptMessage, TranscriptStats } from "../types.ts";
 import { claudeProvider } from "./claude/index.ts";
 import { codexProvider } from "./codex/index.ts";
-import { rec, str } from "./normalize.ts";
 import { rcName } from "../config/machine.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
 import { readLines, readTailLines } from "../util/readLines.ts";
+
+// Format sniff lives in its own light module (normalize-only deps) so the public library seam can
+// re-export it without pulling in the full providers; re-exported here to keep the existing name.
+export { detect } from "./detect.ts";
 
 /** Live status scraped from a rendered pane (pure: text → status). */
 export interface PaneScan {
@@ -65,26 +68,6 @@ export function getProvider(agent: AgentKind): AgentProvider {
 
 export function providerFor(session: Session): AgentProvider {
   return REGISTRY[session.agent];
-}
-
-/** Best-effort format sniff from the first non-empty line — fallback for legacy rows. */
-export function detect(lines: string[]): AgentKind | null {
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (line === "") continue;
-    let entry: Record<string, unknown> | null = null;
-    try {
-      entry = rec(JSON.parse(line));
-    } catch {
-      continue;
-    }
-    if (!entry) continue;
-    const type = str(entry.type);
-    if (type === "response_item" || type === "session_meta" || type === "event_msg") return "codex";
-    if (entry.message !== undefined || entry.sessionId !== undefined) return "claude";
-    return null;
-  }
-  return null;
 }
 
 // ── IO + windowing (shared; adapters stay pure transforms) ───────────────────
