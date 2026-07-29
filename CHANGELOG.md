@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-29
+
+model from transcript (source of truth), not the statusline whitelist — a new Claude family (Fable/Mythos) is never shown as a blank model again
+
 fix: session model is read from the transcript (source of truth), not scraped from the statusline against a family whitelist — so a new Claude family (Fable, Mythos, …) is never shown as a blank model again
 
 - `ccmux list` reported `model: null` for sessions on any family the pane scraper hadn't been taught.
