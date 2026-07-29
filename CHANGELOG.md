@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-29
+
+fix: shipped bundle is truly self-contained — stub react-devtools-core at build time so a cache-cleared / offline machine no longer dies on start with ENOENT; + guard test against future hoisted externals
+
 - Fix the shipped bundle silently depending on the global bun cache / npm at startup. ink imports an
   optional DEV-only React DevTools client (`react-devtools-core`) via a HOISTED static import, so it
   loaded on every launch — and built with `--external` it resolved that import at runtime against
@@ -18,7 +22,6 @@ the GitHub Release with that section as the notes.
   stage / CI / release), the misleading "never reached in prod" comment and the obsolete "build only
   outside the project tree" caveat are gone, and a guard test builds via that same path and asserts
   the bundle starts under a wiped cache + dead registry — so this can never silently regress.
-
 ## [0.1.19] — 2026-07-25
 
 session-reader library seam — expose the tested block-parser as 'ccmux/session-reader' for external consumers (readSession/parseSession/detect + types), lean (no ink/react), inert for the fleet bundle
