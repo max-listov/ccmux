@@ -18,27 +18,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RELEASES_DIR, RELEASE_BUNDLE, RELEASE_MANIFEST, STAGED_BUNDLE } from "../src/config/paths.ts";
 import { VERSION, compareSemver } from "../src/util/version.ts";
+import { buildBundle } from "./bundle.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC_CLI = join(ROOT, "src", "cli.ts");
 const PKG_JSON = join(ROOT, "package.json");
 const CHANGELOG = join(ROOT, "CHANGELOG.md");
-
-async function bundle(outfile: string): Promise<boolean> {
-  mkdirSync(dirname(outfile), { recursive: true });
-  // `--external react-devtools-core`: Ink imports it ONLY in devtools mode (gated on
-  // `process.env.DEV === 'true'` in ink/reconciler.js) and it's an OPTIONAL peer dep that isn't
-  // installed. Without external, the bundler can't resolve the import and the build fails. The
-  // left-in runtime import is never reached in prod, so the deployed bundle (~/.ccmux/app, outside
-  // any node_modules) runs fine. NOTE: only run the bundle from OUTSIDE the project tree — running
-  // it from inside (e.g. dist/) makes Bun eagerly resolve the external against the project's
-  // node_modules, which lacks the package, and errors. This is the canonical Ink-bundling pattern.
-  const proc = Bun.spawn(
-    ["bun", "build", "--target=bun", "--external", "react-devtools-core", SRC_CLI, "--outfile", outfile],
-    { stdout: "inherit", stderr: "inherit" },
-  );
-  return (await proc.exited) === 0;
-}
 
 function sha256(path: string): { bytes: number; hex: string } {
   const buf = readFileSync(path);
@@ -62,7 +46,7 @@ async function git(argv: string[], capture = false): Promise<{ ok: boolean; out:
 }
 
 async function doStage(): Promise<number> {
-  if (!(await bundle(STAGED_BUNDLE))) return fail("build failed");
+  if (!(await buildBundle(STAGED_BUNDLE))) return fail("build failed");
   console.log(`staged v${VERSION} → ${STAGED_BUNDLE}`);
   console.log("apply locally: ccmux update");
   return 0;
@@ -71,7 +55,7 @@ async function doStage(): Promise<number> {
 /** file:// release for the sandbox e2e (isolated HOME) — never for the real fleet. */
 async function doLocal(notes: string): Promise<number> {
   mkdirSync(RELEASES_DIR, { recursive: true });
-  if (!(await bundle(RELEASE_BUNDLE))) return fail("build failed");
+  if (!(await buildBundle(RELEASE_BUNDLE))) return fail("build failed");
   const { bytes, hex } = sha256(RELEASE_BUNDLE);
   await writeManifest(`file://${RELEASE_BUNDLE}`, notes);
   console.log(`built v${VERSION} → ${RELEASE_MANIFEST} (${(bytes / 1e6).toFixed(2)} MB, sha256 ${hex.slice(0, 12)}…)`);
@@ -84,7 +68,7 @@ async function doLocal(notes: string): Promise<number> {
 async function doCiAssets(url: string): Promise<number> {
   if (!url.startsWith("https://")) return fail("--ci-assets needs the versioned https bundle url");
   mkdirSync(RELEASES_DIR, { recursive: true });
-  if (!(await bundle(RELEASE_BUNDLE))) return fail("build failed");
+  if (!(await buildBundle(RELEASE_BUNDLE))) return fail("build failed");
   const notes = changelogSection(VERSION) ?? `ccmux v${VERSION}`;
   const hex = await writeManifest(url, notes.split("\n")[0] ?? "");
   console.log(`assets ready: ${RELEASE_BUNDLE} + ${RELEASE_MANIFEST} (sha256 ${hex.slice(0, 12)}…)`);

@@ -6,6 +6,19 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Fix the shipped bundle silently depending on the global bun cache / npm at startup. ink imports an
+  optional DEV-only React DevTools client (`react-devtools-core`) via a HOISTED static import, so it
+  loaded on every launch — and built with `--external` it resolved that import at runtime against
+  `~/.bun/install/cache` (or an npm auto-install). A machine whose cache was cleared, or that had no
+  network, died on start with `ENOENT ... react-devtools-core` — the daemon (and every session it
+  supervises) down. The "self-contained" bundle was never actually self-contained. The build now
+  compiles an inert stub in its place (`Bun.build()` API + a resolve plugin instead of the
+  `bun build --external` spawn), so the single-file bundle carries no external import and starts
+  offline / with an empty cache. The bundling moved to `scripts/bundle.ts` (one build path shared by
+  stage / CI / release), the misleading "never reached in prod" comment and the obsolete "build only
+  outside the project tree" caveat are gone, and a guard test builds via that same path and asserts
+  the bundle starts under a wiped cache + dead registry — so this can never silently regress.
+
 ## [0.1.19] — 2026-07-25
 
 session-reader library seam — expose the tested block-parser as 'ccmux/session-reader' for external consumers (readSession/parseSession/detect + types), lean (no ink/react), inert for the fleet bundle
