@@ -9,7 +9,7 @@ import { runDetached } from "../util/spawn.ts";
 import { SELF_ARGV } from "../env.ts";
 import { SessionSchema } from "../config/schema.ts";
 
-/** Poll the pane until the agent's UI is actually drawn (model banner visible) or timeout —
+/** Poll the pane until the agent's interactive UI is actually drawn (ready marker) or timeout —
  *  so we attach to a READY session, not a half-booted blank pane. Mirrors bash `wait_ready`. */
 export async function waitReady(m: MachineConfig, session: Session, timeoutMs = 6000): Promise<void> {
   const provider = providerFor(session);
@@ -17,7 +17,7 @@ export async function waitReady(m: MachineConfig, session: Session, timeoutMs = 
   while (Date.now() < deadline) {
     try {
       const scan = provider.scanPane(await capturePane(m, session.name, 30));
-      if (scan.model !== null || scan.state === "working") return; // UI drawn / agent active
+      if (scan.ready) return; // UI drawn (ready covers both idle-booted and working)
     } catch {
       // session not up yet — keep polling
     }

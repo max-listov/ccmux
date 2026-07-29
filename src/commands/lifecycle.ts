@@ -77,10 +77,10 @@ export async function cmdRestart(args: string[]): Promise<number> {
 }
 
 /**
- * Wait until a (re)started session is ready for input: the agent banner is up (model
- * surfaced) AND it's idle (no working-spinner). Gated on real pane state via the
- * provider's scanPane, not a blind sleep, so a wake-note never lands in a half-loaded
- * pane. Two consecutive idle reads guard against a transient idle between load frames.
+ * Wait until a (re)started session is ready for input: the agent UI is up (ready marker)
+ * AND it's idle (no working-spinner). Gated on real pane state via the provider's scanPane,
+ * not a blind sleep, so a wake-note never lands in a half-loaded pane. Two consecutive idle
+ * reads guard against a transient idle between load frames.
  */
 async function waitReady(m: MachineConfig, s: Session, timeoutSec = 120): Promise<boolean> {
   const provider = providerFor(s);
@@ -88,7 +88,7 @@ async function waitReady(m: MachineConfig, s: Session, timeoutSec = 120): Promis
   let ok = 0;
   while (Date.now() < deadline) {
     const scan = provider.scanPane(await capturePane(m, s.name, 30));
-    if (scan.model !== null && scan.state === "idle") {
+    if (scan.ready && scan.state === "idle") {
       ok += 1;
       if (ok >= 2) return true;
     } else {

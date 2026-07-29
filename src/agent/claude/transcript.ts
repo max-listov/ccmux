@@ -155,6 +155,27 @@ function foldResults(
   return msgs.filter((m) => !(m.kind === "tool_result" && m.toolCallId !== null && folded.has(m.toolCallId)));
 }
 
+/** The conversation's CURRENT model — the most-recent real assistant turn's `message.model`, read
+ *  from jsonl (source of truth), not the statusline. Skips `<synthetic>` turns (API-error / interrupt
+ *  placeholders carry no real model) and only trusts `role:"assistant"` lines — image-gen model ids
+ *  (`nano-banana-2`, `gpt-image-2`) live inside tool payloads, never in a real turn's message.model. */
+export function lastModel(lines: string[]): string | null {
+  const floor = Math.max(0, lines.length - 400);
+  for (let i = lines.length - 1; i >= floor; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    try {
+      const msg = rec(rec(JSON.parse(line))?.message);
+      if (msg?.role !== "assistant") continue;
+      const model = str(msg.model);
+      if (model && model !== "<synthetic>") return model;
+    } catch {
+      // skip malformed line
+    }
+  }
+  return null;
+}
+
 /** Context tokens used — the most recent assistant message's usage (input + cache). */
 export function usedTokens(lines: string[]): number | null {
   const floor = Math.max(0, lines.length - 400);

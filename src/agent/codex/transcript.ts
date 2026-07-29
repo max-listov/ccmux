@@ -192,6 +192,23 @@ function foldResults(
   return msgs.filter((m) => !(m.kind === "tool_result" && m.toolCallId !== null && folded.has(m.toolCallId)));
 }
 
+/** The rollout's CURRENT model — the most recent `turn_context.payload.model` (each turn stamps it;
+ *  `session_meta` carries the initial one). Read from jsonl, not the pane. */
+export function lastModel(lines: string[]): string | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    try {
+      const entry = rec(JSON.parse(line));
+      const model = str(rec(entry?.payload)?.model);
+      if (model) return model;
+    } catch {
+      // skip malformed line
+    }
+  }
+  return null;
+}
+
 /** Context tokens used — the most recent token_count event's prompt size. */
 export function usedTokens(lines: string[]): number | null {
   for (let i = lines.length - 1; i >= 0; i--) {

@@ -6,7 +6,20 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-## [0.2.0] — 2026-07-29
+fix: session model is read from the transcript (source of truth), not scraped from the statusline against a family whitelist — so a new Claude family (Fable, Mythos, …) is never shown as a blank model again
+
+- `ccmux list` reported `model: null` for sessions on any family the pane scraper hadn't been taught.
+  The model was matched with a `(Opus|Sonnet|Haiku)` regex against the rendered statusline — a
+  whitelist that silently dropped Fable 5 (and would drop the next family too), and that depended on
+  the user's arbitrary custom statusline and reflected the start-time model, not the current one.
+- The model now comes from the transcript's `message.model` (Claude) / `turn_context.model` (Codex) —
+  the source of truth, always fresh, format-independent. `<synthetic>` turns are skipped and only real
+  assistant turns are trusted (image-gen model ids live in tool payloads). Display formatting is a pure
+  transform (`prettyModel`: `claude-fable-5` → "Fable 5"), never a lookup table, so a future family
+  renders with zero code change; anything off-shape falls back to the raw stripped id.
+- The pane scraper keeps only genuinely-live signals (working/idle, best-effort context); its old
+  double-duty "model → booted" gate is replaced by a statusline-independent `ready` marker. The
+  managed-list and external-discover paths now share one model source and one formatter.
 
 fix: shipped bundle is truly self-contained — stub react-devtools-core at build time so a cache-cleared / offline machine no longer dies on start with ENOENT; + guard test against future hoisted externals
 

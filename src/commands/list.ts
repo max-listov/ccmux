@@ -3,8 +3,9 @@ import { loadSessions } from "../config/sessions.ts";
 import { listSessionsCreated } from "../tmux/tmux.ts";
 import { humanizeDuration } from "../util/duration.ts";
 import { capturePane } from "../tmux/tmux.ts";
-import { providerFor, sessionUsedTokens, lastTranscriptMessage, lastActivityMs } from "../agent/index.ts";
+import { providerFor, sessionUsedTokens, sessionModel, lastTranscriptMessage, lastActivityMs } from "../agent/index.ts";
 import type { PaneScan } from "../agent/index.ts";
+import { prettyModel } from "../agent/format.ts";
 import { VERSION } from "../util/version.ts";
 import { fmtTokens } from "../tui/format.ts";
 import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionState, TranscriptMessage } from "../types.ts";
@@ -83,7 +84,9 @@ async function buildRow(
     session: s,
     running: true,
     state: scan.state,
-    model: scan.model,
+    // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
+    // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
+    model: prettyModel(sessionModel(s, m)),
     contextLabel,
     context,
     uptimeText: humanizeDuration(uptimeSeconds),

@@ -14,14 +14,19 @@ import { parseContext } from "../context.ts";
 // stale markers → every idle session read as "working". Only the ellipsis form (or the
 // explicit "esc to interrupt") means working RIGHT NOW. Completion markers have no "…".
 const WORKING_RE = /[✱-✿] [A-Za-z ]+…|esc to interrupt/;
-const MODEL_RE = /(Opus|Sonnet|Haiku) [\d.]+/;
 const CONTEXT_RE = /[\d.]+[kKMG]\/[\d.]+[kKMG] +\d+%/;
+// "Claude's interactive UI is drawn" — the restart waitReady gates use this so a wake-note lands in
+// a live conversation, not a half-booted blank pane. claude-NATIVE markers, INDEPENDENT of the
+// (arbitrary, user-defined) statusline: the permission-mode footer while idle, the interrupt hint
+// while working. The MODEL is deliberately NOT read from the pane anymore — it comes from jsonl
+// (message.model, source of truth), so a new family (Fable/Mythos/…) is never dropped by a whitelist.
+const READY_RE = /shift\+tab to cycle|esc to interrupt/;
 
 export function scanPane(paneText: string): PaneScan {
   const tail = paneText.split("\n").slice(-30).join("\n");
   const contextLabel = tail.match(CONTEXT_RE)?.[0] ?? null;
   return {
-    model: tail.match(MODEL_RE)?.[0] ?? null,
+    ready: READY_RE.test(tail),
     state: WORKING_RE.test(tail) ? "working" : "idle",
     contextLabel: contextLabel ?? "-",
     context: parseContext(contextLabel),

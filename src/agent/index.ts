@@ -10,9 +10,10 @@ import { readLines, readTailLines } from "../util/readLines.ts";
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
 export { detect } from "./detect.ts";
 
-/** Live status scraped from a rendered pane (pure: text → status). */
+/** Live status scraped from a rendered pane (pure: text → status). The MODEL is NOT here — it's
+ *  conversation metadata read from jsonl (source of truth), not a live pane signal. */
 export interface PaneScan {
-  model: string | null;
+  ready: boolean; // the agent's interactive UI is drawn (booted) — restart waitReady gates on this
   state: "working" | "idle";
   contextLabel: string; // human, "-" if none
   context: ContextInfo; // structured
@@ -41,6 +42,9 @@ export interface AgentProvider {
   // for backward pagination; omit to parse through the end of the file.
   parse(lines: string[], startLine: number, textLimit?: number, endLine?: number): TranscriptMessage[];
   usedTokens(lines: string[]): number | null;
+  // The conversation's CURRENT model, read from history (source of truth), or null if not yet
+  // written / undetectable. Raw id (e.g. "claude-fable-5"); display formatting is prettyModel's job.
+  lastModel(lines: string[]): string | null;
   // live pane status
   scanPane(paneText: string): PaneScan;
   // Claude 2.1.x shows a BLOCKING "Resume from summary?" picker on `--resume` of a large session;
@@ -207,6 +211,19 @@ export function sessionUsedTokens(session: Session, m: MachineConfig): number | 
   const path = provider.historyFile(session, m);
   if (!path) return null;
   return usedTokensCache.get(path, () => provider.usedTokens(readTailLines(path, USED_TOKENS_WINDOW)));
+}
+
+// mtime-keyed like usedTokens: an idle session's model is read once per write, not per poll.
+const modelCache = new MtimeCache<string | null>();
+
+/** The session's current model as a RAW id (from jsonl, the source of truth) — the model banner
+ *  no longer comes from the statusline whitelist, so a new family is never dropped. null when the
+ *  history has no assistant turn yet. Format for display with prettyModel. */
+export function sessionModel(session: Session, m: MachineConfig): string | null {
+  const provider = providerFor(session);
+  const path = provider.historyFile(session, m);
+  if (!path) return null;
+  return modelCache.get(path, () => provider.lastModel(readTailLines(path, USED_TOKENS_WINDOW)));
 }
 
 /** Where the session's conversation lives NOW, if the agent forked it away from the

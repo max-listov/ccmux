@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import type { ListRow } from "../commands/list.ts";
 import type { DiscoveredSession } from "./discover.ts";
 import { fmtAge, fmtTokens } from "./format.ts";
+import { prettyModel } from "../agent/format.ts";
 import { deriveStatus } from "./status.ts";
 import type { AgentStatus } from "./status.ts";
 
@@ -43,7 +44,7 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     },
     running: true, // an external session in the list is a LIVE one (recent activity)
     state: "external",
-    model: ext.model ? ext.model.replace(/^claude-/, "") : null,
+    model: prettyModel(ext.model),
     contextLabel: tokens,
     context: { text: tokens === "-" ? null : tokens, usedTokens: ext.usedTokens, limitTokens: null, percent: null },
     uptimeText: "—", // no tmux pane → no uptime; the activity age is the item's activityText

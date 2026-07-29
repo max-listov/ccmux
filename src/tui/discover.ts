@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import type { MachineConfig, TranscriptMessage } from "../types.ts";
-import { parse, usedTokens } from "../agent/claude/transcript.ts";
+import { parse, usedTokens, lastModel } from "../agent/claude/transcript.ts";
 import { externalResumingUuids, parsePs } from "../agent/claude/writers.ts";
 import { loadSessions } from "../config/sessions.ts";
 import { rec, str } from "../agent/normalize.ts";
@@ -50,20 +50,6 @@ function firstCwd(lines: string[]): string | null {
       if (cwd) return cwd;
     } catch {
       // skip (a slice border may have split the last line — fine, cwd is in line 1)
-    }
-  }
-  return null;
-}
-
-function lastModel(lines: string[]): string | null {
-  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 400); i--) {
-    const raw = lines[i]?.trim();
-    if (!raw) continue;
-    try {
-      const model = str(rec(rec(JSON.parse(raw))?.message)?.model);
-      if (model) return model;
-    } catch {
-      // skip
     }
   }
   return null;
