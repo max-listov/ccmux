@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-30
+
+Codex launch/resume (close the launch gap) + shell completions
+
 feat: Codex launch/resume (close the launch gap) + shell completions
 
 - **Codex sessions now launch and resume through ccmux**, 1:1 with Claude as far as the Codex CLI
@@ -20,7 +24,6 @@ feat: Codex launch/resume (close the launch gap) + shell completions
   `COMMANDS` registry `ccmux help` uses, so a new/renamed verb can never drift from what completes.
 - Test coverage filled in for the transcript adapters (Claude tool-call folding + Codex response items),
   the `list` context-label parse, and the TUI width/wrap primitives.
-
 ## [0.2.1] — 2026-07-29
 
 model from transcript (source of truth), not the statusline whitelist — a new Claude family (Fable/Mythos) is never shown as a blank model again
