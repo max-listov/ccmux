@@ -1,6 +1,7 @@
 import type { MachineConfig } from "../types.ts";
 import { run, runWithInput } from "../util/spawn.ts";
 import { exactTarget, paneTarget } from "./target.ts";
+import { clearStatus } from "../agent/sessionStatus.ts";
 
 // Typed tmux wrappers — every call is an argv array via util/spawn. All targeting
 // goes through target.ts; no bare `-t name` anywhere.
@@ -68,6 +69,9 @@ export async function newSession(
 
 export async function killSession(m: MachineConfig, name: string): Promise<boolean> {
   const { code } = await run(tmuxArgv(m, "kill-session", "-t", exactTarget(name)));
+  // Single funnel for stop/rm/restart (CLI + TUI) — drop the session's structured status files so a
+  // stopped/removed session never shows a stale live state; a restart re-writes them via SessionStart.
+  clearStatus(name);
   return code === 0;
 }
 

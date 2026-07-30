@@ -6,6 +6,22 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+feat: Claude session status from structured sources (statusLine JSON + hooks), not pane-scraping
+
+- Context %, model and cost now come from the STRUCTURED JSON Claude Code feeds its statusLine command
+  (`context_window.used_percentage` × `context_window_size`), captured by an injected statusLine
+  wrapper that ALSO runs the user's own statusline unchanged (or renders a minimal `model · ctx%`
+  default if they have none). This removes the regex-over-rendered-text scrape and its dependency on
+  the user's statusline FORMAT, so context % now works on default Claude Code and any user's setup —
+  not only a bespoke statusline — with no hardcoded model→window map (the window size comes from Claude).
+- Turn-boundary hooks (UserPromptSubmit/Stop/SessionStart) write a per-session working/idle lifecycle
+  file. Working/idle display stays pane-decisive (the spinner is reliable and, unlike the hooks, reads
+  idle correctly right after an ESC-interrupt); the hook fills only the cold-start gap and `SessionStart`
+  clears a stale `working`. The lifecycle file is the substrate for future event-driven push/"waiting".
+- Both inject via `--settings` and coexist with the chat Stop hook; status files live under
+  `~/.ccmux/status/` and are cleared on stop/rm/restart. Fully fail-open — a status/statusline hiccup
+  can never wedge a turn or corrupt the rendered bar.
+
 ## [0.3.0] — 2026-07-30
 
 Codex launch/resume (close the launch gap) + shell completions

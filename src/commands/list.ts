@@ -6,6 +6,7 @@ import { capturePane } from "../tmux/tmux.ts";
 import { providerFor, sessionUsedTokens, sessionModel, lastTranscriptMessage, lastActivityMs } from "../agent/index.ts";
 import type { PaneScan } from "../agent/index.ts";
 import { prettyModel } from "../agent/format.ts";
+import { readLifecycle, readMetrics, resolveLiveState } from "../agent/sessionStatus.ts";
 import { VERSION } from "../util/version.ts";
 import { fmtTokens } from "../tui/format.ts";
 import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionState, TranscriptMessage } from "../types.ts";
@@ -70,9 +71,23 @@ async function buildRow(
   } else {
     scan = cached;
   }
+  // Structured status (Claude hooks + statusLine tee) is authoritative when present; the pane is the
+  // cold-start fallback. State: a positive pane "working" (esc to interrupt) always wins — it covers a
+  // session already mid-turn when ccmux (re)started, before a hook fired; else the hook lifecycle file;
+  // else the pane. Context: prefer the statusLine-tee metrics (Claude's own %, no regex, no statusline-
+  // format dependency), else the pane label, else the used-tokens count from the transcript.
+  const lifecycle = readLifecycle(s.name);
+  // Pane-decisive working/idle (see resolveLiveState): a stale lifecycle `working` after an interrupt
+  // can never win over a drawn idle pane; the hook only fills the cold-start gap.
+  const state: SessionState = resolveLiveState(scan.state === "working", scan.ready, lifecycle?.state ?? null);
   let context = scan.context;
   let contextLabel = scan.contextLabel;
-  if (context.text === null) {
+  const metrics = readMetrics(s.name);
+  if (metrics !== null && metrics.pct !== null && metrics.contextSizeTokens !== null) {
+    const used = Math.round((metrics.contextSizeTokens * metrics.pct) / 100);
+    contextLabel = `${fmtTokens(used)}/${fmtTokens(metrics.contextSizeTokens)} ${metrics.pct}%`;
+    context = { text: contextLabel, usedTokens: used, limitTokens: metrics.contextSizeTokens, percent: metrics.pct };
+  } else if (context.text === null) {
     const used = sessionUsedTokens(s, m);
     if (used !== null && used > 0) {
       contextLabel = fmtTokens(used);
@@ -83,7 +98,7 @@ async function buildRow(
   return {
     session: s,
     running: true,
-    state: scan.state,
+    state,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
     model: prettyModel(sessionModel(s, m)),

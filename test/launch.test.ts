@@ -51,6 +51,19 @@ test("rc name and ordering: -n <prefix>-<name>, extraFlags after session flags",
   expect(argv.indexOf("--a")).toBeLessThan(argv.indexOf("--z"));
 });
 
+test("settings ALWAYS inject status hooks + statusLine; chat stop-hook coexists on Stop", () => {
+  const off = buildArgv(makeSession(), makeMachine(), "ccmux", true);
+  const offSettings = off[off.indexOf("--settings") + 1] ?? "";
+  for (const t of ["hook-status", "status-line", "UserPromptSubmit", "SessionStart", "Stop"]) {
+    expect(offSettings).toContain(t);
+  }
+  expect(offSettings).not.toContain("stop-hook"); // chat off → no chat hook
+  const on = buildArgv(makeSession({ chatEnabled: true }), makeMachine(), "ccmux", true);
+  const onSettings = on[on.indexOf("--settings") + 1] ?? "";
+  expect(onSettings).toContain("stop-hook"); // chat on → chat hook…
+  expect(onSettings).toContain("hook-status"); // …coexists with the status hook (both on Stop)
+});
+
 test("launchEnv guarantees a usable PATH + tags the session for the self-guard", () => {
   const env = launchEnv(makeMachine({ claudeBin: "/opt/x/claude", tmuxBin: "/usr/bin/tmux" }), "cc-x");
   expect(env.PATH).toContain("/opt/x");

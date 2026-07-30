@@ -16,3 +16,7 @@ export const RELEASE_BUNDLE = `${RELEASES_DIR}/ccmux.js`;
 export const RELEASE_MANIFEST = `${RELEASES_DIR}/release.json`;
 // Boot-loop guard counter (see util/bootGuard.ts) — daemon start attempts since last good pass.
 export const BOOT_ATTEMPTS = `${CCMUX_HOME}/boot-attempts`;
+// Per-session structured status (Claude hooks + statusLine tee) — lifecycle (working/idle) and
+// metrics (context%/model/cost) files, so `list`/TUI read authoritative state instead of scraping
+// the pane. Under CCMUX_HOME so an isolated dev instance keeps its own (never shares prod status).
+export const STATUS_DIR = `${CCMUX_HOME}/status`;

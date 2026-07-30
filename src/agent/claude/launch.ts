@@ -50,9 +50,23 @@ export function buildArgv(
 function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
   const settings: Record<string, unknown> = {};
   if (!m.remoteControl) settings.disableRemoteControl = true;
-  if (s.chatEnabled) {
-    settings.hooks = { Stop: [{ hooks: [{ type: "command", command: `${cli} stop-hook` }] }] };
-  }
+
+  // Structured status (ALWAYS injected). Turn-boundary hooks → a working/idle lifecycle file;
+  // SessionStart → idle so a resume/restart clears a stale `working` (Stop never fires on interrupt).
+  // The statusLine tee captures Claude's own context%/model/cost JSON into a metrics file AND renders
+  // the user's original statusline unchanged. Together list/TUI read authoritative status instead of
+  // scraping the pane. `hook-status` is SILENT (writes a file, no stdout) so it coexists on the Stop
+  // event with the chat `stop-hook`, which owns the `{decision:block}` stdout channel — both run.
+  const stopHooks: Array<{ type: string; command: string }> = [];
+  if (s.chatEnabled) stopHooks.push({ type: "command", command: `${cli} stop-hook` });
+  stopHooks.push({ type: "command", command: `${cli} hook-status` });
+  settings.hooks = {
+    UserPromptSubmit: [{ hooks: [{ type: "command", command: `${cli} hook-status` }] }],
+    SessionStart: [{ hooks: [{ type: "command", command: `${cli} hook-status` }] }],
+    Stop: [{ hooks: stopHooks }],
+  };
+  settings.statusLine = { type: "command", command: `${cli} status-line` };
+
   return Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : [];
 }
 

@@ -21,6 +21,8 @@ import { cmdInbox } from "./commands/inbox.ts";
 import { cmdChat } from "./commands/chat.ts";
 import { cmdRouter } from "./commands/router.ts";
 import { cmdStopHook } from "./commands/stopHook.ts";
+import { cmdHookStatus } from "./commands/hookStatus.ts";
+import { cmdStatusLine } from "./commands/statusLine.ts";
 import { cmdHelp, COMMANDS } from "./commands/help.ts";
 
 /** Lazy-load the TUI (ink/react) only when actually launching it — keeps every plain
@@ -115,6 +117,10 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdRestartWorker(rest[0], rest[1]); // hidden: detached restart helper (name, note)
     case "stop-hook":
       return cmdStopHook(); // hidden: Claude Stop-hook — injects deferred chat mail at end-of-turn
+    case "hook-status":
+      return cmdHookStatus(); // hidden: Claude lifecycle hooks → working/idle status file
+    case "status-line":
+      return cmdStatusLine(); // hidden: Claude statusLine tee → context% metrics + render original
     case "version":
     case "-v":
     case "--version":
