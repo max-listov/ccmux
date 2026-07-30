@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-30
+
+Claude session status from structured sources (statusLine JSON + hooks), not pane-scraping
+
 feat: Claude session status from structured sources (statusLine JSON + hooks), not pane-scraping
 
 - Context %, model and cost now come from the STRUCTURED JSON Claude Code feeds its statusLine command
@@ -21,7 +25,6 @@ feat: Claude session status from structured sources (statusLine JSON + hooks), n
 - Both inject via `--settings` and coexist with the chat Stop hook; status files live under
   `~/.ccmux/status/` and are cleared on stop/rm/restart. Fully fail-open — a status/statusline hiccup
   can never wedge a turn or corrupt the rendered bar.
-
 ## [0.3.0] — 2026-07-30
 
 Codex launch/resume (close the launch gap) + shell completions
