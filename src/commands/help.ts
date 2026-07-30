@@ -19,6 +19,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "logs", args: "<name> [lines]", desc: "print a session's pane buffer" },
   { verb: "transcript", args: "<name> --json [--tail N] [--cursor LINE]", desc: "conversation history as JSON (incremental reads via --cursor)", example: "ccmux transcript cc-api --json --tail 50" },
   { verb: "doctor", args: "[--json]", desc: "health check: bins, config, daemon" },
+  { verb: "completions", args: "<bash|zsh|fish>", desc: "print a shell completion script (generated from the command list)", example: "ccmux completions zsh > \"${fpath[1]}/_ccmux\"" },
   { verb: "update", args: "[--check|--rollback|--force]", desc: "self-update binary + bounce daemon (sessions live)" },
   { verb: "install", args: "[--rc-prefix <name>] [--release-url URL]", desc: "write config + boot unit; start daemon (--rc-prefix = this machine's label, e.g. local/dev/prod; --release-url wires autoUpdate)" },
   { verb: "uninstall", args: "", desc: "remove boot unit (sessions + history kept)" },

@@ -6,6 +6,21 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+feat: Codex launch/resume (close the launch gap) + shell completions
+
+- **Codex sessions now launch and resume through ccmux**, 1:1 with Claude as far as the Codex CLI
+  allows. Codex has no `--session-id` (a fresh session mints its own rollout id) and no
+  `--append-system-prompt`, so: the first launch injects the ccmux management instructions as the
+  leading positional PROMPT, and a new `detectFork` reconciles Codex's self-assigned id back into the
+  registry through the SAME follow-fork pipeline Claude uses — after which `codex resume <uuid>` tracks
+  the real conversation (no prompt re-injected on resume). RC has no Codex equivalent (that's a
+  claude.ai feature), so it stays Claude-only. The root daemon strips Codex's `--dangerously-bypass-*`
+  switches, mirroring the Claude root guard.
+- **`ccmux completions <bash|zsh|fish>`** — prints a shell completion script generated from the same
+  `COMMANDS` registry `ccmux help` uses, so a new/renamed verb can never drift from what completes.
+- Test coverage filled in for the transcript adapters (Claude tool-call folding + Codex response items),
+  the `list` context-label parse, and the TUI width/wrap primitives.
+
 ## [0.2.1] — 2026-07-29
 
 model from transcript (source of truth), not the statusline whitelist — a new Claude family (Fable/Mythos) is never shown as a blank model again

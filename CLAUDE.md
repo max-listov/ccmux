@@ -25,6 +25,20 @@ prod daemon, or publish a release.
 - When ready to ship — **ASK** ("version X.Y.Z ready, ship to prod?") and wait for an explicit yes.
 - Only after that — `build` + `update`/publish. The human decides *when* to deploy, not the agent.
 
+## 🚫 Order is fixed: finish → done/ → commit → deploy. And NEVER bundle the task into a code commit
+The maintainer gates every commit. Do NOT commit until explicitly told to. The sequence is:
+1. Finish the work AND fully close the task — `## Что сделано`, every checkbox `[x]`, `git mv` the
+   doc into `docs/backlog/done/` (done = "fully complete", it goes there FIRST, not last).
+2. ONLY THEN commit — and only on an explicit "commit"/"go".
+3. ONLY THEN deploy/release.
+
+Never run ahead of that order (no committing before the task is in `done/`, no deploying before the
+commit is approved). And a code/release commit NEVER carries a backlog task doc: `docs/backlog/` is a
+working buffer, committed **separately** from code when the task changes state. NEVER `git add -A` for
+a code/release commit — stage the code explicitly (`src/`, `test/`, `CHANGELOG.md`, …) and leave the
+backlog file out. (Burned repeatedly: `git add -A` during a release swept an open `in-progress/` task
+into the code commit, and code shipped before the task was closed.)
+
 ## ⚠️ TUI: горячий цикл и сироты (если «комп горячий»)
 Интерактивный TUI (Ink) умеет жечь ядро и сиротеть — это **реальный инцидент** (`ccmux-dev -f`
 держал ~84% ядра 14ч). Полный разбор + инварианты + пошаговый дебаг — **`docs/architecture/tui-and-dev-flow.md`

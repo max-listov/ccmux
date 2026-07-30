@@ -1,22 +1,39 @@
 import { dirname } from "node:path";
 import type { MachineConfig, Session } from "../../types.ts";
+import { buildPrompt } from "../managePrompt.ts";
+import { UID } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
 
 /**
- * Codex argv. Resume by the pinned uuid when a rollout already exists, else start
- * fresh.
+ * Codex argv. Codex has no `--session-id` (it mints its OWN rollout id on a fresh session) and no
+ * `--append-system-prompt`, so the launch shape differs from Claude:
  *
- * ⚠️ Known gap (codex-launch spike): on a brand-new session Codex assigns its OWN id,
- * not our uuid, so `resume.ts` can't locate that first rollout until the ids are
- * reconciled. RC (`-n` equiv) and sibling-prompt injection are also not wired for
- * Codex yet — Codex has no `--append-system-prompt`. Reading (transcript/pane/locate)
- * is already 1:1; this is the one place that needs runtime verification.
+ *  - FIRST launch: `codex [flags] "<prompt>"` — inject the ccmux management instructions as the
+ *    leading positional PROMPT (Codex's only injection point). Codex writes a rollout under its own
+ *    id; `detectFork` (codex/fork.ts) then reconciles that id back into the registry so the pin
+ *    tracks the real conversation — the same follow-fork pipeline Claude uses.
+ *  - RESUME: `codex resume <uuid> [flags]` (Codex resumes by UUID; ids take precedence over names).
+ *    NO prompt on resume — re-passing it would open a fresh user turn on every daemon heal.
+ *
+ * There is no `-n`/RC equivalent for Codex (no claude.ai Remote Control), so RC naming is Claude-only.
  */
-export function buildArgv(s: Session, m: MachineConfig, _cli: string, historyPresent: boolean): string[] {
+export function buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[] {
   const bin = m.codexBin;
   if (!bin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
-  const resume = historyPresent ? ["resume", s.uuid] : [];
-  return [bin, ...resume, ...s.flags, ...m.extraFlags];
+  const flags = UID === 0 ? stripDangerous(s.flags) : s.flags; // root guard (servers)
+  if (historyPresent) {
+    return [bin, "resume", s.uuid, ...flags, ...m.extraFlags];
+  }
+  const prompt = buildPrompt(s.name, cli, s.chatEnabled, s.promptModules, m.ownerLang);
+  return [bin, ...flags, ...m.extraFlags, prompt];
+}
+
+// Codex's own "skip every guardrail" switches — refused for the root daemon (servers) so a config
+// edit can't hand a server session host-wide power. Mirrors the Claude root guard.
+function stripDangerous(flags: string[]): string[] {
+  return flags.filter(
+    (f) => f !== "--dangerously-bypass-approvals-and-sandbox" && f !== "--dangerously-bypass-hook-trust",
+  );
 }
 
 /** Environment for the spawned codex: usable PATH + the self-guard marker. */

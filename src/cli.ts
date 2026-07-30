@@ -9,6 +9,7 @@ import { cmdMode } from "./commands/mode.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdTranscript } from "./commands/transcript.ts";
 import { cmdDoctor } from "./commands/doctor.ts";
+import { cmdCompletions } from "./commands/completions.ts";
 import { cmdEnsure } from "./commands/ensure.ts";
 import { cmdDaemon } from "./commands/daemon.ts";
 import { cmdRun } from "./commands/run.ts";
@@ -94,6 +95,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdTranscript(rest[0], rest.slice(1));
     case "doctor":
       return cmdDoctor(rest);
+    case "completions":
+      return cmdCompletions(rest);
     case "ensure":
       return cmdEnsure();
     case "update":

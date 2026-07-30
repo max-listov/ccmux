@@ -39,6 +39,7 @@ ccmux mode cc-api auto     # per-session permission-mode override (see Permissio
 ccmux stop|start|rm cc-api # lifecycle (rm keeps the jsonl history)
 ccmux transcript cc-api --json --tail 50   # conversation history as JSON
 ccmux doctor               # health check: bins, config, daemon
+ccmux completions zsh > "${fpath[1]}/_ccmux"   # shell completions (bash|zsh|fish)
 ccmux help                 # full command list
 ```
 
