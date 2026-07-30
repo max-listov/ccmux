@@ -2,9 +2,10 @@
 title: chat-layer follow-ups — cancellable watchdogs, honest usage, stdin
 description: Fixes found in acceptance testing of the inter-agent chat / router layer (0.1.16) — msg cancel + task dedup, single-source usage, --after+--defer trap warning, stdin body, plus small doc/diagnostics
 type: task
-status: in-progress
+status: done
 created: 2026-07-24
 updated: 2026-07-24
+completed: 2026-07-25 04:54 +07:00
 related: docs/backlog/done/2026-07-24-router-session-queue-until-idle.md
 ---
 

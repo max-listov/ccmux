@@ -2,9 +2,10 @@
 title: Модель сессии — из jsonl, не из pane-whitelist
 description: ccmux терял model у сессий на новых семействах Claude (Fable/Mythos), т.к. скребёт модель из статуслайна по whitelist имён. Источник правды — jsonl.
 type: task
-status: in-progress
+status: done
 created: 2026-07-29
 updated: 2026-07-29
+completed: 2026-07-29 18:31 +07:00
 ---
 
 # Модель сессии — из jsonl, а не из pane-whitelist
@@ -82,4 +83,42 @@ claude-native, независим от статуслайна (проверен�
 - [x] Реализация по плану.
 - [x] Гейты (`bun run check`) + e2e на живых сессиях: `bun run src/cli.ts list --json` —
       ранее-null Fable-сессии теперь кажут `Fable 5`, Opus/5 без регрессий.
-- [ ] Отчёт Максу; релиз на флот (patch 0.2.1) — по явному подтверждению (правило репо).
+- [x] Отчёт Максу; релиз на флот (patch 0.2.1) — по явному «GO», CI зелёный, опубликован.
+
+## Что сделано
+
+**Shared**
+- [x] `src/agent/format.ts` — `prettyModel(id)`: чистый transform id→имя, без таблицы моделей;
+      strip префикса `claude-`, Title-case семейства, версия через `.`, дроп 8-значного снапшота,
+      raw-fallback для off-shape (codex `gpt-5.6-sol`, alias `opus`).
+- [x] `src/agent/index.ts` — `AgentProvider.lastModel(lines)` в контракте; `sessionModel()` +
+      `modelCache` (MtimeCache, idle-флот платит ноль); `PaneScan.model` → `PaneScan.ready`.
+
+**Reading (jsonl = источник правды)**
+- [x] `src/agent/claude/transcript.ts` — `lastModel()`: последний `role:"assistant"` ход,
+      пропуск `<synthetic>`, tool-payload-модели игнорируются.
+- [x] `src/agent/codex/transcript.ts` — `lastModel()`: последний `turn_context.payload.model`.
+- [x] Провайдеры (`claude/index.ts`, `codex/index.ts`) — регистрируют `lastModel`.
+
+**Pane (только live-сигналы)**
+- [x] `src/agent/claude/pane.ts` — `MODEL_RE` удалён; `READY_RE` (claude-native
+      `shift+tab to cycle` / `esc to interrupt`), `scanPane` отдаёт `ready`.
+- [x] `src/agent/codex/pane.ts` — `MODEL_RE` удалён; `ready` best-effort.
+
+**Consumers (один источник + один форматтер)**
+- [x] `src/commands/list.ts` — `model: prettyModel(sessionModel(s, m))`.
+- [x] `src/tui/fleet.ts` — `prettyModel(ext.model)` (дубль `.replace(/^claude-/)` убран).
+- [x] `src/tui/discover.ts` — локальный `lastModel` удалён, использует общий hardened.
+- [x] `src/tui/actions.ts` + `src/commands/lifecycle.ts` — `waitReady` на `scan.ready`.
+
+**Тесты**
+- [x] `test/pretty-model.test.ts` (вкл. `claude-zephyr-9 → Zephyr 9` = гарантия «не хардкодим»),
+      `test/last-model.test.ts`, `test/pane-ready.test.ts`. `bun run check`: 181 pass, 0 fail.
+
+**Что НЕ делалось**
+- Вычисление `context.percent` из jsonl — отклонено: требует карты `модель→размер_окна`
+      (= хардкод). % остаётся best-effort из статуслайна, null=«неизвестно» честно.
+
+**Ссылки на код:** `src/agent/format.ts:18` (prettyModel), `src/agent/claude/transcript.ts`
+(lastModel), `src/agent/index.ts` (sessionModel/PaneScan.ready), `src/agent/claude/pane.ts`
+(READY_RE). Релиз: `v0.2.1`.
