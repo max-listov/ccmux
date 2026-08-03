@@ -40,7 +40,14 @@ export async function cmdChat(args: string[]): Promise<number> {
       return 1;
     }
     log.info({ msg: "chat toggled", name, enabled: sub === "on" });
-    console.log(`${name}: chat ${sub === "on" ? "enabled" : "disabled"}`);
+    // Chat framing + the Stop hook are LAUNCH-time (see claude/launch.ts settingsArg) — so, like
+    // `ccmux mode` and `ccmux router`, this only takes effect on the next restart. Saying so here is
+    // the difference between "it works" and "I toggled it and nothing happened".
+    console.log(`${name}: chat ${sub === "on" ? "enabled" : "disabled"} — applies on: ccmux restart ${name}`);
+    if (sub === "on") {
+      console.log(`  then: ccmux msg ${name} "…" --task <name>   ·   --defer waits for its turn to end`);
+      console.log(`  restarting the whole fleet at once: ccmux restart --all`);
+    }
     return 0;
   }
 

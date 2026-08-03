@@ -33,6 +33,13 @@ export async function stopSession(m: MachineConfig, name: string): Promise<void>
   await killSession(m, name);
 }
 
+/** Restart EVERY session on this machine (TUI `R`). Hands the sweep to the same detached driver the
+ *  CLI uses, so it survives this TUI exiting and never blocks the render loop; the fleet poll shows
+ *  the wave of stopped → idle transitions as it walks the list. */
+export function restartAllSessions(): void {
+  runDetached([...SELF_ARGV, "_restart-all-worker"]);
+}
+
 export async function restartSession(m: MachineConfig, name: string): Promise<void> {
   await killSession(m, name);
   // detached worker outlives the kill, waits, relaunches (same path as `ccmux restart`)

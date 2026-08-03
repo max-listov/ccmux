@@ -38,7 +38,7 @@ export function InlineView({ items, externalStart, cursor, spin, rcPrefix }: { i
       <Text dimColor>
         {items[cursor]?.external
           ? "  ↑↓ move   a adopt   n new   f fullscreen   q quit"
-          : "  ↑↓ move   ↵ attach   n new   r restart   s stop   D del   f fullscreen   q quit"}
+          : "  ↑↓ move   ↵ attach   n new   r restart   R all   s stop   D del   f fullscreen   q quit"}
       </Text>
     </Box>
   );

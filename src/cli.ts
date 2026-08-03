@@ -4,10 +4,12 @@ import { cmdList } from "./commands/list.ts";
 import { cmdNew } from "./commands/new.ts";
 import { cmdRm } from "./commands/rm.ts";
 import { cmdStart, cmdStop, cmdRestart, cmdRestartWorker } from "./commands/lifecycle.ts";
+import { cmdRestartAll, cmdRestartAllWorker } from "./commands/restartAll.ts";
 import { cmdSend } from "./commands/send.ts";
 import { cmdMode } from "./commands/mode.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdTranscript } from "./commands/transcript.ts";
+import { cmdWait } from "./commands/wait.ts";
 import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdCompletions } from "./commands/completions.ts";
 import { cmdEnsure } from "./commands/ensure.ts";
@@ -78,7 +80,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdStop(name, force);
     }
     case "restart":
-      return cmdRestart(rest);
+      return rest.includes("--all") ? cmdRestartAll(rest) : cmdRestart(rest);
     case "mode":
       return cmdMode(rest[0], rest[1]);
     case "send":
@@ -95,6 +97,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdLogs(rest[0], rest.slice(1));
     case "transcript":
       return cmdTranscript(rest[0], rest.slice(1));
+    case "wait":
+      return cmdWait(rest[0], rest.slice(1));
     case "doctor":
       return cmdDoctor(rest);
     case "completions":
@@ -115,6 +119,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdRun(rest[0]); // hidden: in-session relaunch loop (tmux invokes this)
     case "_restart-worker":
       return cmdRestartWorker(rest[0], rest[1]); // hidden: detached restart helper (name, note)
+    case "_restart-all-worker":
+      return cmdRestartAllWorker(); // hidden: detached fleet-sweep driver (restart --all)
     case "stop-hook":
       return cmdStopHook(); // hidden: Claude Stop-hook — injects deferred chat mail at end-of-turn
     case "hook-status":

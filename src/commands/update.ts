@@ -75,7 +75,7 @@ async function applyLocal(m: MachineConfig): Promise<number> {
   log.info({ msg: "update: applying local staged build", from: VERSION, to: ver });
   await swapAndBounce(m, STAGED_BUNDLE, true); // move → staged is consumed
   rmSync(STAGED_BUNDLE, { force: true });
-  console.log(`updated to ${ver}. daemon bounced; sessions pick up new code on next restart. rollback: ccmux update --rollback`);
+  console.log(`updated to ${ver}. daemon bounced; sessions pick up new code on next restart (all at once: ccmux restart --all). rollback: ccmux update --rollback`);
   return 0;
 }
 

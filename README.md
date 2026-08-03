@@ -35,6 +35,7 @@ ccmux list                 # managed sessions + live status/uptime
 ccmux new cc-api ~/code/api   # create + start a session (pins a fresh uuid)
 ccmux send cc-api '/compact'  # type into a session (text or a /slash command)
 ccmux restart cc-api       # bounce it (survives killing the caller)
+ccmux restart --all        # bounce EVERY session, one at a time (TUI: R) — picks up new rules/MCP/release
 ccmux mode cc-api auto     # per-session permission-mode override (see Permissions)
 ccmux stop|start|rm cc-api # lifecycle (rm keeps the jsonl history)
 ccmux transcript cc-api --json --tail 50   # conversation history as JSON
@@ -152,6 +153,31 @@ DM, or a forum topic:
 
 `topicId` is optional. Absent → no mirroring (fail-soft). It's outbound only — ccmux sends to
 Telegram, never reads from it.
+
+### Coordinating agents — the whole recipe
+
+One agent (or you, or a script) hands work to another and picks up the result. Two commands do the
+waiting and the reading, so **no polling loops and no digging through JSON**:
+
+```bash
+ccmux chat on cc-worker && ccmux restart cc-worker   # 1. enable chat — it applies on RESTART
+ccmux msg cc-worker "migrate the config loader" --task migrate   # 2. hand off the work
+ccmux wait cc-worker                                 # 3. block until it finishes its turn (exit 0)
+ccmux transcript cc-worker --last-message            # 4. take the report (full text)
+```
+
+- **Step 1 is the one people miss.** Chat framing and the Stop hook are wired at launch, so
+  `chat on` alone changes nothing until that session restarts — the command tells you so. Turning it
+  on across the fleet: `ccmux chat on …` for each, then one `ccmux restart --all`.
+- **`ccmux wait`** uses the same "turn finished" test as deferred delivery (spinner off, ended on
+  assistant text, transcript stable), so it can never disagree with `--defer`. Exit `0` settled,
+  `2` timed out (`--timeout N`, default 300s), `1` unknown/stopped session. It needs **no chat at
+  all** — handy in any script.
+- **Reporting back instead of waiting:** have the worker finish with
+  `ccmux msg <orchestrator> "done" --task migrate --defer`. `--defer` holds the message until the
+  orchestrator voluntarily ends its turn, so the report never lands mid-thought.
+- **One machine.** Chat is machine-local — `ccmux msg` only reaches sessions on the same host.
+  Keep the orchestrator and its workers on the same machine.
 
 ## Updates
 

@@ -127,7 +127,7 @@ export interface TranscriptRead {
 export function readTranscript(
   session: Session,
   m: MachineConfig,
-  opts: { tail: number; cursor?: number; before?: number; limit?: number },
+  opts: { tail: number; cursor?: number; before?: number; limit?: number; textLimit?: number },
 ): TranscriptRead {
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
@@ -148,7 +148,7 @@ export function readTranscript(
     start = total > opts.tail ? total - opts.tail + 1 : 1;
   }
   start = Math.max(1, start);
-  const messages = provider.parse(lines, start, undefined, endLine);
+  const messages = provider.parse(lines, start, opts.textLimit, endLine);
   const stats = statsCache.get(path, () => computeStats(provider, lines)) ?? EMPTY_STATS;
   let mtimeMs: number | null = null;
   try {

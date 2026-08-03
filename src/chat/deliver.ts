@@ -52,7 +52,7 @@ const DEFER_GRACE_MS = 6_000;
  *     between an assistant text line and the following tool_use line (proven real — a turn is split
  *     into separate thinking/text/tool_use JSONL lines, so `assistant-message-last` occurs mid-turn).
  *  Menu-safety + human-attached are checked separately by the caller. */
-function deferReady(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): boolean {
+export function deferReady(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): boolean {
   if (provider.scanPane(pane).state === "working") return false;
   const lm = lastTranscriptMessage(s, m);
   if (!(lm && lm.role === "assistant" && lm.kind === "message")) return false;

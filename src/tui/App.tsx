@@ -9,14 +9,14 @@ import { useDiscover } from "./hooks/useDiscover.ts";
 import { buildItems } from "./fleet.ts";
 import { InlineView } from "./views/InlineView.tsx";
 import { FullscreenView } from "./views/FullscreenView.tsx";
-import { stopSession, restartSession, removeSessionFully, sendMessage, adoptExternal, forkAdoptExternal, takeoverExternal } from "./actions.ts";
+import { stopSession, restartSession, restartAllSessions, removeSessionFully, sendMessage, adoptExternal, forkAdoptExternal, takeoverExternal } from "./actions.ts";
 import { describeWriter, type Writer } from "../agent/claude/writers.ts";
 import { log } from "../util/log.ts";
 import { mouseDebugOn, logMouse, describeSgr } from "./mouseProbe.ts";
 
 export type Intent = { type: "quit" } | { type: "attach"; name: string } | { type: "new"; name: string; dir: string };
 
-type Mode = "list" | "new" | "confirm" | "compose" | "adopt";
+type Mode = "list" | "new" | "confirm" | "confirm-restart-all" | "compose" | "adopt";
 type Focus = "list" | "transcript";
 
 const DEFAULT_LIST_WIDTH = 72;
@@ -266,6 +266,18 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
       }
       return;
     }
+    if (mode === "confirm-restart-all") {
+      // confirm fleet sweep: y / Enter / R again → restart every session; n / Esc → cancel
+      if (input === "y" || input === "R" || key.return) {
+        log.info({ msg: "restart all confirmed" });
+        restartAllSessions();
+        setMode("list");
+      } else if (key.escape || input === "n") {
+        log.info({ msg: "restart all cancelled" });
+        setMode("list");
+      }
+      return;
+    }
     if (mode === "adopt") {
       // a cold adopt was blocked by live writers — choose: f fork (safe) · t takeover · esc
       const target = adoptTarget.current;
@@ -337,6 +349,9 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     }
     if (input === "s" && selected && !isExternal) { log.info({ msg: "action stop", name: selected.session.name }); void stopSession(m, selected.session.name).then(reload); return; }
     if (input === "r" && selected && !isExternal) { log.info({ msg: "action restart", name: selected.session.name }); void restartSession(m, selected.session.name).then(reload); return; }
+    // R = restart the WHOLE fleet — always behind a confirm (one keystroke bouncing every session
+    // must never be unguarded). Managed sessions only; the sweep itself skips archived ones.
+    if (input === "R" && externalStart > 0) { log.info({ msg: "action restart all → confirm", count: externalStart }); setMode("confirm-restart-all"); return; }
     // delete: accept lowercase d too (footer shows "D"); opens the confirm step
     if ((input === "D" || input === "d") && selected && !isExternal) { log.info({ msg: "action delete → confirm", name: selected.session.name }); setMode("confirm"); }
   });
@@ -365,6 +380,16 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
           <Text dimColor>(history kept)  </Text>
           <Text color="red">y / d</Text>
           <Text dimColor> delete · </Text>
+          <Text>n / esc</Text>
+          <Text dimColor> cancel</Text>
+        </Box>
+      ) : null}
+      {mode === "confirm-restart-all" ? (
+        <Box paddingX={2}>
+          <Text color="yellow" bold>restart ALL {externalStart} session{externalStart === 1 ? "" : "s"}? </Text>
+          <Text dimColor>(one at a time, conversations kept)  </Text>
+          <Text color="yellow">y / R</Text>
+          <Text dimColor> restart · </Text>
           <Text>n / esc</Text>
           <Text dimColor> cancel</Text>
         </Box>

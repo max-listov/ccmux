@@ -6,6 +6,27 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+feat: `restart --all` (+ TUI `R`), `ccmux wait`, `transcript --last-message`, and a `chat on` that tells you what's next
+
+- **`ccmux restart --all`** (TUI: `R`, behind a confirm) bounces every session on the machine so a
+  changed rule set / MCP config / ccmux release lands everywhere at once. The sweep runs in a detached
+  driver and restarts sessions **strictly one at a time** — killed and started before the next is
+  touched — so the tmux server never empties (it dies with its last session, dropping attached clients)
+  and the daemon never sees a fleet-wide outage. It follows conversation forks before each restart,
+  waits for the old agent process to actually exit (no two-writer fork), skips archived sessions, does
+  the calling session last, and refuses to run twice at once.
+- **`ccmux wait <name>`** blocks until a session voluntarily finishes its turn — exit `0` settled,
+  `2` timed out (`--timeout N`, default 300s), `1` unknown/stopped. It reuses the exact readiness test
+  deferred chat delivery uses, so the two can never disagree, and needs no chat: any script can wait
+  for an agent instead of polling `ccmux list` in a loop.
+- **`ccmux transcript <name> --last-message`** prints just the agent's final answer as plain text, in
+  full (`list --json` carries it clipped to 280 chars) — the "take the report" gesture in one command.
+- **`ccmux chat on`** now says `applies on: ccmux restart <name>` (matching `router on`) plus the next
+  step, closing the trap where chat was enabled, nothing appeared to happen, and the reason — the hook
+  and framing are wired at launch — was invisible.
+- README gains a **Coordinating agents** recipe (enable → restart → hand off → `wait` → take the
+  report), including the explicit "chat is machine-local, keep orchestrator and workers on one host".
+
 ## [0.4.0] — 2026-07-30
 
 Claude session status from structured sources (statusLine JSON + hooks), not pane-scraping
