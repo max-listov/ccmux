@@ -1,6 +1,6 @@
 import { loadSessions } from "../config/sessions.ts";
 import { providerFor, lastTranscriptMessage, lastActivityMs, type AgentProvider } from "../agent/index.ts";
-import { capturePane, hasAttachedClient, listSessionNames, pasteText, sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
+import { capturePane, clientTypingRecently, listSessionNames, pasteText, sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
 import type { ChatMessage, MachineConfig, Session } from "../types.ts";
 import { log } from "../util/log.ts";
 import { formatChatInjection } from "./format.ts";
@@ -44,6 +44,9 @@ async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): 
 // the turn ends; this daemon path is the backbone for a target that was ALREADY idle when the
 // message arrived (no Stop is coming for it).
 const DEFER_GRACE_MS = 6_000;
+// How recently a keystroke means "still typing" — long enough to bridge the gap between two keys,
+// short enough that simply watching a pane never blocks delivery.
+const TYPING_WINDOW_SEC = 3;
 
 /** Is a deferred message safe to deliver to this target right now? Three conditions, all required:
  *   - not actively working (pane spinner off);
@@ -51,7 +54,7 @@ const DEFER_GRACE_MS = 6_000;
  *   - STABLE: the transcript hasn't moved for DEFER_GRACE_MS. This rules out the brief mid-turn gap
  *     between an assistant text line and the following tool_use line (proven real — a turn is split
  *     into separate thinking/text/tool_use JSONL lines, so `assistant-message-last` occurs mid-turn).
- *  Menu-safety + human-attached are checked separately by the caller. */
+ *  Menu-safety + "human is typing" are checked separately by the caller. */
 export function deferReady(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): boolean {
   if (provider.scanPane(pane).state === "working") return false;
   const lm = lastTranscriptMessage(s, m);
@@ -86,7 +89,8 @@ export function notBeforeDue(msg: ChatMessage, nowMs: number): boolean {
  *    condition holds (defer → target stably idle or already delivered by the Stop hook; notBefore →
  *    the instant has passed), regardless of ledger position. Dedup via the append-only ack-log —
  *    never the shared cursor, so the daemon stays the cursor's sole writer.
- * Invariants unchanged: never at a selection menu, never while a human is attached, one per pass.
+ * Invariants: never at a selection menu, never while a human is mid-keystroke (watching is fine),
+ * one delivery per recipient per pass.
  * Cheap when idle: only recipients with something to deliver ever capture a pane.
  */
 export async function deliverPending(m: MachineConfig): Promise<void> {
@@ -143,15 +147,21 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       log.warn({ msg: "chat rate limit — holding delivery (possible loop)", to: s.name });
       continue; // hold; retries once the burst subsides
     }
-    if (await hasAttachedClient(m, s.name)) {
-      // Diagnostic: a pending message is being HELD only because a human is attached to the pane
-      // (we don't type under their hands). It flows the instant they detach — this is not a stuck
-      // chat. Logged so "the message never arrived" is traceable to the real, transient cause.
-      log.info({ msg: "chat delivery held — human attached to pane", to: s.name, from: pick.msg.from });
-      continue;
-    }
     const pane = await capturePane(m, s.name, 40);
     if (!provider.chatDeliverable(pane)) continue; // at a menu → hold, retry next pass
+    // WATCHING a session must not block its chat — only actively TYPING does. Injection appends a
+    // literal + Enter, so the sole hazard is a human's half-written line getting our text glued onto
+    // it and sent. Two precise signals replace the old blunt "someone is attached" hold (which made
+    // the channel look dead for as long as you kept the pane open): an occupied composer, or a
+    // keystroke in the last few seconds (guards the gap between two keys).
+    if (provider.inputBusy?.(pane) === true) {
+      log.info({ msg: "chat delivery held — human is typing (composer not empty)", to: s.name, from: pick.msg.from });
+      continue;
+    }
+    if (await clientTypingRecently(m, s.name, TYPING_WINDOW_SEC)) {
+      log.info({ msg: "chat delivery held — human typed a moment ago", to: s.name, from: pick.msg.from });
+      continue;
+    }
     // A DEFERRED message additionally waits for the target to be STABLY idle (voluntarily finished).
     // A notBefore-only message has no idle requirement — when due it delivers and Claude queues it.
     if (pick.msg.defer && !deferReady(m, s, provider, pane, now)) continue;

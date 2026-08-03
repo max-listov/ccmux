@@ -6,6 +6,20 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: watching a session no longer blocks its chat — delivery holds only while a human is actually TYPING
+
+- Chat delivery was gated on "is a client attached to this pane", so simply watching a session with
+  `tmux a` silenced its inbox **for as long as you stayed attached** — a letter sat undelivered while
+  the daemon logged the hold every 3s and the sender had no idea why. Attached is not the hazard.
+- The real hazard is narrow: injection appends a literal and presses Enter, so a human's *half-written
+  line* would get our text glued onto it and sent. That is now what's tested — an occupied composer
+  (the `❯` line in the pane's bottom frame, scanned only near the bottom so past messages, which
+  Claude also prefixes with `❯`, are never read as live input), or a keystroke within the last 3s
+  (`client_activity`, bridging the gap between two keys). Neither → **deliver, even while attached.**
+- The selection-menu hold is untouched: injecting there would pick an option the agent never chose.
+- Hold reasons are now named in the log ("human is typing" / "typed a moment ago") instead of the
+  blanket "human attached".
+
 ## [0.5.0] — 2026-08-03
 
 restart --all (TUI R), ccmux wait, transcript --last-message, self-explaining chat on

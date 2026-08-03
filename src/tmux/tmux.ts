@@ -128,3 +128,18 @@ export async function hasAttachedClient(m: MachineConfig, name: string): Promise
   const { code, stdout } = await run(tmuxArgv(m, "list-clients", "-t", exactTarget(name), "-F", "#{client_name}"));
   return code === 0 && stdout.trim() !== "";
 }
+
+/** Did an attached human touch the keyboard within the last `withinSec`? Watching a pane is harmless
+ *  for chat delivery — typing into it is not (our injected line would land in their half-written
+ *  one). `client_activity` is tmux's own last-input timestamp, so this asks the precise question
+ *  instead of the blunt "is anyone attached". No client attached → false. */
+export async function clientTypingRecently(m: MachineConfig, name: string, withinSec: number): Promise<boolean> {
+  const { code, stdout } = await run(tmuxArgv(m, "list-clients", "-t", exactTarget(name), "-F", "#{client_activity}"));
+  if (code !== 0) return false;
+  const nowSec = Date.now() / 1000;
+  for (const line of stdout.trim().split("\n")) {
+    const at = Number.parseInt(line.trim(), 10);
+    if (Number.isFinite(at) && nowSec - at <= withinSec) return true;
+  }
+  return false;
+}

@@ -72,3 +72,25 @@ export function atInteractiveMenu(paneText: string): boolean {
 export function chatDeliverable(paneText: string): boolean {
   return !atInteractiveMenu(paneText);
 }
+
+// The composer sits in a framed box at the BOTTOM of the pane:
+//     ──────────── <rc-name> ──
+//     ❯ <what the human has typed, if anything>
+//     ──────────────────────────
+//     <statusline>
+// Injection is `send-keys <literal>` + Enter, so text already sitting there is the one real hazard:
+// ours would be appended to the human's half-written line and our Enter would SEND that mush. A human
+// merely WATCHING an attached pane is harmless — hence we test "is the composer occupied", not "is
+// anyone attached". Only the bottom slice is scanned: Claude also prefixes past user messages with
+// `❯`, so grepping the whole pane would read history as live input.
+const COMPOSER_TAIL_LINES = 12;
+const COMPOSER_RE = /^❯\s*(.*)$/;
+
+export function inputBusy(paneText: string): boolean {
+  const tail = paneText.split("\n").slice(-COMPOSER_TAIL_LINES);
+  for (let i = tail.length - 1; i >= 0; i--) {
+    const m = tail[i]?.match(COMPOSER_RE);
+    if (m) return (m[1] ?? "").trim() !== "";
+  }
+  return false; // no composer in view (booting / alt-screen) → nothing typed to clobber
+}

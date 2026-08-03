@@ -59,6 +59,10 @@ export interface AgentProvider {
   // it never chose — proven live), so the daemon holds and retries. Optional: an agent with no
   // readiness detector is never delivered to (safe default). Used by src/chat/deliver.ts.
   chatDeliverable?(paneText: string): boolean;
+  // Is the human's composer occupied right now (they typed a line and haven't sent it)? Injection
+  // appends + hits Enter, so delivering then would send THEIR half-written text. Pure: pane → bool.
+  // Optional: an agent without a detectable composer never reports busy (delivery proceeds).
+  inputBusy?(paneText: string): boolean;
 }
 
 const REGISTRY: Record<AgentKind, AgentProvider> = {
