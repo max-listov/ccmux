@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-03
+
+restart --all (TUI R), ccmux wait, transcript --last-message, self-explaining chat on
+
 feat: `restart --all` (+ TUI `R`), `ccmux wait`, `transcript --last-message`, and a `chat on` that tells you what's next
 
 - **`ccmux restart --all`** (TUI: `R`, behind a confirm) bounces every session on the machine so a
@@ -26,7 +30,6 @@ feat: `restart --all` (+ TUI `R`), `ccmux wait`, `transcript --last-message`, an
   and framing are wired at launch — was invisible.
 - README gains a **Coordinating agents** recipe (enable → restart → hand off → `wait` → take the
   report), including the explicit "chat is machine-local, keep orchestrator and workers on one host".
-
 ## [0.4.0] — 2026-07-30
 
 Claude session status from structured sources (statusLine JSON + hooks), not pane-scraping
