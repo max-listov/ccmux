@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-08-03
+
+chat delivers while you watch a session — hold only while a human is typing
+
 fix: watching a session no longer blocks its chat — delivery holds only while a human is actually TYPING
 
 - Chat delivery was gated on "is a client attached to this pane", so simply watching a session with
@@ -19,7 +23,6 @@ fix: watching a session no longer blocks its chat — delivery holds only while 
 - The selection-menu hold is untouched: injecting there would pick an option the agent never chose.
 - Hold reasons are now named in the log ("human is typing" / "typed a moment ago") instead of the
   blanket "human attached".
-
 ## [0.5.0] — 2026-08-03
 
 restart --all (TUI R), ccmux wait, transcript --last-message, self-explaining chat on
