@@ -79,9 +79,21 @@ async function applyLocal(m: MachineConfig): Promise<number> {
   return 0;
 }
 
+/** Defeat the CDN edge cache in front of the release manifest.
+ *
+ *  A `cache-control: no-cache` REQUEST header is not enough — measured, not assumed: minutes after
+ *  publishing, the same host fetched 0.9.1 with the header and 0.9.2 with a unique query string, and
+ *  every release today first reported "already on latest". The manifest lives behind a redirect from
+ *  a `…/latest/download/…` URL, and it is the redirect that the edge holds; a query string makes the
+ *  cache key unique and sidesteps it. Without this the whole fleet lags a release behind for as long
+ *  as the edge decides to hold, which is precisely what auto-update exists to avoid. */
+export function cacheBusted(url: string, nonce: number): string {
+  return `${url}${url.includes("?") ? "&" : "?"}ccmux=${nonce}`;
+}
+
 async function fetchRelease(url: string): Promise<Release | string> {
   try {
-    const resp = await fetch(url, { headers: { "cache-control": "no-cache" } });
+    const resp = await fetch(cacheBusted(url, Date.now()), { headers: { "cache-control": "no-cache" } });
     if (!resp.ok) return `fetch ${url} → HTTP ${resp.status}`;
     return ReleaseSchema.parse(await resp.json());
   } catch (e) {

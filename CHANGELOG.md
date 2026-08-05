@@ -13,6 +13,14 @@ Telegram mirror: bracketed route header with air under it
 
 turning the Telegram mirror on starts a live feed, not a history replay
 
+fix: the fleet no longer lags a release behind a CDN cache
+
+`ccmux update` sent `cache-control: no-cache` when fetching the release manifest, and the edge in
+front of it ignored that: measured on a live host minutes after publishing, the header returned the
+PREVIOUS version while the same URL with a query string returned the new one. Every release reported
+"already on latest" on the first try, and auto-update would have held the whole fleet back the same
+way. The manifest URL now carries a unique cache key.
+
 Telegram mirror: the route line is now a bracketed header — `[dev:worker → prod:api] · task` — with a
 blank line before the body, so on a phone the two stop running together. Mail to the human keeps the
 same shape (`📩 [prod:api → you]`) rather than inverting the sentence: one route line to learn to read.

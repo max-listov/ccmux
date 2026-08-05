@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { decideUpdate } from "../src/commands/update.ts";
+import { decideUpdate, cacheBusted } from "../src/commands/update.ts";
 
 const base = { force: false, current: "0.1.16", staged: null as string | null, release: null as string | null, hasReleaseUrl: true };
 
@@ -74,4 +74,12 @@ test("no staged + no releaseUrl → code 1 on update, code 0 on check", () => {
   const chk = decideUpdate({ ...base, check: true, hasReleaseUrl: false });
   expect(upd.kind === "print" && upd.code).toBe(1);
   expect(chk.kind === "print" && chk.code).toBe(0);
+});
+
+test("the release manifest is fetched with a unique cache key — the header alone does not work", () => {
+  // Measured on a live host minutes after publishing: `cache-control: no-cache` returned the PREVIOUS
+  // version while the same URL with a query string returned the new one. Every release that day first
+  // reported "already on latest", and auto-update would lag the whole fleet exactly the same way.
+  expect(cacheBusted("https://x/release.json", 42)).toBe("https://x/release.json?ccmux=42");
+  expect(cacheBusted("https://x/release.json?a=1", 42)).toBe("https://x/release.json?a=1&ccmux=42");
 });
