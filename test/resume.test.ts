@@ -36,7 +36,7 @@ test("tripwire: histFile encoding byte-matches the real ~/.claude/projects layou
   if (!existsSync(home)) return; // not this machine
   const encoded = encodeDir(home); // realpath-resolved
   expect(encoded).toBe("-Users-user-home");
-  // cc-main runs in this dir — its project folder must exist, else encoding drifted
+  // a managed session runs in this dir — its project folder must exist, else encoding drifted
   if (existsSync("/Users/user/.claude/projects")) {
     expect(existsSync(`/Users/user/.claude/projects/${encoded}`)).toBe(true);
   }

@@ -4,7 +4,7 @@ type HelpEntry = { verb: string; args: string; desc: string; example?: string; n
 
 /** Public command surface (hidden internals `_run`/`_restart-worker` are intentionally omitted). */
 export const COMMANDS: HelpEntry[] = [
-  { verb: "list", args: "", desc: "managed sessions + status/uptime; the RESTART column names what a restart would change (code/chat/mode/modules/config) — empty means nothing to pick up", example: "ccmux list" },
+  { verb: "list", args: "", desc: "managed sessions + status/uptime; the RESTART column names what a restart would change (chat/mode/modules/config) — empty means nothing to pick up", example: "ccmux list" },
   { verb: "new", args: "<name> <dir> [-- flags]", desc: "create + start a session (pins a fresh uuid)", example: "ccmux new cc-api ~/code/api" },
   { verb: "rm", args: "<name> [--force]", desc: "stop + unregister (jsonl history kept)" },
   { verb: "adopt", args: "<uuid> [name] [--fork|--takeover]", desc: "manage an external session (live one: fork a copy, or take it over)", example: "ccmux adopt 4e117aea-… --fork" },
