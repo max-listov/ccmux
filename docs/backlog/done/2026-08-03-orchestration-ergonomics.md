@@ -76,8 +76,8 @@ completed: 2026-08-03 23:42 +07:00
 - [x] `src/cli.ts`, `src/commands/help.ts` (записи + примеры), `README.md` (раздел Coordinating agents), `CHANGELOG.md`.
 
 **Живая проверка**
-- `transcript main --last-message` → 979 символов полного ответа (в `list` было бы 280).
-- `wait main` → exit 0 мгновенно; `wait cc-ccmux --timeout 5` (сессия реально работала) → exit 2;
+- `transcript agent-a --last-message` → 979 символов полного ответа (в `list` было бы 280).
+- `wait agent-a` → exit 0 мгновенно; `wait agent-b --timeout 5` (сессия реально работала) → exit 2;
   `wait nope-xyz` → exit 1; `--quiet` молчит.
 - `chat on` (в изолированном конфиге, боевые сессии не тронуты) → печатает рестарт-подсказку и следующий шаг.
 - `bun run check`: 232 pass, 0 fail.

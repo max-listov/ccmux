@@ -16,15 +16,15 @@ related: docs/backlog/done/2026-08-05-deferred-mail-waits-for-a-turn-that-will-n
 На простаивающем флоте две сессии из двенадцати вели себя не как остальные:
 
 ```
-host-C:cc-base-diy               working   Opus 5      2d4h
-host-C:main2                     working   Opus 5      2d4h
+host-a:agent-a               working   Opus 5      2d4h
+host-a:agent-b               working   Opus 5      2d4h
 ```
 
 Обе на самом деле **простаивают**: ход закончен, отчёт написан, композер пуст. Но:
 
 ```
-$ ccmux wait cc-base-diy --timeout 12
-cc-base-diy: timed out after 12s — the recipient's UI has not painted yet (starting or resuming)
+$ ccmux wait agent-a --timeout 12
+agent-a: timed out after 12s — the recipient's UI has not painted yet (starting or resuming)
 ```
 
 Сессия работает двое суток. «UI ещё не нарисован» — заведомая ложь.
@@ -41,7 +41,7 @@ cc-base-diy: timed out after 12s — the recipient's UI has not painted yet (sta
 ```
 
 Замер по всем 12 локальным сессиям: подсказки нет ровно у тех двух, у которых есть
-фоновые шеллы. Ширина пейна ни при чём — `base` и `monit` тоже 180 колонок и подсказку
+фоновые шеллы. Ширина пейна ни при чём — две другие широкие сессии тоже 180 колонок и подсказку
 показывают.
 
 Итог: **любой агент, оставивший фоновую команду, для ccmux навсегда «ещё не

@@ -28,8 +28,8 @@ related: docs/backlog/done/2026-06-09-ccmux-bun-port.md
 ## Что сделано
 
 Раскатка выполнена ранее и **валидирована по живому состоянию** в этой итерации:
-- `ssh host-A 'systemctl is-active ccmux.service'` → **active** (7 сессий).
-- `ssh host-B 'systemctl is-active ccmux.service'` → **active** (6 сессий).
+- `ssh host-b 'systemctl is-active ccmux.service'` → **active** (7 сессий).
+- `ssh host-c 'systemctl is-active ccmux.service'` → **active** (6 сессий).
 - Оба узла: один демон на машину (systemd), self-heal, resume по фикс-uuid, bash-реализация
   выведена (канон — `servers-and-projects.md`).
 

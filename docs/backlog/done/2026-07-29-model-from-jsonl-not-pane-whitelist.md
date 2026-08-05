@@ -73,7 +73,7 @@ claude-native, независим от статуслайна (проверен�
 - [x] `list.ts` / `fleet.ts` / `discover.ts` — один источник модели (jsonl) и один
       форматтер; дубль `discover.lastModel` и `.replace(/^claude-/)` убраны.
 - [x] `actions.ts` / `lifecycle.ts` `waitReady` — на `scan.ready`.
-- [x] `ListItem.model` в `--json` остаётся display-строкой (monit-снапшот не ломается).
+- [x] `ListItem.model` в `--json` остаётся display-строкой (снапшот стороннего потребителя не ломается).
 - [x] Тесты: prettyModel (вкл. выдуманный `claude-zephyr-9 → Zephyr 9`), lastModel
       (synthetic-skip, role-scope, codex turn_context), pane ready. `test/{pretty-model,
       last-model,pane-ready}.test.ts`.

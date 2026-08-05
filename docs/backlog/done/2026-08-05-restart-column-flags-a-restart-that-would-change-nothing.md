@@ -20,9 +20,9 @@ related: docs/backlog/done/2026-08-05-a-background-shell-makes-a-session-look-un
 на 0.10.0, сегодняшний `computeStamp` даёт **тот же самый хэш**, что записан при запуске:
 
 ```
-main   stored b38174d13366c1aa -> now b38174d13366c1aa  SAME recipe
-kks    stored fd28498a721eb961 -> now fd28498a721eb961  SAME recipe
-base   stored c8033267dfb2ee44 -> now c8033267dfb2ee44  SAME recipe
+agent-a  stored b38174d13366c1aa -> now b38174d13366c1aa  SAME recipe
+agent-b  stored fd28498a721eb961 -> now fd28498a721eb961  SAME recipe
+agent-c  stored c8033267dfb2ee44 -> now c8033267dfb2ee44  SAME recipe
 ```
 
 ## Корень

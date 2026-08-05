@@ -33,7 +33,7 @@ DEV/PROD-серверов.
    app/staged/boot-attempts/log dev-инстанса в `~/.ccmux-dev/` — не делит boot-guard/лог с продом.
 
 Всё остальное уже изолируемо: `CCMUX_CONFIG` (конфиг), `sessionsFile` (реестр), чат-стор (деривится
-из папки реестра), `rcPrefix` (RC-имена `dev-*` vs прод `host-C-*`).
+из папки реестра), `rcPrefix` (RC-имена `dev-*` vs прод `<prefix>-*`).
 
 ## DevPattern (как поднимать — итоговая процедура)
 Скрипт-хелпер (`scripts/dev-instance.sh` или `bun run dev:up`) скаффолдит `~/.ccmux-dev/` (machine.json

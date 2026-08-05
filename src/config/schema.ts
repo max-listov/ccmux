@@ -333,8 +333,9 @@ export const TranscriptJsonSchema = z.object({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `list --json` wire shape — the canonical machine-readable contract that
-// dashboards/agents (and our own TUI) consume. Decoupled from monit ON PURPOSE:
-// duplicated there, never cross-imported, so the two evolve independently.
+// dashboards/agents (and our own TUI) consume. Decoupled from any downstream
+// consumer's own snapshot type ON PURPOSE: duplicated there, never
+// cross-imported, so the two evolve independently.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Live state of a session. working/idle are scraped from the pane; stopped = not running;
