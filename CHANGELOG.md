@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-08-05
+
+send stops echoing your own text, and stops looking like a way to write to an agent
+
 fix: `send` stops echoing what you just wrote, and stops pretending to be a way to write to an agent
 
 - A confirmation that repeats the whole text charges twice for the same words — nothing for
@@ -20,7 +24,6 @@ fix: `send` stops echoing what you just wrote, and stops pretending to be a way 
 - A long non-slash message aimed at a chat-capable session gets a one-line nudge toward `msg`. Not a
   refusal — pasting long text on purpose is legitimate — and ccmux's own internal use (a restart's
   `--then` note) is exempt, since the advice would be for nobody.
-
 ## [0.9.3] — 2026-08-05
 
 the fleet no longer lags a release behind a CDN cache
