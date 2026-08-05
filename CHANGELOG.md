@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-05
+
+list tells you which sessions a restart would actually change
+
 feat: `ccmux list` now tells you which sessions a restart would actually change
 
 - Everything that shapes an agent — its system prompt, the chat wiring, the permission mode, the
@@ -20,7 +24,6 @@ feat: `ccmux list` now tells you which sessions a restart would actually change
   version at all yet certainly requires a restart.
 - A forked conversation is not a config change (the re-pinned uuid is normalised out), and a session
   with no record yet shows nothing — unknown is never displayed as stale.
-
 ## [0.7.0] — 2026-08-05
 
 cross-machine mail that couldn't leave is re-sent when transit returns
