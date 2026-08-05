@@ -159,16 +159,21 @@ export async function cmdMsg(args: string[]): Promise<number> {
     // to answer as before. The transport is the only writer: a local agent setting this itself is
     // refused (see `parseOrigin`).
     const remoteArgs = [route.session, ...(task !== null ? ["--task", task] : []), ...(onBehalfOf !== null ? ["--on-behalf-of", onBehalfOf] : [])];
+    // ONE id for this message, minted here and carried across the hop, so the outbox row and the
+    // remote ledger entry are the same letter. That identity is what makes a later retry safe:
+    // the receiver skips an id it has already stored, so re-sending can never duplicate — including
+    // the nasty case where the first attempt DID land and only our side read it as a failure.
+    const id = randomUUID();
     // Body travels on STDIN, never in the command line: `msg` already reads a piped body, so quotes,
     // newlines, `$` and backticks in the text cannot corrupt or inject on the remote shell.
     const r = await runRemote(route.alias, ["ccmux", "msg", ...remoteArgs], {
       stdin: body,
-      env: { CCMUX_ORIGIN: `${m.rcPrefix}:${from}` },
+      env: { CCMUX_ORIGIN: `${m.rcPrefix}:${from}`, CCMUX_MSG_ID: id },
     });
     // Record the SEND on this side, success or failure — without it the initiator has no trace that
     // it ever asked, and "waiting for a report" exists only in an agent's head.
     appendOutbound(m, {
-      id: randomUUID(),
+      id,
       ts: new Date().toISOString(),
       from,
       toMachine: route.machine,
@@ -226,7 +231,15 @@ export async function cmdMsg(args: string[]): Promise<number> {
     if (priors.length > 0) log.info({ msg: "chat dedup — replaced prior pending", from, to, task, replaced: priors.length });
   }
 
-  appendMessage(m, { id: randomUUID(), ts: new Date().toISOString(), from: fromName, fromMachine, to, body, task, defer, onBehalfOf, notBefore });
+  // A carried id means this letter already has an identity on the SENDER's side. Honouring it (and
+  // refusing a repeat) is what turns a retry into a no-op instead of a duplicate. Only the transport
+  // can set it — the same gate as the origin, since both arrive together over ssh.
+  const carriedId = originArg !== null ? (process.env.CCMUX_MSG_ID ?? null) : null;
+  if (carriedId !== null && loadLedger(m).some((x) => x.id === carriedId)) {
+    console.log(`already delivered (${carriedId}) — retry ignored`);
+    return 0; // success: the letter IS there, which is what the sender wanted to know
+  }
+  appendMessage(m, { id: carriedId ?? randomUUID(), ts: new Date().toISOString(), from: fromName, fromMachine, to, body, task, defer, onBehalfOf, notBefore });
   log.info({ msg: "chat message sent", from: fromName, fromMachine, to, task, defer, onBehalfOf, notBefore });
   const preview = body.length > 80 ? `${body.slice(0, 80)}…` : body;
   const when = notBefore !== null ? ` (after ${afterSec}s)` : defer ? " (deferred)" : "";

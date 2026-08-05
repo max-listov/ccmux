@@ -4,6 +4,7 @@ import { cmdEnsure } from "./ensure.ts";
 import { autoUpdateOnce } from "./update.ts";
 import { deliverPending } from "../chat/deliver.ts";
 import { mirrorPending } from "../chat/telegram.ts";
+import { flushOutbox } from "../fleet/flush.ts";
 import { bootGuardStart, clearBootGuard } from "../util/bootGuard.ts";
 import { IS_DEV } from "../env.ts";
 import { log, setLogLevel } from "../util/log.ts";
@@ -21,6 +22,7 @@ async function chatDeliveryLoop(): Promise<void> {
       const m = loadMachineConfig();
       await deliverPending(m); // push to peer panes (menu-safe)
       await mirrorPending(m); // mirror to Telegram (fail-soft; no-op when unconfigured)
+      await flushOutbox(m); // re-send cross-machine mail that never left (no-op without a fleet map)
     } catch (e) {
       log.warn({ msg: "chat delivery pass failed", err: String(e) });
     }

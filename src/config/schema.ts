@@ -141,6 +141,10 @@ export const MachineConfigSchema = z.object({
       z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._@-]*$/, "fleet alias must be an ssh host alias (no leading '-', no spaces)"),
     )
     .optional(),
+  // Optional command run once before a batch of outbox retries, for fleets where transit can be
+  // restored locally (re-pointing a forwarded-key socket, refreshing a token). An argv ARRAY, never
+  // a string: no shell ever sees it. Absent = nothing runs, which is the default everywhere.
+  transitPreflight: z.array(z.string().min(1)).min(1).optional(),
   // Sessions data file (env CCMUX_SESSIONS overrides). Per-machine default.
   sessionsFile: z.string().startsWith("/"),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.

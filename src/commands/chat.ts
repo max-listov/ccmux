@@ -2,6 +2,7 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { setSessionChatEnabled } from "../config/sessions.ts";
 import { loadLedger } from "../chat/store.ts";
 import { loadOutbox } from "../fleet/outbox.ts";
+import { loadOutboxAcked } from "../fleet/flush.ts";
 import { localRows, mergeFleetLog, fmtRow, machineColumnWidth, LogRowSchema, LogPayloadSchema, type LogMachine, type LogRow } from "../chat/fleetLog.ts";
 import { z } from "zod";
 import { runRemote } from "../fleet/transport.ts";
@@ -58,7 +59,7 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
   // initiator's side is exactly what was missing when a hand-off went to the wrong machine.
   const self: Source = {
     machine: { machine: m.rcPrefix, ok: true, error: null },
-    rows: localRows(m.rcPrefix, loadLedger(m), loadOutbox(m)),
+    rows: localRows(m.rcPrefix, loadLedger(m), loadOutbox(m), loadOutboxAcked(m)),
   };
   // A peer is always asked WITHOUT `--fleet` (see remoteLogs), so answering about ourselves here is
   // what makes the wire format the same shape as the human-facing one.

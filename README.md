@@ -227,6 +227,14 @@ the machine itself.
   tombstone each other's mail. Hand off, then use `ccmux wait`.
 - **Unreachable is normal, not an error.** With no server-to-server keys, transit between two servers
   exists only while you're connected; fleet views mark such a machine and still exit 0.
+- **A send that couldn't leave is retried, not lost.** Cross-machine mail carries its id, and a
+  receiver ignores an id it already stored — so the daemon can safely re-send from the outbox when
+  transit returns, and a retry can never duplicate (not even when the first attempt actually landed
+  and only the sender read it as a failure). Retries cover plain `msg` only, stay inside a one-hour
+  window, and stop as soon as one succeeds; `restart --then` is a hand-off, not a letter, and is
+  never repeated. `chat log` then shows the row as *sent later, on retry* instead of *NOT SENT*.
+  If your fleet can restore transit with a local command, set `transitPreflight` (an argv array) in
+  `machine.json` and it runs once before a batch of retries.
 - **Roll the binary out before the map.** A machine still on an older ccmux doesn't understand
   addresses — update every box first, then add `fleet` to their configs.
 

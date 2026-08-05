@@ -6,6 +6,25 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+feat: cross-machine mail that couldn't leave is now re-sent when transit returns
+
+- Transit between servers is **intermittent by design** — there are no server-to-server keys, so a
+  machine can only reach another while the owner's forwarded key is present. A send attempted in a
+  gap failed, and the honest `[NOT SENT — transport failed]` row was where it ended: an agent
+  reported, moved on, and its report sat on disk while a peer waited for it. Observed live.
+- The record is now a **queue that drains itself**. The daemon re-sends failed `msg` rows from the
+  outbox — bounded to a one-hour window and a few attempts per tick, and never for `restart --then`
+  (a hand-off is an action, not a letter).
+- Safe because the send became **idempotent**: the message id travels with it, and a receiver
+  ignores an id it already stored. A retry cannot duplicate — not even in the nasty case where the
+  first attempt did land and only the sender read it as a failure. An older ccmux ignores the
+  variable and behaves exactly as before.
+- `chat log` stops reporting *NOT SENT* for something that arrived later; it says *sent later, on
+  retry*. Optional `transitPreflight` (argv array in `machine.json`) runs once before a batch of
+  retries for fleets that can restore transit locally — generic, off by default.
+- **The key model is untouched.** Nothing gains access to anything; the fix is to survive the link
+  being down, not to keep it up.
+
 ## [0.6.1] — 2026-08-05
 
 a session could go permanently deaf to chat — ccmux was typing into it

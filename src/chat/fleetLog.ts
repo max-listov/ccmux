@@ -54,7 +54,7 @@ export const LogPayloadSchema = z.object({
 export type LogPayload = z.infer<typeof LogPayloadSchema>;
 
 /** Ledger + outbox of ONE machine as a single row list, oldest first. Pure. */
-export function localRows(machine: string, ledger: ChatMessage[], outbox: Outbound[]): LogRow[] {
+export function localRows(machine: string, ledger: ChatMessage[], outbox: Outbound[], settled: ReadonlySet<string> = new Set()): LogRow[] {
   const rows: LogRow[] = [];
   for (const msg of ledger) {
     rows.push({
@@ -79,7 +79,9 @@ export function localRows(machine: string, ledger: ChatMessage[], outbox: Outbou
       to: `${o.toMachine}:${o.toSession}`,
       task: o.task,
       body: o.body,
-      note: o.ok ? "" : `NOT SENT — ${o.detail === "" ? "unknown error" : o.detail}`,
+      // A failed send that the daemon later drained is no longer bad news — saying otherwise would
+      // send someone chasing a message that did arrive.
+      note: o.ok ? "" : settled.has(o.id) ? "sent later, on retry" : `NOT SENT — ${o.detail === "" ? "unknown error" : o.detail}`,
     });
   }
   return sortByTime(rows);
