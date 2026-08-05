@@ -10,15 +10,22 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** Mirror text for one message (Telegram HTML parse_mode). Multi-line is fine here — a Telegram
- *  message, not a TTY. The first line is the routing header (`from → to`, or `📩 for you — from …`
- *  for a message to the human `owner`) and is bolded so you can tell at a glance who is talking to
- *  whom; the body follows as plain text. All dynamic parts are HTML-escaped. */
-export function formatForTg(msg: ChatMessage): string {
+/**
+ * Mirror text for one message (Telegram HTML parse_mode). Multi-line is fine here — a Telegram
+ * message, not a TTY. The bolded first line is the routing header; the body follows as plain text,
+ * with every dynamic part HTML-escaped.
+ *
+ * Both sides are written as FLEET ADDRESSES, so each line of the mirror is something you can copy
+ * straight into `ccmux msg`. That is not decoration: once every machine mirrors into the same chat,
+ * bare names are ambiguous — the same session name commonly exists on two boxes, which is exactly
+ * the confusion fleet addressing exists to remove. The recipient is always local to the ledger being
+ * mirrored, so it takes the mirroring machine's label; the sender keeps its OWN machine when the
+ * message crossed over (`fromMachine`), and otherwise is local too.
+ */
+export function formatForTg(msg: ChatMessage, machine: string): string {
   const task = msg.task ? ` · task: ${escapeHtml(msg.task)}` : "";
-  const from = escapeHtml(msg.from);
-  const to = escapeHtml(msg.to);
-  const header = msg.to === OWNER ? `📩 for you — from ${from}${task}` : `${from} → ${to}${task}`;
+  const from = escapeHtml(`${msg.fromMachine ?? machine}:${msg.from}`);
+  const header = msg.to === OWNER ? `📩 for you — from ${from}${task}` : `${from} → ${escapeHtml(`${machine}:${msg.to}`)}${task}`;
   return `<b>${header}</b>\n${escapeHtml(msg.body)}`;
 }
 
@@ -68,7 +75,7 @@ export async function mirrorPending(m: MachineConfig): Promise<void> {
       cur++;
       continue;
     }
-    const result = await sendTelegram(tg, formatForTg(msg));
+    const result = await sendTelegram(tg, formatForTg(msg, m.rcPrefix));
     if (result === "transient") {
       log.warn({ msg: "telegram mirror transient failure — holding, retry next pass", from: msg.from, to: msg.to });
       break; // hold at `cur` — do not advance past an un-sent message

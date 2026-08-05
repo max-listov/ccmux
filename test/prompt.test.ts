@@ -36,22 +36,37 @@ test("buildPrompt adds inter-agent chat framing ONLY when chat is enabled", () =
   expect(on).toContain("do NOT blindly"); // apply own judgment, not blind obedience
 });
 
-test("the prompt teaches wait + --last-message, and why not to hand-roll a poll loop", () => {
-  // Not cosmetic: both commands shipped in 0.5.0 and sat on every machine, but the prompt never
-  // named them — so an agent with chat ENABLED still wrote `sleep`/`grep`/`awk` loops over
-  // `ccmux list`, crashed twice slicing transcript JSON by hand, and gave up on the reply channel.
-  // The prompt is the only documentation a session is guaranteed to read.
+test("every hand-off example is ADDRESSED — the omission that made the first version useless", () => {
+  // The first version said `wait <session>` and left `<machine>:<session>` in a different block, so a
+  // cross-machine hand-off required the agent to join two halves itself. It didn't: 1m51s after
+  // restarting onto that prompt it wrapped everything in ssh instead. Addresses now appear in the
+  // examples themselves.
   const p = buildPrompt("cc-x", "ccmux");
-  expect(p).toContain("ccmux wait <session>");
-  expect(p).toContain("ccmux transcript <session> --last-message");
-  expect(p).toContain("NEVER hand-roll a polling loop");
+  expect(p).toContain("ccmux msg <machine>:<session>");
+  expect(p).toContain("ccmux wait <machine>:<session>");
+  expect(p).toContain("ccmux transcript <machine>:<session> --last-message");
+  expect(p).toContain("ccmux fleet"); // how to discover an address in the first place
+});
+
+test("the ssh wrapper is banned WITH its consequence, not just forbidden", () => {
+  const p = buildPrompt("cc-x", "ccmux");
+  expect(p).toContain("NEVER wrap these in ssh");
+  // The reason is the load-bearing part: an unattributed message reads as the human.
+  expect(p).toContain("as coming from the human, not from you");
+});
+
+test("the polling ban names the SUBSTANCE, not one shape of loop", () => {
+  // The previous wording banned "sleep + ccmux list + grep/awk". The agent polled a DATABASE, which
+  // that sentence does not cover — so it read the ban literally and complied with it while doing
+  // exactly the forbidden thing.
+  const p = buildPrompt("cc-x", "ccmux");
+  expect(p).toContain("by polling ANYTHING");
+  for (const shape of ["not the pane", "not a database", "not files", "not sizes"]) expect(p).toContain(shape);
   expect(p).toContain("idle BETWEEN steps"); // the reason, not just the ban
 });
 
-test("the chat block points at that recipe instead of restating it", () => {
+test("the recipe lives in ONE place — the chat block no longer restates it", () => {
   const p = buildPrompt("cc-x", "ccmux", true);
-  expect(p).toContain("Handing work off:");
-  expect(p).toContain('report back" and then poll');
-  // Mechanics live in ONE place: the chat block must not carry its own copy of the wait usage.
-  expect(p.split("ccmux wait <session>")).toHaveLength(2);
+  expect(p).not.toContain("Handing work off:");
+  expect(p.split("ccmux wait <machine>:<session>")).toHaveLength(2); // stated exactly once
 });

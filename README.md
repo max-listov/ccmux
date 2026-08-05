@@ -178,6 +178,12 @@ DM, or a forum topic:
 `topicId` is optional. Absent → no mirroring (fail-soft). It's outbound only — ccmux sends to
 Telegram, never reads from it.
 
+Configure it on **every machine** and the whole fleet lands in one chat: each machine mirrors its own
+ledger with its own cursor, so nothing is coordinated and nothing is duplicated. Every mirrored line
+is written as a fleet address (`dev:worker → prod:api`) — with several machines in one chat, bare
+names would be ambiguous, since the same session name commonly exists on two boxes. Give each machine
+its own `topicId` if you'd rather keep them in separate threads.
+
 ### Coordinating agents — the whole recipe
 
 One agent (or you, or a script) hands work to another and picks up the result. Two commands do the

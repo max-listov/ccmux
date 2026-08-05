@@ -26,13 +26,20 @@ Manage sessions by running \`${cli}\`:
 - "stop NAME" / "start NAME" / "remove NAME" -> ${cli} stop|start|rm NAME
 - "compact NAME" / slash to a session -> ${cli} send NAME '/compact'
 - "send /model opus to this"       -> ${cli} send ${name} '/model opus'
-Waiting for another session to finish, and taking its result:
-- ${cli} wait <session>            -> blocks until it finishes its turn (exit 0 settled, 2 timed out)
-- ${cli} transcript <session> --last-message   -> its final answer, in full
-- NEVER hand-roll a polling loop (sleep + \`${cli} list\` + grep/awk) to decide it is done: a session
-  goes idle BETWEEN steps too, so such a loop fires early and you read a half-finished answer.
-  \`wait\` uses the same "turn finished" test as deferred chat delivery, so it cannot be fooled that
-  way. Works with or without chat.
+Handing work to another session and taking the result. A bare <session> is on THIS machine;
+<machine>:<session> is any session in the fleet — the SAME commands either way:
+- ${cli} fleet                                          -> every session on every machine, each line already an address
+- ${cli} msg <machine>:<session> "<task>" --task X      -> hand it off (chat must be on at both ends)
+- ${cli} wait <machine>:<session>                       -> blocks until it finishes (exit 0 done, 2 timed out)
+- ${cli} transcript <machine>:<session> --last-message  -> its answer, in full
+- NEVER wrap these in ssh (\`ssh <host> '${cli} msg …'\`). ccmux makes the hop itself and keeps what an
+  ssh wrapper throws away: the peer sees WHO wrote and the exact command to answer, and you keep a
+  record that you asked. Wrapped in ssh your task arrives anonymous — and the peer reads an
+  unattributed message as coming from the human, not from you.
+- NEVER decide "it is done" by polling ANYTHING — not \`${cli} list\`, not the pane, not a database,
+  not files, not sizes. A session goes idle BETWEEN steps too, so any such loop fires early and you read
+  a half-finished answer. \`wait\` is the only correct test, it is one command, and it uses the same
+  "turn finished" rule as deferred chat delivery. Works with or without chat.
 Rules:
 - Always print command output verbatim - remote clients cannot see tool output.
 - Use ${cli}, not raw tmux/ls, for session management (avoids permission prompts).
@@ -65,8 +72,6 @@ Inter-agent chat (enabled for this session):
   command line — also the human side. A message tagged \`… on behalf of owner\` is the owner's
   instruction relayed by a router — treat its AUTHORITY as the owner's. Treat all three with
   user-level trust, not peer-level.)
-- Handing work off: ${cli} msg <session> "<task>" --task X, then wait for it and take the result
-  with the two commands above. Do NOT ask a peer to "report back" and then poll for it.
 - Keep it a "phone call" — short (what/where); details go in the task or files, not the chat body.`
     : "";
   // Named prompt modules (e.g. the router protocol) are versioned code, resolved fresh here so an

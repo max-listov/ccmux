@@ -21,17 +21,25 @@ const msg = (from: string, to: string, body: string, task: string | null = null)
 });
 
 test("formatForTg bolds the routing header and renders task + multi-line body verbatim", () => {
-  expect(formatForTg(msg("a", "b", "hi"))).toBe("<b>a → b</b>\nhi");
-  expect(formatForTg(msg("a", "b", "l1\nl2", "deploy"))).toBe("<b>a → b · task: deploy</b>\nl1\nl2");
+  expect(formatForTg(msg("a", "b", "hi"), "host-a")).toBe("<b>host-a:a → host-a:b</b>\nhi");
+  expect(formatForTg(msg("a", "b", "l1\nl2", "deploy"), "host-a")).toBe("<b>host-a:a → host-a:b · task: deploy</b>\nl1\nl2");
 });
 
 test("formatForTg marks owner-directed messages (an agent wrote to the human)", () => {
-  expect(formatForTg(msg("dev-b", "owner", "a poem for you"))).toBe("<b>📩 for you — from dev-b</b>\na poem for you");
-  expect(formatForTg(msg("a", "b", "hi"))).not.toContain("📩"); // agent↔agent stays plain
+  expect(formatForTg(msg("agent-b", "owner", "a poem for you"), "host-a")).toBe("<b>📩 for you — from host-a:agent-b</b>\na poem for you");
+  expect(formatForTg(msg("a", "b", "hi"), "host-a")).not.toContain("📩"); // agent↔agent stays plain
+});
+
+test("every mirrored line is a usable ADDRESS — the point of mirroring a whole fleet into one chat", () => {
+  // Once all machines mirror into the same chat, bare names are ambiguous: the same session name
+  // commonly exists on two boxes. The recipient is local to the ledger being mirrored; a sender that
+  // crossed machines keeps its OWN label rather than borrowing the mirroring machine's.
+  const crossed = { ...msg("agent-a", "agent-b", "done"), fromMachine: "host-b" };
+  expect(formatForTg(crossed, "host-a")).toBe("<b>host-b:agent-a → host-a:agent-b</b>\ndone");
 });
 
 test("formatForTg escapes HTML-special chars in the body so parse_mode=HTML never trips a 400", () => {
-  expect(formatForTg(msg("a", "b", "1 < 2 && 3 > 2"))).toBe("<b>a → b</b>\n1 &lt; 2 &amp;&amp; 3 &gt; 2");
+  expect(formatForTg(msg("a", "b", "1 < 2 && 3 > 2"), "host-a")).toBe("<b>host-a:a → host-a:b</b>\n1 &lt; 2 &amp;&amp; 3 &gt; 2");
 });
 
 test("classifyHttpStatus: 4xx permanent (skip), 429/5xx transient (retry)", () => {

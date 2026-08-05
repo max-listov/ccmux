@@ -6,6 +6,26 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: the two places where ccmux itself pushed agents back to the old way
+
+- **The hand-off block in the injected prompt never showed an address.** It said `wait <session>`
+  while `<machine>:<session>` lived in a *different* block, so a cross-machine hand-off required an
+  agent to join two halves by itself. It didn't: 1m51s after restarting onto that prompt (its launch
+  stamp proves which prompt it had), a session wrapped everything in `ssh` again — the task arrived
+  anonymous, the initiator kept no record, and the peer had no way to reply. Addresses now appear in
+  every example, `ccmux fleet` is named as the way to discover one, and the ssh wrapper is banned
+  **with its consequence** spelled out.
+- **The polling ban described one shape instead of the substance.** It forbade "sleep + `ccmux list`
+  + grep/awk"; the agent polled a *database* for a byte count, which that sentence doesn't cover — so
+  it obeyed the words while doing the forbidden thing. It now bans deciding "done" by polling
+  anything at all, naming pane, database, files and sizes.
+- The chat block's duplicate of that recipe is **removed** — the knowledge lives in one place.
+- **The Telegram mirror can now cover the whole fleet.** Every mirrored line is written as a fleet
+  address (`dev:worker → prod:api`) instead of a bare name, because with several machines in one chat
+  the same session name commonly exists on two boxes — the very ambiguity addressing exists to
+  remove. Enabling it on each machine is config only: cursors are per-machine, so nothing is
+  coordinated and nothing double-sends.
+
 ## [0.8.0] — 2026-08-05
 
 list tells you which sessions a restart would actually change
