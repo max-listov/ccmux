@@ -18,9 +18,13 @@ import { promptInvocation } from "../env.ts";
  * never in the shared cursors file. We record acks BEFORE emitting the block (fail-closed: if we
  * can't durably ack, we don't inject → the message is never lost to a phantom delivery and there is
  * no `block`→turn→`block` loop). The daemon, seeing the ack, advances its own cursor past the
- * message on its next pass. The daemon (idle target) and this hook (end-of-turn) are temporally
- * disjoint — a target can't be "stably idle for the grace window" and "just ended a turn" at once —
- * so a double-inject race effectively cannot occur; the ack check is the belt regardless.
+ * message on its next pass. The two paths USED to be temporally disjoint — a target could not be
+ * "stably idle for the grace window" and "just ending a turn" at once — but that stopped being true
+ * once an interrupted turn can also settle (see `turnState`): a conversation quiet long enough to
+ * count as interrupted may still be alive and reach its Stop hook in the same instant. The window is
+ * narrow, and the ack check NARROWS it rather than closing it: the daemon loads its ack set once per
+ * pass, so a hook acking mid-pass is invisible to that pass. The daemon re-reads the ack for the one
+ * id right before typing, which is what actually shrinks the window to the write itself.
  *
  * The whole thing is wrapped fail-open: ANY error exits 0 with no output, so a chat hiccup can never
  * wedge a session's ability to stop.

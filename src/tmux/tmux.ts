@@ -103,8 +103,11 @@ export async function sendKeysLiteral(m: MachineConfig, name: string, text: stri
 }
 
 /** Named keys (NO `-l`) — Enter/Up/Escape/C-c (P3-13: distinct from literal). */
-export async function sendKeysNamed(m: MachineConfig, name: string, key: string): Promise<void> {
-  await run(tmuxArgv(m, "send-keys", "-t", paneTarget(name), key));
+/** Returns whether tmux accepted the key — a dead pane reports failure, and a caller that submits a
+ *  message needs to know its Enter never landed rather than record a delivery that did not happen. */
+export async function sendKeysNamed(m: MachineConfig, name: string, key: string): Promise<boolean> {
+  const { code } = await run(tmuxArgv(m, "send-keys", "-t", paneTarget(name), key));
+  return code === 0;
 }
 
 /** Insert `text` into the pane as a BRACKETED paste (so a multi-line block goes in as one unit
@@ -119,6 +122,24 @@ export async function pasteText(m: MachineConfig, name: string, text: string): P
 
 export async function capturePane(m: MachineConfig, name: string, lines: number): Promise<string> {
   const { stdout } = await run(tmuxArgv(m, "capture-pane", "-t", paneTarget(name), "-p", "-S", `-${lines}`));
+  return stdout;
+}
+
+/** Every ANSI colour/attribute sequence — for turning a styled capture back into plain text. */
+const ANSI_RE = /\u001b\[[0-9;]*m/g;
+export const stripAnsi = (text: string): string => text.replace(ANSI_RE, "");
+
+/**
+ * The same capture, but KEEPING colour and attribute sequences (`-e`).
+ *
+ * Needed because some things on screen are only distinguishable by how they are DRAWN: Claude renders
+ * its autosuggestion in the composer dim, exactly where a human's typed text would be, and read as
+ * plain text the two are identical. That ambiguity held a session's chat indefinitely while the hold
+ * note blamed a human who was not there. Callers that do not care about attributes run the result
+ * through `stripAnsi`, so one capture serves every detector.
+ */
+export async function capturePaneStyled(m: MachineConfig, name: string, lines: number): Promise<string> {
+  const { stdout } = await run(tmuxArgv(m, "capture-pane", "-t", paneTarget(name), "-p", "-e", "-S", `-${lines}`));
   return stdout;
 }
 

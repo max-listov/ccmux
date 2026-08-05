@@ -199,12 +199,18 @@ ccmux transcript cc-worker --last-message            # 4. take the report (full 
 - **Step 1 is the one people miss.** Chat framing and the Stop hook are wired at launch, so
   `chat on` alone changes nothing until that session restarts — the command tells you so. Turning it
   on across the fleet: `ccmux chat on …` for each, then one `ccmux restart --all`.
-- **`ccmux wait`** uses the same "turn finished" test as deferred delivery (spinner off, ended on
-  assistant text, transcript stable), so it can never disagree with `--defer`. Exit `0` settled,
-  `2` timed out (`--timeout N`, default 300s), `1` unknown/stopped session. It needs **no chat at
-  all** — handy in any script. It also refuses to call a session settled while mail addressed to it
-  is still undelivered: the work you just handed over has not *started* yet, and an idle pane at
-  that moment is not an answer (without this, `msg` immediately followed by `wait` raced itself).
+- **`ccmux wait`** shares one "is it between turns" test with deferred delivery, so the two can never
+  disagree: the pane must not be working, must have finished painting, and must not be sitting on a
+  selection prompt — then a turn that ended in the agent's own words settles within seconds, while a
+  conversation quiet far longer than any turn's internal pause settles as **interrupted** (a session
+  restarted mid-work never gets to finish that turn, and waiting for it to is waiting forever).
+  Exit `0` settled either way — the line says which, because after an interrupted turn
+  `transcript --last-message` returns what was said *before* the tool calls that never completed.
+  `2` timed out (`--timeout N`, default 300s), `1` unknown or stopped session, re-checked while
+  waiting rather than once at the start. It needs **no chat at all** — handy in any script. It also
+  refuses to settle while mail addressed to that session is still on its way (the work you handed
+  over has not *started*, so an idle pane is not an answer) — but not for mail that is scheduled for
+  later, or that can never be delivered at all, since waiting on those is waiting for nothing.
 - **Reporting back instead of waiting:** have the worker finish with
   `ccmux msg <orchestrator> "done" --task migrate --defer`. `--defer` holds the message until the
   orchestrator voluntarily ends its turn, so the report never lands mid-thought.

@@ -1,6 +1,8 @@
 import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { mailBlocksSettle } from "../src/commands/wait.ts";
+import type { ChatMessage } from "../src/types.ts";
 
 const src = (f: string): string => readFileSync(join(import.meta.dir, "..", "src", f), "utf8");
 
@@ -30,11 +32,22 @@ test("the TUI keeps its own mirror off for the same reason — one rule, two cal
   expect(src("tui/run.tsx")).toContain("setStderrLogging(false)");
 });
 
-test("wait treats undelivered mail as work that has not started", () => {
+test("wait treats undelivered mail as work that has not started — but only mail that can arrive", () => {
   // The recipe `msg` → `wait` → `transcript` raced itself: the daemon delivers a beat after `msg`
-  // returns, so a `wait` fired immediately saw an idle pane and reported a finished turn that had
-  // never begun (observed on a live cross-machine hand-off).
-  const s = src("commands/wait.ts");
-  expect(s).toContain("pendingInbound");
-  expect(s).toContain("pendingInbound(m, name).length === 0 && deferReady");
+  // returns, so a `wait` fired immediately saw an idle pane and reported a turn that never began.
+  // Asserted on behaviour, not on the shape of a source line — the previous version of this test
+  // pinned the exact expression and broke the moment the call was refactored, proving nothing.
+  const at = Date.parse("2026-08-05T12:00:00.000Z");
+  const msg = (over: Partial<ChatMessage> = {}): ChatMessage => ({
+    id: "m", ts: "2026-08-05T11:59:00.000Z", from: "a", fromMachine: null, to: "b",
+    body: "x", task: null, defer: true, onBehalfOf: null, notBefore: null, ...over,
+  });
+  const on = { chatEnabled: true, canReceiveChat: true, nowMs: at };
+  expect(mailBlocksSettle([msg()], on)).toHaveLength(1);
+  // A watchdog armed for later must not make `wait` useless until it fires.
+  expect(mailBlocksSettle([msg({ notBefore: "2026-08-05T12:10:00.000Z" })], on)).toHaveLength(0);
+  // Mail that can never be delivered (chat off / an agent that cannot receive it) is not "pending
+  // work" — waiting on it is waiting forever, which `holdReason` already calls permanent.
+  expect(mailBlocksSettle([msg()], { ...on, chatEnabled: false })).toHaveLength(0);
+  expect(mailBlocksSettle([msg()], { ...on, canReceiveChat: false })).toHaveLength(0);
 });

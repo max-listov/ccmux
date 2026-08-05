@@ -84,13 +84,35 @@ export function chatDeliverable(paneText: string): boolean {
 // anyone attached". Only the bottom slice is scanned: Claude also prefixes past user messages with
 // `❯`, so grepping the whole pane would read history as live input.
 const COMPOSER_TAIL_LINES = 12;
-const COMPOSER_RE = /^❯\s*(.*)$/;
 
-export function inputBusy(paneText: string): boolean {
-  const tail = paneText.split("\n").slice(-COMPOSER_TAIL_LINES);
+/**
+ * Claude draws its own AUTOSUGGESTION in the composer — a proposed next message, rendered DIM the way
+ * a shell renders an autocompletion. It is not input: nobody typed it, and it stays on screen until
+ * it is accepted or dismissed.
+ *
+ * Read as plain text it is indistinguishable from something a human typed, so it used to hold a
+ * session's mail indefinitely while `inbox` insisted "a human is typing in that pane right now" —
+ * with nobody there. Measured on a live pane, the difference is unambiguous:
+ *
+ *   typed:      `❯ настоящий ввод`                     (no attributes)
+ *   suggested:  `❯ \x1b[2mдоделай sp-blocks\x1b[0m`     (SGR 2 — dim)
+ *
+ * So the composer must be read WITH its attributes, and dim runs dropped before asking whether
+ * anything is there. Dropping runs rather than testing "is the whole line dim" is what makes the
+ * shell-style case right too: type a few characters and Claude dim-completes the rest — the typed
+ * part survives the filter and correctly counts as occupied.
+ */
+const DIM_RUN_RE = /\u001b\[2m[\s\S]*?(?:\u001b\[(?:0|22)m|$)/g;
+const ANSI_RE = /\u001b\[[0-9;]*m/g;
+
+export function inputBusy(styledPaneText: string): boolean {
+  const tail = styledPaneText.split("\n").slice(-COMPOSER_TAIL_LINES);
   for (let i = tail.length - 1; i >= 0; i--) {
-    const m = tail[i]?.match(COMPOSER_RE);
-    if (m) return (m[1] ?? "").trim() !== "";
+    const line = tail[i];
+    if (line === undefined || !line.includes("❯")) continue;
+    const after = line.slice(line.indexOf("❯") + 1);
+    const typed = after.replace(DIM_RUN_RE, "").replace(ANSI_RE, "").trim();
+    return typed !== "";
   }
   return false; // no composer in view (booting / alt-screen) → nothing typed to clobber
 }

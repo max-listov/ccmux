@@ -34,7 +34,7 @@ Handing work to another session and taking the result. A bare <session> is on TH
 <machine>:<session> is any session in the fleet — the SAME commands either way:
 - ${cli} fleet                                          -> every session on every machine, each line already an address
 - ${cli} msg <machine>:<session> "<task>" --task X      -> hand it off (chat must be on at both ends)
-- ${cli} wait <machine>:<session>                       -> blocks until it finishes (exit 0 done, 2 timed out)
+- ${cli} wait <machine>:<session>                       -> blocks until it is between turns (exit 0; 2 timed out)
 - ${cli} transcript <machine>:<session> --last-message  -> its answer, in full
 - NEVER wrap these in ssh (\`ssh <host> '${cli} msg …'\`). ccmux makes the hop itself and keeps what an
   ssh wrapper throws away: the peer sees WHO wrote and the exact command to answer, and you keep a
@@ -42,8 +42,12 @@ Handing work to another session and taking the result. A bare <session> is on TH
   unattributed message as coming from the human, not from you.
 - NEVER decide "it is done" by polling ANYTHING — not \`${cli} list\`, not the pane, not a database,
   not files, not sizes. A session goes idle BETWEEN steps too, so any such loop fires early and you read
-  a half-finished answer. \`wait\` is the only correct test, it is one command, and it uses the same
-  "turn finished" rule as deferred chat delivery. Works with or without chat.
+  a half-finished answer. \`wait\` is the only correct test, it is one command, and it shares one rule
+  with deferred chat delivery. Works with or without chat.
+- \`wait\` exiting 0 means "between turns", which is NOT always "the work is done": it also returns 0
+  when the peer's turn was INTERRUPTED (restarted mid-work) or when it has not taken a turn at all.
+  It says which, in that line. If it says interrupted, \`--last-message\` gives you what the peer said
+  BEFORE the tool calls that never finished — do not report that as its result; ask the peer again.
 Rules:
 - Always print command output verbatim - remote clients cannot see tool output.
 - Use ${cli}, not raw tmux/ls, for session management (avoids permission prompts).

@@ -64,6 +64,11 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
   if (hold != null && hold.reason !== "" && (hold.msgId === null || hold.msgId === msg.id)) {
     return { kind: "live", text: hold.reason };
   }
-  if (msg.defer) return { kind: "awaiting-turn-end", text: "deferred — waiting for the recipient to finish its turn" };
-  return { kind: "pending", text: "queued — the daemon delivers within a few seconds" };
+  // Deliberately does NOT assert that a turn is in progress. This branch is reached whenever the
+  // daemon has no fresh hold on record — which happens when the daemon is not running at all, when
+  // this letter sits behind an immediate one (the daemon never picked it, so never held about it),
+  // and when a pass hit its per-tick delivery cap. Claiming "waiting for the turn to finish" in
+  // those cases was simply false.
+  if (msg.defer) return { kind: "awaiting-turn-end", text: "deferred — delivered at the recipient's next turn boundary; no live reason on record (the daemon has not picked it up yet, or is not running)" };
+  return { kind: "pending", text: "queued — the daemon delivers it (if nothing appears, check the daemon is running: ccmux doctor)" };
 }

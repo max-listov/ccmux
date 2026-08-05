@@ -1,8 +1,9 @@
 import { loadSessions } from "../config/sessions.ts";
 import { providerFor, lastTranscriptMessage, lastActivityMs, type AgentProvider } from "../agent/index.ts";
-import { capturePane, clientTypingRecently, listSessionNames, pasteText, sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
+import { capturePaneStyled, stripAnsi, clientTypingRecently, listSessionNames, pasteText, sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
 import type { ChatMessage, MachineConfig, Session } from "../types.ts";
 import { log } from "../util/log.ts";
+import { turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
 import { promptInvocation } from "../env.ts";
 import { formatChatInjection } from "./format.ts";
 import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors } from "./store.ts";
@@ -32,41 +33,52 @@ export function recentInboundCount(name: string, ledger: ChatMessage[], nowMs: n
 /** Inject a message into the recipient's pane as its next user turn, tagged so the agent knows it's
  *  a PEER message, not the human (shared framer — same tag the Stop hook uses). Bracketed paste keeps
  *  a multi-line body intact (no early submit); falls back to a newline-collapsed literal on failure. */
-async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): Promise<void> {
+async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): Promise<boolean> {
   // replyable = we can actually route back to the sender's machine from here (it is us, or it is in
   // our fleet map) — otherwise we print the address without a command that would fail on this box.
   const replyable = msg.fromMachine !== null && (msg.fromMachine === m.rcPrefix || m.fleet?.[msg.fromMachine] !== undefined);
   const text = formatChatInjection(msg, { cli: promptInvocation(), replyable });
-  if (!(await pasteText(m, name, text))) {
-    await sendKeysLiteral(m, name, text.replace(/\r?\n+/g, " ⏎ "));
+  if (!(await pasteText(m, name, text)) && !(await sendKeysLiteral(m, name, text.replace(/\r?\n+/g, " ⏎ ")))) {
+    return false; // the pane is gone (killed between our sample and this write) — nothing was typed
   }
   await Bun.sleep(150); // let the paste/text land before the separate Enter
-  await sendKeysNamed(m, name, "Enter");
+  // The Enter is what SUBMITS it. If the session died in the 150ms gap the text is stranded in a
+  // composer nobody will read, so this is the honest place to say "not delivered".
+  return sendKeysNamed(m, name, "Enter");
 }
 
-// A DEFERRED message is delivered by the daemon ONLY when the target has VOLUNTARILY finished and
-// gone STABLY idle — never mid-turn. The Stop hook (Phase 2) delivers a mid-turn defer the instant
-// the turn ends; this daemon path is the backbone for a target that was ALREADY idle when the
-// message arrived (no Stop is coming for it).
-const DEFER_GRACE_MS = 6_000;
+// The Stop hook delivers a deferred message the instant a turn ends; this daemon path is the
+// backbone for a target that was ALREADY between turns when the message arrived — including one
+// whose turn was killed, for which no Stop is ever coming (see `turnState`).
 // How recently a keystroke means "still typing" — long enough to bridge the gap between two keys,
 // short enough that simply watching a pane never blocks delivery.
 const TYPING_WINDOW_SEC = 3;
 
-/** Is a deferred message safe to deliver to this target right now? Three conditions, all required:
- *   - not actively working (pane spinner off);
- *   - sitting at an assistant MESSAGE — the turn ended on text, not mid-tool (status.ts `waiting`);
- *   - STABLE: the transcript hasn't moved for DEFER_GRACE_MS. This rules out the brief mid-turn gap
- *     between an assistant text line and the following tool_use line (proven real — a turn is split
- *     into separate thinking/text/tool_use JSONL lines, so `assistant-message-last` occurs mid-turn).
- *  Menu-safety + "human is typing" are checked separately by the caller. */
-export function deferReady(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): boolean {
-  if (provider.scanPane(pane).state === "working") return false;
+/** Gather what `turnState` needs from this session's pane and transcript. The IO lives here so the
+ *  decision itself stays pure and testable — the previous version was neither, which is how it
+ *  shipped waiting on an event that a killed turn can never produce. */
+export function readTurnState(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): TurnState {
+  const scan = provider.scanPane(pane);
   const lm = lastTranscriptMessage(s, m);
-  if (!(lm && lm.role === "assistant" && lm.kind === "message")) return false;
   const mt = lastActivityMs(s, m);
-  return mt !== null && nowMs - mt >= DEFER_GRACE_MS;
+  return turnState({
+    paneWorking: scan.state === "working",
+    // `ready` is a HARD gate here, so it may only be trusted from a provider whose pane detectors are
+    // calibrated. `chatDeliverable` is that marker: an agent that can say "this pane is safe to type
+    // into" has had its chrome mapped; one that cannot has not. Treating an unreliable "not drawn" as
+    // a permanent block would recreate the very hang this change removes, on another agent.
+    paneReady: provider.chatDeliverable === undefined ? true : scan.ready,
+    // Honest limitation: a provider with no menu detector gets `false` — we cannot see a menu we have
+    // no pattern for. For chat that is harmless (deliverPending skips such agents entirely); for
+    // `wait` it means the menu guard simply does not exist on that agent, which is a gap in the
+    // agent's pane support, not something this function can invent.
+    atMenu: provider.chatDeliverable?.(pane) === false,
+    endedOnAssistantText: lm !== null && lm.role === "assistant" && lm.kind === "message",
+    msSinceActivity: mt === null ? null : nowMs - mt,
+  });
 }
+
+
 
 /** A message is CONDITIONAL — delivered off the in-order cursor, tracked by id — when it is deferred
  *  or carries a notBefore. Everything else is IMMEDIATE and flows through the monotonic cursor. This
@@ -153,7 +165,10 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       await writeChatHold(s.name, pick.msg.id, `rate limit — this recipient got more than ${RATE_MAX_INBOUND} messages in the last minute, delivery resumes as the burst subsides`);
       continue; // hold; retries once the burst subsides
     }
-    const pane = await capturePane(m, s.name, 40);
+    // ONE capture, with attributes kept. `inputBusy` needs them to tell a human's typing from
+    // Claude's dim autosuggestion; every other detector reads the stripped text.
+    const styled = await capturePaneStyled(m, s.name, 40);
+    const pane = stripAnsi(styled);
     if (!provider.chatDeliverable(pane)) {
       await writeChatHold(s.name, pick.msg.id, "recipient is at a selection menu — injecting would pick an option it never chose");
       continue;
@@ -163,7 +178,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // it and sent. Two precise signals replace the old blunt "someone is attached" hold (which made
     // the channel look dead for as long as you kept the pane open): an occupied composer, or a
     // keystroke in the last few seconds (guards the gap between two keys).
-    if (provider.inputBusy?.(pane) === true) {
+    if (provider.inputBusy?.(styled) === true) {
       log.info({ msg: "chat delivery held — human is typing (composer not empty)", to: s.name, from: pick.msg.from });
       await writeChatHold(s.name, pick.msg.id, "a human is typing in that pane right now");
       continue;
@@ -173,14 +188,34 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       await writeChatHold(s.name, pick.msg.id, "a human typed in that pane a moment ago");
       continue;
     }
-    // A DEFERRED message additionally waits for the target to be STABLY idle (voluntarily finished).
-    // A notBefore-only message has no idle requirement — when due it delivers and Claude queues it.
-    if (pick.msg.defer && !deferReady(m, s, provider, pane, now)) {
-      await writeChatHold(s.name, pick.msg.id, "deferred — the recipient has not finished its turn yet");
+    const ts = readTurnState(m, s, provider, pane, now);
+    // "The UI has not painted yet" blocks EVERY track, not just deferred mail: delivery acks what it
+    // types, so a keystroke swallowed by a half-drawn pane is a letter marked delivered and never
+    // seen. Immediate and time-delayed mail were just as losable there.
+    if (ts.why === "not-drawn") {
+      await writeChatHold(s.name, pick.msg.id, WHY_TEXT[ts.why]);
+      continue;
+    }
+    // A DEFERRED message additionally waits for the target to be between turns. A notBefore-only
+    // message has no idle requirement — when due it delivers and the agent queues it.
+    if (pick.msg.defer && !ts.settled) {
+      // Name the gate that is actually unmet. One sentence for several gates is how the old note
+      // ended up asserting "has not finished its turn" about a turn that was over.
+      await writeChatHold(s.name, pick.msg.id, WHY_TEXT[ts.why]);
       continue;
     }
 
-    await deliverToPane(m, s.name, pick.msg);
+    // Re-read the ack for THIS id immediately before typing. The set loaded at the top of the pass is
+    // a snapshot, and a Stop hook that fired since then has already injected this very message — the
+    // window is narrow but it is a double-injection, not a lost letter, so it is worth one cheap read.
+    if (isConditional(pick.msg) && loadAckedIds(m).has(pick.msg.id)) continue;
+
+    if (!(await deliverToPane(m, s.name, pick.msg))) {
+      // Nothing was typed (the session died mid-write). Acking here would bury the letter forever;
+      // leaving it alone lets the next pass try again.
+      log.warn({ msg: "chat delivery failed — target vanished mid-write, not acked", to: s.name });
+      continue;
+    }
     clearChatHold(s.name);
     if (isConditional(pick.msg)) {
       appendAck(m, pick.msg.id, "daemon", s.name); // off-cursor; dedup vs the Stop hook

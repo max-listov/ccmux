@@ -6,6 +6,37 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: three ways a session looked busy while nothing was happening
+
+Every one of them showed the same sentence — *"a human is typing in that pane right now"* / *"has not
+finished its turn"* — about a session that was plainly idle, and every one had a different cause. The
+common root was never the wording: it was measuring the wrong thing and stating the result with
+confidence.
+
+- **A turn that was killed never ends.** Readiness asked "how did the turn END" (last transcript
+  record is assistant text) and never "is a turn RUNNING". After a restart mid-work the conversation
+  ends on a tool result that no assistant line will ever follow, so deferred mail waited for an event
+  that could not occur and `ccmux wait` ran to its timeout on a session answering people normally.
+  The signal is not dropped and no alternative is bolted beside it: it is **demoted from a veto to a
+  measure of confidence** — a turn that ended in words settles in seconds, anything else must be
+  quiet far longer than any turn's internal pause. One expression, two thresholds, in a pure
+  `turnState` that can finally be tested (it could not be before, which is why this shipped).
+- **Claude's own autosuggestion is not typing.** The composer was read without attributes, and in
+  that form a dim autocompletion is indistinguishable from text a human typed — so mail was held for
+  as long as the suggestion stayed on screen. The pane is now captured **with** attributes once, dim
+  runs are dropped before asking whether anything is there, and a half-typed line that Claude is
+  completing still counts as occupied.
+- **ccmux was typing into the agent** (fixed in 0.9.1) rounded out the set.
+
+Along the way, from adversarial review of the above: the "UI has not painted yet" guard now covers
+**every** mail track, not just deferred — a keystroke swallowed by a half-drawn pane used to be acked
+and lost. Delivery no longer acks a write that failed. The ack is re-read immediately before typing.
+`ccmux wait` distinguishes its three outcomes in words (all exit 0), tolerates a session vanishing
+for a restart instead of reporting it gone, ignores mail that is scheduled for later or can never be
+delivered, and names the real cause on timeout instead of guessing "still working". Hold reasons are
+one sentence per cause, and the injected prompt — the only surface an agent actually reads — now says
+plainly that exit 0 is not always "the work is done".
+
 ## [0.9.4] — 2026-08-05
 
 send stops echoing your own text, and stops looking like a way to write to an agent

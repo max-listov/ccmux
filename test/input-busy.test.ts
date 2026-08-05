@@ -44,3 +44,25 @@ test("the menu gate is untouched — that hazard is real and still holds deliver
   expect(chatDeliverable(menu)).toBe(false);
   expect(chatDeliverable(pane("❯ "))).toBe(true);
 });
+
+// Claude draws its own autosuggestion in the composer, DIM, exactly where typed text appears. Read as
+// plain text the two are identical — which held a session's mail indefinitely while `inbox` insisted a
+// human was typing, with nobody there. These are the shapes measured on a live pane.
+const DIM = (s: string) => `\u001b[2m${s}\u001b[0m`;
+const RESET = "\u001b[39m";
+
+test("a dim autosuggestion is NOT input — nobody typed it", () => {
+  expect(inputBusy(`${RESET}❯ ${DIM("доделай sp-blocks")}`)).toBe(false);
+});
+
+test("really typed text counts, and so does a half-typed line Claude is completing", () => {
+  expect(inputBusy(`${RESET}❯ настоящий ввод`)).toBe(true);
+  // Shell-style: what you typed is plain, what Claude proposes is dim. Dropping dim RUNS rather than
+  // asking "is the whole line dim" is what keeps this case right.
+  expect(inputBusy(`${RESET}❯ доде${DIM("лай sp-blocks")}`)).toBe(true);
+});
+
+test("an empty composer is still empty however it is styled", () => {
+  expect(inputBusy(`${RESET}❯ `)).toBe(false);
+  expect(inputBusy(`${RESET}❯ ${DIM("")}`)).toBe(false);
+});
