@@ -6,6 +6,23 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: a session could go permanently deaf to chat — because ccmux was typing into it
+
+- **`_run` no longer mirrors its log to stderr.** The in-pane supervisor shares a terminal with the
+  agent it supervises, so a structured log line printed straight into that agent's UI and landed in
+  its **input buffer** (verified: a keystroke sent to the pane edited the line in place). The
+  "composer occupied" delivery gate then held every message for that session **forever**, reporting
+  the reason as "a human is typing" when nobody was there. Found on a live cross-machine run; the
+  gate itself is untouched — it was right, the pollution was ours. Every record still goes to
+  `~/.ccmux/ccmux.log`; a failed spawn now says so in the pane as a plain sentence.
+- **`ccmux wait` no longer races the message you just sent.** Delivery happens a beat after `msg`
+  returns, so a `wait` fired immediately saw an idle pane and reported a finished turn that had
+  never begun — in under a second, in the exact recipe we recommend. A session with undelivered mail
+  is no longer considered settled.
+- **`chat on|off`, `router on|off` and `inbox` accept a fleet address** like every other verb that
+  operates on an existing session. Without it both a human and an agent fell back to raw `ssh`,
+  which is what addressing exists to remove.
+
 ## [0.6.0] — 2026-08-05
 
 fleet addressing — <machine>:<session> as a first-class agent address, with the return address and the whole exchange visible

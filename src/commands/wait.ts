@@ -3,6 +3,8 @@ import { providerFor } from "../agent/index.ts";
 import { capturePane, hasSession } from "../tmux/tmux.ts";
 import { deferReady } from "../chat/deliver.ts";
 import { forwardIfRemote } from "../fleet/forward.ts";
+import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.ts";
+import type { MachineConfig, ChatMessage } from "../types.ts";
 
 /**
  * `ccmux wait <name>` — block until the session has VOLUNTARILY finished its turn, then exit 0.
@@ -39,6 +41,17 @@ export function parseWaitOpts(args: string[]): WaitOpts {
   return { timeoutSec, quiet };
 }
 
+/** Chat addressed to this session that the daemon has not injected yet. Read fresh on every poll:
+ *  mail can arrive mid-wait, and a wait that ignored it would answer about the wrong turn. */
+function pendingInbound(m: MachineConfig, name: string): { msg: ChatMessage }[] {
+  try {
+    return unreadFor(name, loadLedger(m), loadCursors(m), loadAckedIds(m));
+  } catch {
+    // Chat is optional; a missing or unreadable ledger must never break a plain `wait`.
+    return [];
+  }
+}
+
 export async function cmdWait(name: string | undefined, args: string[] = []): Promise<number> {
   if (!name) {
     console.log("usage: ccmux wait <name> [--timeout N] [--quiet]   (exit 0 = turn finished, 2 = timed out)");
@@ -66,7 +79,12 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
   const deadline = Date.now() + o.timeoutSec * 1000;
   while (Date.now() < deadline) {
     const pane = await capturePane(m, name, 30);
-    if (deferReady(m, s, provider, pane, Date.now())) {
+    // Undelivered mail means the work has not STARTED, and an idle pane is therefore not an
+    // answer. Without this, the documented recipe raced itself: `msg` queues, the daemon delivers
+    // a beat later, and a `wait` fired immediately after returned "turn finished" in under a
+    // second — reporting a finished turn that had never begun (observed on a live cross-machine
+    // hand-off). Anything still pending for this recipient keeps it unsettled.
+    if (pendingInbound(m, name).length === 0 && deferReady(m, s, provider, pane, Date.now())) {
       if (!o.quiet) console.log(`${name}: turn finished`);
       return 0;
     }

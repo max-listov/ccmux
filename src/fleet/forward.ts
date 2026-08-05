@@ -23,6 +23,9 @@ export interface ForwardOpts {
    *  `wait` blocks for its own timeout, so the transport default (30s) would kill a healthy link and
    *  report "transport failed" for a worker that was simply still working. */
   timeoutMs?: number;
+  /** Words that sit BETWEEN the verb and the session name — `chat on <name>`, `router off <name>`.
+   *  Without this the sub-verb would be rebuilt as `chat <name> on`, which is a different command. */
+  verbArgs?: string[];
 }
 
 export async function forwardIfRemote(target: string, verb: string, remoteArgs: string[], opts: ForwardOpts = {}): Promise<Forwarded> {
@@ -43,7 +46,8 @@ export async function forwardIfRemote(target: string, verb: string, remoteArgs: 
   // to infer who asked or where to answer.
   const args = note === null ? remoteArgs : remoteArgs.map((a, i) => (i === thenIdx + 1 ? stampNote(note, selfAddress(cfg, from)) : a));
 
-  const r = await runRemote(route.alias, ["ccmux", verb, route.session, ...args], opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs });
+  const argv = ["ccmux", verb, ...(opts.verbArgs ?? []), route.session, ...args];
+  const r = await runRemote(route.alias, argv, opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs });
   // A cross-machine `restart --then` IS a hand-off, so it belongs in the outbox next to chat — same
   // reason: the initiator must have a record of what it asked for, including when transit failed.
   if (note !== null) {

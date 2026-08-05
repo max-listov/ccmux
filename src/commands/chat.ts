@@ -5,6 +5,7 @@ import { loadOutbox } from "../fleet/outbox.ts";
 import { localRows, mergeFleetLog, fmtRow, machineColumnWidth, LogRowSchema, LogPayloadSchema, type LogMachine, type LogRow } from "../chat/fleetLog.ts";
 import { z } from "zod";
 import { runRemote } from "../fleet/transport.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 import { log } from "../util/log.ts";
 import type { MachineConfig } from "../types.ts";
 
@@ -97,11 +98,14 @@ export async function cmdChat(args: string[]): Promise<number> {
   if (sub === "log") return cmdChatLog(m, args.slice(1));
 
   if (sub === "on" || sub === "off") {
-    const name = args[1];
-    if (name === undefined) {
-      console.log(`usage: ccmux chat ${sub} <name>`);
+    const target = args[1];
+    if (target === undefined) {
+      console.log(`usage: ccmux chat ${sub} <name>   ·   <machine>:<name> for another fleet machine`);
       return 1;
     }
+    const fwd = await forwardIfRemote(target, "chat", [], { m, verbArgs: [sub] });
+    if (fwd.done) return fwd.code;
+    const name = fwd.session;
     const ok = await setSessionChatEnabled(m, name, sub === "on");
     if (!ok) {
       console.log(`no such session: ${name}`);

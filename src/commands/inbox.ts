@@ -1,4 +1,4 @@
-import { loadMachineConfig } from "../config/machine.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { loadLedger, loadCursors, loadAckedIds, unreadFor, markRead, fmtMessage, OWNER } from "../chat/store.ts";
 import { providerFor } from "../agent/index.ts";
@@ -20,12 +20,15 @@ import { listSessionNames } from "../tmux/tmux.ts";
 export async function cmdInbox(args: string[]): Promise<number> {
   const self = process.env.CCMUX_SESSION;
   const peek = args.includes("--peek");
-  const name = args.find((a) => !a.startsWith("--")) ?? self;
+  let name = args.find((a) => !a.startsWith("--")) ?? self;
   if (name === undefined || name === "") {
     console.log("usage: ccmux inbox <name> [--peek]   (name defaults to CCMUX_SESSION)");
     return 1;
   }
-  const m = loadMachineConfig();
+  const fwd = await forwardIfRemote(name, "inbox", peek ? ["--peek"] : []);
+  if (fwd.done) return fwd.code;
+  const m = fwd.m;
+  name = fwd.session;
   const ledger = loadLedger(m);
   // Consult the ack-log: conditional mail is delivered OFF the read cursor, so without this an
   // already-injected deferred message would be reported as pending forever.

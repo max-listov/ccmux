@@ -174,7 +174,9 @@ ccmux transcript cc-worker --last-message            # 4. take the report (full 
 - **`ccmux wait`** uses the same "turn finished" test as deferred delivery (spinner off, ended on
   assistant text, transcript stable), so it can never disagree with `--defer`. Exit `0` settled,
   `2` timed out (`--timeout N`, default 300s), `1` unknown/stopped session. It needs **no chat at
-  all** — handy in any script.
+  all** — handy in any script. It also refuses to call a session settled while mail addressed to it
+  is still undelivered: the work you just handed over has not *started* yet, and an idle pane at
+  that moment is not an answer (without this, `msg` immediately followed by `wait` raced itself).
 - **Reporting back instead of waiting:** have the worker finish with
   `ccmux msg <orchestrator> "done" --task migrate --defer`. `--defer` holds the message until the
   orchestrator voluntarily ends its turn, so the report never lands mid-thought.
@@ -203,8 +205,9 @@ ccmux doctor                                 # verifies each alias really is the
 ```
 
 Every verb that operates on an **existing** session takes an address — `start`, `stop`, `restart`,
-`rm`, `send`, `msg`, `mode`, `logs`, `transcript`, `wait`. Creating is local by nature (`new`,
-`adopt` resolve local dirs and local history), so run those on the machine itself.
+`rm`, `send`, `msg`, `mode`, `logs`, `transcript`, `wait`, `inbox`, `chat on|off`, `router on|off`.
+Creating is local by nature (`new`, `adopt` resolve local dirs and local history), so run those on
+the machine itself.
 
 - **Delivery is unchanged.** A remote send is enqueued **on the receiving machine** through its own
   `ccmux msg`, so it inherits every existing guarantee: menu/typing protection, `--defer`, rate

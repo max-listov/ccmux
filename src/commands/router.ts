@@ -1,4 +1,4 @@
-import { loadMachineConfig } from "../config/machine.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 import { setSessionRouter } from "../config/sessions.ts";
 import { log } from "../util/log.ts";
 
@@ -16,12 +16,14 @@ export async function cmdRouter(args: string[]): Promise<number> {
     console.log(USAGE);
     return sub === undefined ? 0 : 1;
   }
-  const name = args[1];
-  if (name === undefined) {
-    console.log(`usage: ccmux router ${sub} <name>`);
+  const target = args[1];
+  if (target === undefined) {
+    console.log(`usage: ccmux router ${sub} <name>   ·   <machine>:<name> for another fleet machine`);
     return 1;
   }
-  const m = loadMachineConfig();
+  const fwd = await forwardIfRemote(target, "router", [], { verbArgs: [sub] });
+  if (fwd.done) return fwd.code;
+  const { session: name, m } = fwd;
   const ok = await setSessionRouter(m, name, sub === "on");
   if (!ok) {
     console.log(`no such session: ${name}`);

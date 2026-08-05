@@ -1,4 +1,6 @@
 import { test, expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseAddress, isAddressError, routeFor, selfAddress, parseOrigin } from "../src/fleet/address.ts";
 import { shellQuote, shellJoin } from "../src/util/shellQuote.ts";
 import { formatChatInjection } from "../src/chat/format.ts";
@@ -141,4 +143,13 @@ test("a dispatched --then note carries its origin and a runnable way to answer",
   const stamped = stampNote("read docs/backlog/x.md", "host-a:agent-a");
   expect(stamped).toContain("[from host-a:agent-a]");
   expect(stamped).toContain('ccmux msg host-a:agent-a "<your reply>"');
+});
+
+test("sub-verbs keep their word order across the wire: `chat on <name>`, never `chat <name> on`", () => {
+  // `chat on/off` and `router on/off` put the sub-verb BEFORE the session, so a forwarder that
+  // always appended the session right after the verb would rebuild a DIFFERENT command remotely.
+  // Asserted on the real construction site (it is one line, and mocking ssh to reach it would test
+  // the mock instead of the code).
+  const src = readFileSync(join(import.meta.dir, "..", "src", "fleet", "forward.ts"), "utf8");
+  expect(src).toContain('const argv = ["ccmux", verb, ...(opts.verbArgs ?? []), route.session, ...args];');
 });

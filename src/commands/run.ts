@@ -5,7 +5,7 @@ import { providerFor, type AgentProvider } from "../agent/index.ts";
 import { capturePane, sendKeysNamed } from "../tmux/tmux.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { promptInvocation } from "../env.ts";
-import { log } from "../util/log.ts";
+import { log, setStderrLogging } from "../util/log.ts";
 
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -76,6 +76,15 @@ export async function cmdRun(name: string | undefined): Promise<number> {
     log.error({ msg: "unknown session", name });
     return 1;
   }
+  // From here on this process shares a terminal with the agent it supervises: `_run` is the tmux
+  // pane's FOREGROUND process and the agent inherits its stdio. A structured log line mirrored to
+  // stderr therefore prints straight into the agent's UI and lands in its INPUT BUFFER — proven
+  // live: a session's composer held `{"msg":"answered resume picker",…}`, which then tripped the
+  // "composer occupied" delivery gate and silenced that session's chat for good, while blaming a
+  // human who wasn't there. The logger already has this switch for exactly this reason; the TUI
+  // uses it so Ink isn't corrupted, and `_run` needs it for the same reason. Nothing is lost —
+  // every record still goes to ~/.ccmux/ccmux.log.
+  setStderrLogging(false);
   const provider = providerFor(s);
   const env = provider.launchEnv(m, s.name);
   let backoff = MIN_BACKOFF_MS;
@@ -110,6 +119,9 @@ export async function cmdRun(name: string | undefined): Promise<number> {
     } catch (e) {
       crashed = true;
       log.error({ msg: "agent spawn failed", name, agent: provider.id, err: String(e) });
+      // The one case where the pane would otherwise be blank: no agent ever started, so nothing
+      // else will explain the emptiness to whoever attaches. A plain sentence, never JSON.
+      console.error(`ccmux: could not start ${provider.id} — ${String(e)}`);
     }
 
     const elapsed = Date.now() - startedAt;
