@@ -33,7 +33,7 @@ and `tmux`.
 ccmux                      # interactive fleet TUI (add -f for fullscreen)
 ccmux list                 # managed sessions + live status/uptime
 ccmux new cc-api ~/code/api   # create + start a session (pins a fresh uuid)
-ccmux send cc-api '/compact'  # type into a session (text or a /slash command)
+ccmux send cc-api '/compact'  # PRESS KEYS in a session (slash commands) — see msg for writing to an agent
 ccmux restart cc-api       # bounce it (survives killing the caller)
 ccmux restart --all        # bounce EVERY session, one at a time (TUI: R) — picks up new rules/MCP/release
 ccmux mode cc-api auto     # per-session permission-mode override (see Permissions)

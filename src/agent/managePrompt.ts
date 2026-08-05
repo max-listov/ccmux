@@ -26,6 +26,10 @@ Manage sessions by running \`${cli}\`:
 - "stop NAME" / "start NAME" / "remove NAME" -> ${cli} stop|start|rm NAME
 - "compact NAME" / slash to a session -> ${cli} send NAME '/compact'
 - "send /model opus to this"       -> ${cli} send ${name} '/model opus'
+\`send\` PRESSES KEYS in a pane — that is all it does, and it is the right tool only for slash
+commands. It is NOT how you write to an agent: nothing records it, the reader cannot tell it from
+something the human typed, there is no address to answer, and it types even into a selection menu
+or onto a half-written line. To write to an agent, use \`msg\` (below).
 Handing work to another session and taking the result. A bare <session> is on THIS machine;
 <machine>:<session> is any session in the fleet — the SAME commands either way:
 - ${cli} fleet                                          -> every session on every machine, each line already an address

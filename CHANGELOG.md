@@ -6,6 +6,21 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: `send` stops echoing what you just wrote, and stops pretending to be a way to write to an agent
+
+- A confirmation that repeats the whole text charges twice for the same words — nothing for
+  `/compact`, a lot for a multi-paragraph message, and an agent pays it out of the budget it needs
+  for the work. `msg` already truncated; `send` did not. Both now share one helper: short text is
+  shown whole, long text is cut **and its true length stated** (the length is what proves nothing was
+  truncated on the way out).
+- `send` reads like "write to a session" and only ever **presses keys**. Used for a letter it costs
+  everything the reader needs: nothing is recorded, they cannot tell it from the human typing, there
+  is no address to answer, and it types even into a selection menu or onto a half-written line. The
+  prompt and `help` now say what it does rather than what it is called, and point at `msg`.
+- A long non-slash message aimed at a chat-capable session gets a one-line nudge toward `msg`. Not a
+  refusal — pasting long text on purpose is legitimate — and ccmux's own internal use (a restart's
+  `--then` note) is exempt, since the advice would be for nobody.
+
 ## [0.9.3] — 2026-08-05
 
 the fleet no longer lags a release behind a CDN cache

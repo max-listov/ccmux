@@ -127,7 +127,9 @@ export async function cmdRestartWorker(name: string | undefined, note?: string):
   await startSession(m, name, s.dir);
   if (!note) return 0;
   if (!(await waitReady(m, s))) log.warn({ msg: "restart ready-wait timed out — sending note anyway", name });
-  await cmdSend(name, [note]);
+  // `internal`: this is ccmux waking a session it just restarted, not a caller choosing `send` over
+  // `msg` — the "that reads like a message" nudge would be advice to nobody.
+  await cmdSend(name, [note], { internal: true });
   log.info({ msg: "restart wake-note delivered", name });
   return 0;
 }

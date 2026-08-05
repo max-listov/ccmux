@@ -8,6 +8,7 @@ import { routeFor, parseOrigin } from "../fleet/address.ts";
 import { runRemote, relay } from "../fleet/transport.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
 import { providerFor } from "../agent/index.ts";
+import { preview } from "../util/preview.ts";
 
 /**
  * Send a chat message. You pick only the RECIPIENT — the sender is AUTOMATIC and cannot be spoofed:
@@ -241,8 +242,7 @@ export async function cmdMsg(args: string[]): Promise<number> {
   }
   appendMessage(m, { id: carriedId ?? randomUUID(), ts: new Date().toISOString(), from: fromName, fromMachine, to, body, task, defer, onBehalfOf, notBefore });
   log.info({ msg: "chat message sent", from: fromName, fromMachine, to, task, defer, onBehalfOf, notBefore });
-  const preview = body.length > 80 ? `${body.slice(0, 80)}…` : body;
   const when = notBefore !== null ? ` (after ${afterSec}s)` : defer ? " (deferred)" : "";
-  console.log(`sent ${fromMachine !== null ? `${fromMachine}:${fromName}` : fromName} → ${to}${when}: ${preview}`);
+  console.log(`sent ${fromMachine !== null ? `${fromMachine}:${fromName}` : fromName} → ${to}${when}: ${preview(body)}`);
   return 0;
 }
