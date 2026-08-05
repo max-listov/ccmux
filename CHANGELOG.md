@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-08-05
+
+a session could go permanently deaf to chat — ccmux was typing into it
+
 fix: a session could go permanently deaf to chat — because ccmux was typing into it
 
 - **`_run` no longer mirrors its log to stderr.** The in-pane supervisor shares a terminal with the
@@ -22,7 +26,6 @@ fix: a session could go permanently deaf to chat — because ccmux was typing in
 - **`chat on|off`, `router on|off` and `inbox` accept a fleet address** like every other verb that
   operates on an existing session. Without it both a human and an agent fell back to raw `ssh`,
   which is what addressing exists to remove.
-
 ## [0.6.0] — 2026-08-05
 
 fleet addressing — <machine>:<session> as a first-class agent address, with the return address and the whole exchange visible
