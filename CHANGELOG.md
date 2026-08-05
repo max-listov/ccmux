@@ -6,6 +6,47 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: a background shell made a session invisible to its own mail
+
+Found on an idle fleet: two sessions out of twelve reported `working` after two days of uptime, and
+`ccmux wait` on them answered *"the recipient's UI has not painted yet (starting or resuming)"* —
+about sessions that had been fully interactive since Sunday.
+
+Readiness was keyed on `shift+tab to cycle`. That is a **hint**, not a piece of the interface. Claude
+draws the footer as one line, and once the agent has background shells it puts their count where the
+hint was:
+
+```
+⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+⏵⏵ bypass permissions on · 3 shells · ← for agents
+```
+
+Measured across the fleet, the hint was missing from exactly the sessions with background shells and
+no others (pane width ruled out — 180-column sessions without shells kept it). So **any agent that
+left a background command running was "not painted yet" forever** — and these agents use background
+commands constantly.
+
+One wrong marker, three symptoms in three subsystems, none of which looked like a bad marker:
+
+- all of that session's deferred mail was held indefinitely (`not-drawn` is a hard gate, deliberately
+  — a keystroke swallowed by a half-drawn UI would be acked as delivered and lost);
+- every `wait` on it ran to timeout, giving a false reason;
+- `list` printed `working` for it, because an untrusted pane falls back to the lifecycle record,
+  where an interrupted turn leaves a stale `working` behind.
+
+Readiness now keys on the **mode footer** — which every mode draws and nothing displaces — with the
+default-mode footer, the interrupt hint and the old hint as independent fallbacks, so no single
+cosmetic change can zero the signal out again.
+
+fix: an unreachable sender is told so, instead of leaving the peer to find out
+
+The fleet map is directional by construction: a roaming laptop reaches the servers, and nothing
+reaches it back. A message from there arrives with a correct return address and no reply command —
+and, until now, no explanation. A live agent completed its task, could not hand the answer back, and
+spent five tool calls rediscovering the topology. The fact is known when the message is framed, so
+it is now stated there, along with the one channel that does work. Callers that know nothing about
+routing (the Telegram mirror) still print nothing — an absence of knowledge is not a fact.
+
 ## [0.10.0] — 2026-08-05
 
 three ways a session looked busy while nothing was happening
