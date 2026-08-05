@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-08-05
+
+a background shell made a session invisible to its own mail
+
 fix: a background shell made a session invisible to its own mail
 
 Found on an idle fleet: two sessions out of twelve reported `working` after two days of uptime, and
@@ -46,7 +50,6 @@ and, until now, no explanation. A live agent completed its task, could not hand 
 spent five tool calls rediscovering the topology. The fact is known when the message is framed, so
 it is now stated there, along with the one channel that does work. Callers that know nothing about
 routing (the Telegram mirror) still print nothing — an absence of knowledge is not a fact.
-
 ## [0.10.0] — 2026-08-05
 
 three ways a session looked busy while nothing was happening
