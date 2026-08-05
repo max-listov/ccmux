@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-08-05
+
+the fleet no longer lags a release behind a CDN cache
 ## [0.9.2] — 2026-08-05
 
 Telegram mirror: bracketed route header with air under it
