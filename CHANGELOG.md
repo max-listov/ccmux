@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-05
+
+cross-machine mail that couldn't leave is re-sent when transit returns
+
 feat: cross-machine mail that couldn't leave is now re-sent when transit returns
 
 - Transit between servers is **intermittent by design** — there are no server-to-server keys, so a
@@ -24,7 +28,6 @@ feat: cross-machine mail that couldn't leave is now re-sent when transit returns
   retries for fleets that can restore transit locally — generic, off by default.
 - **The key model is untouched.** Nothing gains access to anything; the fix is to survive the link
   being down, not to keep it up.
-
 ## [0.6.1] — 2026-08-05
 
 a session could go permanently deaf to chat — ccmux was typing into it
