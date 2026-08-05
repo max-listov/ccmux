@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-05
+
+prompt speaks in addresses; the Telegram mirror can cover the whole fleet
+
 fix: the two places where ccmux itself pushed agents back to the old way
 
 - **The hand-off block in the injected prompt never showed an address.** It said `wait <session>`
@@ -25,7 +29,6 @@ fix: the two places where ccmux itself pushed agents back to the old way
   the same session name commonly exists on two boxes — the very ambiguity addressing exists to
   remove. Enabling it on each machine is config only: cursors are per-machine, so nothing is
   coordinated and nothing double-sends.
-
 ## [0.8.0] — 2026-08-05
 
 list tells you which sessions a restart would actually change
