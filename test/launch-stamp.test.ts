@@ -60,8 +60,23 @@ test("module order is not a change — including for a stamp written before sort
   expect(staleReasons(unsorted, sorted)).not.toContain("modules");
 });
 
-test("a newer binary reads as 'code'", () => {
-  expect(staleReasons({ ...stamp(), version: "0.0.1" }, computeStamp(session(), machine(), "ccmux"))).toContain("code");
+test("a release that changed nothing about this session asks for nothing", () => {
+  // Measured, not imagined: a release touching only daemon-side files flagged 22 of 23 live sessions
+  // with `code`, and re-launching any of them would have produced a byte-identical recipe. Every
+  // in-session effect of an upgrade is already covered — the prompt, `--settings` (inline JSON in
+  // argv, not a path), the mode and the flags are all inside the hash, and hooks resolve the binary
+  // when they run. So a differing version alone must ask for nothing.
+  const older = { ...stamp(), version: "0.0.1" };
+  expect(staleReasons(older, computeStamp(session(), machine(), "ccmux"))).toEqual([]);
+});
+
+test("an older binary does NOT mask a real change", () => {
+  // The other direction: dropping the version check must not swallow a reason. A session launched on
+  // an older ccmux whose recipe also changed still reports the actual cause.
+  const older = { ...stamp(), version: "0.0.1", chatEnabled: false };
+  expect(staleReasons(older, computeStamp(session({ chatEnabled: true }), machine(), "ccmux"))).toEqual(["chat"]);
+  const reworded = { ...stamp(), version: "0.0.1" };
+  expect(staleReasons(reworded, computeStamp(session(), machine({ extraFlags: ["--verbose"] }), "ccmux"))).toEqual(["config"]);
 });
 
 test("anything else the launch recipe covers surfaces as 'config'", () => {

@@ -64,7 +64,15 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
 export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, "ts">): string[] {
   if (stamp === null) return [];
   const out: string[] = [];
-  if (stamp.version !== now.version) out.push("code");
+  // NOTE what is NOT compared: `version`. It was, and it did exactly what the paragraph above warns
+  // against — a release touching only the daemon flagged 22 of 23 sessions, and re-launching any of
+  // them would have produced a byte-identical recipe (measured: same hash, different version).
+  // Nothing a restart could change escapes the checks below: the prompt, the hooks and statusline
+  // (`--settings` is inline JSON in argv, not a path), the mode and every flag all live in the
+  // hashed argv, while hooks themselves resolve the binary when they RUN, so a running session picks
+  // up new supervisor code without restarting. A column that cries wolf across the whole fleet is
+  // worse than no column: the real `chat`/`mode`/`config` drowns in it. `version` stays in the stamp
+  // as diagnostics — "what was this launched on" — just not as a reason to act.
   if (stamp.chatEnabled !== now.chatEnabled) out.push("chat");
   if (stamp.permissionMode !== now.permissionMode) out.push("mode");
   // Sorted on BOTH sides, not just when written: a stamp on disk may predate the sorting, and

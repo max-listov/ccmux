@@ -33,7 +33,7 @@ export interface ListRow {
   createdAt: string | null;
   lastMessage: TranscriptMessage | null;
   lastActivityMs: number | null; // transcript file mtime — "conversation moved" (any instance)
-  // What a restart WOULD change for this session ("code" / "chat" / "mode" / "modules" / "config").
+  // What a restart WOULD change for this session ("chat" / "mode" / "modules" / "config").
   // Empty = up to date, or launched before stamping existed (unknown is never shown as stale).
   stale: string[];
 }

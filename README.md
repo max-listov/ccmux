@@ -72,12 +72,16 @@ SESSION     MODEL    CTX            STATE  UPTIME  RESTART    RC
 cc-api      Opus 5   180k/1M 18%    idle   2d1h    chat,mode  local-api
 ```
 
-The column names *what* would change — `code` (newer ccmux), `chat`, `mode`, `modules`, or `config`
-(anything else in the launch recipe, e.g. a reworded prompt). Empty means a restart would change
-nothing. Deliberately **not** a version comparison: a release that didn't touch the prompt would flag
-every session for nothing, while `ccmux chat on` doesn't move the version at all yet certainly needs
-a restart. A session with no record yet (launched by an older ccmux) shows nothing — unknown is never
-displayed as stale.
+The column names *what* would change — `chat`, `mode`, `modules`, or `config` (anything else in the
+launch recipe, e.g. a reworded prompt or changed flags). Empty means a restart would change nothing.
+
+Deliberately **not** a version comparison. That measure lies in both directions: `ccmux chat on`
+doesn't move the version at all yet certainly needs a restart, while an upgrade that only touched the
+daemon would flag every session for nothing. Nor does a newer ccmux need one on its own — the prompt,
+the hooks and statusline (`--settings` is inline in argv), the mode and the flags are all part of the
+recorded recipe, and hooks resolve the binary when they run, so a live session picks up new
+supervisor code without restarting. A session with no record yet (launched by an older ccmux) shows
+nothing — unknown is never displayed as stale.
 
 ## How it works
 
