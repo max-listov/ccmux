@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-08-05
+
+three ways a session looked busy while nothing was happening
+
 fix: three ways a session looked busy while nothing was happening
 
 Every one of them showed the same sentence — *"a human is typing in that pane right now"* / *"has not
@@ -36,7 +40,6 @@ for a restart instead of reporting it gone, ignores mail that is scheduled for l
 delivered, and names the real cause on timeout instead of guessing "still working". Hold reasons are
 one sentence per cause, and the injected prompt — the only surface an agent actually reads — now says
 plainly that exit 0 is not always "the work is done".
-
 ## [0.9.4] — 2026-08-05
 
 send stops echoing your own text, and stops looking like a way to write to an agent
