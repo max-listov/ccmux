@@ -2,6 +2,7 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { loadLedger, loadAckedIds, appendAck } from "../chat/store.ts";
 import { formatChatInjection } from "../chat/format.ts";
+import { promptInvocation } from "../env.ts";
 
 /**
  * `ccmux stop-hook` — the Claude Code **Stop hook** for a managed session. It fires ONLY when the
@@ -50,7 +51,12 @@ export async function cmdStopHook(): Promise<number> {
     // Record acks FIRST (durable, fail-closed) so neither this hook nor the daemon re-delivers.
     for (const msg of pending) appendAck(m, msg.id, "hook", self);
 
-    const reason = pending.map(formatChatInjection).join("\n\n");
+    const reason = pending
+      .map((msg) => {
+        const replyable = msg.fromMachine !== null && (msg.fromMachine === m.rcPrefix || m.fleet?.[msg.fromMachine] !== undefined);
+        return formatChatInjection(msg, { cli: promptInvocation(), replyable });
+      })
+      .join("\n\n");
     process.stdout.write(JSON.stringify({ decision: "block", reason }));
     return 0;
   } catch {

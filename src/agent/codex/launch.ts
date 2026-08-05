@@ -24,7 +24,7 @@ export function buildArgv(s: Session, m: MachineConfig, cli: string, historyPres
   if (historyPresent) {
     return [bin, "resume", s.uuid, ...flags, ...m.extraFlags];
   }
-  const prompt = buildPrompt(s.name, cli, s.chatEnabled, s.promptModules, m.ownerLang);
+  const prompt = buildPrompt(s.name, cli, s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix);
   return [bin, ...flags, ...m.extraFlags, prompt];
 }
 

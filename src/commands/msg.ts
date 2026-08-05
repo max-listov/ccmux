@@ -4,6 +4,10 @@ import { loadSessions, findSession } from "../config/sessions.ts";
 import { appendMessage, appendAck, loadAckedIds, loadLedger, pendingConditional, CLI, OWNER } from "../chat/store.ts";
 import { usageLine } from "./help.ts";
 import { log } from "../util/log.ts";
+import { routeFor, parseOrigin } from "../fleet/address.ts";
+import { runRemote, relay } from "../fleet/transport.ts";
+import { appendOutbound } from "../fleet/outbox.ts";
+import { providerFor } from "../agent/index.ts";
 
 /**
  * Send a chat message. You pick only the RECIPIENT — the sender is AUTOMATIC and cannot be spoofed:
@@ -38,6 +42,7 @@ export async function cmdMsg(args: string[]): Promise<number> {
   }
 
   const positionals: string[] = [];
+  const originArg = process.env.CCMUX_ORIGIN ?? null;
   let task: string | null = null;
   let defer = false;
   let onBehalfOf: string | null = null;
@@ -68,10 +73,16 @@ export async function cmdMsg(args: string[]): Promise<number> {
       afterSec = n;
       continue;
     }
+    // An unknown --flag used to be swallowed into the body as text, so a typo (or a flag a
+    // not-yet-updated machine doesn't know) silently became part of the message. Refuse instead.
+    if (a !== undefined && a.startsWith("--")) {
+      console.log(`msg: unknown flag '${a}'\n${usageLine("msg")}`);
+      return 1;
+    }
     if (a !== undefined) positionals.push(a);
   }
   const notBefore = afterSec !== null ? new Date(Date.now() + afterSec * 1000).toISOString() : null;
-  const to = positionals[0];
+  let to = positionals[0];
   let body = positionals.slice(1).join(" ").trim();
 
   // stdin fallback: `echo "…" | ccmux msg <to>` — with a recipient but no inline body, read the body
@@ -89,6 +100,22 @@ export async function cmdMsg(args: string[]): Promise<number> {
   const m = loadMachineConfig();
   const sessions = loadSessions(m);
 
+  // `CCMUX_ORIGIN` names the machine+session a message came from when this invocation arrived over
+  // ssh. It rides the ENVIRONMENT rather than a flag on purpose (see `runRemote`): an older ccmux
+  // ignores an unknown variable, whereas an unknown flag would have become the message body.
+  // It is a routing LABEL, not a credential — see `parseOrigin` for what it does and does not claim.
+  let fromMachine: string | null = null;
+  let fromName = from;
+  if (originArg !== null) {
+    const o = parseOrigin(originArg, from !== CLI, [OWNER]);
+    if ("error" in o) {
+      console.log(o.error);
+      return 1;
+    }
+    fromMachine = o.machine;
+    fromName = o.session;
+  }
+
   // A sending SESSION must exist and be chat-enabled; `cli` (the command line) is always allowed.
   const sender = from === CLI ? undefined : findSession(sessions, from);
   if (from !== CLI && (!sender || !sender.chatEnabled)) {
@@ -104,6 +131,60 @@ export async function cmdMsg(args: string[]): Promise<number> {
     return 1;
   }
 
+  // ── fleet routing ─────────────────────────────────────────────────────────────────────────────
+  // Deliberately AFTER the local authority gates above: the sender-must-be-chat-enabled and the
+  // router-only `--on-behalf-of` checks are enforced on the machine the message LEAVES, because the
+  // receiving machine sees only `cli` and could not enforce them. Interception in cli.ts dispatch
+  // would skip both — hence it lives here, not there.
+  const route = routeFor(to, m);
+  if (route.kind === "error") {
+    console.error(route.message);
+    return 1;
+  }
+  if (route.kind === "remote") {
+    if (to.endsWith(`:${OWNER}`) || to.endsWith(`:${CLI}`)) {
+      console.error(`msg: '${OWNER}'/'${CLI}' are not machine-scoped — use: ccmux msg ${OWNER}`);
+      return 1;
+    }
+    // Conditional delivery is deliberately LOCAL-ONLY in v1. Its bookkeeping (task dedup and
+    // `msg cancel`) keys on the sender within ONE ledger, and a cross-machine send lands in the
+    // REMOTE ledger as `cli`: two different remote senders would tombstone each other's mail, and
+    // the originator could never cancel its own. Refusing loudly beats a silent wrong outcome.
+    if (defer || notBefore !== null) {
+      console.error("msg: --defer/--after are local-only (cross-machine mail is delivered immediately) — send it plain, or run the conditional send on that machine");
+      return 1;
+    }
+    // Carry the sender's address across the hop — including for a plain shell (`host-a:cli`), which
+    // used to arrive as a bare `cli` with no machine at all, leaving the recipient exactly as unable
+    // to answer as before. The transport is the only writer: a local agent setting this itself is
+    // refused (see `parseOrigin`).
+    const remoteArgs = [route.session, ...(task !== null ? ["--task", task] : []), ...(onBehalfOf !== null ? ["--on-behalf-of", onBehalfOf] : [])];
+    // Body travels on STDIN, never in the command line: `msg` already reads a piped body, so quotes,
+    // newlines, `$` and backticks in the text cannot corrupt or inject on the remote shell.
+    const r = await runRemote(route.alias, ["ccmux", "msg", ...remoteArgs], {
+      stdin: body,
+      env: { CCMUX_ORIGIN: `${m.rcPrefix}:${from}` },
+    });
+    // Record the SEND on this side, success or failure — without it the initiator has no trace that
+    // it ever asked, and "waiting for a report" exists only in an agent's head.
+    appendOutbound(m, {
+      id: randomUUID(),
+      ts: new Date().toISOString(),
+      from,
+      toMachine: route.machine,
+      toSession: route.session,
+      kind: "msg",
+      body,
+      task,
+      ok: !r.transportFailed && r.code === 0,
+      detail: r.transportFailed ? "transport failed" : r.code === 0 ? "" : `remote exit ${r.code}`,
+    });
+    return relay(r, `msg ${to}`);
+  }
+  // Local route: an address naming THIS machine (`<own-prefix>:name`) is just the local session —
+  // strip the prefix so recipient lookup, the ledger and every downstream reader see the plain name.
+  to = route.session;
+
   // Recipient: `owner` = the human (Telegram-only, no pane); otherwise a chat-enabled session.
   if (to === OWNER) {
     if (m.telegram === undefined) {
@@ -117,6 +198,13 @@ export async function cmdMsg(args: string[]): Promise<number> {
     }
     if (!target.chatEnabled) {
       console.log(`msg: recipient '${to}' has chat disabled — enable with: ccmux chat on ${to}`);
+      return 1;
+    }
+    // Refuse a recipient whose agent has no "is this pane safe to inject into" detector: the daemon
+    // skips such sessions entirely, so the message would sit in the ledger forever while the sender
+    // believed it was sent. Fail at the door instead of accumulating undeliverable mail.
+    if (providerFor(target).chatDeliverable === undefined) {
+      console.log(`msg: recipient '${to}' runs ${target.agent}, which cannot receive chat (no safe-to-inject detector for its pane) — nothing would ever be delivered`);
       return 1;
     }
   }
@@ -138,10 +226,10 @@ export async function cmdMsg(args: string[]): Promise<number> {
     if (priors.length > 0) log.info({ msg: "chat dedup — replaced prior pending", from, to, task, replaced: priors.length });
   }
 
-  appendMessage(m, { id: randomUUID(), ts: new Date().toISOString(), from, to, body, task, defer, onBehalfOf, notBefore });
-  log.info({ msg: "chat message sent", from, to, task, defer, onBehalfOf, notBefore });
+  appendMessage(m, { id: randomUUID(), ts: new Date().toISOString(), from: fromName, fromMachine, to, body, task, defer, onBehalfOf, notBefore });
+  log.info({ msg: "chat message sent", from: fromName, fromMachine, to, task, defer, onBehalfOf, notBefore });
   const preview = body.length > 80 ? `${body.slice(0, 80)}…` : body;
   const when = notBefore !== null ? ` (after ${afterSec}s)` : defer ? " (deferred)" : "";
-  console.log(`sent ${from} → ${to}${when}: ${preview}`);
+  console.log(`sent ${fromMachine !== null ? `${fromMachine}:${fromName}` : fromName} → ${to}${when}: ${preview}`);
   return 0;
 }

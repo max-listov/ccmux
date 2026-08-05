@@ -10,6 +10,7 @@ import type { ChatMessage } from "../src/types.ts";
 const msg = (from: string, to: string, body: string, task: string | null = null): ChatMessage => ({
   id: "1",
   ts: "2026-07-19T10:00:00.000Z",
+  fromMachine: null,
   from,
   to,
   body,

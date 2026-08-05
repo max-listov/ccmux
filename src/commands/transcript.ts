@@ -1,6 +1,7 @@
-import { loadMachineConfig, rcName } from "../config/machine.ts";
+import { rcName } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { readTranscript } from "../agent/index.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 import { VERSION } from "../util/version.ts";
 import type { TranscriptJson, TranscriptMessage } from "../types.ts";
 
@@ -78,7 +79,10 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     console.log(USAGE);
     return 1;
   }
-  const m = loadMachineConfig();
+  const fwd = await forwardIfRemote(name, "transcript", args);
+  if (fwd.done) return fwd.code;
+  const { session, m } = fwd;
+  name = session;
   const s = findSession(loadSessions(m), name);
   if (!s) {
     console.log(`unknown session: ${name}`);

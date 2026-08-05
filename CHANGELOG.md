@@ -6,6 +6,37 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+feat: fleet addressing — `<machine>:<session>` as a first-class agent address, with the return address and the whole exchange visible
+
+A session name only means something on one machine. Two boxes can each have an `api`, so a bare name
+handed across a fleet is ambiguous — and an agent that resolves it locally reports to a stranger
+while the one waiting hears nothing, with exit 0 the whole way. That happened, and it cost hours to
+reconstruct because each machine's log knew only half of it.
+
+- **Address.** `ccmux msg host-b:api "…"` — and the same for `start`, `stop`, `restart`, `rm`,
+  `send`, `mode`, `logs`, `transcript`, `wait`. A bare name still means "here", unchanged. The
+  machine label is the `rcPrefix` you already gave that box; a `fleet` map in `machine.json` points
+  each label at an ssh alias. A remote send is **enqueued on the receiving machine** through its own
+  `ccmux msg`, so it inherits every existing guarantee — menu/typing protection, rate limits, the
+  ledger. `ccmux doctor` verifies each alias really is the machine it claims (and flags a label that
+  duplicates this machine's own prefix, which could never be reached).
+- **Return address.** Incoming cross-machine mail carries the sender's full address and, when this
+  machine can actually answer, the exact reply command. A dispatched `restart --then` note is stamped
+  the same way — that was the incident's original vector, arriving as anonymous text. The sender's
+  address travels as an environment variable, not a flag: an older ccmux ignores an unknown variable,
+  whereas an unknown flag was swallowed into the message body and destroyed the text (reproduced
+  against the released parser). Both halves of the label are validated, so it cannot forge the
+  `[chat from …]` tag it is rendered into.
+- **Both halves of the exchange are visible.** `ccmux fleet` lists every session on every machine,
+  each line a usable address. `ccmux chat log` now shows what this machine SENT as well as what
+  arrived — including sends that never left — and `--fleet` merges every machine's log into one
+  time-ordered stream. `ccmux inbox` names *why* a message hasn't landed (recipient stopped, chat
+  off, scheduled, waiting for the turn to end, a human typing, rate-limited, or an agent that cannot
+  receive chat at all) instead of an unexplained silence.
+- Fixes along the way: a delivered `--defer` message no longer shows as pending forever; `inbox` no
+  longer advances another session's read cursor; `restart <name>` on an unknown session exits 1
+  instead of claiming success; unreachable machines are reported and never fatal.
+
 ## [0.5.1] — 2026-08-03
 
 chat delivers while you watch a session — hold only while a human is typing

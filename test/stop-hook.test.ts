@@ -20,7 +20,7 @@ function setup(chatEnabled: boolean) {
 }
 
 function deferMsg(to: string, body: string, defer = true): ChatMessage {
-  return { id: randomUUID(), ts: new Date().toISOString(), from: "cli", to, body, task: null, defer, onBehalfOf: null, notBefore: null };
+  return { id: randomUUID(), ts: new Date().toISOString(), from: "cli", fromMachine: null, to, body, task: null, defer, onBehalfOf: null, notBefore: null };
 }
 
 async function runHook(cfgPath: string, session: string | undefined): Promise<string> {

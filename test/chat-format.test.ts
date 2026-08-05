@@ -5,7 +5,7 @@ import type { ChatMessage } from "../src/types.ts";
 const base: ChatMessage = {
   id: "1",
   ts: "2026-07-24T10:00:00.000Z",
-  from: "router",
+  from: "router", fromMachine: null,
   to: "worker",
   body: "do the thing",
   task: null,

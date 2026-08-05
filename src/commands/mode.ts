@@ -1,4 +1,4 @@
-import { loadMachineConfig } from "../config/machine.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 import { setSessionPermissionMode } from "../config/sessions.ts";
 import { PermissionModeSchema } from "../config/schema.ts";
 import { log } from "../util/log.ts";
@@ -13,10 +13,13 @@ const CHOICES = PermissionModeSchema.options.join("|");
  */
 export async function cmdMode(name: string | undefined, mode: string | undefined): Promise<number> {
   if (name === undefined || mode === undefined) {
-    console.log(`usage: ccmux mode <name> <${CHOICES}|default>`);
+    console.log(`usage: ccmux mode <name> <${CHOICES}|default>   ·   <machine>:<name> for another fleet machine`);
     return 1;
   }
-  const m = loadMachineConfig();
+  const fwd = await forwardIfRemote(name, "mode", [mode]);
+  if (fwd.done) return fwd.code;
+  const { session, m } = fwd;
+  name = session;
   const clear = mode === "default" || mode === "clear";
   const parsed = PermissionModeSchema.safeParse(mode);
   if (!clear && !parsed.success) {

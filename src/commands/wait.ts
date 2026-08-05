@@ -1,8 +1,8 @@
-import { loadMachineConfig } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { providerFor } from "../agent/index.ts";
 import { capturePane, hasSession } from "../tmux/tmux.ts";
 import { deferReady } from "../chat/deliver.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 
 /**
  * `ccmux wait <name>` — block until the session has VOLUNTARILY finished its turn, then exit 0.
@@ -44,8 +44,15 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     console.log("usage: ccmux wait <name> [--timeout N] [--quiet]   (exit 0 = turn finished, 2 = timed out)");
     return 1;
   }
+  // The remote `wait` blocks for ITS OWN timeout, so the ssh deadline has to sit above it. With the
+  // transport default (30s) a perfectly healthy link was killed mid-wait and reported as
+  // "transport failed" for any worker that took longer — turning the primary cross-machine use case
+  // into a false alarm. +30s covers connection setup and the remote's own exit.
+  const fwd = await forwardIfRemote(name, "wait", args, { timeoutMs: (parseWaitOpts(args).timeoutSec + 30) * 1000 });
+  if (fwd.done) return fwd.code;
+  const { session, m } = fwd;
+  name = session;
   const o = parseWaitOpts(args);
-  const m = loadMachineConfig();
   const s = findSession(loadSessions(m), name);
   if (!s) {
     console.error(`unknown session: ${name}`);

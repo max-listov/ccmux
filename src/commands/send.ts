@@ -1,12 +1,15 @@
-import { loadMachineConfig } from "../config/machine.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 import { sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
 
 export async function cmdSend(name: string | undefined, keys: string[]): Promise<number> {
   if (!name || keys.length === 0) {
-    console.log("usage: ccmux send <name> <keys...>");
+    console.log("usage: ccmux send <name> <keys...>   ·   <machine>:<name> for another fleet machine");
     return 1;
   }
-  const m = loadMachineConfig();
+  const fwd = await forwardIfRemote(name, "send", keys);
+  if (fwd.done) return fwd.code;
+  const { session, m } = fwd;
+  name = session;
   const text = keys.join(" ");
   const ok = await sendKeysLiteral(m, name, text);
   if (!ok) {

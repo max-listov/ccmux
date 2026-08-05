@@ -12,6 +12,7 @@ import { cmdTranscript } from "./commands/transcript.ts";
 import { cmdWait } from "./commands/wait.ts";
 import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdCompletions } from "./commands/completions.ts";
+import { cmdFleet } from "./commands/fleetList.ts";
 import { cmdEnsure } from "./commands/ensure.ts";
 import { cmdDaemon } from "./commands/daemon.ts";
 import { cmdRun } from "./commands/run.ts";
@@ -101,6 +102,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdWait(rest[0], rest.slice(1));
     case "doctor":
       return cmdDoctor(rest);
+    case "fleet":
+      return cmdFleet(rest);
     case "completions":
       return cmdCompletions(rest);
     case "ensure":

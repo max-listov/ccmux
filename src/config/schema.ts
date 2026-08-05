@@ -17,6 +17,15 @@ export const PermissionModeSchema = z.enum([
 ]);
 
 /**
+ * Legal tmux session name for ccmux. `:` is excluded on two independent grounds: it separates the
+ * machine from the session in a fleet address, and tmux splits a target at the first `:` — a session
+ * named with one could never be captured or sent to, so nothing legal is being taken away. (A `.` is
+ * fine and stays legal: tmux only treats it as a metacharacter in the `window.pane` part AFTER the
+ * colon — verified by creating a dotted session and driving it through `=name:0.0`.)
+ */
+export const SESSION_NAME_RE = /^[^|\s#:]+$/;
+
+/**
  * One managed Claude conversation.
  *
  * The sessions FILE is JSONL — one of these per line. `uuid` is the only identity:
@@ -29,7 +38,10 @@ export const SessionSchema = z.object({
   name: z
     .string()
     .min(1)
-    .regex(/^[^|\s#]+$/, "name: no '|', whitespace, or '#'"),
+    .regex(
+      SESSION_NAME_RE,
+      "name: no '|', whitespace, '#' or ':' (':' separates a fleet address machine:session — and tmux splits a target at the first ':', so such a session could never be captured or sent to anyway)",
+    ),
   // Absolute working dir. Basis for both `cwd` and the history-jsonl path. MUST be
   // absolute or Claude's project-dir encoding won't match (see claude/resume.ts).
   dir: z.string().startsWith("/", "dir must be absolute"),
@@ -115,6 +127,20 @@ export const MachineConfigSchema = z.object({
   // free-form lowercase slug (local, dev, prod, staging, …) — see RC_PREFIX_RE. The regex
   // loud-fails on garbage (the real intent), and `install` refuses if it can't be set.
   rcPrefix: z.string().regex(RC_PREFIX_RE, "rcPrefix must be a lowercase slug (e.g. local, dev, prod, staging)"),
+  // Fleet directory: machine label (another box's rcPrefix) → ssh alias. This is what makes
+  // `ccmux msg dev:api` possible; absent/empty = fleet addressing simply isn't available here and
+  // everything behaves exactly as before. Keys are validated as rcPrefix slugs, so a machine label
+  // can never itself contain the ':' separator. Verified end-to-end by `ccmux doctor`, which checks
+  // that each alias really reports the rcPrefix it is mapped to (a mis-mapped entry would deliver
+  // correctly-addressed mail to the wrong machine — the exact failure this feature exists to kill).
+  // The VALUE is an ssh alias we hand to `ssh` as its own argv element: a leading '-' would be read
+  // as an option (`-oProxyCommand=…`), so the shape is pinned rather than trusted.
+  fleet: z
+    .record(
+      z.string().regex(RC_PREFIX_RE),
+      z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._@-]*$/, "fleet alias must be an ssh host alias (no leading '-', no spaces)"),
+    )
+    .optional(),
   // Sessions data file (env CCMUX_SESSIONS overrides). Per-machine default.
   sessionsFile: z.string().startsWith("/"),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.
@@ -180,6 +206,10 @@ export const ChatMessageSchema = z.object({
   id: z.string().min(1), // unique per message (uuid)
   ts: z.string(), // ISO-8601 send time
   from: z.string().min(1),
+  // Machine the sender lives on, when the message crossed machines (null = same machine as this
+  // ledger). A ROUTING HINT, not an authentication claim: the trust boundary is ssh access, exactly
+  // as before. Without it `[chat from api]` is ambiguous the moment two machines both have an `api`.
+  fromMachine: z.string().nullable().default(null),
   to: z.string().min(1),
   body: z.string(),
   task: z.string().nullable().default(null),

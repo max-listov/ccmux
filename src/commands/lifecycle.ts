@@ -8,6 +8,7 @@ import { providerFor } from "../agent/index.ts";
 import { log } from "../util/log.ts";
 import { refusesSelf } from "./guard.ts";
 import { cmdSend } from "./send.ts";
+import { forwardIfRemote } from "../fleet/forward.ts";
 
 /** Create the tmux session running ccmux's own `_run` loop. Idempotent. */
 export async function startSession(m: MachineConfig, name: string, dir: string): Promise<void> {
@@ -33,10 +34,13 @@ export async function startSession(m: MachineConfig, name: string, dir: string):
 
 export async function cmdStart(name: string | undefined): Promise<number> {
   if (!name) {
-    console.log("usage: ccmux start <name>");
+    console.log("usage: ccmux start <name>   ·   <machine>:<name> for another fleet machine");
     return 1;
   }
-  const m = loadMachineConfig();
+  const fwd = await forwardIfRemote(name, "start", []);
+  if (fwd.done) return fwd.code;
+  const { session, m } = fwd;
+  name = session;
   const s = findSession(loadSessions(m), name);
   if (!s) {
     console.log(`unknown session: ${name}`);
@@ -48,11 +52,14 @@ export async function cmdStart(name: string | undefined): Promise<number> {
 
 export async function cmdStop(name: string | undefined, force = false): Promise<number> {
   if (!name) {
-    console.log("usage: ccmux stop <name>");
+    console.log("usage: ccmux stop <name>   ·   <machine>:<name> for another fleet machine");
     return 1;
   }
+  const fwd = await forwardIfRemote(name, "stop", force ? ["--force"] : []);
+  if (fwd.done) return fwd.code;
+  const { session, m } = fwd;
+  name = session;
   if (refusesSelf("stop", name, force)) return 1;
-  const m = loadMachineConfig();
   const ok = await killSession(m, name);
   if (ok) log.info({ msg: "session stopped", name });
   console.log(ok ? `stopped ${name}` : `${name} not running`);
@@ -60,14 +67,26 @@ export async function cmdStop(name: string | undefined, force = false): Promise<
 }
 
 export async function cmdRestart(args: string[]): Promise<number> {
-  const name = args[0];
-  if (!name) {
-    console.log('usage: ccmux restart <name> [--then "<note>"]');
+  const target = args[0];
+  if (!target) {
+    console.log('usage: ccmux restart <name> [--then "<note>"]   ·   <machine>:<name> for another fleet machine');
     return 1;
   }
+  // A restart hand-off waits for the remote to kill + relaunch + (with --then) settle the note, so it
+  // needs more headroom than a plain command.
+  const fwd = await forwardIfRemote(target, "restart", args.slice(1), { timeoutMs: 120_000 });
+  if (fwd.done) return fwd.code;
+  const { session: name, m } = fwd;
   const thenIdx = args.indexOf("--then");
   const note = thenIdx >= 0 ? (args[thenIdx + 1] ?? "") : "";
-  const m = loadMachineConfig();
+  // Verify the session EXISTS before killing anything. Without this a typo killed nothing, spawned a
+  // detached worker that failed silently into /dev/null, and still returned 0 — "restarted!" while
+  // nothing happened. Over ssh that lie becomes an initiator waiting forever for a task that was
+  // never started; it is the same silent-miss class fleet addressing exists to remove.
+  if (!findSession(loadSessions(m), name)) {
+    console.error(`unknown session: ${name}`);
+    return 1;
+  }
   await killSession(m, name);
   // Detached worker (own process group) survives killing the very session this runs in
   // — so a session can restart ITSELF and still get pinged back once it's ready.

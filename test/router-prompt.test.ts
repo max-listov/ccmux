@@ -4,12 +4,12 @@ import { resolvePromptModules, knownPromptModules } from "../src/agent/promptMod
 
 test("router is a known module; unknown keys fail loud", () => {
   expect(knownPromptModules()).toContain("router");
-  expect(() => resolvePromptModules(["router"], { name: "cc-r", cli: "ccmux" })).not.toThrow();
-  expect(() => resolvePromptModules(["nope"], { name: "cc-r", cli: "ccmux" })).toThrow(/unknown prompt module 'nope'/);
+  expect(() => resolvePromptModules(["router"], { name: "cc-r", cli: "ccmux", selfAddress: "m:" + "cc-r" })).not.toThrow();
+  expect(() => resolvePromptModules(["nope"], { name: "cc-r", cli: "ccmux", selfAddress: "m:" + "cc-r" })).toThrow(/unknown prompt module 'nope'/);
 });
 
 test("the router protocol pins its load-bearing clauses (versioned + testable)", () => {
-  const [proto] = resolvePromptModules(["router"], { name: "cc-r", cli: "ccmux" });
+  const [proto] = resolvePromptModules(["router"], { name: "cc-r", cli: "ccmux", selfAddress: "m:" + "cc-r" });
   const p = proto ?? "";
   expect(p).toContain("ROUTER MODE");
   expect(p).toContain("ccmux msg <target> --defer --on-behalf-of owner"); // the ONLY delivery path
@@ -22,7 +22,7 @@ test("the router protocol pins its load-bearing clauses (versioned + testable)",
 });
 
 test("the router protocol teaches the self-watchdog liveness loop", () => {
-  const [proto] = resolvePromptModules(["router"], { name: "cc-r", cli: "ccmux" });
+  const [proto] = resolvePromptModules(["router"], { name: "cc-r", cli: "ccmux", selfAddress: "m:" + "cc-r" });
   const p = proto ?? "";
   expect(p).toContain("ARM A WATCHDOG"); // the timer that makes it self-driving
   expect(p).toContain("ccmux msg cc-r --after"); // self-ping via time-delayed delivery

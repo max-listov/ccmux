@@ -131,18 +131,28 @@ export async function saveCursors(m: MachineConfig, c: ChatCursors): Promise<voi
   await atomicWrite(cursors, `${JSON.stringify(c, null, 2)}\n`);
 }
 
-/** Unread inbox for a recipient: messages addressed TO it at/after its read cursor, with their
- *  absolute ledger index (messages to other sessions are skipped, so addressing stays targeted). */
+/**
+ * Unread inbox for a recipient: messages addressed TO it at/after its read cursor.
+ *
+ * `acked` closes a real hole: CONDITIONAL mail (defer / notBefore) is delivered OFF the cursor and
+ * recorded only in the ack-log, so the read cursor never advances past it. Without consulting the
+ * ack-log, an already-injected deferred message stayed in `inbox` forever — contradicting the
+ * documented contract ("a message already pushed to the pane isn't here") and making any
+ * "why hasn't this been delivered" answer lie about mail that HAS been delivered.
+ */
 export function unreadFor(
   name: string,
   ledger: ChatMessage[],
   cursors: ChatCursors,
+  acked?: ReadonlySet<string>,
 ): { msg: ChatMessage; idx: number }[] {
   const since = cursors.read[name] ?? 0;
   const out: { msg: ChatMessage; idx: number }[] = [];
   for (let idx = since; idx < ledger.length; idx++) {
     const msg = ledger[idx];
-    if (msg && msg.to === name) out.push({ msg, idx });
+    if (!msg || msg.to !== name) continue;
+    if (acked?.has(msg.id) === true) continue; // already injected (Stop hook or daemon) — not pending
+    out.push({ msg, idx });
   }
   return out;
 }
@@ -153,11 +163,14 @@ export async function markRead(m: MachineConfig, name: string, ledgerLen: number
   await saveCursors(m, { ...c, read: { ...c.read, [name]: ledgerLen } });
 }
 
-/** One-line human render: `[YYYY-MM-DD HH:MM:SS] from → to (task: X): body`. Shared by inbox + log. */
+/** One-line human render: `[YYYY-MM-DD HH:MM:SS] machine:from → to (task: X): body`. Shared by
+ *  inbox + log. The sender's machine is part of the identity whenever the message crossed machines —
+ *  without it `inbox` says `api → worker` and the reader is back to guessing which `api`. */
 export function fmtMessage(msg: ChatMessage): string {
   const t = msg.ts.replace("T", " ").slice(0, 19);
   const task = msg.task ? ` (task: ${msg.task})` : "";
-  return `[${t}] ${msg.from} → ${msg.to}${task}: ${msg.body}`;
+  const from = msg.fromMachine === null ? msg.from : `${msg.fromMachine}:${msg.from}`;
+  return `[${t}] ${from} → ${msg.to}${task}: ${msg.body}`;
 }
 
 /** The next undelivered message addressed to `name`, scanning from ledger index `from`, with its

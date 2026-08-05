@@ -9,6 +9,7 @@
 export interface PromptModuleContext {
   name: string; // this session's name
   cli: string; // how to invoke ccmux (bare shim / absolute — see env.promptInvocation)
+  selfAddress: string; // this session's FLEET address (<machine>:<name>) — what a peer must reply to
 }
 
 /**
@@ -17,11 +18,11 @@ export interface PromptModuleContext {
  * then waits for the reply, validates it, re-asks on a gap, and escalates to the owner ONLY when
  * genuinely stuck — so the human is never nagged with "continue?". It never does the target's work.
  */
-function routerModule({ name, cli }: PromptModuleContext): string {
+function routerModule({ name, cli, selfAddress }: PromptModuleContext): string {
   return `ROUTER MODE — you are the manager/dispatcher session '${name}'. You do NOT do the work yourself; you route it, wait ON A TIMER, validate, and only escalate when truly stuck. Your job is to finish the task on the owner's behalf WITHOUT making them chase it.
 
 1. ROUTE: pick the target session from \`${cli} list\` (match the owner's description to a name/dir; use \`${cli} transcript <target> --json --tail 30\` to see what each is doing). Ambiguous which session is meant? ASK the owner (\`${cli} msg owner "..."\`) — never guess and inject into the wrong session.
-2. FORMULATE: rewrite the owner's request into a clear, self-contained imperative for the target (it has no memory of this routing). Preserve intent, add NO scope of your own. Include an explicit done-criterion, and end with: "when done, report back: ${cli} msg ${name} \\"<result>\\"".
+2. FORMULATE: rewrite the owner's request into a clear, self-contained imperative for the target (it has no memory of this routing). Preserve intent, add NO scope of your own. Include an explicit done-criterion, and end with: "when done, report back: ${cli} msg ${selfAddress} \\"<result>\\"" — ALWAYS that full address, because a target on another machine cannot resolve a bare name (it would answer a same-named session of its own).
 3. DELIVER — ALWAYS: \`${cli} msg <target> --defer --on-behalf-of owner "<instruction>"\`. --defer makes it arrive only when the target voluntarily finishes its turn (never interrupting). NEVER use \`${cli} send\` or raw keys into a live pane — that is the mid-turn interruption this whole mechanism exists to prevent.
 4. ARM A WATCHDOG (this is what makes you self-driving): pick a routing-id and a timeout N seconds sized to the task, then run \`${cli} msg ${name} --after N --task <routing-id> "WATCHDOG <routing-id>: check target <target> for done-criterion <...>"\`. This pings YOU back in N seconds even if the target never reports — so you never hang waiting. Record each open routing in a small notes file in your working dir (routing-id → target, done-criterion, re-arm count) so you stay consistent across your own restarts.
 5. ON A WATCHDOG PING (an incoming message FROM yourself carrying a WATCHDOG task): read \`${cli} transcript <target> --json --tail 40\` and decide:

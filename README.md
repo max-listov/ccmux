@@ -117,7 +117,9 @@ Opt-in messaging between managed sessions, so one agent can hand off to another 
 - `ccmux inbox [name]` — read a session's still-undelivered messages and mark them read (`--peek`
   doesn't). It's the fallback for held/offline mail, **not** an archive — a message already pushed
   into a pane isn't here.
-- `ccmux chat log [-n N]` — the append-only ledger (the full debug log).
+- `ccmux chat log [-n N] [--fleet]` — the exchange log: what arrived **and** what this machine sent
+  to other machines (including sends that never left). `--fleet` merges every machine's log into one
+  time-ordered stream; `--json` for consumers.
 
 **Delivery.** The daemon push-delivers each message into the recipient's pane as its next turn,
 tagged `[chat from <name>]` so the agent treats it as a peer, not you. It **never injects while the
@@ -176,8 +178,54 @@ ccmux transcript cc-worker --last-message            # 4. take the report (full 
 - **Reporting back instead of waiting:** have the worker finish with
   `ccmux msg <orchestrator> "done" --task migrate --defer`. `--defer` holds the message until the
   orchestrator voluntarily ends its turn, so the report never lands mid-thought.
-- **One machine.** Chat is machine-local — `ccmux msg` only reaches sessions on the same host.
-  Keep the orchestrator and its workers on the same machine.
+### Across machines
+
+A session name only means something on **one** machine. Two boxes can each have an `api`, so a bare
+name handed across a fleet is genuinely ambiguous — and an agent that resolves it locally reports to
+a stranger while the one waiting hears nothing. The fix is an explicit address.
+
+**`<machine>:<session>`** — the machine label is the `rcPrefix` you already gave that box. A bare
+`<session>` still means "here", unchanged.
+
+```json
+"fleet": { "host-a": "<ssh-alias-a>", "host-b": "<ssh-alias-b>" }
+```
+
+Add that map to `machine.json` on each machine (the label is the peer's `rcPrefix`; the value is an
+ssh alias **this** machine can reach). Then:
+
+```bash
+ccmux fleet                                  # every session on every machine, each line a usable address
+ccmux msg host-b:api "build is green"        # message a session on another machine
+ccmux wait host-b:api                        # then pick up the result
+ccmux restart host-b:api --then "read docs/backlog/in-progress/x.md"
+ccmux doctor                                 # verifies each alias really is the machine it's mapped to
+```
+
+Every verb that operates on an **existing** session takes an address — `start`, `stop`, `restart`,
+`rm`, `send`, `msg`, `mode`, `logs`, `transcript`, `wait`. Creating is local by nature (`new`,
+`adopt` resolve local dirs and local history), so run those on the machine itself.
+
+- **Delivery is unchanged.** A remote send is enqueued **on the receiving machine** through its own
+  `ccmux msg`, so it inherits every existing guarantee: menu/typing protection, `--defer`, rate
+  limits, the ledger. Nothing bypasses the daemon.
+- **The recipient sees where to reply.** Incoming cross-machine mail is tagged with the sender's full
+  address and, when this machine can actually answer, the exact reply command. Agents are told to
+  reply with the address **as printed** rather than infer one.
+- **Trust boundary is ssh, as before.** The sender's address travels as an environment variable set
+  by the transport (`CCMUX_ORIGIN`) — a routing *label*, not a credential. Anyone who can run a
+  command on a box could already send as `cli`, so nothing new is granted; the label is validated to
+  the same charsets as a machine label and a session name, so it cannot forge the `[chat from …]`
+  tag it is rendered into, and it may not claim to be `owner`. It rides the environment rather than
+  a flag on purpose: an older ccmux ignores an unknown variable, whereas an unknown *flag* would
+  have been swallowed into the message body and destroyed the text.
+- **Conditional mail stays local.** `--defer`, `--after` and `msg cancel` are rejected across
+  machines: their dedup/cancel key is per-sender within one ledger, and two remote senders would
+  tombstone each other's mail. Hand off, then use `ccmux wait`.
+- **Unreachable is normal, not an error.** With no server-to-server keys, transit between two servers
+  exists only while you're connected; fleet views mark such a machine and still exit 0.
+- **Roll the binary out before the map.** A machine still on an older ccmux doesn't understand
+  addresses — update every box first, then add `fleet` to their configs.
 
 ## Updates
 

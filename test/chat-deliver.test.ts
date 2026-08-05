@@ -3,7 +3,7 @@ import { atInteractiveMenu, chatDeliverable } from "../src/agent/claude/pane.ts"
 import { recentInboundCount, isConditional, notBeforeDue } from "../src/chat/deliver.ts";
 import type { ChatMessage } from "../src/types.ts";
 
-const baseMsg: ChatMessage = { id: "x", ts: "2026-07-24T00:00:00.000Z", from: "a", to: "b", body: "", task: null, defer: false, onBehalfOf: null, notBefore: null };
+const baseMsg: ChatMessage = { id: "x", ts: "2026-07-24T00:00:00.000Z", from: "a", fromMachine: null, to: "b", body: "", task: null, defer: false, onBehalfOf: null, notBefore: null };
 
 test("isConditional: deferred OR time-delayed mail is off-cursor; plain mail is immediate", () => {
   expect(isConditional(baseMsg)).toBe(false);
@@ -37,7 +37,7 @@ test("detects the resume-from-summary menu → not deliverable", () => {
 });
 
 test("normal idle input prompt IS deliverable", () => {
-  const p = "─── host-C-x ──\n❯ \n──────\n  Opus 4.8 (1M context)\n";
+  const p = "─── host-a-x ──\n❯ \n──────\n  Opus 4.8 (1M context)\n";
   expect(atInteractiveMenu(p)).toBe(false);
   expect(chatDeliverable(p)).toBe(true);
 });
@@ -61,7 +61,7 @@ test("recentInboundCount counts only in-window messages addressed to the recipie
   const at = (deltaMs: number, to: string): ChatMessage => ({
     id: "x",
     ts: new Date(now - deltaMs).toISOString(),
-    from: "a",
+    from: "a", fromMachine: null,
     to,
     body: "",
     task: null,

@@ -31,7 +31,7 @@ function tempConfig() {
 let seq = 0;
 function msg(from: string, to: string, body: string, task: string | null = null): ChatMessage {
   seq += 1;
-  return { id: `id-${seq}`, ts: "2026-07-19T10:00:00.000Z", from, to, body, task, defer: false, onBehalfOf: null, notBefore: null };
+  return { id: `id-${seq}`, ts: "2026-07-19T10:00:00.000Z", from, fromMachine: null, to, body, task, defer: false, onBehalfOf: null, notBefore: null };
 }
 
 test("append + loadLedger round-trips in order", () => {
@@ -96,4 +96,22 @@ test("fmtMessage renders direction, task, and body", () => {
   expect(fmtMessage(msg("a", "b", "hi"))).toContain("a → b");
   expect(fmtMessage(msg("a", "b", "hi", "deploy"))).toContain("(task: deploy)");
   expect(fmtMessage(msg("a", "b", "hello world"))).toMatch(/a → b: hello world$/);
+});
+
+test("a ledger written before fleet addressing still loads — the new field is optional", () => {
+  // Existing history must survive the upgrade: `fromMachine` defaults to null (= same machine as
+  // this ledger), so nothing has to be migrated and nothing is re-interpreted.
+  const m = tempConfig();
+  const legacy = { id: "old-1", ts: "2026-07-01T10:00:00.000Z", from: "a", to: "b", body: "hi" };
+  writeFileSync(chatPaths(m).ledger, `${JSON.stringify(legacy)}\n`);
+  const [msg] = loadLedger(m);
+  expect(msg?.fromMachine).toBeNull();
+  expect(fmtMessage(msg!)).toBe("[2026-07-01 10:00:00] a → b: hi");
+});
+
+test("a cross-machine sender is named with its machine everywhere it is rendered", () => {
+  // Without this `inbox` said `api → worker` and the reader was back to guessing WHICH api.
+  const m = tempConfig();
+  appendMessage(m, { ...msg("api", "worker", "done"), fromMachine: "host-a" });
+  expect(fmtMessage(loadLedger(m)[0]!)).toContain("host-a:api → worker");
 });

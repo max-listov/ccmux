@@ -35,3 +35,23 @@ test("buildPrompt adds inter-agent chat framing ONLY when chat is enabled", () =
   expect(on).toContain("PEER AGENT"); // framed as a peer, not the human
   expect(on).toContain("do NOT blindly"); // apply own judgment, not blind obedience
 });
+
+test("the prompt teaches wait + --last-message, and why not to hand-roll a poll loop", () => {
+  // Not cosmetic: both commands shipped in 0.5.0 and sat on every machine, but the prompt never
+  // named them — so an agent with chat ENABLED still wrote `sleep`/`grep`/`awk` loops over
+  // `ccmux list`, crashed twice slicing transcript JSON by hand, and gave up on the reply channel.
+  // The prompt is the only documentation a session is guaranteed to read.
+  const p = buildPrompt("cc-x", "ccmux");
+  expect(p).toContain("ccmux wait <session>");
+  expect(p).toContain("ccmux transcript <session> --last-message");
+  expect(p).toContain("NEVER hand-roll a polling loop");
+  expect(p).toContain("idle BETWEEN steps"); // the reason, not just the ban
+});
+
+test("the chat block points at that recipe instead of restating it", () => {
+  const p = buildPrompt("cc-x", "ccmux", true);
+  expect(p).toContain("Handing work off:");
+  expect(p).toContain('report back" and then poll');
+  // Mechanics live in ONE place: the chat block must not carry its own copy of the wait usage.
+  expect(p.split("ccmux wait <session>")).toHaveLength(2);
+});

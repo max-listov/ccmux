@@ -7,7 +7,7 @@ import { scanPane } from "../src/agent/claude/pane.ts";
 
 const IDLE_PANE = [
   "⏺ done",
-  "──────────────────────────────────── host-C-work ──",
+  "──────────────────────────────────── host-a-work ──",
   "❯ ",
   "   Fable 5 · 250.0k/1.0M 25%  sess ↓254.3k ↑1.3k",
   "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",

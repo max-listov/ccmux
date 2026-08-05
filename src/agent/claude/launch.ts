@@ -28,7 +28,7 @@ export function buildArgv(
     // per-session override wins over the machine default; undefined → machine default.
     resolvePermissionMode(s.permissionMode ?? m.permissionMode),
     "--append-system-prompt",
-    buildPrompt(s.name, cli, s.chatEnabled, s.promptModules, m.ownerLang),
+    buildPrompt(s.name, cli, s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix),
     ...settingsArg(m, s, cli),
     ...flags,
     ...m.extraFlags,

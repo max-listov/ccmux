@@ -12,7 +12,7 @@ const pane = (composer: string, history = "some earlier output"): string =>
     history,
     "❯ an EARLIER user message — Claude prefixes history with ❯ too",
     "⏺ the agent's reply",
-    "──────────────────────────────────────────── host-C-demo ──",
+    "──────────────────────────────────────────── host-a-demo ──",
     composer,
     "────────────────────────────────────────────────────────",
     "   Opus 5 · 120.0k/1.0M 12%",

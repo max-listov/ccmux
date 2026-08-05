@@ -3,8 +3,10 @@ import { providerFor, lastTranscriptMessage, lastActivityMs, type AgentProvider 
 import { capturePane, clientTypingRecently, listSessionNames, pasteText, sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
 import type { ChatMessage, MachineConfig, Session } from "../types.ts";
 import { log } from "../util/log.ts";
+import { promptInvocation } from "../env.ts";
 import { formatChatInjection } from "./format.ts";
 import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors } from "./store.ts";
+import { writeChatHold, clearChatHold } from "../agent/sessionStatus.ts";
 
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
@@ -31,7 +33,10 @@ export function recentInboundCount(name: string, ledger: ChatMessage[], nowMs: n
  *  a PEER message, not the human (shared framer — same tag the Stop hook uses). Bracketed paste keeps
  *  a multi-line body intact (no early submit); falls back to a newline-collapsed literal on failure. */
 async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): Promise<void> {
-  const text = formatChatInjection(msg);
+  // replyable = we can actually route back to the sender's machine from here (it is us, or it is in
+  // our fleet map) — otherwise we print the address without a command that would fail on this box.
+  const replyable = msg.fromMachine !== null && (msg.fromMachine === m.rcPrefix || m.fleet?.[msg.fromMachine] !== undefined);
+  const text = formatChatInjection(msg, { cli: promptInvocation(), replyable });
   if (!(await pasteText(m, name, text))) {
     await sendKeysLiteral(m, name, text.replace(/\r?\n+/g, " ⏎ "));
   }
@@ -145,10 +150,14 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
 
     if (recentInboundCount(s.name, ledger, now) > RATE_MAX_INBOUND) {
       log.warn({ msg: "chat rate limit — holding delivery (possible loop)", to: s.name });
+      await writeChatHold(s.name, pick.msg.id, `rate limit — this recipient got more than ${RATE_MAX_INBOUND} messages in the last minute, delivery resumes as the burst subsides`);
       continue; // hold; retries once the burst subsides
     }
     const pane = await capturePane(m, s.name, 40);
-    if (!provider.chatDeliverable(pane)) continue; // at a menu → hold, retry next pass
+    if (!provider.chatDeliverable(pane)) {
+      await writeChatHold(s.name, pick.msg.id, "recipient is at a selection menu — injecting would pick an option it never chose");
+      continue;
+    }
     // WATCHING a session must not block its chat — only actively TYPING does. Injection appends a
     // literal + Enter, so the sole hazard is a human's half-written line getting our text glued onto
     // it and sent. Two precise signals replace the old blunt "someone is attached" hold (which made
@@ -156,17 +165,23 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // keystroke in the last few seconds (guards the gap between two keys).
     if (provider.inputBusy?.(pane) === true) {
       log.info({ msg: "chat delivery held — human is typing (composer not empty)", to: s.name, from: pick.msg.from });
+      await writeChatHold(s.name, pick.msg.id, "a human is typing in that pane right now");
       continue;
     }
     if (await clientTypingRecently(m, s.name, TYPING_WINDOW_SEC)) {
       log.info({ msg: "chat delivery held — human typed a moment ago", to: s.name, from: pick.msg.from });
+      await writeChatHold(s.name, pick.msg.id, "a human typed in that pane a moment ago");
       continue;
     }
     // A DEFERRED message additionally waits for the target to be STABLY idle (voluntarily finished).
     // A notBefore-only message has no idle requirement — when due it delivers and Claude queues it.
-    if (pick.msg.defer && !deferReady(m, s, provider, pane, now)) continue;
+    if (pick.msg.defer && !deferReady(m, s, provider, pane, now)) {
+      await writeChatHold(s.name, pick.msg.id, "deferred — the recipient has not finished its turn yet");
+      continue;
+    }
 
     await deliverToPane(m, s.name, pick.msg);
+    clearChatHold(s.name);
     if (isConditional(pick.msg)) {
       appendAck(m, pick.msg.id, "daemon", s.name); // off-cursor; dedup vs the Stop hook
     } else {
