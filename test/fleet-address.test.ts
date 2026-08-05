@@ -93,7 +93,24 @@ test("the reply command is offered only when this machine can actually route bac
   // not replyable here → print the address, but never a command that would error on this box
   const noReply = formatChatInjection(msg({ fromMachine: "host-a" }), { cli: "ccmux", replyable: false });
   expect(noReply).toContain("host-a:api");
-  expect(noReply).not.toContain("reply:");
+  expect(noReply).not.toContain("reply: ccmux msg host-a:api");
+});
+
+test("an unroutable sender is TOLD so, with the channel that does work", () => {
+  // Measured cost of staying silent here: a live agent completed its task, could not hand the answer
+  // back, and spent five tool calls (fleet, machines, help, the config file, an ssh probe into the
+  // other machine's config) rediscovering that the fleet map is directional. The fact is known at
+  // format time, so it belongs in the tag.
+  const out = formatChatInjection(msg({ fromMachine: "host-a" }), { cli: "ccmux", replyable: false });
+  expect(out).toContain("no route back to host-a");
+  expect(out).toContain('ccmux msg owner "<your reply>"');
+});
+
+test("silence when routing was never asked about — absence of knowledge is not a fact", () => {
+  // The Telegram mirror and other read-only renderers format messages without knowing any machine's
+  // routing table. They must not start announcing that a peer is unreachable.
+  const out = formatChatInjection(msg({ fromMachine: "host-a" }));
+  expect(out).toBe("[chat from host-a:api] hello");
 });
 
 test("the reply prefix precedes the body, so a forged 'reply:' inside the body can't impersonate it", () => {

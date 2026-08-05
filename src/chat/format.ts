@@ -20,12 +20,21 @@ export function formatChatInjection(msg: ChatMessage, opts?: { cli?: string; rep
   // (a reply command that errors here would be worse than none). The prefix comes BEFORE the body,
   // so a body containing a forged `reply:` line cannot be mistaken for the real one.
   const sender = msg.fromMachine !== null ? `${msg.fromMachine}:${msg.from}` : msg.from;
+  // Three states, not two — and the third is the one that cost a live agent five tool calls. A
+  // sender on a machine THIS one cannot route to (the fleet map is directional: a roaming laptop
+  // reaches the servers, the servers cannot reach it back, by the same key model that keeps them
+  // from reaching each other) gets no reply command, and silence about why reads as a bug worth
+  // investigating. Saying it outright, with the one channel that does work, ends the question where
+  // it arises. `undefined` stays silent: a caller that never asked about routing must not have an
+  // absence of knowledge printed as a fact.
   const reply =
-    msg.fromMachine !== null && opts?.replyable === true
-      ? // The body placeholder matters: the prompt says to use this command verbatim, and a command
-        // without one runs as an empty send — usage error, exit 1 — right when the agent is trying
-        // to answer.
-        ` · reply: ${opts.cli ?? "ccmux"} msg ${sender}${msg.task ? ` --task ${msg.task}` : ""} "<your reply>"`
-      : "";
+    msg.fromMachine === null || opts?.replyable === undefined
+      ? ""
+      : opts.replyable
+        ? // The body placeholder matters: the prompt says to use this command verbatim, and a command
+          // without one runs as an empty send — usage error, exit 1 — right when the agent is trying
+          // to answer.
+          ` · reply: ${opts.cli ?? "ccmux"} msg ${sender}${msg.task ? ` --task ${msg.task}` : ""} "<your reply>"`
+        : ` · no route back to ${msg.fromMachine} from here — answer with ${opts.cli ?? "ccmux"} msg owner "<your reply>"`;
   return `[chat from ${sender}${behalf}${task}${reply}] ${msg.body}`;
 }

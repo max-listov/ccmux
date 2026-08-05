@@ -15,18 +15,38 @@ import { parseContext } from "../context.ts";
 // explicit "esc to interrupt") means working RIGHT NOW. Completion markers have no "…".
 const WORKING_RE = /[✱-✿] [A-Za-z ]+…|esc to interrupt/;
 const CONTEXT_RE = /[\d.]+[kKMG]\/[\d.]+[kKMG] +\d+%/;
-// "Claude's interactive UI is drawn" — the restart waitReady gates use this so a wake-note lands in
-// a live conversation, not a half-booted blank pane. claude-NATIVE markers, INDEPENDENT of the
-// (arbitrary, user-defined) statusline: the permission-mode footer while idle, the interrupt hint
-// while working. The MODEL is deliberately NOT read from the pane anymore — it comes from jsonl
-// (message.model, source of truth), so a new family (Fable/Mythos/…) is never dropped by a whitelist.
-const READY_RE = /shift\+tab to cycle|esc to interrupt/;
+/**
+ * "Claude's interactive UI is drawn" — gate for the restart wake-note, for trusting the pane over a
+ * stale lifecycle record, and (hardest of all) for typing chat into a session at all. The MODEL is
+ * deliberately NOT read from the pane — it comes from jsonl (message.model), so a new family
+ * (Fable/Mythos/…) is never dropped by a whitelist.
+ *
+ * Several markers rather than one, because this used to key on `shift+tab to cycle` alone — and that
+ * is a HINT, not a piece of the interface. Claude draws the footer as a single line and, once the
+ * agent has background shells, it puts their count where the hint was:
+ *
+ *   ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+ *   ⏵⏵ bypass permissions on · 3 shells · ← for agents
+ *
+ * So any agent that left a background command running read as "not painted yet" FOREVER — measured
+ * live across a fleet, exactly the sessions with shells and no others. One wrong marker produced
+ * three unrelated-looking symptoms: its deferred mail was held indefinitely, `wait` on it always
+ * timed out, and `list` reported it working while it sat idle. Keying on the mode footer — which
+ * every mode draws and nothing displaces — is what makes the signal structural; the rest are
+ * independent fallbacks so no single cosmetic change can zero it out again.
+ */
+const READY_MARKERS = [
+  /⏵+ [a-z ]+ on\b/, // permission-mode footer: "auto mode on", "bypass permissions on", …
+  /\? for shortcuts/, // the default mode's footer (verified present in the claude bundle)
+  /esc to interrupt/, // the UI mid-turn
+  /shift\+tab to cycle/, // the hint — still valid evidence, no longer the only one
+];
 
 export function scanPane(paneText: string): PaneScan {
   const tail = paneText.split("\n").slice(-30).join("\n");
   const contextLabel = tail.match(CONTEXT_RE)?.[0] ?? null;
   return {
-    ready: READY_RE.test(tail),
+    ready: READY_MARKERS.some((re) => re.test(tail)),
     state: WORKING_RE.test(tail) ? "working" : "idle",
     contextLabel: contextLabel ?? "-",
     context: parseContext(contextLabel),
