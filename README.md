@@ -57,6 +57,28 @@ ccmux adopt <uuid> --fork       # safe copy under a new uuid (original untouched
 ccmux adopt <uuid> --takeover   # take over the original (kills the live writer)
 ```
 
+### Which sessions still need a restart
+
+Everything that shapes an agent — its system prompt, the chat wiring, the permission mode, the
+supervisor code — is injected **at launch**, so a change lands only on the next restart. ccmux says
+so when you act (`applies on: ccmux restart …`), but a line that scrolls away is not a state you can
+check later.
+
+So each launch records what it used, and `ccmux list` / `ccmux fleet` compare that against what a
+launch right now would produce:
+
+```
+SESSION     MODEL    CTX            STATE  UPTIME  RESTART    RC
+cc-api      Opus 5   180k/1M 18%    idle   2d1h    chat,mode  local-api
+```
+
+The column names *what* would change — `code` (newer ccmux), `chat`, `mode`, `modules`, or `config`
+(anything else in the launch recipe, e.g. a reworded prompt). Empty means a restart would change
+nothing. Deliberately **not** a version comparison: a release that didn't touch the prompt would flag
+every session for nothing, while `ccmux chat on` doesn't move the version at all yet certainly needs
+a restart. A session with no record yet (launched by an older ccmux) shows nothing — unknown is never
+displayed as stale.
+
 ## How it works
 
 - **One daemon per machine** (launchd `com.<prefix>.ccmux` / systemd `ccmux.service`) heals the

@@ -51,7 +51,8 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     uptimeSeconds: null,
     createdAt: null,
     lastMessage: ext.lastMessage,
-    lastActivityMs: ext.lastActivityMs,
+    stale: [],
+  lastActivityMs: ext.lastActivityMs,
   };
 }
 

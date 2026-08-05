@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { z } from "zod";
+import { LaunchStampSchema, type LaunchStamp } from "./launchStamp.ts";
 import { STATUS_DIR } from "../config/paths.ts";
 import { atomicWrite } from "../util/atomic.ts";
 
@@ -53,6 +54,7 @@ const safe = (name: string): string => name.replace(/[^\w.-]/g, "_");
 const lifecyclePath = (name: string): string => `${STATUS_DIR}/${safe(name)}.lifecycle.json`;
 const chatHoldPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.chathold.json`;
 const metricsPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.metrics.json`;
+const launchPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.launch.json`;
 
 function readRaw(path: string): unknown {
   try {
@@ -114,11 +116,26 @@ export function clearChatHold(name: string): void {
 }
 
 export function clearStatus(name: string): void {
-  for (const p of [lifecyclePath(name), metricsPath(name), chatHoldPath(name)]) {
+  for (const p of [lifecyclePath(name), metricsPath(name), chatHoldPath(name), launchPath(name)]) {
     try {
       rmSync(p, { force: true });
     } catch {
       // best-effort cleanup
     }
   }
+}
+
+/** Record what this launch is using, so `list` can later answer "would a restart change anything?".
+ *  Best-effort: a session must start even if we cannot write a note about it. */
+export function writeLaunchStamp(name: string, stamp: Omit<LaunchStamp, "ts">): void {
+  try {
+    mkdirSync(STATUS_DIR, { recursive: true });
+    writeFileSync(launchPath(name), JSON.stringify({ ...stamp, ts: Date.now() }));
+  } catch {
+    // best-effort bookkeeping
+  }
+}
+
+export function readLaunchStamp(name: string): LaunchStamp | null {
+  return LaunchStampSchema.safeParse(readRaw(launchPath(name))).data ?? null;
 }

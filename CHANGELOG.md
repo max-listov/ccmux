@@ -6,6 +6,21 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+feat: `ccmux list` now tells you which sessions a restart would actually change
+
+- Everything that shapes an agent — its system prompt, the chat wiring, the permission mode, the
+  supervisor code — is injected **at launch**, so a change lands only on the next restart. ccmux said
+  so at the moment you acted (`applies on: ccmux restart …`), but a line that scrolls away is not a
+  state you can check an hour later: which sessions were already restarted lived in someone's head.
+- Each launch now records what it used, and `list` / `fleet` compare it against what a launch right
+  now would produce. The new `RESTART` column names *what* differs — `code`, `chat`, `mode`,
+  `modules`, or `config` — and is empty when a restart would change nothing.
+- Deliberately **not** a version comparison, which lies in both directions: a release that didn't
+  touch the prompt would flag every session for nothing, while `ccmux chat on` doesn't move the
+  version at all yet certainly requires a restart.
+- A forked conversation is not a config change (the re-pinned uuid is normalised out), and a session
+  with no record yet shows nothing — unknown is never displayed as stale.
+
 ## [0.7.0] — 2026-08-05
 
 cross-machine mail that couldn't leave is re-sent when transit returns

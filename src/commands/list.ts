@@ -6,6 +6,9 @@ import { capturePane } from "../tmux/tmux.ts";
 import { providerFor, sessionUsedTokens, sessionModel, lastTranscriptMessage, lastActivityMs } from "../agent/index.ts";
 import type { PaneScan } from "../agent/index.ts";
 import { prettyModel } from "../agent/format.ts";
+import { readLaunchStamp } from "../agent/sessionStatus.ts";
+import { computeStamp, staleReasons } from "../agent/launchStamp.ts";
+import { promptInvocation } from "../env.ts";
 import { readLifecycle, readMetrics, resolveLiveState } from "../agent/sessionStatus.ts";
 import { VERSION } from "../util/version.ts";
 import { fmtTokens } from "../tui/format.ts";
@@ -30,6 +33,9 @@ export interface ListRow {
   createdAt: string | null;
   lastMessage: TranscriptMessage | null;
   lastActivityMs: number | null; // transcript file mtime — "conversation moved" (any instance)
+  // What a restart WOULD change for this session ("code" / "chat" / "mode" / "modules" / "config").
+  // Empty = up to date, or launched before stamping existed (unknown is never shown as stale).
+  stale: string[];
 }
 
 /** Build one row. For a running session: scrape the pane; if it surfaces no context,
@@ -54,6 +60,7 @@ async function buildRow(
       contextLabel: "-",
       context: { text: null, usedTokens: null, limitTokens: null, percent: null },
       uptimeText: "—",
+      stale: [],
       uptimeSeconds: null,
       createdAt: null,
       lastMessage,
@@ -105,6 +112,8 @@ async function buildRow(
     contextLabel,
     context,
     uptimeText: humanizeDuration(uptimeSeconds),
+    // A stopped session is never "stale": it will pick everything up whenever it next starts.
+    stale: staleReasons(readLaunchStamp(s.name), computeStamp(s, m, promptInvocation())),
     uptimeSeconds,
     createdAt: new Date(startedAt * 1000).toISOString(),
     lastMessage,
@@ -124,11 +133,11 @@ function stateLabel(r: ListRow): string {
 
 function printTable(m: MachineConfig, rows: ListRow[]): void {
   console.log(
-    `${pad("SESSION", 14)} ${pad("MODEL", 9)} ${pad("CTX", 16)} ${pad("STATE", 8)} ${pad("UPTIME", 7)} ${pad("RC", 14)} DIR`,
+    `${pad("SESSION", 14)} ${pad("MODEL", 9)} ${pad("CTX", 16)} ${pad("STATE", 8)} ${pad("UPTIME", 7)} ${pad("RESTART", 9)} ${pad("RC", 14)} DIR`,
   );
   for (const r of rows) {
     console.log(
-      `${pad(r.session.name, 14)} ${pad(r.model ?? "-", 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
+      `${pad(r.session.name, 14)} ${pad(r.model ?? "-", 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(",") : "-", 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
     );
   }
 }
@@ -145,6 +154,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     model: r.model,
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
+    stale: r.stale,
     createdAt: r.createdAt,
     lastMessage: r.lastMessage,
   };

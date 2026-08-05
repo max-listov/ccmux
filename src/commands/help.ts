@@ -4,7 +4,7 @@ type HelpEntry = { verb: string; args: string; desc: string; example?: string; n
 
 /** Public command surface (hidden internals `_run`/`_restart-worker` are intentionally omitted). */
 export const COMMANDS: HelpEntry[] = [
-  { verb: "list", args: "", desc: "managed sessions + status/uptime", example: "ccmux list" },
+  { verb: "list", args: "", desc: "managed sessions + status/uptime; the RESTART column names what a restart would change (code/chat/mode/modules/config) — empty means nothing to pick up", example: "ccmux list" },
   { verb: "new", args: "<name> <dir> [-- flags]", desc: "create + start a session (pins a fresh uuid)", example: "ccmux new cc-api ~/code/api" },
   { verb: "rm", args: "<name> [--force]", desc: "stop + unregister (jsonl history kept)" },
   { verb: "adopt", args: "<uuid> [name] [--fork|--takeover]", desc: "manage an external session (live one: fork a copy, or take it over)", example: "ccmux adopt 4e117aea-… --fork" },
@@ -20,7 +20,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "transcript", args: "<name|machine:name> <--json [--tail N] [--cursor LINE] | --last-message>", desc: "conversation history as JSON (incremental reads via --cursor), or --last-message for just the agent's final answer as text (full, not clipped)", example: "ccmux transcript cc-api --last-message" },
   { verb: "wait", args: "<name|machine:name> [--timeout N] [--quiet]", desc: "block until the session finishes its turn — exit 0 settled, 2 timed out (no polling loops; works without chat)", example: "ccmux wait cc-api && ccmux transcript cc-api --last-message" },
   { verb: "doctor", args: "[--json]", desc: "health check: bins, config, daemon; verifies the fleet map really points where it claims" },
-  { verb: "fleet", args: "[--json]", desc: "every session on every fleet machine, each line showing the full address you can message; unreachable machines are marked, never fatal", example: "ccmux fleet" },
+  { verb: "fleet", args: "[--json]", desc: "every session on every fleet machine, each line showing the full address you can message; sessions a restart would change are flagged; unreachable machines are marked, never fatal", example: "ccmux fleet" },
   { verb: "completions", args: "<bash|zsh|fish>", desc: "print a shell completion script (generated from the command list)", example: "ccmux completions zsh > \"${fpath[1]}/_ccmux\"" },
   { verb: "update", args: "[--check|--rollback|--force]", desc: "self-update binary + bounce daemon (sessions live)" },
   { verb: "install", args: "[--rc-prefix <name>] [--release-url URL]", desc: "write config + boot unit; start daemon (--rc-prefix = this machine's label, e.g. local/dev/prod; --release-url wires autoUpdate)" },

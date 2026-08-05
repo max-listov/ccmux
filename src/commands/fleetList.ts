@@ -23,6 +23,7 @@ const RemoteSessionSchema = z.object({
   state: z.string().default("?"),
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
+  stale: z.array(z.string()).default([]),
   uptime: z.object({ text: z.string().nullable().default(null) }).partial().optional(),
 });
 const RemoteListSchema = z.object({
@@ -55,6 +56,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       model: r.model,
       running: r.running,
       uptime: { text: r.uptimeText },
+      stale: r.stale,
     })),
   };
   const others = Object.entries(m.fleet ?? {}).filter(([machine]) => machine !== m.rcPrefix);
@@ -98,7 +100,10 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
     console.log(`${label}  [ccmux ${fm.version}]`);
     for (const s of fm.sessions) {
       // Full address on every line — the thing you copy into `ccmux msg` without guessing.
-      console.log(`  ${pad(`${fm.machine}:${s.name}`, 28)} ${pad(s.state, 9)} ${pad(s.model ?? "-", 11)} ${s.uptime?.text ?? ""}`);
+      // A session that a restart would change is flagged right here, so "who is still on the old
+      // prompt" is readable across the fleet instead of remembered.
+      const restart = s.stale.length > 0 ? `  ⟳ ${s.stale.join(",")}` : "";
+      console.log(`  ${pad(`${fm.machine}:${s.name}`, 28)} ${pad(s.state, 9)} ${pad(s.model ?? "-", 11)} ${pad(s.uptime?.text ?? "", 7)}${restart}`);
     }
   }
   return 0; // unreachable machines are routine, never a failure exit

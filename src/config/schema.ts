@@ -356,6 +356,8 @@ export const ListItemSchema = z.object({
   model: z.string().nullable(),
   context: ContextInfoSchema,
   uptime: z.object({ text: z.string().nullable(), seconds: z.number().nullable() }),
+  // What a restart would change for this session; empty = nothing (or launched before stamping).
+  stale: z.array(z.string()).default([]),
   createdAt: z.string().nullable(),
   lastMessage: TranscriptMessageSchema.nullable(),
 });

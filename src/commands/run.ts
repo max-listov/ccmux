@@ -6,6 +6,8 @@ import { capturePane, sendKeysNamed } from "../tmux/tmux.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { promptInvocation } from "../env.ts";
 import { log, setStderrLogging } from "../util/log.ts";
+import { writeLaunchStamp } from "../agent/sessionStatus.ts";
+import { computeStamp } from "../agent/launchStamp.ts";
 
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -102,6 +104,9 @@ export async function cmdRun(name: string | undefined): Promise<number> {
       if (provider.id === "claude") argv.push("--fork-session"); // wedge recovery (Claude only)
       forkNext = false;
     }
+    // Stamp BEFORE spawning, with the very argv about to be used: that is what makes "does this
+    // session still need a restart?" a readable fact instead of something to remember.
+    writeLaunchStamp(name, computeStamp(s, m, promptInvocation()));
     const startedAt = Date.now();
     let crashed = false;
     try {
