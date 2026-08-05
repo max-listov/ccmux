@@ -6,6 +6,18 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: the RESTART column stops asking for a restart that would change nothing
+
+It compared the version number as its own reason — the very thing the paragraph above it warns
+against. Measured right after a daemon-only release: 22 of 23 live sessions were flagged `code`, and
+re-launching any of them would have produced a byte-identical recipe (same hash, different version).
+
+The version adds no true positives. Everything an upgrade changes inside a session is already in the
+hashed argv — the prompt, `--settings` (inline JSON, not a path), the mode, the flags — and hooks
+resolve the binary when they run, so a live session picks up new supervisor code without restarting.
+A column that cries wolf across the whole fleet is worse than none: a real `chat`/`mode`/`config`
+drowns in it. The stamp keeps `version` as diagnostics.
+
 ## [0.10.1] — 2026-08-05
 
 a background shell made a session invisible to its own mail
