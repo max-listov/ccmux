@@ -10,6 +10,10 @@ the GitHub Release with that section as the notes.
 
 turning the Telegram mirror on starts a live feed, not a history replay
 
+Telegram mirror: the route line is now a bracketed header — `[dev:worker → prod:api] · task` — with a
+blank line before the body, so on a phone the two stop running together. Mail to the human keeps the
+same shape (`📩 [prod:api → you]`) rather than inverting the sentence: one route line to learn to read.
+
 fix: turning the Telegram mirror on starts a live feed instead of replaying history
 
 Enabling the mirror on a machine that already had chat history instantly re-sent all of it: the

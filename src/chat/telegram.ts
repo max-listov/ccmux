@@ -23,10 +23,15 @@ function escapeHtml(s: string): string {
  * message crossed over (`fromMachine`), and otherwise is local too.
  */
 export function formatForTg(msg: ChatMessage, machine: string): string {
-  const task = msg.task ? ` · task: ${escapeHtml(msg.task)}` : "";
   const from = escapeHtml(`${msg.fromMachine ?? machine}:${msg.from}`);
-  const header = msg.to === OWNER ? `📩 for you — from ${from}${task}` : `${from} → ${escapeHtml(`${machine}:${msg.to}`)}${task}`;
-  return `<b>${header}</b>\n${escapeHtml(msg.body)}`;
+  // Mail to the human keeps the SAME shape rather than inverting the sentence — one route line to
+  // learn to read, with the emoji doing the "this one is for you" work.
+  const to = msg.to === OWNER ? "you" : escapeHtml(`${machine}:${msg.to}`);
+  const mark = msg.to === OWNER ? "📩 " : "";
+  const task = msg.task ? ` · <i>${escapeHtml(msg.task)}</i>` : "";
+  // Blank line between route and body: on a phone the two ran together and the header stopped
+  // reading as a header.
+  return `${mark}<b>[${from} → ${to}]</b>${task}\n\n${escapeHtml(msg.body)}`;
 }
 
 /** HTTP status → retry policy. 4xx except 429 = permanent (bad token/chat/thread — skip so one bad
