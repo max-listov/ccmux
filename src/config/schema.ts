@@ -246,7 +246,12 @@ export const ChatCursorsSchema = z.object({
   delivered: z.record(z.string(), z.number()).default({}),
   // Telegram mirror progress: ledger LENGTH mirrored to the bot (a BROADCAST sink — every message,
   // in order). Persisted so a restart resends only the un-mirrored backlog, never the whole history.
-  telegram: z.number().default(0),
+  // `null` = the mirror has never run on this machine. Distinct from 0 on purpose: turning the
+  // mirror ON must start a LIVE FEED, not replay the machine's whole history into the chat. (Learned
+  // the hard way: enabling it on two servers instantly re-sent 25 old messages, because every
+  // message ever written was, technically, "not yet mirrored".) Existing files hold a number and are
+  // unaffected.
+  telegram: z.number().nullable().default(null),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

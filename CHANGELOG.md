@@ -6,6 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+fix: turning the Telegram mirror on starts a live feed instead of replaying history
+
+Enabling the mirror on a machine that already had chat history instantly re-sent all of it: the
+progress cursor defaulted to `0`, which made every message ever written an "un-mirrored backlog".
+Configuring a bot on two servers dumped 25 old messages into the chat. The cursor is now `null`
+until the mirror first runs on that machine, and the first run adopts the present as its starting
+point and sends nothing — a mirror is a feed of what happens next, not an archive replay. Existing
+cursor files hold a number and are unaffected.
+
 ## [0.9.0] — 2026-08-05
 
 prompt speaks in addresses; the Telegram mirror can cover the whole fleet

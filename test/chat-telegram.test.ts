@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatForTg, classifyHttpStatus, mirrorPending } from "../src/chat/telegram.ts";
+import { ChatCursorsSchema } from "../src/config/schema.ts";
 import { MachineConfigSchema } from "../src/config/schema.ts";
 import { appendMessage, chatPaths } from "../src/chat/store.ts";
 import type { ChatMessage } from "../src/types.ts";
@@ -64,4 +65,13 @@ test("mirrorPending is a fail-soft no-op when telegram is unconfigured (no netwo
   appendMessage(m, msg("a", "b", "hi"));
   await mirrorPending(m); // must not throw and must not touch the cursor file
   expect(existsSync(chatPaths(m).cursors)).toBe(false);
+});
+
+test("turning the mirror ON starts a live feed — it never replays the machine's history", () => {
+  // Learned the hard way: enabling the mirror on two servers instantly re-sent 25 past messages,
+  // because a cursor defaulting to 0 makes every message ever written an "un-mirrored backlog".
+  // `null` distinguishes "never ran here" from "legitimately at the start".
+  expect(ChatCursorsSchema.parse({}).telegram).toBeNull();
+  // An existing cursor file keeps its number and is unaffected by the change.
+  expect(ChatCursorsSchema.parse({ telegram: 7 }).telegram).toBe(7);
 });

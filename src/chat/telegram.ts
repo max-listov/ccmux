@@ -65,6 +65,14 @@ export async function mirrorPending(m: MachineConfig): Promise<void> {
   if (tg === undefined) return;
   const ledger = loadLedger(m);
   const cursors = loadCursors(m);
+  // First run on this machine: adopt the present as the starting point and send nothing. A mirror is
+  // a live feed of what happens from now on; replaying history would dump every past conversation
+  // into the chat the moment someone configures a bot.
+  if (cursors.telegram === null) {
+    await saveCursors(m, { ...cursors, telegram: ledger.length });
+    log.info({ msg: "telegram mirror armed — starting from now, history not replayed", from: ledger.length });
+    return;
+  }
   const start = cursors.telegram;
   if (start >= ledger.length) return;
 
