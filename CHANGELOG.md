@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-05
+
+fleet addressing — <machine>:<session> as a first-class agent address, with the return address and the whole exchange visible
+
 feat: fleet addressing — `<machine>:<session>` as a first-class agent address, with the return address and the whole exchange visible
 
 A session name only means something on one machine. Two boxes can each have an `api`, so a bare name
@@ -36,7 +40,6 @@ reconstruct because each machine's log knew only half of it.
 - Fixes along the way: a delivered `--defer` message no longer shows as pending forever; `inbox` no
   longer advances another session's read cursor; `restart <name>` on an unknown session exits 1
   instead of claiming success; unreachable machines are reported and never fatal.
-
 ## [0.5.1] — 2026-08-03
 
 chat delivers while you watch a session — hold only while a human is typing
