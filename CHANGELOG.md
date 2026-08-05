@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-08-05
+
+the RESTART column stops crying wolf across the fleet
+
 fix: the RESTART column stops asking for a restart that would change nothing
 
 It compared the version number as its own reason — the very thing the paragraph above it warns
@@ -17,7 +21,6 @@ hashed argv — the prompt, `--settings` (inline JSON, not a path), the mode, th
 resolve the binary when they run, so a live session picks up new supervisor code without restarting.
 A column that cries wolf across the whole fleet is worse than none: a real `chat`/`mode`/`config`
 drowns in it. The stamp keeps `version` as diagnostics.
-
 ## [0.10.1] — 2026-08-05
 
 a background shell made a session invisible to its own mail
