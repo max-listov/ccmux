@@ -9,7 +9,7 @@
 //                                    vX.Y.Z → push. Publishing happens in CI off the tag —
 //                                    there is NO local publish path (tag ↔ code ↔ assets
 //                                    stay one atomic story; see .github/workflows/ci.yml).
-//   bun run stage                  → build bundle → ~/.ccmux/staged (local `ccmux update` test)
+//   bun run stage                  → build bundle → the cache's staged/ (local `ccmux update` test)
 //   bun scripts/release.ts --local          → bundle + file:// manifest (sandbox e2e)
 //   bun scripts/release.ts --ci-assets URL  → bundle + manifest at URL (CI release job only)
 

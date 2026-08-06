@@ -68,7 +68,7 @@ jobs:
       # CI twin of the fleet-side preflight.
       - name: Smoke the bundle
         run: |
-          BUNDLE="$HOME/.ccmux/staged/ccmux.js"
+          BUNDLE="${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/staged/ccmux.js"
           test -f "$BUNDLE"
           PKG="$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
           OUT="$(bun "$BUNDLE" version)"
@@ -80,7 +80,7 @@ jobs:
             "tmuxBin": "/bin/false",
             "projectsDir": "$RUNNER_TEMP/projects",
             "rcPrefix": "ci",
-            "sessionsFile": "$RUNNER_TEMP/sessions",
+            "stateDir": "$RUNNER_TEMP/state",
             "bootLabel": "ccmux.ci"
           }
           EOF
@@ -149,5 +149,5 @@ jobs:
             --title "ccmux $GITHUB_REF_NAME" \
             --notes-file /tmp/release-notes.md \
             --draft \
-            "$HOME/.ccmux/releases/ccmux.js" "$HOME/.ccmux/releases/release.json" scripts/install.sh
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux.js" "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/release.json" scripts/install.sh
           gh release edit "$GITHUB_REF_NAME" --draft=false

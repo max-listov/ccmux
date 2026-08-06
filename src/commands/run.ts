@@ -85,7 +85,7 @@ export async function cmdRun(name: string | undefined): Promise<number> {
   // "composer occupied" delivery gate and silenced that session's chat for good, while blaming a
   // human who wasn't there. The logger already has this switch for exactly this reason; the TUI
   // uses it so Ink isn't corrupted, and `_run` needs it for the same reason. Nothing is lost —
-  // every record still goes to ~/.ccmux/ccmux.log.
+  // every record still goes to the state root's ccmux.log.
   setStderrLogging(false);
   const provider = providerFor(s);
   const env = provider.launchEnv(m, s.name);

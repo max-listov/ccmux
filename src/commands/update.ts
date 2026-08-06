@@ -157,7 +157,7 @@ export function decideUpdate(i: {
     return {
       kind: "print",
       code: i.check ? 0 : 1,
-      text: "update: nothing staged (~/.ccmux/staged/ccmux.js) and no releaseUrl. Stage one (dev checkout): bun run stage",
+      text: "update: nothing staged (no staged/ccmux.js in the cache) and no releaseUrl. Stage one (dev checkout): bun run stage",
     };
   }
   const cmp = compareSemver(i.current, i.release);

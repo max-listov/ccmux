@@ -52,7 +52,7 @@ test("externalResumingUuids: pane-internal processes never surface as external",
   //   → claude daemon run → bg-pty-host (--session-id FORK); plus one unrelated terminal claude
   const procs: PsProc[] = [
     { pid: 1300, ppid: 1, command: "tmux pane shell" },
-    { pid: 1301, ppid: 1300, command: "/Users/u/.bun/bin/bun /Users/u/.ccmux/app/ccmux.js _run alpha" },
+    { pid: 1301, ppid: 1300, command: "/Users/u/.bun/bin/bun /Users/u/.cache/ccmux/app/ccmux.js _run alpha" },
     { pid: 1342, ppid: 1301, command: `/Users/u/.local/bin/claude --resume ${OLD} -n prod-alpha` },
     { pid: 99421, ppid: 1342, command: '/Users/u/.local/bin/claude daemon run --origin transient' },
     { pid: 99437, ppid: 99421, command: `/Users/u/.local/bin/claude --bg-pty-host /tmp/cc/pty.sock -- x --session-id ${FORK}` },

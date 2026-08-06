@@ -171,7 +171,7 @@ export const MachineConfigSchema = z.object({
   updateCheckInterval: z.number().int().positive().default(300),
   // Fleet-wide extra flags appended to every session (after per-session flags).
   extraFlags: z.array(z.string()).default([]),
-  // System-log threshold (~/.ccmux/ccmux.log). Re-read live by the daemon each tick —
+  // System-log threshold (the state root's ccmux.log). Re-read live by the daemon each tick —
   // flip to "debug" on a misbehaving box without restarting anything.
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
   // Claude 2.1.x shows a BLOCKING "Resume from summary?" picker on `--resume` of a large/old
