@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { sessionsPath } from "../src/config/paths.ts";
 import { MachineConfigSchema } from "../src/config/schema.ts";
 import { appendMessage, loadAckedIds } from "../src/chat/store.ts";
 import type { ChatMessage } from "../src/types.ts";
@@ -11,12 +12,12 @@ const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
 function setup(chatEnabled: boolean) {
   const dir = mkdtempSync(join(tmpdir(), "ccmux-hook-"));
-  const sessionsFile = join(dir, ".ccmux-sessions");
-  const cfg = { claudeBin: "/bin/claude", tmuxBin: "/bin/tmux", projectsDir: "/p", rcPrefix: "test", sessionsFile, bootLabel: "b" };
+  const cfg = { claudeBin: "/bin/claude", tmuxBin: "/bin/tmux", projectsDir: "/p", rcPrefix: "test", stateDir: dir, bootLabel: "b" };
   const cfgPath = join(dir, "machine.json");
   writeFileSync(cfgPath, JSON.stringify(cfg));
-  writeFileSync(sessionsFile, `${JSON.stringify({ name: "worker", dir: "/tmp/w", uuid: randomUUID(), chatEnabled })}\n`);
-  return { cfgPath, m: MachineConfigSchema.parse(cfg) };
+  const m = MachineConfigSchema.parse(cfg);
+  writeFileSync(sessionsPath(m), `${JSON.stringify({ name: "worker", dir: "/tmp/w", uuid: randomUUID(), chatEnabled })}\n`);
+  return { cfgPath, m };
 }
 
 function deferMsg(to: string, body: string, defer = true): ChatMessage {

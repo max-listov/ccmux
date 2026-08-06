@@ -59,7 +59,7 @@ test("mirrorPending is a fail-soft no-op when telegram is unconfigured (no netwo
     tmuxBin: "/bin/tmux",
     projectsDir: "/p",
     rcPrefix: "test",
-    sessionsFile: join(dir, ".ccmux-sessions"),
+    stateDir: dir,
     bootLabel: "b",
   });
   appendMessage(m, msg("a", "b", "hi"));

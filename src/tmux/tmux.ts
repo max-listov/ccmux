@@ -45,7 +45,7 @@ export async function listSessionsCreated(m: MachineConfig): Promise<Map<string,
 // env vars into a new session's panes (even on a dedicated socket), so we pass them EXPLICITLY via
 // `new-session -e` — otherwise a `_run` pane in an isolated (dev) instance reads the prod config and
 // dies. Prod sets none of these (uses defaults) → nothing is passed, behaviour unchanged.
-const INSTANCE_ENV_KEYS = ["CCMUX_HOME", "CCMUX_CONFIG", "CCMUX_SESSIONS"] as const;
+const INSTANCE_ENV_KEYS = ["CCMUX_STATE_DIR", "CCMUX_CACHE_DIR", "CCMUX_CONFIG"] as const;
 
 function instanceEnvArgs(): string[] {
   const out: string[] = [];

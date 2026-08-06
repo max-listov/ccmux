@@ -3,10 +3,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MachineConfigSchema } from "../src/config/schema.ts";
-import { retryCandidates, loadOutboxAcked, appendOutboxAck, outboxAckPath, RETRY_WINDOW_MS } from "../src/fleet/flush.ts";
-import { appendOutbound, outboxPath } from "../src/fleet/outbox.ts";
+import { retryCandidates, loadOutboxAcked, appendOutboxAck, RETRY_WINDOW_MS } from "../src/fleet/flush.ts";
+import { appendOutbound } from "../src/fleet/outbox.ts";
 import { localRows } from "../src/chat/fleetLog.ts";
 import type { Outbound } from "../src/fleet/outbox.ts";
+import { outboxAckPath, outboxPath } from "../src/config/paths.ts";
 
 function tempConfig() {
   const dir = mkdtempSync(join(tmpdir(), "ccmux-flush-"));
@@ -15,7 +16,7 @@ function tempConfig() {
     tmuxBin: "/bin/tmux",
     projectsDir: "/p",
     rcPrefix: "test",
-    sessionsFile: join(dir, ".ccmux-sessions"),
+    stateDir: dir,
     bootLabel: "b",
   });
 }

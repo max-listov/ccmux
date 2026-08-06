@@ -8,7 +8,7 @@ const machine = (over: Record<string, unknown> = {}) =>
     tmuxBin: "/bin/tmux",
     projectsDir: "/p",
     rcPrefix: "host-a",
-    sessionsFile: "/tmp/.ccmux-sessions",
+    stateDir: "/tmp",
     bootLabel: "b",
     ...over,
   });

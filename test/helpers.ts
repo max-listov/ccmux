@@ -9,7 +9,7 @@ export function makeMachine(over: Record<string, unknown> = {}): MachineConfig {
     tmuxBin: "/bin/tmux",
     projectsDir: "/root/.claude/projects",
     rcPrefix: "prod",
-    sessionsFile: "/tmp/ccmux-test.sessions",
+    stateDir: "/tmp/ccmux-test-state",
     bootLabel: "ccmux.service",
     ...over,
   });

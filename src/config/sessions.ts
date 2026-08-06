@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { SessionSchema } from "./schema.ts";
 import type { Session, MachineConfig, PermissionMode } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
+import { sessionsPath } from "./paths.ts";
 
 const HEADER = "# managed Claude sessions — ccmux owns this file (JSONL)";
 
@@ -11,9 +12,9 @@ const HEADER = "# managed Claude sessions — ccmux owns this file (JSONL)";
  * tolerated on read and rewritten as JSONL on the first mutation.
  */
 export function loadSessions(m: MachineConfig): Session[] {
-  if (!existsSync(m.sessionsFile)) return [];
+  if (!existsSync(sessionsPath(m))) return [];
   const out: Session[] = [];
-  for (const raw of readFileSync(m.sessionsFile, "utf8").split("\n")) {
+  for (const raw of readFileSync(sessionsPath(m), "utf8").split("\n")) {
     const line = raw.trim();
     if (line === "" || line.startsWith("#")) continue;
     out.push(parseLine(line));
@@ -38,7 +39,7 @@ export function findSession(sessions: Session[], name: string): Session | undefi
 
 export async function appendSession(m: MachineConfig, s: Session): Promise<void> {
   const current = loadSessions(m);
-  if (findSession(current, s.name)) throw new Error(`'${s.name}' already in ${m.sessionsFile}`);
+  if (findSession(current, s.name)) throw new Error(`'${s.name}' already in ${sessionsPath(m)}`);
   await writeSessions(m, [...current, s]);
 }
 
@@ -109,5 +110,5 @@ export async function removeSession(m: MachineConfig, name: string): Promise<boo
 
 async function writeSessions(m: MachineConfig, sessions: Session[]): Promise<void> {
   const body = sessions.map((s) => JSON.stringify(s)).join("\n");
-  await atomicWrite(m.sessionsFile, `${HEADER}\n${body}${body ? "\n" : ""}`);
+  await atomicWrite(sessionsPath(m), `${HEADER}\n${body}${body ? "\n" : ""}`);
 }

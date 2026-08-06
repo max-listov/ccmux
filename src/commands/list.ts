@@ -165,7 +165,7 @@ function printJson(m: MachineConfig, rows: ListRow[]): void {
     version: VERSION,
     generatedAt: new Date().toISOString(),
     rcPrefix: m.rcPrefix,
-    sessionsFile: m.sessionsFile,
+    stateDir: m.stateDir,
     sessions: rows.map((r) => toListItem(m, r)),
   };
   console.log(JSON.stringify(out));

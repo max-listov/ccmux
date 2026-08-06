@@ -1,8 +1,8 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { ChatCursorsSchema, ChatMessageSchema } from "../config/schema.ts";
 import type { ChatCursors, ChatMessage, MachineConfig } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
+import { chatAckPath, chatCursorsPath, chatLedgerPath } from "../config/paths.ts";
 
 /** Reserved chat recipient = the human who runs the fleet. A message TO `owner` is NOT delivered
  *  to any pane (the owner has none) — it only surfaces out-of-band (Telegram, and later a frontend).
@@ -16,30 +16,25 @@ export const OWNER = "owner";
 export const CLI = "cli";
 
 /**
- * Inter-agent chat storage — an append-only ledger (source of truth) + a small cursors file.
- * Both live next to the sessions registry (so a temp CCMUX_SESSIONS in tests gives temp chat
- * files too, and a machine keeps one chat store beside its one session store).
+ * Inter-agent chat storage — an append-only ledger (source of truth) + a small cursors file. Both
+ * live in the instance's state directory, so a config built for a test gives that test its own
+ * chat store, and a machine keeps exactly one store beside its one registry.
  */
 export function chatPaths(m: MachineConfig): { ledger: string; cursors: string } {
-  const dir = dirname(m.sessionsFile);
-  return { ledger: join(dir, ".ccmux-chat.jsonl"), cursors: join(dir, ".ccmux-chat-cursors.json") };
+  return { ledger: chatLedgerPath(m), cursors: chatCursorsPath(m) };
 }
 
-/**
- * Defer-delivery ack-log: an append-only record of which DEFER messages have been injected, keyed by
- * message id. This is how the Stop hook and the daemon coordinate WITHOUT sharing a mutable cursor
- * (which would lose-update — see the design doc's R5): each appends one O_APPEND line (atomic across
- * processes, like the ledger), and both check it before delivering so a message is injected exactly
- * once. The daemon stays the SOLE writer of `cursors`; the hook only ever touches this file.
- */
-export function ackPath(m: MachineConfig): string {
-  return join(dirname(m.sessionsFile), ".ccmux-chat-ack.jsonl");
-}
+// The defer-delivery ack-log (`chatAckPath`) is an append-only record of which DEFER messages have
+// been injected, keyed by message id. It is how the Stop hook and the daemon coordinate WITHOUT
+// sharing a mutable cursor (which would lose-update — see the design doc's R5): each appends one
+// O_APPEND line (atomic across processes, like the ledger), and both check it before delivering, so
+// a message is injected exactly once. The daemon stays the SOLE writer of `cursors`; the hook only
+// ever touches the ack-log.
 
 /** Set of message ids already delivered (defer channel). Lenient: a corrupt line is skipped, not
  *  thrown — the hook must never wedge a session's ability to stop over a bad ack line. */
 export function loadAckedIds(m: MachineConfig): Set<string> {
-  const p = ackPath(m);
+  const p = chatAckPath(m);
   const ids = new Set<string>();
   if (!existsSync(p)) return ids;
   for (const raw of readFileSync(p, "utf8").split("\n")) {
@@ -62,7 +57,7 @@ export function loadAckedIds(m: MachineConfig): Set<string> {
  * this log), so a cancel is just a delivery that will never happen — the honest `by` keeps the log
  * readable. O_APPEND single-line write is atomic across the hook + daemon + sender processes. */
 export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon" | "cancel", to: string): void {
-  appendFileSync(ackPath(m), `${JSON.stringify({ id, ts: new Date().toISOString(), by, to })}\n`);
+  appendFileSync(chatAckPath(m), `${JSON.stringify({ id, ts: new Date().toISOString(), by, to })}\n`);
 }
 
 /** Undelivered CONDITIONAL messages (deferred or time-delayed), optionally filtered by sender /

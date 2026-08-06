@@ -15,8 +15,9 @@ BASE="https://github.com/${REPO}/releases/latest/download"
 MANIFEST_URL="${BASE}/release.json"
 BUNDLE_URL="${BASE}/ccmux.js"
 
-CCMUX_HOME="${HOME}/.ccmux"
-APP_DIR="${CCMUX_HOME}/app"
+# The bundle is disposable — it lives in the cache root, never beside the registry.
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ccmux"
+APP_DIR="${CACHE_DIR}/app"
 BIN_DIR="${HOME}/.local/bin"
 SHIM="${BIN_DIR}/ccmux"
 

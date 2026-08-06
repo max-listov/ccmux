@@ -8,7 +8,7 @@ const cfg = (extra: Record<string, unknown>) =>
     tmuxBin: "/bin/tmux",
     projectsDir: "/p",
     rcPrefix: "test",
-    sessionsFile: "/s",
+    stateDir: "/tmp",
     bootLabel: "b",
     ...extra,
   });

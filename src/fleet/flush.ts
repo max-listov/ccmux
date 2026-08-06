@@ -1,10 +1,11 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { z } from "zod";
 import { loadOutbox, type Outbound } from "./outbox.ts";
 import { runRemote } from "./transport.ts";
 import { run } from "../util/spawn.ts";
 import { log } from "../util/log.ts";
+import { outboxAckPath } from "../config/paths.ts";
 import type { MachineConfig } from "../types.ts";
 
 /**
@@ -23,9 +24,9 @@ import type { MachineConfig } from "../types.ts";
  * landed and only our side read it as a failure.
  */
 
-/** Ids whose delivery is settled. A separate append-only file, exactly like the chat ack-log: the
- *  outbox stays an immutable record of ATTEMPTS, this says which of them ended up delivered. */
-export const outboxAckPath = (m: MachineConfig): string => join(dirname(m.sessionsFile), ".ccmux-outbox-ack.jsonl");
+// `outboxAckPath` holds the ids whose delivery is settled — a separate append-only file, exactly
+// like the chat ack-log: the outbox stays an immutable record of ATTEMPTS, this says which of them
+// ended up delivered.
 
 export function loadOutboxAcked(m: MachineConfig): Set<string> {
   const p = outboxAckPath(m);

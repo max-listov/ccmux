@@ -41,7 +41,7 @@ if [ "${1:-}" != "--env" ]; then
   "remoteControl": false,
   "projectsDir": "$HOME/.claude/projects",
   "rcPrefix": "dev",
-  "sessionsFile": "$DEV_HOME/sessions",
+  "stateDir": "$DEV_HOME/state",
   "bootLabel": "com.ccmux.dev",
   "permissionMode": "bypassPermissions",
   "ensureInterval": 30
@@ -53,16 +53,19 @@ JSON
   fi
 fi
 
-# The two env vars that pin every command to THIS instance.
-echo "export CCMUX_HOME=$DEV_HOME"
+# The env vars that pin every command to THIS instance: its own state, its own bundle, its own
+# config. Sharing any one of them with the main instance would mean sharing a registry, a
+# self-update or a machine identity — each of which defeats the isolation.
+echo "export CCMUX_STATE_DIR=$DEV_HOME/state"
+echo "export CCMUX_CACHE_DIR=$DEV_HOME/cache"
 echo "export CCMUX_CONFIG=$CONFIG"
 
 if [ "${1:-}" != "--env" ]; then
   cat >&2 <<EOF
 
 # ── drive the dev instance (after: eval "\$(scripts/dev-instance.sh --env)") ──
-bun run src/cli.ts new dev-a "\$CCMUX_HOME/a"   # real claude on socket $SOCKET, RC off
-bun run src/cli.ts new dev-b "\$CCMUX_HOME/b"
+bun run src/cli.ts new dev-a "\$CCMUX_STATE_DIR/a"   # real claude on socket $SOCKET, RC off
+bun run src/cli.ts new dev-b "\$CCMUX_STATE_DIR/b"
 bun run src/cli.ts chat on dev-a && bun run src/cli.ts chat on dev-b
 bun run daemon:watch                            # dev daemon from source, hot-reload
 bun run src/cli.ts msg dev-b "hi"               # from a session it's that session; from a shell it's 'cli'

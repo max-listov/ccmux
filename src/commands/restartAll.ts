@@ -5,7 +5,7 @@ import { loadSessions, updateSessionUuid } from "../config/sessions.ts";
 import { forkedUuid } from "../agent/index.ts";
 import { liveWriters } from "../agent/claude/writers.ts";
 import { killSession } from "../tmux/tmux.ts";
-import { CCMUX_HOME } from "../config/paths.ts";
+import { STATE_DIR } from "../config/paths.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import { runDetached } from "../util/spawn.ts";
 import { SELF_ARGV } from "../env.ts";
@@ -26,7 +26,7 @@ import { startSession } from "./lifecycle.ts";
  * invariant forbids.
  */
 
-const SWEEP_LOCK = `${CCMUX_HOME}/restart-all.lock`;
+const SWEEP_LOCK = `${STATE_DIR}/restart-all.lock`;
 const WRITER_GATE_MS = 5_000; // cap on waiting for the old agent process to actually be gone
 const WRITER_POLL_MS = 250;
 

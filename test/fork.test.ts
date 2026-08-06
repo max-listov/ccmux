@@ -8,6 +8,7 @@ import { forkedUuid } from "../src/agent/index.ts";
 import { loadSessions, updateSessionUuid } from "../src/config/sessions.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
 import type { MachineConfig } from "../src/types.ts";
+import { sessionsPath } from "../src/config/paths.ts";
 
 // Fixtures mirror a REAL fork observed live 2026-07-14 (e8f0→711f):
 // the fork's jsonl starts with the inherited custom-title event, then copied history
@@ -35,7 +36,7 @@ function setup(): { m: MachineConfig; dir: string; projDir: string } {
   const projectsDir = join(root, "projects");
   const projDir = join(projectsDir, encodeDir(dir));
   mkdirSync(projDir, { recursive: true });
-  const m = makeMachine({ projectsDir, sessionsFile: join(root, "sessions") });
+  const m = makeMachine({ projectsDir, stateDir: root });
   return { m, dir, projDir };
 }
 
@@ -126,7 +127,7 @@ describe("updateSessionUuid", () => {
     const { m, dir } = setup();
     const a = makeSession({ name: "cc-a", dir, uuid: PINNED });
     const b = makeSession({ name: "cc-b", dir, uuid: OTHER });
-    writeFileSync(m.sessionsFile, `${JSON.stringify(a)}\n${JSON.stringify(b)}\n`);
+    writeFileSync(sessionsPath(m), `${JSON.stringify(a)}\n${JSON.stringify(b)}\n`);
     expect(await updateSessionUuid(m, "cc-a", FORK)).toBe(true);
     const after = loadSessions(m);
     expect(after.find((s) => s.name === "cc-a")?.uuid).toBe(FORK);

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { MachineConfigSchema } from "./schema.ts";
 import type { MachineConfig } from "../types.ts";
 import { HOME, PLATFORM } from "../env.ts";
+import { STATE_DIR } from "./paths.ts";
 
 function configPath(): string {
   return process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`;
@@ -14,7 +15,7 @@ function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {
     tmuxBin: mac ? "/opt/homebrew/bin/tmux" : "/usr/bin/tmux",
     projectsDir: `${HOME}/.claude/projects`,
     codexSessionsDir: `${HOME}/.codex/sessions`,
-    sessionsFile: process.env.CCMUX_SESSIONS ?? `${HOME}/.ccmux-sessions`,
+    stateDir: STATE_DIR,
     // Default so a fresh box (no machine.json yet) just runs — `install` pins the real
     // local|dev|prod into machine.json; until then every command works as "local".
     rcPrefix: "local",
@@ -64,8 +65,6 @@ export function loadMachineConfig(): MachineConfig {
     if (codex) merged.codexBin = codex;
   }
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();
-  const envSessions = process.env.CCMUX_SESSIONS;
-  if (envSessions) merged.sessionsFile = envSessions;
   const envRc = process.env.CCMUX_RC_PREFIX;
   if (envRc) merged.rcPrefix = envRc;
   return MachineConfigSchema.parse(merged);

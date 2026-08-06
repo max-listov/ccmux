@@ -8,7 +8,7 @@ const base = MachineConfigSchema.parse({
   tmuxBin: "/bin/tmux",
   projectsDir: "/p",
   rcPrefix: "test",
-  sessionsFile: "/s",
+  stateDir: "/tmp",
   bootLabel: "b",
 });
 const cfg = (resumePicker: "full" | "summary" | "off") => ({ ...base, resumePicker });

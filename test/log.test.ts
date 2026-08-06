@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// log.ts resolves LOG_FILE from CCMUX_HOME at import time (HOME-derived). Rather than fight
+// log.ts resolves LOG_FILE from the state root at import time (HOME-derived). Rather than fight
 // that, test the two pure-ish behaviors directly against a sandbox: level threshold and the
 // size-based rotation shift. We re-implement nothing — we import the real symbols and point
 // HOME at a temp dir BEFORE importing.
@@ -12,7 +12,7 @@ const sandbox = mkdtempSync(join(tmpdir(), "ccmux-log-"));
 const realHome = process.env.HOME;
 process.env.HOME = sandbox;
 
-// dynamic import AFTER HOME is set, so CCMUX_HOME/LOG_FILE land in the sandbox…
+// dynamic import AFTER HOME is set, so the state root and LOG_FILE land in the sandbox…
 const { log, setLogLevel, LOG_FILE } = await import("../src/util/log.ts");
 // …then restore HOME so this file doesn't pollute HOME-dependent tests (resume tripwire etc.)
 if (realHome !== undefined) process.env.HOME = realHome;

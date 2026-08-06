@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rcName, loadMachineConfig } from "../src/config/machine.ts";
 import { makeMachine } from "./helpers.ts";
+import { sessionsPath } from "../src/config/paths.ts";
 
 test("rcName: <prefix>-<name without cc->, single strip only", () => {
   const m = makeMachine({ rcPrefix: "prod" });
@@ -21,26 +22,22 @@ test("loadMachineConfig: file over defaults, defaults applied, env override wins
       claudeBin: "/x/claude",
       tmuxBin: "/x/tmux",
       projectsDir: "/root/.claude/projects",
-      sessionsFile: "/x/.ccmux-sessions",
+      stateDir: "/x",
       bootLabel: "ccmux.service",
     }),
   );
   const prevCfg = process.env.CCMUX_CONFIG;
-  const prevSess = process.env.CCMUX_SESSIONS;
   process.env.CCMUX_CONFIG = cfg;
-  delete process.env.CCMUX_SESSIONS;
   try {
     const m = loadMachineConfig();
     expect(m.rcPrefix).toBe("dev");
     expect(m.ensureInterval).toBe(30); // default applied
     expect(m.permissionMode).toBe("auto");
-    expect(m.sessionsFile).toBe("/x/.ccmux-sessions");
-    process.env.CCMUX_SESSIONS = "/override/.sessions";
-    expect(loadMachineConfig().sessionsFile).toBe("/override/.sessions"); // env wins
+    // Every state file is NAMED inside the configured directory — the file no longer decides where
+    // its neighbours live, which is what used to let one careless path relocate the whole set.
+    expect(sessionsPath(m)).toBe("/x/sessions.jsonl");
   } finally {
     if (prevCfg === undefined) delete process.env.CCMUX_CONFIG;
     else process.env.CCMUX_CONFIG = prevCfg;
-    if (prevSess === undefined) delete process.env.CCMUX_SESSIONS;
-    else process.env.CCMUX_SESSIONS = prevSess;
   }
 });

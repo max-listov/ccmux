@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { loadMachineConfig } from "../config/machine.ts";
 import { run } from "../util/spawn.ts";
+import { CACHE_DIR } from "../config/paths.ts";
 import { VERSION } from "../util/version.ts";
 import { checkFleet } from "../fleet/transport.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME } from "../env.ts";
@@ -48,7 +49,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         self: SELF_DISPLAY,
         promptInvocation: promptInvocation(),
         configFile,
-        sessionsFile: m.sessionsFile,
+        stateDir: m.stateDir,
+        cacheDir: CACHE_DIR,
         rcPrefix: m.rcPrefix,
         bootLabel: m.bootLabel,
         bins: { claude: m.claudeBin, codex: m.codexBin ?? null, tmux: m.tmuxBin },
@@ -64,8 +66,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   console.log(`ccmux ${VERSION}`);
   console.log(`self:       ${SELF_DISPLAY}`);
   console.log(`agent cli:  ${promptInvocation()}`);
+  // The three roots, named, because "where does this thing keep its files" used to be answerable
+  // only by hunting through a home directory — and the answer differed per machine.
   console.log(`config:     ${configFile}`);
-  console.log(`sessions:   ${m.sessionsFile}`);
+  console.log(`state:      ${m.stateDir}`);
+  console.log(`cache:      ${CACHE_DIR}`);
   console.log(`rc prefix:  ${m.rcPrefix}`);
   console.log(`boot label: ${m.bootLabel}`);
   console.log(`claude: ${m.claudeBin} (${claudeOk ? "ok" : "missing"})`);

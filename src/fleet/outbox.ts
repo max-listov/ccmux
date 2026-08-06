@@ -1,8 +1,9 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { z } from "zod";
 import { log } from "../util/log.ts";
 import type { MachineConfig } from "../types.ts";
+import { outboxPath } from "../config/paths.ts";
 
 /**
  * What THIS machine sent to other machines.
@@ -32,8 +33,6 @@ export const OutboundSchema = z.object({
   detail: z.string().default(""), // transport/remote error when !ok
 });
 export type Outbound = z.infer<typeof OutboundSchema>;
-
-export const outboxPath = (m: MachineConfig): string => join(dirname(m.sessionsFile), ".ccmux-outbox.jsonl");
 
 /** Append-only, one JSON per line — same shape of durability as the chat ledger. Never throws: a
  *  bookkeeping failure must not break the send it is recording. */

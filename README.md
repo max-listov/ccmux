@@ -87,6 +87,18 @@ nothing — unknown is never displayed as stale.
 
 - **One daemon per machine** (launchd `com.<prefix>.ccmux` / systemd `ccmux.service`) heals the
   fleet every 30s and starts it on boot. It runs the prod bundle, not your source.
+- **Where things live** — three roots, split by lifetime, so "can I delete this?" is answered by
+  the path and not by guessing:
+
+  | root | holds | if you delete it |
+  |---|---|---|
+  | `<config>/ccmux/` | `machine.json` | this machine's identity is gone |
+  | `<state>/ccmux/` | `sessions.jsonl`, chat + outbox, `status/`, log | sessions are orphaned |
+  | `<cache>/ccmux/` | `app/`, `staged/`, `releases/` | one `ccmux update` rebuilds it |
+
+  The roots come from the standard config/state/cache environment variables with the usual
+  platform defaults, so a fresh machine lands correctly with nothing written by hand. `stateDir`
+  in `machine.json` overrides the middle one; that is the single knob an isolated instance flips.
 - **Each session** is a tmux session whose foreground process is `ccmux _run <name>` — a tiny
   supervisor loop that launches `claude` and relaunches it on crash (exponential backoff). So an
   agent crash just comes back; killing a session is the only way to stop it.
@@ -154,8 +166,7 @@ attached; a *busy* recipient just gets it queued at its next turn boundary. Deli
 immediate mail flows in order, while **deferred** (`--defer`) and **time-delayed** (`--after`) mail is
 delivered by id when its condition holds — a Claude Stop hook fires a deferred message the instant the
 turn ends, or the daemon delivers it once the target is stably idle — so a pending conditional message
-never blocks an immediate reply behind it. Loop/rate guards cap a runaway ping-pong. Source of truth:
-`~/.ccmux-chat.jsonl` (+ `~/.ccmux-chat-cursors.json`, `~/.ccmux-chat-ack.jsonl`).
+never blocks an immediate reply behind it. Loop/rate guards cap a runaway ping-pong. Source of truth: `chat.jsonl` (+ `chat-cursors.json`, `chat-ack.jsonl`) in the state directory.
 
 ### Router sessions
 
@@ -323,7 +334,7 @@ bundle. See `docs/architecture/` for the TUI, IO/perf model, and dev flow.
 The release tooling lives in the source checkout only — clients ship a single bundle, no repo:
 
 ```bash
-bun run stage                   # build → ~/.ccmux/staged/ccmux.js, then `ccmux update` to test locally
+bun run stage                   # build → the cache's staged/ccmux.js, then `ccmux update` to test locally
 bun run release X.Y.Z "notes"   # the ONE release entrypoint: guards → check → bump + CHANGELOG
                                 # → commit → tag vX.Y.Z → push; CI builds, gates and publishes
 ```

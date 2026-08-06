@@ -1,5 +1,5 @@
 // Structured JSON logs — ONE line per event. Always appended to a persistent file
-// (`~/.ccmux/ccmux.log`) so the TUI/dev — whose stderr is swallowed by the terminal — still
+// (the state directory) so the TUI/dev — whose stderr is swallowed by the terminal — still
 // leaves a trail we can `tail`. Also mirrored to stderr (daemon launchd/journal .err), but
 // the TUI disables that mirror so log writes never corrupt the Ink render.
 //
@@ -9,7 +9,7 @@
 // sane bounds, intentionally NOT config (a runaway log should never eat a server disk).
 
 import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { CCMUX_HOME } from "../config/paths.ts";
+import { STATE_DIR, LOG_FILE } from "../config/paths.ts";
 import { IS_DEV } from "../env.ts";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -19,7 +19,7 @@ const SEVERITY: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 
 const MAX_BYTES = 5 * 1024 * 1024;
 const KEEP = 2; // rotated generations: .1, .2
 
-export const LOG_FILE = `${CCMUX_HOME}/ccmux.log`;
+export { LOG_FILE };
 let stderrOn = true; // daemon/CLI mirror to stderr; the TUI turns this off
 let threshold: LogLevel = "info";
 let dirReady = false;
@@ -60,7 +60,7 @@ function rotateIfNeeded(): void {
 function writeFile(line: string): void {
   try {
     if (!dirReady) {
-      mkdirSync(CCMUX_HOME, { recursive: true });
+      mkdirSync(STATE_DIR, { recursive: true });
       dirReady = true;
     }
     rotateIfNeeded();

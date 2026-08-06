@@ -6,6 +6,36 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+one state root instead of scattered dotfiles
+
+ccmux kept its state in two places at once, and half of it sat as bare dotfiles in the home
+directory — the registry among them, indistinguishable from junk next to a user's own folders. The
+directory was decided by a REQUIRED config field holding a **file** path, with five other files
+derived from that file's parent. So drift was structural: every machine answered the question
+separately, and one careless value silently relocated the whole set into an unrelated folder.
+
+Three roots now, split by **lifetime** rather than topic, so "can I delete this?" is answered by the
+path itself:
+
+```
+<config>/ccmux/   machine.json                      a human edits this
+<state>/ccmux/    sessions.jsonl, chat*, outbox*,   losing it orphans sessions
+                  status/, ccmux.log, boot-attempts
+<cache>/ccmux/    app/, staged/, releases/          one `ccmux update` rebuilds it
+```
+
+- `sessionsFile` is gone. In its place `stateDir` — a **directory**, derived from the platform's
+  state root, that nobody normally sets. A required field made machines drift by construction; a
+  derived one cannot. It survives purely as the single knob an isolated instance or a test flips.
+- Every state file is **named** inside that directory by one module, so a file no longer decides
+  where its neighbours live. The registry finally has an extension, which is why it used to be the
+  one file that read as junk.
+- No compatibility path: nothing reads the old locations. Both layouts being valid is exactly how a
+  migration becomes permanent, and the window it opens is safe by construction — an empty registry
+  means "nothing to supervise", so running sessions keep running untouched.
+- `doctor` prints all three roots. The layout drifting unnoticed is what produced this in the first
+  place.
+
 ## [0.10.2] — 2026-08-05
 
 the RESTART column stops crying wolf across the fleet

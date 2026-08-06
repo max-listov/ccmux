@@ -23,7 +23,7 @@ function tempConfig() {
     tmuxBin: "/bin/tmux",
     projectsDir: "/p",
     rcPrefix: "test",
-    sessionsFile: join(dir, ".ccmux-sessions"),
+    stateDir: dir,
     bootLabel: "b",
   });
 }

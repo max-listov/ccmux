@@ -145,8 +145,13 @@ export const MachineConfigSchema = z.object({
   // restored locally (re-pointing a forwarded-key socket, refreshing a token). An argv ARRAY, never
   // a string: no shell ever sees it. Absent = nothing runs, which is the default everywhere.
   transitPreflight: z.array(z.string().min(1)).min(1).optional(),
-  // Sessions data file (env CCMUX_SESSIONS overrides). Per-machine default.
-  sessionsFile: z.string().startsWith("/"),
+  // Where this instance keeps everything durable — registry, chat, outbox, status, log. A
+  // DIRECTORY, and one nobody normally sets: the loader derives it from the platform's state root,
+  // so a fresh machine lands correctly with no entry here at all. It exists purely as the single
+  // knob an isolated instance (or a test) flips to get its own state. The predecessor was a
+  // REQUIRED path to one FILE whose directory implied where five other files went — which made
+  // machines drift by construction and let one careless value relocate the whole set.
+  stateDir: z.string().startsWith("/"),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.
   ensureInterval: z.number().int().positive().default(30),
   // Machine-wide DEFAULT permission mode (matches `claude --permission-mode` choices).
@@ -372,6 +377,6 @@ export const ListJsonSchema = z.object({
   version: z.string(),
   generatedAt: z.string(),
   rcPrefix: z.string(),
-  sessionsFile: z.string(),
+  stateDir: z.string(),
   sessions: z.array(ListItemSchema),
 });

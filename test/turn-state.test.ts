@@ -85,7 +85,7 @@ test("the interrupted threshold outlives the DEFAULT heal interval — and says 
   // rather than a hardcoded 30_000, because a machine can configure it — and if someone raises
   // `ensureInterval` past this threshold, that is a real (documented) narrowing, not a test to edit.
   const healSec = MachineConfigSchema.parse({
-    claudeBin: "/b", tmuxBin: "/t", projectsDir: "/p", rcPrefix: "test", sessionsFile: "/s", bootLabel: "b",
+    claudeBin: "/b", tmuxBin: "/t", projectsDir: "/p", rcPrefix: "test", stateDir: "/tmp", bootLabel: "b",
   }).ensureInterval;
   expect(INTERRUPTED_MS).toBeGreaterThan(healSec * 1000);
 });

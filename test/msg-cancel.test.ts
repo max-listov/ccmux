@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { sessionsPath } from "../src/config/paths.ts";
 import { MachineConfigSchema } from "../src/config/schema.ts";
 import { loadLedger, loadAckedIds, pendingConditional } from "../src/chat/store.ts";
 
@@ -11,17 +12,17 @@ const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 // Two chat-enabled router sessions (each may relay / arm watchdogs) + a worker target.
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "ccmux-cancel-"));
-  const sessionsFile = join(dir, ".ccmux-sessions");
-  const cfg = { claudeBin: "/bin/claude", tmuxBin: "/bin/tmux", projectsDir: "/p", rcPrefix: "test", sessionsFile, bootLabel: "b" };
+  const cfg = { claudeBin: "/bin/claude", tmuxBin: "/bin/tmux", projectsDir: "/p", rcPrefix: "test", stateDir: dir, bootLabel: "b" };
   const cfgPath = join(dir, "machine.json");
   writeFileSync(cfgPath, JSON.stringify(cfg));
   const row = (name: string, extra: object) =>
     JSON.stringify({ name, dir: "/tmp/x", uuid: randomUUID(), chatEnabled: true, ...extra });
+  const m = MachineConfigSchema.parse(cfg);
   writeFileSync(
-    sessionsFile,
+    sessionsPath(m),
     `${row("router", { promptModules: ["router"] })}\n${row("router2", { promptModules: ["router"] })}\n${row("worker", {})}\n`,
   );
-  return { cfgPath, m: MachineConfigSchema.parse(cfg) };
+  return { cfgPath, m };
 }
 
 async function runMsg(cfgPath: string, session: string | undefined, args: string[], stdin?: string): Promise<{ code: number; out: string }> {

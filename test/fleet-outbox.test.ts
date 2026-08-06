@@ -3,9 +3,10 @@ import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { MachineConfigSchema } from "../src/config/schema.ts";
-import { appendOutbound, loadOutbox, outboxPath } from "../src/fleet/outbox.ts";
+import { appendOutbound, loadOutbox } from "../src/fleet/outbox.ts";
 import { chatPaths } from "../src/chat/store.ts";
 import type { Outbound } from "../src/fleet/outbox.ts";
+import { outboxPath, sessionsPath } from "../src/config/paths.ts";
 
 function tempConfig() {
   const dir = mkdtempSync(join(tmpdir(), "ccmux-outbox-"));
@@ -14,7 +15,7 @@ function tempConfig() {
     tmuxBin: "/bin/tmux",
     projectsDir: "/p",
     rcPrefix: "test",
-    sessionsFile: join(dir, ".ccmux-sessions"),
+    stateDir: dir,
     bootLabel: "b",
   });
 }
@@ -47,7 +48,7 @@ test("the outbox is a SEPARATE file from the chat ledger", () => {
   const m = tempConfig();
   appendOutbound(m, rec());
   expect(outboxPath(m)).not.toBe(chatPaths(m).ledger);
-  expect(dirname(outboxPath(m))).toBe(dirname(m.sessionsFile));
+  expect(dirname(outboxPath(m))).toBe(dirname(sessionsPath(m)));
   expect(readFileSync(outboxPath(m), "utf8").trim().split("\n")).toHaveLength(1);
 });
 
@@ -75,7 +76,7 @@ test("bookkeeping never throws into the send it records", () => {
     tmuxBin: "/bin/tmux",
     projectsDir: "/p",
     rcPrefix: "test",
-    sessionsFile: "/proc/nonexistent-dir/.ccmux-sessions",
+    stateDir: "/proc/nonexistent-dir",
     bootLabel: "b",
   });
   expect(() => appendOutbound(m, rec())).not.toThrow();
