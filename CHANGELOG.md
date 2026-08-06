@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-08-06
+
+one state root instead of scattered dotfiles
+
 one state root instead of scattered dotfiles
 
 ccmux kept its state in two places at once, and half of it sat as bare dotfiles in the home
@@ -35,7 +39,6 @@ path itself:
   means "nothing to supervise", so running sessions keep running untouched.
 - `doctor` prints all three roots. The layout drifting unnoticed is what produced this in the first
   place.
-
 ## [0.10.2] — 2026-08-05
 
 the RESTART column stops crying wolf across the fleet
