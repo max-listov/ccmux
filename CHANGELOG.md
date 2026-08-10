@@ -6,6 +6,23 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+Codex is now a first-class managed session provider instead of a transcript-only label.
+
+- `new --agent codex` and the TUI share one transactional create path. The first Codex rollout is
+  correlated exactly, promoted to its provider UUID, and resumed across child death, restart,
+  daemon healing and machine reboot without minting a replacement conversation.
+- External Codex threads are visible beside Claude with provider, origin, full thread UUID, storage
+  and positive writer evidence. Adopt uses one atomic `codex resume`; native fork preserves the
+  source history under a new UUID; takeover can signal only a freshly revalidated dedicated CLI.
+  Desktop, editor, App Server, shared, self and unknown processes are never killed by ccmux.
+- Managed chat routing now pins both endpoints to provider + machine + session + thread UUID. A
+  queued or retried message cannot jump to a same-named replacement or to the Claude session beside
+  a Codex session in the same directory. Version-skew and unknown providers fail closed.
+- Chat/outbox state uses strict versioned envelopes and files. Historical unversioned chat state is
+  left untouched as a read-only archive rather than guessed into the new identity model.
+- Codex pane chat delivery remains intentionally unavailable until its composer, approval and turn
+  frames are calibrated. Desktop-native Codex tasks continue to use the host's native task tools.
+
 ## [0.11.0] — 2026-08-06
 
 one state root instead of scattered dotfiles
