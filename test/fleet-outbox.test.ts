@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { MachineConfigSchema } from "../src/config/schema.ts";
+import { CHAT_GENERATION, MachineConfigSchema } from "../src/config/schema.ts";
 import { appendOutbound, loadOutbox, outboundId, outboundTimestamp } from "../src/fleet/outbox.ts";
 import { chatPaths } from "../src/chat/store.ts";
 import type { ChatMessage, ManagedPeer } from "../src/types.ts";
@@ -41,6 +41,7 @@ const to: ManagedPeer = {
 
 function envelope(id: string = randomUUID()): ChatMessage {
   return {
+    v: CHAT_GENERATION,
     id,
     ts: "2026-08-05T10:00:00.000Z",
     from,

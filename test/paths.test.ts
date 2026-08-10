@@ -15,6 +15,7 @@ import {
   chatAckPath,
   outboxPath,
   outboxAckPath,
+  archiveDir,
 } from "../src/config/paths.ts";
 import { makeMachine } from "./helpers.ts";
 
@@ -39,7 +40,10 @@ test("each durable file is named, and no two share a name", () => {
   // Named with a real extension: the registry used to be the one file without one, which is exactly
   // why it read as junk next to the others.
   for (const n of names) expect(n).toMatch(/\.(jsonl|json)$/);
-  for (const n of names.slice(1)) expect(n).toContain("v2");
+  // And NEVER a generation in the name. `chat-v2.jsonl` is a lie the moment there is a 3, and it
+  // parks a dead archive beside live state under a near-identical name — the same "is this junk?"
+  // question this layout exists to end. The generation lives in the record; the name is canonical.
+  for (const n of names) expect(n).not.toMatch(/-v\d+\./);
 });
 
 test("two configs never share state — the property tests and isolated instances rely on", () => {
@@ -73,4 +77,12 @@ test("nothing lands directly in the home directory", () => {
   for (const p of [...stateFiles.map((f) => f(m)), APP_BUNDLE, LOG_FILE]) {
     expect(dirname(p)).not.toBe(home);
   }
+});
+
+test("the archive is a directory, so 'what here is dead?' is answered by the path", () => {
+  // Superseded state used to sit beside live state under a near-identical name (`chat.jsonl` next to
+  // `chat-v2.jsonl`), which is the exact question this layout exists to end. One directory settles it.
+  const m = makeMachine({ stateDir: "/tmp/ccmux-layout" });
+  expect(archiveDir(m)).toBe("/tmp/ccmux-layout/archive");
+  for (const f of stateFiles) expect(f(m).startsWith(`${archiveDir(m)}/`)).toBe(false);
 });

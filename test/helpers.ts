@@ -1,4 +1,4 @@
-import { SessionSchema, MachineConfigSchema } from "../src/config/schema.ts";
+import { CHAT_GENERATION, SessionSchema, MachineConfigSchema } from "../src/config/schema.ts";
 import type { ChatMessage, ChatPrincipal, ChatTarget, ManagedPeer, Session, MachineConfig } from "../src/types.ts";
 
 export const UUID = "11111111-1111-4111-8111-111111111111";
@@ -41,6 +41,7 @@ export function makeOwner(): ChatTarget {
 
 export function makeChatMessage(over: Partial<ChatMessage> = {}): ChatMessage {
   return {
+    v: CHAT_GENERATION,
     id: UUID,
     ts: "2026-08-05T00:00:00.000Z",
     from: makePeer({ session: "sender" }),

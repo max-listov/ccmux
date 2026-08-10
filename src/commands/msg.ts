@@ -5,7 +5,7 @@ import { cliPrincipal, managedPeer, ownerTarget, principalLabel, targetLabel } f
 import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor } from "../chat/auth.ts";
 import { loadMachineConfig } from "../config/machine.ts";
-import { ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
+import { CHAT_GENERATION, ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
 import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
@@ -73,6 +73,7 @@ function buildEnvelope(
   notBefore: string | null,
 ): ChatMessage {
   return ChatMessageSchema.parse({
+    v: CHAT_GENERATION,
     id: randomUUID(),
     ts: new Date().toISOString(),
     from,

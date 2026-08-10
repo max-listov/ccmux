@@ -276,7 +276,20 @@ export const ChatTargetSchema = z.union([ManagedPeerSchema, OwnerTargetSchema]);
 
 /** One immutable v2 chat envelope. `task` is an optional pointer so the channel stays a phone call
  * (details live in the task). There are deliberately no defaults: mixed/old wire shapes fail. */
+/**
+ * Generation of the chat record format. It lives IN the record, not in a file name: a reader can
+ * then refuse a foreign record by name ("generation 1, this build reads 2") instead of complaining
+ * about a field shape — and the files keep canonical names across every future generation. Encoding
+ * it in the filename instead was the mistake this replaces: `chat-v2.jsonl` is a lie the moment
+ * there is a 3, and it puts a dead archive right beside live state under a near-identical name.
+ */
+export const CHAT_GENERATION = 2;
+
 export const ChatMessageSchema = z.object({
+  // First field on the wire and on disk, so a foreign record is identified before anything else is
+  // interpreted. `.strict()` below would already reject an older record — but on the shape of
+  // `from`, which reads as a bug rather than as "this is from another generation".
+  v: z.literal(CHAT_GENERATION),
   id: z.uuid(), // unique per message
   ts: z.string(), // ISO-8601 send time
   from: ChatPrincipalSchema,

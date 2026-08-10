@@ -6,6 +6,29 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+the record carries its generation; the receive path stops shelling out per ancestor
+
+**Generation left the file names.** The clean cutover to the new chat identity model was right —
+records written before it carry no provider or thread, and guessing those in would misroute mail.
+Encoding it as `chat-v2.jsonl` was not: that name becomes a lie the moment there is a 3, and it
+parked a dead archive beside live state under a near-identical name — the exact "is this junk?"
+question the layout exists to end. The generation now lives in the record as its first field, the
+live files keep canonical names forever, and superseded state moves under `archive/`, where the path
+says it is not live. A foreign record is refused **by name** ("generation none, this build reads 2")
+instead of by a complaint about a field shape, in both directions, and strict validation is
+unchanged behind it. `chat log` no longer answers an empty log with silence when an archive sits
+beside it: it says how many superseded files there are and where.
+
+**The remote-receive gate got ~1000x cheaper on the platform that pays it.** Every inbound remote
+message must prove it really descends from the transport, and the walk shelled out once per
+ancestor. Measured before touching it: **104ms per message on Linux**, 6.6ms on macOS — the most
+expensive step in delivery and the only one priced in process spawns. Reading the process tree
+directly on Linux brings it to **0.099ms**; macOS keeps the targeted per-level query, unchanged.
+
+The measurement killed both of the obvious fixes before they were written: caching per process buys
+nothing (the receiver is a fresh process per message), and reading the whole process table in one
+call was **five times worse** on macOS (hundreds of rows to walk two). Depth was never the cost.
+
 ## [0.12.0] — 2026-08-10
 
 first-class managed Codex lifecycle and external ownership

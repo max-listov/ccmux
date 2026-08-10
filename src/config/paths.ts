@@ -63,17 +63,26 @@ export const LOG_FILE = join(STATE_DIR, "ccmux.log");
  * instance constructed in-process — gets its own set by building one config object, without
  * touching process-wide environment. `stateDir` is always filled in by the loader.
  */
-// Chat v2 is a deliberate clean cutover. The unversioned chat files remain untouched as a read-only
-// archive; guessing provider/thread identity into their name-only records would corrupt routing.
-// The registry keeps its canonical path: strict parsing now requires every row to carry agent+UUID,
-// so an implicit legacy row fails loudly instead of making the managed fleet disappear on upgrade.
+// Chat changed generation in a deliberate clean cutover: records from before it carry no provider or
+// thread, and guessing those into them would corrupt routing. What the generation must NOT do is
+// leak into a file NAME — `chat-v2.jsonl` becomes a lie the moment there is a 3, and it parks a dead
+// archive beside live state under a near-identical name, which is exactly the "is this junk?"
+// question this layout exists to end. So the live files keep canonical names forever, the record
+// carries its own generation (see CHAT_GENERATION), and superseded state moves under `archive/`,
+// where the PATH says it is not live.
+// The registry keeps its canonical path too: strict parsing now requires every row to carry
+// agent+UUID, so an implicit older row fails loudly instead of making the fleet disappear on upgrade.
 export const sessionsPath = (m: MachineConfig): string => join(m.stateDir, "sessions.jsonl");
 export const pendingSessionsPath = (m: MachineConfig): string => join(m.stateDir, "pending-sessions.json");
 export const sessionRegistryLockPath = (m: MachineConfig): string => join(m.stateDir, "sessions.lock");
 export const lifecycleBlockPath = (m: MachineConfig, name: string): string => join(m.stateDir, "lifecycle-blocks", `${name}.json`);
-export const chatLedgerPath = (m: MachineConfig): string => join(m.stateDir, "chat-v2.jsonl");
-export const chatCursorsPath = (m: MachineConfig): string => join(m.stateDir, "chat-cursors-v2.json");
-export const chatAckPath = (m: MachineConfig): string => join(m.stateDir, "chat-ack-v2.jsonl");
-export const outboxPath = (m: MachineConfig): string => join(m.stateDir, "outbox-v2.jsonl");
-export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, "outbox-ack-v2.jsonl");
+export const chatLedgerPath = (m: MachineConfig): string => join(m.stateDir, "chat.jsonl");
+export const chatCursorsPath = (m: MachineConfig): string => join(m.stateDir, "chat-cursors.json");
+export const chatAckPath = (m: MachineConfig): string => join(m.stateDir, "chat-ack.jsonl");
+export const outboxPath = (m: MachineConfig): string => join(m.stateDir, "outbox.jsonl");
+export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, "outbox-ack.jsonl");
+/** Superseded state, kept readable but out of the way. One directory, so "what here is dead?" is
+ *  answered by the path instead of by remembering which name came first. */
+export const archiveDir = (m: MachineConfig): string => join(m.stateDir, "archive");
+
 export const chatAuthPath = (m: MachineConfig, sessionName: string): string => join(m.stateDir, "chat-auth", sessionName);

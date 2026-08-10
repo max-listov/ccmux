@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MachineConfigSchema } from "../src/config/schema.ts";
+import { CHAT_GENERATION, MachineConfigSchema } from "../src/config/schema.ts";
 import {
   appendMessage,
   loadLedger,
@@ -40,7 +40,8 @@ function peer(session: string, threadId: string, agent: AgentKind = "claude", ma
 
 function msg(from: ChatPrincipal, to: ChatTarget, body: string, task: string | null = null): ChatMessage {
   return {
-    id: randomUUID(),
+    v: CHAT_GENERATION,
+  id: randomUUID(),
     ts: "2026-07-19T10:00:00.000Z",
     from,
     to,
@@ -106,15 +107,27 @@ test("stable keys distinguish provider, thread and cli principal", () => {
   expect(chatPrincipalKey({ kind: "cli", source: "ccmux", machine: "host-a" })).toBe("ccmux:host-a:cli");
 });
 
-test("v1 ledger stays an ignored archive instead of being guessed into v2", () => {
+test("a record from an older generation fails LOUD, and says which generation it is", () => {
+  // The cutover is deliberate: records written before the identity model carry no provider or thread,
+  // and guessing those in would misroute mail. What must not happen is a SILENT skip — that turns a
+  // stale file into invisible data loss. The generation lives in the record, so the refusal can name
+  // the cause instead of complaining about a field shape, and point at where such records belong.
   const m = tempConfig();
-  writeFileSync(join(m.stateDir, "chat.jsonl"), `${JSON.stringify({ id: "old", from: "a", to: "b" })}\n`);
-  expect(loadLedger(m)).toEqual([]);
-  expect(chatPaths(m).ledger).toEndWith("chat-v2.jsonl");
+  writeFileSync(chatPaths(m).ledger, `${JSON.stringify({ id: "old", from: "a", to: "b" })}\n`);
+  expect(() => loadLedger(m)).toThrow(/generation none, this build reads 2/);
+  expect(() => loadLedger(m)).toThrow(/archive/);
 });
 
-test("a name-only row in the v2 ledger fails closed", () => {
+test("a record claiming a FUTURE generation is refused just as loudly", () => {
+  // Both directions matter: an older ccmux meeting a newer record must stop, not reinterpret it.
   const m = tempConfig();
-  writeFileSync(chatPaths(m).ledger, `${JSON.stringify({ id: "old", ts: "now", from: "a", to: "b", body: "x" })}\n`);
+  writeFileSync(chatPaths(m).ledger, `${JSON.stringify({ v: 99, id: "x", ts: "now", from: "a", to: "b", body: "y" })}\n`);
+  expect(() => loadLedger(m)).toThrow(/generation 99, this build reads 2/);
+});
+
+test("a name-only row that DOES claim the current generation still fails closed", () => {
+  // The generation check is a better error, not a replacement for strict validation.
+  const m = tempConfig();
+  writeFileSync(chatPaths(m).ledger, `${JSON.stringify({ v: 2, id: "old", ts: "now", from: "a", to: "b", body: "x" })}\n`);
   expect(() => loadLedger(m)).toThrow();
 });

@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { ChatCursorsSchema, ChatMessageSchema } from "../config/schema.ts";
+import { CHAT_GENERATION, ChatCursorsSchema, ChatMessageSchema } from "../config/schema.ts";
 import type { ChatCursors, ChatMessage, ChatPrincipal, ChatTarget, MachineConfig, ManagedPeer } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import { chatAckPath, chatCursorsPath, chatLedgerPath } from "../config/paths.ts";
@@ -88,6 +88,26 @@ export function pendingConditional(
   });
 }
 
+/**
+ * Parse one record, naming a generation mismatch for what it is.
+ *
+ * Strict parsing alone would already reject a record from an older generation — but it would do so
+ * by complaining about the shape of `from`, which reads as a bug in the writer. The generation is
+ * the first thing checked and the first thing said, so the answer is "this record predates the
+ * identity model" and the next step (the archive) is obvious rather than deduced.
+ */
+function parseRecord(raw: unknown, where: string): ChatMessage {
+  const generation = raw !== null && typeof raw === "object" && "v" in raw ? raw.v : undefined;
+  if (generation !== CHAT_GENERATION) {
+    const found = generation === undefined ? "none" : String(generation);
+    throw new Error(
+      `${where} — chat record generation ${found}, this build reads ${CHAT_GENERATION}. ` +
+        `Records from before the identity model are not readable here; move them under archive/.`,
+    );
+  }
+  return ChatMessageSchema.parse(raw);
+}
+
 /** Read + validate the whole ledger in order. A corrupt line fails LOUD with its number — the
  *  append-only history is never silently dropped. */
 export function loadLedger(m: MachineConfig): ChatMessage[] {
@@ -104,7 +124,7 @@ export function loadLedger(m: MachineConfig): ChatMessage[] {
     } catch {
       throw new Error(`chat ledger:${i + 1} — invalid JSON`);
     }
-    out.push(ChatMessageSchema.parse(raw));
+    out.push(parseRecord(raw, `chat ledger:${i + 1}`));
   }
   return out;
 }

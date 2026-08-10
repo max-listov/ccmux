@@ -8,6 +8,8 @@ import { z } from "zod";
 import { runRemote } from "../fleet/transport.ts";
 import { forwardIfRemote } from "../fleet/forward.ts";
 import { log } from "../util/log.ts";
+import { archiveDir } from "../config/paths.ts";
+import { existsSync, readdirSync } from "node:fs";
 import type { MachineConfig } from "../types.ts";
 
 const USAGE = "usage: ccmux chat <log [-n N] [--fleet] [--json] | on <name> | off <name>>";
@@ -76,7 +78,10 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
   // Unreachable notices go to stderr so the row stream stays pipeable on stdout.
   for (const s of machines) if (!s.ok) console.error(`(${s.machine}: ${s.error})`);
   if (rows.length === 0) {
-    console.log("(chat log empty)");
+    // An empty log with an archive beside it is the one case where silence misleads: the exchange
+    // DID happen, it simply predates the current record generation. The fact is known here, so it is
+    // said here — otherwise the next person concludes the log is broken and goes looking.
+    console.log(`(chat log empty)${archivedNote(m)}`);
     return 0;
   }
   const width = machineColumnWidth(machines);
@@ -126,4 +131,17 @@ export async function cmdChat(args: string[]): Promise<number> {
 
   console.log(USAGE);
   return sub === undefined ? 0 : 1;
+}
+
+/** One clause naming the archive when the live log is empty but superseded records exist. Read-only
+ *  and best-effort: a note about history must never be able to fail the command that prints it. */
+function archivedNote(m: MachineConfig): string {
+  try {
+    const dir = archiveDir(m);
+    if (!existsSync(dir)) return "";
+    const count = readdirSync(dir).length;
+    return count === 0 ? "" : ` — ${count} superseded file(s) from an earlier record generation are kept in ${dir}`;
+  } catch {
+    return "";
+  }
 }
