@@ -4,6 +4,7 @@ import type { MachineConfig, Session } from "../../types.ts";
 import { buildPrompt } from "../managePrompt.ts";
 import { UID } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
+import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
 
 export const CODEX_LAUNCH_MARKER_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 
@@ -74,6 +75,11 @@ function stripDangerous(flags: string[]): string[] {
 }
 
 /** Environment for the spawned codex: usable PATH + the self-guard marker. */
+/** Same two keys as every managed provider: the identity pin and the chat capability. */
+export function launchEnvKeys(): readonly string[] {
+  return [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
+}
+
 export function launchEnv(m: MachineConfig, sessionName: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;

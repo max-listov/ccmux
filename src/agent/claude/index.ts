@@ -1,7 +1,7 @@
 import type { AgentProvider } from "../index.ts";
-import { buildArgv, launchEnv, preflight } from "./launch.ts";
+import { buildArgv, launchEnv, launchEnvKeys, preflight } from "./launch.ts";
 import { detectFork } from "./fork.ts";
-import { historyFile } from "./resume.ts";
+import { historyFile, findHistoryElsewhere } from "./resume.ts";
 import { parse, usedTokens, lastModel } from "./transcript.ts";
 import { scanPane, resumePickerAnswer, chatDeliverable, inputBusy } from "./pane.ts";
 
@@ -11,7 +11,9 @@ export const claudeProvider: AgentProvider = {
   preflight,
   buildArgv,
   launchEnv,
+  launchEnvKeys,
   historyFile,
+  findHistoryElsewhere,
   detectFork,
   parse,
   usedTokens,

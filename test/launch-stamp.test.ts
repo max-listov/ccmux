@@ -87,3 +87,33 @@ test("anything else the launch recipe covers surfaces as 'config'", () => {
   const after = computeStamp(session(), machine({ extraFlags: ["--verbose"] }), "ccmux");
   expect(staleReasons(before, after)).toEqual(["config"]);
 });
+
+test("what the launch injects through the ENVIRONMENT is part of the recipe", () => {
+  // The gap this closes, measured live: sender authentication is handed to a session at launch via
+  // the environment — deliberately not argv, because a secret must not be an argument. So the hash
+  // could not see it, and every session started before that capability existed kept RECEIVING while
+  // silently unable to SEND. The column said a restart would change nothing.
+  const before = { ...stamp(), envKeys: ["CCMUX_SESSION"] };
+  expect(staleReasons(before, computeStamp(session(), machine(), "ccmux"))).toEqual(["env"]);
+});
+
+test("env keys are compared as a SET — order is not a change", () => {
+  const now = computeStamp(session(), machine(), "ccmux");
+  const shuffled = { ...stamp(), envKeys: [...(now.envKeys ?? [])].reverse() };
+  expect(staleReasons(shuffled, now)).toEqual([]);
+});
+
+test("a stamp written before env was recorded is UNKNOWN, never stale", () => {
+  // Same doctrine as a missing stamp: a field that did not exist says nothing about that launch.
+  // Reporting it as stale would have flagged the whole fleet the moment this field shipped.
+  const older = { ...stamp(), envKeys: null };
+  expect(staleReasons(older, computeStamp(session(), machine(), "ccmux"))).toEqual([]);
+});
+
+test("values never enter the stamp — only names", () => {
+  // The capability rotates on every launch and is a secret. Hashing its VALUE would make every
+  // session permanently stale AND put a copy of the secret on disk.
+  const now = computeStamp(session(), machine(), "ccmux");
+  expect(now.envKeys).toEqual([...(now.envKeys ?? [])].sort());
+  for (const k of now.envKeys ?? []) expect(k).toMatch(/^[A-Z0-9_]+$/);
+});

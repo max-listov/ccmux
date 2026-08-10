@@ -25,6 +25,9 @@ export const LaunchStampSchema = z.object({
   permissionMode: z.string(),
   chatEnabled: z.boolean(),
   promptModules: z.array(z.string()).default([]),
+  /** The ccmux-controlled env var NAMES this launch injected — never their values. `null` means the
+   *  stamp predates this field: unknown, never reported as stale (same doctrine as a missing stamp). */
+  envKeys: z.array(z.string()).nullable().default(null),
   ts: z.number(),
 });
 export type LaunchStamp = z.infer<typeof LaunchStampSchema>;
@@ -50,6 +53,10 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
   return {
     version: VERSION,
     hash: sha(JSON.stringify(normalized)),
+    // Deliberately NOT in the hash: argv is the recipe, and a secret must never be an argument. The
+    // launch nevertheless hands the session capabilities through the environment, and those are the
+    // one part of the recipe the hash cannot see — so they are recorded beside it, by NAME only.
+    envKeys: [...providerFor(s).launchEnvKeys()].sort(),
     permissionMode: s.permissionMode ?? m.permissionMode,
     chatEnabled: s.chatEnabled,
     promptModules: [...s.promptModules].sort(),
@@ -73,6 +80,14 @@ export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, "
   // up new supervisor code without restarting. A column that cries wolf across the whole fleet is
   // worse than no column: the real `chat`/`mode`/`config` drowns in it. `version` stays in the stamp
   // as diagnostics — "what was this launched on" — just not as a reason to act.
+  // What the launch injects through the ENVIRONMENT — the identity pin, the chat capability. Not in
+  // argv on purpose (a secret is not an argument), so the hash below cannot see it. A session started
+  // before a capability existed keeps working and silently cannot use it; naming it here is what turns
+  // that into something readable instead of something discovered by hitting a refusal.
+  // `null` is unknown, never stale: a stamp written before this field existed says nothing about it.
+  const envKeys = (xs: readonly string[] | null): string | null => (xs === null ? null : JSON.stringify([...xs].sort()));
+  const before = envKeys(stamp.envKeys);
+  if (before !== null && before !== envKeys(now.envKeys)) out.push("env");
   if (stamp.chatEnabled !== now.chatEnabled) out.push("chat");
   if (stamp.permissionMode !== now.permissionMode) out.push("mode");
   // Sorted on BOTH sides, not just when written: a stamp on disk may predate the sorting, and

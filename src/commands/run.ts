@@ -10,6 +10,7 @@ import { writeLaunchStamp } from "../agent/sessionStatus.ts";
 import { computeStamp } from "../agent/launchStamp.ts";
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from "../chat/auth.ts";
 import { readLifecycleBlockForSession, writeLifecycleBlock } from "../config/lifecycleBlocks.ts";
+import { readLaunchStamp } from "../agent/sessionStatus.ts";
 
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -118,6 +119,32 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
     const present = hf !== null && existsSync(hf); // re-checked every loop
     if (provider.id === "codex" && !present) {
       const error = `ready Codex session ${name} is missing rollout ${s.uuid}`;
+      await writeLifecycleBlock(m, {
+        name,
+        agent: s.agent,
+        uuid: s.uuid,
+        ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
+        error,
+        at: new Date().toISOString(),
+      });
+      console.error(`ccmux: ${error}`);
+      return 1;
+    }
+    // "No history here" means one of two very different things, and treating them alike is how a
+    // month-old conversation gets a blank one written on top of it with the same uuid. A session that
+    // has launched before HAS a stamp; if its history is gone anyway, something moved it — most often
+    // the project directory was renamed, which changes where the agent keeps the conversation while
+    // the registry still points at the old path. Measured on a live fleet: 140 MB of history sitting
+    // under the previous encoding while a fresh, empty file was being written at the new one.
+    // Blocking is the honest response: it is terminal, an explicit start/restart clears it, and it
+    // costs a stopped session instead of an unrecoverable overwrite. Starting fresh is only correct
+    // when the session has genuinely never run.
+    if (!present && readLaunchStamp(name) !== null) {
+      const found = provider.findHistoryElsewhere?.(s, m) ?? null;
+      const where = found === null ? "and it is nowhere else under the projects root" : `— it is at ${found}`;
+      const error =
+        `${name} has launched before, but its conversation ${s.uuid} is missing at ${hf ?? "its expected path"} ${where}. ` +
+        `Refusing to start a NEW conversation on top of it. If the project directory moved, put the conversation where this session now points, then: ccmux start ${name}`;
       await writeLifecycleBlock(m, {
         name,
         agent: s.agent,

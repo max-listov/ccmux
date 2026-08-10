@@ -6,6 +6,38 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+two ways the supervisor knew something and said nothing
+
+**A capability handed out at launch is now part of the recipe.** Sending chat is authenticated by a
+secret given to a session when it starts — deliberately through the environment, because a secret
+must not be an argument. The launch stamp hashes argv, so it could not see it: every session started
+before that capability existed kept RECEIVING while silently unable to SEND, and the RESTART column
+said a restart would change nothing. One-way traffic is worse than a clean failure — from the
+outside it looks like it works. The stamp now records the ccmux-controlled env var **names** (never
+values: the secret rotates every launch, so hashing it would make every session permanently stale and
+put a copy on disk) and reports `env`. A stamp written before the field existed stays *unknown*, not
+stale — the same doctrine a missing stamp has always had.
+
+That doctrine leaves a gap the stamp cannot close: it says nothing about launches that never wrote
+the field, which is exactly what the incident consisted of. So `doctor` answers it as a **fact about
+the machine** instead — which chat-enabled sessions have no capability, and the one command that
+fixes them. The column keeps answering "would a restart change anything"; doctor answers "is anything
+broken right now".
+
+**A conversation that vanished is no longer read as a first launch.** Claude derives its history
+folder from the working directory, so renaming a project relocates the conversation while the
+registry still points at the old path. The expected file is then missing — indistinguishable from a
+genuine first start, and the supervisor started a **new, empty conversation under the same uuid**.
+Found on a live fleet: 140 MB and 37 618 records sitting under the previous directory's encoding
+while a blank file was being written at the new one.
+
+A session that has launched before has a stamp. If its history is gone anyway, something moved it —
+so the supervisor now looks for that conversation elsewhere and refuses to start, writing a terminal
+lifecycle block that names where the history is and what to do. It reuses the existing block
+mechanism, which `list` and the TUI already surface and an explicit start clears. It does **not**
+move the file: those are someone's data, and a uuid match in another directory can be picked wrong.
+Blocking costs a stopped session; the alternative cost an unrecoverable overwrite.
+
 ## [0.13.0] — 2026-08-10
 
 the record carries its generation; the receive path stops shelling out per ancestor

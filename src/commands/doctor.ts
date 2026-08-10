@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 import { loadMachineConfig } from "../config/machine.ts";
 import { run } from "../util/spawn.ts";
-import { CACHE_DIR } from "../config/paths.ts";
+import { CACHE_DIR, chatAuthPath } from "../config/paths.ts";
+import { loadSessions } from "../config/sessions.ts";
+import type { MachineConfig } from "../types.ts";
 import { VERSION } from "../util/version.ts";
 import { checkFleet } from "../fleet/transport.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME } from "../env.ts";
@@ -49,6 +51,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         self: SELF_DISPLAY,
         promptInvocation: promptInvocation(),
         configFile,
+        mutedChat: mutedChatSessions(m),
         stateDir: m.stateDir,
         cacheDir: CACHE_DIR,
         rcPrefix: m.rcPrefix,
@@ -86,6 +89,27 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       console.log(`  PROBLEM — '${m.rcPrefix}' is this machine's own rcPrefix, so '${m.rcPrefix}:<session>' always resolves LOCALLY and that entry is dead. Give each machine a distinct rcPrefix.`);
     }
   }
+  const muted = mutedChatSessions(m);
+  if (muted.length > 0) {
+    console.log(
+      `chat:   PROBLEM — ${muted.length} session(s) can receive but NOT send (started before the send capability existed): ${muted.join(", ")}`,
+    );
+    console.log(`        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`);
+  }
   console.log(`daemon: ${daemon.state}${daemon.manager ? ` (${daemon.manager})` : ""}`);
   return 0;
+}
+
+/**
+ * Which chat-enabled sessions cannot actually send.
+ *
+ * Sending is authenticated by a capability handed to the session at launch; a session started before
+ * that existed keeps running and keeps RECEIVING, so nothing looks wrong until someone tries to reply
+ * and hits a refusal. Asked here as a FACT about the machine rather than inferred from a stamp: the
+ * capability either exists for that session or it does not.
+ */
+export function mutedChatSessions(m: MachineConfig): string[] {
+  return loadSessions(m)
+    .filter((s) => s.chatEnabled && !s.archived && !existsSync(chatAuthPath(m, s.name)))
+    .map((s) => s.name);
 }

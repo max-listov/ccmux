@@ -34,8 +34,17 @@ export interface AgentProvider {
   // (bare shim when installed, else absolute; see env.promptInvocation)
   buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[];
   launchEnv(m: MachineConfig, sessionName: string): Record<string, string>;
+  /** The ccmux-controlled environment variable NAMES this launch injects — never their values.
+   *  It exists so the launch stamp can see the one part of the recipe that is deliberately NOT in
+   *  argv: a secret must not be an argument. Names are enough to answer "would relaunching give this
+   *  session something it does not have", which is the only question the stamp asks. */
+  launchEnvKeys(): readonly string[];
   // history / resume
   historyFile(s: Session, m: MachineConfig): string | null;
+  /** The same conversation found somewhere OTHER than where this session expects it — used only
+   *  when the expected file is missing, to tell "the history moved" apart from "first launch".
+   *  Optional: an agent whose history location cannot drift does not implement it. */
+  findHistoryElsewhere?(s: Session, m: MachineConfig): string | null;
   // Some agents (Claude) silently FORK a conversation to a new uuid (e.g. out-of-context
   // continuation) — this reports where the conversation lives NOW, or null if unmoved.
   // Optional: agents whose session ids are actually stable don't implement it.

@@ -5,6 +5,7 @@ import { rcName } from "../../config/machine.ts";
 import { buildPrompt } from "../managePrompt.ts";
 import { UID, HOME } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
+import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
 
 export function preflight(m: MachineConfig): void {
   accessSync(m.claudeBin, constants.X_OK);
@@ -102,6 +103,13 @@ function stripDangerous(flags: string[]): string[] {
  *    thin systemd/launchd PATH
  *  - OAuth hygiene: if logged in via OAuth, drop ANTHROPIC_API_KEY so OAuth wins
  */
+/** What ccmux itself puts into the child's environment — the identity pin and the chat capability.
+ *  Everything else `launchEnv` touches (PATH, locale) is normalisation, not policy, so it is not
+ *  part of the recipe a restart would change. */
+export function launchEnvKeys(): readonly string[] {
+  return [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
+}
+
 export function launchEnv(m: MachineConfig, sessionName: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
