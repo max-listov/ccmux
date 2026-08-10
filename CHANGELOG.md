@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-08-10
+
+the record carries its generation; the receive path stops shelling out per ancestor
+
 the record carries its generation; the receive path stops shelling out per ancestor
 
 **Generation left the file names.** The clean cutover to the new chat identity model was right —
@@ -28,7 +32,6 @@ directly on Linux brings it to **0.099ms**; macOS keeps the targeted per-level q
 The measurement killed both of the obvious fixes before they were written: caching per process buys
 nothing (the receiver is a fresh process per message), and reading the whole process table in one
 call was **five times worse** on macOS (hundreds of rows to walk two). Depth was never the cost.
-
 ## [0.12.0] — 2026-08-10
 
 first-class managed Codex lifecycle and external ownership
