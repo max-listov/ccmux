@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-08-10
+
+escalated modes under root take both locks, or neither
+
 escalated modes under root: both locks, or neither
 
 Escalated permission modes are blocked twice on a root daemon — ccmux downgrades them, and the agent
@@ -27,7 +31,6 @@ names anything already configured that way, and the launcher still downgrades.
 
 Turning it on changes the launch environment, so the stamp reports `env` and `list` asks for the
 restart that applies it — the two mechanisms meet with no special-casing.
-
 ## [0.16.0] — 2026-08-10
 
 a setting you cannot honour is refused where it is made
