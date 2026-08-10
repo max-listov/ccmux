@@ -8,6 +8,7 @@ import { statusMark } from "../status.ts";
 import { toolCardView } from "../toolCard.ts";
 import { DiffStat, isDiffStat } from "./DiffStat.tsx";
 import type { FleetItem } from "../fleet.ts";
+import { externalDetailLines, externalEvidenceText } from "../externalView.ts";
 
 /** Show the tail of a path when it's too long (the meaningful end). */
 function tailPath(p: string, max: number): string {
@@ -49,8 +50,8 @@ function SessionCardImpl({
   const { row, status, external } = item;
   const s = row.session;
   const lm = row.lastMessage;
-  const empty = !lm?.text?.trim();
-  const last = sanitize((lm?.text ?? "—").replace(/\s+/g, " ").trim());
+  const empty = row.lifecycleError === null && !lm?.text?.trim();
+  const last = sanitize((row.lifecycleError ?? lm?.text ?? "—").replace(/\s+/g, " ").trim());
   // When the last activity is a tool call, the preview becomes a two-row tool card (request /
   // outcome) instead of dumping the raw tool output text.
   const tool = lm?.kind === "tool_call" ? toolCardView(lm, spin) : null;
@@ -67,6 +68,31 @@ function SessionCardImpl({
     const trail = "─".repeat(Math.max(0, cardWidth - 10 - dispWidth(name) - dispWidth(badge)));
     // preview: up to TWO wrapped lines (always renders 2 rows → stable card height)
     const lines = wrapLines(last, Math.max(8, lastWidth), 2);
+    if (external && item.ext) {
+      const detailLines = externalDetailLines(item.ext);
+      return (
+        <Box flexDirection="column" flexShrink={0} width={cardWidth}>
+          <Box>
+            <Txt color={bc}>{"╭─ "}</Txt>
+            <Txt color="magenta" bold>{name}</Txt>
+            <Txt color={bc}>{" ─── "}</Txt>
+            <Txt color={status.color} bold={status.active}>{badge}</Txt>
+            <Txt color={bc}>{` ${trail}╮`}</Txt>
+          </Box>
+          {detailLines.map((line) => (
+            <Box key={line}>
+              <Txt color={bc}>{"│ "}</Txt>
+              <Box width={textW} flexShrink={0} overflow="hidden">
+                <Txt dim={!selected}>{clipWidth(line, textW)}</Txt>
+              </Box>
+              <Box flexGrow={1} />
+              <Txt color={bc}>{"│"}</Txt>
+            </Box>
+          ))}
+          <Txt color={bc}>{`╰${"─".repeat(innerW)}╯`}</Txt>
+        </Box>
+      );
+    }
     // Fully manual frame — the only way to get a divider that truly CONNECTS to the side
     // borders (├──┤) edge-to-edge. A flexGrow spacer pushes the right │ to the edge, so
     // styled/variable-width content needs no width math.
@@ -165,6 +191,18 @@ function SessionCardImpl({
   }
 
   const bar = selected ? "▌" : " ";
+  if (external && item.ext) {
+    return (
+      <Box marginBottom={1}>
+        <Txt color="cyan">{bar}</Txt>
+        <Box flexDirection="column" paddingLeft={1}>
+          <SessionRow item={item} selected={selected} spin={spin} />
+          <Txt dim={!selected}>{externalEvidenceText(item.ext)}</Txt>
+          <Txt dim>{`cwd ${item.ext.dir ?? "unknown"}`}</Txt>
+        </Box>
+      </Box>
+    );
+  }
   return (
     <Box marginBottom={1}>
       <Box flexDirection="column">
@@ -204,8 +242,8 @@ export const SessionCard = memo(SessionCardImpl, (a, b) => {
   if (a.selected !== b.selected || a.hovered !== b.hovered || a.showDir !== b.showDir || a.framed !== b.framed || a.cardWidth !== b.cardWidth || a.lastWidth !== b.lastWidth) return false;
   const x = a.item;
   const y = b.item;
-  if (x.external !== y.external || x.row.lastMessage !== y.row.lastMessage) return false;
-  if (x.row.model !== y.row.model || x.row.contextLabel !== y.row.contextLabel || x.row.uptimeText !== y.row.uptimeText) return false;
+  if (x.external !== y.external || x.ext !== y.ext || x.row.lastMessage !== y.row.lastMessage) return false;
+  if (x.row.model !== y.row.model || x.row.contextLabel !== y.row.contextLabel || x.row.uptimeText !== y.row.uptimeText || x.row.lifecycleError !== y.row.lifecycleError) return false;
   if (x.activityText !== y.activityText) return false;
   if (x.row.session.name !== y.row.session.name || x.row.session.dir !== y.row.session.dir || x.row.session.agent !== y.row.session.agent) return false;
   const ps = x.status;

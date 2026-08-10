@@ -3,7 +3,6 @@ import type { MachineConfig, Session } from "../types.ts";
 import { loadMachineConfig } from "../config/machine.ts";
 import { loadSessions, updateSessionUuid } from "../config/sessions.ts";
 import { forkedUuid } from "../agent/index.ts";
-import { liveWriters } from "../agent/claude/writers.ts";
 import { killSession } from "../tmux/tmux.ts";
 import { STATE_DIR } from "../config/paths.ts";
 import { atomicWrite } from "../util/atomic.ts";
@@ -11,6 +10,7 @@ import { runDetached } from "../util/spawn.ts";
 import { SELF_ARGV } from "../env.ts";
 import { log } from "../util/log.ts";
 import { startSession } from "./lifecycle.ts";
+import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
 
 /**
  * `ccmux restart --all` — bounce the WHOLE fleet on this machine with one command, so a changed
@@ -27,8 +27,6 @@ import { startSession } from "./lifecycle.ts";
  */
 
 const SWEEP_LOCK = `${STATE_DIR}/restart-all.lock`;
-const WRITER_GATE_MS = 5_000; // cap on waiting for the old agent process to actually be gone
-const WRITER_POLL_MS = 250;
 
 export interface RestartAllDeps {
   sessions: () => Session[];
@@ -65,20 +63,6 @@ export async function restartAllOnce(deps: RestartAllDeps): Promise<string[]> {
   return done;
 }
 
-/** Poll until no `cli` writer drives this uuid (the pane process we just killed), capped. */
-async function waitWritersGone(uuid: string, capMs = WRITER_GATE_MS): Promise<void> {
-  const deadline = Date.now() + capMs;
-  while (Date.now() < deadline) {
-    try {
-      const writers = await liveWriters(uuid);
-      if (!writers.some((w) => w.kind === "cli")) return;
-    } catch {
-      return; // can't tell → don't stall the sweep
-    }
-    await Bun.sleep(WRITER_POLL_MS);
-  }
-}
-
 /** Single-flight: a stale lock (dead pid) is ignored, a live one refuses the sweep. */
 function sweepRunning(): boolean {
   try {
@@ -94,10 +78,6 @@ function sweepRunning(): boolean {
 
 /** The public entry: validate, then hand the sweep to a DETACHED worker and return immediately. */
 export async function cmdRestartAll(args: string[]): Promise<number> {
-  if (args.includes("--then")) {
-    console.error("restart --all: --then is not supported (that would ping every session); use ccmux msg");
-    return 1;
-  }
   if (args.some((a) => !a.startsWith("--"))) {
     console.error("restart --all takes no session name — it restarts every session on this machine");
     return 1;
@@ -140,8 +120,13 @@ export async function cmdRestartAllWorker(): Promise<number> {
       kill: async (name) => {
         await killSession(m, name);
       },
-      writersGone: (uuid) => waitWritersGone(uuid),
-      start: (name, dir) => startSession(m, name, dir),
+      // killSession already waits for the managed pane process group. External writer ownership is
+      // intentionally outside this managed lifecycle task.
+      writersGone: async () => {},
+      start: (name, dir) => {
+        clearLifecycleBlock(m, name);
+        return startSession(m, name, dir);
+      },
       onProgress: (i, total, name) => log.info({ msg: "restart --all: session restarted", name, i, total }),
     });
     log.info({ msg: "restart --all: sweep finished", count: done.length });

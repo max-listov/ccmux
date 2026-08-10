@@ -8,6 +8,7 @@ import { promptInvocation } from "../env.ts";
 import { formatChatInjection } from "./format.ts";
 import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors } from "./store.ts";
 import { writeChatHold, clearChatHold } from "../agent/sessionStatus.ts";
+import { managedPeer, managedPeerKey, principalLabel } from "./identity.ts";
 
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
@@ -20,10 +21,10 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_INBOUND = 12;
 
 /** Messages addressed to `name` sent within the window (by ledger `ts`). Pure — `nowMs` passed in. */
-export function recentInboundCount(name: string, ledger: ChatMessage[], nowMs: number): number {
+export function recentInboundCount(recipient: ReturnType<typeof managedPeer>, ledger: ChatMessage[], nowMs: number): number {
   let n = 0;
   for (const msg of ledger) {
-    if (msg.to !== name) continue;
+    if (msg.to.kind !== "managed" || managedPeerKey(msg.to) !== managedPeerKey(recipient)) continue;
     const t = Date.parse(msg.ts);
     if (Number.isFinite(t) && nowMs - t <= RATE_WINDOW_MS) n += 1;
   }
@@ -36,7 +37,7 @@ export function recentInboundCount(name: string, ledger: ChatMessage[], nowMs: n
 async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): Promise<boolean> {
   // replyable = we can actually route back to the sender's machine from here (it is us, or it is in
   // our fleet map) — otherwise we print the address without a command that would fail on this box.
-  const replyable = msg.fromMachine !== null && (msg.fromMachine === m.rcPrefix || m.fleet?.[msg.fromMachine] !== undefined);
+  const replyable = msg.from.kind === "managed" && (msg.from.machine === m.rcPrefix || m.fleet?.[msg.from.machine] !== undefined);
   const text = formatChatInjection(msg, { cli: promptInvocation(), replyable });
   if (!(await pasteText(m, name, text)) && !(await sendKeysLiteral(m, name, text.replace(/\r?\n+/g, " ⏎ ")))) {
     return false; // the pane is gone (killed between our sample and this write) — nothing was typed
@@ -125,22 +126,24 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     if (deliveries >= MAX_PER_PASS) break;
     if (!s.chatEnabled || !running.has(s.name)) continue;
     const provider = providerFor(s);
+    const recipient = managedPeer(m.rcPrefix, s);
+    const recipientKey = managedPeerKey(recipient);
     if (!provider.chatDeliverable) continue; // agent has no readiness detector → never inject (safe)
 
     // Track A: advance the cursor past non-recipient + conditional mail to the next IMMEDIATE to-me
     // message (conditional mail is Track B's; skipping it here is what prevents head-of-line blocking).
-    const from = cursors.delivered[s.name] ?? 0;
+    const from = cursors.delivered[recipientKey] ?? 0;
     let immediate: { msg: ChatMessage; idx: number } | null = null;
     for (let i = from; i < ledger.length; i++) {
       const msg = ledger[i];
-      if (!msg || msg.to !== s.name) continue;
+      if (!msg || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== recipientKey) continue;
       if (isConditional(msg)) continue; // owned by Track B
       immediate = { msg, idx: i };
       break;
     }
     const cursorTo = immediate ? immediate.idx : ledger.length; // reach the immediate, or catch up
-    if (cursors.delivered[s.name] !== cursorTo) {
-      cursors.delivered[s.name] = cursorTo;
+    if (cursors.delivered[recipientKey] !== cursorTo) {
+      cursors.delivered[recipientKey] = cursorTo;
       changed = true;
     }
 
@@ -150,7 +153,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     if (!immediate) {
       for (let i = 0; i < ledger.length; i++) {
         const msg = ledger[i];
-        if (!msg || msg.to !== s.name || !isConditional(msg)) continue;
+        if (!msg || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== recipientKey || !isConditional(msg)) continue;
         if (acked.has(msg.id) || !notBeforeDue(msg, now)) continue;
         conditional = { msg, idx: i };
         break;
@@ -160,7 +163,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const pick = immediate ?? conditional;
     if (pick === null) continue; // nothing to deliver to s
 
-    if (recentInboundCount(s.name, ledger, now) > RATE_MAX_INBOUND) {
+    if (recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND) {
       log.warn({ msg: "chat rate limit — holding delivery (possible loop)", to: s.name });
       await writeChatHold(s.name, pick.msg.id, `rate limit — this recipient got more than ${RATE_MAX_INBOUND} messages in the last minute, delivery resumes as the burst subsides`);
       continue; // hold; retries once the burst subsides
@@ -179,12 +182,12 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // the channel look dead for as long as you kept the pane open): an occupied composer, or a
     // keystroke in the last few seconds (guards the gap between two keys).
     if (provider.inputBusy?.(styled) === true) {
-      log.info({ msg: "chat delivery held — human is typing (composer not empty)", to: s.name, from: pick.msg.from });
+      log.info({ msg: "chat delivery held — human is typing (composer not empty)", to: s.name, from: principalLabel(pick.msg.from) });
       await writeChatHold(s.name, pick.msg.id, "a human is typing in that pane right now");
       continue;
     }
     if (await clientTypingRecently(m, s.name, TYPING_WINDOW_SEC)) {
-      log.info({ msg: "chat delivery held — human typed a moment ago", to: s.name, from: pick.msg.from });
+      log.info({ msg: "chat delivery held — human typed a moment ago", to: s.name, from: principalLabel(pick.msg.from) });
       await writeChatHold(s.name, pick.msg.id, "a human typed in that pane a moment ago");
       continue;
     }
@@ -218,15 +221,15 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     }
     clearChatHold(s.name);
     if (isConditional(pick.msg)) {
-      appendAck(m, pick.msg.id, "daemon", s.name); // off-cursor; dedup vs the Stop hook
+      appendAck(m, pick.msg.id, "daemon", recipient); // off-cursor; dedup vs the Stop hook
     } else {
-      cursors.delivered[s.name] = pick.idx + 1;
+      cursors.delivered[recipientKey] = pick.idx + 1;
       // mark read so `ccmux inbox` won't re-show a pushed message
-      cursors.read[s.name] = Math.max(cursors.read[s.name] ?? 0, pick.idx + 1);
+      cursors.read[recipientKey] = Math.max(cursors.read[recipientKey] ?? 0, pick.idx + 1);
     }
     changed = true;
     deliveries += 1;
-    log.info({ msg: "chat delivered", from: pick.msg.from, to: s.name, conditional: isConditional(pick.msg) });
+    log.info({ msg: "chat delivered", from: principalLabel(pick.msg.from), to: s.name, conditional: isConditional(pick.msg) });
   }
 
   if (changed) await saveCursors(m, cursors);

@@ -1,13 +1,14 @@
-import type { MachineConfig, Session } from "../types.ts";
+import type { AgentKind, MachineConfig, Session } from "../types.ts";
 import { killSession, sendKeysLiteral, sendKeysNamed, capturePane } from "../tmux/tmux.ts";
-import { removeSession, appendSession } from "../config/sessions.ts";
-import { startSession } from "../commands/lifecycle.ts";
+import { removeSession } from "../config/sessions.ts";
 import { providerFor } from "../agent/index.ts";
 import { adoptSession, forkAdopt, takeoverAdopt, LiveWritersError } from "../commands/adopt.ts";
+import { adoptCodexExternal, forkCodexExternal, takeoverCodexExternal } from "../commands/adopt.ts";
 import type { Writer } from "../agent/claude/writers.ts";
+import type { DiscoveredSession } from "./discover.ts";
 import { runDetached } from "../util/spawn.ts";
 import { SELF_ARGV } from "../env.ts";
-import { SessionSchema } from "../config/schema.ts";
+import { createManagedSession } from "../commands/create.ts";
 
 /** Poll the pane until the agent's interactive UI is actually drawn (ready marker) or timeout —
  *  so we attach to a READY session, not a half-booted blank pane. Mirrors bash `wait_ready`. */
@@ -43,7 +44,7 @@ export function restartAllSessions(): void {
 export async function restartSession(m: MachineConfig, name: string): Promise<void> {
   await killSession(m, name);
   // detached worker outlives the kill, waits, relaunches (same path as `ccmux restart`)
-  runDetached([...SELF_ARGV, "_restart-worker", name, ""]);
+  runDetached([...SELF_ARGV, "_restart-worker", name]);
 }
 
 export async function removeSessionFully(m: MachineConfig, name: string): Promise<void> {
@@ -67,42 +68,54 @@ export async function sendMessage(m: MachineConfig, name: string, text: string):
 
 /** Outcome of an adopt attempt from the TUI: adopted cleanly, or blocked by live writers
  *  (the caller then offers fork/takeover), or failed. */
-export type AdoptResult = { ok: true; name: string } | { ok: false; writers: Writer[] } | { ok: false; writers: null };
+export type OwnershipResult =
+  | { ok: true; name: string }
+  | { ok: false; writers: Writer[] | null; error: string };
 
 /** Try a COLD adopt of an external (discovered) session. Live writers → no side effects,
  *  returns them so the UI can ask fork-or-takeover. Silent (TUI refreshes via poll). */
-export async function adoptExternal(m: MachineConfig, dir: string, uuid: string): Promise<AdoptResult> {
+export async function adoptExternal(m: MachineConfig, ext: DiscoveredSession): Promise<OwnershipResult> {
   try {
-    return { ok: true, name: await adoptSession(m, dir, uuid) };
+    if (!ext.dir) return { ok: false, writers: null, error: "external session has no persisted cwd" };
+    const name = ext.provider === "codex"
+      ? await adoptCodexExternal(m, ext.threadId)
+      : await adoptSession(m, ext.dir, ext.threadId);
+    return { ok: true, name };
   } catch (e) {
-    if (e instanceof LiveWritersError) return { ok: false, writers: e.writers };
-    return { ok: false, writers: null };
+    if (e instanceof LiveWritersError) return { ok: false, writers: e.writers, error: e.message };
+    return { ok: false, writers: null, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
-/** Fork-adopt (copy under a new uuid — always safe). "" on error. */
-export async function forkAdoptExternal(m: MachineConfig, uuid: string): Promise<string> {
+/** Provider-native fork into a new managed identity. */
+export async function forkAdoptExternal(m: MachineConfig, ext: DiscoveredSession): Promise<OwnershipResult> {
   try {
-    return await forkAdopt(m, uuid);
-  } catch {
-    return "";
+    const name = ext.provider === "codex" ? await forkCodexExternal(m, ext.threadId) : await forkAdopt(m, ext.threadId);
+    return { ok: true, name };
+  } catch (error) {
+    return { ok: false, writers: null, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-/** Takeover-adopt (kill writers, adopt original). "" on error (incl. self-writer refusal). */
-export async function takeoverExternal(m: MachineConfig, dir: string, uuid: string): Promise<string> {
+/** Takeover-adopt a freshly revalidated dedicated writer. */
+export async function takeoverExternal(m: MachineConfig, ext: DiscoveredSession): Promise<OwnershipResult> {
   try {
-    return await takeoverAdopt(m, dir, uuid);
-  } catch {
-    return "";
+    if (!ext.dir) return { ok: false, writers: null, error: "external session has no persisted cwd" };
+    if (ext.provider === "codex") {
+      const pid = ext.writerRuntime?.pid;
+      if (pid === null || pid === undefined) {
+        return { ok: false, writers: null, error: "Codex writer PID is not positively identified" };
+      }
+      return { ok: true, name: await takeoverCodexExternal(m, ext.threadId, pid) };
+    }
+    return { ok: true, name: await takeoverAdopt(m, ext.dir, ext.threadId) };
+  } catch (error) {
+    return { ok: false, writers: null, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
 
 /** Register a new session (pins a fresh uuid) and start it. Returns its name for attach. */
-export async function createSession(m: MachineConfig, name: string, dir: string): Promise<Session> {
-  const s = SessionSchema.parse({ name, dir, uuid: crypto.randomUUID() });
-  await appendSession(m, s);
-  await startSession(m, name, dir);
-  return s;
+export async function createSession(m: MachineConfig, name: string, dir: string, agent: AgentKind): Promise<Session> {
+  return createManagedSession(m, { name, dir, agent, flags: [], router: false });
 }

@@ -3,6 +3,7 @@ import { VERSION } from "../../util/version.ts";
 import { IS_DEV } from "../../env.ts";
 import { SessionCard } from "../components/SessionCard.tsx";
 import type { FleetItem } from "../fleet.ts";
+import { externalActionHint } from "../fleet.ts";
 
 /** Inline view — a stack of session cards (managed, then a separated section of live
  *  external sessions). Lives in the terminal stream. */
@@ -25,10 +26,10 @@ export function InlineView({ items, externalStart, cursor, spin, rcPrefix }: { i
         <Text dimColor>  no sessions — press n to create one here</Text>
       ) : (
         items.map((it, i) => (
-          <Box key={it.row.session.uuid} flexDirection="column">
+          <Box key={it.key} flexDirection="column">
             {i === externalStart ? (
               <Box paddingLeft={1}>
-                <Text color="magenta" dimColor>── external · live outside ccmux (read-only) ──</Text>
+                <Text color="magenta" dimColor>── external · local inventory outside ccmux ──</Text>
               </Box>
             ) : null}
             <SessionCard item={it} selected={i === cursor} spin={spin} showDir={false} lastWidth={lastWidth} />
@@ -36,8 +37,8 @@ export function InlineView({ items, externalStart, cursor, spin, rcPrefix }: { i
         ))
       )}
       <Text dimColor>
-        {items[cursor]?.external
-          ? "  ↑↓ move   a adopt   n new   f fullscreen   q quit"
+        {items[cursor]?.external && items[cursor]?.ext
+          ? `  ↑↓ move   ${externalActionHint(items[cursor].ext)}   n new   f fullscreen   q quit`
           : "  ↑↓ move   ↵ attach   n new   r restart   R all   s stop   D del   f fullscreen   q quit"}
       </Text>
     </Box>

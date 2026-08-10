@@ -7,6 +7,7 @@ import { notBeforeDue } from "../chat/deliver.ts";
 import { forwardIfRemote } from "../fleet/forward.ts";
 import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.ts";
 import type { MachineConfig, ChatMessage, Session } from "../types.ts";
+import { managedPeer } from "../chat/identity.ts";
 
 /**
  * `ccmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
@@ -79,10 +80,10 @@ export function mailBlocksSettle(
   return unread.filter((msg) => notBeforeDue(msg, opts.nowMs));
 }
 
-function blockingInbound(m: MachineConfig, s: Session, name: string, nowMs: number): ChatMessage[] {
+function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessage[] {
   try {
     return mailBlocksSettle(
-      unreadFor(name, loadLedger(m), loadCursors(m), loadAckedIds(m)).map((u) => u.msg),
+      unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map((u) => u.msg),
       { chatEnabled: s.chatEnabled, canReceiveChat: providerFor(s).chatDeliverable !== undefined, nowMs },
     );
   } catch {
@@ -142,7 +143,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     // Undelivered mail means the work has not STARTED, and an idle pane is therefore not an answer.
     // Without this the documented recipe raced itself: `msg` queues, the daemon delivers a beat
     // later, and a `wait` fired immediately after reported a finished turn that had never begun.
-    if (blockingInbound(m, s, name, now).length === 0) {
+    if (blockingInbound(m, s, now).length === 0) {
       const ts = readTurnState(m, s, provider, pane, now);
       if (ts.settled) {
         // Both settle paths exit 0 — a third exit code would break every existing script — but the

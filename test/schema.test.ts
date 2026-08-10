@@ -4,7 +4,7 @@ import { SessionSchema, MachineConfigSchema } from "../src/config/schema.ts";
 const UUID = "11111111-1111-4111-8111-111111111111";
 
 test("SessionSchema applies defaults", () => {
-  const s = SessionSchema.parse({ name: "cc-x", dir: "/home/user", uuid: UUID });
+  const s = SessionSchema.parse({ name: "cc-x", dir: "/home/user", uuid: UUID, agent: "claude" });
   expect(s.flags).toEqual([]);
   expect(s.archived).toBe(false);
   expect(s.resumeText).toBe("continue");
@@ -15,16 +15,18 @@ test("SessionSchema preserves weird flags verbatim (the [1m] glob bug class is g
     name: "cc-x",
     dir: "/home/user",
     uuid: UUID,
+    agent: "claude",
     flags: ["--model", "claude-opus-4-8[1m]"],
   });
   expect(s.flags).toEqual(["--model", "claude-opus-4-8[1m]"]);
 });
 
 test("SessionSchema rejects bad names / relative dir / bad uuid", () => {
-  expect(() => SessionSchema.parse({ name: "a|b", dir: "/x", uuid: UUID })).toThrow();
-  expect(() => SessionSchema.parse({ name: "a b", dir: "/x", uuid: UUID })).toThrow();
-  expect(() => SessionSchema.parse({ name: "cc-x", dir: "rel/path", uuid: UUID })).toThrow();
-  expect(() => SessionSchema.parse({ name: "cc-x", dir: "/x", uuid: "not-a-uuid" })).toThrow();
+  expect(() => SessionSchema.parse({ name: "a|b", dir: "/x", uuid: UUID, agent: "claude" })).toThrow();
+  expect(() => SessionSchema.parse({ name: "a b", dir: "/x", uuid: UUID, agent: "claude" })).toThrow();
+  expect(() => SessionSchema.parse({ name: "cc-x", dir: "rel/path", uuid: UUID, agent: "claude" })).toThrow();
+  expect(() => SessionSchema.parse({ name: "cc-x", dir: "/x", uuid: "not-a-uuid", agent: "claude" })).toThrow();
+  expect(() => SessionSchema.parse({ name: "cc-x", dir: "/x", uuid: UUID })).toThrow();
 });
 
 test("MachineConfig: permissionMode is locked to auto — config cannot escalate", () => {
@@ -39,6 +41,7 @@ test("MachineConfig: permissionMode is locked to auto — config cannot escalate
   const m = MachineConfigSchema.parse(base);
   expect(m.permissionMode).toBe("auto");
   expect(m.ensureInterval).toBe(30);
+  expect(m.codexCorrelationTimeoutMs).toBe(30_000);
   expect(() => MachineConfigSchema.parse({ ...base, permissionMode: "yolo" })).toThrow();
 });
 

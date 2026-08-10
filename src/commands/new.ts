@@ -1,11 +1,9 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 import { loadMachineConfig } from "../config/machine.ts";
-import { appendSession } from "../config/sessions.ts";
-import { SessionSchema } from "../config/schema.ts";
+import { AgentKindSchema } from "../config/schema.ts";
 import { log } from "../util/log.ts";
-import { cmdStart } from "./lifecycle.ts";
+import { createManagedSession } from "./create.ts";
 
 /**
  * Register a new managed session and start it. Flags after `--` are stored verbatim
@@ -15,10 +13,10 @@ export async function cmdNew(
   name: string | undefined,
   dir: string | undefined,
   flags: string[],
-  opts: { router?: boolean } = {},
+  opts: { router?: boolean; agent?: string } = {},
 ): Promise<number> {
   if (!name || !dir) {
-    console.log("usage: ccmux new <name> <dir> [--router] [-- claude flags...]");
+    console.log("usage: ccmux new <name> <dir> [--agent claude|codex] [--router] [-- provider flags...]");
     return 1;
   }
   if (name.includes("|")) {
@@ -35,19 +33,13 @@ export async function cmdNew(
     // --router: this session carries the router protocol module and, since it drives ccmux chat,
     // has chat enabled. Just DATA (a module key + a bool), resolved to live code at launch.
     const router = opts.router === true;
-    const session = SessionSchema.parse({
-      name,
-      dir: abs,
-      uuid: randomUUID(),
-      flags,
-      ...(router ? { promptModules: ["router"], chatEnabled: true } : {}),
-    });
-    await appendSession(m, session);
+    const agent = AgentKindSchema.parse(opts.agent ?? "claude");
+    const session = await createManagedSession(m, { name, dir: abs, agent, flags, router });
     log.info({ msg: "session registered", name, dir: abs, uuid: session.uuid });
     console.log(`added: ${JSON.stringify(session)}`);
   } catch (e) {
     console.log(e instanceof Error ? e.message : String(e));
     return 1;
   }
-  return cmdStart(name);
+  return 0;
 }

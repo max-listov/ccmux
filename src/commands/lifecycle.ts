@@ -1,14 +1,13 @@
-import type { MachineConfig, Session } from "../types.ts";
+import type { MachineConfig } from "../types.ts";
 import { loadMachineConfig, rcName } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
-import { hasSession, newSession, killSession, setOption, setPaneOption, capturePane } from "../tmux/tmux.ts";
+import { hasSession, newSession, killSession, setOption, setPaneOption } from "../tmux/tmux.ts";
 import { runDetached } from "../util/spawn.ts";
 import { SELF_ARGV } from "../env.ts";
-import { providerFor } from "../agent/index.ts";
 import { log } from "../util/log.ts";
 import { refusesSelf } from "./guard.ts";
-import { cmdSend } from "./send.ts";
 import { forwardIfRemote } from "../fleet/forward.ts";
+import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
 
 /** Create the tmux session running ccmux's own `_run` loop. Idempotent. */
 export async function startSession(m: MachineConfig, name: string, dir: string): Promise<void> {
@@ -32,6 +31,17 @@ export async function startSession(m: MachineConfig, name: string, dir: string):
   console.log(`started ${name} (${rcName(m, name)})`);
 }
 
+/** Start the pending Codex bootstrap transaction. It is not a registry Session yet. */
+export async function startBootstrapSession(m: MachineConfig, name: string, dir: string, generation: string): Promise<void> {
+  if (await hasSession(m, name)) throw new Error(`${name} already running`);
+  await newSession(m, name, dir, [...SELF_ARGV, "_bootstrap", generation], { CCMUX_BOOTSTRAP_GENERATION: generation });
+  await setOption(m, name, "automatic-rename", "off");
+  await setOption(m, name, "allow-rename", "off");
+  await setOption(m, name, "mouse", "on");
+  await setOption(m, name, "history-limit", "50000");
+  await setPaneOption(m, name, "allow-passthrough", "on");
+}
+
 export async function cmdStart(name: string | undefined): Promise<number> {
   if (!name) {
     console.log("usage: ccmux start <name>   ·   <machine>:<name> for another fleet machine");
@@ -46,6 +56,7 @@ export async function cmdStart(name: string | undefined): Promise<number> {
     console.log(`unknown session: ${name}`);
     return 1;
   }
+  clearLifecycleBlock(m, name);
   await startSession(m, name, s.dir);
   return 0;
 }
@@ -68,17 +79,13 @@ export async function cmdStop(name: string | undefined, force = false): Promise<
 
 export async function cmdRestart(args: string[]): Promise<number> {
   const target = args[0];
-  if (!target) {
-    console.log('usage: ccmux restart <name> [--then "<note>"]   ·   <machine>:<name> for another fleet machine');
+  if (!target || args.length !== 1) {
+    console.log("usage: ccmux restart <name>   ·   <machine>:<name> for another fleet machine");
     return 1;
   }
-  // A restart hand-off waits for the remote to kill + relaunch + (with --then) settle the note, so it
-  // needs more headroom than a plain command.
-  const fwd = await forwardIfRemote(target, "restart", args.slice(1), { timeoutMs: 120_000 });
+  const fwd = await forwardIfRemote(target, "restart", [], { timeoutMs: 120_000 });
   if (fwd.done) return fwd.code;
   const { session: name, m } = fwd;
-  const thenIdx = args.indexOf("--then");
-  const note = thenIdx >= 0 ? (args[thenIdx + 1] ?? "") : "";
   // Verify the session EXISTS before killing anything. Without this a typo killed nothing, spawned a
   // detached worker that failed silently into /dev/null, and still returned 0 — "restarted!" while
   // nothing happened. Over ssh that lie becomes an initiator waiting forever for a task that was
@@ -90,46 +97,18 @@ export async function cmdRestart(args: string[]): Promise<number> {
   await killSession(m, name);
   // Detached worker (own process group) survives killing the very session this runs in
   // — so a session can restart ITSELF and still get pinged back once it's ready.
-  runDetached([...SELF_ARGV, "_restart-worker", name, note]);
-  console.log(`restarting ${name}${note ? " (will ping when ready)" : ""}`);
+  runDetached([...SELF_ARGV, "_restart-worker", name]);
+  console.log(`restarting ${name}`);
   return 0;
 }
 
-/**
- * Wait until a (re)started session is ready for input: the agent UI is up (ready marker)
- * AND it's idle (no working-spinner). Gated on real pane state via the provider's scanPane,
- * not a blind sleep, so a wake-note never lands in a half-loaded pane. Two consecutive idle
- * reads guard against a transient idle between load frames.
- */
-async function waitReady(m: MachineConfig, s: Session, timeoutSec = 120): Promise<boolean> {
-  const provider = providerFor(s);
-  const deadline = Date.now() + timeoutSec * 1000;
-  let ok = 0;
-  while (Date.now() < deadline) {
-    const scan = provider.scanPane(await capturePane(m, s.name, 30));
-    if (scan.ready && scan.state === "idle") {
-      ok += 1;
-      if (ok >= 2) return true;
-    } else {
-      ok = 0;
-    }
-    await Bun.sleep(2000);
-  }
-  return false;
-}
-
-export async function cmdRestartWorker(name: string | undefined, note?: string): Promise<number> {
+export async function cmdRestartWorker(name: string | undefined): Promise<number> {
   if (!name) return 1;
   await Bun.sleep(1000); // let the kill settle before relaunch (race-safe)
   const m = loadMachineConfig();
   const s = findSession(loadSessions(m), name);
   if (!s) return 1;
+  clearLifecycleBlock(m, name);
   await startSession(m, name, s.dir);
-  if (!note) return 0;
-  if (!(await waitReady(m, s))) log.warn({ msg: "restart ready-wait timed out — sending note anyway", name });
-  // `internal`: this is ccmux waking a session it just restarted, not a caller choosing `send` over
-  // `msg` — the "that reads like a message" nudge would be advice to nobody.
-  await cmdSend(name, [note], { internal: true });
-  log.info({ msg: "restart wake-note delivered", name });
   return 0;
 }

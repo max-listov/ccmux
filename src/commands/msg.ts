@@ -1,248 +1,236 @@
 import { randomUUID } from "node:crypto";
-import { loadMachineConfig } from "../config/machine.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { appendMessage, appendAck, loadAckedIds, loadLedger, pendingConditional, CLI, OWNER } from "../chat/store.ts";
-import { usageLine } from "./help.ts";
-import { log } from "../util/log.ts";
-import { routeFor, parseOrigin } from "../fleet/address.ts";
-import { runRemote, relay } from "../fleet/transport.ts";
-import { appendOutbound } from "../fleet/outbox.ts";
+import { z } from "zod";
 import { providerFor } from "../agent/index.ts";
+import { cliPrincipal, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
+import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
+import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor } from "../chat/auth.ts";
+import { loadMachineConfig } from "../config/machine.ts";
+import { ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
+import { findSession, loadSessions } from "../config/sessions.ts";
+import { routeFor } from "../fleet/address.ts";
+import { appendOutbound } from "../fleet/outbox.ts";
+import { relay, runRemote } from "../fleet/transport.ts";
+import type { AgentKind, ChatMessage, ChatPrincipal, ManagedPeer, Session } from "../types.ts";
+import { log } from "../util/log.ts";
 import { preview } from "../util/preview.ts";
+import { usageLine } from "./help.ts";
 
-/**
- * Send a chat message. You pick only the RECIPIENT — the sender is AUTOMATIC and cannot be spoofed:
- * an agent sends as its own session (env CCMUX_SESSION), a command-line invocation sends as `cli`.
- * There is no `--from`. Recipient is another session (delivered to its pane + mirrored to Telegram)
- * or the reserved `owner` (the human — Telegram-only, no pane). A sending session must be chat-enabled.
- *
- *   ccmux msg <to|owner> <text...> [--task <name>] [--defer] [--after <sec>] [--on-behalf-of <who>]
- *   ccmux msg cancel <task>        — drop this sender's still-undelivered mail for a task
- *   echo "…" | ccmux msg <to>      — body from stdin
- */
-export async function cmdMsg(args: string[]): Promise<number> {
-  // Sender = this agent session, or `cli` from a shell. Automatic — never chosen by the caller.
-  const ccmuxSession = process.env.CCMUX_SESSION;
-  const from = ccmuxSession !== undefined && ccmuxSession !== "" ? ccmuxSession : CLI;
+const RemoteListSchema = ListJsonSchema.pick({ sessions: true });
 
-  // Subcommand: `ccmux msg cancel <task>` — tombstone THIS sender's undelivered conditional mail for
-  // that task (an armed watchdog / a queued defer that hasn't fired). Scoped to `from` so a session
-  // can never cancel another's dispatches. Already-delivered mail is untouched (can't be un-sent).
-  if (args[0] === "cancel") {
-    const task = args[1];
-    if (task === undefined || task === "") {
-      console.log("usage: ccmux msg cancel <task>   (drops your still-undelivered mail for that task)");
-      return 1;
+function senderFor(machine: string, sessions: Session[]): ChatPrincipal | { error: string } {
+  const name = process.env.CCMUX_SESSION;
+  if (name === undefined || name === "") return cliPrincipal(machine);
+  const session = findSession(sessions, name);
+  if (!session || !session.chatEnabled) {
+    return { error: `msg: this session '${name}' has chat disabled — enable with: ccmux chat on ${name}` };
+  }
+  if (!hasChatCredential(loadMachineConfig(), session, process.env[CHAT_CREDENTIAL_ENV])) {
+    return { error: `msg: CCMUX_SESSION does not identify the calling process as managed session '${name}'` };
+  }
+  return managedPeer(machine, session);
+}
+
+function assertExpected(target: ManagedPeer, agent: AgentKind | null, threadId: string | null): string | null {
+  if (agent !== null && target.agent !== agent) return `provider mismatch: expected ${agent}, found ${target.agent}`;
+  if (threadId !== null && target.threadId !== threadId) return `thread mismatch: expected ${threadId}, found ${target.threadId}`;
+  return null;
+}
+
+async function resolveRemotePeer(alias: string, machine: string, name: string): Promise<ManagedPeer | { error: string }> {
+  const result = await runRemote(alias, ["ccmux", "list", "--json"], { timeoutMs: 20_000 });
+  if (result.transportFailed) return { error: `msg ${machine}:${name}: transport failed while resolving exact peer` };
+  if (result.code !== 0) return { error: `msg ${machine}:${name}: remote peer resolution failed (exit ${result.code})` };
+  try {
+    const parsed = RemoteListSchema.parse(JSON.parse(result.stdout));
+    const matches = parsed.sessions.filter((session) => session.name === name);
+    if (matches.length !== 1) {
+      const candidates = matches.map((session) => `${session.agent ?? "unknown"}#${session.uuid}`).join(", ");
+      const suffix = candidates === "" ? "" : `; candidates: ${candidates}`;
+      return { error: `msg ${machine}:${name}: expected one exact peer, found ${matches.length}${suffix}` };
     }
-    const m = loadMachineConfig();
-    const pending = pendingConditional(loadLedger(m), loadAckedIds(m), { from, task });
-    for (const p of pending) appendAck(m, p.id, "cancel", p.to);
-    log.info({ msg: "chat cancel", from, task, cancelled: pending.length });
-    console.log(`cancelled ${pending.length} undelivered message(s) from ${from} for task '${task}'`);
+    const match = matches[0];
+    if (match === undefined) return { error: `msg ${machine}:${name}: peer disappeared during resolution` };
+    return {
+      kind: "managed",
+      source: "ccmux",
+      machine,
+      agent: match.agent,
+      session: match.name,
+      threadId: z.uuid().parse(match.uuid),
+    };
+  } catch {
+    return { error: `msg ${machine}:${name}: remote identity is missing or version-incompatible` };
+  }
+}
+
+function buildEnvelope(
+  from: ChatPrincipal,
+  to: ManagedPeer | ReturnType<typeof ownerTarget>,
+  body: string,
+  task: string | null,
+  defer: boolean,
+  onBehalfOf: string | null,
+  notBefore: string | null,
+): ChatMessage {
+  return ChatMessageSchema.parse({
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    from,
+    to,
+    body,
+    task,
+    defer,
+    onBehalfOf,
+    notBefore,
+  });
+}
+
+/** Transport-only v2 receiver. Old binaries reject the unknown verb before appending anything. */
+export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(), rawInput?: string): Promise<number> {
+  if (process.env.CCMUX_SESSION !== undefined) {
+    console.error("chat receive is transport-only");
+    return 1;
+  }
+  if (!transportAuthenticated) {
+    console.error("chat receive is only admitted through an authenticated SSH transport");
+    return 1;
+  }
+  let message: ChatMessage;
+  try {
+    message = ChatMessageSchema.parse(JSON.parse(rawInput ?? await Bun.stdin.text()));
+  } catch {
+    console.error("chat receive: invalid v2 envelope");
+    return 1;
+  }
+  if (message.to.kind !== "managed") {
+    console.error("chat receive: remote owner target is not allowed");
+    return 1;
+  }
+  const machine = loadMachineConfig();
+  if (message.to.machine !== machine.rcPrefix) {
+    console.error(`chat receive: target machine mismatch (${message.to.machine} != ${machine.rcPrefix})`);
+    return 1;
+  }
+  const session = findSession(loadSessions(machine), message.to.session);
+  if (!session) {
+    console.error(`chat receive: target session '${message.to.session}' no longer exists`);
+    return 1;
+  }
+  const current = managedPeer(machine.rcPrefix, session);
+  const mismatch = assertExpected(current, message.to.agent, message.to.threadId);
+  if (mismatch !== null) {
+    console.error(`chat receive: ${mismatch}`);
+    return 1;
+  }
+  if (!session.chatEnabled || providerFor(session).chatDeliverable === undefined) {
+    console.error(`chat receive: target '${session.name}' cannot receive chat`);
+    return 1;
+  }
+  if (!(await appendMessageOnce(machine, message))) {
+    console.log(`already delivered (${message.id}) — retry ignored`);
     return 0;
   }
+  console.log(`accepted ${principalLabel(message.from)} → ${targetLabel(message.to)}`);
+  return 0;
+}
 
+export async function cmdMsg(args: string[]): Promise<number> {
   const positionals: string[] = [];
-  const originArg = process.env.CCMUX_ORIGIN ?? null;
   let task: string | null = null;
   let defer = false;
   let onBehalfOf: string | null = null;
   let afterSec: number | null = null;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === "--task") {
-      task = args[++i] ?? null;
-      continue;
-    }
-    // Deferred delivery: hold until the recipient voluntarily finishes its turn (never mid-work).
-    if (a === "--defer") {
-      defer = true;
-      continue;
-    }
-    // Honest provenance for a relayed instruction (router → target on behalf of the owner).
-    if (a === "--on-behalf-of") {
-      onBehalfOf = args[++i] ?? null;
-      continue;
-    }
-    // Time-delayed delivery: not before N seconds from now (a router's self-watchdog timer).
-    if (a === "--after") {
-      const n = Number.parseInt(args[++i] ?? "", 10);
-      if (!Number.isFinite(n) || n <= 0) {
-        console.log("msg: --after needs a positive number of seconds");
-        return 1;
-      }
-      afterSec = n;
-      continue;
-    }
-    // An unknown --flag used to be swallowed into the body as text, so a typo (or a flag a
-    // not-yet-updated machine doesn't know) silently became part of the message. Refuse instead.
-    if (a !== undefined && a.startsWith("--")) {
-      console.log(`msg: unknown flag '${a}'\n${usageLine("msg")}`);
-      return 1;
-    }
-    if (a !== undefined) positionals.push(a);
+  let expectedAgent: AgentKind | null = null;
+  let expectedThread: string | null = null;
+  for (let index = 0; index < args.length; index++) {
+    const value = args[index];
+    if (value === "--task") task = args[++index] ?? null;
+    else if (value === "--defer") defer = true;
+    else if (value === "--on-behalf-of") onBehalfOf = args[++index] ?? null;
+    else if (value === "--to-agent") {
+      const parsed = z.enum(["claude", "codex"]).safeParse(args[++index]);
+      if (!parsed.success) return console.error("msg: --to-agent needs claude|codex"), 1;
+      expectedAgent = parsed.data;
+    } else if (value === "--to-thread") {
+      const parsed = z.uuid().safeParse(args[++index]);
+      if (!parsed.success) return console.error("msg: --to-thread needs a UUID"), 1;
+      expectedThread = parsed.data;
+    } else if (value === "--after") {
+      const seconds = Number.parseInt(args[++index] ?? "", 10);
+      if (!Number.isFinite(seconds) || seconds <= 0) return console.error("msg: --after needs positive seconds"), 1;
+      afterSec = seconds;
+    } else if (value?.startsWith("--")) return console.error(`msg: unknown flag '${value}'\n${usageLine("msg")}`), 1;
+    else if (value !== undefined) positionals.push(value);
   }
-  const notBefore = afterSec !== null ? new Date(Date.now() + afterSec * 1000).toISOString() : null;
-  let to = positionals[0];
+
+  const machine = loadMachineConfig();
+  const sessions = loadSessions(machine);
+  const from = senderFor(machine.rcPrefix, sessions);
+  if ("error" in from) return console.error(from.error), 1;
+
+  if (positionals[0] === "cancel") {
+    const cancelTask = positionals[1];
+    if (!cancelTask) return console.log("usage: ccmux msg cancel <task>"), 1;
+    const pending = pendingConditional(loadLedger(machine), loadAckedIds(machine), { from, task: cancelTask });
+    for (const message of pending) appendAck(machine, message.id, "cancel", message.to);
+    console.log(`cancelled ${pending.length} undelivered message(s) from ${principalLabel(from)} for task '${cancelTask}'`);
+    return 0;
+  }
+
+  let targetToken = positionals[0];
   let body = positionals.slice(1).join(" ").trim();
+  if (body === "" && targetToken !== undefined && !process.stdin.isTTY) body = (await Bun.stdin.text()).trim();
+  if (!targetToken || body === "") return console.error(usageLine("msg")), 1;
 
-  // stdin fallback: `echo "…" | ccmux msg <to>` — with a recipient but no inline body, read the body
-  // from a pipe (matches `tool tg`). Only when stdin is NOT a TTY, so an interactive shell with a
-  // missing body still gets the usage error instead of hanging on the terminal.
-  if (body === "" && to !== undefined && !process.stdin.isTTY) {
-    body = (await Bun.stdin.text().catch(() => "")).trim();
+  if (onBehalfOf !== null && from.kind === "managed") {
+    const sender = findSession(sessions, from.session);
+    if (!sender?.promptModules.includes("router")) return console.error("msg: only a router session may use --on-behalf-of"), 1;
   }
-
-  if (to === undefined || body === "") {
-    console.log(usageLine("msg"));
-    return 1;
-  }
-
-  const m = loadMachineConfig();
-  const sessions = loadSessions(m);
-
-  // `CCMUX_ORIGIN` names the machine+session a message came from when this invocation arrived over
-  // ssh. It rides the ENVIRONMENT rather than a flag on purpose (see `runRemote`): an older ccmux
-  // ignores an unknown variable, whereas an unknown flag would have become the message body.
-  // It is a routing LABEL, not a credential — see `parseOrigin` for what it does and does not claim.
-  let fromMachine: string | null = null;
-  let fromName = from;
-  if (originArg !== null) {
-    const o = parseOrigin(originArg, from !== CLI, [OWNER]);
-    if ("error" in o) {
-      console.log(o.error);
-      return 1;
-    }
-    fromMachine = o.machine;
-    fromName = o.session;
-  }
-
-  // A sending SESSION must exist and be chat-enabled; `cli` (the command line) is always allowed.
-  const sender = from === CLI ? undefined : findSession(sessions, from);
-  if (from !== CLI && (!sender || !sender.chatEnabled)) {
-    console.log(`msg: this session '${from}' has chat disabled — enable with: ccmux chat on ${from}`);
-    return 1;
-  }
-
-  // Provenance gate: relaying "--on-behalf-of" (elevating a message to someone else's authority) is
-  // limited to the human at the CLI and to ROUTER sessions. A plain peer must not be able to forge
-  // owner authority — `from` is always the true unspoofable sender, but the AUTHORITY tag is gated.
-  if (onBehalfOf !== null && from !== CLI && !sender?.promptModules.includes("router")) {
-    console.log(`msg: only a router session may use --on-behalf-of (this session '${from}' is not a router)`);
-    return 1;
-  }
-
-  // ── fleet routing ─────────────────────────────────────────────────────────────────────────────
-  // Deliberately AFTER the local authority gates above: the sender-must-be-chat-enabled and the
-  // router-only `--on-behalf-of` checks are enforced on the machine the message LEAVES, because the
-  // receiving machine sees only `cli` and could not enforce them. Interception in cli.ts dispatch
-  // would skip both — hence it lives here, not there.
-  const route = routeFor(to, m);
-  if (route.kind === "error") {
-    console.error(route.message);
-    return 1;
-  }
-  if (route.kind === "remote") {
-    if (to.endsWith(`:${OWNER}`) || to.endsWith(`:${CLI}`)) {
-      console.error(`msg: '${OWNER}'/'${CLI}' are not machine-scoped — use: ccmux msg ${OWNER}`);
-      return 1;
-    }
-    // Conditional delivery is deliberately LOCAL-ONLY in v1. Its bookkeeping (task dedup and
-    // `msg cancel`) keys on the sender within ONE ledger, and a cross-machine send lands in the
-    // REMOTE ledger as `cli`: two different remote senders would tombstone each other's mail, and
-    // the originator could never cancel its own. Refusing loudly beats a silent wrong outcome.
-    if (defer || notBefore !== null) {
-      console.error("msg: --defer/--after are local-only (cross-machine mail is delivered immediately) — send it plain, or run the conditional send on that machine");
-      return 1;
-    }
-    // Carry the sender's address across the hop — including for a plain shell (`host-a:cli`), which
-    // used to arrive as a bare `cli` with no machine at all, leaving the recipient exactly as unable
-    // to answer as before. The transport is the only writer: a local agent setting this itself is
-    // refused (see `parseOrigin`).
-    const remoteArgs = [route.session, ...(task !== null ? ["--task", task] : []), ...(onBehalfOf !== null ? ["--on-behalf-of", onBehalfOf] : [])];
-    // ONE id for this message, minted here and carried across the hop, so the outbox row and the
-    // remote ledger entry are the same letter. That identity is what makes a later retry safe:
-    // the receiver skips an id it has already stored, so re-sending can never duplicate — including
-    // the nasty case where the first attempt DID land and only our side read it as a failure.
-    const id = randomUUID();
-    // Body travels on STDIN, never in the command line: `msg` already reads a piped body, so quotes,
-    // newlines, `$` and backticks in the text cannot corrupt or inject on the remote shell.
-    const r = await runRemote(route.alias, ["ccmux", "msg", ...remoteArgs], {
-      stdin: body,
-      env: { CCMUX_ORIGIN: `${m.rcPrefix}:${from}`, CCMUX_MSG_ID: id },
-    });
-    // Record the SEND on this side, success or failure — without it the initiator has no trace that
-    // it ever asked, and "waiting for a report" exists only in an agent's head.
-    appendOutbound(m, {
-      id,
-      ts: new Date().toISOString(),
-      from,
-      toMachine: route.machine,
-      toSession: route.session,
-      kind: "msg",
-      body,
-      task,
-      ok: !r.transportFailed && r.code === 0,
-      detail: r.transportFailed ? "transport failed" : r.code === 0 ? "" : `remote exit ${r.code}`,
-    });
-    return relay(r, `msg ${to}`);
-  }
-  // Local route: an address naming THIS machine (`<own-prefix>:name`) is just the local session —
-  // strip the prefix so recipient lookup, the ledger and every downstream reader see the plain name.
-  to = route.session;
-
-  // Recipient: `owner` = the human (Telegram-only, no pane); otherwise a chat-enabled session.
-  if (to === OWNER) {
-    if (m.telegram === undefined) {
-      console.log("msg: note — no telegram configured, so 'owner' won't receive this now (kept in the ledger).");
-    }
-  } else {
-    const target = findSession(sessions, to);
-    if (!target) {
-      console.log(`msg: no such session '${to}' on this machine (or use 'owner' to message the human)`);
-      return 1;
-    }
-    if (!target.chatEnabled) {
-      console.log(`msg: recipient '${to}' has chat disabled — enable with: ccmux chat on ${to}`);
-      return 1;
-    }
-    // Refuse a recipient whose agent has no "is this pane safe to inject into" detector: the daemon
-    // skips such sessions entirely, so the message would sit in the ledger forever while the sender
-    // believed it was sent. Fail at the door instead of accumulating undeliverable mail.
-    if (providerFor(target).chatDeliverable === undefined) {
-      console.log(`msg: recipient '${to}' runs ${target.agent}, which cannot receive chat (no safe-to-inject detector for its pane) — nothing would ever be delivered`);
-      return 1;
-    }
-  }
-
-  // Trap warning: `--after` + `--defer` multiply — "not before T" AND "only at a turn boundary". A
-  // sender in a long turn (a router polling/validating almost always is) won't get such a self-ping
-  // on time; the Stop hook fires only when the turn ENDS. A watchdog should use bare `--after`, which
-  // the daemon delivers between tool calls. Not blocked (they're compatible) — just steer.
+  const notBefore = afterSec === null ? null : new Date(Date.now() + afterSec * 1000).toISOString();
   if (afterSec !== null && defer) {
-    console.log("msg: note — --after with --defer only arrives at the recipient's next turn boundary; a self-watchdog should use bare --after (delivered between tool calls, not held for end-of-turn).");
+    console.log("msg: note — --after with --defer only arrives at the recipient's next turn boundary; a self-watchdog should use bare --after");
+  }
+  if (targetToken === OWNER) {
+    if (expectedAgent !== null || expectedThread !== null) return console.error("msg: owner has no provider/thread"), 1;
+    appendMessage(machine, buildEnvelope(from, ownerTarget(), body, task, defer, onBehalfOf, notBefore));
+    console.log(`sent ${principalLabel(from)} → owner: ${preview(body)}`);
+    return 0;
   }
 
-  // Dedup by task: a re-armed conditional (defer/after) with the same (from, to, task) REPLACES the
-  // sender's prior still-undelivered one — so re-arming a watchdog with the same --task can't pile up
-  // duplicate pings (the router's core pain). Tombstone the priors, then append the fresh one.
+  const route = routeFor(targetToken, machine);
+  if (route.kind === "error") return console.error(route.message), 1;
+  if (route.kind === "remote") {
+    if (defer || notBefore !== null) return console.error("msg: --defer/--after are local-only"), 1;
+    const resolved = await resolveRemotePeer(route.alias, route.machine, route.session);
+    if ("error" in resolved) return console.error(resolved.error), 1;
+    const mismatch = assertExpected(resolved, expectedAgent, expectedThread);
+    if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
+    const envelope = buildEnvelope(from, resolved, body, task, false, onBehalfOf, null);
+    const result = await runRemote(route.alias, ["ccmux", "_chat-receive-v2"], { stdin: JSON.stringify(envelope), timeoutMs: 20_000 });
+    appendOutbound(machine, {
+      kind: "msg",
+      envelope,
+      result: { ok: !result.transportFailed && result.code === 0, detail: result.transportFailed ? "transport failed" : result.code === 0 ? "" : `remote exit ${result.code}` },
+    });
+    return relay(result, `msg ${targetToken}`);
+  }
+
+  targetToken = route.session;
+  const session = findSession(sessions, targetToken);
+  if (!session) return console.error(`msg: no such session '${targetToken}'`), 1;
+  const target = managedPeer(machine.rcPrefix, session);
+  const mismatch = assertExpected(target, expectedAgent, expectedThread);
+  if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
+  if (!session.chatEnabled || providerFor(session).chatDeliverable === undefined) {
+    return console.error(`msg: recipient '${targetToken}' cannot receive chat`), 1;
+  }
   if ((defer || notBefore !== null) && task !== null) {
-    const priors = pendingConditional(loadLedger(m), loadAckedIds(m), { from, to, task });
-    for (const p of priors) appendAck(m, p.id, "cancel", p.to);
-    if (priors.length > 0) log.info({ msg: "chat dedup — replaced prior pending", from, to, task, replaced: priors.length });
+    const prior = pendingConditional(loadLedger(machine), loadAckedIds(machine), { from, to: target, task });
+    for (const message of prior) appendAck(machine, message.id, "cancel", message.to);
   }
-
-  // A carried id means this letter already has an identity on the SENDER's side. Honouring it (and
-  // refusing a repeat) is what turns a retry into a no-op instead of a duplicate. Only the transport
-  // can set it — the same gate as the origin, since both arrive together over ssh.
-  const carriedId = originArg !== null ? (process.env.CCMUX_MSG_ID ?? null) : null;
-  if (carriedId !== null && loadLedger(m).some((x) => x.id === carriedId)) {
-    console.log(`already delivered (${carriedId}) — retry ignored`);
-    return 0; // success: the letter IS there, which is what the sender wanted to know
-  }
-  appendMessage(m, { id: carriedId ?? randomUUID(), ts: new Date().toISOString(), from: fromName, fromMachine, to, body, task, defer, onBehalfOf, notBefore });
-  log.info({ msg: "chat message sent", from: fromName, fromMachine, to, task, defer, onBehalfOf, notBefore });
-  const when = notBefore !== null ? ` (after ${afterSec}s)` : defer ? " (deferred)" : "";
-  console.log(`sent ${fromMachine !== null ? `${fromMachine}:${fromName}` : fromName} → ${to}${when}: ${preview(body)}`);
+  const envelope = buildEnvelope(from, target, body, task, defer, onBehalfOf, notBefore);
+  appendMessage(machine, envelope);
+  log.info({ msg: "chat message sent", from: principalLabel(from), to: targetLabel(target), task });
+  console.log(`sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
   return 0;
 }

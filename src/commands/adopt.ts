@@ -6,7 +6,12 @@ import { startSession } from "./lifecycle.ts";
 import { SessionSchema } from "../config/schema.ts";
 import { rec, str } from "../agent/normalize.ts";
 import { liveWriters, describeWriter, type Writer } from "../agent/claude/writers.ts";
-import type { MachineConfig, Session } from "../types.ts";
+import { AgentKindSchema } from "../config/schema.ts";
+import { adoptCodexThread, forkCodexThread } from "./create.ts";
+import { discoverCodex } from "../external/codex.ts";
+import { processSnapshot } from "../external/processes.ts";
+import type { ExternalSession, MachineConfig, Session } from "../types.ts";
+import type { ProcessSnapshot } from "../external/processes.ts";
 
 // Adopt an EXTERNAL conversation into ccmux. The conversation is a jsonl + 0..N live
 // processes; the safe action depends on the writers (see writers.ts):
@@ -67,7 +72,7 @@ function pickName(sessions: Session[], dir: string, wantName: string | undefined
 }
 
 async function register(m: MachineConfig, dir: string, uuid: string, name: string): Promise<string> {
-  const s = SessionSchema.parse({ name, dir, uuid });
+  const s = SessionSchema.parse({ name, dir, uuid, agent: "claude" });
   await appendSession(m, s);
   await startSession(m, name, dir);
   return name;
@@ -130,41 +135,159 @@ export async function takeoverAdopt(m: MachineConfig, dir: string, uuid: string,
   return adoptSession(m, dir, uuid, wantName);
 }
 
+function codexExternal(m: MachineConfig, threadId: string): ExternalSession {
+  const item = discoverCodex(m).find((candidate) => candidate.threadId === threadId);
+  if (!item) throw new Error(`Codex thread ${threadId} is not present in the local external inventory`);
+  if (item.storage !== "stored") throw new Error("Codex thread has no persisted rollout and cannot be managed yet");
+  return item;
+}
+
+export async function adoptCodexExternal(m: MachineConfig, threadId: string, wantName?: string): Promise<string> {
+  const item = codexExternal(m, threadId);
+  const dir = item.dir;
+  if (!dir) throw new Error("Codex thread has no persisted cwd and cannot be managed yet");
+  const ready = await adoptCodexThread(m, dir, threadId, wantName);
+  return ready.name;
+}
+
+export async function forkCodexExternal(m: MachineConfig, threadId: string, wantName?: string): Promise<string> {
+  const item = codexExternal(m, threadId);
+  const dir = item.dir;
+  if (!dir) throw new Error("Codex thread has no persisted cwd and cannot be managed yet");
+  const ready = await forkCodexThread(m, dir, threadId, wantName);
+  return ready.name;
+}
+
+function sameCodexWriter(before: ExternalSession, after: ExternalSession): boolean {
+  const a = before.writerRuntime;
+  const b = after.writerRuntime;
+  return a?.kind === "dedicated-cli" && b?.kind === "dedicated-cli" && a.pid === b.pid &&
+    a.startTime === b.startTime && a.processGroup === b.processGroup && after.writerEvidence === "observed";
+}
+
+export type CodexTakeoverDependencies = {
+  resolve: (m: MachineConfig, threadId: string) => ExternalSession;
+  signal: (pid: number) => void;
+  snapshot: () => ProcessSnapshot[] | null;
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+  adopt: (m: MachineConfig, dir: string, threadId: string, wantName?: string) => Promise<Session>;
+};
+
+const codexTakeoverDependencies: CodexTakeoverDependencies = {
+  resolve: codexExternal,
+  signal: (pid) => { process.kill(pid, "SIGTERM"); },
+  snapshot: processSnapshot,
+  sleep: Bun.sleep,
+  now: Date.now,
+  adopt: adoptCodexThread,
+};
+
+export async function takeoverCodexExternalWithDependencies(
+  m: MachineConfig,
+  threadId: string,
+  confirmedPid: number,
+  wantName: string | undefined,
+  dependencies: CodexTakeoverDependencies,
+): Promise<string> {
+  const observed = dependencies.resolve(m, threadId);
+  const dir = observed.dir;
+  if (!dir) throw new Error("Codex thread has no persisted cwd and cannot be taken over");
+  const runtime = observed.writerRuntime;
+  if (!observed.capabilities.terminateAndAdopt || runtime?.kind !== "dedicated-cli" || runtime.pid === null) {
+    throw new Error("Codex writer is not a proven dedicated CLI; release it at the source and retry adopt");
+  }
+  if (runtime.pid !== confirmedPid) throw new Error(`takeover confirmation must name current writer PID ${runtime.pid}`);
+  const fresh = dependencies.resolve(m, threadId);
+  if (!sameCodexWriter(observed, fresh)) throw new Error("Codex writer evidence changed before takeover; nothing was signaled");
+  dependencies.signal(runtime.pid);
+  const deadline = dependencies.now() + TAKEOVER_WAIT_MS;
+  while (dependencies.now() < deadline) {
+    const rows = dependencies.snapshot();
+    const sameProcess = rows?.some((row) => row.pid === runtime.pid && row.startTime === runtime.startTime) ?? true;
+    if (!sameProcess) break;
+    await dependencies.sleep(50);
+  }
+  const rows = dependencies.snapshot();
+  if (rows === null || rows.some((row) => row.pid === runtime.pid && row.startTime === runtime.startTime)) {
+    throw new Error("dedicated Codex writer did not exit after SIGTERM");
+  }
+  // A supervisor/respawn/contender may win after the signal. The bootstrap's real resume admission
+  // is still authoritative and will rollback rather than register a second writer.
+  const ready = await dependencies.adopt(m, dir, threadId, wantName);
+  return ready.name;
+}
+
+export async function takeoverCodexExternal(
+  m: MachineConfig,
+  threadId: string,
+  confirmedPid: number,
+  wantName?: string,
+): Promise<string> {
+  return takeoverCodexExternalWithDependencies(m, threadId, confirmedPid, wantName, codexTakeoverDependencies);
+}
+
 export async function cmdAdopt(args: string[]): Promise<number> {
-  const flags = new Set(args.filter((a) => a.startsWith("--")));
-  const rest = args.filter((a) => !a.startsWith("--"));
-  const uuid = rest[0];
-  if (!uuid) {
-    console.log("usage: ccmux adopt <uuid> [name] [--fork | --takeover]");
+  const providerResult = AgentKindSchema.safeParse(args[0]);
+  const uuid = args[1];
+  if (!providerResult.success || !uuid) {
+    console.log("usage: ccmux adopt <claude|codex> <uuid> [name] [--fork | --takeover --confirm-writer <pid>]");
     return 1;
   }
+  const provider = providerResult.data;
+  const fork = args.includes("--fork");
+  const takeover = args.includes("--takeover");
+  if (fork && takeover) {
+    console.log("adopt: choose exactly one of --fork or --takeover");
+    return 1;
+  }
+  const confirmAt = args.indexOf("--confirm-writer");
+  const confirmedPid = confirmAt >= 0 ? Number(args[confirmAt + 1]) : null;
+  const optionValues = new Set(["--fork", "--takeover", "--confirm-writer", confirmAt >= 0 ? args[confirmAt + 1] : undefined]);
+  const name = args.slice(2).find((arg) => arg !== undefined && !optionValues.has(arg));
   const m = loadMachineConfig();
+  if (provider === "codex") {
+    try {
+      const managed = fork
+        ? await forkCodexExternal(m, uuid, name)
+        : takeover
+          ? Number.isInteger(confirmedPid) && confirmedPid !== null && confirmedPid > 1
+            ? await takeoverCodexExternal(m, uuid, confirmedPid, name)
+            : (() => { throw new Error("--takeover requires --confirm-writer <pid> from the current inventory"); })()
+          : await adoptCodexExternal(m, uuid, name);
+      console.log(`${fork ? "forked" : takeover ? "took over" : "adopted"} Codex ${uuid.slice(0, 8)} as '${managed}'`);
+      return 0;
+    } catch (error) {
+      console.log(`adopt: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
+  }
   const t = findTranscript(m, uuid);
   if (!t) {
     console.log(`adopt: no transcript found for ${uuid} under ${m.projectsDir}`);
     return 1;
   }
   try {
-    if (flags.has("--fork")) {
-      const name = await forkAdopt(m, uuid, rest[1]);
-      console.log(`forked ${uuid.slice(0, 8)} as '${name}' (new uuid, original untouched) — resumed in ccmux tmux.`);
+    if (fork) {
+      const managed = await forkAdopt(m, uuid, name);
+      console.log(`forked ${uuid.slice(0, 8)} as '${managed}' (new uuid, original untouched) — resumed in ccmux tmux.`);
       return 0;
     }
-    if (flags.has("--takeover")) {
-      const name = await takeoverAdopt(m, t.dir, uuid, rest[1]);
-      console.log(`took over ${uuid.slice(0, 8)} as '${name}' — previous writer(s) stopped, resumed in ccmux tmux.`);
+    if (takeover) {
+      const managed = await takeoverAdopt(m, t.dir, uuid, name);
+      console.log(`took over ${uuid.slice(0, 8)} as '${managed}' — previous writer(s) stopped, resumed in ccmux tmux.`);
       console.log("note: a supervised writer (desktop app) may respawn — if the fork returns, close it at the source.");
       return 0;
     }
-    const name = await adoptSession(m, t.dir, uuid, rest[1]);
-    console.log(`adopted ${uuid.slice(0, 8)} as '${name}' (dir ${t.dir}) — resumed in ccmux tmux.`);
+    const managed = await adoptSession(m, t.dir, uuid, name);
+    console.log(`adopted ${uuid.slice(0, 8)} as '${managed}' (dir ${t.dir}) — resumed in ccmux tmux.`);
     return 0;
   } catch (e) {
     if (e instanceof LiveWritersError) {
       console.log(`adopt: ${uuid.slice(0, 8)} is LIVE — ${e.writers.map(describeWriter).join(", ")}.`);
       console.log("a second resume would fork the conversation. choose explicitly:");
-      console.log(`  ccmux adopt ${uuid} --fork      # safe: copy under a new uuid, original untouched`);
-      console.log(`  ccmux adopt ${uuid} --takeover  # kill the writer(s), then adopt the original`);
+      console.log(`  ccmux adopt claude ${uuid} --fork      # safe: copy under a new uuid, original untouched`);
+      console.log(`  ccmux adopt claude ${uuid} --takeover  # kill the writer(s), then adopt the original`);
       return 1;
     }
     console.log(`adopt: ${e instanceof Error ? e.message : String(e)}`);

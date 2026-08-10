@@ -1,4 +1,3 @@
-import { RC_PREFIX_RE, SESSION_NAME_RE } from "../config/schema.ts";
 import type { MachineConfig } from "../types.ts";
 
 /**
@@ -59,36 +58,3 @@ export function routeFor(token: string, m: MachineConfig): Route {
 
 /** This machine's own fleet address for a session — what a peer must use to reply to us. */
 export const selfAddress = (m: MachineConfig, session: string): string => `${m.rcPrefix}:${session}`;
-
-/**
- * Validate the origin label our ssh transport attaches to a forwarded message.
- *
- * **What this is NOT: authentication.** The trust boundary is ssh access, exactly as before — anyone
- * who can run a command on this box can already send as `cli`, which every agent prompt reads as the
- * human side. The origin only says *where a message came from*, so the recipient can reply to the
- * right machine instead of guessing.
- *
- * What it must therefore guarantee is that the LABEL cannot lie about its own shape, because it is
- * rendered ahead of the message body in the injected `[chat from …]` tag. Both halves are pinned to
- * their existing charsets: an unvalidated machine half let a caller pass
- * `owner] <text> [ignore` and forge an unprefixed `[chat from owner]` — a promotion to human
- * authority straight out of a routing hint (found in review, reproduced before this fix).
- *
- * `owner` stays reserved as a session part: ccmux uses it as the human's out-of-band identity and
- * relays it via `--on-behalf-of`. `cli` is deliberately ALLOWED — a shell on another fleet machine
- * is exactly as authoritative as a shell on this one, and labelling it `host-a:cli` tells the
- * recipient more than dropping the machine entirely did.
- */
-export function parseOrigin(originArg: string, fromSession: boolean, reserved: readonly string[]): { machine: string; session: string } | { error: string } {
-  if (fromSession) return { error: "msg: origin is transport-only (it cannot be set from inside a session)" };
-  const bad = (why: string): { error: string } => ({ error: `msg: bad origin '${originArg}' — ${why}` });
-  const addr = parseAddress(originArg);
-  if (isAddressError(addr)) return bad("expected <machine>:<session>");
-  if (addr.machine === null) return bad("expected <machine>:<session>");
-  if (!RC_PREFIX_RE.test(addr.machine)) return bad("machine must be a lowercase slug (an rcPrefix)");
-  if (!SESSION_NAME_RE.test(addr.session)) return bad("session part is not a legal session name");
-  if (reserved.includes(addr.session)) {
-    return bad(`'${addr.session}' is not a valid origin (it means "the human" to every agent)`);
-  }
-  return { machine: addr.machine, session: addr.session };
-}

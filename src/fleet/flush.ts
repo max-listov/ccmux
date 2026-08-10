@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
-import { loadOutbox, type Outbound } from "./outbox.ts";
+import { loadOutbox, outboundId, outboundTimestamp, type Outbound } from "./outbox.ts";
 import { runRemote } from "./transport.ts";
 import { run } from "../util/spawn.ts";
 import { log } from "../util/log.ts";
@@ -63,18 +63,18 @@ export const MAX_PER_TICK = 3;
 /**
  * Which outbox rows deserve another attempt. Pure — the whole retry policy in one testable place.
  *
- * `restart-then` is deliberately excluded: it is not a message but an ACTION (kill + relaunch +
- * inject a note), and repeating an action is a different question from repeating a letter.
+ * Every row is an immutable chat envelope; lifecycle actions are never queued here.
  */
 export function retryCandidates(rows: Outbound[], acked: ReadonlySet<string>, nowMs: number, windowMs = RETRY_WINDOW_MS): Outbound[] {
   const out: Outbound[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
-    if (r.ok || r.kind !== "msg") continue;
-    if (acked.has(r.id) || seen.has(r.id)) continue;
-    const at = Date.parse(r.ts);
+    if (r.result.ok) continue;
+    const id = outboundId(r);
+    if (acked.has(id) || seen.has(id)) continue;
+    const at = Date.parse(outboundTimestamp(r));
     if (!Number.isFinite(at) || nowMs - at > windowMs) continue;
-    seen.add(r.id);
+    seen.add(id);
     out.push(r);
   }
   return out;
@@ -113,22 +113,21 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
 
   await runPreflight(m);
   for (const rec of candidates.slice(0, MAX_PER_TICK)) {
-    const alias = Object.hasOwn(fleet, rec.toMachine) ? fleet[rec.toMachine] : undefined;
+    if (rec.envelope.to.kind !== "managed") continue;
+    const target = rec.envelope.to;
+    const alias = Object.hasOwn(fleet, target.machine) ? fleet[target.machine] : undefined;
     if (alias === undefined) {
       // The machine left the map — nothing to retry against. Settle it so we stop looking.
-      appendOutboxAck(m, rec.id);
+      appendOutboxAck(m, rec.envelope.id);
       continue;
     }
-    const argv = ["ccmux", "msg", rec.toSession, ...(rec.task !== null ? ["--task", rec.task] : [])];
-    const r = await runRemote(alias, argv, {
-      stdin: rec.body,
-      // The SAME id as the first attempt — that is what makes this safe to repeat.
-      env: { CCMUX_ORIGIN: `${m.rcPrefix}:${rec.from}`, CCMUX_MSG_ID: rec.id },
+    const r = await runRemote(alias, ["ccmux", "_chat-receive-v2"], {
+      stdin: JSON.stringify(rec.envelope),
       timeoutMs: 20_000,
     });
     if (!r.transportFailed && r.code === 0) {
-      appendOutboxAck(m, rec.id);
-      log.info({ msg: "outbox: delivered on retry", id: rec.id, to: `${rec.toMachine}:${rec.toSession}` });
+      appendOutboxAck(m, rec.envelope.id);
+      log.info({ msg: "outbox: delivered on retry", id: rec.envelope.id, to: `${target.machine}:${target.session}` });
     }
     // Still no route → leave it queued; the next tick tries again until the window closes.
   }

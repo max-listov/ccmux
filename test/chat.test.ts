@@ -12,10 +12,12 @@ import {
   chatPaths,
   fmtMessage,
   nextForRecipient,
+  pendingConditional,
 } from "../src/chat/store.ts";
-import type { ChatMessage } from "../src/types.ts";
+import { chatPrincipalKey, managedPeerKey } from "../src/chat/identity.ts";
+import type { AgentKind, ChatMessage, ChatPrincipal, ChatTarget, ManagedPeer } from "../src/types.ts";
+import { randomUUID } from "node:crypto";
 
-// A schema-valid config whose sessions file lives in a fresh temp dir → chat files are temp too.
 function tempConfig() {
   const dir = mkdtempSync(join(tmpdir(), "ccmux-chat-"));
   return MachineConfigSchema.parse({
@@ -28,90 +30,91 @@ function tempConfig() {
   });
 }
 
-let seq = 0;
-function msg(from: string, to: string, body: string, task: string | null = null): ChatMessage {
-  seq += 1;
-  return { id: `id-${seq}`, ts: "2026-07-19T10:00:00.000Z", from, fromMachine: null, to, body, task, defer: false, onBehalfOf: null, notBefore: null };
+const THREAD_A = "11111111-1111-4111-8111-111111111111";
+const THREAD_B = "22222222-2222-4222-8222-222222222222";
+const THREAD_C = "33333333-3333-4333-8333-333333333333";
+
+function peer(session: string, threadId: string, agent: AgentKind = "claude", machine = "host-a"): ManagedPeer {
+  return { kind: "managed", source: "ccmux", machine, agent, session, threadId };
 }
 
-test("append + loadLedger round-trips in order", () => {
+function msg(from: ChatPrincipal, to: ChatTarget, body: string, task: string | null = null): ChatMessage {
+  return {
+    id: randomUUID(),
+    ts: "2026-07-19T10:00:00.000Z",
+    from,
+    to,
+    body,
+    task,
+    defer: false,
+    onBehalfOf: null,
+    notBefore: null,
+  };
+}
+
+test("append + loadLedger round-trips a full immutable envelope", () => {
   const m = tempConfig();
+  const a = peer("agent-a", THREAD_A);
+  const b = peer("agent-b", THREAD_B, "codex");
+  appendMessage(m, msg(a, b, "one"));
+  expect(loadLedger(m)[0]).toEqual(expect.objectContaining({ from: a, to: b, body: "one" }));
+});
+
+test("unread cursors key the exact managed peer, not its reusable session name", async () => {
+  const m = tempConfig();
+  const sender = peer("sender", THREAD_A);
+  const oldTarget = peer("worker", THREAD_B, "claude");
+  const reusedTarget = peer("worker", THREAD_C, "codex");
+  appendMessage(m, msg(sender, oldTarget, "old thread only"));
+
+  const ledger = loadLedger(m);
+  expect(unreadFor(oldTarget, ledger, loadCursors(m))).toHaveLength(1);
+  expect(unreadFor(reusedTarget, ledger, loadCursors(m))).toEqual([]);
+  await markRead(m, oldTarget, ledger.length);
+  expect(loadCursors(m).read[managedPeerKey(oldTarget)]).toBe(1);
+  expect(loadCursors(m).read[managedPeerKey(reusedTarget)]).toBeUndefined();
+});
+
+test("nextForRecipient requires the full pinned target tuple", () => {
+  const sender = peer("sender", THREAD_A);
+  const oldTarget = peer("worker", THREAD_B, "claude");
+  const reusedTarget = peer("worker", THREAD_C, "codex");
+  const ledger = [msg(sender, oldTarget, "old")];
+  expect(nextForRecipient(oldTarget, ledger, 0)?.idx).toBe(0);
+  expect(nextForRecipient(reusedTarget, ledger, 0)).toBeNull();
+});
+
+test("conditional dedup filters by exact principal and target identity", () => {
+  const sender = peer("sender", THREAD_A);
+  const otherSender = peer("sender", THREAD_C, "codex");
+  const target = peer("worker", THREAD_B);
+  const conditional = { ...msg(sender, target, "watch", "job"), notBefore: "2026-08-11T00:00:00.000Z" };
+  expect(pendingConditional([conditional], new Set(), { from: sender, to: target, task: "job" })).toEqual([conditional]);
+  expect(pendingConditional([conditional], new Set(), { from: otherSender, to: target, task: "job" })).toEqual([]);
+});
+
+test("fmtMessage exposes source, provider, machine, session and thread", () => {
+  const rendered = fmtMessage(msg(peer("agent-a", THREAD_A, "claude"), peer("agent-b", THREAD_B, "codex", "host-b"), "hello"));
+  expect(rendered).toContain(`ccmux/claude@host-a:agent-a#${THREAD_A}`);
+  expect(rendered).toContain(`ccmux/codex@host-b:agent-b#${THREAD_B}`);
+});
+
+test("stable keys distinguish provider, thread and cli principal", () => {
+  const claude = peer("worker", THREAD_A, "claude");
+  const codex = peer("worker", THREAD_A, "codex");
+  expect(managedPeerKey(claude)).not.toBe(managedPeerKey(codex));
+  expect(chatPrincipalKey({ kind: "cli", source: "ccmux", machine: "host-a" })).toBe("ccmux:host-a:cli");
+});
+
+test("v1 ledger stays an ignored archive instead of being guessed into v2", () => {
+  const m = tempConfig();
+  writeFileSync(join(m.stateDir, "chat.jsonl"), `${JSON.stringify({ id: "old", from: "a", to: "b" })}\n`);
   expect(loadLedger(m)).toEqual([]);
-  appendMessage(m, msg("a", "b", "one"));
-  appendMessage(m, msg("a", "c", "two"));
-  appendMessage(m, msg("a", "b", "three"));
-  const led = loadLedger(m);
-  expect(led.map((x) => x.body)).toEqual(["one", "two", "three"]);
+  expect(chatPaths(m).ledger).toEndWith("chat-v2.jsonl");
 });
 
-test("unreadFor filters by recipient and read cursor; markRead clears it", async () => {
+test("a name-only row in the v2 ledger fails closed", () => {
   const m = tempConfig();
-  appendMessage(m, msg("a", "b", "b1"));
-  appendMessage(m, msg("a", "c", "c1"));
-  appendMessage(m, msg("a", "b", "b2"));
-
-  let led = loadLedger(m);
-  expect(unreadFor("b", led, loadCursors(m)).map((u) => u.msg.body)).toEqual(["b1", "b2"]);
-  expect(unreadFor("c", led, loadCursors(m)).map((u) => u.msg.body)).toEqual(["c1"]);
-  expect(unreadFor("nobody", led, loadCursors(m))).toEqual([]);
-
-  await markRead(m, "b", led.length);
-  expect(unreadFor("b", led, loadCursors(m))).toEqual([]); // b caught up
-  expect(unreadFor("c", led, loadCursors(m)).map((u) => u.msg.body)).toEqual(["c1"]); // c unaffected
-
-  // a NEW message to b after markRead is unread again
-  appendMessage(m, msg("a", "b", "b3"));
-  led = loadLedger(m);
-  expect(unreadFor("b", led, loadCursors(m)).map((u) => u.msg.body)).toEqual(["b3"]);
-});
-
-test("cursors persist to disk across loads", async () => {
-  const m = tempConfig();
-  appendMessage(m, msg("a", "b", "x"));
-  await markRead(m, "b", loadLedger(m).length);
-  expect(loadCursors(m).read["b"]).toBe(1);
-});
-
-test("a corrupt ledger line fails loud with its number", () => {
-  const m = tempConfig();
-  appendMessage(m, msg("a", "b", "ok"));
-  const { ledger } = chatPaths(m);
-  writeFileSync(ledger, `${'{"bad json"'}\n`, { flag: "a" });
-  expect(() => loadLedger(m)).toThrow(/chat ledger:2 — invalid JSON/);
-});
-
-test("nextForRecipient finds the first message to a recipient from a cursor (skips others)", () => {
-  const m = tempConfig();
-  appendMessage(m, msg("a", "c", "c1"));
-  appendMessage(m, msg("a", "b", "b1"));
-  appendMessage(m, msg("a", "b", "b2"));
-  const led = loadLedger(m);
-  expect(nextForRecipient("b", led, 0)?.idx).toBe(1); // skips c1 at 0
-  expect(nextForRecipient("b", led, 2)?.idx).toBe(2);
-  expect(nextForRecipient("b", led, 3)).toBeNull();
-  expect(nextForRecipient("nobody", led, 0)).toBeNull();
-});
-
-test("fmtMessage renders direction, task, and body", () => {
-  expect(fmtMessage(msg("a", "b", "hi"))).toContain("a → b");
-  expect(fmtMessage(msg("a", "b", "hi", "deploy"))).toContain("(task: deploy)");
-  expect(fmtMessage(msg("a", "b", "hello world"))).toMatch(/a → b: hello world$/);
-});
-
-test("a ledger written before fleet addressing still loads — the new field is optional", () => {
-  // Existing history must survive the upgrade: `fromMachine` defaults to null (= same machine as
-  // this ledger), so nothing has to be migrated and nothing is re-interpreted.
-  const m = tempConfig();
-  const legacy = { id: "old-1", ts: "2026-07-01T10:00:00.000Z", from: "a", to: "b", body: "hi" };
-  writeFileSync(chatPaths(m).ledger, `${JSON.stringify(legacy)}\n`);
-  const [msg] = loadLedger(m);
-  expect(msg?.fromMachine).toBeNull();
-  expect(fmtMessage(msg!)).toBe("[2026-07-01 10:00:00] a → b: hi");
-});
-
-test("a cross-machine sender is named with its machine everywhere it is rendered", () => {
-  // Without this `inbox` said `api → worker` and the reader was back to guessing WHICH api.
-  const m = tempConfig();
-  appendMessage(m, { ...msg("api", "worker", "done"), fromMachine: "host-a" });
-  expect(fmtMessage(loadLedger(m)[0]!)).toContain("host-a:api → worker");
+  writeFileSync(chatPaths(m).ledger, `${JSON.stringify({ id: "old", ts: "now", from: "a", to: "b", body: "x" })}\n`);
+  expect(() => loadLedger(m)).toThrow();
 });

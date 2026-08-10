@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MachineConfigSchema } from "../src/config/schema.ts";
 import { retryCandidates, loadOutboxAcked, appendOutboxAck, RETRY_WINDOW_MS } from "../src/fleet/flush.ts";
-import { appendOutbound } from "../src/fleet/outbox.ts";
+import { appendOutbound, outboundId } from "../src/fleet/outbox.ts";
 import { localRows } from "../src/chat/fleetLog.ts";
 import type { Outbound } from "../src/fleet/outbox.ts";
 import { outboxAckPath, outboxPath } from "../src/config/paths.ts";
+import { makeChatMessage, makePeer } from "./helpers.ts";
+import { randomUUID } from "node:crypto";
 
 function tempConfig() {
   const dir = mkdtempSync(join(tmpdir(), "ccmux-flush-"));
@@ -22,21 +24,18 @@ function tempConfig() {
 }
 
 const NOW = Date.parse("2026-08-05T12:00:00.000Z");
-const rec = (o: Partial<Outbound> = {}): Outbound => ({
-  id: o.id ?? "id-1",
-  ts: o.ts ?? new Date(NOW - 60_000).toISOString(),
-  from: o.from ?? "agent-a",
-  toMachine: o.toMachine ?? "host-b",
-  toSession: o.toSession ?? "agent-b",
-  kind: o.kind ?? "msg",
-  body: o.body ?? "the answer",
-  task: o.task ?? null,
-  ok: o.ok ?? false,
-  detail: o.detail ?? "transport failed",
-});
+const rec = (o: { id?: string; ts?: string; ok?: boolean; detail?: string } = {}): Outbound => {
+  const id = o.id ?? randomUUID();
+  const ts = o.ts ?? new Date(NOW - 60_000).toISOString();
+  const from = makePeer({ session: "agent-a" });
+  const to = makePeer({ machine: "host-b", agent: "codex", session: "agent-b" });
+  const result = { ok: o.ok ?? false, detail: o.detail ?? "transport failed" };
+  return { kind: "msg", envelope: makeChatMessage({ id, ts, from, to, body: "the answer" }), result };
+};
 
 test("a recent failed message is a retry candidate", () => {
-  expect(retryCandidates([rec()], new Set(), NOW).map((r) => r.id)).toEqual(["id-1"]);
+  const record = rec();
+  expect(retryCandidates([record], new Set(), NOW).map(outboundId)).toEqual([outboundId(record)]);
 });
 
 test("what must never be retried: successes, stale rows, already-settled ids", () => {
@@ -46,13 +45,7 @@ test("what must never be retried: successes, stale rows, already-settled ids", (
     rec({ id: "settled" }),
     rec({ id: "live" }),
   ];
-  expect(retryCandidates(rows, new Set(["settled"]), NOW).map((r) => r.id)).toEqual(["live"]);
-});
-
-test("a hand-off is an ACTION, not a letter — `restart --then` is never repeated", () => {
-  // Repeating a message is safe once ids travel; repeating a kill-and-relaunch is a different
-  // question entirely, and answering it silently would be reckless.
-  expect(retryCandidates([rec({ id: "r", kind: "restart-then" })], new Set(), NOW)).toEqual([]);
+  expect(retryCandidates(rows, new Set(["settled"]), NOW).map(outboundId)).toEqual(["live"]);
 });
 
 test("the same id is offered once, however many attempts it has on record", () => {

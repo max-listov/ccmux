@@ -1,18 +1,16 @@
 import type { AgentProvider } from "../index.ts";
-import { buildArgv, launchEnv } from "./launch.ts";
+import { buildArgv, launchEnv, preflight } from "./launch.ts";
 import { historyFile } from "./resume.ts";
-import { detectFork } from "./fork.ts";
 import { parse, usedTokens, lastModel } from "./transcript.ts";
 import { scanPane } from "./pane.ts";
 
-/** Codex provider — everything agent-specific for `agent: "codex"`. Launch pins Codex's
- *  self-assigned id via detectFork reconcile (Codex has no --session-id); reading is 1:1 with Claude. */
+/** Codex provider — fresh identity is promoted by the pending bootstrap transaction. */
 export const codexProvider: AgentProvider = {
   id: "codex",
+  preflight,
   buildArgv,
   launchEnv,
   historyFile,
-  detectFork,
   parse,
   usedTokens,
   lastModel,

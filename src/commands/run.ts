@@ -8,6 +8,8 @@ import { promptInvocation } from "../env.ts";
 import { log, setStderrLogging } from "../util/log.ts";
 import { writeLaunchStamp } from "../agent/sessionStatus.ts";
 import { computeStamp } from "../agent/launchStamp.ts";
+import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from "../chat/auth.ts";
+import { readLifecycleBlockForSession, writeLifecycleBlock } from "../config/lifecycleBlocks.ts";
 
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -73,8 +75,8 @@ export async function cmdRun(name: string | undefined): Promise<number> {
     return 1;
   }
   const m = loadMachineConfig();
-  const s = findSession(loadSessions(m), name);
-  if (!s) {
+  const initial = findSession(loadSessions(m), name);
+  if (!initial) {
     log.error({ msg: "unknown session", name });
     return 1;
   }
@@ -87,15 +89,48 @@ export async function cmdRun(name: string | undefined): Promise<number> {
   // uses it so Ink isn't corrupted, and `_run` needs it for the same reason. Nothing is lost —
   // every record still goes to the state root's ccmux.log.
   setStderrLogging(false);
-  const provider = providerFor(s);
-  const env = provider.launchEnv(m, s.name);
+  if (readLifecycleBlockForSession(m, initial)) return 1;
+  return superviseReady(m, name, initial.agent);
+}
+
+/** Supervise only a READY registry Session. Every child launch reloads canonical identity. */
+export async function superviseReady(m: MachineConfig, name: string, expectedAgent: Session["agent"]): Promise<number> {
   let backoff = MIN_BACKOFF_MS;
   let fastFails = 0;
   let forkNext = false;
 
   for (;;) {
+    const s = findSession(loadSessions(m), name);
+    if (!s) return 1;
+    if (s.agent !== expectedAgent) {
+      await writeLifecycleBlock(m, {
+        name,
+        agent: expectedAgent,
+        uuid: s.uuid,
+        ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
+        error: `provider changed from ${expectedAgent} to ${s.agent} while supervisor was alive`,
+        at: new Date().toISOString(),
+      });
+      return 1;
+    }
+    const provider = providerFor(s);
     const hf = provider.historyFile(s, m);
     const present = hf !== null && existsSync(hf); // re-checked every loop
+    if (provider.id === "codex" && !present) {
+      const error = `ready Codex session ${name} is missing rollout ${s.uuid}`;
+      await writeLifecycleBlock(m, {
+        name,
+        agent: s.agent,
+        uuid: s.uuid,
+        ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
+        error,
+        at: new Date().toISOString(),
+      });
+      console.error(`ccmux: ${error}`);
+      return 1;
+    }
+    const env = provider.launchEnv(m, s.name);
+    env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, s);
     // The invocation TAUGHT to the agent (bare `ccmux` shim when installed) — NOT the
     // absolute self re-exec; those are different concerns (see env.ts). Re-evaluated each
     // loop so a shim installed after boot is picked up on the next relaunch.
@@ -134,6 +169,27 @@ export async function cmdRun(name: string | undefined): Promise<number> {
       fastFails += 1;
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
       log.warn({ msg: "agent exited fast", name, agent: provider.id, elapsedMs: elapsed, fastFails, backoffMs: backoff });
+      if (provider.id === "codex") {
+        let writerConflict = false;
+        try {
+          writerConflict = (await capturePane(m, name, 30)).includes("already has an active writer");
+        } catch {
+          writerConflict = false;
+        }
+        const error = writerConflict
+          ? `Codex thread ${s.uuid} already has an active writer; lifecycle blocked`
+          : `Codex resume exited before admission for ${name}; lifecycle blocked to prevent a retry storm or second writer`;
+        await writeLifecycleBlock(m, {
+          name,
+          agent: s.agent,
+          uuid: s.uuid,
+          ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
+          error,
+          at: new Date().toISOString(),
+        });
+        console.error(`ccmux: ${error}`);
+        return 1;
+      }
       if (fastFails >= FAST_FAILS_BEFORE_FORK) {
         forkNext = true;
         fastFails = 0;

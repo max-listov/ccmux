@@ -34,7 +34,7 @@ export async function cmdSend(name: string | undefined, keys: string[], opts: { 
   // nothing for a slash command and a lot for a long message.
   console.log(`sent to ${name}: ${preview(text)}`);
   // Not a refusal — pasting long text on purpose is legitimate. But say it once, here, where the
-  // choice was made; `internal` keeps ccmux's own uses (a restart's --then note) from lecturing.
+  // choice was made; `internal` keeps ccmux-owned key injection from lecturing.
   if (opts.internal !== true && looksLikeMessage(text, findSession(loadSessions(m), name)?.chatEnabled === true)) {
     console.log(`  note: that reads like a message, not keystrokes — \`ccmux msg ${name} "…"\` tags you as the sender,`);
     console.log("        gives them a reply address, records it, and waits for a safe moment to deliver.");

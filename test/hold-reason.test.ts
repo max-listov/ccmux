@@ -1,16 +1,15 @@
 import { test, expect } from "bun:test";
 import { holdReason } from "../src/chat/holdReason.ts";
 import { unreadFor } from "../src/chat/store.ts";
-import { makeSession } from "./helpers.ts";
+import { makeChatMessage, makeOwner, makePeer, makeSession } from "./helpers.ts";
 import type { ChatMessage } from "../src/types.ts";
 
 // "It just never arrived" is what turned a mis-addressed report into hours of archaeology. Every
 // hold now has a name the sender can act on.
 
-const msg = (over: Partial<ChatMessage> = {}): ChatMessage => ({
-  id: "m1", ts: "2026-08-05T00:00:00.000Z", from: "a", fromMachine: null, to: "api",
-  body: "x", task: null, defer: false, onBehalfOf: null, notBefore: null, ...over,
-});
+const api = makePeer({ machine: "test", session: "api" });
+const msg = (over: Partial<ChatMessage> = {}): ChatMessage =>
+  makeChatMessage({ id: "m1", from: makePeer({ machine: "test", session: "a" }), to: api, body: "x", ...over });
 const enabled = makeSession({ name: "api", chatEnabled: true });
 
 test("an unknown recipient points at the likely cause — it was meant for another machine", () => {
@@ -54,7 +53,7 @@ test("a recipient whose agent cannot receive chat is told so — never 'queued'"
 });
 
 test("mail to the human is not a fault — there is no pane to deliver into", () => {
-  const r = holdReason(msg({ to: "owner" }), { recipient: undefined, running: false, nowMs: 0, isOwner: true });
+  const r = holdReason(msg({ to: makeOwner() }), { recipient: undefined, running: false, nowMs: 0, isOwner: true });
   expect(r.kind).toBe("owner");
   expect(r.text).toContain("Telegram");
 });
@@ -69,6 +68,6 @@ test("N9: an already-injected deferred message is no longer reported as pending 
   // consulting it `inbox` kept showing mail that had in fact been pushed into the pane.
   const ledger = [msg({ id: "delivered", defer: true }), msg({ id: "waiting" })];
   const cursors = { read: {}, delivered: {}, telegram: 0 };
-  expect(unreadFor("api", ledger, cursors).map((u) => u.msg.id)).toEqual(["delivered", "waiting"]);
-  expect(unreadFor("api", ledger, cursors, new Set(["delivered"])).map((u) => u.msg.id)).toEqual(["waiting"]);
+  expect(unreadFor(api, ledger, cursors).map((u) => u.msg.id)).toEqual(["delivered", "waiting"]);
+  expect(unreadFor(api, ledger, cursors, new Set(["delivered"])).map((u) => u.msg.id)).toEqual(["waiting"]);
 });

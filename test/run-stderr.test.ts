@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mailBlocksSettle } from "../src/commands/wait.ts";
 import type { ChatMessage } from "../src/types.ts";
+import { makeChatMessage, makePeer } from "./helpers.ts";
 
 const src = (f: string): string => readFileSync(join(import.meta.dir, "..", "src", f), "utf8");
 
@@ -38,10 +39,8 @@ test("wait treats undelivered mail as work that has not started — but only mai
   // Asserted on behaviour, not on the shape of a source line — the previous version of this test
   // pinned the exact expression and broke the moment the call was refactored, proving nothing.
   const at = Date.parse("2026-08-05T12:00:00.000Z");
-  const msg = (over: Partial<ChatMessage> = {}): ChatMessage => ({
-    id: "m", ts: "2026-08-05T11:59:00.000Z", from: "a", fromMachine: null, to: "b",
-    body: "x", task: null, defer: true, onBehalfOf: null, notBefore: null, ...over,
-  });
+  const msg = (over: Partial<ChatMessage> = {}): ChatMessage =>
+    makeChatMessage({ id: "m", ts: "2026-08-05T11:59:00.000Z", from: makePeer({ session: "a" }), to: makePeer({ session: "b" }), body: "x", defer: true, ...over });
   const on = { chatEnabled: true, canReceiveChat: true, nowMs: at };
   expect(mailBlocksSettle([msg()], on)).toHaveLength(1);
   // A watchdog armed for later must not make `wait` useless until it fires.

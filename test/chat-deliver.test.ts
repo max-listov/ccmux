@@ -2,8 +2,12 @@ import { test, expect } from "bun:test";
 import { atInteractiveMenu, chatDeliverable } from "../src/agent/claude/pane.ts";
 import { recentInboundCount, isConditional, notBeforeDue } from "../src/chat/deliver.ts";
 import type { ChatMessage } from "../src/types.ts";
+import { makeChatMessage, makePeer } from "./helpers.ts";
 
-const baseMsg: ChatMessage = { id: "x", ts: "2026-07-24T00:00:00.000Z", from: "a", fromMachine: null, to: "b", body: "", task: null, defer: false, onBehalfOf: null, notBefore: null };
+const recipientB = makePeer({ session: "b" });
+const recipientC = makePeer({ session: "c" });
+const recipientNobody = makePeer({ session: "nobody" });
+const baseMsg: ChatMessage = makeChatMessage({ id: "x", ts: "2026-07-24T00:00:00.000Z", to: recipientB, body: "" });
 
 test("isConditional: deferred OR time-delayed mail is off-cursor; plain mail is immediate", () => {
   expect(isConditional(baseMsg)).toBe(false);
@@ -58,19 +62,10 @@ test("an old numbered list in scrollback (not the live menu) doesn't false-trigg
 
 test("recentInboundCount counts only in-window messages addressed to the recipient", () => {
   const now = 1_000_000_000;
-  const at = (deltaMs: number, to: string): ChatMessage => ({
-    id: "x",
-    ts: new Date(now - deltaMs).toISOString(),
-    from: "a", fromMachine: null,
-    to,
-    body: "",
-    task: null,
-    defer: false,
-    onBehalfOf: null,
-    notBefore: null,
-  });
-  const led: ChatMessage[] = [at(10_000, "b"), at(120_000, "b"), at(5_000, "c"), at(1_000, "b")];
-  expect(recentInboundCount("b", led, now)).toBe(2); // two within 60s; the 120s-old one excluded
-  expect(recentInboundCount("c", led, now)).toBe(1);
-  expect(recentInboundCount("nobody", led, now)).toBe(0);
+  const at = (deltaMs: number, to: typeof recipientB): ChatMessage =>
+    makeChatMessage({ id: "x", ts: new Date(now - deltaMs).toISOString(), to, body: "" });
+  const led: ChatMessage[] = [at(10_000, recipientB), at(120_000, recipientB), at(5_000, recipientC), at(1_000, recipientB)];
+  expect(recentInboundCount(recipientB, led, now)).toBe(2); // two within 60s; the 120s-old one excluded
+  expect(recentInboundCount(recipientC, led, now)).toBe(1);
+  expect(recentInboundCount(recipientNobody, led, now)).toBe(0);
 });

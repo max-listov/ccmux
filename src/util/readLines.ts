@@ -74,3 +74,31 @@ export function readHeadLines(path: string, bytes: number): string[] {
     closeSync(fd);
   }
 }
+
+/** Read one complete first JSONL record without loading the rest of a multi-MB rollout. */
+export function readFirstLine(path: string, maxBytes = 2 * 1024 * 1024): string | null {
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const chunks: Buffer[] = [];
+    let offset = 0;
+    while (offset < maxBytes) {
+      const size = Math.min(64 * 1024, maxBytes - offset);
+      const buf = Buffer.alloc(size);
+      const n = readSync(fd, buf, 0, size, offset);
+      if (n === 0) break;
+      const slice = buf.subarray(0, n);
+      const newline = slice.indexOf(10);
+      chunks.push(newline === -1 ? slice : slice.subarray(0, newline));
+      if (newline !== -1) return Buffer.concat(chunks).toString("utf8");
+      offset += n;
+    }
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}

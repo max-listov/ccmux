@@ -14,9 +14,19 @@ import type {
   TranscriptStatsSchema,
   TranscriptJsonSchema,
   AgentKindSchema,
+  ManagedPeerSchema,
+  CliPrincipalSchema,
+  ChatPrincipalSchema,
+  OwnerTargetSchema,
+  ChatTargetSchema,
   ChatMessageSchema,
   ChatCursorsSchema,
   TelegramConfigSchema,
+  PendingSessionSchema,
+  LifecycleBlockSchema,
+  ExternalSessionSchema,
+  ExternalCapabilitiesSchema,
+  WriterRuntimeSchema,
 } from "./config/schema.ts";
 
 // Single import surface for the inferred types. No bare interfaces anywhere — these
@@ -35,6 +45,16 @@ export type TranscriptMessage = z.infer<typeof TranscriptMessageSchema>;
 export type TranscriptStats = z.infer<typeof TranscriptStatsSchema>;
 export type TranscriptJson = z.infer<typeof TranscriptJsonSchema>;
 export type AgentKind = z.infer<typeof AgentKindSchema>;
+export type ManagedPeer = z.infer<typeof ManagedPeerSchema>;
+export type CliPrincipal = z.infer<typeof CliPrincipalSchema>;
+export type ChatPrincipal = z.infer<typeof ChatPrincipalSchema>;
+export type OwnerTarget = z.infer<typeof OwnerTargetSchema>;
+export type ChatTarget = z.infer<typeof ChatTargetSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatCursors = z.infer<typeof ChatCursorsSchema>;
 export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
+export type PendingSession = z.infer<typeof PendingSessionSchema>;
+export type LifecycleBlock = z.infer<typeof LifecycleBlockSchema>;
+export type ExternalSession = z.infer<typeof ExternalSessionSchema>;
+export type ExternalCapabilities = z.infer<typeof ExternalCapabilitiesSchema>;
+export type WriterRuntime = z.infer<typeof WriterRuntimeSchema>;

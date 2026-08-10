@@ -16,19 +16,19 @@ test("append → load round-trip (JSONL)", async () => {
   expect(loadSessions(m).map((s) => s.name)).toEqual(["cc-a"]);
 });
 
-test("blank + comment lines skipped; legacy name|dir|uuid tolerated with defaults", () => {
+test("v2 requires JSON rows with an explicit agent", () => {
   const dir = tmpStateDir();
   const m = makeMachine({ stateDir: dir });
-  writeFileSync(sessionsPath(m), `# header\n\ncc-legacy|/home/user|${UUID}\n{"name":"cc-json","dir":"/home/user","uuid":"${UUID}"}\n`);
-  const loaded = loadSessions(m);
-  expect(loaded.map((s) => s.name)).toEqual(["cc-legacy", "cc-json"]);
-  expect(loaded[0]?.resumeText).toBe("continue"); // defaults applied to legacy line
+  writeFileSync(sessionsPath(m), `# header\n\n{"name":"cc-json","dir":"/home/user","uuid":"${UUID}","agent":"codex"}\n`);
+  expect(loadSessions(m)[0]?.agent).toBe("codex");
+  writeFileSync(sessionsPath(m), `cc-legacy|/home/user|${UUID}\n`);
+  expect(() => loadSessions(m)).toThrow(/expected JSON with explicit agent/);
 });
 
 test("removeSession filters exact name only — never a longer sibling", async () => {
   const m = makeMachine({ stateDir: tmpStateDir() });
   await appendSession(m, makeSession({ name: "cc-x" }));
-  await appendSession(m, makeSession({ name: "cc-x-staging" }));
+  await appendSession(m, makeSession({ name: "cc-x-staging", uuid: "22222222-2222-4222-8222-222222222222" }));
   expect(await removeSession(m, "cc-x")).toBe(true);
   expect(loadSessions(m).map((s) => s.name)).toEqual(["cc-x-staging"]);
   expect(await removeSession(m, "cc-missing")).toBe(false);

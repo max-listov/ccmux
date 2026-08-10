@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
+import { ChatMessageSchema } from "../config/schema.ts";
 import { log } from "../util/log.ts";
 import type { MachineConfig } from "../types.ts";
 import { outboxPath } from "../config/paths.ts";
@@ -20,19 +21,27 @@ import { outboxPath } from "../config/paths.ts";
  *
  * Failed transit is recorded too: "it never left" must be as visible as "it went".
  */
-export const OutboundSchema = z.object({
-  id: z.string(),
-  ts: z.string(),
-  from: z.string(), // sending session on this machine, or "cli"
-  toMachine: z.string(),
-  toSession: z.string(),
-  kind: z.enum(["msg", "restart-then"]),
-  body: z.string(),
-  task: z.string().nullable().default(null),
+const OutboundResultSchema = z.object({
   ok: z.boolean(), // did the remote accept it?
-  detail: z.string().default(""), // transport/remote error when !ok
+  detail: z.string(), // transport/remote error when !ok
 });
+
+export const OutboundSchema = z.object({
+  kind: z.literal("msg"),
+  // The exact wire envelope is retained unchanged for retries. In particular, a retry never
+  // resolves a session name again after that name has been reused by another provider/thread.
+  envelope: ChatMessageSchema,
+  result: OutboundResultSchema,
+}).strict();
 export type Outbound = z.infer<typeof OutboundSchema>;
+
+export function outboundId(record: Outbound): string {
+  return record.envelope.id;
+}
+
+export function outboundTimestamp(record: Outbound): string {
+  return record.envelope.ts;
+}
 
 /** Append-only, one JSON per line — same shape of durability as the chat ledger. Never throws: a
  *  bookkeeping failure must not break the send it is recording. */
@@ -45,7 +54,9 @@ export function appendOutbound(m: MachineConfig, rec: Outbound): void {
     // Never throws — the send already happened, and failing here would report a delivered message as
     // an error. But it must not vanish quietly either: this record's entire purpose is to be proof
     // that we asked, so a lost one is exactly the blindness the outbox exists to end.
-    log.warn({ msg: "outbox: failed to record an outgoing message", to: `${rec.toMachine}:${rec.toSession}`, err: String(e) });
+    const target = rec.envelope.to;
+    const to = target.kind === "owner" ? "owner" : `${target.machine}:${target.session}`;
+    log.warn({ msg: "outbox: failed to record an outgoing message", to, err: String(e) });
   }
 }
 

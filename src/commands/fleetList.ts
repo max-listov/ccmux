@@ -13,13 +13,15 @@ import type { MachineConfig } from "../types.ts";
  * is precisely the confusion that mis-delivered a report in the 2026-08-05 incident.
  *
  * Deliberately LENIENT about what a remote returns: another box may run an older ccmux whose
- * `list --json` has a different shape, so we parse only the few fields we display, defaulting the
- * rest. And "unreachable" is a NORMAL result, not a failure — with no server-side keys, transit
+ * `list --json` has a different shape, so we parse only the few fields we display. A missing agent
+ * becomes explicit `unknown`; silently calling it Claude would turn version skew into misrouting.
+ * And "unreachable" is a NORMAL result, not a failure — with no server-side keys, transit
  * between two servers only exists while the owner is connected — so the command still exits 0 and
  * simply marks that machine, instead of an agent reading routine degradation as an error.
  */
 const RemoteSessionSchema = z.object({
   name: z.string(),
+  agent: z.enum(["claude", "codex"]).nullable().default(null),
   state: z.string().default("?"),
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
@@ -52,6 +54,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
     version: VERSION,
     sessions: local.map((r) => ({
       name: r.session.name,
+      agent: r.session.agent,
       state: r.state,
       model: r.model,
       running: r.running,
@@ -81,6 +84,12 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
 
 const pad = (s: string, n: number): string => (s.length >= n ? s : s + " ".repeat(n - s.length));
 
+export function formatFleetSession(machine: string, session: z.infer<typeof RemoteSessionSchema>): string {
+  const restart = session.stale.length > 0 ? `  ⟳ ${session.stale.join(",")}` : "";
+  const agent = session.agent ?? "unknown";
+  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(session.state, 9)} ${pad(session.model ?? "-", 11)} ${pad(session.uptime?.text ?? "", 7)}${restart}`;
+}
+
 export async function cmdFleet(args: string[] = []): Promise<number> {
   const m = loadMachineConfig();
   const machines = await collectFleet(m);
@@ -102,8 +111,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
       // Full address on every line — the thing you copy into `ccmux msg` without guessing.
       // A session that a restart would change is flagged right here, so "who is still on the old
       // prompt" is readable across the fleet instead of remembered.
-      const restart = s.stale.length > 0 ? `  ⟳ ${s.stale.join(",")}` : "";
-      console.log(`  ${pad(`${fm.machine}:${s.name}`, 28)} ${pad(s.state, 9)} ${pad(s.model ?? "-", 11)} ${pad(s.uptime?.text ?? "", 7)}${restart}`);
+      console.log(formatFleetSession(fm.machine, s));
     }
   }
   return 0; // unreachable machines are routine, never a failure exit

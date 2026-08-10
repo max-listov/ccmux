@@ -1,8 +1,17 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import { ChatCursorsSchema, ChatMessageSchema } from "../config/schema.ts";
-import type { ChatCursors, ChatMessage, MachineConfig } from "../types.ts";
+import type { ChatCursors, ChatMessage, ChatPrincipal, ChatTarget, MachineConfig, ManagedPeer } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import { chatAckPath, chatCursorsPath, chatLedgerPath } from "../config/paths.ts";
+import {
+  chatTargetKey,
+  managedPeerKey,
+  principalLabel,
+  samePrincipal,
+  sameTarget,
+  targetLabel,
+} from "./identity.ts";
 
 /** Reserved chat recipient = the human who runs the fleet. A message TO `owner` is NOT delivered
  *  to any pane (the owner has none) — it only surfaces out-of-band (Telegram, and later a frontend).
@@ -56,8 +65,8 @@ export function loadAckedIds(m: MachineConfig): Set<string> {
  * All three suppress future delivery identically (both the daemon and the Stop hook skip any id in
  * this log), so a cancel is just a delivery that will never happen — the honest `by` keeps the log
  * readable. O_APPEND single-line write is atomic across the hook + daemon + sender processes. */
-export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon" | "cancel", to: string): void {
-  appendFileSync(chatAckPath(m), `${JSON.stringify({ id, ts: new Date().toISOString(), by, to })}\n`);
+export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon" | "cancel", to: ChatTarget): void {
+  appendFileSync(chatAckPath(m), `${JSON.stringify({ id, ts: new Date().toISOString(), by, to: chatTargetKey(to) })}\n`);
 }
 
 /** Undelivered CONDITIONAL messages (deferred or time-delayed), optionally filtered by sender /
@@ -67,13 +76,13 @@ export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon" | 
 export function pendingConditional(
   ledger: ChatMessage[],
   acked: Set<string>,
-  filter: { from?: string; to?: string; task?: string },
+  filter: { from?: ChatPrincipal; to?: ChatTarget; task?: string },
 ): ChatMessage[] {
   return ledger.filter((msg) => {
     if (!(msg.defer || msg.notBefore !== null)) return false; // immediate mail is delivered at once
     if (acked.has(msg.id)) return false; // already delivered or cancelled
-    if (filter.from !== undefined && msg.from !== filter.from) return false;
-    if (filter.to !== undefined && msg.to !== filter.to) return false;
+    if (filter.from !== undefined && !samePrincipal(msg.from, filter.from)) return false;
+    if (filter.to !== undefined && !sameTarget(msg.to, filter.to)) return false;
     if (filter.task !== undefined && msg.task !== filter.task) return false;
     return true;
   });
@@ -108,6 +117,36 @@ export function appendMessage(m: MachineConfig, msg: ChatMessage): void {
   appendFileSync(ledger, `${JSON.stringify(parsed)}\n`);
 }
 
+/** Atomically admit an idempotent remote envelope across competing receiver processes. The lock
+ * covers check+append, not merely line integrity. A crashed holder becomes reclaimable after 30s. */
+export async function appendMessageOnce(m: MachineConfig, msg: ChatMessage): Promise<boolean> {
+  const { ledger } = chatPaths(m);
+  const lock = `${ledger}.receive-lock`;
+  mkdirSync(dirname(ledger), { recursive: true });
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      mkdirSync(lock, { mode: 0o700 });
+      break;
+    } catch {
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > 30_000) rmdirSync(lock);
+      } catch {
+        // The holder released it between checks.
+      }
+      if (Date.now() >= deadline) throw new Error("chat receive lock timed out");
+      await Bun.sleep(20);
+    }
+  }
+  try {
+    if (loadLedger(m).some((item) => item.id === msg.id)) return false;
+    appendMessage(m, msg);
+    return true;
+  } finally {
+    rmdirSync(lock);
+  }
+}
+
 /** Read the cursors. Corrupt/missing → empty (cursors are derived state, not history — safe to
  *  reset; the ledger is untouched). */
 export function loadCursors(m: MachineConfig): ChatCursors {
@@ -136,16 +175,17 @@ export async function saveCursors(m: MachineConfig, c: ChatCursors): Promise<voi
  * "why hasn't this been delivered" answer lie about mail that HAS been delivered.
  */
 export function unreadFor(
-  name: string,
+  recipient: ManagedPeer,
   ledger: ChatMessage[],
   cursors: ChatCursors,
   acked?: ReadonlySet<string>,
 ): { msg: ChatMessage; idx: number }[] {
-  const since = cursors.read[name] ?? 0;
+  const key = managedPeerKey(recipient);
+  const since = cursors.read[key] ?? 0;
   const out: { msg: ChatMessage; idx: number }[] = [];
   for (let idx = since; idx < ledger.length; idx++) {
     const msg = ledger[idx];
-    if (!msg || msg.to !== name) continue;
+    if (!msg || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== key) continue;
     if (acked?.has(msg.id) === true) continue; // already injected (Stop hook or daemon) — not pending
     out.push({ msg, idx });
   }
@@ -153,32 +193,30 @@ export function unreadFor(
 }
 
 /** Advance a recipient's read cursor to the whole-ledger length (everything up to now seen). */
-export async function markRead(m: MachineConfig, name: string, ledgerLen: number): Promise<void> {
+export async function markRead(m: MachineConfig, recipient: ManagedPeer, ledgerLen: number): Promise<void> {
   const c = loadCursors(m);
-  await saveCursors(m, { ...c, read: { ...c.read, [name]: ledgerLen } });
+  await saveCursors(m, { ...c, read: { ...c.read, [managedPeerKey(recipient)]: ledgerLen } });
 }
 
-/** One-line human render: `[YYYY-MM-DD HH:MM:SS] machine:from → to (task: X): body`. Shared by
- *  inbox + log. The sender's machine is part of the identity whenever the message crossed machines —
- *  without it `inbox` says `api → worker` and the reader is back to guessing which `api`. */
+/** One-line human render with the complete pinned endpoint identities. Shared by inbox + log. */
 export function fmtMessage(msg: ChatMessage): string {
   const t = msg.ts.replace("T", " ").slice(0, 19);
   const task = msg.task ? ` (task: ${msg.task})` : "";
-  const from = msg.fromMachine === null ? msg.from : `${msg.fromMachine}:${msg.from}`;
-  return `[${t}] ${from} → ${msg.to}${task}: ${msg.body}`;
+  return `[${t}] ${principalLabel(msg.from)} → ${targetLabel(msg.to)}${task}: ${msg.body}`;
 }
 
-/** The next undelivered message addressed to `name`, scanning from ledger index `from`, with its
+/** The next undelivered message addressed to an exact managed peer, scanning from ledger index `from`, with its
  *  absolute index — or null if none. Pure: the daemon uses `idx` to advance the per-recipient
  *  delivered cursor (past skipped non-recipient messages) and preserves in-order delivery. */
 export function nextForRecipient(
-  name: string,
+  recipient: ManagedPeer,
   ledger: ChatMessage[],
   from: number,
 ): { msg: ChatMessage; idx: number } | null {
+  const key = managedPeerKey(recipient);
   for (let idx = Math.max(0, from); idx < ledger.length; idx++) {
     const msg = ledger[idx];
-    if (msg && msg.to === name) return { msg, idx };
+    if (msg && msg.to.kind === "managed" && managedPeerKey(msg.to) === key) return { msg, idx };
   }
   return null;
 }

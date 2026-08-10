@@ -39,6 +39,7 @@ test("each durable file is named, and no two share a name", () => {
   // Named with a real extension: the registry used to be the one file without one, which is exactly
   // why it read as junk next to the others.
   for (const n of names) expect(n).toMatch(/\.(jsonl|json)$/);
+  for (const n of names.slice(1)) expect(n).toContain("v2");
 });
 
 test("two configs never share state — the property tests and isolated instances rely on", () => {

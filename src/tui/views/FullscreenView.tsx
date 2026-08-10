@@ -7,6 +7,7 @@ import { TranscriptPane } from "../components/TranscriptPane.tsx";
 import { Scrollbar } from "../components/Scrollbar.tsx";
 import { Txt } from "../components/Txt.tsx";
 import type { FleetItem } from "../fleet.ts";
+import { externalActionHint, writerSummary } from "../fleet.ts";
 import type { TranscriptMessage } from "../../types.ts";
 
 type Focus = "list" | "transcript";
@@ -91,9 +92,9 @@ export function FullscreenView({
                 const i = winStart + k; // global index (slice is the scroll window)
                 const isLast = k === arr.length - 1;
                 return (
-                  <Box key={it.row.session.uuid} flexDirection="column" flexShrink={0} marginBottom={isLast ? 0 : 1}>
+                  <Box key={it.key} flexDirection="column" flexShrink={0} marginBottom={isLast ? 0 : 1}>
                     {i === externalStart ? (
-                      <Text color="magenta" dimColor>── external · live outside ccmux (read-only) ──</Text>
+                      <Text color="magenta" dimColor>── external · local inventory outside ccmux ──</Text>
                     ) : null}
                     <SessionCard item={it} selected={i === cursor} hovered={i === hoverCard} spin={spin} showDir framed cardWidth={Math.max(20, listWidth - 4 - sbReserve)} lastWidth={Math.max(14, listWidth - 12 - sbReserve)} />
                   </Box>
@@ -116,10 +117,15 @@ export function FullscreenView({
         <Box flexDirection="column" flexGrow={1} height={bodyHeight} borderStyle="round" borderColor={paneColor("transcript")} paddingX={1} overflow="hidden">
           <Text>
             <Text bold color={sel?.external ? "magenta" : "cyan"}>{sel?.row.session.name ?? "—"}</Text>
-            <Text dimColor> · {sel?.external ? "external · read-only" : "transcript"}{transcriptOffset > 0 ? ` (↑${transcriptOffset})` : ""}</Text>
+            <Text dimColor> · {sel?.external ? "external" : "transcript"}{transcriptOffset > 0 ? ` (↑${transcriptOffset})` : ""}</Text>
           </Text>
-          <Box height={1} flexShrink={0} />
-          <TranscriptPane messages={messages} offset={transcriptOffset} width={Math.max(8, paneWidth - 2)} height={Math.max(1, bodyHeight - 4 - inputRows)} spin={spin} color={paneColor("transcript")} />
+          {sel?.ext ? (
+            <>
+              <Text dimColor>{`${sel.ext.provider}@${sel.ext.host} · ${sel.ext.threadId}`}</Text>
+              <Text dimColor>{`cwd ${sel.ext.dir ?? "unknown"} · origin ${sel.ext.origin} · storage ${sel.ext.storage} · writer ${writerSummary(sel.ext)}`}</Text>
+            </>
+          ) : <Box height={1} flexShrink={0} />}
+          <TranscriptPane messages={messages} offset={transcriptOffset} width={Math.max(8, paneWidth - 2)} height={Math.max(1, bodyHeight - (sel?.ext ? 5 : 4) - inputRows)} spin={spin} color={paneColor("transcript")} />
           {/* compose input — pinned at the bottom, ALWAYS visible; wraps whole lines while
               composing (no mid-word truncation), growing up to 5 rows */}
           <Box height={inputRows} flexShrink={0} flexDirection="column" overflow="hidden">
@@ -152,8 +158,8 @@ export function FullscreenView({
       <Box height={1} backgroundColor="gray" paddingX={1} flexShrink={0}>
         <Text color="black">{composing
           ? ` compose — ↵ send   esc cancel `
-          : sel?.external
-            ? ` ←→ pane   ↑↓ session   a adopt   [ ] resize   f inline   q quit `
+          : sel?.ext
+            ? ` ←→ pane   ↑↓ session   ${externalActionHint(sel.ext)}   [ ] resize   f inline   q quit `
             : ` ←→ pane   ↑↓ ${focus === "transcript" ? "scroll" : "session"}   i message   [ ] resize   ↵ attach   f inline   q quit `}</Text>
       </Box>
     </Box>

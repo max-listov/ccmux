@@ -2,32 +2,19 @@ import { test, expect } from "bun:test";
 import { localRows, mergeFleetLog, fmtRow, machineColumnWidth, LogPayloadSchema, type LogMachine, type LogRow } from "../src/chat/fleetLog.ts";
 import type { ChatMessage } from "../src/types.ts";
 import type { Outbound } from "../src/fleet/outbox.ts";
+import { makeChatMessage, makePeer } from "./helpers.ts";
+import { randomUUID } from "node:crypto";
 
-const msg = (o: Partial<ChatMessage> & { ts: string }): ChatMessage => ({
-  id: o.id ?? o.ts,
-  ts: o.ts,
-  from: o.from ?? "agent-a",
-  fromMachine: o.fromMachine ?? null,
-  to: o.to ?? "agent-b",
-  body: o.body ?? "hi",
-  task: o.task ?? null,
-  defer: o.defer ?? false,
-  onBehalfOf: o.onBehalfOf ?? null,
-  notBefore: o.notBefore ?? null,
-});
+const msg = (o: Partial<ChatMessage> & { ts: string }): ChatMessage =>
+  makeChatMessage({ id: o.id ?? randomUUID(), body: "hi", ...o });
 
-const out = (o: Partial<Outbound> & { ts: string }): Outbound => ({
-  id: o.id ?? o.ts,
-  ts: o.ts,
-  from: o.from ?? "agent-a",
-  toMachine: o.toMachine ?? "host-b",
-  toSession: o.toSession ?? "agent-b",
-  kind: o.kind ?? "msg",
-  body: o.body ?? "do the thing",
-  task: o.task ?? null,
-  ok: o.ok ?? true,
-  detail: o.detail ?? "",
-});
+const out = (o: { ts: string; id?: string; body?: string; ok?: boolean; detail?: string }): Outbound => {
+  const id = o.id ?? randomUUID();
+  const from = makePeer({ session: "agent-a" });
+  const to = makePeer({ machine: "host-b", agent: "codex", session: "agent-b" });
+  const result = { ok: o.ok ?? true, detail: o.detail ?? "" };
+  return { kind: "msg", envelope: makeChatMessage({ id, ts: o.ts, from, to, body: o.body ?? "do the thing" }), result };
+};
 
 const src = (machine: string, rows: LogRow[], ok = true): { machine: LogMachine; rows: LogRow[] } => ({
   machine: { machine, ok, error: ok ? null : "unreachable" },
@@ -41,20 +28,14 @@ test("localRows merges ledger + outbox in time order", () => {
 });
 
 test("a remote sender is rendered with its machine, so a reply address is readable off the line", () => {
-  const [row] = localRows("host-b", [msg({ ts: "t", from: "agent-a", fromMachine: "host-a" })], []);
-  expect(row?.from).toBe("host-a:agent-a");
+  const [row] = localRows("host-b", [msg({ ts: "t", from: makePeer({ machine: "host-a", session: "agent-a" }) })], []);
+  expect(row?.from).toBe("ccmux/claude@host-a:agent-a#11111111-1111-4111-8111-111111111111");
 });
 
 test("a failed hand-off is visible as such, not silently absent", () => {
   const [row] = localRows("host-a", [], [out({ ts: "t", ok: false, detail: "transport failed" })]);
   expect(row?.note).toContain("NOT SENT");
   expect(fmtRow(row!)).toContain("transport failed");
-});
-
-test("restart --then hand-offs are distinguishable from chat", () => {
-  const [row] = localRows("host-a", [], [out({ ts: "t", kind: "restart-then", body: "read the task" })]);
-  expect(row?.kind).toBe("sent-restart");
-  expect(fmtRow(row!)).toContain("restart --then");
 });
 
 test("mergeFleetLog interleaves machines by timestamp and keeps the newest N", () => {

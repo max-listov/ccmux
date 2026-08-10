@@ -41,23 +41,12 @@ export interface RemoteResult {
   transportFailed: boolean;
 }
 
-/**
- * Extra values handed to the remote as ENVIRONMENT, not as flags.
- *
- * This is a compatibility-safety choice, not a style one: a machine still on an older ccmux pushes
- * an unknown `--flag` into the message POSITIONALS, so the flag text becomes the body and the real
- * body (which travels on stdin) is never read — a silently corrupted message, delivered with exit 0.
- * Reproduced against the released parser before choosing this. An unknown environment variable is
- * simply ignored by any version, so the worst case degrades to "no machine label" — i.e. exactly
- * today's behaviour — instead of destroying the message.
- */
 export async function runRemote(
   alias: string,
   argv: string[],
-  opts?: { stdin?: string; timeoutMs?: number; env?: Record<string, string> },
+  opts?: { stdin?: string; timeoutMs?: number },
 ): Promise<RemoteResult> {
-  const assigns = Object.entries(opts?.env ?? {}).map(([k, v]) => `${k}=${shellJoin([v])}`);
-  const cmd = [...assigns, shellJoin(argv)].join(" ");
+  const cmd = shellJoin(argv);
   const full = ["ssh", ...SSH_OPTS, alias, cmd];
   const timeoutMs = opts?.timeoutMs ?? 30_000;
   const r = opts?.stdin !== undefined ? await runWithInput(full, opts.stdin, { timeoutMs }) : await run(full, { timeoutMs });

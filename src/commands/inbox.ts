@@ -5,6 +5,7 @@ import { providerFor } from "../agent/index.ts";
 import { holdReason } from "../chat/holdReason.ts";
 import { readChatHold } from "../agent/sessionStatus.ts";
 import { listSessionNames } from "../tmux/tmux.ts";
+import { managedPeer } from "../chat/identity.ts";
 
 /**
  * Show a session's still-undelivered chat and, for each message, WHY it hasn't landed yet.
@@ -29,14 +30,19 @@ export async function cmdInbox(args: string[]): Promise<number> {
   if (fwd.done) return fwd.code;
   const m = fwd.m;
   name = fwd.session;
+  const recipient = findSession(loadSessions(m), name);
+  if (recipient === undefined) {
+    console.error(`no such session: ${name}`);
+    return 1;
+  }
+  const peer = managedPeer(m.rcPrefix, recipient);
   const ledger = loadLedger(m);
   // Consult the ack-log: conditional mail is delivered OFF the read cursor, so without this an
   // already-injected deferred message would be reported as pending forever.
-  const unread = unreadFor(name, ledger, loadCursors(m), loadAckedIds(m));
+  const unread = unreadFor(peer, ledger, loadCursors(m), loadAckedIds(m));
   if (unread.length === 0) {
     console.log(`(${name}: no unread messages)`);
   } else {
-    const recipient = findSession(loadSessions(m), name);
     const running = (await listSessionNames(m)).has(name);
     const daemonHold = readChatHold(name);
     const now = Date.now();
@@ -45,7 +51,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
       running,
       nowMs: now,
       isOwner: name === OWNER,
-      ...(recipient === undefined ? {} : { chatDeliverable: providerFor(recipient).chatDeliverable !== undefined }),
+      chatDeliverable: providerFor(recipient).chatDeliverable !== undefined,
       daemonHold,
     };
     for (const { msg } of unread) {
@@ -55,6 +61,6 @@ export async function cmdInbox(args: string[]): Promise<number> {
   }
   // Never advance another session's cursor — that would hide its mail behind your diagnosis.
   const isSelf = self !== undefined && self === name;
-  if (!peek && isSelf) await markRead(m, name, ledger.length);
+  if (!peek && isSelf) await markRead(m, peer, ledger.length);
   return 0;
 }

@@ -122,16 +122,18 @@ export function provColor(agent: AgentKind): "cyan" | "yellow" {
 }
 
 /** Foreground colour for a state label (undefined → terminal default). */
-export function stateColor(state: SessionState): "green" | "gray" | "magenta" | undefined {
+export function stateColor(state: SessionState): "green" | "gray" | "magenta" | "red" | undefined {
   if (state === "working") return "green";
   if (state === "stopped") return "gray";
   if (state === "external") return "magenta";
+  if (state === "blocked") return "red";
   return undefined;
 }
 
-export function dotGlyph(state: SessionState): { glyph: string; color: "green" | "gray" | "magenta" | undefined; dim: boolean } {
+export function dotGlyph(state: SessionState): { glyph: string; color: "green" | "gray" | "magenta" | "red" | undefined; dim: boolean } {
   if (state === "working") return { glyph: "●", color: "green", dim: false };
   if (state === "idle") return { glyph: "○", color: "gray", dim: false };
   if (state === "external") return { glyph: "◆", color: "magenta", dim: false };
+  if (state === "blocked") return { glyph: "!", color: "red", dim: false };
   return { glyph: "·", color: undefined, dim: true };
 }

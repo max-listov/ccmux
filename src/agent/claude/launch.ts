@@ -1,10 +1,14 @@
-import { readFileSync } from "node:fs";
+import { accessSync, constants, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Session, MachineConfig } from "../../types.ts";
 import { rcName } from "../../config/machine.ts";
 import { buildPrompt } from "../managePrompt.ts";
 import { UID, HOME } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
+
+export function preflight(m: MachineConfig): void {
+  accessSync(m.claudeBin, constants.X_OK);
+}
 
 /**
  * The full claude argv. Pure (resume branch decided by `historyPresent`, computed by
@@ -28,7 +32,7 @@ export function buildArgv(
     // per-session override wins over the machine default; undefined → machine default.
     resolvePermissionMode(s.permissionMode ?? m.permissionMode),
     "--append-system-prompt",
-    buildPrompt(s.name, cli, s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix),
+    buildPrompt(s.name, cli, s.agent, "ccmux", s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix),
     ...settingsArg(m, s, cli),
     ...flags,
     ...m.extraFlags,

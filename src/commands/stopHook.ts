@@ -3,6 +3,7 @@ import { loadSessions, findSession } from "../config/sessions.ts";
 import { loadLedger, loadAckedIds, appendAck } from "../chat/store.ts";
 import { formatChatInjection } from "../chat/format.ts";
 import { promptInvocation } from "../env.ts";
+import { managedPeer, managedPeerKey } from "../chat/identity.ts";
 
 /**
  * `ccmux stop-hook` — the Claude Code **Stop hook** for a managed session. It fires ONLY when the
@@ -41,6 +42,8 @@ export async function cmdStopHook(): Promise<number> {
     const m = loadMachineConfig();
     const me = findSession(loadSessions(m), self);
     if (!me || !me.chatEnabled) return 0; // chat off for this session → cheap no-op
+    const recipient = managedPeer(m.rcPrefix, me);
+    const recipientKey = managedPeerKey(recipient);
 
     // Deliver each DEFERRED message to this session that hasn't been injected yet (ack-log dedups by
     // id — the single source of truth for conditional delivery, shared with the daemon; the daemon
@@ -49,15 +52,15 @@ export async function cmdStopHook(): Promise<number> {
     const acked = loadAckedIds(m);
     const now = Date.now();
     const due = (iso: string | null) => iso === null || !Number.isFinite(Date.parse(iso)) || now >= Date.parse(iso);
-    const pending = loadLedger(m).filter((msg) => msg.to === self && msg.defer && !acked.has(msg.id) && due(msg.notBefore));
+    const pending = loadLedger(m).filter((msg) => msg.to.kind === "managed" && managedPeerKey(msg.to) === recipientKey && msg.defer && !acked.has(msg.id) && due(msg.notBefore));
     if (pending.length === 0) return 0; // no deferred mail → let the turn end cleanly
 
     // Record acks FIRST (durable, fail-closed) so neither this hook nor the daemon re-delivers.
-    for (const msg of pending) appendAck(m, msg.id, "hook", self);
+    for (const msg of pending) appendAck(m, msg.id, "hook", recipient);
 
     const reason = pending
       .map((msg) => {
-        const replyable = msg.fromMachine !== null && (msg.fromMachine === m.rcPrefix || m.fleet?.[msg.fromMachine] !== undefined);
+        const replyable = msg.from.kind === "managed" && (msg.from.machine === m.rcPrefix || m.fleet?.[msg.from.machine] !== undefined);
         return formatChatInjection(msg, { cli: promptInvocation(), replyable });
       })
       .join("\n\n");

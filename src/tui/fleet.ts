@@ -1,70 +1,98 @@
 import { basename } from "node:path";
+import { prettyModel } from "../agent/format.ts";
 import type { ListRow } from "../commands/list.ts";
+import { externalSessionKey, managedSessionKey } from "../external/keys.ts";
 import type { DiscoveredSession } from "./discover.ts";
 import { fmtAge, fmtTokens } from "./format.ts";
-import { prettyModel } from "../agent/format.ts";
 import { deriveStatus } from "./status.ts";
 import type { AgentStatus } from "./status.ts";
 
-// One navigable list = managed sessions (ours) + discovered external live sessions.
-// Each item carries a unified agent status (thinking/editing/waiting/…) so managed and
-// external read identically.
-
 export interface FleetItem {
+  /** Stable UI identity. Metadata such as cwd, path, origin and activity never participates. */
+  key: string;
   row: ListRow;
   external: boolean;
   ext: DiscoveredSession | null;
   status: AgentStatus;
-  /** "5m ago" — when the conversation last moved. Precomputed here (not in the card) so
-   *  SessionCard's memo compares a primitive and re-renders only when the label changes. */
+  /** "5m ago" — precomputed so the memoized card compares a primitive. */
   activityText: string | null;
 }
 
-// EXTERNAL sessions have no tmux pane to scrape, so "did the transcript move recently" is the
-// only liveness signal we have for them. 30s tolerates the quiet stretches mid-turn (tool runs,
-// long generations write nothing until they finish). Managed sessions DON'T use this — their
-// pane spinner is the authoritative, precise signal (see pane.ts WORKING_RE); folding jsonl
-// freshness into managed only added a 30s false-"working" tail after every finished turn.
 const RECENT_ACTIVITY_MS = 30_000;
+const ACTIVITY_BUCKET_MS = 60_000;
 
-/** Present a discovered external session as a (read-only) ListRow for the shared renderer. */
+export function externalSelectionKey(ext: DiscoveredSession): string {
+  return externalSessionKey(ext.provider, ext.host, ext.threadId);
+}
+
+export function resolveFleetItem(items: FleetItem[], key: string | null): FleetItem | null {
+  if (key === null) return null;
+  return items.find((item) => item.key === key) ?? null;
+}
+
+export function capabilitySummary(ext: DiscoveredSession): string {
+  const cap = ext.capabilities;
+  return [
+    `inspect ${cap.inspect ? "yes" : "no"}`,
+    `adopt ${cap.attemptAdopt ? "yes" : "no"}`,
+    `fork ${cap.fork ? "yes" : "no"}`,
+    `takeover ${cap.terminateAndAdopt ? "yes" : "no"}`,
+    `release ${cap.releaseAtSource ? "yes" : "no"}`,
+  ].join(" · ");
+}
+
+export function capabilityReasons(ext: DiscoveredSession): string {
+  return ext.capabilities.reasons.length > 0 ? ext.capabilities.reasons.join(" · ") : "no capability blocks";
+}
+
+export function externalActionHint(ext: DiscoveredSession): string {
+  if (ext.capabilities.attemptAdopt) return "a attempt adopt";
+  if (ext.capabilities.fork || ext.capabilities.terminateAndAdopt || ext.capabilities.releaseAtSource) return "a ownership options";
+  return `no ownership action: ${capabilityReasons(ext)}`;
+}
+
+export function writerSummary(ext: DiscoveredSession): string {
+  const runtime = ext.writerRuntime;
+  const evidence = ext.writerEvidence;
+  if (runtime === null) return `${evidence} · no runtime classified`;
+  const pid = runtime.pid === null ? "" : ` pid ${runtime.pid}`;
+  return `${evidence} · ${runtime.kind}${pid} · ${runtime.reason}`;
+}
+
+/** Present a discovered provider-neutral thread as a read-only ListRow for shared rendering. */
 export function externalToRow(ext: DiscoveredSession): ListRow {
-  const tokens = ext.usedTokens && ext.usedTokens > 0 ? fmtTokens(ext.usedTokens) : "-";
+  const tokens = ext.usedTokens !== null && ext.usedTokens > 0 ? fmtTokens(ext.usedTokens) : "-";
+  const dirLabel = ext.dir ?? "cwd unknown";
+  const nameBase = basename(ext.dir ?? "") || ext.provider;
+  const running = ext.writerEvidence === "observed";
   return {
     session: {
-      name: `${basename(ext.dir) || "claude"}·${ext.uuid.slice(0, 6)}`,
-      dir: ext.dir,
-      uuid: ext.uuid,
+      name: `${nameBase}·${ext.threadId.slice(0, 6)}`,
+      dir: dirLabel,
+      uuid: ext.threadId,
       flags: [],
       archived: false,
       resumeText: "continue",
-      agent: "claude",
+      agent: ext.provider,
       chatEnabled: false,
       promptModules: [],
     },
-    running: true, // an external session in the list is a LIVE one (recent activity)
+    running,
     state: "external",
-    model: prettyModel(ext.model),
+    lifecycleError: null,
+    model: prettyModel(ext.lastModel),
     contextLabel: tokens,
     context: { text: tokens === "-" ? null : tokens, usedTokens: ext.usedTokens, limitTokens: null, percent: null },
-    uptimeText: "—", // no tmux pane → no uptime; the activity age is the item's activityText
+    uptimeText: "—",
     uptimeSeconds: null,
     createdAt: null,
     lastMessage: ext.lastMessage,
     stale: [],
-  lastActivityMs: ext.lastActivityMs,
+    lastActivityMs: ext.lastActivityMs,
   };
 }
 
 const recentlyActive = (ms: number | null): boolean => ms !== null && Date.now() - ms < RECENT_ACTIVITY_MS;
-
-// ── list order: most recently active conversation first ────────────────────────────────
-// Sorting by RAW mtime made cards swap places on every poll tick while several agents were
-// writing — unusable nav (that's why activity sort was once ripped out of discover). Two
-// stabilizers fix the root: (1) the sort key is MINUTE-bucketed, so an actively-writing pair
-// reorders at most once a minute; (2) ties keep a deterministic name order. A session with no
-// transcript yet sorts by its tmux start time (just created = active now), else to the bottom.
-const ACTIVITY_BUCKET_MS = 60_000;
 
 function activityBucket(row: ListRow): number {
   const ms = row.lastActivityMs ?? (row.createdAt ? Date.parse(row.createdAt) : null);
@@ -72,32 +100,40 @@ function activityBucket(row: ListRow): number {
 }
 
 function byActivity(a: FleetItem, b: FleetItem): number {
-  return activityBucket(b.row) - activityBucket(a.row) || a.row.session.name.localeCompare(b.row.session.name);
+  return activityBucket(b.row) - activityBucket(a.row) || a.key.localeCompare(b.key);
 }
 
-export function buildItems(managed: ListRow[], discovered: DiscoveredSession[]): { items: FleetItem[]; externalStart: number } {
-  const m = managed.map((row): FleetItem => ({
+export function buildItems(
+  managed: ListRow[],
+  discovered: DiscoveredSession[],
+  host: string,
+): { items: FleetItem[]; externalStart: number } {
+  const managedItems = managed.map((row): FleetItem => ({
+    key: managedSessionKey(row.session, host),
     row,
     external: false,
     ext: null,
-    // pane scan is the primary "working" signal; the transcript-moved fallback catches the
-    // frames the regex misses AND adopted sessions whose pane is a parallel idle resume.
-    status: deriveStatus({ running: row.running, isWorking: row.state === "working" || recentlyActive(row.lastActivityMs), lastMessage: row.lastMessage }),
+    status: deriveStatus({
+      running: row.running,
+      isWorking: row.state === "working" || recentlyActive(row.lastActivityMs),
+      lastMessage: row.lastMessage,
+      blocked: row.state === "blocked",
+    }),
     activityText: row.lastActivityMs !== null ? fmtAge(row.lastActivityMs) : null,
   }));
-  const e = discovered.map((ext): FleetItem => ({
+  const externalItems = discovered.map((ext): FleetItem => ({
+    key: externalSelectionKey(ext),
     row: externalToRow(ext),
     external: true,
     ext,
     status: deriveStatus({
-      running: true,
-      isWorking: recentlyActive(ext.lastActivityMs),
+      running: ext.writerEvidence === "observed",
+      isWorking: ext.writerEvidence === "observed" && recentlyActive(ext.lastActivityMs),
       lastMessage: ext.lastMessage,
     }),
-    activityText: fmtAge(ext.lastActivityMs),
+    activityText: ext.lastActivityMs === null ? null : fmtAge(ext.lastActivityMs),
   }));
-  // each section sorts within itself — managed stay above the external separator
-  m.sort(byActivity);
-  e.sort(byActivity);
-  return { items: [...m, ...e], externalStart: m.length };
+  managedItems.sort(byActivity);
+  externalItems.sort(byActivity);
+  return { items: [...managedItems, ...externalItems], externalStart: managedItems.length };
 }

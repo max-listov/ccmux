@@ -14,6 +14,7 @@ function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {
   return {
     tmuxBin: mac ? "/opt/homebrew/bin/tmux" : "/usr/bin/tmux",
     projectsDir: `${HOME}/.claude/projects`,
+    codexHome: `${HOME}/.codex`,
     codexSessionsDir: `${HOME}/.codex/sessions`,
     stateDir: STATE_DIR,
     // Default so a fresh box (no machine.json yet) just runs — `install` pins the real

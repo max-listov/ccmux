@@ -16,10 +16,11 @@ import { cmdFleet } from "./commands/fleetList.ts";
 import { cmdEnsure } from "./commands/ensure.ts";
 import { cmdDaemon } from "./commands/daemon.ts";
 import { cmdRun } from "./commands/run.ts";
+import { cmdBootstrap } from "./commands/bootstrap.ts";
 import { cmdInstall, cmdUninstall } from "./commands/install.ts";
 import { cmdUpdate } from "./commands/update.ts";
 import { cmdAdopt } from "./commands/adopt.ts";
-import { cmdMsg } from "./commands/msg.ts";
+import { cmdMsg, cmdReceiveChat } from "./commands/msg.ts";
 import { cmdInbox } from "./commands/inbox.ts";
 import { cmdChat } from "./commands/chat.ts";
 import { cmdRouter } from "./commands/router.ts";
@@ -66,8 +67,12 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     case "new": {
       const { positionals, flags } = splitDashDash(rest);
       const router = positionals.includes("--router");
-      const pos = positionals.filter((a) => a !== "--router");
-      return cmdNew(pos[0], pos[1], flags, { router });
+      const agentIndex = positionals.indexOf("--agent");
+      const agent = agentIndex >= 0 ? (positionals[agentIndex + 1] ?? "") : undefined;
+      const pos = positionals.filter(
+        (a, index) => a !== "--router" && (agentIndex < 0 || (index !== agentIndex && index !== agentIndex + 1)),
+      );
+      return cmdNew(pos[0], pos[1], flags, agent === undefined ? { router } : { router, agent });
     }
     case "rm":
     case "remove": {
@@ -88,6 +93,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdSend(rest[0], rest.slice(1));
     case "msg":
       return cmdMsg(rest);
+    case "_chat-receive-v2":
+      return cmdReceiveChat();
     case "inbox":
       return cmdInbox(rest);
     case "chat":
@@ -120,8 +127,10 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdDaemon(); // never returns
     case "_run":
       return cmdRun(rest[0]); // hidden: in-session relaunch loop (tmux invokes this)
+    case "_bootstrap":
+      return cmdBootstrap(rest[0]); // hidden: pending Codex first-launch transaction
     case "_restart-worker":
-      return cmdRestartWorker(rest[0], rest[1]); // hidden: detached restart helper (name, note)
+      return cmdRestartWorker(rest[0]); // hidden: detached restart helper
     case "_restart-all-worker":
       return cmdRestartAllWorker(); // hidden: detached fleet-sweep driver (restart --all)
     case "stop-hook":

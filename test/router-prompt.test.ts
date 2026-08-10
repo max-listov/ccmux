@@ -33,8 +33,8 @@ test("the router protocol teaches the self-watchdog liveness loop", () => {
 });
 
 test("buildPrompt composes the router module INTO one string only when requested", () => {
-  const withRouter = buildPrompt("cc-r", "ccmux", true, ["router"]);
-  const plain = buildPrompt("cc-r", "ccmux", true, []);
+  const withRouter = buildPrompt("cc-r", "ccmux", "claude", "ccmux", true, ["router"]);
+  const plain = buildPrompt("cc-r", "ccmux", "claude", "ccmux", true, []);
   expect(withRouter).toContain("ROUTER MODE");
   expect(plain).not.toContain("ROUTER MODE");
   // still the base management prompt in both (single injected string, never a competing flag)
@@ -43,10 +43,10 @@ test("buildPrompt composes the router module INTO one string only when requested
 });
 
 test("owner-language guidance: mirror by default, explicit override when ownerLang set", () => {
-  const mirror = buildPrompt("cc-a", "ccmux", true, []);
+  const mirror = buildPrompt("cc-a", "ccmux", "claude", "ccmux", true, []);
   expect(mirror).toContain("Reply to the owner in the same language the owner used.");
-  const forced = buildPrompt("cc-a", "ccmux", true, [], "Russian");
+  const forced = buildPrompt("cc-a", "ccmux", "claude", "ccmux", true, [], "Russian");
   expect(forced).toContain("Reply to the owner in Russian.");
   // language guidance is chat-scoped — absent when chat is off
-  expect(buildPrompt("cc-a", "ccmux", false, [])).not.toContain("Reply to the owner");
+  expect(buildPrompt("cc-a", "ccmux", "claude", "ccmux", false, [])).not.toContain("Reply to the owner");
 });

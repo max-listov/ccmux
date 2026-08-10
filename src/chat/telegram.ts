@@ -1,6 +1,7 @@
 import type { ChatMessage, MachineConfig, TelegramConfig } from "../types.ts";
 import { log } from "../util/log.ts";
-import { loadCursors, loadLedger, OWNER, saveCursors } from "./store.ts";
+import { loadCursors, loadLedger, saveCursors } from "./store.ts";
+import { principalLabel, targetLabel } from "./identity.ts";
 
 const SEND_TIMEOUT_MS = 10_000;
 
@@ -20,14 +21,14 @@ function escapeHtml(s: string): string {
  * bare names are ambiguous — the same session name commonly exists on two boxes, which is exactly
  * the confusion fleet addressing exists to remove. The recipient is always local to the ledger being
  * mirrored, so it takes the mirroring machine's label; the sender keeps its OWN machine when the
- * message crossed over (`fromMachine`), and otherwise is local too.
+ * message crossed machines or stayed local; both endpoints are already pinned in the envelope.
  */
-export function formatForTg(msg: ChatMessage, machine: string): string {
-  const from = escapeHtml(`${msg.fromMachine ?? machine}:${msg.from}`);
+export function formatForTg(msg: ChatMessage): string {
+  const from = escapeHtml(principalLabel(msg.from));
   // Mail to the human keeps the SAME shape rather than inverting the sentence — one route line to
   // learn to read, with the emoji doing the "this one is for you" work.
-  const to = msg.to === OWNER ? "you" : escapeHtml(`${machine}:${msg.to}`);
-  const mark = msg.to === OWNER ? "📩 " : "";
+  const to = msg.to.kind === "owner" ? "you" : escapeHtml(targetLabel(msg.to));
+  const mark = msg.to.kind === "owner" ? "📩 " : "";
   const task = msg.task ? ` · <i>${escapeHtml(msg.task)}</i>` : "";
   // Blank line between route and body: on a phone the two ran together and the header stopped
   // reading as a header.
@@ -88,13 +89,13 @@ export async function mirrorPending(m: MachineConfig): Promise<void> {
       cur++;
       continue;
     }
-    const result = await sendTelegram(tg, formatForTg(msg, m.rcPrefix));
+    const result = await sendTelegram(tg, formatForTg(msg));
     if (result === "transient") {
-      log.warn({ msg: "telegram mirror transient failure — holding, retry next pass", from: msg.from, to: msg.to });
+      log.warn({ msg: "telegram mirror transient failure — holding, retry next pass", from: principalLabel(msg.from), to: targetLabel(msg.to) });
       break; // hold at `cur` — do not advance past an un-sent message
     }
     if (result === "permanent") {
-      log.warn({ msg: "telegram mirror permanent failure — skipping message", from: msg.from, to: msg.to });
+      log.warn({ msg: "telegram mirror permanent failure — skipping message", from: principalLabel(msg.from), to: targetLabel(msg.to) });
     }
     cur++; // ok or permanent → move past it
   }

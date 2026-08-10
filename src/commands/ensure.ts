@@ -1,10 +1,11 @@
 import type { Session } from "../types.ts";
 import { loadMachineConfig } from "../config/machine.ts";
-import { loadSessions, updateSessionUuid } from "../config/sessions.ts";
+import { findSession, loadSessions, updateSessionUuid } from "../config/sessions.ts";
 import { forkedUuid } from "../agent/index.ts";
 import { listSessionNames } from "../tmux/tmux.ts";
 import { log } from "../util/log.ts";
 import { startSession } from "./lifecycle.ts";
+import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 
 type EnsureDeps = {
   sessions: () => Session[];
@@ -42,6 +43,8 @@ export async function cmdEnsure(): Promise<number> {
       return { ...s, uuid: next };
     },
     start: (name, dir) => {
+      const session = findSession(loadSessions(m), name);
+      if (!session || readLifecycleBlockForSession(m, session)) return Promise.resolve();
       log.info({ msg: "heal: session down — restarting", name });
       return startSession(m, name, dir);
     },

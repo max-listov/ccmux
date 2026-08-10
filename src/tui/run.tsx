@@ -110,7 +110,7 @@ export async function runTui(fullscreen: boolean): Promise<number> {
       await app?.waitUntilExit();
       log.info({ msg: "intent", type: intent.type, name: intent.type === "quit" ? undefined : intent.name });
       if (intent.type === "quit") return 0;
-      const created = intent.type === "new" ? await createSession(m, intent.name, intent.dir) : undefined;
+      const created = intent.type === "new" ? await createSession(m, intent.name, intent.dir, intent.agent) : undefined;
       if (created) log.info({ msg: "created", name: created.name, dir: created.dir, uuid: created.uuid });
       cleanTerminalForAttach();
       if (created) {
@@ -124,6 +124,7 @@ export async function runTui(fullscreen: boolean): Promise<number> {
       app?.unmount();
       cleanTerminalForAttach();
       log.error({ msg: "tui loop error", err: String(err), stack: err instanceof Error ? err.stack : undefined });
+      process.stderr.write(`ccmux: ${err instanceof Error ? err.message : String(err)}\n`);
       return 1;
     }
   }

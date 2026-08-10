@@ -61,17 +61,45 @@ export async function newSession(
   name: string,
   dir: string,
   cmd: string[],
+  extraEnv: Record<string, string> = {},
 ): Promise<void> {
   // `-s NAME` (plain, for creation), `-e` pins the instance env into the pane (see above), `--` so
   // tmux treats the rest as command tokens.
-  await run(tmuxArgv(m, "new-session", "-d", "-s", name, "-c", dir, ...instanceEnvArgs(), "--", ...cmd));
+  const envArgs = [...instanceEnvArgs()];
+  for (const [key, value] of Object.entries(extraEnv)) envArgs.push("-e", `${key}=${value}`);
+  const result = await run(tmuxArgv(m, "new-session", "-d", "-s", name, "-c", dir, ...envArgs, "--", ...cmd));
+  if (result.code !== 0) throw new Error(`tmux could not create '${name}': ${result.stderr.trim() || result.stdout.trim()}`);
+}
+
+export async function killSessionIfGeneration(m: MachineConfig, name: string, generation: string): Promise<boolean> {
+  const result = await run(tmuxArgv(m, "show-environment", "-t", exactTarget(name), "CCMUX_BOOTSTRAP_GENERATION"));
+  if (result.code !== 0 || result.stdout.trim() !== `CCMUX_BOOTSTRAP_GENERATION=${generation}`) return false;
+  return killSession(m, name);
 }
 
 export async function killSession(m: MachineConfig, name: string): Promise<boolean> {
+  const pane = await run(tmuxArgv(m, "display-message", "-p", "-t", paneTarget(name), "#{pane_pid}"));
+  const panePid = Number.parseInt(pane.stdout.trim(), 10);
+  let processGroup: number | null = null;
+  if (pane.code === 0 && Number.isInteger(panePid) && panePid > 1) {
+    const pg = Bun.spawnSync(["ps", "-o", "pgid=", "-p", String(panePid)], { stdout: "pipe", stderr: "ignore" });
+    const value = Number.parseInt(pg.stdout.toString().trim(), 10);
+    if (pg.exitCode === 0 && Number.isInteger(value) && value > 1) processGroup = value;
+  }
   const { code } = await run(tmuxArgv(m, "kill-session", "-t", exactTarget(name)));
   // Single funnel for stop/rm/restart (CLI + TUI) — drop the session's structured status files so a
   // stopped/removed session never shows a stale live state; a restart re-writes them via SessionStart.
   clearStatus(name);
+  if (code === 0 && processGroup !== null) {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const ps = Bun.spawnSync(["ps", "-axo", "pgid="], { stdout: "pipe", stderr: "ignore" });
+      const alive = ps.exitCode === 0 && ps.stdout.toString().split("\n").some((line) => Number.parseInt(line.trim(), 10) === processGroup);
+      if (!alive) return true;
+      await Bun.sleep(50);
+    }
+    throw new Error(`managed process group ${processGroup} did not exit after stopping ${name}`);
+  }
   return code === 0;
 }
 

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { ChatMessage } from "../types.ts";
 import type { Outbound } from "../fleet/outbox.ts";
+import { outboundId, outboundTimestamp } from "../fleet/outbox.ts";
+import { principalLabel, targetLabel } from "./identity.ts";
 
 /**
  * One chronological view of a conversation that physically lives in several files on several
@@ -20,8 +22,7 @@ export const LogRowSchema = z.object({
   ts: z.string(),
   // chat         — landed in THIS machine's ledger (received, or sent to a local peer)
   // sent         — WE sent it to another machine (outbox)
-  // sent-restart — we handed off work via `restart --then` to another machine (outbox)
-  kind: z.enum(["chat", "sent", "sent-restart"]),
+  kind: z.enum(["chat", "sent"]),
   from: z.string(),
   to: z.string(),
   task: z.string().nullable().default(null),
@@ -62,9 +63,9 @@ export function localRows(machine: string, ledger: ChatMessage[], outbox: Outbou
       ts: msg.ts,
       kind: "chat",
       // A remote sender is shown with its machine, because that is the only rendering from which a
-      // reply address can be read off directly — the whole point of carrying `fromMachine`.
-      from: msg.fromMachine === null ? msg.from : `${msg.fromMachine}:${msg.from}`,
-      to: msg.to,
+      // full pinned source can be read directly — no cwd/name inference is needed.
+      from: principalLabel(msg.from),
+      to: targetLabel(msg.to),
       task: msg.task,
       body: msg.body,
       note: "",
@@ -73,15 +74,15 @@ export function localRows(machine: string, ledger: ChatMessage[], outbox: Outbou
   for (const o of outbox) {
     rows.push({
       machine,
-      ts: o.ts,
-      kind: o.kind === "restart-then" ? "sent-restart" : "sent",
-      from: o.from,
-      to: `${o.toMachine}:${o.toSession}`,
-      task: o.task,
-      body: o.body,
+      ts: outboundTimestamp(o),
+      kind: "sent",
+      from: principalLabel(o.envelope.from),
+      to: targetLabel(o.envelope.to),
+      task: o.envelope.task,
+      body: o.envelope.body,
       // A failed send that the daemon later drained is no longer bad news — saying otherwise would
       // send someone chasing a message that did arrive.
-      note: o.ok ? "" : settled.has(o.id) ? "sent later, on retry" : `NOT SENT — ${o.detail === "" ? "unknown error" : o.detail}`,
+      note: o.result.ok ? "" : settled.has(outboundId(o)) ? "sent later, on retry" : `NOT SENT — ${o.result.detail === "" ? "unknown error" : o.result.detail}`,
     });
   }
   return sortByTime(rows);
@@ -102,7 +103,7 @@ export function mergeFleetLog(sources: { rows: LogRow[] }[], limit: number): Log
   return limit > 0 ? all.slice(-limit) : all;
 }
 
-const ARROW: Record<LogRow["kind"], string> = { chat: "→", sent: "⇢", "sent-restart": "⇢" };
+const ARROW: Record<LogRow["kind"], string> = { chat: "→", sent: "⇢" };
 
 /** One human line. `machineWidth` aligns the machine column across a merged view (0 = no column,
  *  used for a single-machine log where the column would be noise). */
@@ -110,9 +111,8 @@ export function fmtRow(r: LogRow, machineWidth = 0): string {
   const t = r.ts.replace("T", " ").slice(0, 19);
   const col = machineWidth > 0 ? `${r.machine.padEnd(machineWidth)} ` : "";
   const task = r.task === null || r.task === "" ? "" : ` (task: ${r.task})`;
-  const verb = r.kind === "sent-restart" ? " restart --then" : "";
   const note = r.note === "" ? "" : `   [${r.note}]`;
-  return `[${t}] ${col}${r.from} ${ARROW[r.kind]} ${r.to}${verb}${task}: ${r.body}${note}`;
+  return `[${t}] ${col}${r.from} ${ARROW[r.kind]} ${r.to}${task}: ${r.body}${note}`;
 }
 
 /** Column width for the machine labels actually present (so a single-machine log stays clean). */

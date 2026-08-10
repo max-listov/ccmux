@@ -4,7 +4,7 @@ description: Persistent self-healing флот агентских сессий н
 type: vision
 status: active
 created: 2026-06-11
-updated: 2026-06-11
+updated: 2026-08-10
 ---
 
 # ccmux — куда идём
@@ -12,13 +12,17 @@ updated: 2026-06-11
 ## Что это
 Супервайзер **постоянных агентских сессий** (Claude Code, дальше — любые CLI-агенты).
 Один демон на машину держит флот живых сессий в tmux: хилит упавшие, поднимает на ребуте,
-резюмит ту же беседу по фикс-uuid. Сессии — полноценные интерактивные `claude` (подписка
-пользователя, Remote Control, настраиваемый permission-mode — дефолт `auto`, на личных
-машинах можно `bypassPermissions`; под root-демоном эскалация даунгрейдится в `auto`), не headless-обвязка.
+резюмит ту же беседу по фикс-uuid. Сессии — полноценные интерактивные provider CLI на подписке
+пользователя, не headless-обвязка. Remote Control/statusline и permission-mode — Claude-specific
+capabilities; Codex сохраняет свой TUI/config/approvals и provider-specific resume.
 
 ## Принципы
-- **Интерактивный CLI, не SDK** — сессии остаются на подписке пользователя и со всеми фичами
-  (RC, statusline, slash-команды). Мы супервайзим, а не реимплементируем.
+- **Интерактивный CLI, не SDK** — сессии остаются на подписке пользователя и сохраняют
+  provider-specific capabilities: Claude — RC/statusline, Codex — TUI/config/approvals/resume.
+  Мы супервайзим, а не реимплементируем.
+- **Один provider process = один writer одной managed session** — ccmux не подключает параллельный
+  mutating client к тому же thread. Для Codex production boundary остаётся обычным TUI под tmux;
+  внешний App Server вернётся в рассмотрение после production support и parity probes.
 - **Агент-агностичность** — провайдер на агента (`src/agent/<id>/`), ядро говорит только
   с контрактом. Claude сегодня, Codex и ACP-агенты — когда дозреют.
 - **jsonl — источник правды беседы**: транскрипт, токены, «где остановилось» читаются из

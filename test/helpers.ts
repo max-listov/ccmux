@@ -1,5 +1,5 @@
 import { SessionSchema, MachineConfigSchema } from "../src/config/schema.ts";
-import type { Session, MachineConfig } from "../src/types.ts";
+import type { ChatMessage, ChatPrincipal, ChatTarget, ManagedPeer, Session, MachineConfig } from "../src/types.ts";
 
 export const UUID = "11111111-1111-4111-8111-111111111111";
 
@@ -16,5 +16,40 @@ export function makeMachine(over: Record<string, unknown> = {}): MachineConfig {
 }
 
 export function makeSession(over: Record<string, unknown> = {}): Session {
-  return SessionSchema.parse({ name: "cc-x", dir: "/home/user", uuid: UUID, ...over });
+  return SessionSchema.parse({ name: "cc-x", dir: "/home/user", uuid: UUID, agent: "claude", ...over });
+}
+
+export function makePeer(over: Partial<ManagedPeer> = {}): ManagedPeer {
+  return {
+    kind: "managed",
+    source: "ccmux",
+    machine: "host-a",
+    agent: "claude",
+    session: "worker",
+    threadId: UUID,
+    ...over,
+  };
+}
+
+export function makeCli(machine = "host-a"): ChatPrincipal {
+  return { kind: "cli", source: "ccmux", machine };
+}
+
+export function makeOwner(): ChatTarget {
+  return { kind: "owner" };
+}
+
+export function makeChatMessage(over: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: UUID,
+    ts: "2026-08-05T00:00:00.000Z",
+    from: makePeer({ session: "sender" }),
+    to: makePeer({ session: "worker" }),
+    body: "hello",
+    task: null,
+    defer: false,
+    onBehalfOf: null,
+    notBefore: null,
+    ...over,
+  };
 }

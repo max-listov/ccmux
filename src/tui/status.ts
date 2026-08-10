@@ -6,7 +6,7 @@ import { toolCategory, toolDisplayName } from "../agent/toolMeta.ts";
 // future provider, so the fleet reads consistently. This is the foundation the upcoming
 // agent-command features build on.
 
-export type StatusKey = "thinking" | "writing" | "reading" | "editing" | "running" | "tool" | "waiting" | "idle" | "stopped";
+export type StatusKey = "thinking" | "writing" | "reading" | "editing" | "running" | "tool" | "waiting" | "idle" | "stopped" | "blocked";
 
 export interface AgentStatus {
   key: StatusKey;
@@ -26,6 +26,7 @@ const ICON: Record<StatusKey, string> = {
   waiting: "◔",
   idle: "○",
   stopped: "▪",
+  blocked: "!",
 };
 
 function st(key: StatusKey, label: string, color: string, active: boolean): AgentStatus {
@@ -51,7 +52,8 @@ function working(lm: TranscriptMessage | null): AgentStatus {
 
 /** Derive the unified status. `isWorking` = agent active right now (pane spinner for
  *  managed, recent file activity for external). */
-export function deriveStatus(opts: { running: boolean; isWorking: boolean; lastMessage: TranscriptMessage | null }): AgentStatus {
+export function deriveStatus(opts: { running: boolean; isWorking: boolean; lastMessage: TranscriptMessage | null; blocked?: boolean }): AgentStatus {
+  if (opts.blocked === true) return st("blocked", "blocked", "red", false);
   if (!opts.running) return st("stopped", "stopped", "gray", false);
   if (opts.isWorking) return working(opts.lastMessage);
   // not actively working → waiting for our input if the assistant finished its turn, else idle

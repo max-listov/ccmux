@@ -11,6 +11,7 @@ import { computeStamp, staleReasons } from "../agent/launchStamp.ts";
 import { promptInvocation } from "../env.ts";
 import { readLifecycle, readMetrics, resolveLiveState } from "../agent/sessionStatus.ts";
 import { VERSION } from "../util/version.ts";
+import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { fmtTokens } from "../tui/format.ts";
 import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionState, TranscriptMessage } from "../types.ts";
 
@@ -25,6 +26,7 @@ export interface ListRow {
   session: Session;
   running: boolean;
   state: SessionState;
+  lifecycleError: string | null;
   model: string | null;
   contextLabel: string; // human CTX column
   context: ContextInfo; // structured, for --json
@@ -52,10 +54,12 @@ async function buildRow(
   const activity = lastActivityMs(s, m);
   if (startedAt === undefined) {
     scanCache.delete(s.name); // stopped → drop stale scan so a restart re-captures
+    const block = readLifecycleBlockForSession(m, s);
     return {
       session: s,
       running: false,
-      state: "stopped",
+      state: block ? "blocked" : "stopped",
+      lifecycleError: block?.error ?? null,
       model: null,
       contextLabel: "-",
       context: { text: null, usedTokens: null, limitTokens: null, percent: null },
@@ -106,6 +110,7 @@ async function buildRow(
     session: s,
     running: true,
     state,
+    lifecycleError: null,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
     model: prettyModel(sessionModel(s, m)),
@@ -133,24 +138,27 @@ function stateLabel(r: ListRow): string {
 
 function printTable(m: MachineConfig, rows: ListRow[]): void {
   console.log(
-    `${pad("SESSION", 14)} ${pad("MODEL", 9)} ${pad("CTX", 16)} ${pad("STATE", 8)} ${pad("UPTIME", 7)} ${pad("RESTART", 9)} ${pad("RC", 14)} DIR`,
+    `${pad("SESSION", 14)} ${pad("AGENT", 7)} ${pad("MODEL", 9)} ${pad("CTX", 16)} ${pad("STATE", 8)} ${pad("UPTIME", 7)} ${pad("RESTART", 9)} ${pad("RC", 14)} DIR`,
   );
   for (const r of rows) {
     console.log(
-      `${pad(r.session.name, 14)} ${pad(r.model ?? "-", 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(",") : "-", 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
+      `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(r.model ?? "-", 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(",") : "-", 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
     );
+    if (r.lifecycleError !== null) console.log(`  blocked: ${r.lifecycleError}`);
   }
 }
 
 function toListItem(m: MachineConfig, r: ListRow): ListItem {
   return {
     name: r.session.name,
+    agent: r.session.agent,
     dir: r.session.dir,
     uuid: r.session.uuid,
     rc: rcName(m, r.session.name),
     running: r.running,
     archived: r.session.archived,
     state: r.state,
+    lifecycleError: r.lifecycleError,
     model: r.model,
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },

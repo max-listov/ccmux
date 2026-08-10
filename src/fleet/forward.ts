@@ -1,9 +1,6 @@
 import { loadMachineConfig } from "../config/machine.ts";
-import { routeFor, selfAddress } from "./address.ts";
-import { randomUUID } from "node:crypto";
+import { routeFor } from "./address.ts";
 import { runRemote, relay } from "./transport.ts";
-import { appendOutbound } from "./outbox.ts";
-import { CLI } from "../chat/store.ts";
 import type { MachineConfig } from "../types.ts";
 
 /**
@@ -37,40 +34,13 @@ export async function forwardIfRemote(target: string, verb: string, remoteArgs: 
   }
   if (route.kind === "local") return { done: false, session: route.session, m: cfg };
 
-  const from = process.env.CCMUX_SESSION ?? CLI;
-  const thenIdx = remoteArgs.indexOf("--then");
-  const note = thenIdx >= 0 ? (remoteArgs[thenIdx + 1] ?? "") : null;
-  // A `--then` note is dispatched work that lands as plain text in the target's pane, which is
-  // exactly how the incident's task arrived: anonymous, with a bare session name to "report back" to.
-  // Stamping the initiator's full address on it is the same fix chat got — the target no longer has
-  // to infer who asked or where to answer.
-  const args = note === null ? remoteArgs : remoteArgs.map((a, i) => (i === thenIdx + 1 ? stampNote(note, selfAddress(cfg, from)) : a));
+  const args = remoteArgs;
 
   const argv = ["ccmux", verb, ...(opts.verbArgs ?? []), route.session, ...args];
   const r = await runRemote(route.alias, argv, opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs });
-  // A cross-machine `restart --then` IS a hand-off, so it belongs in the outbox next to chat — same
-  // reason: the initiator must have a record of what it asked for, including when transit failed.
-  if (note !== null) {
-    appendOutbound(cfg, {
-      id: randomUUID(),
-      ts: new Date().toISOString(),
-      from,
-      toMachine: route.machine,
-      toSession: route.session,
-      kind: "restart-then",
-      body: note,
-      task: null,
-      ok: !r.transportFailed && r.code === 0,
-      detail: r.transportFailed ? "transport failed" : r.code === 0 ? "" : `remote exit ${r.code}`,
-    });
-  }
   const code = relay(r, `${verb} ${target}`, remoteWrites(verb));
   return { done: true, code };
 }
-
-/** Prefix a dispatched note with its origin + the exact way to answer it. */
-export const stampNote = (note: string, origin: string): string =>
-  `[from ${origin}] ${note}\n(reply with: ccmux msg ${origin} "<your reply>")`;
 
 /** Does this verb CHANGE anything on the far side? Only then may a transport failure claim that
  *  "nothing was sent" — for a read (`wait`, `transcript`, `logs`) that phrasing is simply false. */

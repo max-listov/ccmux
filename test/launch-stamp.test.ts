@@ -18,6 +18,7 @@ const session = (over: Record<string, unknown> = {}) =>
     name: "agent-a",
     dir: "/tmp",
     uuid: "11111111-1111-4111-8111-111111111111",
+    agent: "claude",
     ...over,
   });
 

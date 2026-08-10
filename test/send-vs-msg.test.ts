@@ -30,7 +30,7 @@ test("long prose to a chat-capable session is what the nudge is for", () => {
 });
 
 test("the prompt says what `send` actually does, so the name stops implying 'write to'", () => {
-  const p = buildPrompt("cc-x", "ccmux");
+  const p = buildPrompt("cc-x", "ccmux", "claude", "ccmux");
   expect(p).toContain("PRESSES KEYS");
   expect(p).toContain("It is NOT how you write to an agent");
   // And names the consequences that make it the wrong tool for a letter.

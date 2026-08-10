@@ -1,20 +1,21 @@
 import { basename } from "node:path";
 import { Box, Text, useApp, useInput, useStdin, useStdout } from "ink";
 import { useEffect, useRef, useState } from "react";
-import type { MachineConfig } from "../types.ts";
+import type { AgentKind, MachineConfig } from "../types.ts";
 import { useFleet } from "./hooks/useFleet.ts";
 import { useSpinner } from "./hooks/useSpinner.ts";
 import { useTranscript } from "./hooks/useTranscript.ts";
 import { useDiscover } from "./hooks/useDiscover.ts";
-import { buildItems } from "./fleet.ts";
+import { buildItems, capabilityReasons, resolveFleetItem, writerSummary } from "./fleet.ts";
+import { discoverActive } from "./discover.ts";
+import type { DiscoveredSession } from "./discover.ts";
 import { InlineView } from "./views/InlineView.tsx";
 import { FullscreenView } from "./views/FullscreenView.tsx";
 import { stopSession, restartSession, restartAllSessions, removeSessionFully, sendMessage, adoptExternal, forkAdoptExternal, takeoverExternal } from "./actions.ts";
-import { describeWriter, type Writer } from "../agent/claude/writers.ts";
 import { log } from "../util/log.ts";
 import { mouseDebugOn, logMouse, describeSgr } from "./mouseProbe.ts";
 
-export type Intent = { type: "quit" } | { type: "attach"; name: string } | { type: "new"; name: string; dir: string };
+export type Intent = { type: "quit" } | { type: "attach"; name: string } | { type: "new"; name: string; dir: string; agent: AgentKind };
 
 type Mode = "list" | "new" | "confirm" | "confirm-restart-all" | "compose" | "adopt";
 type Focus = "list" | "transcript";
@@ -64,6 +65,7 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH);
   const [mode, setMode] = useState<Mode>("list");
   const [draft, setDraft] = useState("");
+  const [newAgent, setNewAgent] = useState<AgentKind>("claude");
   const [composeDraft, setComposeDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -71,22 +73,22 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   // truth for vertical scrolling: the mouse wheel moves IT (without changing the selection), and
   // arrow-key navigation auto-reveals the cursor by nudging it (see revealCursor / moveCursor).
   const [listScroll, setListScroll] = useState(0);
-  // live writers blocking a cold adopt — set when `a` hits a session someone is driving;
-  // the adopt-confirm bar then offers fork (safe copy) or takeover (kill writers).
-  const [adoptWriters, setAdoptWriters] = useState<Writer[]>([]);
-  const adoptTarget = useRef<{ dir: string; uuid: string } | null>(null);
+  // Display snapshot only. Every ownership action re-resolves the route from fresh discovery.
+  const [adoptSnapshot, setAdoptSnapshot] = useState<DiscoveredSession | null>(null);
+  const [ownershipError, setOwnershipError] = useState<string | null>(null);
+  const adoptTarget = useRef<string | null>(null);
 
   const discovered = useDiscover(m, mode === "list");
-  const { items, externalStart } = buildItems(rows, discovered);
+  const { items, externalStart } = buildItems(rows, discovered, m.rcPrefix);
   // animate the spinner only when something is actually working — otherwise the whole tree would
   // re-render 5×/s for nothing (idle fleet = static frame, zero churn). See useSpinner.
   const anyActive = items.some((it) => it.status.active);
   const spin = useSpinner(anyActive);
   const count = items.length;
-  // Resolve the selected uuid to wherever the activity sort put it this render; if the
+  // Resolve the selected route identity to wherever the activity sort put it this render; if the
   // session is gone (deleted / adopted away) fall back to the same list position.
   const lastCurRef = useRef(0);
-  const foundIdx = selKey === null ? -1 : items.findIndex((it) => it.row.session.uuid === selKey);
+  const foundIdx = selKey === null ? -1 : items.findIndex((it) => it.key === selKey);
   const cur = foundIdx >= 0 ? foundIdx : Math.min(lastCurRef.current, Math.max(0, count - 1));
   lastCurRef.current = cur;
   const selItem = items[cur];
@@ -122,13 +124,21 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     });
   };
 
-  // Select by INDEX → store the card's uuid. Reads itemsRef (not the closure) so the
+  // Select by INDEX → store the card's route identity. Reads itemsRef (not the closure) so the
   // long-lived mouse listener can call it without going stale.
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const selectAt = (idx: number): void => {
     const it = itemsRef.current[idx];
-    if (it) setSelKey(it.row.session.uuid);
+    if (it) setSelKey(it.key);
+  };
+
+  /** Re-scan local inventory and resolve the stable key immediately before an external mutation. */
+  const resolveFreshExternal = (key: string | null): typeof selItem | null => {
+    if (key === null) return null;
+    const freshItems = buildItems(rows, discoverActive(m), m.rcPrefix).items;
+    const item = resolveFleetItem(freshItems, key);
+    return item?.external && item.ext ? item : null;
   };
 
   const moveCursor = (delta: number): void => {
@@ -248,7 +258,8 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   useInput((input, key) => {
     if (input.includes("[<")) return; // mouse SGR — handled by the wheel effect above
     if (mode === "new") {
-      if (key.return) onIntent({ type: "new", name: draft.trim() || defaultName, dir: process.cwd() });
+      if (key.return) onIntent({ type: "new", name: draft.trim() || defaultName, dir: process.cwd(), agent: newAgent });
+      else if (key.tab) setNewAgent((agent) => agent === "claude" ? "codex" : "claude");
       else if (key.escape) { setMode("list"); setDraft(""); }
       else if (key.backspace || key.delete) setDraft((d) => d.slice(0, -1));
       else if (input && !key.ctrl && !key.meta) setDraft((d) => d + input);
@@ -280,17 +291,27 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     }
     if (mode === "adopt") {
       // a cold adopt was blocked by live writers — choose: f fork (safe) · t takeover · esc
-      const target = adoptTarget.current;
-      if (target && input === "f") {
-        log.info({ msg: "adopt → fork", uuid: target.uuid });
-        void forkAdoptExternal(m, target.uuid).then(reload);
-        setMode("list");
-      } else if (target && input === "t" && !adoptWriters.some((w) => w.kind === "self")) {
-        log.info({ msg: "adopt → takeover", uuid: target.uuid });
-        void takeoverExternal(m, target.dir, target.uuid).then(reload);
-        setMode("list");
+      const target = resolveFreshExternal(adoptTarget.current);
+      const ext = target?.ext;
+      if (ext && ext.capabilities.fork && input === "f") {
+        log.info({ msg: "adopt → fork", uuid: ext.threadId });
+        setOwnershipError(null);
+        void forkAdoptExternal(m, ext).then((result) => {
+          if (result.ok) { reload(); setMode("list"); return; }
+          setOwnershipError(result.error);
+          setAdoptSnapshot(resolveFreshExternal(target.key)?.ext ?? ext);
+        });
+      } else if (ext && ext.capabilities.terminateAndAdopt && input === "t") {
+        log.info({ msg: "adopt → takeover", uuid: ext.threadId });
+        setOwnershipError(null);
+        void takeoverExternal(m, ext).then((result) => {
+          if (result.ok) { reload(); setMode("list"); return; }
+          setOwnershipError(result.error);
+          setAdoptSnapshot(resolveFreshExternal(target.key)?.ext ?? ext);
+        });
       } else if (key.escape || input === "n" || input === "q") {
         log.info({ msg: "adopt cancelled" });
+        setOwnershipError(null);
         setMode("list");
       }
       return;
@@ -330,18 +351,36 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     if (input === "f") { setFullscreen((v) => !v); return; }
     // compose a chat message (fullscreen, managed session only — external is read-only)
     if (fullscreen && input === "i" && selected && !isExternal) { setMode("compose"); setComposeDraft(""); setFocus("transcript"); return; }
-    if (input === "n") { setMode("new"); setDraft(""); return; }
+    if (input === "n") { setMode("new"); setDraft(""); setNewAgent("claude"); return; }
     // adopt an EXTERNAL session into ccmux. Cold adopt only when nobody is driving the uuid;
     // a live writer would mean a SECOND resume = forked conversation, so the blocked case
     // opens the explicit fork/takeover choice instead.
-    if (input === "a" && isExternal && selItem?.ext) {
-      const { dir, uuid } = selItem.ext;
-      log.info({ msg: "action adopt", uuid });
-      void adoptExternal(m, dir, uuid).then((r) => {
+    if (input === "a" && isExternal) {
+      const target = resolveFreshExternal(selKey);
+      const ext = target?.ext;
+      if (!target || !ext) return;
+      if (!ext.capabilities.attemptAdopt) {
+        if (ext.capabilities.fork || ext.capabilities.terminateAndAdopt || ext.capabilities.releaseAtSource) {
+          adoptTarget.current = target.key;
+          setAdoptSnapshot(ext);
+          setOwnershipError(null);
+          setMode("adopt");
+        }
+        return;
+      }
+      log.info({ msg: "action adopt", uuid: ext.threadId });
+      setOwnershipError(null);
+      void adoptExternal(m, ext).then((r) => {
         if (r.ok) { reload(); return; }
         if (r.writers) {
-          adoptTarget.current = { dir, uuid };
-          setAdoptWriters(r.writers);
+          adoptTarget.current = target.key;
+          setAdoptSnapshot(resolveFreshExternal(target.key)?.ext ?? ext);
+          setOwnershipError(r.error);
+          setMode("adopt");
+        } else if (ext.capabilities.fork || ext.capabilities.terminateAndAdopt || ext.capabilities.releaseAtSource) {
+          adoptTarget.current = target.key;
+          setAdoptSnapshot(ext);
+          setOwnershipError(r.error);
           setMode("adopt");
         }
       });
@@ -371,6 +410,9 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
           <Text dimColor>{process.cwd()}</Text>
           <Text> → </Text>
           <Text color="cyan">{draft || defaultName}</Text>
+          <Text>  provider: </Text>
+          <Text color="yellow" bold>{newAgent}</Text>
+          <Text dimColor> (tab)</Text>
           <Text>▏</Text>
         </Box>
       ) : null}
@@ -397,23 +439,29 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
       {mode === "adopt" ? (
         <Box paddingX={2} flexDirection="column">
           <Text>
-            <Text color="yellow" bold>session is LIVE</Text>
-            <Text dimColor> — driven by {adoptWriters.map(describeWriter).join(", ")}. a second resume would fork it.</Text>
+            <Text color="yellow" bold>external ownership</Text>
+            <Text dimColor>{adoptSnapshot ? ` — ${adoptSnapshot.provider}@${adoptSnapshot.host} · ${adoptSnapshot.threadId}` : " — route disappeared"}</Text>
           </Text>
           <Text>
-            <Text color="green" bold>f</Text>
-            <Text dimColor> fork (safe copy, original untouched) · </Text>
-            {adoptWriters.some((w) => w.kind === "self") ? (
-              <Text dimColor>takeover unavailable (it would kill THIS session) · </Text>
-            ) : (
+            <Text dimColor>{adoptSnapshot ? `writer ${writerSummary(adoptSnapshot)} · ` : ""}</Text>
+            {adoptSnapshot?.capabilities.fork ? (
+              <>
+                <Text color="green" bold>f</Text>
+                <Text dimColor> fork (provider-native, original untouched) · </Text>
+              </>
+            ) : null}
+            {adoptSnapshot?.capabilities.terminateAndAdopt ? (
               <>
                 <Text color="red" bold>t</Text>
-                <Text dimColor> takeover (kill writer, adopt original) · </Text>
+                <Text dimColor> takeover (confirmed dedicated CLI only) · </Text>
               </>
-            )}
+            ) : null}
+            {adoptSnapshot?.capabilities.releaseAtSource ? <Text dimColor>release at source before adopting · </Text> : null}
+            {adoptSnapshot ? <Text dimColor>{`${capabilityReasons(adoptSnapshot)} · `}</Text> : null}
             <Text>esc</Text>
             <Text dimColor> cancel</Text>
           </Text>
+          {ownershipError ? <Text color="red">{ownershipError}</Text> : null}
         </Box>
       ) : null}
     </Box>

@@ -1,15 +1,16 @@
 # ccmux
 
-**Persistent, self-healing Claude Code sessions in tmux — across a fleet of machines.**
+**Persistent, self-healing Claude Code and Codex sessions in tmux — across a fleet of machines.**
 
 A single daemon per machine keeps a fleet of long-running agent sessions alive in tmux:
 it heals crashed ones, brings them back on reboot, and resumes the *same* conversation by a
-pinned uuid. Sessions are full interactive `claude` processes (your subscription, Remote
-Control, slash-commands, statusline) — ccmux supervises them, it does not reimplement them.
+pinned uuid. Sessions are full interactive provider CLI processes (`claude` or `codex`) — ccmux
+supervises them, it does not reimplement them. Provider-specific features remain provider-specific:
+for example Claude has Remote Control/statusline, while managed Codex pane chat is not yet enabled.
 
 ```
 ┌─ daemon (launchd/systemd) ─ heals every 30s, self-updates ─┐
-│   tmux: cc-api   cc-web   cc-infra   …   (each = `ccmux _run` → claude, auto-restart)
+│   tmux: cc-api   cc-web   cc-infra   …   (each = `ccmux _run` → claude|codex, auto-restart)
 └────────────────────────────────────────────────────────────┘
         ▲ ccmux list / new / attach / send / restart …          ▲ interactive TUI (bare `ccmux`)
 ```
@@ -30,9 +31,10 @@ and `tmux`.
 ## Use
 
 ```bash
-ccmux                      # interactive fleet TUI (add -f for fullscreen)
+ccmux                      # interactive fleet TUI (add -f for fullscreen; new: Tab switches provider)
 ccmux list                 # managed sessions + live status/uptime
-ccmux new cc-api ~/code/api   # create + start a session (pins a fresh uuid)
+ccmux new cc-api ~/code/api   # create + start a session (returns after authoritative thread bind)
+ccmux new cc-review ~/code/api --agent codex   # provider is explicit
 ccmux send cc-api '/compact'  # PRESS KEYS in a session (slash commands) — see msg for writing to an agent
 ccmux restart cc-api       # bounce it (survives killing the caller)
 ccmux restart --all        # bounce EVERY session, one at a time (TUI: R) — picks up new rules/MCP/release
@@ -44,18 +46,44 @@ ccmux completions zsh > "${fpath[1]}/_ccmux"   # shell completions (bash|zsh|fis
 ccmux help                 # full command list
 ```
 
+`list` and `fleet` show the provider (`claude` or `codex`) explicitly. A managed identity is the
+provider plus its exact fleet address, not its working directory: two providers may intentionally
+work in the same project. Never choose a target by cwd, project name, or model.
+
+ccmux-managed sessions and Codex Desktop tasks are separate coordination planes. Managed sessions
+use ccmux addresses, persistence, and wait state. Claude managed sessions can use the ccmux chat
+ledger; managed Codex delivery is rejected until its pane behavior is calibrated. Desktop tasks use the task tools and
+native task IDs exposed by the Desktop app. ccmux does not mirror the Desktop task ledger; sharing a
+cwd does not bridge the two planes. See [`docs/architecture/peer-routing.md`](docs/architecture/peer-routing.md).
+
 Attach to a session like any tmux pane: `tmux attach -t cc-api` (detach with `Ctrl-b d`), or
 press Enter on it in the TUI.
 
 ### Adopt an external session
 
-A `claude` you started by hand (outside ccmux) shows up in the TUI under *external*. Adopt it
-to let the daemon manage it:
+A provider CLI or persisted Codex task outside ccmux shows up in the local TUI under *external* with
+provider, host, full thread UUID, persisted origin and current writer evidence. Origin (`cli`,
+`vscode`, `app-server`, ...) is metadata, not proof of who owns the writer now. The absence of an
+observed writer is advisory; Codex ownership is accepted only when the future managed TUI actually
+acquires the provider's thread lock.
 
 ```bash
-ccmux adopt <uuid> --fork       # safe copy under a new uuid (original untouched)
-ccmux adopt <uuid> --takeover   # take over the original (kills the live writer)
+ccmux adopt codex <uuid>              # one atomic resume attempt; conflict rolls back cleanly
+ccmux adopt codex <uuid> --fork       # native `codex fork`; new uuid, source remains owned
+ccmux adopt claude <uuid> --fork      # Claude's provider-specific fork adapter
 ```
+
+Codex Desktop, editor, App Server, shared, self and unknown runtimes are never signalled. Release
+the task at its source, then retry atomic adopt. A proven dedicated CLI can be taken over only with
+the exact current PID printed by the local inventory:
+
+```bash
+ccmux adopt codex <uuid> --takeover --confirm-writer <pid>
+```
+
+Every action re-reads the exact provider+host+UUID row before mutating. External inventory is local;
+`ccmux fleet` remains the managed-session wire. Adopted-in-place Codex sessions gain lifecycle
+management but no hidden management/chat prompt is inserted into the existing conversation.
 
 ### Which sessions still need a restart
 
@@ -68,8 +96,8 @@ So each launch records what it used, and `ccmux list` / `ccmux fleet` compare th
 launch right now would produce:
 
 ```
-SESSION     MODEL    CTX            STATE  UPTIME  RESTART    RC
-cc-api      Opus 5   180k/1M 18%    idle   2d1h    chat,mode  local-api
+SESSION     AGENT   MODEL    CTX            STATE  UPTIME  RESTART    RC
+agent-a     claude  Opus 5   180k/1M 18%    idle   2d1h    chat,mode  host-a-agent-a
 ```
 
 The column names *what* would change — `chat`, `mode`, `modules`, or `config` (anything else in the
@@ -99,11 +127,14 @@ nothing — unknown is never displayed as stale.
   The roots come from the standard config/state/cache environment variables with the usual
   platform defaults, so a fresh machine lands correctly with nothing written by hand. `stateDir`
   in `machine.json` overrides the middle one; that is the single knob an isolated instance flips.
-- **Each session** is a tmux session whose foreground process is `ccmux _run <name>` — a tiny
-  supervisor loop that launches `claude` and relaunches it on crash (exponential backoff). So an
-  agent crash just comes back; killing a session is the only way to stop it.
-- **Deterministic resume:** every session pins a fixed uuid (`--session-id` first, `--resume`
-  after) → no session-selection picker, no accidental second conversation. Claude 2.1.x adds a
+- **Each ready session** is a tmux session whose foreground process is `ccmux _run <name>` — a tiny
+  supervisor loop that launches the registered provider CLI and relaunches it on crash (exponential backoff). So an
+  agent crash just comes back; a fresh Codex pane briefly runs `_bootstrap` until its real UUID is
+  bound, then becomes the same ready supervisor. External Codex adopt/fork reuse the same pending
+  transaction: resume admission or native-fork correlation must succeed before a ready row exists.
+- **Deterministic resume:** every ready session pins an authoritative uuid. Claude uses `--session-id`
+  first and `--resume` after; Codex persists a unique bootstrap marker and all later launches use
+  `codex resume <uuid>`. No cwd/mtime inference or session-selection picker is involved. Claude 2.1.x adds a
   *separate* blocking "Resume from summary?" prompt for large/old sessions that would strand an
   unattended (daemon-healed) resume at a menu — input then lands on the menu, not the
   conversation. The supervisor auto-answers it per `resumePicker` in the machine config:
@@ -121,8 +152,8 @@ nothing — unknown is never displayed as stale.
 
 Two levels — a machine default plus an optional per-session override:
 
-- **Machine default** — `permissionMode` in the machine config (`~/.config/ccmux/config` /
-  `machine.json`). Applies to every session the daemon launches. A personal box typically runs
+- **Machine default** — `permissionMode` in `~/.config/ccmux/machine.json`. Applies to every
+  session the daemon launches. A personal box typically runs
   `bypassPermissions`; a shared/server box stays `auto`.
 - **Per-session override** — `ccmux mode <name> <mode|default>` pins one session to a different
   mode than the box (e.g. box is `bypassPermissions`, but a client-prod session stays `auto`).
@@ -159,14 +190,20 @@ Opt-in messaging between managed sessions, so one agent can hand off to another 
   to other machines (including sends that never left). `--fleet` merges every machine's log into one
   time-ordered stream; `--json` for consumers.
 
-**Delivery.** The daemon push-delivers each message into the recipient's pane as its next turn,
-tagged `[chat from <name>]` so the agent treats it as a peer, not you. It **never injects while the
+**Delivery.** Claude is the currently calibrated managed chat recipient; managed Codex targets fail
+explicitly until its pane adapter lands. For a deliverable target, the daemon push-delivers each
+message into the recipient's pane as its next turn,
+tagged `[chat from ccmux/<provider>@<machine>:<session>#<thread-uuid>]` so the agent sees the exact
+source/provider/reply identity and treats it as a peer, not you. It **never injects while the
 recipient is at a selection menu** (that would pick an option it didn't choose) or while a human is
 attached; a *busy* recipient just gets it queued at its next turn boundary. Delivery is two-track:
 immediate mail flows in order, while **deferred** (`--defer`) and **time-delayed** (`--after`) mail is
 delivered by id when its condition holds — a Claude Stop hook fires a deferred message the instant the
 turn ends, or the daemon delivers it once the target is stably idle — so a pending conditional message
-never blocks an immediate reply behind it. Loop/rate guards cap a runaway ping-pong. Source of truth: `chat.jsonl` (+ `chat-cursors.json`, `chat-ack.jsonl`) in the state directory.
+never blocks an immediate reply behind it. Loop/rate guards cap a runaway ping-pong. Active state is
+`chat-v2.jsonl`, `chat-cursors-v2.json`, `chat-ack-v2.jsonl`, `outbox-v2.jsonl`, and
+`outbox-ack-v2.jsonl`. Unversioned files are ignored read-only archives; their name-only identities
+are never guessed into v2.
 
 ### Router sessions
 
@@ -246,10 +283,11 @@ Add that map to `machine.json` on each machine (the label is the peer's `rcPrefi
 ssh alias **this** machine can reach). Then:
 
 ```bash
-ccmux fleet                                  # every session on every machine, each line a usable address
+ccmux fleet                                  # every managed session, with provider + usable address
 ccmux msg host-b:api "build is green"        # message a session on another machine
 ccmux wait host-b:api                        # then pick up the result
-ccmux restart host-b:api --then "read docs/backlog/in-progress/x.md"
+ccmux restart host-b:api                       # lifecycle only
+ccmux msg host-b:api "read docs/backlog/in-progress/x.md"  # recorded hand-off
 ccmux doctor                                 # verifies each alias really is the machine it's mapped to
 ```
 
@@ -258,19 +296,19 @@ Every verb that operates on an **existing** session takes an address — `start`
 Creating is local by nature (`new`, `adopt` resolve local dirs and local history), so run those on
 the machine itself.
 
-- **Delivery is unchanged.** A remote send is enqueued **on the receiving machine** through its own
-  `ccmux msg`, so it inherits every existing guarantee: menu/typing protection, `--defer`, rate
-  limits, the ledger. Nothing bypasses the daemon.
+- **Remote admission is exact and fail-closed.** The sender resolves provider+UUID, freezes one v2
+  envelope, and pipes it to the receiver's transport-only `_chat-receive-v2`. The receiver revalidates
+  machine+provider+UUID before one atomic idempotent append; old binaries reject the unknown verb
+  before writing anything. Retries reuse the pinned envelope and never resolve a reused name again.
 - **The recipient sees where to reply.** Incoming cross-machine mail is tagged with the sender's full
   address and, when this machine can actually answer, the exact reply command. Agents are told to
   reply with the address **as printed** rather than infer one.
-- **Trust boundary is ssh, as before.** The sender's address travels as an environment variable set
-  by the transport (`CCMUX_ORIGIN`) — a routing *label*, not a credential. Anyone who can run a
-  command on a box could already send as `cli`, so nothing new is granted; the label is validated to
-  the same charsets as a machine label and a session name, so it cannot forge the `[chat from …]`
-  tag it is rendered into, and it may not claim to be `owner`. It rides the environment rather than
-  a flag on purpose: an older ccmux ignores an unknown variable, whereas an unknown *flag* would
-  have been swallowed into the message body and destroyed the text.
+- **Admission boundary is ssh; managed provenance is a process capability.** A managed runtime gets
+  a rotating credential inherited by its descendants, so self-setting `CCMUX_SESSION` cannot promote
+  an ordinary CLI sender. This proves ccmux process provenance, not security against a hostile process
+  running as the same OS user (that user can read ccmux state). Remote receiver admission additionally
+  requires the authenticated SSH process context. Provider/address fields are routing identity,
+  never elevated trust.
 - **Conditional mail stays local.** `--defer`, `--after` and `msg cancel` are rejected across
   machines: their dedup/cancel key is per-sender within one ledger, and two remote senders would
   tombstone each other's mail. Hand off, then use `ccmux wait`.
@@ -280,8 +318,8 @@ the machine itself.
   receiver ignores an id it already stored — so the daemon can safely re-send from the outbox when
   transit returns, and a retry can never duplicate (not even when the first attempt actually landed
   and only the sender read it as a failure). Retries cover plain `msg` only, stay inside a one-hour
-  window, and stop as soon as one succeeds; `restart --then` is a hand-off, not a letter, and is
-  never repeated. `chat log` then shows the row as *sent later, on retry* instead of *NOT SENT*.
+  window, and stop as soon as one succeeds. Lifecycle commands are never queued as messages.
+  `chat log` then shows the row as *sent later, on retry* instead of *NOT SENT*.
   If your fleet can restore transit with a local command, set `transitPreflight` (an argv array) in
   `machine.json` and it runs once before a batch of retries.
 - **Roll the binary out before the map.** A machine still on an older ccmux doesn't understand

@@ -3,9 +3,12 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { sessionsPath } from "../src/config/paths.ts";
+import { chatAuthPath, sessionsPath } from "../src/config/paths.ts";
+import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from "../src/chat/auth.ts";
 import { MachineConfigSchema } from "../src/config/schema.ts";
 import { loadLedger, loadAckedIds, pendingConditional } from "../src/chat/store.ts";
+import { managedPeer } from "../src/chat/identity.ts";
+import { loadSessions } from "../src/config/sessions.ts";
 
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
@@ -16,12 +19,13 @@ function setup() {
   const cfgPath = join(dir, "machine.json");
   writeFileSync(cfgPath, JSON.stringify(cfg));
   const row = (name: string, extra: object) =>
-    JSON.stringify({ name, dir: "/tmp/x", uuid: randomUUID(), chatEnabled: true, ...extra });
+    JSON.stringify({ name, dir: "/tmp/x", uuid: randomUUID(), agent: "claude", chatEnabled: true, ...extra });
   const m = MachineConfigSchema.parse(cfg);
   writeFileSync(
     sessionsPath(m),
     `${row("router", { promptModules: ["router"] })}\n${row("router2", { promptModules: ["router"] })}\n${row("worker", {})}\n`,
   );
+  for (const session of loadSessions(m)) rotateChatCredential(m, session);
   return { cfgPath, m };
 }
 
@@ -29,7 +33,12 @@ async function runMsg(cfgPath: string, session: string | undefined, args: string
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
   env.CCMUX_CONFIG = cfgPath;
-  if (session !== undefined) env.CCMUX_SESSION = session;
+  if (session !== undefined) {
+    env.CCMUX_SESSION = session;
+    const m = MachineConfigSchema.parse(JSON.parse(await Bun.file(cfgPath).text()));
+    const managed = loadSessions(m).find((item) => item.name === session);
+    if (managed !== undefined) env[CHAT_CREDENTIAL_ENV] = (await Bun.file(chatAuthPath(m, managed.name)).text()).trim();
+  }
   else delete env.CCMUX_SESSION;
   const proc = Bun.spawn(["bun", CLI, "msg", ...args], { env, stdin: stdin !== undefined ? new Response(stdin) : "ignore", stdout: "pipe", stderr: "pipe" });
   const out = await new Response(proc.stdout).text();
@@ -79,7 +88,9 @@ test("dedup replace only fires with a --task — same target, no task, keeps bot
   const { cfgPath, m } = setup();
   await runMsg(cfgPath, "router", ["worker", "--after", "600", "no-task a"]);
   await runMsg(cfgPath, "router", ["worker", "--after", "600", "no-task b"]);
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { to: "worker" }).length).toBe(2);
+  const worker = loadSessions(m).find((session) => session.name === "worker");
+  if (worker === undefined) throw new Error("worker fixture missing");
+  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { to: managedPeer(m.rcPrefix, worker) }).length).toBe(2);
 });
 
 test("--after + --defer prints the trap note but still sends", async () => {

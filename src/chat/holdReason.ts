@@ -1,4 +1,5 @@
 import type { ChatMessage, Session } from "../types.ts";
+import { targetLabel } from "./identity.ts";
 
 /**
  * Why is this message still sitting undelivered?
@@ -37,21 +38,22 @@ export interface HoldContext {
 
 /** Pure: message + recipient state → the honest reason it hasn't landed yet. */
 export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
+  const sessionName = msg.to.kind === "managed" ? msg.to.session : "owner";
   if (ctx.isOwner === true) {
     return { kind: "owner", text: "addressed to you — there is no pane to deliver to; it surfaces via the Telegram mirror if configured" };
   }
   if (ctx.recipient === undefined) {
-    return { kind: "recipient-unknown", text: `no session '${msg.to}' on this machine — was it addressed to another fleet machine?` };
+    return { kind: "recipient-unknown", text: `no exact session '${targetLabel(msg.to)}' on this machine — it may belong to another fleet machine or have been replaced` };
   }
   if (!ctx.recipient.chatEnabled) {
-    return { kind: "chat-off", text: `recipient has chat disabled (ccmux chat on ${msg.to}, then restart it)` };
+    return { kind: "chat-off", text: `recipient has chat disabled (ccmux chat on ${sessionName}, then restart it)` };
   }
   // Permanent, not transient: an agent with no safe-to-inject detector is skipped by the delivery
   // loop outright, so calling this "queued" would promise something that can never happen.
   if (ctx.chatDeliverable === false) {
     return { kind: "agent-unsupported", text: `recipient runs ${ctx.recipient.agent}, which cannot receive chat — this will never be delivered` };
   }
-  if (!ctx.running) return { kind: "recipient-stopped", text: `recipient is not running (ccmux start ${msg.to})` };
+  if (!ctx.running) return { kind: "recipient-stopped", text: `recipient is not running (ccmux start ${sessionName})` };
   if (msg.notBefore !== null) {
     const due = Date.parse(msg.notBefore);
     if (Number.isFinite(due) && ctx.nowMs < due) {
