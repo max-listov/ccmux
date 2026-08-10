@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { buildArgv, launchEnv } from "../src/agent/claude/launch.ts";
+import { buildArgv, launchEnv, resolvePermissionMode } from "../src/agent/claude/launch.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
 
 test("resume branch flips on historyPresent", () => {
@@ -70,4 +70,38 @@ test("launchEnv guarantees a usable PATH + tags the session for the self-guard",
   expect(env.PATH).toContain("/usr/bin");
   expect(env.CLAUDECODE).toBeUndefined();
   expect(env.CCMUX_SESSION).toBe("cc-x");
+});
+
+// The root guard is a decision, not a veto. It exists so that a config edit ALONE cannot hand a
+// server session power over the whole host — the owner can still have it, by saying so once in
+// writing. Taken as a pure function because the process's own uid must not decide what is testable.
+
+test("under root, an escalated mode is downgraded — a config edit alone never grants the host", () => {
+  const m = makeMachine();
+  for (const mode of ["bypassPermissions", "dontAsk"]) {
+    expect(resolvePermissionMode(mode, m, true)).toBe("auto");
+  }
+});
+
+test("a machine that DECLARED it gets exactly what it asked for", () => {
+  const m = makeMachine({ allowEscalatedUnderRoot: true });
+  for (const mode of ["bypassPermissions", "dontAsk"]) {
+    expect(resolvePermissionMode(mode, m, true)).toBe(mode);
+  }
+});
+
+test("the declaration is per machine — it cannot leak to the ones that never made it", () => {
+  // The reason this is a config field and not a deleted guard: one machine wanting escalation must
+  // not quietly escalate every other root machine in the fleet.
+  expect(resolvePermissionMode("bypassPermissions", makeMachine(), true)).toBe("auto");
+});
+
+test("non-escalated modes are untouched in every combination", () => {
+  for (const allow of [false, true]) {
+    for (const root of [false, true]) {
+      const m = makeMachine({ allowEscalatedUnderRoot: allow });
+      expect(resolvePermissionMode("plan", m, root)).toBe("plan");
+      expect(resolvePermissionMode("auto", m, root)).toBe("auto");
+    }
+  }
 });

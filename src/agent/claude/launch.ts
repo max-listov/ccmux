@@ -23,7 +23,7 @@ export function buildArgv(
   historyPresent: boolean,
 ): string[] {
   const resume = historyPresent ? ["--resume", s.uuid] : ["--session-id", s.uuid];
-  const flags = UID === 0 ? stripDangerous(s.flags) : s.flags; // root guard
+  const flags = UID === 0 && !m.allowEscalatedUnderRoot ? stripDangerous(s.flags) : s.flags; // root guard
   return [
     m.claudeBin,
     ...resume,
@@ -31,7 +31,7 @@ export function buildArgv(
     rcName(m, s.name),
     "--permission-mode",
     // per-session override wins over the machine default; undefined → machine default.
-    resolvePermissionMode(s.permissionMode ?? m.permissionMode),
+    resolvePermissionMode(s.permissionMode ?? m.permissionMode, m, UID === 0),
     "--append-system-prompt",
     buildPrompt(s.name, cli, s.agent, "ccmux", s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix),
     ...settingsArg(m, s, cli),
@@ -80,16 +80,21 @@ function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
 const ESCALATED_MODES = new Set(["bypassPermissions", "dontAsk"]);
 
 /**
- * Root guard for permission mode: on the root daemon (servers) an escalated mode is
- * downgraded to "auto" so a config edit can't hand a server session host-wide power.
- * Non-root daemons (personal Macs) honor whatever the machine config asks for.
+ * Root guard for permission mode: under a root daemon an escalated mode is downgraded to "auto",
+ * so that *a config edit alone* can never hand a server session power over the whole host. Non-root
+ * daemons honour whatever the config asks for — there is no host to take over.
+ *
+ * The guard is not a veto on the owner. A machine that genuinely wants escalated modes under root
+ * declares `allowEscalatedUnderRoot` once, in writing, and gets exactly what it asked for. The point
+ * was never to forbid the decision; it was to stop the decision from being made by accident, and to
+ * keep it from spreading to every other root machine the moment one of them wants it.
  */
-function resolvePermissionMode(mode: string): string {
-  if (UID === 0 && ESCALATED_MODES.has(mode)) return "auto";
+export function resolvePermissionMode(mode: string, m: MachineConfig, isRoot: boolean): string {
+  if (isRoot && !m.allowEscalatedUnderRoot && ESCALATED_MODES.has(mode)) return "auto";
   return mode;
 }
 
-/** Defensive: we never add it, but strip it if a config tries to, when running as root. */
+/** Same decision, same gate: the flag is escalation by another route, so it lives or dies with it. */
 function stripDangerous(flags: string[]): string[] {
   return flags.filter(
     (f) => f !== "--dangerously-skip-permissions" && f !== "--allow-dangerously-skip-permissions",

@@ -162,7 +162,10 @@ Two levels — a machine default plus an optional per-session override:
   started with — you can't switch into `bypassPermissions` at runtime).
 - **Root guard (servers):** under a root daemon, escalated modes (`bypassPermissions`/`dontAsk`)
   are downgraded to `auto` at launch — whether they came from the machine default or a session
-  override — so a config edit can't hand a server session host-wide power.
+  override — so *a config edit alone* can't hand a server session power over the whole host.
+  A machine that genuinely wants them says so once, in writing: `"allowEscalatedUnderRoot": true`
+  in its `machine.json`. The guard was never a veto on the owner; it exists so the decision cannot
+  be made by accident, and so one machine making it does not escalate every other root machine.
 
 Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`, `dontAsk`,
 `bypassPermissions`.

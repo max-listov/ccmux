@@ -6,6 +6,23 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+escalated permission modes under root are the owner's declaration, not a refusal
+
+Setting `bypassPermissions` on a root-daemon machine did nothing: the launcher downgraded it to
+`auto` and said so nowhere. Measured on a live box — two sessions carried the escalated mode in the
+registry while all nine running processes had `auto`.
+
+The guard is right in substance. Under root, an escalated mode means the agent acts on the whole
+host with nothing to approve it, and *a config edit alone* should never be what grants that. It was
+wrong in form: it behaved as a veto, leaving the machine's owner no way to make the decision at all,
+and never mentioning that their choice had been overruled.
+
+A machine now declares it once, in writing — `allowEscalatedUnderRoot` — and gets exactly what it
+asked for. Deleting the guard instead would have been shorter and wrong: every other root machine in
+a fleet would inherit the escalation the moment one of them wanted it. The permission-flag route is
+gated by the same declaration, since it is the same escalation by another name, and the decision
+became a pure function so it is tested instead of depending on the running process's uid.
+
 ## [0.14.0] — 2026-08-10
 
 two ways the supervisor knew something and said nothing
