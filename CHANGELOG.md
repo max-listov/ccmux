@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-08-10
+
+a setting you cannot honour is refused where it is made
+
 a setting you cannot honour is refused where it is made
 
 Shipped, deployed, and undone within the hour — recorded here because the mistake is more useful
@@ -30,7 +34,6 @@ working, half not, with nothing said. So the refusal now happens where the decis
   strictly worse than one running guarded and reported.
 
 Escalated modes on a server require a daemon running as a **non-root user**. That is the only path.
-
 ## [0.15.0] — 2026-08-10
 
 escalated permission modes under root are the owner's declaration
