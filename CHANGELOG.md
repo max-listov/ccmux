@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-08-10
+
+escalated permission modes under root are the owner's declaration
+
 escalated permission modes under root are the owner's declaration, not a refusal
 
 Setting `bypassPermissions` on a root-daemon machine did nothing: the launcher downgraded it to
@@ -22,7 +26,6 @@ asked for. Deleting the guard instead would have been shorter and wrong: every o
 a fleet would inherit the escalation the moment one of them wanted it. The permission-flag route is
 gated by the same declaration, since it is the same escalation by another name, and the decision
 became a pure function so it is tested instead of depending on the running process's uid.
-
 ## [0.14.0] — 2026-08-10
 
 two ways the supervisor knew something and said nothing
