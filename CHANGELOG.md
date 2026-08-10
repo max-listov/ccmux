@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-08-10
+
+two ways the supervisor knew something and said nothing
+
 two ways the supervisor knew something and said nothing
 
 **A capability handed out at launch is now part of the recipe.** Sending chat is authenticated by a
@@ -37,7 +41,6 @@ lifecycle block that names where the history is and what to do. It reuses the ex
 mechanism, which `list` and the TUI already surface and an explicit start clears. It does **not**
 move the file: those are someone's data, and a uuid match in another directory can be picked wrong.
 Blocking costs a stopped session; the alternative cost an unrecoverable overwrite.
-
 ## [0.13.0] — 2026-08-10
 
 the record carries its generation; the receive path stops shelling out per ancestor
