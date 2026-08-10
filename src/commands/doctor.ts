@@ -6,7 +6,8 @@ import { loadSessions } from "../config/sessions.ts";
 import type { MachineConfig } from "../types.ts";
 import { VERSION } from "../util/version.ts";
 import { checkFleet } from "../fleet/transport.ts";
-import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME } from "../env.ts";
+import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
+import { escalationRefusal } from "../agent/claude/launch.ts";
 
 /** Is the boot daemon registered + running? launchd on macOS, systemd on Linux. */
 async function daemonState(os: NodeJS.Platform, bootLabel: string): Promise<{ manager: string | null; state: string }> {
@@ -52,6 +53,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         promptInvocation: promptInvocation(),
         configFile,
         mutedChat: mutedChatSessions(m),
+        unhonourableModes: unhonourableModes(m, UID === 0),
         stateDir: m.stateDir,
         cacheDir: CACHE_DIR,
         rcPrefix: m.rcPrefix,
@@ -89,6 +91,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       console.log(`  PROBLEM — '${m.rcPrefix}' is this machine's own rcPrefix, so '${m.rcPrefix}:<session>' always resolves LOCALLY and that entry is dead. Give each machine a distinct rcPrefix.`);
     }
   }
+  const unhonourable = unhonourableModes(m, UID === 0);
+  if (unhonourable.length > 0) {
+    console.log(`perms:  PROBLEM — configured but impossible here: ${unhonourable.join(", ")}`);
+    console.log(`        ${escalationRefusal("bypassPermissions", true) ?? ""}`);
+  }
   const muted = mutedChatSessions(m);
   if (muted.length > 0) {
     console.log(
@@ -112,4 +119,22 @@ export function mutedChatSessions(m: MachineConfig): string[] {
   return loadSessions(m)
     .filter((s) => s.chatEnabled && !s.archived && !existsSync(chatAuthPath(m, s.name)))
     .map((s) => s.name);
+}
+
+/**
+ * Settings that can never take effect on this machine.
+ *
+ * A hand-edited config can still ask for an escalated mode under a root daemon; the launcher
+ * downgrades it, and without this the box would look configured one way while behaving another —
+ * the exact confusion that cost a live server an hour.
+ */
+export function unhonourableModes(m: MachineConfig, isRoot: boolean): string[] {
+  const out: string[] = [];
+  if (escalationRefusal(m.permissionMode, isRoot) !== null) out.push(`machine default '${m.permissionMode}'`);
+  for (const s of loadSessions(m)) {
+    if (s.permissionMode !== undefined && escalationRefusal(s.permissionMode, isRoot) !== null) {
+      out.push(`${s.name} → '${s.permissionMode}'`);
+    }
+  }
+  return out;
 }

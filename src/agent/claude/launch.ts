@@ -23,7 +23,7 @@ export function buildArgv(
   historyPresent: boolean,
 ): string[] {
   const resume = historyPresent ? ["--resume", s.uuid] : ["--session-id", s.uuid];
-  const flags = UID === 0 && !m.allowEscalatedUnderRoot ? stripDangerous(s.flags) : s.flags; // root guard
+  const flags = UID === 0 ? stripDangerous(s.flags) : s.flags; // same rule, other route
   return [
     m.claudeBin,
     ...resume,
@@ -31,7 +31,7 @@ export function buildArgv(
     rcName(m, s.name),
     "--permission-mode",
     // per-session override wins over the machine default; undefined → machine default.
-    resolvePermissionMode(s.permissionMode ?? m.permissionMode, m, UID === 0),
+    resolvePermissionMode(s.permissionMode ?? m.permissionMode, UID === 0),
     "--append-system-prompt",
     buildPrompt(s.name, cli, s.agent, "ccmux", s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix),
     ...settingsArg(m, s, cli),
@@ -80,17 +80,38 @@ function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
 const ESCALATED_MODES = new Set(["bypassPermissions", "dontAsk"]);
 
 /**
- * Root guard for permission mode: under a root daemon an escalated mode is downgraded to "auto",
- * so that *a config edit alone* can never hand a server session power over the whole host. Non-root
- * daemons honour whatever the config asks for — there is no host to take over.
+ * Escalated modes are impossible under a root daemon — this is the LAST line, not the only one.
  *
- * The guard is not a veto on the owner. A machine that genuinely wants escalated modes under root
- * declares `allowEscalatedUnderRoot` once, in writing, and gets exactly what it asked for. The point
- * was never to forbid the decision; it was to stop the decision from being made by accident, and to
- * keep it from spreading to every other root machine the moment one of them wants it.
+ * Learned the hard way, on a live server. The guard used to downgrade silently, so a machine
+ * configured for `bypassPermissions` ran everything as `auto` and nothing explained why. Trying to
+ * make it the owner's choice — an explicit per-machine opt-out — was shipped, deployed, and undone
+ * within the hour: **the provider itself refuses the mode under root**
+ * (`--dangerously-skip-permissions cannot be used with root/sudo privileges`), so lifting our guard
+ * did not grant the capability. It put every session on that box into a crash loop.
+ *
+ * So the mode is not a policy ccmux may choose to allow: it cannot work here at all. Which is why
+ * the real fix lives at the SETTING surface (`ccmux mode` refuses it, `doctor` names anything
+ * already configured that way) rather than here. This function stays as defence in depth for a
+ * hand-edited config, and it must stay silent-but-safe: a launcher is the wrong place to argue.
  */
-export function resolvePermissionMode(mode: string, m: MachineConfig, isRoot: boolean): string {
-  if (isRoot && !m.allowEscalatedUnderRoot && ESCALATED_MODES.has(mode)) return "auto";
+/**
+ * Why this mode cannot be used here — or null when it can.
+ *
+ * Pure, and shared by every surface that lets someone ASK for a mode, so a refusal is worded once
+ * and cannot drift between them. The reason names the provider, not ccmux: this is not a policy we
+ * chose and could relax, and saying otherwise would send the next person looking for our switch.
+ */
+export function escalationRefusal(mode: string, isRoot: boolean): string | null {
+  if (!isRoot || !ESCALATED_MODES.has(mode)) return null;
+  return (
+    `'${mode}' cannot run under a root daemon — the agent itself refuses it there ` +
+    `("--dangerously-skip-permissions cannot be used with root/sudo privileges"), so a session set to it would never start. ` +
+    `Escalated modes need a daemon running as a non-root user.`
+  );
+}
+
+export function resolvePermissionMode(mode: string, isRoot: boolean): string {
+  if (isRoot && ESCALATED_MODES.has(mode)) return "auto";
   return mode;
 }
 

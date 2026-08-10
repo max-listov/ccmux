@@ -31,7 +31,7 @@ export function preflight(m: MachineConfig): void {
 export function buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[] {
   const bin = m.codexBin;
   if (!bin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
-  const flags = UID === 0 && !m.allowEscalatedUnderRoot ? stripDangerous(s.flags) : s.flags; // root guard (servers)
+  const flags = UID === 0 ? stripDangerous(s.flags) : s.flags; // root guard (servers)
   if (historyPresent) {
     return [bin, "resume", s.uuid, ...flags, ...m.extraFlags];
   }
@@ -40,7 +40,7 @@ export function buildArgv(s: Session, m: MachineConfig, cli: string, historyPres
 }
 
 function managedFlags(s: Session, m: MachineConfig): string[] {
-  return [...(UID === 0 && !m.allowEscalatedUnderRoot ? stripDangerous(s.flags) : s.flags), ...m.extraFlags];
+  return [...(UID === 0 ? stripDangerous(s.flags) : s.flags), ...m.extraFlags];
 }
 
 /** Bootstrap argv for adopting an existing Codex identity. No prompt is appended: adoption owns

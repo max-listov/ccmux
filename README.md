@@ -160,12 +160,13 @@ Two levels — a machine default plus an optional per-session override:
   `default` clears the override → the session inherits the machine default again. The mode is a
   launch-time flag, so **`ccmux restart <name>` applies it** (a running session keeps whatever it
   started with — you can't switch into `bypassPermissions` at runtime).
-- **Root guard (servers):** under a root daemon, escalated modes (`bypassPermissions`/`dontAsk`)
-  are downgraded to `auto` at launch — whether they came from the machine default or a session
-  override — so *a config edit alone* can't hand a server session power over the whole host.
-  A machine that genuinely wants them says so once, in writing: `"allowEscalatedUnderRoot": true`
-  in its `machine.json`. The guard was never a veto on the owner; it exists so the decision cannot
-  be made by accident, and so one machine making it does not escalate every other root machine.
+- **Under a root daemon, escalated modes are refused where you set them.** `bypassPermissions` and
+  `dontAsk` cannot work as root: the agent itself rejects them (*"--dangerously-skip-permissions
+  cannot be used with root/sudo privileges"*), so a session configured that way would never start.
+  `ccmux mode` therefore refuses the mode outright rather than storing a setting that can never take
+  effect, `doctor` names anything already configured that way, and the launcher keeps downgrading to
+  `auto` as a last line of defence for a hand-edited config. This is not a ccmux policy with a switch
+  to flip — running escalated on a server means running the daemon as a **non-root user**.
 
 Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`, `dontAsk`,
 `bypassPermissions`.

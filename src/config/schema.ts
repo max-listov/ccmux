@@ -68,9 +68,9 @@ export const SessionSchema = z.object({
   // Per-session permission-mode OVERRIDE. Undefined → inherit the machine default
   // (MachineConfig.permissionMode). Set it to gate ONE session differently from the box
   // default — e.g. the box is bypassPermissions but a client-prod session stays "auto".
-  // The root-guard still applies at launch (buildArgv): escalated modes downgrade to "auto" under a
-  // root daemon — whether they came from the machine or the session — unless that machine has
-  // explicitly declared allowEscalatedUnderRoot.
+  // Escalated modes cannot be set at all under a root daemon — the provider refuses them there, so a
+  // session configured with one would simply never start. The launch guard remains as a last line of
+  // defence for a hand-edited config.
   permissionMode: PermissionModeSchema.optional(),
   // Inter-agent chat opt-in. Default OFF so no session sends or receives until you turn it on
   // (`ccmux chat on <name>`) — chat traffic is never implicit. Gates BOTH sending from this
@@ -193,21 +193,10 @@ export const MachineConfigSchema = z.object({
   ensureInterval: z.number().int().positive().default(30),
   // Machine-wide DEFAULT permission mode (matches `claude --permission-mode` choices).
   // A session can override it per-session (Session.permissionMode). Escalated modes
-  // (bypassPermissions/dontAsk) are honored for non-root daemons; under root they are downgraded to
-  // "auto" unless this machine has explicitly declared allowEscalatedUnderRoot (see below).
+  // (bypassPermissions/dontAsk) are honored for non-root daemons only. Under root the provider ITSELF
+  // refuses them, so ccmux refuses them where they are SET rather than accepting a setting it cannot
+  // honour (see resolvePermissionMode).
   permissionMode: PermissionModeSchema.default("auto"),
-  /**
-   * Accept escalated permission modes even though this machine's daemon runs as root.
-   *
-   * Under root, `bypassPermissions`/`dontAsk` mean the agent acts on the whole host with nothing to
-   * approve it. The launcher therefore downgrades them to "auto" by default — not to overrule the
-   * owner, but so that *a config edit alone* can never be what grants that. Owning the box is a
-   * decision; making it silently is an accident.
-   *
-   * Setting this to true IS that decision, stated once, per machine, in writing. It changes nothing
-   * anywhere else: every other root machine keeps the downgrade.
-   */
-  allowEscalatedUnderRoot: z.boolean().default(false),
   // Boot-unit label so install + update-bounce can target it.
   // launchd: "com.ccmux.daemon"; systemd: "ccmux.service".
   bootLabel: z.string().min(1),

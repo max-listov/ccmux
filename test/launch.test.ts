@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { buildArgv, launchEnv, resolvePermissionMode } from "../src/agent/claude/launch.ts";
+import { buildArgv, launchEnv, resolvePermissionMode, escalationRefusal } from "../src/agent/claude/launch.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
 
 test("resume branch flips on historyPresent", () => {
@@ -72,36 +72,36 @@ test("launchEnv guarantees a usable PATH + tags the session for the self-guard",
   expect(env.CCMUX_SESSION).toBe("cc-x");
 });
 
-// The root guard is a decision, not a veto. It exists so that a config edit ALONE cannot hand a
-// server session power over the whole host — the owner can still have it, by saying so once in
-// writing. Taken as a pure function because the process's own uid must not decide what is testable.
+// Escalated modes under a root daemon are not a policy ccmux chose — the agent itself refuses them
+// there. Learned by shipping the opposite: an explicit per-machine opt-out was released, deployed,
+// and undone within the hour, because lifting our guard did not grant the capability. It put every
+// session on that box into a crash loop with
+// "--dangerously-skip-permissions cannot be used with root/sudo privileges".
+// So the refusal belongs where the mode is SET; the launcher keeps the downgrade as a last line.
 
-test("under root, an escalated mode is downgraded — a config edit alone never grants the host", () => {
-  const m = makeMachine();
-  for (const mode of ["bypassPermissions", "dontAsk"]) {
-    expect(resolvePermissionMode(mode, m, true)).toBe("auto");
-  }
+test("the refusal names the AGENT as the reason, not us", () => {
+  // If it read as a ccmux policy, the next person would go looking for our switch to flip. There
+  // isn't one, and there cannot be.
+  const why = escalationRefusal("bypassPermissions", true) ?? "";
+  expect(why).toContain("the agent itself refuses");
+  expect(why).toContain("non-root");
 });
 
-test("a machine that DECLARED it gets exactly what it asked for", () => {
-  const m = makeMachine({ allowEscalatedUnderRoot: true });
-  for (const mode of ["bypassPermissions", "dontAsk"]) {
-    expect(resolvePermissionMode(mode, m, true)).toBe(mode);
-  }
+test("both escalated modes are refused under root, and nothing else is", () => {
+  for (const mode of ["bypassPermissions", "dontAsk"]) expect(escalationRefusal(mode, true)).not.toBeNull();
+  for (const mode of ["auto", "plan", "acceptEdits", "manual"]) expect(escalationRefusal(mode, true)).toBeNull();
 });
 
-test("the declaration is per machine — it cannot leak to the ones that never made it", () => {
-  // The reason this is a config field and not a deleted guard: one machine wanting escalation must
-  // not quietly escalate every other root machine in the fleet.
-  expect(resolvePermissionMode("bypassPermissions", makeMachine(), true)).toBe("auto");
+test("off root, nothing is refused — a personal machine is not a server", () => {
+  for (const mode of ["bypassPermissions", "dontAsk", "auto"]) expect(escalationRefusal(mode, false)).toBeNull();
 });
 
-test("non-escalated modes are untouched in every combination", () => {
-  for (const allow of [false, true]) {
-    for (const root of [false, true]) {
-      const m = makeMachine({ allowEscalatedUnderRoot: allow });
-      expect(resolvePermissionMode("plan", m, root)).toBe("plan");
-      expect(resolvePermissionMode("auto", m, root)).toBe("auto");
-    }
-  }
+test("the launcher still downgrades — defence in depth for a hand-edited config", () => {
+  // The setting surface refuses, but a config file can be edited directly. If that reached the
+  // launcher unguarded the session would not start at all, which is strictly worse than running
+  // guarded and being told about it by doctor.
+  expect(resolvePermissionMode("bypassPermissions", true)).toBe("auto");
+  expect(resolvePermissionMode("dontAsk", true)).toBe("auto");
+  expect(resolvePermissionMode("bypassPermissions", false)).toBe("bypassPermissions");
+  expect(resolvePermissionMode("plan", true)).toBe("plan");
 });
