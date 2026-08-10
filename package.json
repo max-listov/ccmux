@@ -1,6 +1,6 @@
 {
   "name": "ccmux",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Persistent, self-healing Claude and Codex tmux sessions with deterministic resume across a fleet of machines.",
   "type": "module",
   "license": "MIT",

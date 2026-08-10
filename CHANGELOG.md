@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-08-10
+
+first-class managed Codex lifecycle and external ownership
+
 Codex is now a first-class managed session provider instead of a transcript-only label.
 
 - `new --agent codex` and the TUI share one transactional create path. The first Codex rollout is
@@ -22,7 +26,6 @@ Codex is now a first-class managed session provider instead of a transcript-only
   left untouched as a read-only archive rather than guessed into the new identity model.
 - Codex pane chat delivery remains intentionally unavailable until its composer, approval and turn
   frames are calibrated. Desktop-native Codex tasks continue to use the host's native task tools.
-
 ## [0.11.0] — 2026-08-06
 
 one state root instead of scattered dotfiles
