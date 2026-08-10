@@ -34,7 +34,7 @@ export async function cmdMode(name: string | undefined, mode: string | undefined
   // effect — and, if the launcher ever stopped guarding, would put the session into a crash loop.
   // That is exactly what happened once: the setting was accepted, the launcher downgraded it in
   // silence, and the box looked configured while behaving otherwise.
-  const refusal = value === undefined ? null : escalationRefusal(value, UID === 0);
+  const refusal = value === undefined ? null : escalationRefusal(value, UID === 0, m.allowEscalatedUnderRoot);
   if (refusal !== null) {
     console.log(refusal);
     return 1;

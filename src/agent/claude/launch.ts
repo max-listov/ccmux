@@ -23,7 +23,7 @@ export function buildArgv(
   historyPresent: boolean,
 ): string[] {
   const resume = historyPresent ? ["--resume", s.uuid] : ["--session-id", s.uuid];
-  const flags = UID === 0 ? stripDangerous(s.flags) : s.flags; // same rule, other route
+  const flags = UID === 0 && !m.allowEscalatedUnderRoot ? stripDangerous(s.flags) : s.flags; // same rule, other route
   return [
     m.claudeBin,
     ...resume,
@@ -31,7 +31,7 @@ export function buildArgv(
     rcName(m, s.name),
     "--permission-mode",
     // per-session override wins over the machine default; undefined → machine default.
-    resolvePermissionMode(s.permissionMode ?? m.permissionMode, UID === 0),
+    resolvePermissionMode(s.permissionMode ?? m.permissionMode, UID === 0, m.allowEscalatedUnderRoot),
     "--append-system-prompt",
     buildPrompt(s.name, cli, s.agent, "ccmux", s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix),
     ...settingsArg(m, s, cli),
@@ -80,40 +80,41 @@ function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
 const ESCALATED_MODES = new Set(["bypassPermissions", "dontAsk"]);
 
 /**
- * Escalated modes are impossible under a root daemon — this is the LAST line, not the only one.
- *
- * Learned the hard way, on a live server. The guard used to downgrade silently, so a machine
- * configured for `bypassPermissions` ran everything as `auto` and nothing explained why. Trying to
- * make it the owner's choice — an explicit per-machine opt-out — was shipped, deployed, and undone
- * within the hour: **the provider itself refuses the mode under root**
- * (`--dangerously-skip-permissions cannot be used with root/sudo privileges`), so lifting our guard
- * did not grant the capability. It put every session on that box into a crash loop.
- *
- * So the mode is not a policy ccmux may choose to allow: it cannot work here at all. Which is why
- * the real fix lives at the SETTING surface (`ccmux mode` refuses it, `doctor` names anything
- * already configured that way) rather than here. This function stays as defence in depth for a
- * hand-edited config, and it must stay silent-but-safe: a launcher is the wrong place to argue.
- */
-/**
  * Why this mode cannot be used here — or null when it can.
  *
- * Pure, and shared by every surface that lets someone ASK for a mode, so a refusal is worded once
- * and cannot drift between them. The reason names the provider, not ccmux: this is not a policy we
- * chose and could relax, and saying otherwise would send the next person looking for our switch.
+ * Pure, and shared by every surface that lets someone ASK for a mode, so the refusal is worded once
+ * and cannot drift between them. It names the AGENT as the blocker, because that is the truth: this
+ * is not a ccmux policy with a switch to flip — the switch it does have is named in the same breath.
  */
-export function escalationRefusal(mode: string, isRoot: boolean): string | null {
-  if (!isRoot || !ESCALATED_MODES.has(mode)) return null;
+export function escalationRefusal(mode: string, isRoot: boolean, allowed = false): string | null {
+  if (!isRoot || allowed || !ESCALATED_MODES.has(mode)) return null;
   return (
     `'${mode}' cannot run under a root daemon — the agent itself refuses it there ` +
     `("--dangerously-skip-permissions cannot be used with root/sudo privileges"), so a session set to it would never start. ` +
-    `Escalated modes need a daemon running as a non-root user.`
+    `A machine that accepts unrestricted root agents declares 'allowEscalatedUnderRoot' in its config; otherwise run the daemon as a non-root user.`
   );
 }
 
-export function resolvePermissionMode(mode: string, isRoot: boolean): string {
-  if (isRoot && ESCALATED_MODES.has(mode)) return "auto";
+/**
+ * Blocked twice over, and only the machine's owner can lift both.
+ *
+ * ccmux downgrades escalated modes under a root daemon, and the agent independently refuses to start
+ * as root at all. Learned by shipping half of it: lifting only OUR guard put every session on a live
+ * server into a crash loop, because the agent's refusal was still there. The agent's own escape is
+ * an environment variable declaring the process sandboxed — so a machine that declares
+ * `allowEscalatedUnderRoot` gets both: no downgrade here, and that assertion in `launchEnv`.
+ *
+ * Undeclared, the downgrade stays as the last line of defence behind the refusal at the setting
+ * surface, for a config edited by hand.
+ */
+export function resolvePermissionMode(mode: string, isRoot: boolean, allowed = false): string {
+  if (isRoot && !allowed && ESCALATED_MODES.has(mode)) return "auto";
   return mode;
 }
+
+/** The agent's own root check reads this. ccmux sets it ONLY where the machine declared it: on a
+ *  non-root daemon nothing needs asserting, and an unnecessary claim is still a false one. */
+export const SANDBOX_ENV = "IS_SANDBOX";
 
 /** Same decision, same gate: the flag is escalation by another route, so it lives or dies with it. */
 function stripDangerous(flags: string[]): string[] {
@@ -132,8 +133,10 @@ function stripDangerous(flags: string[]): string[] {
 /** What ccmux itself puts into the child's environment — the identity pin and the chat capability.
  *  Everything else `launchEnv` touches (PATH, locale) is normalisation, not policy, so it is not
  *  part of the recipe a restart would change. */
-export function launchEnvKeys(): readonly string[] {
-  return [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
+export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): readonly string[] {
+  const keys = [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
+  if (isRoot && m.allowEscalatedUnderRoot) keys.push(SANDBOX_ENV);
+  return keys;
 }
 
 export function launchEnv(m: MachineConfig, sessionName: string): Record<string, string> {
@@ -148,6 +151,8 @@ export function launchEnv(m: MachineConfig, sessionName: string): Record<string,
   ensureUtf8Locale(env); // no LANG under launchd → claude draws box-rules as ASCII ('_'); force UTF-8
   // so a ccmux run from inside this session can recognize "self" (block rm/stop self)
   env.CCMUX_SESSION = sessionName;
+  // The declared machines, and only those: this is what the agent's root check reads.
+  if (UID === 0 && m.allowEscalatedUnderRoot) env[SANDBOX_ENV] = "1";
   return env;
 }
 

@@ -160,13 +160,20 @@ Two levels — a machine default plus an optional per-session override:
   `default` clears the override → the session inherits the machine default again. The mode is a
   launch-time flag, so **`ccmux restart <name>` applies it** (a running session keeps whatever it
   started with — you can't switch into `bypassPermissions` at runtime).
-- **Under a root daemon, escalated modes are refused where you set them.** `bypassPermissions` and
-  `dontAsk` cannot work as root: the agent itself rejects them (*"--dangerously-skip-permissions
-  cannot be used with root/sudo privileges"*), so a session configured that way would never start.
-  `ccmux mode` therefore refuses the mode outright rather than storing a setting that can never take
-  effect, `doctor` names anything already configured that way, and the launcher keeps downgrading to
-  `auto` as a last line of defence for a hand-edited config. This is not a ccmux policy with a switch
-  to flip — running escalated on a server means running the daemon as a **non-root user**.
+- **Under a root daemon, escalated modes need the machine to declare itself.** They are blocked
+  twice: ccmux downgrades them, and the agent independently refuses to start as root
+  (*"--dangerously-skip-permissions cannot be used with root/sudo privileges"*). Undeclared,
+  `ccmux mode` refuses the mode outright rather than storing a setting that can never take effect,
+  `doctor` names anything already configured that way, and the launcher keeps downgrading as a last
+  line of defence for a hand-edited config.
+
+  A machine that accepts unrestricted root agents sets `"allowEscalatedUnderRoot": true` in its
+  `machine.json`. That lifts **both** halves — no downgrade, and ccmux passes the agent the
+  environment variable its own root check reads. Read it plainly before setting it: that variable
+  declares the process sandboxed, which on a bare server is not true. What the flag really says is
+  *"I accept an agent acting as root here with nothing to approve it"*. Legitimate for a box whose
+  owner wants exactly that; expensive to enable by accident, which is why it is explicit, per
+  machine, and never a default. The alternative remains running the daemon as a non-root user.
 
 Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`, `dontAsk`,
 `bypassPermissions`.

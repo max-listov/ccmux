@@ -6,6 +6,28 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+escalated modes under root: both locks, or neither
+
+Escalated permission modes are blocked twice on a root daemon — ccmux downgrades them, and the agent
+independently refuses to start as root at all. An earlier release lifted only ours, on the reasoning
+that the guard was our policy to relax. It was released, deployed, and undone within the hour: the
+agent's refusal was still there and every session on that box crash-looped.
+
+The agent's own escape is an environment variable declaring the process sandboxed. So a machine that
+sets `allowEscalatedUnderRoot` now gets **both** halves — no downgrade, and that variable passed at
+launch. A test pins the two together, because half of this mechanism is not a degraded feature: it is
+sessions that refuse to start.
+
+Read the flag plainly before setting it. The variable asserts a sandbox, which on a bare server is
+untrue; what the flag really says is *"I accept an agent acting as root here with nothing to approve
+it"*. Legitimate for a box whose owner wants exactly that, expensive to enable by accident — hence
+explicit, per machine, never a default. Undeclared machines keep the previous behaviour: `ccmux mode`
+refuses the mode where it is set rather than storing something that can never take effect, `doctor`
+names anything already configured that way, and the launcher still downgrades.
+
+Turning it on changes the launch environment, so the stamp reports `env` and `list` asks for the
+restart that applies it — the two mechanisms meet with no special-casing.
+
 ## [0.16.0] — 2026-08-10
 
 a setting you cannot honour is refused where it is made

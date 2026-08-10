@@ -130,9 +130,9 @@ export function mutedChatSessions(m: MachineConfig): string[] {
  */
 export function unhonourableModes(m: MachineConfig, isRoot: boolean): string[] {
   const out: string[] = [];
-  if (escalationRefusal(m.permissionMode, isRoot) !== null) out.push(`machine default '${m.permissionMode}'`);
+  if (escalationRefusal(m.permissionMode, isRoot, m.allowEscalatedUnderRoot) !== null) out.push(`machine default '${m.permissionMode}'`);
   for (const s of loadSessions(m)) {
-    if (s.permissionMode !== undefined && escalationRefusal(s.permissionMode, isRoot) !== null) {
+    if (s.permissionMode !== undefined && escalationRefusal(s.permissionMode, isRoot, m.allowEscalatedUnderRoot) !== null) {
       out.push(`${s.name} → '${s.permissionMode}'`);
     }
   }

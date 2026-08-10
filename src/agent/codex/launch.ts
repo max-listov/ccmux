@@ -76,7 +76,7 @@ function stripDangerous(flags: string[]): string[] {
 
 /** Environment for the spawned codex: usable PATH + the self-guard marker. */
 /** Same two keys as every managed provider: the identity pin and the chat capability. */
-export function launchEnvKeys(): readonly string[] {
+export function launchEnvKeys(_m: MachineConfig): readonly string[] {
   return [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
 }
 

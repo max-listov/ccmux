@@ -38,7 +38,7 @@ export interface AgentProvider {
    *  It exists so the launch stamp can see the one part of the recipe that is deliberately NOT in
    *  argv: a secret must not be an argument. Names are enough to answer "would relaunching give this
    *  session something it does not have", which is the only question the stamp asks. */
-  launchEnvKeys(): readonly string[];
+  launchEnvKeys(m: MachineConfig): readonly string[];
   // history / resume
   historyFile(s: Session, m: MachineConfig): string | null;
   /** The same conversation found somewhere OTHER than where this session expects it — used only

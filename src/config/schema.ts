@@ -193,10 +193,26 @@ export const MachineConfigSchema = z.object({
   ensureInterval: z.number().int().positive().default(30),
   // Machine-wide DEFAULT permission mode (matches `claude --permission-mode` choices).
   // A session can override it per-session (Session.permissionMode). Escalated modes
-  // (bypassPermissions/dontAsk) are honored for non-root daemons only. Under root the provider ITSELF
-  // refuses them, so ccmux refuses them where they are SET rather than accepting a setting it cannot
-  // honour (see resolvePermissionMode).
+  // (bypassPermissions/dontAsk) are honored for non-root daemons. Under root they require the
+  // machine to declare allowEscalatedUnderRoot (see below); without it they are refused where they
+  // are SET, rather than accepted as a setting that cannot be honoured.
   permissionMode: PermissionModeSchema.default("auto"),
+  /**
+   * This machine accepts agents running unrestricted under its root daemon.
+   *
+   * Escalated modes are blocked twice over: ccmux downgrades them, and the agent itself refuses to
+   * start as root. The agent's own escape hatch is an environment variable that declares the process
+   * to be sandboxed — so honouring this flag means ccmux ASSERTS that to the agent on every launch.
+   *
+   * Read that plainly before setting it: on a bare server the assertion is not true. What the flag
+   * really says is "I accept an agent acting as root here with nothing to approve it". That is a
+   * legitimate choice for a box whose owner wants exactly that, and an expensive one to make by
+   * accident — which is why it is per-machine, explicit, and never a default.
+   *
+   * Turning it on changes the launch environment, so the launch stamp reports `env` and `list` asks
+   * for the restart that actually applies it.
+   */
+  allowEscalatedUnderRoot: z.boolean().default(false),
   // Boot-unit label so install + update-bounce can target it.
   // launchd: "com.ccmux.daemon"; systemd: "ccmux.service".
   bootLabel: z.string().min(1),

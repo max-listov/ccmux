@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { buildArgv, launchEnv, resolvePermissionMode, escalationRefusal } from "../src/agent/claude/launch.ts";
+import { buildArgv, launchEnv, launchEnvKeys, resolvePermissionMode, escalationRefusal, SANDBOX_ENV } from "../src/agent/claude/launch.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
 
 test("resume branch flips on historyPresent", () => {
@@ -104,4 +104,36 @@ test("the launcher still downgrades — defence in depth for a hand-edited confi
   expect(resolvePermissionMode("dontAsk", true)).toBe("auto");
   expect(resolvePermissionMode("bypassPermissions", false)).toBe("bypassPermissions");
   expect(resolvePermissionMode("plan", true)).toBe("plan");
+});
+
+// Declared machines get BOTH halves — and that is the whole lesson. Lifting only ccmux's guard was
+// released and undone within the hour: the agent's own root refusal was still there, and every
+// session on a live server crash-looped. The agent's escape is an env var declaring a sandbox, so
+// the declaration must carry it, or it repeats the same failure.
+
+test("a declared machine keeps the mode AND is handed the agent's escape", () => {
+  const m = makeMachine({ allowEscalatedUnderRoot: true });
+  expect(resolvePermissionMode("bypassPermissions", true, true)).toBe("bypassPermissions");
+  expect(launchEnvKeys(m, true)).toContain(SANDBOX_ENV);
+});
+
+test("half the mechanism is the failure mode — never ship the mode without the escape", () => {
+  // Pinned deliberately: if these two ever disagree, sessions do not merely misbehave, they refuse
+  // to start. Same source of truth for both.
+  const m = makeMachine({ allowEscalatedUnderRoot: true });
+  const modeSurvives = resolvePermissionMode("bypassPermissions", true, m.allowEscalatedUnderRoot) === "bypassPermissions";
+  expect(modeSurvives).toBe(launchEnvKeys(m, true).includes(SANDBOX_ENV));
+});
+
+test("an UNdeclared machine gets neither, and is told why", () => {
+  const m = makeMachine();
+  expect(resolvePermissionMode("bypassPermissions", true, false)).toBe("auto");
+  expect(launchEnvKeys(m, true)).not.toContain(SANDBOX_ENV);
+  expect(escalationRefusal("bypassPermissions", true, false)).toContain("allowEscalatedUnderRoot");
+});
+
+test("nothing is asserted where nothing needs asserting", () => {
+  // A non-root daemon already runs escalated modes. Claiming a sandbox there would be a false
+  // statement bought for no benefit.
+  expect(launchEnvKeys(makeMachine({ allowEscalatedUnderRoot: true }), false)).not.toContain(SANDBOX_ENV);
 });

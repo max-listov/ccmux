@@ -56,7 +56,7 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
     // Deliberately NOT in the hash: argv is the recipe, and a secret must never be an argument. The
     // launch nevertheless hands the session capabilities through the environment, and those are the
     // one part of the recipe the hash cannot see — so they are recorded beside it, by NAME only.
-    envKeys: [...providerFor(s).launchEnvKeys()].sort(),
+    envKeys: [...providerFor(s).launchEnvKeys(m)].sort(),
     permissionMode: s.permissionMode ?? m.permissionMode,
     chatEnabled: s.chatEnabled,
     promptModules: [...s.promptModules].sort(),
