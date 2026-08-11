@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-08-11
+
+inter-agent chat gains a machine default
+
 inter-agent chat gains a machine default
 
 Chat lived only on the session and was always born off, while the permission mode has had two levels
@@ -29,7 +33,6 @@ the `RESTART` column — chat framing and the Stop hook are launch-time and woul
 configured but not live. Existing registry rows carry an explicit value and therefore read as
 overrides: they keep it until cleared, because "explicitly off" and "not set" are different things
 and guessing between them is not ours to do.
-
 ## [0.17.0] — 2026-08-10
 
 escalated modes under root take both locks, or neither
