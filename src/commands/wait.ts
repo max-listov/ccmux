@@ -8,6 +8,7 @@ import { forwardIfRemote } from "../fleet/forward.ts";
 import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.ts";
 import type { MachineConfig, ChatMessage, Session } from "../types.ts";
 import { managedPeer } from "../chat/identity.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 /**
  * `ccmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
@@ -84,7 +85,7 @@ function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessa
   try {
     return mailBlocksSettle(
       unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map((u) => u.msg),
-      { chatEnabled: s.chatEnabled, canReceiveChat: providerFor(s).chatDeliverable !== undefined, nowMs },
+      { chatEnabled: chatEnabledFor(s, m), canReceiveChat: providerFor(s).chatDeliverable !== undefined, nowMs },
     );
   } catch {
     // Chat is optional; a missing or unreadable ledger must never break a plain `wait`.

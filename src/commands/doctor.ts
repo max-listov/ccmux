@@ -8,6 +8,7 @@ import { VERSION } from "../util/version.ts";
 import { checkFleet } from "../fleet/transport.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
 import { escalationRefusal } from "../agent/claude/launch.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 /** Is the boot daemon registered + running? launchd on macOS, systemd on Linux. */
 async function daemonState(os: NodeJS.Platform, bootLabel: string): Promise<{ manager: string | null; state: string }> {
@@ -117,7 +118,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
  */
 export function mutedChatSessions(m: MachineConfig): string[] {
   return loadSessions(m)
-    .filter((s) => s.chatEnabled && !s.archived && !existsSync(chatAuthPath(m, s.name)))
+    .filter((s) => chatEnabledFor(s, m) && !s.archived && !existsSync(chatAuthPath(m, s.name)))
     .map((s) => s.name);
 }
 

@@ -180,6 +180,24 @@ Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`,
 
 ## Inter-agent chat
 
+Two levels, exactly like the permission mode: a machine default plus an optional per-session
+override.
+
+```bash
+ccmux chat on cc-api        # this session talks, whatever the machine says
+ccmux chat off cc-api       # this session stays silent
+ccmux chat default cc-api   # clear the override → inherit the machine
+```
+
+`chatEnabled` in `machine.json` is the default for sessions that do not override it. It ships **off**
+— chat traffic is never implicit — but turning it on is now one decision per machine instead of one
+per session, which is what stops a forgotten session from being discovered when a peer does not
+answer. A session created after that is born able to talk; rows that already carry an explicit value
+keep it until you clear the override.
+
+Chat framing and the Stop hook are launch-time, so all three commands apply on the next restart —
+and flipping the machine default marks the affected sessions in the `RESTART` column.
+
 Opt-in messaging between managed sessions, so one agent can hand off to another without you relaying.
 
 - `ccmux chat on <name>` — enable chat for a session (**default OFF**; nothing sends or receives

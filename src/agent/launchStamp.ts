@@ -3,6 +3,7 @@ import { z } from "zod";
 import { VERSION } from "../util/version.ts";
 import { providerFor } from "./index.ts";
 import type { MachineConfig, Session } from "../types.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 /**
  * What a session was LAUNCHED with — so "does this one still need a restart?" is a fact you can
@@ -58,7 +59,7 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
     // one part of the recipe the hash cannot see — so they are recorded beside it, by NAME only.
     envKeys: [...providerFor(s).launchEnvKeys(m)].sort(),
     permissionMode: s.permissionMode ?? m.permissionMode,
-    chatEnabled: s.chatEnabled,
+    chatEnabled: chatEnabledFor(s, m),
     promptModules: [...s.promptModules].sort(),
   };
 }

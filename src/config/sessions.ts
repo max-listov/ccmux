@@ -64,12 +64,18 @@ export async function setSessionPermissionMode(
 
 /** Toggle a session's inter-agent chat opt-in. Returns false if the name wasn't present.
  *  Effective immediately (the store re-reads sessions on every send/deliver) — not a launch flag. */
-export async function setSessionChatEnabled(m: MachineConfig, name: string, enabled: boolean): Promise<boolean> {
+/** `enabled === undefined` CLEARS the override so the session inherits the machine default —
+ *  the same shape as clearing a permission-mode override. */
+export async function setSessionChatEnabled(m: MachineConfig, name: string, enabled: boolean | undefined): Promise<boolean> {
   return withSessionRegistryLock(m, async () => {
     await recoverPromotionsUnlocked(m);
     const current = loadSessions(m);
     if (!findSession(current, name)) return false;
-    await writeSessionsUnlocked(m, current.map((s) => (s.name === name ? { ...s, chatEnabled: enabled } : s)));
+    await writeSessionsUnlocked(m, current.map((s) => {
+      if (s.name !== name) return s;
+      const { chatEnabled: _drop, ...rest } = s;
+      return enabled === undefined ? rest : { ...rest, chatEnabled: enabled };
+    }));
     return true;
   });
 }

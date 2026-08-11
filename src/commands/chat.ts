@@ -12,7 +12,7 @@ import { archiveDir } from "../config/paths.ts";
 import { existsSync, readdirSync } from "node:fs";
 import type { MachineConfig } from "../types.ts";
 
-const USAGE = "usage: ccmux chat <log [-n N] [--fleet] [--json] | on <name> | off <name>>";
+const USAGE = "usage: ccmux chat <log [-n N] [--fleet] [--json] | on <name> | off <name> | default <name>>";
 
 interface Source {
   machine: LogMachine;
@@ -94,8 +94,9 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
  *   ccmux chat log [-n N]    — this machine's exchange (received + sent), tail of N (default 30)
  *   ccmux chat log --fleet   — the same, merged with every other machine's log, in time order
  *   ccmux chat log --json    — machine-readable; also the wire format `--fleet` reads from peers
- *   ccmux chat on  <name>    — enable inter-agent chat for a session (default is OFF)
- *   ccmux chat off <name>    — disable it
+ *   ccmux chat on  <name>     — enable inter-agent chat for this session
+ *   ccmux chat off <name>     — disable it for this session
+ *   ccmux chat default <name> — clear the override; inherit the machine's chatEnabled
  */
 export async function cmdChat(args: string[]): Promise<number> {
   const sub = args[0];
@@ -103,7 +104,7 @@ export async function cmdChat(args: string[]): Promise<number> {
 
   if (sub === "log") return cmdChatLog(m, args.slice(1));
 
-  if (sub === "on" || sub === "off") {
+  if (sub === "on" || sub === "off" || sub === "default") {
     const target = args[1];
     if (target === undefined) {
       console.log(`usage: ccmux chat ${sub} <name>   ·   <machine>:<name> for another fleet machine`);
@@ -112,17 +113,18 @@ export async function cmdChat(args: string[]): Promise<number> {
     const fwd = await forwardIfRemote(target, "chat", [], { m, verbArgs: [sub] });
     if (fwd.done) return fwd.code;
     const name = fwd.session;
-    const ok = await setSessionChatEnabled(m, name, sub === "on");
+    const ok = await setSessionChatEnabled(m, name, sub === "default" ? undefined : sub === "on");
     if (!ok) {
       console.log(`no such session: ${name}`);
       return 1;
     }
-    log.info({ msg: "chat toggled", name, enabled: sub === "on" });
+    log.info({ msg: "chat toggled", name, enabled: sub === "default" ? null : sub === "on" });
     // Chat framing + the Stop hook are LAUNCH-time (see claude/launch.ts settingsArg) — so, like
     // `ccmux mode` and `ccmux router`, this only takes effect on the next restart. Saying so here is
     // the difference between "it works" and "I toggled it and nothing happened".
-    console.log(`${name}: chat ${sub === "on" ? "enabled" : "disabled"} — applies on: ccmux restart ${name}`);
-    if (sub === "on") {
+    const state = sub === "default" ? `default (${m.chatEnabled ? "enabled" : "disabled"})` : sub === "on" ? "enabled" : "disabled";
+    console.log(`${name}: chat ${state} — applies on: ccmux restart ${name}`);
+    if (sub === "on" || (sub === "default" && m.chatEnabled)) {
       console.log(`  then: ccmux msg ${name} "…" --task <name>   ·   --defer waits for its turn to end`);
       console.log(`  restarting the whole fleet at once: ccmux restart --all`);
     }

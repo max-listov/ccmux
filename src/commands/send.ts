@@ -2,6 +2,7 @@ import { forwardIfRemote } from "../fleet/forward.ts";
 import { sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { preview } from "../util/preview.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 /** Long, prose-looking text aimed at a session that could have received it as CHAT. `send` types
  *  keystrokes: no sender, no record, no reply address, and none of the delivery gates (it will type
@@ -35,7 +36,7 @@ export async function cmdSend(name: string | undefined, keys: string[], opts: { 
   console.log(`sent to ${name}: ${preview(text)}`);
   // Not a refusal — pasting long text on purpose is legitimate. But say it once, here, where the
   // choice was made; `internal` keeps ccmux-owned key injection from lecturing.
-  if (opts.internal !== true && looksLikeMessage(text, findSession(loadSessions(m), name)?.chatEnabled === true)) {
+  if (opts.internal !== true && looksLikeMessage(text, (() => { const t = findSession(loadSessions(m), name); return t !== undefined && chatEnabledFor(t, m); })())) {
     console.log(`  note: that reads like a message, not keystrokes — \`ccmux msg ${name} "…"\` tags you as the sender,`);
     console.log("        gives them a reply address, records it, and waits for a safe moment to deliver.");
   }

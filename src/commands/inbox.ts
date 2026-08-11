@@ -6,6 +6,7 @@ import { holdReason } from "../chat/holdReason.ts";
 import { readChatHold } from "../agent/sessionStatus.ts";
 import { listSessionNames } from "../tmux/tmux.ts";
 import { managedPeer } from "../chat/identity.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 /**
  * Show a session's still-undelivered chat and, for each message, WHY it hasn't landed yet.
@@ -48,6 +49,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
     const now = Date.now();
     const ctx = {
       recipient,
+      chatEnabled: chatEnabledFor(recipient, m),
       running,
       nowMs: now,
       isOwner: name === OWNER,

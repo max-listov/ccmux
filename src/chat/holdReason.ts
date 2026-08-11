@@ -25,6 +25,9 @@ export type HoldReason =
 
 export interface HoldContext {
   recipient: Session | undefined;
+  /** Chat resolved for that recipient (session override, else machine default) — passed in rather
+   *  than read off the session, so this cannot disagree with what delivery actually does. */
+  chatEnabled: boolean;
   running: boolean;
   nowMs: number;
   /** Can the recipient's agent receive chat at all? False = the daemon skips it entirely, so its mail
@@ -45,7 +48,7 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
   if (ctx.recipient === undefined) {
     return { kind: "recipient-unknown", text: `no exact session '${targetLabel(msg.to)}' on this machine — it may belong to another fleet machine or have been replaced` };
   }
-  if (!ctx.recipient.chatEnabled) {
+  if (!ctx.chatEnabled) {
     return { kind: "chat-off", text: `recipient has chat disabled (ccmux chat on ${sessionName}, then restart it)` };
   }
   // Permanent, not transient: an agent with no safe-to-inject detector is skipped by the delivery

@@ -6,6 +6,7 @@ import { buildPrompt } from "../managePrompt.ts";
 import { UID, HOME } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
 import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
+import { chatEnabledFor } from "../../config/chat.ts";
 
 export function preflight(m: MachineConfig): void {
   accessSync(m.claudeBin, constants.X_OK);
@@ -33,7 +34,7 @@ export function buildArgv(
     // per-session override wins over the machine default; undefined → machine default.
     resolvePermissionMode(s.permissionMode ?? m.permissionMode, UID === 0, m.allowEscalatedUnderRoot),
     "--append-system-prompt",
-    buildPrompt(s.name, cli, s.agent, "ccmux", s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix),
+    buildPrompt(s.name, cli, s.agent, "ccmux", chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix),
     ...settingsArg(m, s, cli),
     ...flags,
     ...m.extraFlags,
@@ -63,7 +64,7 @@ function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
   // scraping the pane. `hook-status` is SILENT (writes a file, no stdout) so it coexists on the Stop
   // event with the chat `stop-hook`, which owns the `{decision:block}` stdout channel — both run.
   const stopHooks: Array<{ type: string; command: string }> = [];
-  if (s.chatEnabled) stopHooks.push({ type: "command", command: `${cli} stop-hook` });
+  if (chatEnabledFor(s, m)) stopHooks.push({ type: "command", command: `${cli} stop-hook` });
   stopHooks.push({ type: "command", command: `${cli} hook-status` });
   settings.hooks = {
     UserPromptSubmit: [{ hooks: [{ type: "command", command: `${cli} hook-status` }] }],

@@ -6,6 +6,30 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+inter-agent chat gains a machine default
+
+Chat lived only on the session and was always born off, while the permission mode has had two levels
+— a machine default plus a per-session override — all along. On a fleet that asymmetry means every
+new session must be remembered, and a forgotten one is discovered when a peer does not answer.
+
+`chatEnabled` is now a machine default too, with the session field becoming an optional override and
+`ccmux chat default <name>` clearing it. The default still ships **off**: chat traffic is never
+implicit. What changes is that the deliberate act happens once per machine instead of once per
+session.
+
+Eleven call sites read this flag — delivery, sending, receiving, the injected prompt, the Stop hook,
+`inbox`, `doctor`, `wait`, `send`, the launch stamp. They now all go through one resolver, and a test
+walks the source and fails if any of them reads the raw session field again: two levels folded
+inline in one place and not another is a system where half of it believes chat is on, discovered
+from a message that silently never arrives. That test found two sites missed on the first pass,
+including the Stop hook that delivers deferred mail at end of turn.
+
+The stamp hashes the RESOLVED value, so flipping the machine default marks the affected sessions in
+the `RESTART` column — chat framing and the Stop hook are launch-time and would otherwise be
+configured but not live. Existing registry rows carry an explicit value and therefore read as
+overrides: they keep it until cleared, because "explicitly off" and "not set" are different things
+and guessing between them is not ours to do.
+
 ## [0.17.0] — 2026-08-10
 
 escalated modes under root take both locks, or neither

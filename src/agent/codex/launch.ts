@@ -5,6 +5,7 @@ import { buildPrompt } from "../managePrompt.ts";
 import { UID } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
 import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
+import { chatEnabledFor } from "../../config/chat.ts";
 
 export const CODEX_LAUNCH_MARKER_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 
@@ -35,7 +36,7 @@ export function buildArgv(s: Session, m: MachineConfig, cli: string, historyPres
   if (historyPresent) {
     return [bin, "resume", s.uuid, ...flags, ...m.extraFlags];
   }
-  const prompt = buildPrompt(s.name, cli, s.agent, "ccmux", s.chatEnabled, s.promptModules, m.ownerLang, m.rcPrefix);
+  const prompt = buildPrompt(s.name, cli, s.agent, "ccmux", chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix);
   return [bin, ...flags, ...m.extraFlags, prompt];
 }
 

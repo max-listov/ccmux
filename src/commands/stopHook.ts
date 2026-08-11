@@ -4,6 +4,7 @@ import { loadLedger, loadAckedIds, appendAck } from "../chat/store.ts";
 import { formatChatInjection } from "../chat/format.ts";
 import { promptInvocation } from "../env.ts";
 import { managedPeer, managedPeerKey } from "../chat/identity.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 /**
  * `ccmux stop-hook` — the Claude Code **Stop hook** for a managed session. It fires ONLY when the
@@ -41,7 +42,7 @@ export async function cmdStopHook(): Promise<number> {
 
     const m = loadMachineConfig();
     const me = findSession(loadSessions(m), self);
-    if (!me || !me.chatEnabled) return 0; // chat off for this session → cheap no-op
+    if (!me || !chatEnabledFor(me, m)) return 0; // chat off for this session → cheap no-op
     const recipient = managedPeer(m.rcPrefix, me);
     const recipientKey = managedPeerKey(recipient);
 

@@ -72,10 +72,11 @@ export const SessionSchema = z.object({
   // session configured with one would simply never start. The launch guard remains as a last line of
   // defence for a hand-edited config.
   permissionMode: PermissionModeSchema.optional(),
-  // Inter-agent chat opt-in. Default OFF so no session sends or receives until you turn it on
-  // (`ccmux chat on <name>`) — chat traffic is never implicit. Gates BOTH sending from this
-  // session and delivering peer messages to it. Defaulted so existing session rows stay valid.
-  chatEnabled: z.boolean().default(false),
+  // Per-session chat OVERRIDE. Undefined → inherit the machine default (MachineConfig.chatEnabled).
+  // Set it to gate ONE session differently from the box — e.g. the machine has chat on, but a
+  // client-facing session stays silent. Never read directly: every consumer goes through the single
+  // resolver (config/chat.ts), or the two levels drift and half the system thinks chat is on.
+  chatEnabled: z.boolean().optional(),
   // Named prompt modules composed INTO the injected system prompt (buildPrompt) at every
   // launch/heal, on top of the base management prompt. Each key is resolved against the in-code
   // module registry (agent/promptModules.ts) — the module TEXT is versioned CODE; only the NAME
@@ -213,6 +214,10 @@ export const MachineConfigSchema = z.object({
    * for the restart that actually applies it.
    */
   allowEscalatedUnderRoot: z.boolean().default(false),
+  // Machine-wide DEFAULT for inter-agent chat, mirroring how permissionMode works. Still OFF by
+  // default, because chat traffic is never implicit — turning it on is a deliberate act, just one
+  // performed ONCE per machine instead of once per session. A session may still override either way.
+  chatEnabled: z.boolean().default(false),
   // Boot-unit label so install + update-bounce can target it.
   // launchd: "com.ccmux.daemon"; systemd: "ccmux.service".
   bootLabel: z.string().min(1),

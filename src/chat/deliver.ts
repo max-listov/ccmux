@@ -9,6 +9,7 @@ import { formatChatInjection } from "./format.ts";
 import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors } from "./store.ts";
 import { writeChatHold, clearChatHold } from "../agent/sessionStatus.ts";
 import { managedPeer, managedPeerKey, principalLabel } from "./identity.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
@@ -124,7 +125,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
 
   for (const s of sessions) {
     if (deliveries >= MAX_PER_PASS) break;
-    if (!s.chatEnabled || !running.has(s.name)) continue;
+    if (!chatEnabledFor(s, m) || !running.has(s.name)) continue;
     const provider = providerFor(s);
     const recipient = managedPeer(m.rcPrefix, s);
     const recipientKey = managedPeerKey(recipient);

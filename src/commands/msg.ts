@@ -10,18 +10,19 @@ import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
 import { relay, runRemote } from "../fleet/transport.ts";
-import type { AgentKind, ChatMessage, ChatPrincipal, ManagedPeer, Session } from "../types.ts";
+import type { AgentKind, ChatMessage, ChatPrincipal, ManagedPeer, Session, MachineConfig } from "../types.ts";
 import { log } from "../util/log.ts";
 import { preview } from "../util/preview.ts";
 import { usageLine } from "./help.ts";
+import { chatEnabledFor } from "../config/chat.ts";
 
 const RemoteListSchema = ListJsonSchema.pick({ sessions: true });
 
-function senderFor(machine: string, sessions: Session[]): ChatPrincipal | { error: string } {
+function senderFor(machine: string, sessions: Session[], m: MachineConfig): ChatPrincipal | { error: string } {
   const name = process.env.CCMUX_SESSION;
   if (name === undefined || name === "") return cliPrincipal(machine);
   const session = findSession(sessions, name);
-  if (!session || !session.chatEnabled) {
+  if (!session || !chatEnabledFor(session, m)) {
     return { error: `msg: this session '${name}' has chat disabled — enable with: ccmux chat on ${name}` };
   }
   if (!hasChatCredential(loadMachineConfig(), session, process.env[CHAT_CREDENTIAL_ENV])) {
@@ -123,7 +124,7 @@ export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(),
     console.error(`chat receive: ${mismatch}`);
     return 1;
   }
-  if (!session.chatEnabled || providerFor(session).chatDeliverable === undefined) {
+  if (!chatEnabledFor(session, machine) || providerFor(session).chatDeliverable === undefined) {
     console.error(`chat receive: target '${session.name}' cannot receive chat`);
     return 1;
   }
@@ -166,7 +167,7 @@ export async function cmdMsg(args: string[]): Promise<number> {
 
   const machine = loadMachineConfig();
   const sessions = loadSessions(machine);
-  const from = senderFor(machine.rcPrefix, sessions);
+  const from = senderFor(machine.rcPrefix, sessions, machine);
   if ("error" in from) return console.error(from.error), 1;
 
   if (positionals[0] === "cancel") {
@@ -222,7 +223,7 @@ export async function cmdMsg(args: string[]): Promise<number> {
   const target = managedPeer(machine.rcPrefix, session);
   const mismatch = assertExpected(target, expectedAgent, expectedThread);
   if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
-  if (!session.chatEnabled || providerFor(session).chatDeliverable === undefined) {
+  if (!chatEnabledFor(session, machine) || providerFor(session).chatDeliverable === undefined) {
     return console.error(`msg: recipient '${targetToken}' cannot receive chat`), 1;
   }
   if ((defer || notBefore !== null) && task !== null) {
