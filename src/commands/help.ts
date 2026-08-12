@@ -26,7 +26,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "install", args: "[--rc-prefix <name>] [--release-url URL]", desc: "write config + boot unit; start daemon (--rc-prefix = this machine's label, e.g. local/dev/prod; --release-url wires autoUpdate)" },
   { verb: "uninstall", args: "", desc: "remove boot unit (sessions + history kept)" },
   { verb: "ensure", args: "", desc: "run one heal pass now" },
-  { verb: "tui", args: "[-f|--fullscreen]", desc: "interactive fleet TUI (bare `ccmux` does this too)" },
+  { verb: "tui", args: "[-f|--fullscreen]", desc: "interactive fleet TUI (bare `ccmux` does this too); `x` toggles the external inventory, which is off unless the machine sets externalInventory" },
   { verb: "version", args: "", desc: "print version" },
   { verb: "help", args: "[command]", desc: "this help, or help for one command" },
 ];

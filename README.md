@@ -61,7 +61,13 @@ press Enter on it in the TUI.
 
 ### Adopt an external session
 
-A provider CLI or persisted Codex task outside ccmux shows up in the local TUI under *external* with
+The external inventory is **off by default** — it is evidence gathered for a decision (adopt, fork,
+take over), and its cost tracks how much transcript history the box has accumulated rather than how
+many sessions it runs. Press `x` in the TUI to turn it on for the current run, or set
+`externalInventory: true` in `machine.json` to make it the machine's starting answer. While it is
+off the header says `external off`, so an absent section is never mistaken for an empty one.
+
+Once on, a provider CLI or persisted Codex task outside ccmux shows up under *external* with
 provider, host, full thread UUID, persisted origin and current writer evidence. Origin (`cli`,
 `vscode`, `app-server`, ...) is metadata, not proof of who owns the writer now. The absence of an
 observed writer is advisory; Codex ownership is accepted only when the future managed TUI actually

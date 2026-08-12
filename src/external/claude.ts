@@ -6,7 +6,7 @@ import { rec, str } from "../agent/normalize.ts";
 import { loadSessions } from "../config/sessions.ts";
 import type { ExternalSession, MachineConfig, WriterRuntime } from "../types.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
-import { readHeadLines, readTailLines } from "../util/readLines.ts";
+import { readHeadLines, readTailUntil } from "../util/readLines.ts";
 import { externalCapabilities } from "./capabilities.ts";
 import { externalSessionKey } from "./keys.ts";
 
@@ -57,7 +57,7 @@ function writerRuntime(writers: Writer[]): WriterRuntime | null {
 
 function readSession(path: string): Pick<ExternalSession, "dir" | "lastActivityMs" | "lastModel" | "usedTokens" | "lastMessage"> | null {
   return cache.get(path, () => {
-    const tail = readTailLines(path, TAIL_LINES);
+    const tail = readTailUntil(path, TAIL_LINES, (lines) => lastModel(lines) !== null && usedTokens(lines) !== null);
     if (tail.length === 0) return null;
     const messages = parse(tail.slice(-120), 1, 280);
     const lastMessage = messages.at(-1) ?? null;

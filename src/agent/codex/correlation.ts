@@ -26,7 +26,9 @@ function hasExactForkMarker(path: string, marker: string): boolean {
   const expected = `ccmux launch correlation: ${marker}`;
   // Native fork copies the source's full initial history before appending this launch turn. The
   // unique marker is therefore near the live tail, not at any fixed head byte/record offset.
-  for (const line of readTailLines(path, 256)) {
+  // A launch-time question asked once, and the answer decides WHICH rollout is this session's —
+  // so the window stays wide here. The ceiling exists only to bound a runaway file.
+  for (const line of readTailLines(path, 256, 16 * 1024 * 1024)) {
     try {
       const parsed = UserMessageEnvelopeSchema.safeParse(JSON.parse(line));
       if (parsed.success && parsed.data.payload.content.some((item) => item.text.includes(expected))) return true;

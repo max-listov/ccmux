@@ -218,6 +218,15 @@ export const MachineConfigSchema = z.object({
   // default, because chat traffic is never implicit — turning it on is a deliberate act, just one
   // performed ONCE per machine instead of once per session. A session may still override either way.
   chatEnabled: z.boolean().default(false),
+  /**
+   * Whether the fleet view scans for agent threads running OUTSIDE ccmux. Off by default: the
+   * inventory is evidence gathered for a decision (adopt, fork, take over), and a machine that
+   * is not making that decision should not pay for it on every launch. The scan walks every
+   * stored transcript on the box, so its cost tracks accumulated history rather than fleet size.
+   *
+   * The view toggles it live with `x`; this is only where the machine's starting answer lives.
+   */
+  externalInventory: z.boolean().default(false),
   // Boot-unit label so install + update-bounce can target it.
   // launchd: "com.ccmux.daemon"; systemd: "ccmux.service".
   bootLabel: z.string().min(1),

@@ -7,6 +7,7 @@ import { useSpinner } from "./hooks/useSpinner.ts";
 import { useTranscript } from "./hooks/useTranscript.ts";
 import { useDiscover } from "./hooks/useDiscover.ts";
 import { buildItems, capabilityReasons, resolveFleetItem, writerSummary } from "./fleet.ts";
+import type { FleetLoad } from "./fleet.ts";
 import { discoverActive } from "./discover.ts";
 import type { DiscoveredSession } from "./discover.ts";
 import { InlineView } from "./views/InlineView.tsx";
@@ -56,7 +57,7 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   // names whose tmux pane to capture each poll (visible cards + selection); filled below once the
   // window is known. A ref so the poll reads the latest without re-subscribing on every scroll.
   const liveNamesRef = useRef<Set<string> | undefined>(undefined);
-  const { rows, reload } = useFleet(m, liveNamesRef);
+  const { rows, loaded, reload } = useFleet(m, liveNamesRef);
   // Selection follows the SESSION (uuid), not a list position: the list re-sorts live by
   // last activity, so an index would silently slide onto a different card mid-navigation.
   const [selKey, setSelKey] = useState<string | null>(null);
@@ -78,12 +79,18 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   const [ownershipError, setOwnershipError] = useState<string | null>(null);
   const adoptTarget = useRef<string | null>(null);
 
-  const discovered = useDiscover(m, mode === "list");
+  // The machine states the starting answer; `x` changes it for this run only.
+  const [externalOn, setExternalOn] = useState(m.externalInventory);
+  // Gated on `loaded`: the managed fleet is what the view is FOR, and discovery blocks the thread
+  // for as long as the box's accumulated history takes to scan. Sessions paint first, always.
+  const { list: discovered, scanning } = useDiscover(m, mode === "list" && externalOn && loaded);
   const { items, externalStart } = buildItems(rows, discovered, m.rcPrefix);
   // animate the spinner only when something is actually working — otherwise the whole tree would
   // re-render 5×/s for nothing (idle fleet = static frame, zero churn). See useSpinner.
+  // Loading and scanning ARE work, so the spinner animates for them too — the invariant is
+  // "tick only when something is happening", not "tick only when a session is busy".
   const anyActive = items.some((it) => it.status.active);
-  const spin = useSpinner(anyActive);
+  const spin = useSpinner(anyActive || !loaded || scanning);
   const count = items.length;
   // Resolve the selected route identity to wherever the activity sort put it this render; if the
   // session is gone (deleted / adopted away) fall back to the same list position.
@@ -349,6 +356,9 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     if (key.return && selected && !isExternal) { onIntent({ type: "attach", name: selected.session.name }); return; }
     if (input === "q") { exit(); return; }
     if (input === "f") { setFullscreen((v) => !v); return; }
+    // Turning the inventory off drops the external rows immediately; the selection is keyed by
+    // route identity, so a cursor parked on one falls back to the same position among managed.
+    if (input === "x") { setExternalOn((v) => !v); return; }
     // compose a chat message (fullscreen, managed session only — external is read-only)
     if (fullscreen && input === "i" && selected && !isExternal) { setMode("compose"); setComposeDraft(""); setFocus("transcript"); return; }
     if (input === "n") { setMode("new"); setDraft(""); setNewAgent("claude"); return; }
@@ -395,10 +405,11 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
     if ((input === "D" || input === "d") && selected && !isExternal) { log.info({ msg: "action delete → confirm", name: selected.session.name }); setMode("confirm"); }
   });
 
+  const load: FleetLoad = { loaded, externalOn, externalScanning: scanning };
   const view = fullscreen ? (
-    <FullscreenView items={items} externalStart={externalStart} cursor={cur} winStart={winStart} visibleCards={visibleCards} spin={spin} rcPrefix={m.rcPrefix} messages={messages} transcriptOffset={offset} focus={focus} listWidth={listWidth} handleActive={hoverHandle} hoverPane={hoverPane} hoverCard={hoverCard} composing={mode === "compose"} composeDraft={composeDraft} sending={sending} canCompose={!!selected && !isExternal} />
+    <FullscreenView items={items} externalStart={externalStart} cursor={cur} winStart={winStart} visibleCards={visibleCards} spin={spin} rcPrefix={m.rcPrefix} messages={messages} transcriptOffset={offset} focus={focus} listWidth={listWidth} handleActive={hoverHandle} hoverPane={hoverPane} hoverCard={hoverCard} composing={mode === "compose"} composeDraft={composeDraft} sending={sending} canCompose={!!selected && !isExternal} load={load} />
   ) : (
-    <InlineView items={items} externalStart={externalStart} cursor={cur} spin={spin} rcPrefix={m.rcPrefix} />
+    <InlineView items={items} externalStart={externalStart} cursor={cur} spin={spin} rcPrefix={m.rcPrefix} load={load} />
   );
 
   return (

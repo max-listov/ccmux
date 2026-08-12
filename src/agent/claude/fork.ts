@@ -22,6 +22,9 @@ import { encodeDir, histFile } from "./resume.ts";
 
 const HEAD_BYTES = 16 * 1024; // the custom-title event sits in a fork's first lines
 const TAIL_LINES = 50; // enough to find the newest timestamped record
+// Fork detection PICKS a conversation, so its window must not shrink under the records it needs;
+// this ceiling only ever binds on a pathological file, where reading on would be the worse answer.
+const TAIL_BYTES = 4 * 1024 * 1024;
 
 /** The `customTitle` of a custom-title event found in the file's head, else null. */
 function headTitle(lines: string[]): string | null {
@@ -42,7 +45,7 @@ function headTitle(lines: string[]): string | null {
 /** Newest `timestamp` in the file's tail (epoch ms), or null if none. Timestamps — not
  *  mtime: a desktop-app open bumps mtime without the conversation actually moving. */
 export function lastMessageMs(path: string): number | null {
-  const lines = readTailLines(path, TAIL_LINES);
+  const lines = readTailLines(path, TAIL_LINES, TAIL_BYTES);
   for (let i = lines.length - 1; i >= 0; i--) {
     const raw = lines[i];
     if (!raw) continue;

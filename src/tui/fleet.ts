@@ -18,6 +18,32 @@ export interface FleetItem {
   activityText: string | null;
 }
 
+/** What the view knows about its own data, as opposed to what the data says. An empty list is
+ *  not a fact until something has answered; the external section is absent by choice, not by
+ *  emptiness. Both views read these through the helpers below so they cannot word it differently. */
+export type FleetLoad = {
+  /** The managed fleet has answered at least once. */
+  loaded: boolean;
+  /** The external inventory is switched on for this run. */
+  externalOn: boolean;
+  /** A discovery pass is in flight right now. */
+  externalScanning: boolean;
+};
+
+/** Header text for the external side: off, working, or a count. Never a bare "0" while a scan
+ *  is still running — that reads as an answer and it is not one. */
+export function inventoryLabel(load: FleetLoad, externalCount: number): string {
+  if (!load.externalOn) return "external off";
+  if (load.externalScanning && externalCount === 0) return "external scanning…";
+  return `${externalCount} external`;
+}
+
+/** Text for an empty list. Before the first answer this says so — the view used to assert
+ *  "no sessions" on a machine whose fleet simply had not been delivered yet. */
+export function emptyListText(load: FleetLoad, hint: string): string {
+  return load.loaded ? `no sessions — ${hint}` : "loading sessions…";
+}
+
 const RECENT_ACTIVITY_MS = 30_000;
 const ACTIVITY_BUCKET_MS = 60_000;
 

@@ -4,7 +4,7 @@ import { claudeProvider } from "./claude/index.ts";
 import { codexProvider } from "./codex/index.ts";
 import { rcName } from "../config/machine.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
-import { readLines, readTailLines } from "../util/readLines.ts";
+import { readLines, readTailLines, readTailUntil } from "../util/readLines.ts";
 
 // Format sniff lives in its own light module (normalize-only deps) so the public library seam can
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
@@ -200,7 +200,7 @@ export function tailTranscript(session: Session, m: MachineConfig, tail: number)
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path || !existsSync(path)) return [];
-  return provider.parse(readTailLines(path, tail), 1);
+  return provider.parse(readTailLines(path, tail, TRANSCRIPT_PANE_BYTES), 1);
 }
 
 /** When the transcript file was last written (epoch ms) — a "the conversation moved" signal
@@ -217,15 +217,22 @@ export function lastActivityMs(session: Session, m: MachineConfig): number | nul
   }
 }
 
-/** Usage rides every assistant turn — a 2k-line tail always contains the latest one. */
+/** Usage rides every assistant turn, so the newest one is a few records back — the window is a
+ *  ceiling for the pathological case, not the expected read. It is bounded in bytes too
+ *  (readTailUntil), because a line cap alone bounds nothing on transcripts with huge records. */
 const USED_TOKENS_WINDOW = 2000;
+
+/** The transcript pane renders recent messages; this caps what one render may pull off disk. */
+const TRANSCRIPT_PANE_BYTES = 4 * 1024 * 1024;
 
 /** Context tokens used — agent-specific, for the `list` CTX fallback (no statusline). */
 export function sessionUsedTokens(session: Session, m: MachineConfig): number | null {
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path) return null;
-  return usedTokensCache.get(path, () => provider.usedTokens(readTailLines(path, USED_TOKENS_WINDOW)));
+  return usedTokensCache.get(path, () =>
+    provider.usedTokens(readTailUntil(path, USED_TOKENS_WINDOW, (lines) => provider.usedTokens(lines) !== null)),
+  );
 }
 
 // mtime-keyed like usedTokens: an idle session's model is read once per write, not per poll.
@@ -238,7 +245,9 @@ export function sessionModel(session: Session, m: MachineConfig): string | null 
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path) return null;
-  return modelCache.get(path, () => provider.lastModel(readTailLines(path, USED_TOKENS_WINDOW)));
+  return modelCache.get(path, () =>
+    provider.lastModel(readTailUntil(path, USED_TOKENS_WINDOW, (lines) => provider.lastModel(lines) !== null)),
+  );
 }
 
 /** Where the session's conversation lives NOW, if the agent forked it away from the

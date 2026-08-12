@@ -6,6 +6,29 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+the transcript window is bounded in bytes, and the fleet view stops guessing
+
+Reading "the last 2000 lines" of a transcript bounds nothing: cost is bytes, and how large one
+record grows is the agent's business, not ours. On a box whose rollouts had reached 139KB per line,
+that window meant 1.4GB read from a single file, and one inventory pass over 15GB of history pulled
+6.7GB. The fleet view sat at `0 managed · 0 external` while it did — the managed fleet's own load is
+a promise, and a blocked thread cannot deliver one, so neither number on screen was an answer.
+
+Every tail read now carries a byte ceiling alongside the line cap, and the windows that exist to
+find a fact — which model, how many tokens — widen only while that fact is still missing and stop
+rather than walking back through the whole file. Correctness-critical readers (fork detection,
+launch correlation) keep wide ceilings that bind only on a runaway file.
+
+The external inventory is now off unless asked for. It is evidence gathered for a decision — adopt,
+fork, take over — and its cost tracks accumulated history rather than fleet size, so a machine not
+making that decision no longer pays for it on every launch. `x` toggles it live; `externalInventory`
+in `machine.json` sets the machine's starting answer.
+
+What the view knows about its own data is now distinct from what the data says: an empty list reads
+`loading sessions…` until something answers, the header says `external off` when the section is
+absent by choice and `external scanning…` while a pass runs, and discovery starts only after the
+managed fleet has painted.
+
 ## [0.18.0] — 2026-08-11
 
 inter-agent chat gains a machine default

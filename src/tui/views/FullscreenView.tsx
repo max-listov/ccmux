@@ -6,8 +6,8 @@ import { SessionCard } from "../components/SessionCard.tsx";
 import { TranscriptPane } from "../components/TranscriptPane.tsx";
 import { Scrollbar } from "../components/Scrollbar.tsx";
 import { Txt } from "../components/Txt.tsx";
-import type { FleetItem } from "../fleet.ts";
-import { externalActionHint, writerSummary } from "../fleet.ts";
+import type { FleetItem, FleetLoad } from "../fleet.ts";
+import { emptyListText, externalActionHint, inventoryLabel, writerSummary } from "../fleet.ts";
 import type { TranscriptMessage } from "../../types.ts";
 
 type Focus = "list" | "transcript";
@@ -33,6 +33,7 @@ export function FullscreenView({
   composeDraft,
   sending,
   canCompose,
+  load,
 }: {
   items: FleetItem[];
   externalStart: number;
@@ -52,6 +53,7 @@ export function FullscreenView({
   composeDraft: string;
   sending: boolean;
   canCompose: boolean;
+  load: FleetLoad;
 }) {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 100;
@@ -79,14 +81,14 @@ export function FullscreenView({
           {IS_DEV ? <Text color="red" bold>{"DEV "}</Text> : null}
           <Text color="black" bold>{"· fleet "}</Text>
         </Box>
-        <Text color="black">{`${rcPrefix} · ${externalStart} managed · ${externalCount} external `}</Text>
+        <Text color="black">{`${rcPrefix} · ${externalStart} managed · ${inventoryLabel(load, externalCount)} `}</Text>
       </Box>
 
       <Box height={bodyHeight} flexShrink={0} overflow="hidden">
         <Box width={listWidth} height={bodyHeight} borderStyle="round" borderColor={paneColor("list")} overflow="hidden">
           <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
             {items.length === 0 ? (
-              <Text dimColor>no sessions — n to create</Text>
+              <Text dimColor>{`${load.loaded ? "" : spin + " "}${emptyListText(load, "n to create")}`}</Text>
             ) : (
               items.slice(winStart, winStart + visibleCards).map((it, k, arr) => {
                 const i = winStart + k; // global index (slice is the scroll window)
@@ -159,8 +161,8 @@ export function FullscreenView({
         <Text color="black">{composing
           ? ` compose — ↵ send   esc cancel `
           : sel?.ext
-            ? ` ←→ pane   ↑↓ session   ${externalActionHint(sel.ext)}   [ ] resize   f inline   q quit `
-            : ` ←→ pane   ↑↓ ${focus === "transcript" ? "scroll" : "session"}   i message   [ ] resize   ↵ attach   f inline   q quit `}</Text>
+            ? ` ←→ pane   ↑↓ session   ${externalActionHint(sel.ext)}   [ ] resize   x external off   f inline   q quit `
+            : ` ←→ pane   ↑↓ ${focus === "transcript" ? "scroll" : "session"}   i message   [ ] resize   ↵ attach   x external ${load.externalOn ? "off" : "on"}   f inline   q quit `}</Text>
       </Box>
     </Box>
   );

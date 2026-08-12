@@ -6,7 +6,7 @@ import { lastModel, parse, usedTokens } from "../agent/codex/transcript.ts";
 import { loadSessions } from "../config/sessions.ts";
 import type { ExternalSession, MachineConfig, WriterRuntime } from "../types.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
-import { readFirstLine, readTailLines } from "../util/readLines.ts";
+import { readFirstLine, readTailUntil } from "../util/readLines.ts";
 import { externalCapabilities } from "./capabilities.ts";
 import { inspectCodexThreadLocks, type CodexLockInspection } from "./codexLocks.ts";
 import { externalSessionKey } from "./keys.ts";
@@ -151,7 +151,9 @@ function runtimeFor(
 
 function activity(path: string): Pick<ExternalSession, "lastActivityMs" | "lastModel" | "usedTokens" | "lastMessage"> {
   return cache.get(path, () => {
-    const tail = readTailLines(path, TAIL_LINES);
+    // Bounded in bytes, not just lines: rollouts carry records large enough that a 2000-line
+    // window once meant reading gigabytes to display a model name.
+    const tail = readTailUntil(path, TAIL_LINES, (lines) => lastModel(lines) !== null && usedTokens(lines) !== null);
     const messages = parse(tail.slice(-120), 1, 280);
     const lastMessage = messages.at(-1) ?? null;
     const parsedTime = lastMessage?.createdAt ? Date.parse(lastMessage.createdAt) : NaN;
