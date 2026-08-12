@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-08-12
+
+the transcript window is bounded in bytes, and the fleet view stops guessing
+
 the transcript window is bounded in bytes, and the fleet view stops guessing
 
 Reading "the last 2000 lines" of a transcript bounds nothing: cost is bytes, and how large one
@@ -28,7 +32,6 @@ What the view knows about its own data is now distinct from what the data says: 
 `loading sessions…` until something answers, the header says `external off` when the section is
 absent by choice and `external scanning…` while a pass runs, and discovery starts only after the
 managed fleet has painted.
-
 ## [0.18.0] — 2026-08-11
 
 inter-agent chat gains a machine default
