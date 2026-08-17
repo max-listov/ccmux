@@ -3,12 +3,22 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { run } from "../util/spawn.ts";
 import { APP_BUNDLE, CACHE_DIR, DATA_DIR, chatAuthPath } from "../config/paths.ts";
 import { loadSessions } from "../config/sessions.ts";
+import { collectRows } from "./list.ts";
 import type { MachineConfig } from "../types.ts";
 import { VERSION } from "../util/version.ts";
 import { checkFleet } from "../fleet/transport.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
 import { escalationRefusal } from "../agent/claude/launch.ts";
 import { chatEnabledFor } from "../config/chat.ts";
+
+/** Sessions currently stranded at a blocking menu. Read through the same row builder `list` uses,
+ *  so the two can never disagree about who is waiting. */
+async function sessionsAtPrompt(m: MachineConfig): Promise<{ name: string; question: string }[]> {
+  const rows = await collectRows(m);
+  return rows
+    .filter((r) => r.atPrompt !== null)
+    .map((r) => ({ name: r.session.name, question: r.atPrompt as string }));
+}
 
 /** Whether the file the boot unit and the PATH shim launch is actually on disk. Checked because a
  *  version number proves nothing here: the process holding this code was loaded from a path that may
@@ -113,6 +123,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       `chat:   PROBLEM — ${muted.length} session(s) can receive but NOT send (started before the send capability existed): ${muted.join(", ")}`,
     );
     console.log(`        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`);
+  }
+  const waiting = await sessionsAtPrompt(m);
+  if (waiting.length > 0) {
+    console.log(`prompt: PROBLEM — ${waiting.length} session(s) sitting at a menu, unable to act until it is answered:`);
+    for (const w of waiting) console.log(`        ${w.name} — ${w.question}`);
+    console.log("        These read as 'idle' to every other signal. Answer in the pane, or set trustPrompt in machine.json so the supervisor answers the ones it is allowed to.");
   }
   if (!bundlePresent()) {
     console.log(`bundle: PROBLEM — nothing at ${APP_BUNDLE}, which is what the boot unit and the 'ccmux' shim both launch.`);

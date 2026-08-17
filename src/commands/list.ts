@@ -38,6 +38,8 @@ export interface ListRow {
   // What a restart WOULD change for this session ("chat" / "mode" / "modules" / "config").
   // Empty = up to date, or launched before stamping existed (unknown is never shown as stale).
   stale: string[];
+  /** What blocking menu this session is sitting at, if any — it cannot act until that is answered. */
+  atPrompt: string | null;
 }
 
 /** Build one row. For a running session: scrape the pane; if it surfaces no context,
@@ -58,6 +60,7 @@ async function buildRow(
     return {
       session: s,
       running: false,
+      atPrompt: null, // a stopped session is not sitting at anything
       state: block ? "blocked" : "stopped",
       lifecycleError: block?.error ?? null,
       model: null,
@@ -110,6 +113,7 @@ async function buildRow(
     session: s,
     running: true,
     state,
+    atPrompt: scan.atPrompt,
     lifecycleError: null,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
@@ -133,7 +137,11 @@ function pad(s: string, n: number): string {
 /** Archived (parked) sessions show "archived" in the human STATE column unless they're
  *  actually running — the run-state (working/idle) is the more truthful signal then. */
 function stateLabel(r: ListRow): string {
-  return r.session.archived && !r.running ? "archived" : r.state;
+  if (r.session.archived && !r.running) return "archived";
+  // A session at a menu reads as `idle` to every other signal — the pane is still, no tool is
+  // running, the agent is simply not there. It is the opposite of idle: it cannot proceed at all.
+  if (r.atPrompt !== null) return "prompt";
+  return r.state;
 }
 
 function printTable(m: MachineConfig, rows: ListRow[]): void {
@@ -158,6 +166,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     running: r.running,
     archived: r.session.archived,
     state: r.state,
+    atPrompt: r.atPrompt,
     lifecycleError: r.lifecycleError,
     model: r.model,
     context: r.context,

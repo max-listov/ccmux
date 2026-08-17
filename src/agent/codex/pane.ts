@@ -19,6 +19,8 @@ export function scanPane(paneText: string): PaneScan {
     // rendered a context readout. waitReady has a timeout fallback, so a miss just slows a restart.
     ready: WORKING_RE.test(tail) || context.text !== null,
     state: WORKING_RE.test(tail) ? "working" : "idle",
+    // No menu detector for this provider yet: null means "we cannot see one", not "there is none".
+    atPrompt: null,
     contextLabel: contextLabel ?? "-",
     context,
   };

@@ -6,6 +6,34 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+a session waiting on a human is no longer reported as idle
+
+A fleet-wide restart brought six of twelve sessions back sitting at Claude's folder-trust dialog,
+unable to do anything. `ccmux list` showed all six as `idle`. The owner found out by opening a
+terminal and looking.
+
+The knowledge was already in the codebase. `atInteractiveMenu` positively identifies "a blocking
+menu is up" and was used by exactly one caller — chat delivery, which correctly refused to type into
+a menu it would have answered by accident. The status column never asked. Same shape as the chat
+resolver and the launch-env stamp before it: a fact established in one path and not consulted in the
+neighbouring one.
+
+The second half is that ccmux *already answers* menus — `resumePickerAnswer` existed precisely
+because "a daemon-healed resume has nobody to answer it" — but was nailed to one menu matched by two
+exact strings. Every other menu stranded the session silently.
+
+Blocking menus are now a table with a policy per entry, and the watcher runs on every launch rather
+than only on a resume (a fresh session in an unseen directory is exactly the case that stranded).
+`machine.json` gains `trustPrompt`: `folder` (default) answers the plain trust question, `declared`
+also accepts folders that pre-approve tool permissions in their own `.claude/settings.local.json`,
+`off` answers neither. The split is the point — registering a session pointing at a directory is
+already the owner's declaration about that directory, while permissions a checked-in file declares
+are a decision nobody has made, and granting those unread is not the supervisor's call to make.
+
+Whatever the policy answers, an unanswered menu is now visible rather than silent: `list` shows
+`prompt` instead of `idle`, the TUI names the question, and `doctor` lists every session stranded on
+one. A menu we do not recognise reports as an unrecognised choice — still not idle.
+
 ## [0.21.0] — 2026-08-17
 
 a lost conversation now has a way out that is not demolition

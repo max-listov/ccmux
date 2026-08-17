@@ -17,7 +17,7 @@ const MAX_BACKOFF_MS = 60_000;
 const FAST_FAIL_MS = 5_000; // exited sooner than this == suspicious
 const FAST_FAILS_BEFORE_FORK = 3;
 
-const PICKER_WATCH_MS = 30_000; // give up watching for the resume picker after this
+const PICKER_WATCH_MS = 45_000; // give up watching for blocking startup menus after this
 const PICKER_POLL_MS = 1_000;
 
 /**
@@ -30,8 +30,8 @@ const PICKER_POLL_MS = 1_000;
  * agnostic: a no-op when the provider has no picker or the policy is "off". Not awaited by the
  * supervisor — it self-terminates while the loop blocks on the agent's exit.
  */
-async function settleResumePicker(m: MachineConfig, s: Session, provider: AgentProvider): Promise<void> {
-  const answer = provider.resumePickerAnswer;
+async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvider): Promise<void> {
+  const answer = provider.promptAnswer;
   if (!answer) return;
   const deadline = Date.now() + PICKER_WATCH_MS;
   while (Date.now() < deadline) {
@@ -52,8 +52,10 @@ async function settleResumePicker(m: MachineConfig, s: Session, provider: AgentP
       stillUp = false;
     }
     if (stillUp) await sendKeysNamed(m, s.name, "Enter"); // number only moved the cursor → confirm
-    log.info({ msg: "answered resume picker", name: s.name, agent: provider.id, choice: m.resumePicker });
-    return;
+    log.info({ msg: "answered a blocking prompt", name: s.name, agent: provider.id, key });
+    // Deliberately NOT returning: startup can raise more than one menu in a row (folder trust, then
+    // the resume picker). Answering the first and walking away is how a session still ends up
+    // stranded — the loop keeps watching until its own deadline.
   }
 }
 
@@ -183,9 +185,11 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
         stderr: "inherit",
         env,
       });
-      // Only a resume (history present) can hit the "Resume from summary?" picker; a fresh
-      // session never shows it. Fire-and-forget — the watcher self-terminates and bounds itself.
-      if (present) void settleResumePicker(m, s, provider);
+      // Every launch, not just a resume. The resume picker is indeed resume-only, but the folder
+      // trust dialog greets a FRESH session in a directory the agent has not seen — and gating the
+      // watcher on `present` is why a fleet-wide restart once left half the sessions stranded at a
+      // menu nobody was there to answer. Fire-and-forget: the watcher bounds and ends itself.
+      void settlePrompts(m, s, provider);
       await proc.exited;
     } catch (e) {
       crashed = true;

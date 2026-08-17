@@ -101,6 +101,37 @@ Every action re-reads the exact provider+host+UUID row before mutating. External
 `ccmux fleet` remains the managed-session wire. Adopted-in-place Codex sessions gain lifecycle
 management but no hidden management/chat prompt is inserted into the existing conversation.
 
+### When a session is waiting on you
+
+An agent can raise a blocking menu at startup — "is this folder trusted?", "resume from summary or
+full?" — and a supervised session has nobody sitting at it. Typed input lands on the *menu*, not the
+conversation, so the session stays there indefinitely.
+
+ccmux answers the ones its policy covers and **reports the rest instead of hiding them**:
+
+```
+SESSION     AGENT   MODEL    CTX      STATE   UPTIME  RESTART  RC
+agent-a     claude  Opus 5   -        prompt  2m      -        host-a-agent-a
+```
+
+`prompt` is not a variant of `idle` — it is the opposite. Every other signal reads such a session as
+calm (still pane, no tool running, agent not speaking), which is exactly how a fleet-wide restart can
+leave half the sessions unable to act while the list reads healthy. The TUI names the question, and
+`ccmux doctor` lists every session stranded this way.
+
+`trustPrompt` in `machine.json` sets how much the supervisor answers on your behalf:
+
+| level | answers |
+|---|---|
+| `off` | nothing — a human will |
+| `folder` *(default)* | the plain "do you trust this folder" question |
+| `declared` | also folders that pre-approve tool permissions in their own `.claude/settings.local.json` |
+
+The split is deliberate. Registering a session that points at a directory *is* your declaration that
+you trust it, so asking again — of nobody — only strands it. Permissions that a **file inside the
+repo** declares are a different question that nobody has answered yet, and granting them silently
+would hand any checked-in settings file whatever it asks for. That one stays opt-in.
+
 ### Which sessions still need a restart
 
 Everything that shapes an agent — its system prompt, the chat wiring, the permission mode, the

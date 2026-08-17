@@ -1,5 +1,5 @@
 import type { PaneScan } from "../index.ts";
-import type { MachineConfig } from "../../types.ts";
+import { atInteractiveMenu as atMenu, detectPrompt as detectPromptImpl } from "./prompts.ts";
 import { parseContext } from "../context.ts";
 
 // Scrape model / context-fill / working-idle from what claude renders in the pane (the
@@ -45,52 +45,28 @@ const READY_MARKERS = [
 export function scanPane(paneText: string): PaneScan {
   const tail = paneText.split("\n").slice(-30).join("\n");
   const contextLabel = tail.match(CONTEXT_RE)?.[0] ?? null;
+  // A menu blocks the pane, so the session is not idle no matter how still it looks. Reporting the
+  // prompt here is what stops `list` from calling a session waiting on a human "idle".
+  const prompt = detectPromptImpl(paneText);
   return {
     ready: READY_MARKERS.some((re) => re.test(tail)),
     state: WORKING_RE.test(tail) ? "working" : "idle",
+    atPrompt: prompt === null ? null : prompt.title,
     contextLabel: contextLabel ?? "-",
     context: parseContext(contextLabel),
   };
 }
 
-// Claude 2.1.x shows an interactive picker on `--resume` of a large/old session that BLOCKS
-// the pane until a choice is made:
-//   ❯ 1. Resume from summary (recommended)
-//     2. Resume full session as-is
-//     3. Don't ask me again
-// A daemon-healed resume has nobody to answer it, so after a reboot the session strands at
-// this menu — typed input (app or tmux) lands on the MENU, not the conversation. We confirm
-// it's really the picker (BOTH exact option labels present, so a conversation merely mentioning
-// "resume from summary" doesn't trigger) and return the option NUMBER next to the policy target
-// line — read from the pane, so a reordered menu still yields the correct key. "off" → never.
-const PICKER_SUMMARY = "Resume from summary";
-const PICKER_FULL = "Resume full session as-is";
-
-export function resumePickerAnswer(paneText: string, m: MachineConfig): string | null {
-  if (m.resumePicker === "off") return null;
-  if (!paneText.includes(PICKER_SUMMARY) || !paneText.includes(PICKER_FULL)) return null;
-  const label = m.resumePicker === "summary" ? PICKER_SUMMARY : PICKER_FULL;
-  const match = paneText.match(new RegExp(String.raw`(\d+)\.\s*${label}`));
-  return match?.[1] ?? null;
-}
-
-// EVERY Claude selection menu — permission prompt, plan approval, resume-from-summary — renders
-// the highlighted option as `❯ N.` (a cursor on a NUMBERED option). The normal input prompt is
-// `❯ ` followed by the user's text, NEVER `❯ <digit>.`. So this one cursor pattern positively
-// identifies "a blocking selection menu is up" — the single state where injecting a chat message
-// would auto-pick an option the agent never chose (proven live). Match the pane TAIL (the active
-// menu is always at the bottom; a numbered list in scrollback isn't the live prompt).
-const MENU_CURSOR_RE = /❯\s*\d+\.\s/;
-
-export function atInteractiveMenu(paneText: string): boolean {
-  return MENU_CURSOR_RE.test(paneText.split("\n").slice(-20).join("\n"));
-}
+// Blocking selection menus — WHICH one is up, and the keystroke that answers it — now live in a
+// table (./prompts.ts) rather than as one hard-coded case here. Re-exported so the provider contract
+// and the chat-delivery guard keep their existing names.
+export { atInteractiveMenu, detectPrompt, promptAnswer } from "./prompts.ts";
 
 /** Safe to inject an inter-agent chat message into this pane right now? The only unsafe state is
  *  a selection menu (would pick an option). WORKING is safe — Claude QUEUES typed input and runs
  *  it at the next turn boundary (proven live), so a busy agent is never interrupted, just queued. */
 export function chatDeliverable(paneText: string): boolean {
-  return !atInteractiveMenu(paneText);
+  return !atMenu(paneText);
 }
 
 // The composer sits in a framed box at the BOTTOM of the pane:

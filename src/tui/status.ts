@@ -6,7 +6,7 @@ import { toolCategory, toolDisplayName } from "../agent/toolMeta.ts";
 // future provider, so the fleet reads consistently. This is the foundation the upcoming
 // agent-command features build on.
 
-export type StatusKey = "thinking" | "writing" | "reading" | "editing" | "running" | "tool" | "waiting" | "idle" | "stopped" | "blocked";
+export type StatusKey = "thinking" | "writing" | "reading" | "editing" | "running" | "tool" | "waiting" | "idle" | "stopped" | "blocked" | "prompt";
 
 export interface AgentStatus {
   key: StatusKey;
@@ -27,6 +27,7 @@ const ICON: Record<StatusKey, string> = {
   idle: "○",
   stopped: "▪",
   blocked: "!",
+  prompt: "?",
 };
 
 function st(key: StatusKey, label: string, color: string, active: boolean): AgentStatus {
@@ -52,8 +53,12 @@ function working(lm: TranscriptMessage | null): AgentStatus {
 
 /** Derive the unified status. `isWorking` = agent active right now (pane spinner for
  *  managed, recent file activity for external). */
-export function deriveStatus(opts: { running: boolean; isWorking: boolean; lastMessage: TranscriptMessage | null; blocked?: boolean }): AgentStatus {
+export function deriveStatus(opts: { running: boolean; isWorking: boolean; lastMessage: TranscriptMessage | null; blocked?: boolean; atPrompt?: string | null }): AgentStatus {
   if (opts.blocked === true) return st("blocked", "blocked", "red", false);
+  // Before anything else that could read as calm: a session at a menu looks idle to every other
+  // signal and is the opposite of it. The label carries the QUESTION, so the fleet says what it
+  // needs rather than only that it needs something.
+  if (opts.atPrompt != null && opts.atPrompt !== "") return st("prompt", `needs answer: ${opts.atPrompt}`, "yellow", false);
   if (!opts.running) return st("stopped", "stopped", "gray", false);
   if (opts.isWorking) return working(opts.lastMessage);
   // not actively working → waiting for our input if the assistant finished its turn, else idle

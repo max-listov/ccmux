@@ -249,6 +249,23 @@ export const MachineConfigSchema = z.object({
   // ALL context (default — never lose work); "summary" = resume compacted; "off" = never
   // auto-answer (a human will). Claude-only; other agents have no such picker.
   resumePicker: z.enum(["full", "summary", "off"]).default("full"),
+  /**
+   * Claude asks, on first use of a directory, whether the folder is trusted — and a supervised
+   * session has nobody to answer, so it sits at that menu unable to do anything. The levels escalate
+   * and the split is deliberate, because two different questions hide behind one dialog:
+   *
+   *   "folder" (default) — answer the plain trust question. Registering a session that points at a
+   *     directory IS the owner's declaration that they trust it; asking a second time, of nobody,
+   *     only strands the session.
+   *   "declared" — ALSO accept the variant where the folder pre-approves tool permissions written in
+   *     its own `.claude/settings.local.json`. Nobody has read those, and a checked-in file would get
+   *     its permissions granted silently — so this is never the default.
+   *   "off" — answer neither; a human will.
+   *
+   * Whatever the policy, an unanswered menu is reported rather than hidden: `list`, the TUI and
+   * `doctor` all show a session waiting at a prompt as waiting, never as idle.
+   */
+  trustPrompt: z.enum(["off", "folder", "declared"]).default("folder"),
   // Optional Telegram mirror of the inter-agent chat (see TelegramConfigSchema). Absent → off.
   telegram: TelegramConfigSchema.optional(),
   // Optional owner language OVERRIDE for messages a session sends to `owner`. Unset (default) →
@@ -541,6 +558,11 @@ export const ListItemSchema = z.object({
   running: z.boolean(),
   archived: z.boolean(),
   state: SessionStateSchema,
+  // The blocking menu this session is sitting at, if any. Separate from `state` on purpose: every
+  // other signal reads such a session as idle — still pane, no tool running — when it is the exact
+  // opposite, unable to proceed until someone answers. Null also means "we cannot see menus on this
+  // provider", which is why it is reported rather than folded into the state enum.
+  atPrompt: z.string().nullable().default(null),
   lifecycleError: z.string().nullable(),
   model: z.string().nullable(),
   context: ContextInfoSchema,
