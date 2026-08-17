@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-08-17
+
+a lost conversation now has a way out that is not demolition
+
 a lost conversation now has a way out that is not demolition
 
 A disk cleanup took one session's transcript with it. The guard did its job: a session that has run
@@ -27,7 +31,6 @@ cases need opposite actions and the reader already knows which one they are in.
 Also: `rm` clears the block belonging to the name it unregisters. A verdict describes a session, and
 once the session is gone it describes nobody — a later session of the same name inheriting it was
 prevented only by generation and uuid failing to match, which is luck rather than design.
-
 ## [0.20.0] — 2026-08-17
 
 the tool no longer lives in a directory that invites its own deletion
