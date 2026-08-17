@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import {
   STATE_DIR,
   CACHE_DIR,
+  DATA_DIR,
   APP_BUNDLE,
   STAGED_BUNDLE,
   RELEASES_DIR,
@@ -56,8 +57,18 @@ test("disposable and durable never share a root", () => {
   // The whole point of the split. If a bundle ever lands under the state root, "delete the cache to
   // reclaim space" starts eating the registry.
   expect(STATE_DIR).not.toBe(CACHE_DIR);
-  for (const p of [APP_BUNDLE, STAGED_BUNDLE, RELEASES_DIR]) expect(p.startsWith(`${CACHE_DIR}/`)).toBe(true);
+  expect(DATA_DIR).not.toBe(CACHE_DIR);
+  for (const p of [STAGED_BUNDLE, RELEASES_DIR]) expect(p.startsWith(`${CACHE_DIR}/`)).toBe(true);
   for (const p of [STATUS_DIR, LOG_FILE, BOOT_ATTEMPTS]) expect(p.startsWith(`${STATE_DIR}/`)).toBe(true);
+});
+
+test("the runnable code is not filed under 'safe to delete'", () => {
+  // This test replaces one that asserted the opposite, on the reasoning that losing the bundle
+  // "costs exactly one `ccmux update`". It does not: that command IS the deleted file, and the boot
+  // unit launches it too, so a wiped cache leaves a machine that cannot repair itself and cannot be
+  // restarted — visibly fine only while the already-loaded process happens to still be running.
+  expect(APP_BUNDLE.startsWith(`${CACHE_DIR}/`)).toBe(false);
+  expect(APP_BUNDLE.startsWith(`${DATA_DIR}/`)).toBe(true);
 });
 
 test("both roots are absolute and end in the tool's own directory", () => {

@@ -35,7 +35,7 @@ export const SELF_DISPLAY: string = SELF_ARGV.join(" ");
 
 /** Fixed install location of the `ccmux` PATH shim (`scripts/install.sh` → `~/.local/bin/ccmux`,
  *  a 2-line `exec bun <bundle>`). Kept in sync with that installer by convention. */
-const SHIM_PATH = join(HOME, ".local", "bin", "ccmux");
+export const SHIM_PATH = join(HOME, ".local", "bin", "ccmux");
 
 /** The shim points at the DEFAULT cache's bundle, so an isolated instance — which has its own
  *  cache — must not teach that shim: it would run the wrong code and the wrong config. */

@@ -24,9 +24,18 @@ One command — installs `bun` if missing, downloads the latest verified bundle,
 curl -fsSL https://github.com/max-listov/ccmux/releases/latest/download/install.sh | bash
 ```
 
-Set the boot label / RC prefix with `CCMUX_RC_PREFIX=prod` (default `local`). Re-running is
-safe — it just refreshes to the latest release. Requires macOS (launchd) or Linux (systemd)
-and `tmux`.
+Set the RC prefix with `CCMUX_RC_PREFIX=prod` (default `local`) — **on a new machine only**. A
+machine that already has a `machine.json` keeps its identity: the installer reads the prefix rather
+than re-declaring it, and refuses a rename outright, because the prefix is the machine's fleet name
+and changing it renames every session's Remote Control identity.
+
+That is what makes this the **repair** command as well as the install command. Every step converges:
+the bundle is fetched only when the bytes on disk differ from the manifest, the shim and boot unit
+are written only when they say the wrong thing, and nothing restarts unless something actually
+changed. On a healthy machine it prints *nothing to do* and writes no files. Point it at a machine
+whose bundle was deleted and it comes back whole.
+
+Requires macOS (launchd) or Linux (systemd) and `tmux`.
 
 ## Use
 
@@ -121,18 +130,25 @@ nothing — unknown is never displayed as stale.
 
 - **One daemon per machine** (launchd `com.<prefix>.ccmux` / systemd `ccmux.service`) heals the
   fleet every 30s and starts it on boot. It runs the prod bundle, not your source.
-- **Where things live** — three roots, split by lifetime, so "can I delete this?" is answered by
+- **Where things live** — four roots, split by lifetime, so "can I delete this?" is answered by
   the path and not by guessing:
 
   | root | holds | if you delete it |
   |---|---|---|
   | `<config>/ccmux/` | `machine.json` | this machine's identity is gone |
   | `<state>/ccmux/` | `sessions.jsonl`, chat + outbox, `status/`, log | sessions are orphaned |
-  | `<cache>/ccmux/` | `app/`, `staged/`, `releases/` | one `ccmux update` rebuilds it |
+  | `<data>/ccmux/` | `app/` — the bundle everything launches | the daemon cannot restart; restore with the installer |
+  | `<cache>/ccmux/` | `staged/`, `releases/` | one `ccmux update` rebuilds it |
 
-  The roots come from the standard config/state/cache environment variables with the usual
+  The bundle sits in the durable root rather than the cache on purpose. "Deleting the cache costs
+  one `ccmux update`" is false when the cache holds the tool: that command *is* the deleted file, and
+  the boot unit launches it too, so a wiped cache leaves a machine that cannot repair itself and
+  cannot be restarted — one that looks healthy for exactly as long as the already-loaded process
+  keeps running. `ccmux doctor` reports a missing bundle, and the daemon restores one it finds gone.
+
+  The roots come from the standard config/state/data/cache environment variables with the usual
   platform defaults, so a fresh machine lands correctly with nothing written by hand. `stateDir`
-  in `machine.json` overrides the middle one; that is the single knob an isolated instance flips.
+  in `machine.json` overrides the state root; that is the single knob an isolated instance flips.
 - **Each ready session** is a tmux session whose foreground process is `ccmux _run <name>` — a tiny
   supervisor loop that launches the registered provider CLI and relaunches it on crash (exponential backoff). So an
   agent crash just comes back; a fresh Codex pane briefly runs `_bootstrap` until its real UUID is

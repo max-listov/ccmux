@@ -1,5 +1,6 @@
 import { loadMachineConfig } from "../config/machine.ts";
 import { APP_BUNDLE, BOOT_ATTEMPTS } from "../config/paths.ts";
+import { convergeBundleLocation } from "../config/migrateBundle.ts";
 import { cmdEnsure } from "./ensure.ts";
 import { autoUpdateOnce } from "./update.ts";
 import { deliverPending } from "../chat/deliver.ts";
@@ -53,6 +54,9 @@ export async function cmdDaemon(): Promise<number> {
     interval = m.ensureInterval;
     setLogLevel(m.logLevel);
     log.info({ msg: "ccmux daemon up", rcPrefix: m.rcPrefix, interval, logLevel: m.logLevel });
+    // The daemon is the one process guaranteed to run with the privileges this needs, and it is
+    // what a post-update bounce starts — so the move off the cache root lands here, once.
+    if (!IS_DEV) await convergeBundleLocation(m);
   } catch (e) {
     log.error({ msg: "machine config invalid; daemon not starting", err: String(e) });
     return 0;

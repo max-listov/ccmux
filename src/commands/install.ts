@@ -25,6 +25,22 @@ function isRcPrefix(v: string | undefined): v is string {
   return v !== undefined && RC_PREFIX_RE.test(v);
 }
 
+/**
+ * Why a re-install may not rename. A machine's rcPrefix is its NAME on the fleet: every session
+ * registers its Remote Control identity from it, so changing it orphans running sessions from the
+ * names they are addressed by. Install doubles as the repair command, and a repair that renames the
+ * patient is not a repair — which is exactly why the installer could not be pointed at a broken
+ * machine before. Pure so the rule is testable without touching a boot manager.
+ */
+export function renameRefusal(current: string, requested: string | undefined, force: boolean): string | null {
+  if (requested === undefined || requested === current || force) return null;
+  return (
+    `this machine is already '${current}' — refusing to rename it to '${requested}'. ` +
+    "rcPrefix is the machine's fleet identity; renaming it changes every session's Remote Control name. " +
+    "Pass --force if that is genuinely what you want."
+  );
+}
+
 export async function cmdInstall(args: string[]): Promise<number> {
   const cfg = configPath();
   const rc = parseRcPrefix(args);
@@ -43,10 +59,16 @@ export async function cmdInstall(args: string[]): Promise<number> {
       await atomicWrite(cfg, JSON.stringify(withUpdate, null, 2) + "\n");
       console.log(`wrote ${cfg} (rcPrefix=${rc}${releaseUrl ? `, autoUpdate→${releaseUrl}` : ""})`);
     } else if (isRcPrefix(rc) || releaseUrl !== undefined) {
+      const current = loadMachineConfig();
+      const refusal = renameRefusal(current.rcPrefix, isRcPrefix(rc) ? rc : undefined, args.includes("--force"));
+      if (refusal !== null) {
+        console.log(refusal);
+        return 1;
+      }
       // Re-install over an EXISTING config: apply the passed flags (the rest is preserved), so
       // `install --release-url …` actually rewires self-update instead of being silently ignored.
       const updated = {
-        ...loadMachineConfig(),
+        ...current,
         ...(isRcPrefix(rc) ? { rcPrefix: rc } : {}),
         ...(releaseUrl !== undefined ? { releaseUrl, autoUpdate: true } : {}),
       };

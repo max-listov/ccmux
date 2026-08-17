@@ -1,5 +1,5 @@
-import { join } from "node:path";
-import { HOME } from "../env.ts";
+import { basename, join } from "node:path";
+import { HOME, IS_DEV, SELF_ARGV } from "../env.ts";
 import type { MachineConfig } from "../types.ts";
 
 /**
@@ -11,7 +11,9 @@ import type { MachineConfig } from "../types.ts";
  *   <config>/ccmux/   machine.json                      a human edits this
  *   <state>/ccmux/    sessions.jsonl, chat*, outbox*,   losing it costs real work
  *                     status/, ccmux.log, boot-attempts
- *   <cache>/ccmux/    app/, staged/, releases/          one update command rebuilds it
+ *   <data>/ccmux/     app/                              the running code; deleting it is not
+ *                                                       recoverable BY this tool
+ *   <cache>/ccmux/    staged/, releases/                one update command rebuilds it
  *
  * This replaces a layout where half the state sat as bare dotfiles in the home directory while the
  * rest lived under a private directory — and where the location was decided by a REQUIRED config
@@ -31,15 +33,29 @@ function xdgRoot(envValue: string | undefined, fallback: string): string {
 export const STATE_DIR: string =
   process.env.CCMUX_STATE_DIR ?? join(xdgRoot(process.env.XDG_STATE_HOME, join(HOME, ".local", "state")), "ccmux");
 
-/** Disposable: the running bundle, a locally staged build, downloaded releases. Deleting this costs
- *  exactly one `ccmux update` — which is precisely why it must not share a directory with the registry. */
+/** Durable: the code itself. The bundle used to live in the cache root under the reasoning that
+ *  losing it "costs exactly one `ccmux update`". That reasoning was wrong in a way only an incident
+ *  makes obvious: `ccmux update` IS the deleted file, and the boot unit's ExecStart points at it too,
+ *  so a wiped cache left a machine whose CLI could not run and whose daemon could not be restarted —
+ *  alive only as an already-loaded process. A directory whose contract invites deletion must not hold
+ *  the one artifact that deletion makes unrecoverable. */
+export const DATA_DIR: string =
+  process.env.CCMUX_DATA_DIR ?? join(xdgRoot(process.env.XDG_DATA_HOME, join(HOME, ".local", "share")), "ccmux");
+
+/** Disposable: a locally staged build and downloaded releases. Both are re-derivable WITHOUT the
+ *  tool being intact — a stage command or a fresh download — so deleting them really does cost
+ *  nothing but time. */
 export const CACHE_DIR: string =
   process.env.CCMUX_CACHE_DIR ?? join(xdgRoot(process.env.XDG_CACHE_HOME, join(HOME, ".cache")), "ccmux");
 
-// ── cache: the artifact ──────────────────────────────────────────────────────────────────────────
+// ── data: the artifact ───────────────────────────────────────────────────────────────────────────
 
 /** The bundle the boot daemon and the `ccmux` command run; `ccmux update` swaps it atomically. */
-export const APP_BUNDLE = join(CACHE_DIR, "app", "ccmux.js");
+export const APP_BUNDLE = join(DATA_DIR, "app", "ccmux.js");
+/** Where installs before the durable-root move put the bundle. Read only by the migration. */
+export const LEGACY_APP_BUNDLE = join(CACHE_DIR, "app", "ccmux.js");
+
+// ── cache: what a download or a build can rebuild ────────────────────────────────────────────────
 /** A local dev build; `ccmux update` prefers it over a remote release ("test before publishing"). */
 export const STAGED_BUNDLE = join(CACHE_DIR, "staged", "ccmux.js");
 /** A published release (bundle + manifest) the daemon pulls from the configured release URL. */
@@ -86,3 +102,19 @@ export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, "out
 export const archiveDir = (m: MachineConfig): string => join(m.stateDir, "archive");
 
 export const chatAuthPath = (m: MachineConfig, sessionName: string): string => join(m.stateDir, "chat-auth", sessionName);
+
+// ── how this tool re-execs itself ────────────────────────────────────────────────────────────────
+
+/**
+ * The argv a boot unit or a PATH shim should be written with — the invocation this tool WANTS to be
+ * launched by, which is not always the one it happens to be running under. During the move to a
+ * durable root a process is launched from the legacy cache path and must still write the new one,
+ * so deriving the launch line from `process.execPath` alone would faithfully re-record the path we
+ * are trying to leave. A source checkout keeps re-execing its source.
+ */
+export function bootArgv(): readonly string[] {
+  if (IS_DEV) return SELF_ARGV;
+  const exec = process.execPath;
+  // A compiled single-file binary IS the thing to launch; under bun, the bundle is.
+  return basename(exec).toLowerCase() === "bun" ? [exec, APP_BUNDLE] : [exec];
+}

@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import type { MachineConfig } from "../types.ts";
-import { PLATFORM, UID, HOME, SELF_ARGV } from "../env.ts";
+import { PLATFORM, UID, HOME } from "../env.ts";
+import { bootArgv } from "../config/paths.ts";
 import { renderSystemdUnit, renderLaunchdPlist, type BootContext } from "./render.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import { run } from "../util/spawn.ts";
@@ -27,7 +28,7 @@ function pathEnv(m: MachineConfig): string {
 
 function context(m: MachineConfig): BootContext {
   return {
-    selfArgv: SELF_ARGV,
+    selfArgv: bootArgv(),
     label: m.bootLabel,
     user: UID === 0 ? "root" : (process.env.USER ?? ""),
     home: HOME,
@@ -59,6 +60,21 @@ export async function installBoot(m: MachineConfig): Promise<void> {
     await run(["systemctl", "daemon-reload"]);
     await run(["systemctl", "enable", "--now", m.bootLabel]);
     console.log(`wrote ${unit} and enabled systemd ${m.bootLabel}`);
+  }
+}
+
+/** Write the boot unit WITHOUT touching the running daemon. Used by the bundle migration: the
+ *  point is that the NEXT start finds a path that exists, and bouncing a healthy supervisor to
+ *  achieve that would trade the problem for a worse one. */
+export async function writeBootUnitOnly(m: MachineConfig): Promise<void> {
+  const ctx = context(m);
+  if (isMac) {
+    const plist = launchdPlistPath(m.bootLabel);
+    mkdirSync(dirname(plist), { recursive: true });
+    await atomicWrite(plist, renderLaunchdPlist(ctx));
+  } else {
+    await atomicWrite(systemdUnitPath(m.bootLabel), renderSystemdUnit(ctx));
+    await run(["systemctl", "daemon-reload"]);
   }
 }
 

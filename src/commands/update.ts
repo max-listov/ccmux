@@ -128,6 +128,11 @@ export function decideUpdate(i: {
   release: string | null;
   releaseNotes?: string | undefined;
   hasReleaseUrl: boolean;
+  /** Whether the bundle this machine launches from is actually on disk. A version match is not
+   *  evidence of a working install: the running process holds its code in memory and keeps
+   *  answering long after the file is gone, which is exactly how a wiped cache stayed invisible
+   *  until someone typed a command. Absent means repair, whatever the versions say. */
+  bundlePresent: boolean;
 }): UpdateDecision {
   const stagedPath = STAGED_BUNDLE;
   if (i.staged !== null) {
@@ -161,6 +166,10 @@ export function decideUpdate(i: {
     };
   }
   const cmp = compareSemver(i.current, i.release);
+  if (!i.bundlePresent && !i.check) return { kind: "apply-remote" };
+  if (!i.bundlePresent && i.check) {
+    return { kind: "print", code: 0, text: `bundle missing from ${APP_BUNDLE} — 'ccmux update' would restore ${i.release} (the running process is serving from memory)` };
+  }
   if (!i.force && cmp >= 0) {
     return {
       kind: "print",
@@ -210,8 +219,13 @@ async function downloadVerifyApply(m: MachineConfig, release: Release): Promise<
   return null;
 }
 
-/** Daemon auto-update tick: if releaseUrl has a NEWER version, pull+verify+apply (bounce —
- *  sessions survive). No-op when nothing newer. File-logged; the bounce restarts the daemon. */
+/** Daemon auto-update tick: if releaseUrl has a NEWER version — or if the bundle we launch from has
+ *  gone missing — pull+verify+apply (bounce — sessions survive). No-op when nothing newer AND the
+ *  install is intact. File-logged; the bounce restarts the daemon.
+ *
+ *  The missing-file arm is not a nicety. A running daemon serves from memory, so a deleted bundle
+ *  changes nothing it can observe about itself while making it unable to ever start again; version
+ *  equality then reads as "healthy" for as long as the process happens to live. */
 export async function autoUpdateOnce(m: MachineConfig): Promise<void> {
   if (!m.releaseUrl) return;
   const release = await fetchRelease(m.releaseUrl);
@@ -219,11 +233,13 @@ export async function autoUpdateOnce(m: MachineConfig): Promise<void> {
     log.warn({ msg: "auto-update check failed", err: release });
     return;
   }
-  if (compareSemver(VERSION, release.version) >= 0) {
+  const missing = !existsSync(APP_BUNDLE);
+  if (!missing && compareSemver(VERSION, release.version) >= 0) {
     log.debug({ msg: "auto-update check: no newer release", local: VERSION, remote: release.version });
     return;
   }
-  log.info({ msg: "auto-update seen", from: VERSION, to: release.version });
+  if (missing) log.warn({ msg: "bundle missing from disk — restoring it", path: APP_BUNDLE, version: release.version });
+  else log.info({ msg: "auto-update seen", from: VERSION, to: release.version });
   const err = await downloadVerifyApply(m, release);
   if (err) log.error({ msg: "auto-update failed", to: release.version, err });
   else log.info({ msg: "auto-update applied — daemon bouncing onto new bundle", to: release.version });
@@ -262,6 +278,7 @@ export async function cmdUpdate(args: string[]): Promise<number> {
     release: release?.version ?? null,
     releaseNotes: release?.notes,
     hasReleaseUrl: m.releaseUrl !== undefined,
+    bundlePresent: existsSync(APP_BUNDLE),
   });
 
   switch (decision.kind) {

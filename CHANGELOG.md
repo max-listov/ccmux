@@ -6,6 +6,39 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+the tool no longer lives in a directory that invites its own deletion
+
+`~/.cache/ccmux/` was wiped on a server — a legitimate act against a directory whose contract says
+so. The registry, chat and config survived exactly as the layout intended. The code did not, and the
+comment explaining why that was fine turned out to be the defect: "deleting this costs exactly one
+`ccmux update`" is false when the cache holds the tool, because that command *is* the deleted file
+and the boot unit's ExecStart points at it too. The rollback copy the boot guard needs lived there
+as well, so the safety net went with the thing it protects.
+
+What made it worse than an outage was that it did not look like one. A running daemon serves from
+memory, so eleven sessions kept healing and chatting while the machine had quietly become unable to
+ever start again. Version equality read as health for as long as the process happened to live.
+
+The bundle now sits in the durable data root; `staged/` and `releases/` stay in the cache, where a
+build or a download genuinely rebuilds them without the tool being intact. Installed machines move
+themselves on first start of the new code and rewrite their boot unit and PATH shim without bouncing
+a healthy daemon. Update no longer decides on version alone: a bundle missing from disk is restored
+whatever the versions say, so the daemon repairs this on its own tick. `doctor` reports a launch path
+that leads nowhere, before anyone types a command that fails.
+
+install.sh becomes the repair command, not just the install command
+
+Fixing the machine above meant doing it by hand, because the installer could not be pointed at a
+working machine: `--rc-prefix` had a default, so a repair could silently rename the machine — and a
+machine's prefix is its fleet identity, carried by every session's Remote Control name.
+
+Identity is now read rather than re-declared: an existing `machine.json` wins, a conflicting prefix
+is refused with both names in the message, and `--force` remains for a rename someone actually
+wants. `ccmux install` enforces this itself, so the guarantee does not depend on which caller is
+used. Every step converges — bundle fetched only when the bytes differ, shim and unit written only
+when they say the wrong thing, nothing restarted unless something changed — and a healthy machine
+comes out reporting *nothing to do* with no files written.
+
 ## [0.19.0] — 2026-08-12
 
 the transcript window is bounded in bytes, and the fleet view stops guessing

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { loadMachineConfig } from "../config/machine.ts";
 import { run } from "../util/spawn.ts";
-import { CACHE_DIR, chatAuthPath } from "../config/paths.ts";
+import { APP_BUNDLE, CACHE_DIR, DATA_DIR, chatAuthPath } from "../config/paths.ts";
 import { loadSessions } from "../config/sessions.ts";
 import type { MachineConfig } from "../types.ts";
 import { VERSION } from "../util/version.ts";
@@ -9,6 +9,13 @@ import { checkFleet } from "../fleet/transport.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
 import { escalationRefusal } from "../agent/claude/launch.ts";
 import { chatEnabledFor } from "../config/chat.ts";
+
+/** Whether the file the boot unit and the PATH shim launch is actually on disk. Checked because a
+ *  version number proves nothing here: the process holding this code was loaded from a path that may
+ *  no longer exist, and it will keep answering until the day it is asked to start again. */
+function bundlePresent(): boolean {
+  return existsSync(APP_BUNDLE);
+}
 
 /** Is the boot daemon registered + running? launchd on macOS, systemd on Linux. */
 async function daemonState(os: NodeJS.Platform, bootLabel: string): Promise<{ manager: string | null; state: string }> {
@@ -56,7 +63,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         mutedChat: mutedChatSessions(m),
         unhonourableModes: unhonourableModes(m, UID === 0),
         stateDir: m.stateDir,
+        dataDir: DATA_DIR,
         cacheDir: CACHE_DIR,
+        bundle: { path: APP_BUNDLE, present: bundlePresent() },
         rcPrefix: m.rcPrefix,
         bootLabel: m.bootLabel,
         bins: { claude: m.claudeBin, codex: m.codexBin ?? null, tmux: m.tmuxBin },
@@ -76,6 +85,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // only by hunting through a home directory — and the answer differed per machine.
   console.log(`config:     ${configFile}`);
   console.log(`state:      ${m.stateDir}`);
+  console.log(`code:       ${DATA_DIR}`);
   console.log(`cache:      ${CACHE_DIR}`);
   console.log(`rc prefix:  ${m.rcPrefix}`);
   console.log(`boot label: ${m.bootLabel}`);
@@ -103,6 +113,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       `chat:   PROBLEM — ${muted.length} session(s) can receive but NOT send (started before the send capability existed): ${muted.join(", ")}`,
     );
     console.log(`        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`);
+  }
+  if (!bundlePresent()) {
+    console.log(`bundle: PROBLEM — nothing at ${APP_BUNDLE}, which is what the boot unit and the 'ccmux' shim both launch.`);
+    console.log("        A running daemon serves from memory, so the fleet looks healthy until something restarts it.");
+    console.log("        fix: ccmux update   (restores it), or reinstall: curl -fsSL <releaseUrl>/../install.sh | bash");
   }
   console.log(`daemon: ${daemon.state}${daemon.manager ? ` (${daemon.manager})` : ""}`);
   return 0;

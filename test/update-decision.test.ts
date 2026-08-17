@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { decideUpdate, cacheBusted } from "../src/commands/update.ts";
 
-const base = { force: false, current: "0.1.16", staged: null as string | null, release: null as string | null, hasReleaseUrl: true };
+const base = { force: false, current: "0.1.16", staged: null as string | null, release: null as string | null, hasReleaseUrl: true, bundlePresent: true };
 
 // --- the landmine: --check must NEVER apply, especially a stale/older staged bundle ---
 
@@ -82,4 +82,22 @@ test("the release manifest is fetched with a unique cache key — the header alo
   // reported "already on latest", and auto-update would lag the whole fleet exactly the same way.
   expect(cacheBusted("https://x/release.json", 42)).toBe("https://x/release.json?ccmux=42");
   expect(cacheBusted("https://x/release.json?a=1", 42)).toBe("https://x/release.json?a=1&ccmux=42");
+});
+
+// --- a version match is not evidence the install is intact ---
+
+test("a missing bundle is repaired even when the running version equals the release", () => {
+  const d = decideUpdate({ ...base, check: false, release: "0.1.16", bundlePresent: false });
+  expect(d.kind).toBe("apply-remote");
+});
+
+test("--check reports the missing bundle without touching anything", () => {
+  const d = decideUpdate({ ...base, check: true, release: "0.1.16", bundlePresent: false });
+  expect(d.kind).toBe("print");
+  if (d.kind === "print") expect(d.text).toMatch(/missing/i);
+});
+
+test("an intact install on the latest version still does nothing", () => {
+  const d = decideUpdate({ ...base, check: false, release: "0.1.16", bundlePresent: true });
+  expect(d.kind).toBe("print");
 });
