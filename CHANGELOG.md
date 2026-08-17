@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-08-17
+
+a session waiting on a human is no longer reported as idle
+
 a session waiting on a human is no longer reported as idle
 
 A fleet-wide restart brought six of twelve sessions back sitting at Claude's folder-trust dialog,
@@ -33,7 +37,6 @@ are a decision nobody has made, and granting those unread is not the supervisor'
 Whatever the policy answers, an unanswered menu is now visible rather than silent: `list` shows
 `prompt` instead of `idle`, the TUI names the question, and `doctor` lists every session stranded on
 one. A menu we do not recognise reports as an unrecognised choice — still not idle.
-
 ## [0.21.0] — 2026-08-17
 
 a lost conversation now has a way out that is not demolition
