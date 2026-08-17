@@ -2,6 +2,7 @@ import { forwardIfRemote } from "../fleet/forward.ts";
 import { removeSession } from "../config/sessions.ts";
 import { killSession } from "../tmux/tmux.ts";
 import { log } from "../util/log.ts";
+import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
 import { refusesSelf } from "./guard.ts";
 import { sessionsPath } from "../config/paths.ts";
 
@@ -21,6 +22,10 @@ export async function cmdRm(name: string | undefined, force = false): Promise<nu
     return 1;
   }
   await killSession(m, name);
+  // A block outlives nothing: it describes a session that no longer exists. Leaving the file behind
+  // means a later session of the same name inherits a verdict passed on someone else — harmless
+  // today only because neither its generation nor its uuid could match.
+  clearLifecycleBlock(m, name);
   log.info({ msg: "session removed", name });
   console.log(`stopped ${name}`);
   console.log(`removed ${name} from ${sessionsPath(m)} (jsonl history kept on disk)`);

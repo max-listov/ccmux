@@ -6,6 +6,28 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+a lost conversation now has a way out that is not demolition
+
+A disk cleanup took one session's transcript with it. The guard did its job: a session that has run
+before, whose conversation is missing, refuses to start a NEW one under the same uuid — otherwise the
+session comes back wearing its old name with none of its memory, and nobody is told.
+
+Then the guard went quiet. It named one exit — put the conversation back and `start` — and said
+nothing about the case where the file is gone for good, which is the common one. That left `rm` +
+`new` as the only path: demolish the registry entry and rebuild it. This session got away with it,
+carrying nothing but a name and a directory. A session with a permission mode, a chat override or
+prompt modules would have lost all of them — not because they were wrong, but because an unrelated
+file disappeared next door.
+
+`ccmux renew <name>` gives a session a fresh conversation and keeps everything else. It refuses while
+the conversation is still there, naming the file it would orphan and offering `restart` instead;
+`--force` is for abandoning one deliberately. The block message now names both exits, because the two
+cases need opposite actions and the reader already knows which one they are in.
+
+Also: `rm` clears the block belonging to the name it unregisters. A verdict describes a session, and
+once the session is gone it describes nobody — a later session of the same name inheriting it was
+prevented only by generation and uuid failing to match, which is luck rather than design.
+
 ## [0.20.0] — 2026-08-17
 
 the tool no longer lives in a directory that invites its own deletion

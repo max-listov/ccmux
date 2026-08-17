@@ -7,6 +7,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "list", args: "", desc: "managed sessions with explicit agent provider + status/uptime; the RESTART column names what a restart would change (chat/mode/modules/config) — empty means nothing to pick up", example: "ccmux list" },
   { verb: "new", args: "<name> <dir> [--agent claude|codex] [-- flags]", desc: "create + start a provider-explicit session (Claude default; pins a fresh uuid)", example: "ccmux new cc-api ~/code/api --agent codex" },
   { verb: "rm", args: "<name> [--force]", desc: "stop + unregister (jsonl history kept)" },
+  { verb: "renew", args: "<name> [--force]", desc: "give the session a FRESH conversation, keeping its dir/mode/chat/prompt modules — the way out when its transcript was deleted; refuses while the conversation is still there", example: "ccmux renew agent-a" },
   { verb: "adopt", args: "<claude|codex> <uuid> [name] [--fork | --takeover --confirm-writer <pid>]", desc: "manage a local external thread; Codex adopt is atomic resume, fork is provider-native, takeover is dedicated-CLI-only", example: "ccmux adopt codex 4e117aea-… --fork" },
   { verb: "start", args: "<name>", desc: "start a registered session" },
   { verb: "stop", args: "<name> [--force]", desc: "kill it (daemon re-heals unless archived)" },

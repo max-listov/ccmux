@@ -144,7 +144,11 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
       const where = found === null ? "and it is nowhere else under the projects root" : `— it is at ${found}`;
       const error =
         `${name} has launched before, but its conversation ${s.uuid} is missing at ${hf ?? "its expected path"} ${where}. ` +
-        `Refusing to start a NEW conversation on top of it. If the project directory moved, put the conversation where this session now points, then: ccmux start ${name}`;
+        "Refusing to start a NEW conversation on top of it. " +
+        // Both exits, because the two cases need opposite actions and the reader knows which one
+        // they are in — naming only the recoverable one leaves the other guessing.
+        `If it can be recovered (the project directory moved?), put it where this session now points, then: ccmux start ${name}   ·   ` +
+        `If it is gone for good: ccmux renew ${name}   — a fresh conversation for this session, keeping its dir, mode, chat and prompt modules`;
       await writeLifecycleBlock(m, {
         name,
         agent: s.agent,

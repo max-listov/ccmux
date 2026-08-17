@@ -15,3 +15,13 @@ import type { MachineConfig, Session } from "../types.ts";
 export function chatEnabledFor(s: Session, m: MachineConfig): boolean {
   return s.chatEnabled ?? m.chatEnabled;
 }
+
+/**
+ * How a session's OWN answer reads, when it has one — for describing what a session CARRIES, which
+ * is a different question from what it will DO (that is `chatEnabledFor`). Reporting the resolved
+ * value as if it were the session's own would tell someone their session is configured when it is
+ * merely inheriting. Lives here so no caller has to touch the raw field to ask.
+ */
+export function chatOverrideLabel(s: Session): string | null {
+  return s.chatEnabled === undefined ? null : `chat override ${s.chatEnabled ? "on" : "off"}`;
+}

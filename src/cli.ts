@@ -3,6 +3,7 @@ import { VERSION } from "./util/version.ts";
 import { cmdList } from "./commands/list.ts";
 import { cmdNew } from "./commands/new.ts";
 import { cmdRm } from "./commands/rm.ts";
+import { cmdRenew } from "./commands/renew.ts";
 import { cmdStart, cmdStop, cmdRestart, cmdRestartWorker } from "./commands/lifecycle.ts";
 import { cmdRestartAll, cmdRestartAllWorker } from "./commands/restartAll.ts";
 import { cmdSend } from "./commands/send.ts";
@@ -87,6 +88,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     }
     case "restart":
       return rest.includes("--all") ? cmdRestartAll(rest) : cmdRestart(rest);
+    case "renew":
+      return cmdRenew(rest[0], rest.slice(1));
     case "mode":
       return cmdMode(rest[0], rest[1]);
     case "send":

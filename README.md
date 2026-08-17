@@ -49,6 +49,7 @@ ccmux restart cc-api       # bounce it (survives killing the caller)
 ccmux restart --all        # bounce EVERY session, one at a time (TUI: R) — picks up new rules/MCP/release
 ccmux mode cc-api auto     # per-session permission-mode override (see Permissions)
 ccmux stop|start|rm cc-api # lifecycle (rm keeps the jsonl history)
+ccmux renew cc-api         # fresh conversation, same session — the way out when its transcript is gone
 ccmux transcript cc-api --json --tail 50   # conversation history as JSON
 ccmux doctor               # health check: bins, config, daemon
 ccmux completions zsh > "${fpath[1]}/_ccmux"   # shell completions (bash|zsh|fish)

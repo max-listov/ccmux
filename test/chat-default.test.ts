@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { chatEnabledFor } from "../src/config/chat.ts";
+import { chatEnabledFor, chatOverrideLabel } from "../src/config/chat.ts";
 import { computeStamp, staleReasons } from "../src/agent/launchStamp.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
 
@@ -63,4 +63,14 @@ test("nothing reads the raw field behind the resolver's back", () => {
   };
   walk(root);
   expect(offenders).toEqual([]);
+});
+
+test("what a session CARRIES is reported separately from what it will DO", () => {
+  // Reporting the resolved value as the session's own would tell someone their session is
+  // configured when it is only inheriting the machine's answer.
+  expect(chatOverrideLabel(makeSession({ chatEnabled: true }))).toBe("chat override on");
+  expect(chatOverrideLabel(makeSession({ chatEnabled: false }))).toBe("chat override off");
+  expect(chatOverrideLabel(makeSession())).toBeNull();
+  // ...while the resolver still answers the behaviour question for that same inheriting session.
+  expect(chatEnabledFor(makeSession(), makeMachine({ chatEnabled: true }))).toBe(true);
 });
