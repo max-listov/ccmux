@@ -60,7 +60,9 @@ test("a legacy install is carried over, rollback copy included", () => {
   // The boot guard's only escape from a crash loop must not be left behind in the directory
   // the move exists to abandon.
   expect(readFileSync(`${app}.bak`, "utf8")).toBe("// previous version");
-  expect(existsSync(legacy)).toBe(false);
+  // The old copy stays until the machine is fully converged: a boot manager may still be serving the
+  // definition that names it, and a path it believes in must not vanish under it.
+  expect(existsSync(legacy)).toBe(true);
   rmSync(root, { recursive: true, force: true });
 });
 

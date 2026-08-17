@@ -22,7 +22,10 @@ ever start again. Version equality read as health for as long as the process hap
 The bundle now sits in the durable data root; `staged/` and `releases/` stay in the cache, where a
 build or a download genuinely rebuilds them without the tool being intact. Installed machines move
 themselves on first start of the new code and rewrite their boot unit and PATH shim without bouncing
-a healthy daemon. Update no longer decides on version alone: a bundle missing from disk is restored
+a healthy daemon. The old copy is left where it was on purpose: launchd serves the definition it
+loaded until the job is re-bootstrapped, so deleting the path it still believes in would open a
+window where a daemon that died could not return. `install.sh` clears it once the machine is
+fully converged. Update no longer decides on version alone: a bundle missing from disk is restored
 whatever the versions say, so the daemon repairs this on its own tick. `doctor` reports a launch path
 that leads nowhere, before anyone types a command that fails.
 

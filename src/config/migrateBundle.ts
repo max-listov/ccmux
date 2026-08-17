@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { APP_BUNDLE, LEGACY_APP_BUNDLE, bootArgv } from "./paths.ts";
 import { SHIM_PATH } from "../env.ts";
@@ -10,10 +10,16 @@ import type { MachineConfig } from "../types.ts";
 export type BundleMigration = "already" | "moved" | "absent";
 
 /**
- * Move the running bundle out of the cache root, where a legitimate `rm -rf ~/.cache/*` could take
- * the tool's own recovery path with it. Copy-then-remove rather than rename: the two roots can sit
- * on different filesystems, where rename fails outright. Copying a file this process is executing is
- * safe — the running image is the open inode, not the name.
+ * Copy the running bundle into the durable root, out of the cache where a legitimate `rm -rf
+ * ~/.cache/*` could take the tool's own recovery path with it. Copy rather than rename: the two
+ * roots can sit on different filesystems, where rename fails outright. Copying a file this process
+ * is executing is safe — the running image is the open inode, not the name.
+ *
+ * The old copy is deliberately LEFT BEHIND. A boot manager does not necessarily re-read its unit the
+ * moment we rewrite it — launchd serves the definition it loaded until the job is re-bootstrapped or
+ * the machine reboots — so deleting the path it still believes in would open a window where a daemon
+ * that died could not come back. The stale copy costs a couple of megabytes in a directory that is
+ * safe to wipe, and `install.sh` removes it once the machine is fully converged.
  */
 export function migrateBundleToDurableRoot(appBundle: string = APP_BUNDLE, legacy: string = LEGACY_APP_BUNDLE): BundleMigration {
   if (existsSync(appBundle)) return "already";
@@ -29,8 +35,6 @@ export function migrateBundleToDurableRoot(appBundle: string = APP_BUNDLE, legac
       /* best-effort: a missing rollback copy is not worth failing the move over */
     }
   }
-  rmSync(legacy, { force: true });
-  rmSync(`${legacy}.bak`, { force: true });
   return "moved";
 }
 
