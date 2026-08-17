@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-08-17
+
+the tool no longer lives in a directory that invites its own deletion
+
 the tool no longer lives in a directory that invites its own deletion
 
 `~/.cache/ccmux/` was wiped on a server — a legitimate act against a directory whose contract says
@@ -41,7 +45,6 @@ wants. `ccmux install` enforces this itself, so the guarantee does not depend on
 used. Every step converges — bundle fetched only when the bytes differ, shim and unit written only
 when they say the wrong thing, nothing restarted unless something changed — and a healthy machine
 comes out reporting *nothing to do* with no files written.
-
 ## [0.19.0] — 2026-08-12
 
 the transcript window is bounded in bytes, and the fleet view stops guessing
