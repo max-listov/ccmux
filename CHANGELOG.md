@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-08-18
+
+stitchwire transport: the fleet map is no longer one-directional
+
 the fleet map is no longer one-directional: a server can address the laptop
 
 The fleet had a one-way map by construction. The laptop reached every server; no server ever
@@ -33,7 +37,6 @@ public IP, while no node listens on a port and no node holds a credential to ano
 - Admission stays hard: chat receive requires descending from an authenticated remote transport —
   sshd, or the stitchwire agent (proved by process-tree walk; `stitchwire call` deliberately does
   NOT confer admission, so a local process cannot launder itself into delivery through the CLI).
-
 ## [0.22.0] — 2026-08-17
 
 a session waiting on a human is no longer reported as idle
