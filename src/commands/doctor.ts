@@ -6,7 +6,8 @@ import { loadSessions } from "../config/sessions.ts";
 import { collectRows } from "./list.ts";
 import type { MachineConfig } from "../types.ts";
 import { VERSION } from "../util/version.ts";
-import { checkFleet } from "../fleet/transport.ts";
+import { checkFleet, peersOf } from "../fleet/transport.ts";
+import { wireSocketPath } from "../fleet/wire.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
 import { escalationRefusal } from "../agent/claude/launch.ts";
 import { chatEnabledFor } from "../config/chat.ts";
@@ -54,12 +55,19 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // that cannot eyeball a warning — an agent reading `--json` — was the one kept in the dark about a
   // mis-mapped alias, which is the single failure that silently delivers mail to the wrong machine.
   const fleet = m.fleet ?? {};
-  const fleetChecks = Object.keys(fleet).length > 0 ? await checkFleet(fleet) : [];
+  const peers = peersOf(m);
+  const fleetChecks = peers.length > 0 ? await checkFleet(m) : [];
   // A machine label that equals OUR OWN prefix can never be reached: `routeFor` resolves it locally
   // first (it must — ssh to ourselves lands in a different ccmux). Cloned configs make this easy to
   // do by accident, and the symptom is the original incident: a reply "to the other box" delivered
   // to a local same-named session.
   const selfLabelled = Object.keys(fleet).includes(m.rcPrefix);
+  // The wire has one prerequisite ssh does not: a LOCAL agent holding this machine's connection.
+  // Without it every wire peer reads as "unreachable", which sends the reader looking at the far
+  // machine for a fault that is on this one.
+  const wireSocket = wireSocketPath(m);
+  const wireExpected = peers.some((p) => p.via === "wire");
+  const wireReady = wireSocket !== null && existsSync(wireSocket);
 
   if (json) {
     console.log(
@@ -82,6 +90,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         deps: { claude: claudeOk, codex: codexOk, tmux: tmuxOk },
         fleet: fleetChecks,
         fleetSelfLabelled: selfLabelled,
+        wire: wireExpected ? { socket: wireSocket, ready: wireReady } : null,
         daemon,
       }),
     );
@@ -106,11 +115,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log("fleet:");
     for (const c of fleetChecks) {
       const mark = c.ok ? "ok" : c.reachable ? "PROBLEM" : "unreachable";
-      console.log(`  ${c.machine} → ${c.alias} (${mark})${c.ok ? "" : ` — ${c.detail}`}`);
+      const route = c.via === "wire" ? "via wire" : `→ ${c.alias}`;
+      console.log(`  ${c.machine} ${route} (${mark})${c.ok ? "" : ` — ${c.detail}`}`);
     }
     if (selfLabelled) {
       console.log(`  PROBLEM — '${m.rcPrefix}' is this machine's own rcPrefix, so '${m.rcPrefix}:<session>' always resolves LOCALLY and that entry is dead. Give each machine a distinct rcPrefix.`);
     }
+  }
+  if (wireExpected) {
+    console.log(`wire:   ${wireReady ? `agent socket ${wireSocket}` : `PROBLEM — no agent socket at ${wireSocket ?? "(unknown)"}; start 'stitchwire agent' on this machine`}`);
   }
   const unhonourable = unhonourableModes(m, UID === 0);
   if (unhonourable.length > 0) {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { loadMachineConfig } from "../config/machine.ts";
 import { collectRows } from "./list.ts";
-import { runRemote } from "../fleet/transport.ts";
+import { peersOf, runPeer } from "../fleet/transport.ts";
 import { VERSION } from "../util/version.ts";
 import type { MachineConfig } from "../types.ts";
 
@@ -62,20 +62,20 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       stale: r.stale,
     })),
   };
-  const others = Object.entries(m.fleet ?? {}).filter(([machine]) => machine !== m.rcPrefix);
   const remote = await Promise.all(
-    others.map(async ([machine, alias]): Promise<FleetMachine> => {
-      const r = await runRemote(alias, ["ccmux", "list", "--json"], { timeoutMs: 20_000 });
+    peersOf(m).map(async ({ machine, alias, via }): Promise<FleetMachine> => {
+      const r = await runPeer(m, machine, alias, ["ccmux", "list", "--json"], { timeoutMs: 20_000 });
+      const label = via === "wire" ? "wire" : alias;
       if (r.transportFailed) {
-        return { machine, alias, ok: false, error: "unreachable (no transit right now)", version: "?", sessions: [] };
+        return { machine, alias: label, ok: false, error: r.failureDetail ?? "unreachable (no transit right now)", version: "?", sessions: [] };
       }
-      if (r.code !== 0) return { machine, alias, ok: false, error: `remote ccmux failed (exit ${r.code})`, version: "?", sessions: [] };
+      if (r.code !== 0) return { machine, alias: label, ok: false, error: `remote ccmux failed (exit ${r.code})`, version: "?", sessions: [] };
       try {
         const parsed = RemoteListSchema.safeParse(JSON.parse(r.stdout)).data;
-        if (parsed === undefined) return { machine, alias, ok: false, error: "unreadable list output (older ccmux?)", version: "?", sessions: [] };
-        return { machine, alias, ok: true, error: null, version: parsed.version, sessions: parsed.sessions };
+        if (parsed === undefined) return { machine, alias: label, ok: false, error: "unreadable list output (older ccmux?)", version: "?", sessions: [] };
+        return { machine, alias: label, ok: true, error: null, version: parsed.version, sessions: parsed.sessions };
       } catch {
-        return { machine, alias, ok: false, error: "unreadable list output (older ccmux?)", version: "?", sessions: [] };
+        return { machine, alias: label, ok: false, error: "unreadable list output (older ccmux?)", version: "?", sessions: [] };
       }
     }),
   );
@@ -97,11 +97,11 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
     console.log(JSON.stringify({ version: VERSION, generatedAt: new Date().toISOString(), machines }));
     return 0;
   }
-  if (Object.keys(m.fleet ?? {}).length === 0) {
-    console.log('(no "fleet" map in machine.json — showing this machine only)');
+  if (machines.length === 1) {
+    console.log('(no peers configured in machine.json — add a "fleet" map or "wire.peers" — showing this machine only)');
   }
   for (const fm of machines) {
-    const label = fm.alias === null ? `${fm.machine} (this machine)` : `${fm.machine} → ${fm.alias}`;
+    const label = fm.alias === null ? `${fm.machine} (this machine)` : fm.alias === "wire" ? `${fm.machine} via wire` : `${fm.machine} → ${fm.alias}`;
     if (!fm.ok) {
       console.log(`${label}: ${fm.error}`);
       continue;

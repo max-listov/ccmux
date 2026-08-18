@@ -179,6 +179,29 @@ export const MachineConfigSchema = z.object({
       z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._@-]*$/, "fleet alias must be an ssh host alias (no leading '-', no spaces)"),
     )
     .optional(),
+  /**
+   * The stitchwire transport: machines this box reaches through the local stitchwire agent instead
+   * of through ssh.
+   *
+   * It exists because ssh can only call a machine that is reachable, and a roaming laptop never is.
+   * stitchwire has every node dial OUT to a broker and keep that link, so a server can finally
+   * address the laptop — without the laptop opening a port or a server holding a key to it. The
+   * connection direction changes; the trust model does not.
+   *
+   * Listing a machine here is the entire switch, per direction: absent = ssh exactly as before.
+   * That is deliberate — a new transport earns its place one direction at a time, and a fleet-wide
+   * flag would make "which path did that call take" unanswerable during the change.
+   *
+   * INVARIANT: a stitchwire node id IS the machine's `rcPrefix`. One label names one machine in
+   * both systems; a mismatch would deliver correctly-addressed mail to the wrong box.
+   */
+  wire: z
+    .object({
+      peers: z.array(z.string().regex(RC_PREFIX_RE)).default([]),
+      // Absent = the agent's default path under this user's home. Set only by an isolated instance.
+      socket: z.string().startsWith("/").optional(),
+    })
+    .optional(),
   // Optional command run once before a batch of outbox retries, for fleets where transit can be
   // restored locally (re-pointing a forwarded-key socket, refreshing a token). An argv ARRAY, never
   // a string: no shell ever sees it. Absent = nothing runs, which is the default everywhere.

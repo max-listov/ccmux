@@ -6,6 +6,36 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-08-18
+
+the fleet map is no longer one-directional: a server can address the laptop
+
+The fleet had a one-way map by construction. The laptop reached every server; no server ever
+reached the laptop — not a missing config line, but the absence of anything to reach: no stable
+address, no open port, and a machine that changes networks daily. An agent on a server could finish
+a delegated job perfectly and then had no route to hand the result back (the 2026-08-05 live check,
+recorded in the return-channel note).
+
+ccmux now carries a second transport. [stitchwire](https://github.com/max-listov/stitchwire) has
+every machine dial OUT to a broker and keep that connection, so the direction of the TCP link and
+the direction of a call are unrelated — a laptop behind NAT is as addressable as a server with a
+public IP, while no node listens on a port and no node holds a credential to another node.
+
+- `wire.peers` in machine.json lists machines reached through the local stitchwire agent instead of
+  ssh — per direction, so the transport is adoptable one route at a time and "which path did that
+  call take" stays answerable.
+- `runPeer`/`peersOf` are the single place deciding how a remote call travels; `fleet`, `doctor`,
+  `msg` and command forwarding all route through them unchanged.
+- `routeFor` accepts a machine with no ssh alias at all — the laptop's case.
+- `doctor` verifies a wire peer really reports the rcPrefix it is mapped to, and separately that
+  the local agent socket exists (without it every wire peer would read as unreachable, sending the
+  reader to debug the wrong machine).
+- Transport failures now carry the real reason (`denied`, `offline`, `timeout`) instead of the
+  one-size ssh sentence: a policy refusal must not send the reader looking for a network fault.
+- Admission stays hard: chat receive requires descending from an authenticated remote transport —
+  sshd, or the stitchwire agent (proved by process-tree walk; `stitchwire call` deliberately does
+  NOT confer admission, so a local process cannot launder itself into delivery through the CLI).
+
 ## [0.22.0] — 2026-08-17
 
 a session waiting on a human is no longer reported as idle

@@ -9,7 +9,7 @@ import { CHAT_GENERATION, ChatMessageSchema, ListJsonSchema } from "../config/sc
 import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
-import { relay, runRemote } from "../fleet/transport.ts";
+import { relay, runPeer } from "../fleet/transport.ts";
 import type { AgentKind, ChatMessage, ChatPrincipal, ManagedPeer, Session, MachineConfig } from "../types.ts";
 import { log } from "../util/log.ts";
 import { preview } from "../util/preview.ts";
@@ -37,9 +37,9 @@ function assertExpected(target: ManagedPeer, agent: AgentKind | null, threadId: 
   return null;
 }
 
-async function resolveRemotePeer(alias: string, machine: string, name: string): Promise<ManagedPeer | { error: string }> {
-  const result = await runRemote(alias, ["ccmux", "list", "--json"], { timeoutMs: 20_000 });
-  if (result.transportFailed) return { error: `msg ${machine}:${name}: transport failed while resolving exact peer` };
+async function resolveRemotePeer(cfg: MachineConfig, alias: string | null, machine: string, name: string): Promise<ManagedPeer | { error: string }> {
+  const result = await runPeer(cfg, machine, alias, ["ccmux", "list", "--json"], { timeoutMs: 20_000 });
+  if (result.transportFailed) return { error: `msg ${machine}:${name}: transport failed while resolving exact peer${result.failureDetail === undefined ? "" : ` (${result.failureDetail})`}` };
   if (result.code !== 0) return { error: `msg ${machine}:${name}: remote peer resolution failed (exit ${result.code})` };
   try {
     const parsed = RemoteListSchema.parse(JSON.parse(result.stdout));
@@ -94,7 +94,7 @@ export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(),
     return 1;
   }
   if (!transportAuthenticated) {
-    console.error("chat receive is only admitted through an authenticated SSH transport");
+    console.error("chat receive is only admitted from an authenticated remote transport — sshd, or the local stitchwire agent");
     return 1;
   }
   let message: ChatMessage;
@@ -203,12 +203,12 @@ export async function cmdMsg(args: string[]): Promise<number> {
   if (route.kind === "error") return console.error(route.message), 1;
   if (route.kind === "remote") {
     if (defer || notBefore !== null) return console.error("msg: --defer/--after are local-only"), 1;
-    const resolved = await resolveRemotePeer(route.alias, route.machine, route.session);
+    const resolved = await resolveRemotePeer(machine, route.alias, route.machine, route.session);
     if ("error" in resolved) return console.error(resolved.error), 1;
     const mismatch = assertExpected(resolved, expectedAgent, expectedThread);
     if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
     const envelope = buildEnvelope(from, resolved, body, task, false, onBehalfOf, null);
-    const result = await runRemote(route.alias, ["ccmux", "_chat-receive-v2"], { stdin: JSON.stringify(envelope), timeoutMs: 20_000 });
+    const result = await runPeer(machine, route.machine, route.alias, ["ccmux", "_chat-receive-v2"], { stdin: JSON.stringify(envelope), timeoutMs: 20_000 });
     appendOutbound(machine, {
       kind: "msg",
       envelope,

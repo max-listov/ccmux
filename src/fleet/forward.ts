@@ -1,6 +1,6 @@
 import { loadMachineConfig } from "../config/machine.ts";
 import { routeFor } from "./address.ts";
-import { runRemote, relay } from "./transport.ts";
+import { runPeer, relay } from "./transport.ts";
 import type { MachineConfig } from "../types.ts";
 
 /**
@@ -37,7 +37,7 @@ export async function forwardIfRemote(target: string, verb: string, remoteArgs: 
   const args = remoteArgs;
 
   const argv = ["ccmux", verb, ...(opts.verbArgs ?? []), route.session, ...args];
-  const r = await runRemote(route.alias, argv, opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs });
+  const r = await runPeer(cfg, route.machine, route.alias, argv, opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs });
   const code = relay(r, `${verb} ${target}`, remoteWrites(verb));
   return { done: true, code };
 }

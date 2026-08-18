@@ -1,4 +1,5 @@
 import type { MachineConfig } from "../types.ts";
+import { wirePeers } from "./wire.ts";
 
 /**
  * A fleet address — `<machine>:<session>` — is the missing piece that made cross-machine work
@@ -34,26 +35,34 @@ export const isAddressError = (a: FleetAddress | { error: string }): a is { erro
  *  against THIS machine's own `rcPrefix` first is a correctness requirement, not an optimisation —
  *  ssh to our own host would land in the PROD instance, not in an isolated dev one (its config,
  *  registry and tmux socket come from env that ssh does not carry). */
-export type Route = { kind: "local"; session: string } | { kind: "remote"; alias: string; machine: string; session: string } | { kind: "error"; message: string };
+export type Route =
+  | { kind: "local"; session: string }
+  // `alias` is null for a machine reachable only over the wire — a roaming laptop has no ssh alias
+  // anywhere, which is the entire reason that transport exists.
+  | { kind: "remote"; alias: string | null; machine: string; session: string }
+  | { kind: "error"; message: string };
 
 export function routeFor(token: string, m: MachineConfig): Route {
   const addr = parseAddress(token);
   if (isAddressError(addr)) return { kind: "error", message: addr.error };
   if (addr.machine === null || addr.machine === m.rcPrefix) return { kind: "local", session: addr.session };
   const fleet = m.fleet;
-  if (fleet === undefined || Object.keys(fleet).length === 0) {
+  const wire = wirePeers(m);
+  if ((fleet === undefined || Object.keys(fleet).length === 0) && wire.length === 0) {
     return {
       kind: "error",
-      message: `fleet addressing is not configured on this machine — add a "fleet" map to machine.json (e.g. {"${addr.machine}": "<ssh-alias>"})`,
+      message: `fleet addressing is not configured on this machine — add a "fleet" map (ssh) or a "wire.peers" list (stitchwire) to machine.json`,
     };
   }
   // `Object.hasOwn`, not a plain lookup: `toString:api` would otherwise resolve to a prototype
   // METHOD, get stringified into argv, and fail as "transport failed" instead of "unknown machine".
-  const alias = Object.hasOwn(fleet, addr.machine) ? fleet[addr.machine] : undefined;
-  if (alias === undefined) {
-    return { kind: "error", message: `unknown machine '${addr.machine}' — known: ${Object.keys(fleet).sort().join(", ")}` };
+  const alias = fleet !== undefined && Object.hasOwn(fleet, addr.machine) ? fleet[addr.machine] : undefined;
+  const onWire = wire.includes(addr.machine);
+  if (alias === undefined && !onWire) {
+    const known = [...new Set([...Object.keys(fleet ?? {}), ...wire])].sort().join(", ");
+    return { kind: "error", message: `unknown machine '${addr.machine}' — known: ${known}` };
   }
-  return { kind: "remote", alias, machine: addr.machine, session: addr.session };
+  return { kind: "remote", alias: alias ?? null, machine: addr.machine, session: addr.session };
 }
 
 /** This machine's own fleet address for a session — what a peer must use to reply to us. */
