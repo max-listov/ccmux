@@ -6,8 +6,6 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-## [0.23.0] — 2026-08-18
-
 the fleet map is no longer one-directional: a server can address the laptop
 
 The fleet had a one-way map by construction. The laptop reached every server; no server ever
