@@ -4,6 +4,7 @@ import { cmdList } from "./commands/list.ts";
 import { cmdNew } from "./commands/new.ts";
 import { cmdRm } from "./commands/rm.ts";
 import { cmdRenew } from "./commands/renew.ts";
+import { retiredNotice } from "./commands/retired.ts";
 import { cmdStart, cmdStop, cmdRestart, cmdRestartWorker } from "./commands/lifecycle.ts";
 import { cmdRestartAll, cmdRestartAllWorker } from "./commands/restartAll.ts";
 import { cmdSend } from "./commands/send.ts";
@@ -59,6 +60,13 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
   // `ccmux <cmd> --help` → help for that command (before the command parses args).
   if (verb !== undefined && HELP_VERBS.has(verb) && (rest.includes("--help") || rest.includes("-h"))) {
     return cmdHelp(verb === "remove" ? "rm" : verb);
+  }
+  // Before any command parses: a token we RETIRED gets its replacement, not a generic usage line.
+  // Here rather than in each command, so a new verb cannot forget it (see commands/retired.ts).
+  const retired = retiredNotice(verb, rest);
+  if (retired !== null) {
+    console.log(retired);
+    return 1;
   }
   switch (verb) {
     case "list":

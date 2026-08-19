@@ -6,6 +6,27 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+a removed command names its replacement instead of showing a usage line
+
+`restart --then "<note>"` was removed in 0.12.0 — deliberately: a hand-off has to be recorded, and a
+note carried by a lifecycle flag has no sender, no reply address and no entry in the ledger. What was
+not thought through is what the removal left behind. Every unexpected token fell through to the same
+generic `usage: ccmux restart <name>` line, which cannot tell "you typed it wrong" apart from "this
+no longer exists, use that".
+
+A session on a server hit exactly that. It had been told to use the flag by a rule file in another
+repository, written when the flag existed and never updated since. It read the refusal as a VERSION
+problem — "this build doesn't support it" — and went off to build a workaround, then put a task on
+its owner's desk that did not exist. The reasoning error was its own: the tool is reality and a rule
+is only somebody's past intention. But the misleading answer was ours, and we had taught that flag
+ourselves through the injected prompt for months.
+
+Retired public syntax is now a table (verb, token, version, replacement, reason) checked at the
+dispatcher, before any command parses its arguments — so a new command cannot forget it and the next
+removal is one row. The notice states the version that removed it, the command to run instead, why it
+went, and that a rule still teaching it is what is out of date. Matching is verb-scoped and
+whole-token, so a chat body discussing the flag passes straight through.
+
 ## [0.23.0] — 2026-08-18
 
 stitchwire transport: the fleet map is no longer one-directional
