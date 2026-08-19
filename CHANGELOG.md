@@ -6,6 +6,28 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+a dead agent socket no longer travels into a session that outlives its login
+
+A supervised session outlives the login that created it; `SSH_AUTH_SOCK` does not. tmux copies that
+variable from whichever client creates a session, so restarting a fleet over ssh with agent forwarding
+hands every session a socket that dies with the caller. One box was found running five sessions
+carrying sockets from two long-closed logins, every cross-machine send from them failing.
+
+The failure is a liar twice over: a dead socket produces either a hang to timeout or an instant
+`Permission denied`, so response time distinguishes nothing, and both read as "this machine has no
+access" when in fact ssh never got as far as trying anything else.
+
+Sessions now launch without those variables **when the socket is already gone**, logged. A live socket
+is never removed: whether a machine can reach its peers without one is that fleet's ssh configuration,
+not something ccmux may assume, and taking away a working credential to enforce a theory is worse than
+the problem.
+
+`peer-routing.md` and the README now document how to reach a peer and how to check a route —
+including why the obvious check lies. `IdentityAgent` in `ssh_config` overrides `SSH_AUTH_SOCK` and
+multiplexing reuses somebody else's authenticated connection, so a route check needs
+`-o IdentityAgent=none -o ControlPath=none -o BatchMode=yes`. Unsetting the environment variable is
+not a substitute; it answers according to whether the configured socket is alive that minute.
+
 ## [0.26.0] — 2026-08-19
 
 a failed hop is reported as a queued message, not as a lost one

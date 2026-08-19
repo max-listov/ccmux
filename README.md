@@ -101,6 +101,37 @@ Every action re-reads the exact provider+host+UUID row before mutating. External
 `ccmux fleet` remains the managed-session wire. Adopted-in-place Codex sessions gain lifecycle
 management but no hidden management/chat prompt is inserted into the existing conversation.
 
+### Reaching another machine
+
+An address is `<machine>:<session>` and it never says how the call travels. Two transports carry it,
+and the choice is per direction in `machine.json`:
+
+| Transport | Use it for | Configured by |
+|---|---|---|
+| ssh | machines that can address each other | `fleet: { <machine>: <alias> }` |
+| stitchwire | a machine with no stable address — it dials out and keeps the link | `wire: { peers: [<machine>] }` |
+
+A machine in `wire.peers` is reached over the wire even when it also has an ssh alias, so the wire is
+adoptable one direction at a time.
+
+Two things are worth knowing before diagnosing a route:
+
+**Check with the overrides off.** `ssh -o ControlPath=none -o IdentityAgent=none -o BatchMode=yes
+<peer> "ccmux --version"`. Multiplexing lets ssh reuse a master connection somebody else opened and
+succeed without authenticating; `IdentityAgent` in `ssh_config` points it at an agent socket whatever
+the environment says. Unsetting `SSH_AUTH_SOCK` is not a substitute for the flag: `IdentityAgent` overrides the variable, so
+that form answers according to whether the configured socket is alive right now. Leave any of them out
+and a green check can be measuring somebody else's live connection. How your machines authenticate to each other is your ssh configuration's business — a key
+file in `~/.ssh` is not evidence of being authorised on the far end.
+
+**A dead agent socket outlives the login that made it.** `SSH_AUTH_SOCK` belongs to that login, and a
+supervised session outlives it; afterwards ssh fails on a socket with nothing behind it — sometimes hanging to a
+timeout, sometimes with an instant `Permission denied`, so the response time tells you nothing. ccmux drops the variable at launch when the socket is already gone, and logs
+it. A live socket is never removed — it may be the only credential the machine has.
+
+**A failed hop is not a lost message.** Cross-machine `msg` writes to the outbox before the hop and
+retries for an hour; the sender is told the message is queued and that nothing is required of it.
+
 ### When a session is waiting on you
 
 An agent can raise a blocking menu at startup — "is this folder trusted?", "resume from summary or

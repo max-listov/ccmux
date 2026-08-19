@@ -70,6 +70,65 @@ inverts the *connection* instead — every node dials out to a broker and keeps 
 `dev:<session>` reaching `host-C:<session>` becomes possible while no node holds a credential to another
 node.
 
+### How to reach a peer, and how to check it
+
+Two rules cover every case, and neither depends on a person being connected:
+
+1. **Between machines that can address each other** — ssh. *How* those machines authenticate is a
+   property of that fleet's ssh configuration, not something ccmux knows or should assume. A key file
+   sitting in `~/.ssh` is not evidence of being authorised on the other end, and `IdentityAgent` in
+   `ssh_config` overrides `SSH_AUTH_SOCK`, so a fleet may in fact authenticate only through a
+   forwarded identity. Read the config before asserting anything about it.
+2. **To a machine with no address of its own** (a laptop that roams) — the wire, because it dials out
+   and keeps the link. List it in `wire.peers` and address it exactly like any other: `<machine>:<session>`.
+
+Checking a route takes one command, and the flags matter:
+
+```
+ssh -o ControlPath=none -o BatchMode=yes <peer> "ccmux --version"
+```
+
+Both flags matter, and a third one usually does too:
+
+- `ControlPath=none` — with multiplexing on, ssh reuses a master connection somebody else opened and
+  answers without authenticating at all.
+- `IdentityAgent=none` — `ssh_config` may point ssh at an agent socket regardless of the environment,
+  so unsetting `SSH_AUTH_SOCK` proves nothing on its own.
+- `BatchMode=yes` — stops it waiting on a prompt.
+
+Note what is NOT a substitute: unsetting `SSH_AUTH_SOCK` in the environment. `IdentityAgent` overrides
+it, so that check answers according to whether the configured socket happens to be alive this minute —
+false yes and false no from the same command minutes apart. Isolate the agent with the flag, never
+with the variable.
+
+Leave any of them out and the check can pass for a reason that has nothing to do with the credentials
+you meant to test. This is not hypothetical: a fleet-wide claim was once broadcast off a ten-for-ten
+check that was measuring somebody else's live connection the whole time.
+
+### A forwarded agent is not a credential this session owns
+
+`SSH_AUTH_SOCK` names a socket belonging to the login that exported it. A supervised session outlives
+that login by design, so the variable is a promise the session cannot keep: after the login ends, ssh
+started from that session WAITS on a socket with nothing behind it. It looks exactly like "this
+machine has no access", and it is not — it is ssh never getting as far as trying anything else.
+
+tmux delivers it: its default `update-environment` copies these variables from whichever client
+creates a session, so restarting a fleet over ssh with agent forwarding hands every session a socket
+that dies with the caller. Note also that `IdentityAgent` applies per `Host` block: a peer reached by a bare address, with no
+alias in `ssh_config`, gets none of it and needs the agent named explicitly. The rule that survives
+both cases is *do not invent a socket path* — point at whatever canonical, maintained path the fleet
+keeps, never at a `/tmp` socket copied out of an old environment.
+
+ccmux therefore drops these variables at launch **when the socket is already dead**, and logs what it
+dropped. A live socket is never touched: whether a machine can reach its peers without it is that
+fleet's business, and taking away a working credential to enforce a theory would be worse than the
+problem.
+
+The diagnostic worth remembering: a dead socket presents as EITHER a hang that ends in a timeout OR
+an instant `Permission denied (publickey)`, depending on how far ssh gets. Response time therefore
+tells you nothing. The only reliable answer comes from the check above with all three overrides, plus
+looking at the socket itself — whether the path resolves and whether an agent answers on it.
+
 ### A hop that fails is not a message that was lost
 
 Both transports flap. A cross-machine `msg` writes its envelope to the outbox **before** the hop is

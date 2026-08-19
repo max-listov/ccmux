@@ -5,6 +5,7 @@ import { providerFor, type AgentProvider } from "../agent/index.ts";
 import { capturePane, sendKeysNamed } from "../tmux/tmux.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { promptInvocation } from "../env.ts";
+import { droppedDeadAgentKeys, withoutDeadAgentEnv } from "../agent/sshEnv.ts";
 import { log, setStderrLogging } from "../util/log.ts";
 import { writeLaunchStamp } from "../agent/sessionStatus.ts";
 import { computeStamp } from "../agent/launchStamp.ts";
@@ -162,7 +163,15 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
       console.error(`ccmux: ${error}`);
       return 1;
     }
-    const env = provider.launchEnv(m, s.name);
+    let env = provider.launchEnv(m, s.name);
+    // A session outlives the login that created it; that login's agent socket does not. A DEAD
+    // socket left in the environment makes ssh wait on it instead of trying what the config points
+    // at. A live one is never touched — it may be the only credential this machine has.
+    const dropped = droppedDeadAgentKeys(env);
+    if (dropped.length > 0) {
+      env = withoutDeadAgentEnv(env);
+      log.info({ msg: "dropped a dead agent socket from the session launch", name, dropped });
+    }
     env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, s);
     // The invocation TAUGHT to the agent (bare `ccmux` shim when installed) — NOT the
     // absolute self re-exec; those are different concerns (see env.ts). Re-evaluated each
