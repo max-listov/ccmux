@@ -1,0 +1,21 @@
+#!/bin/sh
+# The same boundary as commit-msg, for file CONTENT rather than the message. A public repo must
+# not carry the layout of a private machine — it slips into examples and test fixtures far more
+# easily than into prose, which is precisely where it got in.
+#
+# The pattern matches ANY account name, never one specific name: a guard that spells the name it
+# protects publishes it itself. `/Users/u/` and `/home/u/` are the prescribed placeholders.
+# `.githooks/` is NOT exempt — with a generic pattern these files no longer trip it.
+#
+# Bypass deliberately with `git commit --no-verify`.
+set -e
+
+HITS=$(git diff --cached -U0 --no-color | grep -E '^\+' \
+  | grep -oE '(/Users/|/home/|~/home/)[A-Za-z0-9._-]+/' \
+  | grep -vE '^(/Users/u/|/home/u/)$' | sort -u || true)
+if [ -n "$HITS" ]; then
+  echo "pre-commit: refusing — staged changes contain a real home path:" >&2
+  echo "$HITS" | head -10 >&2
+  echo "            Use the placeholders CLAUDE.md prescribes: /Users/u/… , ~/projects/… , host-A." >&2
+  exit 1
+fi

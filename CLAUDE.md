@@ -17,6 +17,19 @@ in examples, motivation text, and backlog notes.
 - Before finishing any edit that touches `.md`/comments, sweep the changed lines for private tokens.
 - If unsure whether a term is private, treat it as private and use a placeholder.
 
+### Commit messages carry the same rule — and one leak the list above missed
+Claude Code appends `Co-Authored-By: Claude …` and `Claude-Session: https://claude.ai/code/session_…`
+to commit messages **by default**. That default lives in the agent's environment, not in this repo,
+so it is not something a session decides to do — it is something a session must be stopped from
+doing. `Claude-Session` is a live link to the maintainer's private working session, published in a
+public repository: more sensitive than any name in the list above, and absent from it. Two commits
+reached `main` carrying both before this was written down.
+
+NEVER let either line into a commit message here. Compose the message yourself rather than accepting
+the default footer. `.githooks/commit-msg` refuses them, and `.githooks/pre-commit` refuses staged
+content containing the maintainer's paths — a rule alone cannot hold against a default set outside
+this repository, so the check is the mechanism and the rule is only its explanation.
+
 ## 🚫 Don't deploy without explicit approval
 ccmux is a production tool that supervises live agent sessions, so a bad release affects real
 running work. Do NOT autonomously: bump the version, build, `ccmux update`, restart/touch the

@@ -1,0 +1,30 @@
+#!/bin/sh
+# This repo is PUBLIC. Two things must never reach it, and neither is a judgement call:
+#
+#  1. Agent commit trailers. Claude Code appends `Co-Authored-By: Claude …` and a
+#     `Claude-Session: https://claude.ai/code/session_…` line by DEFAULT — the second is a live
+#     link to a private working session. That default lives in the agent's environment, not in
+#     this repo, so a project rule alone cannot stop it: only a check at the boundary can. Both
+#     reached `main` once, in commits nobody reviewed for it.
+#  2. A real home path. `/Users/<someone>/…` or `/home/<someone>/…` names an account and a private
+#     machine's layout. The patterns below deliberately match ANY name rather than one specific
+#     one — a guard that spells the name it is protecting publishes it in the same breath, which
+#     is exactly the mistake the first version of this hook made.
+#
+# `/Users/u/` and `/home/u/` are the placeholders CLAUDE.md prescribes, and are allowed.
+# Bypass deliberately with `git commit --no-verify` if you genuinely mean it.
+set -e
+MSG_FILE="$1"
+
+if grep -qiE '^(Co-Authored-By: Claude|Claude-Session:)' "$MSG_FILE"; then
+  echo "commit-msg: refusing — the message carries an agent trailer (Co-Authored-By: Claude / Claude-Session)." >&2
+  echo "            Claude-Session links to a private session and this repository is public." >&2
+  echo "            Remove those lines and write the message yourself." >&2
+  exit 1
+fi
+
+if grep -oE '(/Users/|/home/|~/home/)[A-Za-z0-9._-]+/' "$MSG_FILE" | grep -qvE '^(/Users/u/|/home/u/)$'; then
+  echo "commit-msg: refusing — the message names a real home path." >&2
+  echo "            Use the placeholders CLAUDE.md prescribes: /Users/u/… , ~/projects/… , host-A." >&2
+  exit 1
+fi
