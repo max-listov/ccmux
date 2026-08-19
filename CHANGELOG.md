@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-08-19
+
+the Telegram mirror reads like a message, not like an address
+
 the Telegram mirror reads like a message, not like an address
 
 One mirrored header ran 130 characters, of which 72 were two thread uuids and 26 were `ccmux/claude@`
@@ -22,7 +26,6 @@ exactly what fleet addressing guarantees. The machine stays: the same session na
 two boxes, so dropping the uuid is safe and dropping the machine would not be. Mail to the owner
 collapses to `📩 [machine:session → you]`. The exact address keeps its place in the pane tag, where an
 agent really does copy it to answer.
-
 ## [0.24.0] — 2026-08-19
 
 a removed command names its replacement instead of a usage line
