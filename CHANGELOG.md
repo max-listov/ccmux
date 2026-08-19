@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-08-19
+
+a removed command names its replacement instead of a usage line
+
 a removed command names its replacement instead of showing a usage line
 
 `restart --then "<note>"` was removed in 0.12.0 — deliberately: a hand-off has to be recorded, and a
@@ -26,7 +30,6 @@ dispatcher, before any command parses its arguments — so a new command cannot 
 removal is one row. The notice states the version that removed it, the command to run instead, why it
 went, and that a rule still teaching it is what is out of date. Matching is verb-scoped and
 whole-token, so a chat body discussing the flag passes straight through.
-
 ## [0.23.0] — 2026-08-18
 
 stitchwire transport: the fleet map is no longer one-directional
