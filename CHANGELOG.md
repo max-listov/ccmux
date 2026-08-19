@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-08-19
+
+a dead agent socket no longer travels into a session that outlives its login
+
 a dead agent socket no longer travels into a session that outlives its login
 
 A supervised session outlives the login that created it; `SSH_AUTH_SOCK` does not. tmux copies that
@@ -27,7 +31,6 @@ including why the obvious check lies. `IdentityAgent` in `ssh_config` overrides 
 multiplexing reuses somebody else's authenticated connection, so a route check needs
 `-o IdentityAgent=none -o ControlPath=none -o BatchMode=yes`. Unsetting the environment variable is
 not a substitute; it answers according to whether the configured socket is alive that minute.
-
 ## [0.26.0] — 2026-08-19
 
 a failed hop is reported as a queued message, not as a lost one
