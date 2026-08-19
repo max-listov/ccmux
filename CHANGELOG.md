@@ -6,6 +6,23 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+the Telegram mirror reads like a message, not like an address
+
+One mirrored header ran 130 characters, of which 72 were two thread uuids and 26 were `ccmux/claude@`
+written twice. The owner reads this on a phone and could not read it.
+
+The long form was deliberate: both endpoints were written as full fleet addresses so every line could
+be copied into `ccmux msg`. That reasoning does not survive the medium. The mirror is one-way — there
+is nothing to reply to from Telegram, so the address is never copied anywhere; and a managed session
+pins one thread when it is created, so the uuid separates nothing a reader needs. A machine-facing
+format was serving a human-facing channel, and the reader who could not argue back lost.
+
+The route is now `machine:session` on both sides — 28 characters, still unambiguous, because that is
+exactly what fleet addressing guarantees. The machine stays: the same session name commonly exists on
+two boxes, so dropping the uuid is safe and dropping the machine would not be. Mail to the owner
+collapses to `📩 [machine:session → you]`. The exact address keeps its place in the pane tag, where an
+agent really does copy it to answer.
+
 ## [0.24.0] — 2026-08-19
 
 a removed command names its replacement instead of a usage line

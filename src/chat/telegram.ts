@@ -1,7 +1,7 @@
 import type { ChatMessage, MachineConfig, TelegramConfig } from "../types.ts";
 import { log } from "../util/log.ts";
 import { loadCursors, loadLedger, saveCursors } from "./store.ts";
-import { principalLabel, targetLabel } from "./identity.ts";
+import { humanLabel, humanTargetLabel, principalLabel, targetLabel } from "./identity.ts";
 
 const SEND_TIMEOUT_MS = 10_000;
 
@@ -13,21 +13,23 @@ function escapeHtml(s: string): string {
 
 /**
  * Mirror text for one message (Telegram HTML parse_mode). Multi-line is fine here — a Telegram
- * message, not a TTY. The bolded first line is the routing header; the body follows as plain text,
- * with every dynamic part HTML-escaped.
+ * message, not a TTY. The bolded first line is the route; the body follows as plain text, with every
+ * dynamic part HTML-escaped.
  *
- * Both sides are written as FLEET ADDRESSES, so each line of the mirror is something you can copy
- * straight into `ccmux msg`. That is not decoration: once every machine mirrors into the same chat,
- * bare names are ambiguous — the same session name commonly exists on two boxes, which is exactly
- * the confusion fleet addressing exists to remove. The recipient is always local to the ledger being
- * mirrored, so it takes the mirroring machine's label; the sender keeps its OWN machine when the
- * message crossed machines or stayed local; both endpoints are already pinned in the envelope.
+ * The route is written for a PERSON — `machine:session`, both sides. It used to carry the full agent
+ * address, provider and thread uuid included, on the reasoning that every line should be copyable
+ * into `ccmux msg`. On a phone that reasoning does not survive contact: the two uuids were 55% of a
+ * 130-character header, and nobody types one, because this mirror is one-way — there is nothing to
+ * reply to from Telegram. `machine:session` is already unique across the fleet, which is the whole
+ * point of fleet addressing, and a managed session pins one thread at creation, so the uuid
+ * separates nothing a reader needs. What stays exact is the pane tag, where an agent really does
+ * copy the address to answer.
  */
 export function formatForTg(msg: ChatMessage): string {
-  const from = escapeHtml(principalLabel(msg.from));
+  const from = escapeHtml(humanLabel(msg.from));
   // Mail to the human keeps the SAME shape rather than inverting the sentence — one route line to
   // learn to read, with the emoji doing the "this one is for you" work.
-  const to = msg.to.kind === "owner" ? "you" : escapeHtml(targetLabel(msg.to));
+  const to = escapeHtml(humanTargetLabel(msg.to));
   const mark = msg.to.kind === "owner" ? "📩 " : "";
   const task = msg.task ? ` · <i>${escapeHtml(msg.task)}</i>` : "";
   // Blank line between route and body: on a phone the two ran together and the header stopped

@@ -20,25 +20,35 @@ const msg = (from: string, to: string, body: string, task: string | null = null)
   });
 
 test("formatForTg bolds the routing header and renders task + multi-line body verbatim", () => {
-  expect(formatForTg(msg("a", "b", "hi"))).toBe("<b>[ccmux/claude@host-a:a#11111111-1111-4111-8111-111111111111 → ccmux/claude@host-a:b#11111111-1111-4111-8111-111111111111]</b>\n\nhi");
-  expect(formatForTg(msg("a", "b", "l1\nl2", "deploy"))).toBe("<b>[ccmux/claude@host-a:a#11111111-1111-4111-8111-111111111111 → ccmux/claude@host-a:b#11111111-1111-4111-8111-111111111111]</b> · <i>deploy</i>\n\nl1\nl2");
+  expect(formatForTg(msg("a", "b", "hi"))).toBe("<b>[host-a:a → host-a:b]</b>\n\nhi");
+  expect(formatForTg(msg("a", "b", "l1\nl2", "deploy"))).toBe("<b>[host-a:a → host-a:b]</b> · <i>deploy</i>\n\nl1\nl2");
+});
+
+test("the route is written for a PERSON: no provider, no thread uuid", () => {
+  // Both belong in the pane tag, where an agent copies the address to answer. Here they were 55% of
+  // a 130-character header that nobody could act on — this mirror is one-way.
+  const line = formatForTg(msg("a", "b", "hi"));
+  expect(line).not.toContain("11111111-1111-4111-8111-111111111111");
+  expect(line).not.toContain("ccmux/claude@");
+  // machine:session is already unique across the fleet — that is what fleet addressing is for.
+  expect(line).toContain("host-a:a");
 });
 
 test("formatForTg marks owner-directed messages (an agent wrote to the human)", () => {
-  expect(formatForTg(msg("agent-b", "owner", "a poem for you"))).toBe("📩 <b>[ccmux/claude@host-a:agent-b#11111111-1111-4111-8111-111111111111 → you]</b>\n\na poem for you");
+  expect(formatForTg(msg("agent-b", "owner", "a poem for you"))).toBe("📩 <b>[host-a:agent-b → you]</b>\n\na poem for you");
   expect(formatForTg(msg("a", "b", "hi"))).not.toContain("📩"); // agent↔agent stays plain
 });
 
-test("every mirrored line is a usable ADDRESS — the point of mirroring a whole fleet into one chat", () => {
-  // Once all machines mirror into the same chat, bare names are ambiguous: the same session name
-  // commonly exists on two boxes. The recipient is local to the ledger being mirrored; a sender that
-  // crossed machines keeps its OWN label rather than borrowing the mirroring machine's.
+test("a sender that crossed machines keeps its OWN machine, so the route is never ambiguous", () => {
+  // Once all machines mirror into the same chat, a bare session name is ambiguous: the same name
+  // commonly exists on two boxes. Dropping the uuid is safe; dropping the MACHINE would not be. The
+  // recipient is local to the ledger being mirrored; a crossed sender keeps its own machine.
   const crossed = { ...msg("agent-a", "agent-b", "done"), from: makePeer({ machine: "host-b", session: "agent-a" }) };
-  expect(formatForTg(crossed)).toBe("<b>[ccmux/claude@host-b:agent-a#11111111-1111-4111-8111-111111111111 → ccmux/claude@host-a:agent-b#11111111-1111-4111-8111-111111111111]</b>\n\ndone");
+  expect(formatForTg(crossed)).toBe("<b>[host-b:agent-a → host-a:agent-b]</b>\n\ndone");
 });
 
 test("formatForTg escapes HTML-special chars in the body so parse_mode=HTML never trips a 400", () => {
-  expect(formatForTg(msg("a", "b", "1 < 2 && 3 > 2"))).toBe("<b>[ccmux/claude@host-a:a#11111111-1111-4111-8111-111111111111 → ccmux/claude@host-a:b#11111111-1111-4111-8111-111111111111]</b>\n\n1 &lt; 2 &amp;&amp; 3 &gt; 2");
+  expect(formatForTg(msg("a", "b", "1 < 2 && 3 > 2"))).toBe("<b>[host-a:a → host-a:b]</b>\n\n1 &lt; 2 &amp;&amp; 3 &gt; 2");
 });
 
 test("classifyHttpStatus: 4xx permanent (skip), 429/5xx transient (retry)", () => {
@@ -78,7 +88,7 @@ test("the route line is a bracketed HEADER with air under it, not a first line o
   // On a phone the header and the body ran together and stopped reading as two different things.
   const out = formatForTg(msg("a", "b", "body"));
   const [head, blank, ...rest] = out.split("\n");
-  expect(head).toBe("<b>[ccmux/claude@host-a:a#11111111-1111-4111-8111-111111111111 → ccmux/claude@host-a:b#11111111-1111-4111-8111-111111111111]</b>");
+  expect(head).toBe("<b>[host-a:a → host-a:b]</b>");
   expect(blank).toBe("");
   expect(rest.join("\n")).toBe("body");
 });
