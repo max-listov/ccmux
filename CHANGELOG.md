@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-08-19
+
+a failed hop is reported as a queued message, not as a lost one
+
 a failed hop is reported as a queued message, not as a lost one
 
 Two separate sessions arrived at the owner on the same day with the same non-existent problem: "the
@@ -24,7 +28,6 @@ that stays silent, because the guess gets believed and acted on.
 
 Also documented in `peer-routing.md` as a rule, not a note: never name a cause the transport did not
 report, and never describe a queued message as a lost one.
-
 ## [0.25.0] — 2026-08-19
 
 the Telegram mirror reads like a message, not like an address
