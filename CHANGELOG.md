@@ -6,6 +6,25 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+a failed hop is reported as a queued message, not as a lost one
+
+Two separate sessions arrived at the owner on the same day with the same non-existent problem: "the
+transport to the peer is down, we need your laptop." Neither invented it.
+
+A cross-machine send that lost its hop printed `transport failed (ssh unreachable, timed out, or no
+agent forwarding) — nothing was sent`. Both halves were false. The envelope is written to the outbox
+*before* the hop, and the drain loop retries it for an hour — five such messages landed on retry on
+one machine in a single day, none lost. And the cause was a default string, printed even when the
+transport reported nothing: it is what pointed both sessions at the owner's forwarded key.
+
+The send path no longer borrows the generic relay wording. It says the message is queued, that retry
+is automatic, how long the window is, and that nothing is required of the reader. A cause appears
+only when one was actually reported — in `relay` too. A diagnostic that guesses is worse than one
+that stays silent, because the guess gets believed and acted on.
+
+Also documented in `peer-routing.md` as a rule, not a note: never name a cause the transport did not
+report, and never describe a queued message as a lost one.
+
 ## [0.25.0] — 2026-08-19
 
 the Telegram mirror reads like a message, not like an address

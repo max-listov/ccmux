@@ -9,7 +9,8 @@ import { CHAT_GENERATION, ChatMessageSchema, ListJsonSchema } from "../config/sc
 import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
-import { relay, runPeer } from "../fleet/transport.ts";
+import { RETRY_WINDOW_MS } from "../fleet/flush.ts";
+import { queuedForRetryNotice, relay, runPeer } from "../fleet/transport.ts";
 import type { AgentKind, ChatMessage, ChatPrincipal, ManagedPeer, Session, MachineConfig } from "../types.ts";
 import { log } from "../util/log.ts";
 import { preview } from "../util/preview.ts";
@@ -214,6 +215,13 @@ export async function cmdMsg(args: string[]): Promise<number> {
       envelope,
       result: { ok: !result.transportFailed && result.code === 0, detail: result.transportFailed ? "transport failed" : result.code === 0 ? "" : `remote exit ${result.code}` },
     });
+    // NOT `relay`: the envelope is already in the outbox above, so "nothing was sent" would be a
+    // lie, and a lie that costs — it is what sent two sessions chasing a transport problem that the
+    // supervisor was already handling, and then to the owner with it.
+    if (result.transportFailed) {
+      console.log(queuedForRetryNotice(`msg ${targetToken}`, result.failureDetail ?? null, RETRY_WINDOW_MS / 60_000));
+      return 0;
+    }
     return relay(result, `msg ${targetToken}`);
   }
 

@@ -70,6 +70,22 @@ inverts the *connection* instead — every node dials out to a broker and keeps 
 `dev:<session>` reaching `host-C:<session>` becomes possible while no node holds a credential to another
 node.
 
+### A hop that fails is not a message that was lost
+
+Both transports flap. A cross-machine `msg` writes its envelope to the outbox **before** the hop is
+attempted, and a drain loop retries it for an hour. So a failed hop means *not yet*, not *never*, and
+the sender is told exactly that: queued, retried automatically, nothing required of anyone.
+
+This paragraph exists because the opposite wording cost real work. The failure line used to say
+"nothing was sent" and, when the transport reported no reason, supplied one: "no agent forwarding".
+Both were false. Two separate sessions read it, concluded their machine could only reach its peer
+through the owner's forwarded key, and carried a non-existent problem to the owner — while the
+supervisor had already delivered every one of those messages on retry. A diagnostic that guesses is
+worse than one that says nothing: the guess gets believed and acted on.
+
+The rule that follows: never name a cause the transport did not report, and never describe a queued
+message as a lost one.
+
 A machine listed in `wire.peers` is reached over the wire even when it also has an ssh alias. That is
 what makes the wire adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.

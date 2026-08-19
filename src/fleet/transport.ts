@@ -66,10 +66,31 @@ export async function runRemote(
  *  consumers (`transcript --json`) are unaffected. A transport failure is named as such, never
  *  disguised as "no such session"; `writes` keeps the wording honest, since "nothing was sent" is
  *  meaningless for a read-only verb. */
+/**
+ * What a caller is told when the hop failed but the message was RECORDED for retry.
+ *
+ * The old wording said "nothing was sent" and, when the transport gave no reason, guessed one:
+ * "no agent forwarding". Both were wrong, and the pair was expensive. The envelope is written to the
+ * outbox before this point and the drain loop delivers it — five such messages landed on retry in a
+ * single day on one machine, none lost. Meanwhile two different sessions read that line, concluded
+ * their machine could only reach its peer through the owner's forwarded key, and took a
+ * non-existent problem to the owner. They did not invent the theory; they read it here.
+ *
+ * So: state what is true (queued, automatic retry, bounded window) and never name a cause that was
+ * not reported.
+ */
+export function queuedForRetryNotice(what: string, detail: string | null, windowMinutes: number): string {
+  const cause = detail ?? "the transport reported no reason";
+  return (
+    `${what}: the hop failed right now (${cause}) — the message is QUEUED, not lost. ` +
+    `ccmux retries it automatically for up to ${windowMinutes} minutes. Nothing is required of you or of anyone else.`
+  );
+}
+
 export function relay(r: RemoteResult, what: string, writes = true): number {
   if (r.transportFailed) {
     const tail = writes ? " — nothing was sent" : "";
-    const cause = r.failureDetail ?? "ssh unreachable, timed out, or no agent forwarding";
+    const cause = r.failureDetail ?? "no reason reported";
     console.error(`${what}: transport failed (${cause})${tail}`);
     if (r.stderr.trim() !== "") console.error(r.stderr.trimEnd());
     return 1;
