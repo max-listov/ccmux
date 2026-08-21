@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- A direct remote `ccmux msg` launched beneath SSH or Stitchwire without managed session identity
+  still delivers as the honest `cli` principal, but now warns on stderr that the recipient has no
+  route back to the originating agent. Local human CLI sends and authenticated managed senders stay
+  quiet; the distinction comes from verified process ancestry rather than environment or address
+  guesses.
+
 ## [0.27.0] — 2026-08-19
 
 a dead agent socket no longer travels into a session that outlives its login

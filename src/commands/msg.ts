@@ -3,7 +3,7 @@ import { z } from "zod";
 import { providerFor } from "../agent/index.ts";
 import { cliPrincipal, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
 import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
-import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor } from "../chat/auth.ts";
+import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor, remoteTransportAncestor } from "../chat/auth.ts";
 import { loadMachineConfig } from "../config/machine.ts";
 import { CHAT_GENERATION, ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
 import { findSession, loadSessions } from "../config/sessions.ts";
@@ -11,6 +11,7 @@ import { routeFor } from "../fleet/address.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
 import { RETRY_WINDOW_MS } from "../fleet/flush.ts";
 import { queuedForRetryNotice, relay, runPeer } from "../fleet/transport.ts";
+import type { RemoteTransport } from "../chat/auth.ts";
 import type { AgentKind, ChatMessage, ChatPrincipal, ManagedPeer, Session, MachineConfig } from "../types.ts";
 import { log } from "../util/log.ts";
 import { preview } from "../util/preview.ts";
@@ -18,6 +19,21 @@ import { usageLine } from "./help.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 
 const RemoteListSchema = ListJsonSchema.pick({ sessions: true });
+
+export function anonymousRemoteWarning(from: ChatPrincipal, transport: RemoteTransport | null): string | null {
+  if (from.kind !== "cli" || transport === null) return null;
+  const transportLabel = transport === "ssh" ? "ssh" : "stitchwire";
+  return (
+    `msg: warning — this command is running under ${transportLabel} without a managed sender; sent as ${principalLabel(from)}, `
+    + "so the recipient cannot reply to the originating agent. Run ccmux msg <machine>:<session> from the managed "
+    + `session instead of invoking remote ccmux msg through ${transportLabel}.`
+  );
+}
+
+function warnAboutAnonymousRemote(from: ChatPrincipal, transport: RemoteTransport | null): void {
+  const warning = anonymousRemoteWarning(from, transport);
+  if (warning !== null) console.error(warning);
+}
 
 function senderFor(machine: string, sessions: Session[], m: MachineConfig): ChatPrincipal | { error: string } {
   const name = process.env.CCMUX_SESSION;
@@ -137,7 +153,7 @@ export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(),
   return 0;
 }
 
-export async function cmdMsg(args: string[]): Promise<number> {
+export async function cmdMsg(args: string[], transport?: RemoteTransport | null): Promise<number> {
   const positionals: string[] = [];
   let task: string | null = null;
   let defer = false;
@@ -170,6 +186,9 @@ export async function cmdMsg(args: string[]): Promise<number> {
   const sessions = loadSessions(machine);
   const from = senderFor(machine.rcPrefix, sessions, machine);
   if ("error" in from) return console.error(from.error), 1;
+  const senderTransport = transport === undefined
+    ? (from.kind === "cli" ? remoteTransportAncestor() : null)
+    : transport;
 
   if (positionals[0] === "cancel") {
     const cancelTask = positionals[1];
@@ -196,6 +215,7 @@ export async function cmdMsg(args: string[]): Promise<number> {
   if (targetToken === OWNER) {
     if (expectedAgent !== null || expectedThread !== null) return console.error("msg: owner has no provider/thread"), 1;
     appendMessage(machine, buildEnvelope(from, ownerTarget(), body, task, defer, onBehalfOf, notBefore));
+    warnAboutAnonymousRemote(from, senderTransport);
     console.log(`sent ${principalLabel(from)} → owner: ${preview(body)}`);
     return 0;
   }
@@ -215,6 +235,7 @@ export async function cmdMsg(args: string[]): Promise<number> {
       envelope,
       result: { ok: !result.transportFailed && result.code === 0, detail: result.transportFailed ? "transport failed" : result.code === 0 ? "" : `remote exit ${result.code}` },
     });
+    warnAboutAnonymousRemote(from, senderTransport);
     // NOT `relay`: the envelope is already in the outbox above, so "nothing was sent" would be a
     // lie, and a lie that costs — it is what sent two sessions chasing a transport problem that the
     // supervisor was already handling, and then to the owner with it.
@@ -240,6 +261,7 @@ export async function cmdMsg(args: string[]): Promise<number> {
   }
   const envelope = buildEnvelope(from, target, body, task, defer, onBehalfOf, notBefore);
   appendMessage(machine, envelope);
+  warnAboutAnonymousRemote(from, senderTransport);
   log.info({ msg: "chat message sent", from: principalLabel(from), to: targetLabel(target), task });
   console.log(`sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
   return 0;

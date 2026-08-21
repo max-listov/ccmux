@@ -49,10 +49,18 @@ from `cli` to a managed sender. An authenticated remote transport is the remote 
 process/routing provenance, not security against a hostile process with the same OS user, which can
 read ccmux state; provider metadata never increases trust.
 
-The active state bundle is `chat-v2.jsonl`, `chat-cursors-v2.json`, `chat-ack-v2.jsonl`,
-`outbox-v2.jsonl`, and `outbox-ack-v2.jsonl`. Unversioned files remain ignored archives because their
-name-only rows cannot be upgraded without inventing provider and UUID. Lifecycle operations are not
-chat: `restart --then` does not exist, and a work hand-off must use a recorded `msg` envelope.
+An outbound `msg` invoked directly beneath an authenticated remote transport (`sshd` or the local
+Stitchwire agent) without managed identity remains legal and keeps exit code zero after a successful
+send, but it is never silent: stderr warns that the envelope was sent as `cli`, has no route back to
+the originating agent, and must instead be addressed through `ccmux msg <machine>:<session>` from
+that managed session. A local human CLI is intentionally quiet; the distinction comes from process
+ancestry, not from forgeable environment variables or a guess based on the recipient address.
+
+The active state bundle keeps canonical names: `chat.jsonl`, `chat-cursors.json`, `chat-ack.jsonl`,
+`outbox.jsonl`, and `outbox-ack.jsonl`. Its records carry the generation; superseded state lives
+under `archive/` because name-only rows cannot be upgraded without inventing provider and UUID.
+Lifecycle operations are not chat: `restart --then` does not exist, and a work hand-off must use a
+recorded `msg` envelope.
 
 ## Two transports, one address
 

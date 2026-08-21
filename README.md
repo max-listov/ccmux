@@ -315,9 +315,9 @@ immediate mail flows in order, while **deferred** (`--defer`) and **time-delayed
 delivered by id when its condition holds — a Claude Stop hook fires a deferred message the instant the
 turn ends, or the daemon delivers it once the target is stably idle — so a pending conditional message
 never blocks an immediate reply behind it. Loop/rate guards cap a runaway ping-pong. Active state is
-`chat-v2.jsonl`, `chat-cursors-v2.json`, `chat-ack-v2.jsonl`, `outbox-v2.jsonl`, and
-`outbox-ack-v2.jsonl`. Unversioned files are ignored read-only archives; their name-only identities
-are never guessed into v2.
+`chat.jsonl`, `chat-cursors.json`, `chat-ack.jsonl`, `outbox.jsonl`, and
+`outbox-ack.jsonl`. Records carry their generation; superseded state moves under `archive/`, because
+name-only identities are never guessed into v2.
 
 ### Router sessions
 
