@@ -1,10 +1,12 @@
 ---
 title: `msg` через ssh молча теряет обратный адрес
-description: Без `CCMUX_SESSION` отправитель тихо становится «cli» — письмо приходит анонимным, отвечать некуда, и ни отправитель, ни получатель об этом не узнают
+description: Без managed identity удалённый `msg` тихо становится `cli` — письмо приходит без обратного адреса
 type: task
-status: inbox
+status: done
 created: 2026-08-06
-related: docs/backlog/inbox/2026-08-05-return-channel-to-a-roaming-hub.md
+updated: 2026-08-21
+completed: 2026-08-21 13:43 +07:00
+related: docs/backlog/done/2026-08-05-return-channel-to-a-roaming-hub.md
 ---
 
 # `msg` через ssh молча теряет обратный адрес
@@ -54,10 +56,10 @@ const from = ccmuxSession !== undefined && ccmuxSession !== "" ? ccmuxSession : 
 
 ## Как
 
-Различать «намеренно от `cli`» и «случайно потерял себя». Различитель есть:
-**удалённый адрес получателя**. Человек за клавиатурой обычно пишет на свою машину;
-письмо на `<машина>:<сессия>` из шелла без `CCMUX_SESSION` — почти наверняка агент
-в ssh-обёртке.
+Различать «намеренно от `cli`» и «случайно потерял себя». В актуальном коде различитель
+уже есть и надёжнее адресной эвристики: `remoteTransportAncestor()` проверяет реальное
+process ancestry. `cli` под `sshd` или Stitchwire agent — это удалённая обёртка без managed
+identity; обычный локальный CLI и аутентифицированный managed sender остаются без warning.
 
 Варианты по строгости:
 
@@ -69,6 +71,37 @@ const from = ccmuxSession !== undefined && ccmuxSession !== "" ? ccmuxSession : 
 
 **Склоняюсь к первому.** Отказ ломает легитимный сценарий человека, а предупреждение
 попадает ровно в глаза тому, кто ошибся, — и в лог, где это потом видно.
+
+## План реализации
+
+- [x] Использовать существующий kernel-truth detector `remoteTransportAncestor()` и предупреждать
+  только для сочетания `cli` sender + authenticated remote transport ancestry (`ssh | wire`).
+- [x] Печатать warning только после ветки фактической отправки/локальной записи; код возврата
+  успешной отправки не менять.
+- [x] Закрепить regression coverage для SSH-анонимности и отсутствия warning у локального CLI.
+- [x] Прогнать полный `bun run check`, isolated process fixtures и настоящий SSH command-path через
+  source bundle на временном state root.
+
+## Конвейер 0/0
+
+- [x] План проверен против актуального кода; validators плана: 0 по команде владельца.
+- [x] Реализация завершена.
+- [x] Gates и пользовательский CLI-path зелёные.
+- [x] Validators реализации: 0 по команде владельца.
+
+## Что сделано
+
+- [x] Runtime — `src/commands/msg.ts`: `cli` sender под SSH или Stitchwire получает точный stderr
+  warning только после записи/отправки envelope; успешный exit code и retry semantics не меняются.
+- [x] Identity — warning показывает фактический `ccmux/cli@<machine>`, объясняет отсутствие
+  обратного маршрута и направляет к `ccmux msg <machine>:<session>` из managed session.
+- [x] Tests — `test/msg-identity.test.ts` и `test/fixtures/msg.ts`: покрыты SSH, Stitchwire,
+  локальный CLI и managed sender без подмены production env contract.
+- [x] Live probe — `scripts/msg-remote-anonymity-probe.ts`: source bundle выполняется под настоящим
+  `sshd` на полностью временных config/state paths; проверяются warning, delivery и одна ledger row.
+- [x] Docs — `docs/architecture/peer-routing.md`: remote-wrapper behavior описан для обоих
+  authenticated transports из одного ancestry source of truth.
+- [x] Gates — `bun run check`: TypeScript и 480 tests зелёные; 0 failures, 1369 assertions.
 
 ## Развилки
 
