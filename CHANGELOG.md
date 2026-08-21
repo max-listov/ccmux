@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-08-21
+
+anonymous remote messages now expose their missing return route
+
 ### Fixed
 
 - A direct remote `ccmux msg` launched beneath SSH or Stitchwire without managed session identity
@@ -13,7 +17,6 @@ the GitHub Release with that section as the notes.
   route back to the originating agent. Local human CLI sends and authenticated managed senders stay
   quiet; the distinction comes from verified process ancestry rather than environment or address
   guesses.
-
 ## [0.27.0] — 2026-08-19
 
 a dead agent socket no longer travels into a session that outlives its login
