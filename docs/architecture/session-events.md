@@ -133,6 +133,23 @@ Worth noting how both were found: not by the tests, which asserted a single tran
 but by another consumer reading the live feed. A defect that lives in a *sequence* is invisible to a
 check that looks at one event.
 
+## Releasing a change to this feed: the consumer's machine goes first
+
+Auto-update is phase-based — each daemon checks on its own schedule — so which machine lands a
+release first is effectively random. That is fine for most changes and wrong for changes to this
+feed, because the feed has an asymmetry the rest of the system does not: **the machine that consumes
+it is one specific machine**, the one with the speaker and the panel. Twice in a row it happened to
+be last, which meant the fix was live everywhere except where anyone could hear it.
+
+So when the change is to the feed itself, pull it explicitly on the consumer's machine
+(`ccmux update`) rather than waiting for its window. It bounces that daemon and nothing else;
+sessions outlive it.
+
+The same asymmetry applies when verifying afterwards. A window that reaches back before the bounce
+still contains the old behaviour, and reading it as "the fix did not work" is an easy and convincing
+mistake — made here once, within a minute of shipping. Take the daemon's start instant as the
+boundary, and if nothing has happened since, say that instead of concluding something.
+
 ## Consumer notes learned the hard way
 
 - **A closed reader is noticed on the next write, not when it leaves.** A closed pipe is only
