@@ -382,6 +382,15 @@ one. A session without a role is addressed by name exactly as before.
 It is deliberately cheap to change and never marks a session for restart: a second name that costs
 something to correct is one people put off correcting, and within a week it lies while being trusted.
 
+The ledger tolerates a mixed fleet. A record written by a **newer** ccmux is stepped over rather than
+refusing the whole file — otherwise one upgrade would take down `msg`, `inbox`, delivery and the TUI
+on every machine that had not caught up yet, and there is always such a window: rollout takes minutes
+and a rollback is legitimate. Its **position is kept**, because delivery cursors are positions in that
+file; dropping it would shift every later index and hand a cursor written by one build to a different
+message under another. `ccmux doctor` and `ccmux inbox` report how many records this build cannot
+read. A record from an *older* generation still stops the read — that one needs a person to migrate
+it — and a line that is not JSON still fails loudly, because that is damage, not skew.
+
 Opt-in messaging between managed sessions, so one agent can hand off to another without you relaying.
 
 - `ccmux chat on <name>` — enable chat for a session (**default OFF**; nothing sends or receives

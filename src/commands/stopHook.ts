@@ -1,6 +1,7 @@
 import { loadMachineConfig } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { loadLedger, loadAckedIds, appendAck } from "../chat/store.ts";
+import type { ChatMessage } from "../types.ts";
 import { formatChatInjection } from "../chat/format.ts";
 import { replyRouteToSender } from "../chat/replyRoute.ts";
 import { promptInvocation } from "../env.ts";
@@ -54,7 +55,10 @@ export async function cmdStopHook(): Promise<number> {
     const acked = loadAckedIds(m);
     const now = Date.now();
     const due = (iso: string | null) => iso === null || !Number.isFinite(Date.parse(iso)) || now >= Date.parse(iso);
-    const pending = loadLedger(m).filter((msg) => msg.to.kind === "managed" && managedPeerKey(msg.to) === recipientKey && msg.defer && !acked.has(msg.id) && due(msg.notBefore));
+    const pending = loadLedger(m).filter(
+      (msg): msg is ChatMessage =>
+        msg !== null && msg.to.kind === "managed" && managedPeerKey(msg.to) === recipientKey && msg.defer && !acked.has(msg.id) && due(msg.notBefore),
+    );
     if (pending.length === 0) return 0; // no deferred mail → let the turn end cleanly
 
     // Record acks FIRST (durable, fail-closed) so neither this hook nor the daemon re-delivers.

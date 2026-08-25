@@ -9,7 +9,7 @@ import { paneWorkingSince } from "../events/paneActivity.ts";
 import { promptInvocation } from "../env.ts";
 import { formatChatInjection } from "./format.ts";
 import { replyRouteToSender } from "./replyRoute.ts";
-import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors } from "./store.ts";
+import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors, type LedgerSlot } from "./store.ts";
 import { writeChatHold, clearChatHold } from "../agent/sessionStatus.ts";
 import { managedPeer, managedPeerKey, principalLabel } from "./identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
@@ -25,10 +25,10 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_INBOUND = 12;
 
 /** Messages addressed to `name` sent within the window (by ledger `ts`). Pure — `nowMs` passed in. */
-export function recentInboundCount(recipient: ReturnType<typeof managedPeer>, ledger: ChatMessage[], nowMs: number): number {
+export function recentInboundCount(recipient: ReturnType<typeof managedPeer>, ledger: readonly LedgerSlot[], nowMs: number): number {
   let n = 0;
   for (const msg of ledger) {
-    if (msg.to.kind !== "managed" || managedPeerKey(msg.to) !== managedPeerKey(recipient)) continue;
+    if (msg === null || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== managedPeerKey(recipient)) continue;
     const t = Date.parse(msg.ts);
     if (Number.isFinite(t) && nowMs - t <= RATE_WINDOW_MS) n += 1;
   }

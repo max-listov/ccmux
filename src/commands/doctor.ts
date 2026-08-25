@@ -11,6 +11,7 @@ import { wireSocketPath } from "../fleet/wire.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
 import { escalationRefusal } from "../agent/claude/launch.ts";
 import { chatEnabledFor } from "../config/chat.ts";
+import { loadLedger, unreadableCount } from "../chat/store.ts";
 import { launchInputsFor } from "../agent/launchStamp.ts";
 import { envFilePath, envInput, inheritedEnvInput } from "../agent/launchInputs.ts";
 import { inheritsUndeclaredEnv } from "../agent/sessionEnv.ts";
@@ -150,6 +151,18 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       `chat:   PROBLEM — ${muted.length} session(s) can receive but NOT send (started before the send capability existed): ${muted.join(", ")}`,
     );
     console.log(`        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`);
+  }
+  // A skipped record must be VISIBLE somewhere prominent. The reader steps over what a newer build
+  // wrote so the whole ledger does not fall over during an upgrade — but an append-only history that
+  // quietly looks shorter than it is has stopped being one, so the count is reported here.
+  try {
+    const unreadable = unreadableCount(loadLedger(m));
+    if (unreadable > 0) {
+      console.log(`chat:   ${unreadable} ledger record(s) this ccmux cannot read — written by a newer build.`);
+      console.log(`        Not an error and nothing is lost: they are stepped over, their positions kept, and this machine reads them once it is upgraded.`);
+    }
+  } catch (e) {
+    console.log(`chat:   PROBLEM — the ledger could not be read: ${String(e)}`);
   }
   if (external.length > 0) {
     console.log("inputs: what shapes a session besides argv (hashed; a change here shows in RESTART)");

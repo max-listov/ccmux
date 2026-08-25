@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { z } from "zod";
 import { CHAT_GENERATION, ChatCursorsSchema, ChatMessageSchema } from "../config/schema.ts";
 import type { ChatCursors, ChatMessage, ChatPrincipal, ChatTarget, MachineConfig, ManagedPeer } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
@@ -74,11 +75,12 @@ export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon" | 
  *  cancelled). This is the set `msg cancel` tombstones and the set a re-armed `--task` replaces.
  *  notBefore due-ness is intentionally NOT considered — a future-dated watchdog is still pending. */
 export function pendingConditional(
-  ledger: ChatMessage[],
+  ledger: readonly LedgerSlot[],
   acked: Set<string>,
   filter: { from?: ChatPrincipal; to?: ChatTarget; task?: string },
 ): ChatMessage[] {
-  return ledger.filter((msg) => {
+  return ledger.filter((msg): msg is ChatMessage => {
+    if (msg === null) return false; // a record this build cannot read is not a message it can cancel
     if (!(msg.defer || msg.notBefore !== null)) return false; // immediate mail is delivered at once
     if (acked.has(msg.id)) return false; // already delivered or cancelled
     if (filter.from !== undefined && !samePrincipal(msg.from, filter.from)) return false;
@@ -89,31 +91,96 @@ export function pendingConditional(
 }
 
 /**
- * Parse one record, naming a generation mismatch for what it is.
+ * What every generation-2 record carries, with room for what a newer build may add.
  *
- * Strict parsing alone would already reject a record from an older generation — but it would do so
- * by complaining about the shape of `from`, which reads as a bug in the writer. The generation is
- * the first thing checked and the first thing said, so the answer is "this record predates the
- * identity model" and the next step (the archive) is obvious rather than deduced.
+ * This is the line between "written by something newer" and "malformed". Without it the two are
+ * indistinguishable, and treating them alike costs one way or the other: refuse both and a routine
+ * upgrade takes down the whole ledger; skip both and a writer bug disappears silently.
+ *
+ * `from`/`to` are checked only as far as "an object naming its kind" — a NEW kind of address is
+ * precisely what a newer build is expected to introduce, while a record whose sender is a bare
+ * string is not from the future, it is broken.
  */
-function parseRecord(raw: unknown, where: string): ChatMessage {
+const LedgerCoreSchema = z
+  .object({
+    v: z.literal(CHAT_GENERATION),
+    id: z.string(),
+    ts: z.string(),
+    from: z.object({ kind: z.string() }).loose(),
+    to: z.object({ kind: z.string() }).loose(),
+    body: z.string(),
+    task: z.string().nullable(),
+    defer: z.boolean(),
+    onBehalfOf: z.string().nullable(),
+    notBefore: z.string().nullable(),
+  })
+  .loose();
+
+/**
+ * One position in the ledger. `null` = a record this build cannot read.
+ *
+ * The hole is kept rather than dropped, and that is the whole reason this is a type instead of a
+ * shorter array. **Delivery cursors are positions in this array.** Drop an unreadable record and
+ * every later index shifts, so a cursor written by one build points at a different message when read
+ * by another — messages re-delivered, or skipped and never seen. A hole costs a null check; a shift
+ * costs mail.
+ */
+export type LedgerSlot = ChatMessage | null;
+
+/**
+ * Parse one record: a message, or `null` for one this build is not equipped to read.
+ *
+ * Two failures that look alike and must not be treated alike:
+ *
+ *  - **A record from a NEWER generation, or one that fails this build's schema.** That is version
+ *    skew, and skew is routine: the fleet upgrades over minutes and a rollback is a legitimate
+ *    operation, so there is always a window where one machine writes what another does not know.
+ *    Refusing the whole file for it would take down `msg`, `inbox`, delivery and the TUI at once —
+ *    every one of them reads the ledger through here. So the record is skipped and its position
+ *    kept.
+ *  - **A record from an OLDER generation.** That is not skew, it is a migration that was never done,
+ *    and it still fails loudly with the same instruction as before. Silently skipping those would
+ *    hide a whole conversation history from the person who has to move it.
+ *
+ * Strict parsing alone would reject an older record too — but by complaining about the shape of
+ * `from`, which reads as a bug in the writer. The generation is checked first and said first, so the
+ * answer is "this record predates the identity model" and the next step is obvious.
+ */
+export function parseRecord(raw: unknown, where: string): LedgerSlot {
   const generation = raw !== null && typeof raw === "object" && "v" in raw ? raw.v : undefined;
   if (generation !== CHAT_GENERATION) {
+    // A NEWER generation is skew by definition — nothing is asked of anyone, the machine reads those
+    // records once it is upgraded. An OLDER one is a migration that was never done, and it needs a
+    // person; the two are not symmetric and must not be treated alike.
+    if (typeof generation === "number" && generation > CHAT_GENERATION) return null;
     const found = generation === undefined ? "none" : String(generation);
     throw new Error(
       `${where} — chat record generation ${found}, this build reads ${CHAT_GENERATION}. ` +
         `Records from before the identity model are not readable here; move them under archive/.`,
     );
   }
-  return ChatMessageSchema.parse(raw);
+  const message = ChatMessageSchema.safeParse(raw).data;
+  if (message !== undefined) return message;
+  // Same generation, unfamiliar shape. Two very different things look like this, and the difference
+  // is decided rather than assumed: a record that still carries the whole generation-2 core is a
+  // newer build's extension — an added field, a kind of address this one has no case for — and is
+  // skipped. A record missing that core is malformed, and still fails loudly, because a writer bug
+  // that goes quiet is a bug nobody fixes.
+  if (LedgerCoreSchema.safeParse(raw).success) return null;
+  throw new Error(`${where} — chat record is generation ${CHAT_GENERATION} but malformed: it is missing fields every record of this generation carries`);
 }
 
-/** Read + validate the whole ledger in order. A corrupt line fails LOUD with its number — the
- *  append-only history is never silently dropped. */
-export function loadLedger(m: MachineConfig): ChatMessage[] {
+/**
+ * Read the whole ledger in order, positions intact.
+ *
+ * A line that is not JSON still fails LOUD: single-line `O_APPEND` writes are atomic, so malformed
+ * text means the file was damaged by something other than this program, and quietly continuing past
+ * real damage is how an append-only history stops being one.
+ */
+export function loadLedger(m: MachineConfig): LedgerSlot[] {
   const { ledger } = chatPaths(m);
   if (!existsSync(ledger)) return [];
-  const out: ChatMessage[] = [];
+  const out: LedgerSlot[] = [];
   const lines = readFileSync(ledger, "utf8").split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]?.trim() ?? "";
@@ -127,6 +194,13 @@ export function loadLedger(m: MachineConfig): ChatMessage[] {
     out.push(parseRecord(raw, `chat ledger:${i + 1}`));
   }
   return out;
+}
+
+/** Records present in the file that this build cannot read. Reported by `inbox` and `doctor`,
+ *  because a skipped record must be VISIBLE somewhere — the alternative is history disappearing
+ *  quietly, which is the one thing an append-only ledger exists to prevent. */
+export function unreadableCount(slots: readonly LedgerSlot[]): number {
+  return slots.reduce((n, slot) => (slot === null ? n + 1 : n), 0);
 }
 
 /** Append one message. O_APPEND (flag "a") makes a single line write atomic across concurrent
@@ -159,7 +233,7 @@ export async function appendMessageOnce(m: MachineConfig, msg: ChatMessage): Pro
     }
   }
   try {
-    if (loadLedger(m).some((item) => item.id === msg.id)) return false;
+    if (loadLedger(m).some((item) => item?.id === msg.id)) return false;
     appendMessage(m, msg);
     return true;
   } finally {
@@ -196,7 +270,7 @@ export async function saveCursors(m: MachineConfig, c: ChatCursors): Promise<voi
  */
 export function unreadFor(
   recipient: ManagedPeer,
-  ledger: ChatMessage[],
+  ledger: readonly LedgerSlot[],
   cursors: ChatCursors,
   acked?: ReadonlySet<string>,
 ): { msg: ChatMessage; idx: number }[] {

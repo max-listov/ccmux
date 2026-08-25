@@ -6,6 +6,7 @@ import { CHAT_GENERATION, MachineConfigSchema } from "../src/config/schema.ts";
 import {
   appendMessage,
   loadLedger,
+  unreadableCount,
   loadCursors,
   unreadFor,
   markRead,
@@ -118,11 +119,41 @@ test("a record from an older generation fails LOUD, and says which generation it
   expect(() => loadLedger(m)).toThrow(/archive/);
 });
 
-test("a record claiming a FUTURE generation is refused just as loudly", () => {
-  // Both directions matter: an older ccmux meeting a newer record must stop, not reinterpret it.
+test("a record from a NEWER build is stepped over, and its position is kept", () => {
+  // The two directions are NOT symmetric, and treating them alike is what made this dangerous. An
+  // older record needs a person to migrate it, so it stops the read. A newer one needs nothing from
+  // anyone — this machine reads it once it is upgraded. Refusing the file for it would take down
+  // `msg`, `inbox`, delivery and the TUI at once, on every machine that had not upgraded yet, and
+  // the fleet always has such a window: rollout takes minutes and a rollback is legitimate.
   const m = tempConfig();
-  writeFileSync(chatPaths(m).ledger, `${JSON.stringify({ v: 99, id: "x", ts: "now", from: "a", to: "b", body: "y" })}\n`);
-  expect(() => loadLedger(m)).toThrow(/generation 99, this build reads 2/);
+  const mine = msg({ kind: "cli", source: "ccmux", machine: "test" }, peer("agent-a", THREAD_A), "mine");
+  writeFileSync(
+    chatPaths(m).ledger,
+    `${JSON.stringify({ v: 99, id: "x", ts: "now", from: "a", to: "b", body: "y" })}\n${JSON.stringify(mine)}\n`,
+  );
+  const slots = loadLedger(m);
+  expect(slots.length).toBe(2); // the hole is kept — delivery cursors are POSITIONS in this array
+  expect(slots[0]).toBeNull();
+  expect(slots[1]?.id).toBe(mine.id);
+  expect(unreadableCount(slots)).toBe(1);
+});
+
+test("a record of THIS generation that is merely extended is skew, not damage", () => {
+  // What a newer build actually does: adds a field, or a kind of address this one has no case for.
+  // Everything the current generation requires is still there, so it is skipped rather than fatal.
+  const m = tempConfig();
+  const extended = { ...msg({ kind: "cli", source: "ccmux", machine: "test" }, peer("agent-a", THREAD_A), "x"), somethingNewer: true, to: { kind: "external", source: "ccmux", name: "someone" } };
+  writeFileSync(chatPaths(m).ledger, `${JSON.stringify(extended)}\n`);
+  const slots = loadLedger(m);
+  expect(slots).toEqual([null]);
+});
+
+test("a record MISSING what every record of this generation carries is still fatal", () => {
+  // The other half of the line. A writer bug that goes quiet is a bug nobody fixes, so "written by
+  // something newer" and "malformed" are decided apart rather than lumped together.
+  const m = tempConfig();
+  writeFileSync(chatPaths(m).ledger, `${JSON.stringify({ v: 2, id: "x", ts: "now", from: { kind: "cli" }, to: { kind: "owner" }, body: "y" })}\n`);
+  expect(() => loadLedger(m)).toThrow(/malformed/);
 });
 
 test("a name-only row that DOES claim the current generation still fails closed", () => {

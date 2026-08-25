@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ChatMessage } from "../types.ts";
+import type { LedgerSlot } from "./store.ts";
 import type { Outbound } from "../fleet/outbox.ts";
 import { outboundId, outboundTimestamp } from "../fleet/outbox.ts";
 import { principalLabel, targetLabel } from "./identity.ts";
@@ -55,9 +55,16 @@ export const LogPayloadSchema = z.object({
 export type LogPayload = z.infer<typeof LogPayloadSchema>;
 
 /** Ledger + outbox of ONE machine as a single row list, oldest first. Pure. */
-export function localRows(machine: string, ledger: ChatMessage[], outbox: Outbound[], settled: ReadonlySet<string> = new Set()): LogRow[] {
+export function localRows(machine: string, ledger: readonly LedgerSlot[], outbox: Outbound[], settled: ReadonlySet<string> = new Set()): LogRow[] {
   const rows: LogRow[] = [];
   for (const msg of ledger) {
+    // A record this build cannot read still happened. The log is the place a person goes to ask
+    // "what passed through here", so the position is shown as itself rather than closed over — the
+    // one thing an append-only history must never do is look shorter than it is.
+    if (msg === null) {
+      rows.push({ machine, ts: "", kind: "chat", from: "?", to: "?", task: null, body: "(a record this ccmux cannot read — written by a newer build)", note: "" });
+      continue;
+    }
     rows.push({
       machine,
       ts: msg.ts,

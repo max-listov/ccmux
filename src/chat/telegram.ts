@@ -87,7 +87,9 @@ export async function mirrorPending(m: MachineConfig): Promise<void> {
   let cur = start;
   while (cur < ledger.length) {
     const msg = ledger[cur];
-    if (msg === undefined) {
+    // Either past the end, or a record this build cannot read. Both are stepped over: the mirror is
+    // a feed of what happened, and a message we cannot render is not one we can forward.
+    if (msg === undefined || msg === null) {
       cur++;
       continue;
     }

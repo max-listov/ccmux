@@ -1,6 +1,6 @@
 import { forwardIfRemote } from "../fleet/forward.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
-import { loadLedger, loadCursors, loadAckedIds, unreadFor, markRead, fmtMessage, OWNER } from "../chat/store.ts";
+import { loadLedger, loadCursors, loadAckedIds, unreadFor, markRead, fmtMessage, unreadableCount, OWNER } from "../chat/store.ts";
 import { providerFor } from "../agent/index.ts";
 import { holdReason } from "../chat/holdReason.ts";
 import { readChatHold } from "../agent/sessionStatus.ts";
@@ -41,6 +41,13 @@ export async function cmdInbox(args: string[]): Promise<number> {
   // Consult the ack-log: conditional mail is delivered OFF the read cursor, so without this an
   // already-injected deferred message would be reported as pending forever.
   const unread = unreadFor(peer, ledger, loadCursors(m), loadAckedIds(m));
+  // Said here too, because this is where someone asks "is there anything for me": a record this
+  // build cannot read might have been addressed to this session, and silence about it would be the
+  // one thing an append-only ledger exists to prevent.
+  const unreadable = unreadableCount(ledger);
+  if (unreadable > 0) {
+    console.log(`(${unreadable} record(s) in the ledger were written by a newer ccmux and cannot be read here — upgrade this machine to see them)`);
+  }
   if (unread.length === 0) {
     console.log(`(${name}: no unread messages)`);
   } else {

@@ -66,7 +66,7 @@ test("re-arming --after with the same (from,to,task) REPLACES the prior pending 
   expect(pend.length).toBe(1); // only the latest survives
   expect(pend[0]?.body).toBe("arm 2");
   // the ledger holds both; the first was tombstoned
-  expect(loadLedger(m).filter((x) => x.task === "t2").length).toBe(2);
+  expect(loadLedger(m).filter((x) => x?.task === "t2").length).toBe(2);
 });
 
 test("cancel is scoped to the sender — one router can't cancel another's watchdog", async () => {

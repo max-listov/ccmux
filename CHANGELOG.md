@@ -6,6 +6,25 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A chat record written by a newer ccmux no longer takes down the whole ledger.** `loadLedger`
+  threw on the first record it could not parse, and `msg`, `inbox`, delivery and the TUI all read the
+  ledger through it — so a single record of an unfamiliar shape meant no chat at all on any machine
+  that had not upgraded yet. A fleet always has that window: rollout takes minutes and a rollback is
+  a legitimate operation. Such a record is now stepped over.
+- **The skipped record keeps its POSITION.** Delivery cursors are positions in that array, so
+  dropping a record would shift every later index and hand a cursor written by one build to a
+  different message under another — mail re-delivered, or skipped and never seen. A hole costs a null
+  check; a shift costs mail.
+- "Written by something newer" and "malformed" are now decided apart rather than assumed alike. A
+  record still carrying everything this generation requires is an extension and is skipped; one
+  missing that core is malformed and still fails loudly, because a writer bug that goes quiet is a
+  bug nobody fixes. A line that is not JSON is damage, not skew, and still stops the read — as does a
+  record from an *older* generation, which needs a person to migrate it.
+- `ccmux doctor` and `ccmux inbox` report how many records this build cannot read. An append-only
+  history that quietly looks shorter than it is has stopped being one.
+
 ## [0.33.0] — 2026-08-25
 
 address a session by what it does, not by what it is called
