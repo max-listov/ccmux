@@ -122,3 +122,9 @@ an event is a line in this machine's own file that nobody has to read.
 - **A daemon bounce re-observes rather than replays.** The previous observation lives in that process
   only, so whatever is true after the bounce is emitted once, and nothing that happened while it was
   down is invented.
+- **An empty feed is not evidence of anything.** A probe that asks "does this build read the resume
+  cursor?" by looking for output confuses *the mechanism being absent* with *nothing having
+  happened*: on a quiet machine both look identical. One such probe was handed to another team and
+  nearly got a healthy, up-to-date node written off as stale, because its journal was simply empty.
+  Test presence against something that does not depend on activity — the symbol in the shipped
+  binary — and keep behavioural checks for machines you know are busy.
