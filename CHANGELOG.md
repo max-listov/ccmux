@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.31.1] — 2026-08-25
+
+a spinner is activity, so a long tool call is not a dead turn
+
 ### Fixed
 
 - **A live turn is no longer mistaken for a dead one while a tool is running.** The evidence a turn
@@ -19,7 +23,6 @@ the GitHub Release with that section as the notes.
 - The first look at a session now acts on nothing: it has no baseline to be a diff against, so it
   cannot tell a turn that died an hour ago from one whose pane it sampled at the wrong instant. The
   pass two seconds later is where an inherited orphan gets closed.
-
 ## [0.31.0] — 2026-08-25
 
 the snapshot says when the current turn began
