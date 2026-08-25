@@ -114,6 +114,10 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     uptimeSeconds: null,
     createdAt: null,
     lastMessage: ext.lastMessage,
+    // A discovered session is read-only: nothing here hooks its turns, so when its current one
+    // began is simply not knowable. Null is that answer, and `state` keeps saying whether it is
+    // working.
+    turnStartedAt: null,
     stale: [],
     lastActivityMs: ext.lastActivityMs,
   };

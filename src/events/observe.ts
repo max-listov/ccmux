@@ -1,5 +1,5 @@
 import { providerFor, lastActivityMs, lastTranscriptMessage } from "../agent/index.ts";
-import { readLifecycle } from "../agent/sessionStatus.ts";
+import { closeLifecycleTurn, readLifecycle } from "../agent/sessionStatus.ts";
 import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { eventsEnabledFor } from "../config/events.ts";
 import { loadSessions } from "../config/sessions.ts";
@@ -34,27 +34,41 @@ export interface Observed {
   waitingAt: string | null;
   /** Terminal lifecycle failure, or null. */
   blocked: string | null;
-  /** The lifecycle file says a turn is running, and the turn is provably over anyway. */
-  turnInterrupted: boolean;
-  /** Start instant of the running turn, when one is known — the duration for an interrupted end. */
+  /** Start instant of the turn the lifecycle file says is running, or null when it says otherwise. */
   turnStartedMs: number | null;
   /**
-   * Which turn we have already reported as interrupted, by its start instant.
+   * That turn is over anyway, and this is the instant it actually stopped — the last time the
+   * transcript moved, not "now".
    *
-   * NOT a boolean, and that distinction is the whole fix. `turnInterrupted` is derived from how long
-   * the transcript has been quiet, so it returns to false the moment the file stirs and rises again
-   * after the next silence — it flickers within a single turn. Deduping on "was it true last pass"
-   * therefore reported the SAME abandoned turn over and over: measured on a live machine, one turn
-   * produced three events in six minutes with a growing duration, which for a consumer that speaks
-   * and blinks is three announcements of one thing.
+   * The difference is the whole value of the number. A turn is only PROVEN dead after a stretch of
+   * silence, so the moment we can say so is always later than the moment it happened — by the length
+   * of the silence, plus however long until a pass looked. Measuring to `now` therefore inflates
+   * every such turn by at least a minute, and one that nobody looked at for an hour by an hour. The
+   * transcript's last write is when the work actually stopped.
    *
-   * Identity of the turn does not flicker. Remember which turn was announced, and stay quiet until a
+   * Null while the turn is (or may still be) live — and null when the lifecycle file is not claiming
+   * a turn at all, so this and `turnStartedMs` are set together or not at all.
+   */
+  turnOverMs: number | null;
+  /** That turn did not end in the agent's own words — it was cut short. */
+  turnInterrupted: boolean;
+  /**
+   * Which turn we have already closed, by its start instant.
+   *
+   * NOT a boolean, and that distinction is the whole reason it is written down. The evidence a turn
+   * is over is derived from how long the transcript has been quiet, so it returns to false the
+   * moment the file stirs and rises again after the next silence — it flickers within a single turn.
+   * Deduping on "was it true last pass" therefore reported the SAME abandoned turn over and over:
+   * measured on a live machine, one turn produced three events in six minutes with a growing
+   * duration, which for a consumer that speaks and blinks is three announcements of one thing.
+   *
+   * Identity of the turn does not flicker. Remember which turn was closed, and stay quiet until a
    * different one starts.
    */
-  interruptReportedFor: number | null;
+  turnClosedFor: number | null;
 }
 
-export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null, turnInterrupted: false, turnStartedMs: null, interruptReportedFor: null };
+export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null, turnStartedMs: null, turnOverMs: null, turnInterrupted: false, turnClosedFor: null };
 
 /**
  * Transitions between two observations. Pure, and the reason the daemon side stays testable without
@@ -65,7 +79,7 @@ export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null
  * few seconds earlier and sometimes a false start (a session that immediately dies). Two writers
  * announcing the same thing differently is worse than one writer announcing it late.
  */
-export function transitions(prev: Observed, next: Observed, nowMs: number): EmitInput[] {
+export function transitions(prev: Observed, next: Observed): EmitInput[] {
   const out: EmitInput[] = [];
   if (prev.running && !next.running) {
     out.push({ event: "session-stop" });
@@ -75,12 +89,22 @@ export function transitions(prev: Observed, next: Observed, nowMs: number): Emit
   if (next.blocked !== null && prev.blocked !== next.blocked) out.push({ event: "session-blocked", detail: next.blocked });
   if (next.waitingAt !== null && prev.waitingAt !== next.waitingAt) out.push({ event: "waiting", detail: next.waitingAt });
   if (prev.waitingAt !== null && next.waitingAt === null) out.push({ event: "resumed" });
-  // Once per TURN, not once per rise of a flickering signal — see `interruptReportedFor`.
-  if (next.turnInterrupted && prev.interruptReportedFor !== next.turnStartedMs) {
-    // Reported as an ordinary end, flagged — a consumer that only wants "it finished" should not
-    // have to know about interruption, and one that cares can see it.
-    const durationMs = next.turnStartedMs === null ? undefined : Math.max(0, nowMs - next.turnStartedMs);
-    out.push({ event: "turn-end", interrupted: true, ...(durationMs === undefined ? {} : { durationMs }) });
+  // A turn the hook never ended. Once per TURN, not once per rise of a flickering signal — see
+  // `turnClosedFor`.
+  //
+  // `prev.running` is the gate that keeps this an OBSERVATION rather than an invention. A turn that
+  // was already over the first time we looked did not end while we were watching: its ending is
+  // state we inherited, not a moment we saw, and announcing it would date a two-day-old event to the
+  // instant a daemon happened to start. The stamp still gets closed either way — see `observeOnce`.
+  if (next.turnOverMs !== null && next.turnStartedMs !== null && prev.running && prev.turnClosedFor !== next.turnStartedMs) {
+    // An ordinary end, flagged only when it was cut short — a consumer that just wants "it finished"
+    // should not have to know how, and one that cares can see it. A hook that never fired is not
+    // interruption: the turn ended in the agent's own words and only the announcement went missing.
+    out.push({
+      event: "turn-end",
+      durationMs: Math.max(0, next.turnOverMs - next.turnStartedMs),
+      ...(next.turnInterrupted ? { interrupted: true } : {}),
+    });
   }
   return out;
 }
@@ -105,26 +129,41 @@ export function observe(m: MachineConfig, s: Session, running: boolean, pane: st
           endedOnAssistantText: lm !== null && lm.role === "assistant" && lm.kind === "message",
           msSinceActivity: activity === null ? null : nowMs - activity,
         });
+  // The lifecycle file claims a turn is running, and the turn state proves it is not. Only a SETTLED
+  // turn counts: `settling`/`quiet-unproven` are not yet proof, and acting on them would close a
+  // turn during a pause between tool calls. A pane we could not capture yields no turn state at all,
+  // which is correctly no proof of anything.
+  const claimed = lifecycle?.state === "working" ? lifecycle.ts : null;
+  const over = claimed !== null && state?.settled === true;
   return {
     running: true,
     // Carried forward by the caller after each pass; an observation cannot know it on its own.
-    interruptReportedFor: null,
+    turnClosedFor: null,
     waitingAt: scan?.atPrompt ?? null,
     blocked: block?.error ?? null,
-    // Only an OBSERVED interruption counts: the lifecycle file claims a turn is running while the
-    // turn state proves it is over. `settling`/`quiet-unproven` are not yet proof and must not be
-    // reported, or every pause between tool calls would announce a dead turn.
-    turnInterrupted: lifecycle?.state === "working" && state?.why === "idle-after-interrupt",
-    turnStartedMs: lifecycle?.state === "working" ? lifecycle.ts : null,
+    turnStartedMs: claimed,
+    // When the work actually stopped: the transcript's last write. Clamped into [start, now] so a
+    // frozen or forked transcript can never produce a negative duration or one that runs into the
+    // future; a session that never spoke has no transcript instant to use, so the pass's own clock
+    // stands in.
+    turnOverMs: over ? Math.round(Math.min(nowMs, Math.max(claimed, activity ?? nowMs))) : null,
+    turnInterrupted: over && state?.why === "idle-after-interrupt",
   };
 }
 
 /**
- * One observation pass over the machine's sessions, emitting only what changed.
+ * One observation pass over the machine's sessions: close what the hook abandoned, publish what
+ * changed.
  *
  * `previous` is the caller's memory across passes — held by the daemon, so a restart of the daemon
  * simply re-observes rather than replaying history. Sessions that vanish from the registry are
  * dropped from it, so a removed session cannot leave a permanent entry behind.
+ *
+ * The events switch decides what is PUBLISHED, not what is looked at. Closing an abandoned turn is
+ * not publishing — it is repairing this machine's own record of what its sessions are doing, which
+ * `list`, the TUI and every snapshot read whether or not anybody subscribed to a feed. A session
+ * with events switched off would otherwise keep a `working` stamp from a turn that ended days ago,
+ * and hand that stale instant to its next turn as a start time.
  */
 export async function observeOnce(m: MachineConfig, previous: Map<string, Observed>, nowMs = Date.now()): Promise<number> {
   const sessions = loadSessions(m).filter((s) => !s.archived);
@@ -133,24 +172,39 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
   let emitted = 0;
   for (const s of sessions) {
     seen.add(s.name);
-    if (!eventsEnabledFor(s, m)) continue;
     const isRunning = running.has(s.name);
     // Capture only what is running: a stopped session has no pane, and asking for one is a fork per
     // session per pass spent to be told so.
     const pane = isRunning ? await capturePane(m, s.name, 40).catch(() => null) : null;
     const next = observe(m, s, isRunning, pane, nowMs);
     const prev = previous.get(s.name) ?? UNSEEN;
-    const events = transitions(prev, next, nowMs);
+    // The stamp is closed whether or not the ending is announced — including on the very first pass,
+    // where `transitions` deliberately stays silent about a turn it never saw running. Silence about
+    // an event is not a reason to leave a false state behind.
+    if (next.turnOverMs !== null && prev.turnClosedFor !== next.turnStartedMs) await closeTurn(s.name, next.turnOverMs);
+    const events = eventsEnabledFor(s, m) ? transitions(prev, next) : [];
     for (const input of events) {
       appendEvent(m, s, input);
       emitted += 1;
     }
-    // Carry the "already announced" mark across passes: set when this pass announced an interrupted
-    // turn, inherited otherwise. Kept out of `observe` because it is memory, not observation — and
-    // out of `transitions` because that stays pure.
-    const announcedInterrupt = events.some((e) => e.event === "turn-end" && e.interrupted === true);
-    previous.set(s.name, { ...next, interruptReportedFor: announcedInterrupt ? next.turnStartedMs : prev.interruptReportedFor });
+    // Carry the "already closed" mark across passes. Kept out of `observe` because it is memory, not
+    // observation — and out of `transitions` because that stays pure.
+    previous.set(s.name, { ...next, turnClosedFor: next.turnOverMs !== null ? next.turnStartedMs : prev.turnClosedFor });
   }
   for (const name of [...previous.keys()]) if (!seen.has(name)) previous.delete(name);
   return emitted;
+}
+
+/** Best-effort, like every other status write: a stamp we could not close must not abort the pass
+ *  and cost the remaining sessions theirs. Re-read immediately before the write, so a turn that
+ *  started in the milliseconds since the observation is not closed on the strength of stale
+ *  evidence. */
+async function closeTurn(name: string, endedMs: number): Promise<void> {
+  try {
+    const current = readLifecycle(name);
+    if (current === null || current.state !== "working") return;
+    await closeLifecycleTurn(name, current, endedMs);
+  } catch {
+    // the next pass tries again
+  }
 }

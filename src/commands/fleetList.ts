@@ -26,6 +26,10 @@ const RemoteSessionSchema = z.object({
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),
+  // Absent on a peer running an older ccmux, which is exactly what `null` means here: not "that
+  // session is idle" but "that build does not report it". `version` is on the machine row beside it,
+  // so a consumer can tell the two apart without guessing.
+  turnStartedAt: z.string().nullable().default(null),
   uptime: z.object({ text: z.string().nullable().default(null) }).partial().optional(),
 });
 const RemoteListSchema = z.object({
@@ -60,6 +64,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       running: r.running,
       uptime: { text: r.uptimeText },
       stale: r.stale,
+      turnStartedAt: r.turnStartedAt,
     })),
   };
   const remote = await Promise.all(

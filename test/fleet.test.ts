@@ -14,6 +14,7 @@ function row(name: string, lastActivityMs: number | null, createdAt: string | nu
   running: true,
   lifecycleError: null,
     stale: [],
+    turnStartedAt: null,
     atPrompt: null,
   state: "idle",
     model: null,

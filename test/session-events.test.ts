@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { appendEvent, buildEvent, feedFiles, parseEvent, readEvents } from "../src/events/feed.ts";
 import { observe, transitions, UNSEEN, type Observed } from "../src/events/observe.ts";
 import { eventForLifecycle, lifecycleToWrite } from "../src/commands/hookStatus.ts";
+import { turnStartedAt } from "../src/commands/list.ts";
+import { SUPERVISOR_CLOSED_EVENT, closedTurnRecord } from "../src/agent/sessionStatus.ts";
 import { formatEvent, framedLine, resolveSince } from "../src/commands/events.ts";
 import { eventsEnabledFor } from "../src/config/events.ts";
 import { eventsPath } from "../src/config/paths.ts";
@@ -138,55 +140,129 @@ test("an unmapped hook event says nothing", () => {
   expect(eventForLifecycle(status("PreCompact", "idle", 1), null)).toBeNull();
 });
 
+test("a Stop arriving after the supervisor already closed that turn says nothing", () => {
+  // Both writers are describing the same ending. A consumer that speaks or blinks on `turn-end`
+  // would say it twice, and the second one carries no duration — strictly worse than silence.
+  expect(eventForLifecycle(status("Stop", "idle", 9_000), status(SUPERVISOR_CLOSED_EVENT, "idle", 8_000))).toBeNull();
+});
+
+test("a supervisor-closed turn does not swallow the NEXT turn's start", () => {
+  // The stamp is `idle` again, so the following prompt is a new turn rather than one that joins a
+  // turn already running — which is what a stamp left at `working` made it look like.
+  const closed = status(SUPERVISOR_CLOSED_EVENT, "idle", 8_000);
+  expect(eventForLifecycle(status("UserPromptSubmit", "working", 9_000), closed)).toEqual({ event: "turn-start" });
+  expect(lifecycleToWrite(status("UserPromptSubmit", "working", 9_000), closed).ts).toBe(9_000);
+});
+
+test("closing a turn keeps what describes the SESSION rather than the turn", () => {
+  // A blanked permission mode or transcript path would read as a session that lost them, when all
+  // that happened is that its last turn ended without a hook to say so.
+  const before: LifecycleStatus = { state: "working", ts: 1_000, event: "UserPromptSubmit", permissionMode: "auto", effort: "high", transcriptPath: "/tmp/t.jsonl" };
+  expect(closedTurnRecord(before, 5_000)).toEqual({
+    state: "idle",
+    ts: 5_000,
+    event: SUPERVISOR_CLOSED_EVENT,
+    permissionMode: "auto",
+    effort: "high",
+    transcriptPath: "/tmp/t.jsonl",
+  });
+});
+
+// ── the snapshot: when the turn that is running now began ────────────────────────────────────────
+
+test("a working session reports an ABSOLUTE instant, so a cached snapshot stays true", () => {
+  // Elapsed would go stale in transit — short by exactly the delivery time, and further off the
+  // less often the consumer refreshes. An instant reads the same however late it is read.
+  expect(turnStartedAt("working", { state: "working", ts: 1_700_000_000_000, event: "UserPromptSubmit" })).toBe("2023-11-14T22:13:20.000Z");
+});
+
+test("a session that is not in a turn has no instant at all — not zero, not the last turn's", () => {
+  const stampFromAFinishedTurn: LifecycleStatus = { state: "working", ts: 1_000, event: "UserPromptSubmit" };
+  expect(turnStartedAt("idle", stampFromAFinishedTurn)).toBeNull();
+  expect(turnStartedAt("stopped", stampFromAFinishedTurn)).toBeNull();
+  expect(turnStartedAt("idle", null)).toBeNull();
+});
+
+test("in a turn whose start nobody recorded, the instant is null and the state still says working", () => {
+  // A provider without turn hooks, or a turn already under way when ccmux started. "Working, start
+  // unknown" must stay distinguishable from "not working" — the state answers the first half.
+  expect(turnStartedAt("working", null)).toBeNull();
+  expect(turnStartedAt("working", { state: "idle", ts: 1_000, event: "Stop" })).toBeNull();
+});
+
 // ── the observed half: what the hook cannot see ──────────────────────────────────────────────────
 
 const observed = (over: Partial<Observed> = {}): Observed => ({ ...UNSEEN, running: true, ...over });
 
 test("a session stopping is reported, and nothing else is said about a ghost", () => {
-  const out = transitions(observed({ waitingAt: "Do you want to proceed?" }), { ...UNSEEN, running: false }, 0);
+  const out = transitions(observed({ waitingAt: "Do you want to proceed?" }), { ...UNSEEN, running: false });
   expect(out).toEqual([{ event: "session-stop" }]);
 });
 
 test("waiting at a menu is an event — every other signal reads that session as idle", () => {
-  const out = transitions(observed(), observed({ waitingAt: "Do you want to proceed?" }), 0);
+  const out = transitions(observed(), observed({ waitingAt: "Do you want to proceed?" }));
   expect(out).toEqual([{ event: "waiting", detail: "Do you want to proceed?" }]);
 });
 
 test("leaving the menu closes the pair, because answering a prompt starts no new turn", () => {
   // Without `resumed` a reader would keep that session marked "waiting for you" until its next turn,
   // which can be hours away — a session that needs nothing, shown as one that needs attention.
-  expect(transitions(observed({ waitingAt: "Continue?" }), observed(), 0)).toEqual([{ event: "resumed" }]);
+  expect(transitions(observed({ waitingAt: "Continue?" }), observed())).toEqual([{ event: "resumed" }]);
 });
 
 test("an interrupted turn is closed by observation — Stop never fires for one", () => {
-  const out = transitions(observed({ turnStartedMs: 1_000 }), observed({ turnInterrupted: true, turnStartedMs: 1_000 }), 43_000);
-  expect(out).toEqual([{ event: "turn-end", interrupted: true, durationMs: 42_000 }]);
+  const out = transitions(observed({ turnStartedMs: 1_000 }), observed({ turnStartedMs: 1_000, turnOverMs: 43_000, turnInterrupted: true }));
+  expect(out).toEqual([{ event: "turn-end", durationMs: 42_000, interrupted: true }]);
 });
 
-test("ONE interrupted turn is announced once, however much the signal flickers", () => {
+test("a turn whose Stop hook never fired is closed too, and is NOT called interrupted", () => {
+  // The commonest orphan of all: the turn ended in the agent's own words and only the announcement
+  // went missing. Measured on a live machine, four of seven `working` stamps were of this kind, the
+  // oldest two and a half days old. Flagging them as interruptions would tell a consumer the fleet
+  // is being cut short all day; leaving them open tells it those sessions never stopped working.
+  const out = transitions(observed({ turnStartedMs: 1_000 }), observed({ turnStartedMs: 1_000, turnOverMs: 61_000 }));
+  expect(out).toEqual([{ event: "turn-end", durationMs: 60_000 }]);
+});
+
+test("the duration runs to when the transcript stopped, not to when we noticed", () => {
+  // Proof of a dead turn only arrives after a stretch of silence, so "now" is always later than the
+  // ending — by the silence, plus however long until a pass looked. An hour of nobody looking used
+  // to become an hour of reported work.
+  const out = transitions(observed({ turnStartedMs: 0 }), observed({ turnStartedMs: 0, turnOverMs: 30_000 }));
+  expect(out).toEqual([{ event: "turn-end", durationMs: 30_000 }]);
+});
+
+test("a turn already over the first time we looked is closed silently", () => {
+  // The daemon's memory is per-process. A turn that ended while nothing was watching was not
+  // witnessed ending, and dating it to the instant a daemon happened to start would publish a
+  // two-day-old event as news. The stamp is still closed — see `observeOnce` — just not announced.
+  expect(transitions(UNSEEN, observed({ turnStartedMs: 1_000, turnOverMs: 2_000 }))).toEqual([]);
+});
+
+test("ONE abandoned turn is announced once, however much the signal flickers", () => {
   // Measured on a live machine before this was deduped by identity: one abandoned turn produced
   // three events in six minutes with a growing duration. The signal is derived from how long the
   // transcript has been quiet, so it drops to false the moment the file stirs and rises again after
   // the next silence — deduping on "was it true last pass" therefore re-announced the same turn.
   const turn = 1_000;
-  const announced = observed({ turnInterrupted: true, turnStartedMs: turn, interruptReportedFor: turn });
+  const announced = observed({ turnStartedMs: turn, turnOverMs: 5_000, turnClosedFor: turn });
   // it flickered off…
-  expect(transitions(announced, observed({ turnInterrupted: false, turnStartedMs: turn, interruptReportedFor: turn }), 50_000)).toEqual([]);
+  expect(transitions(announced, observed({ turnStartedMs: turn, turnOverMs: null, turnClosedFor: turn }))).toEqual([]);
   // …and back on, still the same turn
-  expect(transitions(announced, observed({ turnInterrupted: true, turnStartedMs: turn, interruptReportedFor: turn }), 60_000)).toEqual([]);
+  expect(transitions(announced, observed({ turnStartedMs: turn, turnOverMs: 50_000, turnClosedFor: turn }))).toEqual([]);
 });
 
 test("a NEW turn abandoned the same way is announced again", () => {
   // The mark is identity, not a permanent silence: a different turn is a different event.
-  const prev = observed({ turnInterrupted: true, turnStartedMs: 1_000, interruptReportedFor: 1_000 });
-  const out = transitions(prev, observed({ turnInterrupted: true, turnStartedMs: 90_000 }), 100_000);
-  expect(out).toEqual([{ event: "turn-end", interrupted: true, durationMs: 10_000 }]);
+  const prev = observed({ turnStartedMs: 1_000, turnOverMs: 5_000, turnClosedFor: 1_000 });
+  const out = transitions(prev, observed({ turnStartedMs: 90_000, turnOverMs: 100_000, turnInterrupted: true }));
+  expect(out).toEqual([{ event: "turn-end", durationMs: 10_000, interrupted: true }]);
 });
 
 test("steady state emits nothing at all", () => {
   const state = observed({ waitingAt: "Continue?", blocked: "boom" });
-  expect(transitions(state, state, 0)).toEqual([]);
-  expect(transitions(observed(), observed(), 0)).toEqual([]);
+  expect(transitions(state, state)).toEqual([]);
+  expect(transitions(observed(), observed())).toEqual([]);
 });
 
 test("a not-yet-proven quiet turn is NOT reported as interrupted", () => {

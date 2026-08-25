@@ -5,14 +5,30 @@ import { STATUS_DIR } from "../config/paths.ts";
 import { atomicWrite } from "../util/atomic.ts";
 
 // Per-session structured status, written by the Claude hooks (`ccmux hook-status`) and the statusLine
-// tee (`ccmux status-line`), read by `list`/TUI. TWO files per session, single-writer each, so the
-// two writers never race on one file (lifecycle = hooks only, metrics = statusLine only). Keyed by
-// the ccmux session NAME (stable — CCMUX_SESSION env), not the agent's own uuid.
+// tee (`ccmux status-line`), read by `list`/TUI. TWO files per session, one topic each, so a write
+// about the turn can never clobber a write about the context window (lifecycle = turn boundaries,
+// metrics = statusLine only). Keyed by the ccmux session NAME (stable — CCMUX_SESSION env), not the
+// agent's own uuid.
+//
+// The lifecycle file has a second writer, and it is there by necessity: the supervisor closes a turn
+// the hook never closed. `Stop` fires only when a turn ends VOLUNTARILY, so a `working` stamp
+// outlives its turn whenever one is interrupted or the hook simply does not run — and nothing inside
+// the session survives to correct it. They do not race for the same instant: the hook writes turn
+// boundaries as they happen, the supervisor writes only when it has PROVEN a turn is over and the
+// hook stayed silent. Every write is atomic, so a reader sees one record or the other, never a
+// mixture.
+
+/** The `event` the supervisor stamps when it closes a turn the hook abandoned. Not a Claude hook
+ *  name, and deliberately shaped so it cannot collide with one: a late `Stop` reads it and stays
+ *  quiet rather than announcing the same turn's end a second time. */
+export const SUPERVISOR_CLOSED_EVENT = "ccmux:turn-closed";
 
 export const LifecycleStatusSchema = z.object({
   state: z.enum(["working", "idle"]),
   ts: z.number(),
-  event: z.string(), // the hook that set it (UserPromptSubmit/Stop/SessionStart)
+  /** What set it: a Claude hook (UserPromptSubmit/Stop/SessionStart), or `ccmux:turn-closed` when
+   *  the supervisor closed a turn no hook ever ended. */
+  event: z.string(),
   permissionMode: z.string().optional(),
   effort: z.string().optional(),
   transcriptPath: z.string().optional(),
@@ -76,6 +92,21 @@ export function readMetrics(name: string): MetricsStatus | null {
 export async function writeLifecycle(name: string, data: LifecycleStatus): Promise<void> {
   mkdirSync(STATUS_DIR, { recursive: true });
   await atomicWrite(lifecyclePath(name), JSON.stringify(data));
+}
+
+/**
+ * The record that closes a turn the hook never ended.
+ *
+ * Carries the session-shaped fields (`permissionMode`, `effort`, `transcriptPath`) forward from the
+ * record it replaces: they describe the SESSION, not the turn, and dropping them would blank a
+ * reader's view of a session merely because its last turn was interrupted.
+ */
+export function closedTurnRecord(previous: LifecycleStatus, endedMs: number): LifecycleStatus {
+  return { ...previous, state: "idle", ts: endedMs, event: SUPERVISOR_CLOSED_EVENT };
+}
+
+export async function closeLifecycleTurn(name: string, previous: LifecycleStatus, endedMs: number): Promise<void> {
+  await writeLifecycle(name, closedTurnRecord(previous, endedMs));
 }
 
 export async function writeMetrics(name: string, data: MetricsStatus): Promise<void> {

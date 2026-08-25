@@ -296,8 +296,23 @@ reacting is the reader's job.
 
 Delivery is at-least-once — `--since` re-reads its boundary instant rather than risking a gap — so
 every event carries an `id` to dedupe on. `sessionEvents` in `machine.json` and `eventsEnabled` per
-session switch it off; both default on. Details in
-[`docs/architecture/session-events.md`](docs/architecture/session-events.md).
+session switch it off; both default on.
+
+A transition is only heard by whoever was listening at the time, and a consumer restarting is
+routine — so the counter beside `working` comes from the snapshot instead. `list --json` and
+`fleet --json` carry **`turnStartedAt`**: when the turn that is running right now began.
+
+```jsonc
+{ "name": "cc-api", "state": "working", "turnStartedAt": "2026-08-25T07:41:12.004Z" }
+```
+
+An absolute instant, never an elapsed count — elapsed is only true at the moment it is produced, and
+a snapshot that crossed a network and sat in a cache is short by exactly the delivery time. Subtract
+it from your own clock and tick locally. Null means the session is not in a turn, or is in one whose
+start nobody recorded (a provider without turn hooks); `state` tells those apart. `fleet --json`
+reports it for remote machines too.
+
+Details in [`docs/architecture/session-events.md`](docs/architecture/session-events.md).
 
 ## Session environment
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { readLifecycle, writeLifecycle, type LifecycleStatus } from "../agent/sessionStatus.ts";
+import { SUPERVISOR_CLOSED_EVENT, readLifecycle, writeLifecycle, type LifecycleStatus } from "../agent/sessionStatus.ts";
 import { appendEvent } from "../events/feed.ts";
 import { eventsEnabledFor } from "../config/events.ts";
 import { loadMachineConfig } from "../config/machine.ts";
@@ -13,8 +13,12 @@ import type { EmitInput } from "../events/feed.ts";
  *
  *   UserPromptSubmit → working   (a turn just started)
  *   Stop             → idle      (turn ended voluntarily)
- *   SessionStart     → idle      (fresh launch/resume — no turn running; clears a stale `working`
- *                                 left by a crash/interrupt, since Stop never fires on interrupt)
+ *   SessionStart     → idle      (fresh launch/resume — no turn running)
+ *
+ * `Stop` fires only on a VOLUNTARY ending, so this hook cannot be the only thing that closes a turn:
+ * an interrupted one, or one whose hook did not run, would leave `working` behind forever. The
+ * supervisor closes those from outside (`src/events/observe.ts`) once it can prove the turn is over,
+ * which is why `working` here means a turn that is genuinely running rather than one that once was.
  *
  * Identity is `CCMUX_SESSION` (the stable session NAME set at launch), like `stop-hook`. Writes
  * NOTHING to stdout (a Stop hook's stdout is parsed by Claude — the chat `stop-hook` runs on the same
@@ -78,8 +82,12 @@ export function eventForLifecycle(status: LifecycleStatus, previous: LifecycleSt
   if (status.event === "UserPromptSubmit") return previous?.state === "working" ? null : { event: "turn-start" };
   if (status.event === "SessionStart") return { event: "session-start" };
   if (status.event !== "Stop") return null;
-  // A turn we never saw start (the hook was added mid-conversation, or the daemon already closed an
-  // interrupted turn) still ended — report it without inventing a duration.
+  // The supervisor already closed this turn and said so. It is the same ending, and announcing it
+  // twice is two announcements of one thing to anyone who speaks or blinks on the event — so the
+  // late hook stays quiet rather than adding a second, duration-less end.
+  if (previous?.event === SUPERVISOR_CLOSED_EVENT) return null;
+  // A turn we never saw start (the hook was added mid-conversation) still ended — report it without
+  // inventing a duration.
   if (previous === null || previous.state !== "working") return { event: "turn-end" };
   const durationMs = status.ts - previous.ts;
   return durationMs >= 0 ? { event: "turn-end", durationMs } : { event: "turn-end" };

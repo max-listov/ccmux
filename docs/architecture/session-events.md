@@ -39,7 +39,7 @@ running when these happen:
 | event | why only observation can see it |
 |---|---|
 | `waiting` / `resumed` | the agent is stopped at a menu it cannot answer. Every other signal reads this as idle — still pane, no tool running — when it is the opposite |
-| `turn-end` with `interrupted` | `Stop` fires only when a turn ends *voluntarily*; an escaped turn would otherwise have a start and never an end, and a reader would show it working forever |
+| `turn-end` the hook never sent | `Stop` fires only when a turn ends *voluntarily*, and sometimes not even then; the turn would otherwise have a start and never an end, and a reader would show that session working forever |
 | `session-stop`, `session-blocked` | nothing inside a dead session survives to report it |
 
 `resumed` exists because the `waiting` pair is not otherwise closable: answering a permission prompt
@@ -49,6 +49,71 @@ A reader tracking state would leave that session flagged "waiting for you" for h
 `session-start` is deliberately NOT written by the daemon even though it can see a pane appear: the
 hook says it better, a few seconds later but only when the conversation actually booted. Two writers
 announcing the same thing differently is worse than one writer announcing it late.
+
+## The `working` stamp must not outlive its turn
+
+The lifecycle status file is where a turn's **start instant** lives, and it is the only place that
+knows it. `Stop` is what closes it — and `Stop` fires only on a voluntary ending. So an interrupted
+turn, or one whose hook simply did not run, leaves `working` behind with nothing inside the session
+able to correct it. Measured on a live machine: seven sessions carried a `working` stamp, four of
+them from turns that were already over, the oldest by two and a half days.
+
+That stale stamp is not harmless bookkeeping. It costs three separate lies, and the third is the one
+that hides:
+
+- the abandoned turn never gets an end, so a consumer shows that session working forever;
+- the **next** turn never gets a start, because a prompt arriving while the stamp says `working`
+  joins the turn already running instead of beginning one;
+- and that next turn inherits the old instant, so its duration — and `turnStartedAt` in the snapshot
+  — measure from a turn that finished hours ago.
+
+So the supervisor closes what the hook abandoned. Once the observation pass can prove a turn is over
+(`turnState().settled`, the same standard chat delivery uses to decide it is safe to type into a
+session), it writes `idle` with the event `ccmux:turn-closed`. Three consequences follow from that
+one write, and each is deliberate:
+
+**The duration runs to when the transcript stopped, not to when we noticed.** Proof of a dead turn
+only arrives after a stretch of silence, so the instant we can say so is always later than the
+ending — by the silence, plus however long until a pass looked. Measuring to `now` inflated every
+such turn by at least a minute, and one nobody looked at for an hour by an hour.
+
+**A turn already over on the first look is closed silently.** The daemon's memory is per-process; a
+turn that ended while nothing was watching was not witnessed ending, and dating it to the instant a
+daemon happened to start would publish a two-day-old event as news. The stamp is repaired either
+way — silence about an event is never a reason to leave a false state behind.
+
+**A late `Stop` on an already-closed turn says nothing.** Both writers would be describing the same
+ending, and the second one carries no duration. The hook recognises `ccmux:turn-closed` in the record
+it is replacing and stays quiet.
+
+The events switch decides what is *published*, not what is looked at: closing an abandoned turn
+repairs this machine's own record of what its sessions are doing, which `list`, the TUI and every
+snapshot read whether or not anybody subscribed to a feed.
+
+## The snapshot answers "since when", the feed answers "what happened"
+
+A consumer drawing live state wants a counter beside `working`: how long has this turn been running.
+The feed alone cannot answer it — a transition is only heard by whoever was listening at the time,
+and a consumer restarting is routine, not an emergency. After a restart it sees `working` and has no
+way to tell three seconds from forty minutes, because the start is in the past and the next event
+for that session will be the end.
+
+So `list --json` and `fleet --json` carry `turnStartedAt` beside `state`. Two properties make it
+usable:
+
+- **It is an absolute instant, never an elapsed count.** Elapsed is only true at the moment it is
+  produced: a snapshot that crossed a network and sat in a cache is short by exactly the delivery
+  time, and drifts further the less often the consumer refreshes. An instant reads the same however
+  late it is read — the consumer subtracts it from its own clock and ticks locally, with no polling
+  and no subscription for the counter.
+- **It is present only when there is a turn to be counting.** Null means either "not in a turn" or
+  "in one whose start nobody recorded" — a provider without turn hooks, or a turn already running
+  when ccmux started. `state` separates those: `working` with a null instant is "working, start
+  unknown", which should draw as working *without* a counter rather than as a turn that just began.
+
+`fleet --json` carries it for remote machines too, from their own `list --json`. A peer on an older
+build simply omits the field and it reads as null — which is why `version` sits on the machine row
+beside the sessions.
 
 ## Nothing runs on the event
 

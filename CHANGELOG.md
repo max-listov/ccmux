@@ -6,6 +6,40 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- **`turnStartedAt` in `list --json` and `fleet --json` — when the turn that is running now began.**
+  A consumer drawing live state wants a growing counter beside `working`, and the feed alone cannot
+  supply one: a transition is only heard by whoever was listening at the time, and a consumer
+  restarting is routine rather than an emergency. After a restart it saw `working` and could not tell
+  three seconds from forty minutes. It is an absolute instant, never an elapsed count — elapsed is
+  only true at the moment it is produced, so a snapshot that crossed a network and sat in a cache is
+  short by exactly the delivery time. Null when the session is not in a turn, or is in one whose
+  start nobody recorded; `state` tells those two apart. Reported for remote machines as well, from
+  their own `list --json` — a peer on an older build simply omits it and it reads as null.
+
+### Fixed
+
+- **A `working` stamp no longer outlives its turn.** `Stop` fires only when a turn ends
+  *voluntarily*, so an interrupted turn — or one whose hook did not run — left the lifecycle stamp
+  saying `working` with nothing inside the session able to correct it. Measured on a live machine:
+  four of seven `working` stamps were of turns already over, the oldest by two and a half days. The
+  supervisor now closes what the hook abandoned, once it can prove the turn is over by the same
+  standard chat delivery uses to decide it is safe to type into a session.
+- That one stamp was costing three separate lies: the abandoned turn never got a `turn-end`, so a
+  consumer showed the session working forever; the **next** turn never got a `turn-start`, because a
+  prompt arriving under a `working` stamp joins the turn already running instead of beginning one;
+  and that next turn inherited the old instant as its start. All three close together.
+- **The duration of a turn closed by observation now runs to when the transcript stopped, not to
+  when we noticed.** Proof of a dead turn only arrives after a stretch of silence, so the moment we
+  can say so is always later than the ending. Measuring to `now` inflated every such turn by at least
+  a minute, and one nobody looked at for an hour by an hour.
+- A turn already over the first time the supervisor looks is closed **silently**: its ending was
+  never witnessed, and dating it to the instant a daemon happened to start would publish a two-day-old
+  event as news. The stamp is repaired either way.
+- A late `Stop` on a turn the supervisor already closed says nothing, instead of announcing the same
+  ending a second time without a duration.
+
 ## [0.30.3] — 2026-08-25
 
 a turn begins with a transition, not with a message

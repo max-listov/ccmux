@@ -678,6 +678,22 @@ export const ListItemSchema = z.object({
   uptime: z.object({ text: z.string().nullable(), seconds: z.number().nullable() }),
   // What a restart would change for this session; empty = nothing (or launched before stamping).
   stale: z.array(z.string()).default([]),
+  /**
+   * When the turn that is running RIGHT NOW began, or null.
+   *
+   * An ABSOLUTE instant, not "N milliseconds so far", and the difference is not a style choice. An
+   * elapsed number is only true at the instant it is produced: a snapshot that travelled a network
+   * and sat in a consumer's cache carries a counter short by exactly the delivery time, and the
+   * gap widens the less often that consumer refreshes. An instant reads the same however late it is
+   * read, so the consumer subtracts it from its own clock and ticks locally — no polling, no
+   * subscription, and nothing to keep in sync.
+   *
+   * Null means the session is not in a turn, or is in one whose start nobody recorded (a provider
+   * without turn hooks, or a turn already running when ccmux started). Those two are told apart by
+   * `state`: `working` with a null instant is "in a turn, start unknown", which a consumer should
+   * show as working without a counter rather than as a turn that began just now.
+   */
+  turnStartedAt: z.string().nullable().default(null),
   /** The env file this session declares (absolute), and whether it exists right now. A declared file
    *  that is missing does not stop the session — the original decision was "raise it and shout", since
    *  a session that will not boot is worse for a supervisor than one variable short — so this is how a

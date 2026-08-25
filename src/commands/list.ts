@@ -11,7 +11,7 @@ import { computeStamp, staleReasons } from "../agent/launchStamp.ts";
 import { envFilePath } from "../agent/launchInputs.ts";
 import { existsSync } from "node:fs";
 import { promptInvocation } from "../env.ts";
-import { readLifecycle, readMetrics, resolveLiveState } from "../agent/sessionStatus.ts";
+import { readLifecycle, readMetrics, resolveLiveState, type LifecycleStatus } from "../agent/sessionStatus.ts";
 import { VERSION } from "../util/version.ts";
 import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { fmtTokens } from "../tui/format.ts";
@@ -40,6 +40,9 @@ export interface ListRow {
   // What a restart WOULD change for this session ("chat" / "mode" / "modules" / "config").
   // Empty = up to date, or launched before stamping existed (unknown is never shown as stale).
   stale: string[];
+  /** When the turn that is running now began (ISO), or null. See `turnStartedAt` in the JSON
+   *  contract for why it is an instant rather than an elapsed time. */
+  turnStartedAt: string | null;
   /** What blocking menu this session is sitting at, if any — it cannot act until that is answered. */
   atPrompt: string | null;
 }
@@ -70,6 +73,7 @@ async function buildRow(
       context: { text: null, usedTokens: null, limitTokens: null, percent: null },
       uptimeText: "—",
       stale: [],
+      turnStartedAt: null, // a stopped session is not in a turn
       uptimeSeconds: null,
       createdAt: null,
       lastMessage,
@@ -125,11 +129,29 @@ async function buildRow(
     uptimeText: humanizeDuration(uptimeSeconds),
     // A stopped session is never "stale": it will pick everything up whenever it next starts.
     stale: staleReasons(readLaunchStamp(s.name), computeStamp(s, m, promptInvocation())),
+    turnStartedAt: turnStartedAt(state, lifecycle),
     uptimeSeconds,
     createdAt: new Date(startedAt * 1000).toISOString(),
     lastMessage,
     lastActivityMs: activity,
   };
+}
+
+/**
+ * When the turn that is running now began — reported only when BOTH signals agree there IS one.
+ *
+ * The pane-decisive state says whether the session is working; the lifecycle file is the only thing
+ * that knows WHEN, and it is only talking about the current turn while it too says `working`. A
+ * `working` stamp under a drawn-idle pane describes a turn that is already over, and handing that
+ * instant to a consumer would show a finished turn as one still running — the precise error a
+ * counter next to `working` would make most visible.
+ *
+ * Null is also the honest answer for a turn nothing recorded the start of: a provider without turn
+ * hooks, or a turn already under way when ccmux started. `state` still says `working`, so "in a
+ * turn, start unknown" stays distinguishable from "not in a turn".
+ */
+export function turnStartedAt(state: SessionState, lifecycle: LifecycleStatus | null): string | null {
+  return state === "working" && lifecycle?.state === "working" ? new Date(lifecycle.ts).toISOString() : null;
 }
 
 function pad(s: string, n: number): string {
@@ -187,6 +209,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     stale: r.stale,
+    turnStartedAt: r.turnStartedAt,
     envFile: envFileEntry(r.session),
     createdAt: r.createdAt,
     lastMessage: r.lastMessage,
