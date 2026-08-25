@@ -82,6 +82,17 @@ turn that ended while nothing was watching was not witnessed ending, and dating 
 daemon happened to start would publish a two-day-old event as news. The stamp is repaired either
 way — silence about an event is never a reason to leave a false state behind.
 
+**A turning spinner counts as activity, and one glance is not proof.** The evidence a turn is dead
+is silence, and a session four minutes into a tool call is legitimately silent: it writes nothing to
+the transcript, and the only thing still saying otherwise is its pane. Sample that pane in the
+instant between a tool finishing and its result being written and there is no spinner either —
+indistinguishable, on the transcript alone, from a turn nobody is coming back to. Measured: a live
+turn closed and announced as interrupted 29 seconds after its own pane had been working, and a pane
+seen working on one pass read still on the very next one, two seconds later. So the proof window
+runs from the later of "transcript last moved" and "pane last seen working", and the first look at a
+session acts on nothing — it has no baseline to be a diff against. Nothing is loosened for a turn
+that really stopped: its pane stopped with it.
+
 **A late `Stop` on an already-closed turn says nothing.** Both writers would be describing the same
 ending, and the second one carries no duration. The hook recognises `ccmux:turn-closed` in the record
 it is replacing and stays quiet.

@@ -6,6 +6,20 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A live turn is no longer mistaken for a dead one while a tool is running.** The evidence a turn
+  is over is silence — and a session four minutes into a build is legitimately silent, writing
+  nothing to the transcript while its pane is the only thing still saying otherwise. Sample that
+  pane in the instant between a tool finishing and its result being written and there is no spinner
+  either. Measured on the fleet: a live turn closed and announced as interrupted 29 seconds after
+  its own pane had been working, and a pane seen working on one observation pass read still on the
+  very next one, two seconds later. A turning spinner now counts as activity beside a transcript
+  write, so the proof window runs from the later of the two.
+- The first look at a session now acts on nothing: it has no baseline to be a diff against, so it
+  cannot tell a turn that died an hour ago from one whose pane it sampled at the wrong instant. The
+  pass two seconds later is where an inherited orphan gets closed.
+
 ## [0.31.0] — 2026-08-25
 
 the snapshot says when the current turn began

@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendEvent, buildEvent, feedFiles, parseEvent, readEvents } from "../src/events/feed.ts";
-import { observe, transitions, UNSEEN, type Observed } from "../src/events/observe.ts";
+import { lastSignOfLife, observe, shouldCloseTurn, transitions, UNSEEN, type Observed } from "../src/events/observe.ts";
+import { INTERRUPTED_MS, turnState } from "../src/chat/turnState.ts";
 import { eventForLifecycle, lifecycleToWrite } from "../src/commands/hookStatus.ts";
 import { turnStartedAt } from "../src/commands/list.ts";
 import { SUPERVISOR_CLOSED_EVENT, closedTurnRecord } from "../src/agent/sessionStatus.ts";
@@ -263,6 +264,50 @@ test("steady state emits nothing at all", () => {
   const state = observed({ waitingAt: "Continue?", blocked: "boom" });
   expect(transitions(state, state)).toEqual([]);
   expect(transitions(observed(), observed())).toEqual([]);
+});
+
+test("a turning spinner is activity — a long tool call is not a dead turn", () => {
+  // Measured on the fleet: a LIVE turn was closed and announced as interrupted 29 seconds after its
+  // own pane had been working. The session was four minutes into a tool call, so its transcript was
+  // legitimately frozen, and one pass sampled the pane in the instant between the tool finishing and
+  // its result being written. On the transcript alone that is indistinguishable from a turn nobody
+  // is coming back to; the pane is what tells them apart.
+  const now = 10 * 60_000;
+  const transcriptFrozenFor = 4 * 60_000;
+  const paneWorkingAgo = 29_000;
+  const alive = lastSignOfLife(now - transcriptFrozenFor, now - paneWorkingAgo);
+  expect(alive).toBe(now - paneWorkingAgo);
+  const state = turnState({ paneWorking: false, paneReady: true, atMenu: false, endedOnAssistantText: false, msSinceActivity: now - alive! });
+  expect(state).toEqual({ settled: false, why: "quiet-unproven" });
+});
+
+test("a turn that really stopped is still proven dead — its pane stopped with it", () => {
+  // Nothing is loosened for the case the proof exists for: an abandoned turn has no spinner either,
+  // so the window runs from the same instant it always did.
+  const now = 10 * 60_000;
+  const alive = lastSignOfLife(now - INTERRUPTED_MS - 1, now - INTERRUPTED_MS - 1);
+  const state = turnState({ paneWorking: false, paneReady: true, atMenu: false, endedOnAssistantText: false, msSinceActivity: now - alive! });
+  expect(state).toEqual({ settled: true, why: "idle-after-interrupt" });
+});
+
+test("either source alone still answers, and neither invents an instant", () => {
+  expect(lastSignOfLife(null, 5)).toBe(5);
+  expect(lastSignOfLife(7, null)).toBe(7);
+  expect(lastSignOfLife(null, null)).toBeNull();
+});
+
+test("the first look at a session closes nothing — it has no baseline to be a diff against", () => {
+  const over = observed({ turnStartedMs: 1_000, turnOverMs: 2_000 });
+  expect(shouldCloseTurn(UNSEEN, over)).toBe(false);
+  // …and the very next pass, two seconds later, is where an inherited orphan gets closed.
+  expect(shouldCloseTurn({ ...UNSEEN, running: true }, over)).toBe(true);
+});
+
+test("a turn already closed is not closed again, and a different turn is", () => {
+  const prev = observed({ turnClosedFor: 1_000 });
+  expect(shouldCloseTurn(prev, observed({ turnStartedMs: 1_000, turnOverMs: 2_000 }))).toBe(false);
+  expect(shouldCloseTurn(prev, observed({ turnStartedMs: 9_000, turnOverMs: 9_500 }))).toBe(true);
+  expect(shouldCloseTurn(prev, observed({ turnStartedMs: 9_000, turnOverMs: null }))).toBe(false);
 });
 
 test("a not-yet-proven quiet turn is NOT reported as interrupted", () => {

@@ -53,6 +53,21 @@ export interface Observed {
   /** That turn did not end in the agent's own words — it was cut short. */
   turnInterrupted: boolean;
   /**
+   * When the pane was last seen doing work.
+   *
+   * A spinner IS activity, exactly as a transcript write is, and counting only the second one is how
+   * a live turn gets declared dead. A session in a five-minute tool call writes nothing for five
+   * minutes: the transcript is legitimately frozen, and the only thing still saying "alive" is the
+   * pane. One pass that samples the pane in the instant between a tool finishing and its result
+   * being written sees no spinner and a transcript quiet for minutes — indistinguishable, on that
+   * evidence alone, from a turn nobody is coming back to. Measured: a live turn closed and announced
+   * as interrupted 29 seconds after its own pane had been working.
+   *
+   * So the proof window is measured from the LATER of the two. Nothing is loosened for a turn that
+   * really stopped — its pane stops with it.
+   */
+  paneWorkingMs: number | null;
+  /**
    * Which turn we have already closed, by its start instant.
    *
    * NOT a boolean, and that distinction is the whole reason it is written down. The evidence a turn
@@ -68,7 +83,7 @@ export interface Observed {
   turnClosedFor: number | null;
 }
 
-export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null, turnStartedMs: null, turnOverMs: null, turnInterrupted: false, turnClosedFor: null };
+export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null, turnStartedMs: null, turnOverMs: null, turnInterrupted: false, paneWorkingMs: null, turnClosedFor: null };
 
 /**
  * Transitions between two observations. Pure, and the reason the daemon side stays testable without
@@ -109,9 +124,47 @@ export function transitions(prev: Observed, next: Observed): EmitInput[] {
   return out;
 }
 
-/** One session, as seen from outside. Pane text is passed in so the decision stays pure-ish and the
- *  capture happens once per session per pass. */
-export function observe(m: MachineConfig, s: Session, running: boolean, pane: string | null, nowMs: number): Observed {
+/**
+ * The most recent evidence this session is alive, from EITHER source.
+ *
+ * A transcript write and a turning spinner both mean the session is doing something, and taking only
+ * the first declares a long tool call dead: a session four minutes into a build writes nothing, and
+ * the pane is the only thing still saying otherwise.
+ */
+export function lastSignOfLife(transcriptMs: number | null, paneWorkingMs: number | null): number | null {
+  if (transcriptMs === null) return paneWorkingMs;
+  if (paneWorkingMs === null) return transcriptMs;
+  return Math.max(transcriptMs, paneWorkingMs);
+}
+
+/**
+ * Does this pass close the stamp?
+ *
+ * `prev.running` is the baseline the pass is a diff against, and a first look has none: it cannot
+ * tell a turn that died an hour ago from one whose pane it sampled in the instant between a tool
+ * finishing and its result being written. So the first pass establishes what "before" was and acts
+ * on nothing; the second, two seconds later, is where an inherited orphan gets closed.
+ */
+export function shouldCloseTurn(prev: Observed, next: Observed): boolean {
+  return prev.running && next.turnOverMs !== null && prev.turnClosedFor !== next.turnStartedMs;
+}
+
+/**
+ * One session, as seen from outside. Pane text is passed in so the decision stays pure-ish and the
+ * capture happens once per session per pass.
+ *
+ * `lastPaneWorkingMs` is the caller's memory of when this pane was last seen working — the only
+ * thing here that a single glance cannot supply, and the difference between "quiet because the turn
+ * is dead" and "quiet because a tool has been running for four minutes".
+ */
+export function observe(
+  m: MachineConfig,
+  s: Session,
+  running: boolean,
+  pane: string | null,
+  nowMs: number,
+  lastPaneWorkingMs: number | null = null,
+): Observed {
   if (!running) return { ...UNSEEN, running: false };
   const provider = providerFor(s);
   const block = readLifecycleBlockForSession(m, s);
@@ -119,15 +172,18 @@ export function observe(m: MachineConfig, s: Session, running: boolean, pane: st
   const scan = pane === null ? null : provider.scanPane(pane);
   const lm = lastTranscriptMessage(s, m);
   const activity = lastActivityMs(s, m);
+  const paneWorking = scan?.state === "working";
+  const paneWorkingMs = paneWorking ? nowMs : lastPaneWorkingMs;
+  const aliveMs = lastSignOfLife(activity, paneWorkingMs);
   const state =
     pane === null
       ? null
       : turnState({
-          paneWorking: scan?.state === "working",
+          paneWorking,
           paneReady: provider.chatDeliverable === undefined ? true : scan?.ready === true,
           atMenu: provider.chatDeliverable?.(pane) === false,
           endedOnAssistantText: lm !== null && lm.role === "assistant" && lm.kind === "message",
-          msSinceActivity: activity === null ? null : nowMs - activity,
+          msSinceActivity: aliveMs === null ? null : nowMs - aliveMs,
         });
   // The lifecycle file claims a turn is running, and the turn state proves it is not. Only a SETTLED
   // turn counts: `settling`/`quiet-unproven` are not yet proof, and acting on them would close a
@@ -139,6 +195,7 @@ export function observe(m: MachineConfig, s: Session, running: boolean, pane: st
     running: true,
     // Carried forward by the caller after each pass; an observation cannot know it on its own.
     turnClosedFor: null,
+    paneWorkingMs,
     waitingAt: scan?.atPrompt ?? null,
     blocked: block?.error ?? null,
     turnStartedMs: claimed,
@@ -176,20 +233,24 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
     // Capture only what is running: a stopped session has no pane, and asking for one is a fork per
     // session per pass spent to be told so.
     const pane = isRunning ? await capturePane(m, s.name, 40).catch(() => null) : null;
-    const next = observe(m, s, isRunning, pane, nowMs);
     const prev = previous.get(s.name) ?? UNSEEN;
-    // The stamp is closed whether or not the ending is announced — including on the very first pass,
-    // where `transitions` deliberately stays silent about a turn it never saw running. Silence about
-    // an event is not a reason to leave a false state behind.
-    if (next.turnOverMs !== null && prev.turnClosedFor !== next.turnStartedMs) await closeTurn(s.name, next.turnOverMs);
+    const next = observe(m, s, isRunning, pane, nowMs, prev.paneWorkingMs);
+    // The stamp is repaired whether or not the ending is announced — `transitions` stays silent
+    // about an ending it never witnessed, and silence about an event is not a reason to leave a
+    // false state behind.
+    const closing = shouldCloseTurn(prev, next);
+    if (closing && next.turnOverMs !== null) await closeTurn(s.name, next.turnOverMs);
     const events = eventsEnabledFor(s, m) ? transitions(prev, next) : [];
     for (const input of events) {
       appendEvent(m, s, input);
       emitted += 1;
     }
-    // Carry the "already closed" mark across passes. Kept out of `observe` because it is memory, not
+    // Carry the memory this pass produced. Kept out of `observe` because it is memory, not
     // observation — and out of `transitions` because that stays pure.
-    previous.set(s.name, { ...next, turnClosedFor: next.turnOverMs !== null ? next.turnStartedMs : prev.turnClosedFor });
+    previous.set(s.name, {
+      ...next,
+      turnClosedFor: closing ? next.turnStartedMs : prev.turnClosedFor,
+    });
   }
   for (const name of [...previous.keys()]) if (!seen.has(name)) previous.delete(name);
   return emitted;
