@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.30.1] — 2026-08-25
+
+a reopened event stream resumes where the reader left off
+
 ### Fixed
 
 - **A reopened `--follow` now resumes where the reader left off.** A feed with no natural end is
@@ -15,7 +19,6 @@ the GitHub Release with that section as the notes.
   stream opened, frames flowed, and the gap simply did not exist for the consumer. No error, once
   every fifteen minutes. An explicit `--since` still wins over the variable, and an unparseable
   cursor fails loudly rather than degrading back into that silence.
-
 ## [0.30.0] — 2026-08-25
 
 sessions publish what happened, and the wire's answer is read in full
