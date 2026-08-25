@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.30.3] — 2026-08-25
+
+a turn begins with a transition, not with a message
+
 ### Fixed
 
 - **A prompt arriving inside a running turn no longer starts a new one, and no longer shortens it.**
@@ -16,7 +20,6 @@ the GitHub Release with that section as the notes.
   the time since the last message instead of the length of the work — a lie about the one number this
   feed exists to publish, and a convincing one: plausible on its face, and under-reporting more the
   busier a session is. The start instant is now kept for the turn it belongs to.
-
 ## [0.30.2] — 2026-08-25
 
 an abandoned turn is announced once, not once per observation pass
