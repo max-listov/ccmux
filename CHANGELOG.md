@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-08-25
+
+a machine says how far behind the current release it is
+
 ### Added
 
 - **A machine says how far behind the current release it is.** `ccmux fleet` could show which version
@@ -27,7 +31,6 @@ the GitHub Release with that section as the notes.
 - Three states stay distinguishable: behind, current, and **nobody has been able to check**. The last
   must never be drawn as current, which is what it would look like if "unknown" and "up to date" were
   the same value.
-
 ## [0.35.0] — 2026-08-25
 
 an owner outside the fleet has an address, and the hop through a person is written down
