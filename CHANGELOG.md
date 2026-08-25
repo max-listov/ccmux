@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.30.2] — 2026-08-25
+
+an abandoned turn is announced once, not once per observation pass
+
 ### Fixed
 
 - **An abandoned turn is announced once, not once per observation pass.** Found by the first live
@@ -15,7 +19,6 @@ the GitHub Release with that section as the notes.
   silence — deduping on "was it true last pass" therefore re-announced the same turn. It now dedupes
   on the identity of the turn, which does not flicker. For a consumer that speaks an event out loud,
   this was three announcements of one thing.
-
 ## [0.30.1] — 2026-08-25
 
 a reopened event stream resumes where the reader left off
