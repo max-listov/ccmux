@@ -98,9 +98,22 @@ async function runFailure(mode: FailureMode): Promise<void> {
   }
 }
 
-test("fresh Codex child crash rolls back once without lifecycle residue", () => runFailure("crash"));
-test("fresh Codex correlation timeout kills the only child and rolls back", () => runFailure("timeout"));
-test("ambiguous persisted markers preserve rollouts but never promote either UUID", () => runFailure("ambiguous"));
+/**
+ * These are INTEGRATION tests: each spawns a real CLI process against a real tmux server and waits
+ * out a real correlation deadline. Their honest cost is ~400ms, but the default per-test budget is
+ * five seconds and that is not headroom on a loaded machine — measured, one of them took 5000.76ms
+ * on a CI runner executing two jobs of the same commit at once, and the SAME test passed in 444ms in
+ * the other job. A gate that fails on how busy the runner is teaches people to re-run gates, which
+ * is the habit that eventually waves a real failure through.
+ *
+ * So the budget is stated, and stated generously: thirty seconds is still nowhere near a hang, and a
+ * genuine regression here fails on its assertion rather than on the clock.
+ */
+const INTEGRATION_TIMEOUT_MS = 30_000;
+
+test("fresh Codex child crash rolls back once without lifecycle residue", () => runFailure("crash"), INTEGRATION_TIMEOUT_MS);
+test("fresh Codex correlation timeout kills the only child and rolls back", () => runFailure("timeout"), INTEGRATION_TIMEOUT_MS);
+test("ambiguous persisted markers preserve rollouts but never promote either UUID", () => runFailure("ambiguous"), INTEGRATION_TIMEOUT_MS);
 
 test("bootstrap performs exact-generation cleanup even when no initiating CLI is alive", async () => {
   const root = mkdtempSync(join(tmpdir(), "ccmux-codex-orphan-bootstrap-"));
@@ -163,4 +176,4 @@ test("bootstrap performs exact-generation cleanup even when no initiating CLI is
     Bun.spawnSync(tmuxArgv(machine, "kill-server"), { stdout: "ignore", stderr: "ignore" });
     rmSync(root, { recursive: true, force: true });
   }
-});
+}, INTEGRATION_TIMEOUT_MS);
