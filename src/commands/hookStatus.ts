@@ -70,7 +70,12 @@ export function parseLifecycle(raw: string, now: number): LifecycleStatus | null
  * a reader would want (an unmapped event, or a `SessionStart` that is merely clearing a stale flag).
  */
 export function eventForLifecycle(status: LifecycleStatus, previous: LifecycleStatus | null): EmitInput | null {
-  if (status.event === "UserPromptSubmit") return { event: "turn-start" };
+  // A turn begins with a TRANSITION, not with a message. A prompt that lands while a turn is already
+  // running joins that turn instead of starting one — a delivered chat message, a background
+  // watcher's notification, a second question typed after the first. Measured before this check
+  // existed: three starts 50ms apart with no end between them, which for a reader tracking state is
+  // three turns that never finished.
+  if (status.event === "UserPromptSubmit") return previous?.state === "working" ? null : { event: "turn-start" };
   if (status.event === "SessionStart") return { event: "session-start" };
   if (status.event !== "Stop") return null;
   // A turn we never saw start (the hook was added mid-conversation, or the daemon already closed an
@@ -78,6 +83,20 @@ export function eventForLifecycle(status: LifecycleStatus, previous: LifecycleSt
   if (previous === null || previous.state !== "working") return { event: "turn-end" };
   const durationMs = status.ts - previous.ts;
   return durationMs >= 0 ? { event: "turn-end", durationMs } : { event: "turn-end" };
+}
+
+/**
+ * The status to persist, given what was already there.
+ *
+ * A prompt arriving inside a running turn must not move the turn's START forward. It did: the status
+ * was written with the current instant every time, so `turn-end`'s duration — computed as stop minus
+ * that instant — measured from the LAST prompt rather than from the beginning of the work. That is a
+ * lie about the one number this feed exists to report, and a convincing one: it is plausible on its
+ * face, and the busier the session the more it under-reports.
+ */
+export function lifecycleToWrite(status: LifecycleStatus, previous: LifecycleStatus | null): LifecycleStatus {
+  if (status.state === "working" && previous?.state === "working") return { ...status, ts: previous.ts };
+  return status;
 }
 
 export async function cmdHookStatus(): Promise<number> {
@@ -90,7 +109,7 @@ export async function cmdHookStatus(): Promise<number> {
     // Read BEFORE the write: the previous status is what carries the turn's start instant, and this
     // write is about to replace it.
     const previous = readLifecycle(self);
-    await writeLifecycle(self, status);
+    await writeLifecycle(self, lifecycleToWrite(status, previous));
     // The feed comes after the status file, and cannot fail into it. The status file is what the
     // fleet's own health reads; the feed is what outside surfaces listen to, and an outside surface
     // must never be able to cost a session its state.

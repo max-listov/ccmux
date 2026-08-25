@@ -6,6 +6,17 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A prompt arriving inside a running turn no longer starts a new one, and no longer shortens it.**
+  Found by another consumer reading the live feed: three `turn-start` events 50ms apart with no end
+  between them. A delivered chat message, a background watcher's notification or a second question
+  typed after the first all arrive as prompts, and none of them begins a turn.
+- The same write also moved the turn's start instant forward on every prompt, so `turn-end` reported
+  the time since the last message instead of the length of the work — a lie about the one number this
+  feed exists to publish, and a convincing one: plausible on its face, and under-reporting more the
+  busier a session is. The start instant is now kept for the turn it belongs to.
+
 ## [0.30.2] — 2026-08-25
 
 an abandoned turn is announced once, not once per observation pass

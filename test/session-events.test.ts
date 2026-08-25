@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendEvent, buildEvent, feedFiles, parseEvent, readEvents } from "../src/events/feed.ts";
 import { observe, transitions, UNSEEN, type Observed } from "../src/events/observe.ts";
-import { eventForLifecycle } from "../src/commands/hookStatus.ts";
+import { eventForLifecycle, lifecycleToWrite } from "../src/commands/hookStatus.ts";
 import { formatEvent, framedLine, resolveSince } from "../src/commands/events.ts";
 import { eventsEnabledFor } from "../src/config/events.ts";
 import { eventsPath } from "../src/config/paths.ts";
@@ -104,6 +104,34 @@ test("a turn's duration comes from the status the previous hook left — nobody 
 test("a turn we never saw start still ends — without an invented duration", () => {
   expect(eventForLifecycle(status("Stop", "idle", 5), null)).toEqual({ event: "turn-end" });
   expect(eventForLifecycle(status("Stop", "idle", 5), status("SessionStart", "idle", 1))).toEqual({ event: "turn-end" });
+});
+
+test("a prompt landing INSIDE a running turn does not start another one", () => {
+  // Found in the live journal by the transport's owner reading this very feed: three starts 50ms
+  // apart, no end between them. A delivered chat message, a watcher's notification or a second
+  // question typed after the first all arrive as prompts, and none of them begins a turn.
+  const running = status("UserPromptSubmit", "working", 1_000);
+  expect(eventForLifecycle(status("UserPromptSubmit", "working", 1_050), running)).toBeNull();
+  // …and after the turn ends, the next prompt starts a real one again.
+  expect(eventForLifecycle(status("UserPromptSubmit", "working", 9_000), status("Stop", "idle", 8_000))).toEqual({ event: "turn-start" });
+});
+
+test("a prompt inside a running turn does not move the turn's start — the duration is not a lie", () => {
+  // The worse half of the same defect: the status was rewritten with `now` on every prompt, so the
+  // duration measured from the LAST message instead of from the beginning of the work. Plausible on
+  // its face, and the busier the session the more it under-reports.
+  const started = status("UserPromptSubmit", "working", 1_000);
+  const queued = lifecycleToWrite(status("UserPromptSubmit", "working", 1_050), started);
+  expect(queued.ts).toBe(1_000);
+  // A full turn measured across a queued prompt still reports the real span.
+  expect(eventForLifecycle(status("Stop", "idle", 1_801_000), queued)).toEqual({ event: "turn-end", durationMs: 1_800_000 });
+});
+
+test("a genuinely new turn keeps its own start instant", () => {
+  const fresh = lifecycleToWrite(status("UserPromptSubmit", "working", 5_000), status("Stop", "idle", 4_000));
+  expect(fresh.ts).toBe(5_000);
+  // …and ending is never rewritten by this rule.
+  expect(lifecycleToWrite(status("Stop", "idle", 9_000), status("UserPromptSubmit", "working", 5_000)).ts).toBe(9_000);
 });
 
 test("an unmapped hook event says nothing", () => {

@@ -112,6 +112,27 @@ waiting state stays hidden would show starts with no ends and read as a hung ses
 The default is **on**, unlike chat: chat sends traffic to other agents and must be deliberate, while
 an event is a line in this machine's own file that nobody has to read.
 
+## A turn begins with a transition, not with a message
+
+Both defects found on the feed's first day were the same shape, from different writers, and the rule
+that removes them is one sentence: **deduplicate the transition, not the event.**
+
+- The daemon re-announced an abandoned turn on every pass, because it deduplicated on a signal
+  derived from "how long has the transcript been quiet" — which flickers within a single turn.
+- The hook announced a new turn for every prompt, because a prompt that lands while a turn is
+  already running joins it rather than starting one. A delivered chat message, a watcher's
+  notification, a second question typed after the first: all normal, all previously a "turn-start"
+  with no end.
+
+The same write also moved the turn's **start instant** forward on each prompt, so `turn-end` reported
+the time since the last message rather than the length of the work — a lie about the one number this
+feed exists to publish, and a convincing one, since it is plausible on its face and only
+under-reports more as a session gets busier.
+
+Worth noting how both were found: not by the tests, which asserted a single transition and passed,
+but by another consumer reading the live feed. A defect that lives in a *sequence* is invisible to a
+check that looks at one event.
+
 ## Consumer notes learned the hard way
 
 - **A closed reader is noticed on the next write, not when it leaves.** A closed pipe is only
