@@ -18,6 +18,7 @@ import type {
   CliPrincipalSchema,
   ChatPrincipalSchema,
   OwnerTargetSchema,
+  ExternalTargetSchema,
   ChatTargetSchema,
   ChatMessageSchema,
   ChatCursorsSchema,
@@ -51,6 +52,7 @@ export type ManagedPeer = z.infer<typeof ManagedPeerSchema>;
 export type CliPrincipal = z.infer<typeof CliPrincipalSchema>;
 export type ChatPrincipal = z.infer<typeof ChatPrincipalSchema>;
 export type OwnerTarget = z.infer<typeof OwnerTargetSchema>;
+export type ExternalTarget = z.infer<typeof ExternalTargetSchema>;
 export type ChatTarget = z.infer<typeof ChatTargetSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatCursors = z.infer<typeof ChatCursorsSchema>;

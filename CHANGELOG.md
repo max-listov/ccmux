@@ -6,6 +6,29 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- **An owner outside the fleet has an address: `owner/<name>`.** A component owner can work as an
+  agent in another product entirely, and ccmux is not that product's transport. One hop through a
+  person is cheaper than integrating with someone else's product — what was missing is that the hop
+  was *unwritten*: no record, no reply address, and no way to ask what had not come back. And with
+  nobody to address, people addressed the project, which is usually also a session name, so the
+  message resolved and landed on a neighbour.
+- Declared in `machine.json` under `externals`, as prose: a person is the route, and anything more
+  structured would be a promise ccmux cannot keep. An undeclared name is refused rather than
+  invented, and the address carries no colon so it can never be read as `<machine>:<session>`.
+- The letter is appended to the ledger like any other, with a true `to`. Automatic delivery
+  **refuses and names the route** instead of half-succeeding — a sender that believes it reached the
+  owner is the exact failure this address removes. The Telegram mirror renders it as an errand: where
+  to take it, and the one command that brings the answer back.
+- **Awaiting a reply by DEFAULT**, not a flag the sender sets. A flag you have to remember is wrong
+  within a week, and waiting for an answer is the norm here rather than the exception. `ccmux inbox`
+  lists what has gone out and not come back, with its age and sender.
+- **`ccmux relay owner/<name> "<their answer>"`** closes the loop: recorded as a relay — *on behalf
+  of* that owner, never as that party speaking, since ccmux cannot authenticate them — delivered to
+  whoever wrote, and the letter stops waiting. Answers are counted per letter and per task, so two
+  errands want two answers and one reply cannot close both.
+
 ## [0.34.0] — 2026-08-25
 
 the ledger survives a record it cannot read, without moving the others

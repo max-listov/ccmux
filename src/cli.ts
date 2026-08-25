@@ -11,6 +11,7 @@ import { cmdSend } from "./commands/send.ts";
 import { cmdMode } from "./commands/mode.ts";
 import { cmdEnvFile } from "./commands/envFile.ts";
 import { cmdRole } from "./commands/role.ts";
+import { cmdRelay } from "./commands/relay.ts";
 import { cmdEvents } from "./commands/events.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdTranscript } from "./commands/transcript.ts";
@@ -114,6 +115,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdEnvFile(rest);
     case "role":
       return cmdRole(rest);
+    case "relay":
+      return cmdRelay(rest);
     case "events":
       return cmdEvents(rest);
     case "send":

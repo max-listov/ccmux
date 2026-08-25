@@ -100,6 +100,47 @@ remote role resolves against the SAME `list --json` answer the peer identity com
 cannot be selected by a role it held one call ago, and a peer too old to report roles simply declares
 none.
 
+### An owner outside the fleet is an address, not a gap
+
+A component owner may work as an agent in another product, under another subscription. ccmux is not
+that product's transport and must not pretend to be — one hop through a person is cheaper than
+integrating with someone else's product. The defect was never the hop; it was that the hop was
+**unwritten**. No record, no reply address, no way to ask what had not come back. And with nobody to
+address, people addressed the project, which is usually also a session name.
+
+So there is a third kind of target beside `managed` and `owner`:
+
+```jsonc
+{ "externals": { "contract-owner": "works in <product>; ping them in its own chat" } }
+```
+
+```bash
+ccmux msg owner/contract-owner --task release "please cut a release"
+ccmux relay owner/contract-owner --task release "shipped in 1.2.0"
+```
+
+- `owner/<name>` carries no colon, so `<machine>:<session>` parsing can never see it, and the word
+  `owner` already means "the human this party is reached through". An undeclared name is refused —
+  the failure being removed is a message that went somewhere real and wrong, so an address resolving
+  to nothing must stop rather than improvise.
+- The declaration is **prose** because a person reads it. Anything more structured would be a promise
+  ccmux cannot keep and would invite an automatic delivery that cannot exist.
+- Delivery **refuses and names the route**. A half-success would leave the sender believing it had
+  reached the owner, which is precisely what this address exists to prevent.
+- The record is **awaiting a reply by default**, never a flag. A flag the sender must remember is
+  wrong within a week — the same trap as a role nobody updates — and waiting for an answer is the
+  norm here, not the exception.
+- The answer comes back as a **relay**: `onBehalfOf` already means "who this truly came from when
+  `from` is only the courier", so the sender sees the attribution while nothing gains the ability to
+  impersonate a party ccmux cannot authenticate. Answers are counted per letter and per task; two
+  errands want two answers.
+
+An external record never crosses a machine boundary: `_chat-receive-v2` accepts managed targets only,
+and the address is intercepted before any route is resolved. It does live in the local ledger, which
+is why the ledger had to learn to step over a record it cannot read — with its position kept, since
+delivery cursors are positions — **before** this kind could be written anywhere. That ordering is not
+optional, and it is the same one the event feed already follows: the consumer's machine goes first.
+
 ## Two transports, one address
 
 `<machine>:<session>` never says how a call travels. Two transports carry it, chosen per direction in

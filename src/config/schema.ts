@@ -236,6 +236,17 @@ export const MachineConfigSchema = z.object({
    * whose state directory must stay minimal — not as a thing anyone is expected to think about.
    */
   sessionEvents: z.boolean().default(true),
+  /**
+   * Component owners who work OUTSIDE this fleet, and how a person reaches them.
+   *
+   * The value is prose on purpose — it is read by a human, who is the transport. Anything more
+   * structured would be a promise ccmux cannot keep: it does not speak to that product, and
+   * pretending to know the route would invite an automatic delivery that cannot exist.
+   *
+   * Declaring a name is what takes that party OUT of the session namespace. Undeclared, people
+   * addressed the project instead, and a project name is usually also a session name.
+   */
+  externals: z.record(z.string().regex(SESSION_NAME_RE), z.string().min(1)).default({}),
   wire: z
     .object({
       peers: z.array(z.string().regex(RC_PREFIX_RE)).default([]),
@@ -385,7 +396,28 @@ export const ChatPrincipalSchema = z.union([ManagedPeerSchema, CliPrincipalSchem
 
 /** The owner is an out-of-band sink, never a fake managed peer. */
 export const OwnerTargetSchema = z.object({ kind: z.literal("owner") }).strict();
-export const ChatTargetSchema = z.union([ManagedPeerSchema, OwnerTargetSchema]);
+
+/**
+ * A component owner who works OUTSIDE this fleet — an agent in another product, under another
+ * subscription, that ccmux is not the transport for and should not pretend to be.
+ *
+ * Its own kind rather than a session name, because the alternative is what people actually did: with
+ * nothing to address, they addressed the project — and a project name is usually also a session
+ * name, so the message resolved, delivered, exited zero, and landed on a neighbour. Giving that
+ * party a name of its own takes it out of the namespace it never belonged in.
+ *
+ * The route is a human, and that is not a defect to be engineered away: one hop through a person is
+ * cheaper than integrating with someone else's product. What was missing is that the hop was
+ * unwritten — no record, no reply address, and no way to ask what has not come back. It is written
+ * now, and the mirror the owner already reads is what carries it.
+ *
+ * `name` is an address token, under the same rules as a session name and a role.
+ */
+export const ExternalTargetSchema = z
+  .object({ kind: z.literal("external"), source: z.literal("ccmux"), name: z.string().min(1).regex(SESSION_NAME_RE) })
+  .strict();
+
+export const ChatTargetSchema = z.union([ManagedPeerSchema, OwnerTargetSchema, ExternalTargetSchema]);
 
 /** One immutable v2 chat envelope. `task` is an optional pointer so the channel stays a phone call
  * (details live in the task). There are deliberately no defaults: mixed/old wire shapes fail. */

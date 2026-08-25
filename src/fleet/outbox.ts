@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { z } from "zod";
 import { ChatMessageSchema } from "../config/schema.ts";
 import { log } from "../util/log.ts";
+import { targetLabel } from "../chat/identity.ts";
 import type { MachineConfig } from "../types.ts";
 import { outboxPath } from "../config/paths.ts";
 
@@ -55,7 +56,7 @@ export function appendOutbound(m: MachineConfig, rec: Outbound): void {
     // an error. But it must not vanish quietly either: this record's entire purpose is to be proof
     // that we asked, so a lost one is exactly the blindness the outbox exists to end.
     const target = rec.envelope.to;
-    const to = target.kind === "owner" ? "owner" : `${target.machine}:${target.session}`;
+    const to = target.kind === "managed" ? `${target.machine}:${target.session}` : targetLabel(target);
     log.warn({ msg: "outbox: failed to record an outgoing message", to, err: String(e) });
   }
 }

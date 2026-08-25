@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { lastTranscriptMessage, providerFor } from "../agent/index.ts";
-import { cliPrincipal, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
+import { cliPrincipal, externalTarget, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
 import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor, remoteTransportAncestor } from "../chat/auth.ts";
 import { buildEnvelope } from "../chat/compose.ts";
@@ -9,6 +9,7 @@ import { ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
 import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
 import { isRoleToken, resolveRole, type RoleCandidate } from "../chat/roleAddress.ts";
+import { isExternalToken, lookupExternal } from "../chat/external.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
 import { RETRY_WINDOW_MS } from "../fleet/flush.ts";
 import { queuedForRetryNotice, relay, runPeer } from "../fleet/transport.ts";
@@ -215,6 +216,23 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     appendMessage(machine, buildEnvelope(from, ownerTarget(), body, { task, defer, onBehalfOf, notBefore }));
     warnAboutAnonymousRemote(from, senderTransport);
     console.log(`sent ${principalLabel(from)} → owner: ${preview(body)}`);
+    return 0;
+  }
+
+  if (isExternalToken(targetToken)) {
+    if (expectedAgent !== null || expectedThread !== null) return console.error("msg: an owner outside the fleet has no provider/thread"), 1;
+    if (defer || notBefore !== null) return console.error("msg: --defer/--after wait for a turn boundary; there is no turn on the other side of a human"), 1;
+    const external = lookupExternal(machine, targetToken);
+    if ("error" in external) return console.error(`msg: ${external.error}`), 1;
+    const target = externalTarget(external.name);
+    appendMessage(machine, buildEnvelope(from, target, body, { task, defer: false, onBehalfOf, notBefore: null }));
+    warnAboutAnonymousRemote(from, senderTransport);
+    // Refused, and the route is NAMED. A half-success here would be the worst answer available: the
+    // sender would believe it had reached the owner, which is the exact failure this address exists
+    // to remove.
+    console.log(`recorded ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
+    console.log(`ccmux does not deliver there — ${external.where}. It is mirrored to the owner, who carries it.`);
+    console.log(`It stays outstanding until an answer is recorded: ccmux relay ${targetLabel(target)}${task === null ? "" : ` --task ${task}`} "<their answer>"`);
     return 0;
   }
 

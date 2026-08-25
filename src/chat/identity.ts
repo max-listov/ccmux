@@ -1,4 +1,4 @@
-import type { ChatPrincipal, ChatTarget, CliPrincipal, ManagedPeer, OwnerTarget, Session } from "../types.ts";
+import type { ChatPrincipal, ChatTarget, CliPrincipal, ExternalTarget, ManagedPeer, OwnerTarget, Session } from "../types.ts";
 
 /** Durable peer key for cursors, acks and equality. Every routing-relevant field participates. */
 export function managedPeerKey(peer: ManagedPeer): string {
@@ -24,12 +24,26 @@ export function ownerTarget(): OwnerTarget {
   return { kind: "owner" };
 }
 
+/** The address form a person types and reads: `owner/<name>`. It SAYS the route — this party is
+ *  reached through the owner — and it carries no colon, so it can never be mistaken for
+ *  `<machine>:<session>`. */
+export const EXTERNAL_PREFIX = "owner/";
+
+export function externalTarget(name: string): ExternalTarget {
+  return { kind: "external", source: "ccmux", name };
+}
+
+export function externalAddress(name: string): string {
+  return `${EXTERNAL_PREFIX}${name}`;
+}
+
 export function chatPrincipalKey(principal: ChatPrincipal): string {
   return principal.kind === "managed" ? managedPeerKey(principal) : `${principal.source}:${principal.machine}:cli`;
 }
 
 export function chatTargetKey(target: ChatTarget): string {
-  return target.kind === "managed" ? managedPeerKey(target) : "owner";
+  if (target.kind === "managed") return managedPeerKey(target);
+  return target.kind === "owner" ? "owner" : `external:${target.name}`;
 }
 
 export function samePrincipal(left: ChatPrincipal, right: ChatPrincipal): boolean {
@@ -46,7 +60,8 @@ export function principalLabel(principal: ChatPrincipal): string {
 }
 
 export function targetLabel(target: ChatTarget): string {
-  return target.kind === "owner" ? "owner" : principalLabel(target);
+  if (target.kind === "owner") return "owner";
+  return target.kind === "external" ? externalAddress(target.name) : principalLabel(target);
 }
 
 /**
@@ -68,5 +83,7 @@ export function humanLabel(principal: ChatPrincipal): string {
 
 /** A human-facing recipient. Mail addressed to the owner says so in their own words. */
 export function humanTargetLabel(target: ChatTarget): string {
-  return target.kind === "owner" ? "you" : humanLabel(target);
+  if (target.kind === "owner") return "you";
+  // Named as what a person has to DO with it, because for this one recipient they are the transport.
+  return target.kind === "external" ? `${target.name} (outside the fleet — relay this)` : humanLabel(target);
 }

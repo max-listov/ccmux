@@ -382,6 +382,35 @@ one. A session without a role is addressed by name exactly as before.
 It is deliberately cheap to change and never marks a session for restart: a second name that costs
 something to correct is one people put off correcting, and within a week it lies while being trusted.
 
+### An owner outside the fleet has an address, and the hop through you is written down
+
+A component owner can work as an agent in another product entirely — ccmux is not that product's
+transport and should not pretend to be. One hop through a person is cheaper than integrating with
+someone else's product; what was missing is that the hop was **unwritten**: no record, no reply
+address, and no way to ask what has not come back. And with nobody to address, people addressed the
+*project* — which is usually also a session name, so the message resolved and landed on a neighbour.
+
+```jsonc
+// machine.json — the value is prose, because a person is the route
+{ "externals": { "contract-owner": "works in <product>; ping them in its own chat" } }
+```
+
+```bash
+ccmux msg owner/contract-owner --task release "please cut a release with the fix"
+ccmux inbox                                    # what has been sent out and not come back
+ccmux relay owner/contract-owner --task release "shipped in 1.2.0"
+```
+
+`owner/<name>` carries no colon, so it can never be read as `<machine>:<session>`, and an undeclared
+name is refused rather than invented. The letter is appended to the ledger like any other, automatic
+delivery **refuses and names the route**, and the Telegram mirror hands the carrier the message with
+where to take it and the one command that brings the answer back.
+
+It is **awaiting a reply by default** — not a flag the sender has to remember, because a flag you
+must remember is wrong within a week. `ccmux relay` records the answer as a relay (`on behalf of
+owner/<name>`, never as that party speaking, since ccmux cannot authenticate them), delivers it to
+whoever wrote, and closes the letter. Two letters want two answers; one reply cannot close both.
+
 The ledger tolerates a mixed fleet. A record written by a **newer** ccmux is stepped over rather than
 refusing the whole file — otherwise one upgrade would take down `msg`, `inbox`, delivery and the TUI
 on every machine that had not caught up yet, and there is always such a window: rollout takes minutes

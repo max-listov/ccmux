@@ -1,6 +1,8 @@
 import { forwardIfRemote } from "../fleet/forward.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
+import { loadMachineConfig } from "../config/machine.ts";
 import { loadLedger, loadCursors, loadAckedIds, unreadFor, markRead, fmtMessage, unreadableCount, OWNER } from "../chat/store.ts";
+import { outstandingLines } from "./relay.ts";
 import { providerFor } from "../agent/index.ts";
 import { holdReason } from "../chat/holdReason.ts";
 import { readChatHold } from "../agent/sessionStatus.ts";
@@ -24,8 +26,14 @@ export async function cmdInbox(args: string[]): Promise<number> {
   const peek = args.includes("--peek");
   let name = args.find((a) => !a.startsWith("--")) ?? self;
   if (name === undefined || name === "") {
+    // Asked from a shell rather than from inside a session. There is no per-session inbox to show,
+    // but there IS a machine-wide question worth answering — what has been sent outside the fleet
+    // and not come back — and answering it beats printing usage and nothing else.
+    const outstanding = outstandingLines(loadMachineConfig());
+    for (const line of outstanding) console.log(line);
+    if (outstanding.length > 0) console.log("");
     console.log("usage: ccmux inbox <name> [--peek]   (name defaults to CCMUX_SESSION)");
-    return 1;
+    return outstanding.length > 0 ? 0 : 1;
   }
   const fwd = await forwardIfRemote(name, "inbox", peek ? ["--peek"] : []);
   if (fwd.done) return fwd.code;
@@ -44,6 +52,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
   // Said here too, because this is where someone asks "is there anything for me": a record this
   // build cannot read might have been addressed to this session, and silence about it would be the
   // one thing an append-only ledger exists to prevent.
+  for (const line of outstandingLines(m)) console.log(line);
   const unreadable = unreadableCount(ledger);
   if (unreadable > 0) {
     console.log(`(${unreadable} record(s) in the ledger were written by a newer ccmux and cannot be read here — upgrade this machine to see them)`);

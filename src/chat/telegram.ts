@@ -2,6 +2,7 @@ import type { ChatMessage, MachineConfig, TelegramConfig } from "../types.ts";
 import { log } from "../util/log.ts";
 import { loadCursors, loadLedger, saveCursors } from "./store.ts";
 import { humanLabel, humanTargetLabel, principalLabel, targetLabel } from "./identity.ts";
+import { courierNote } from "./external.ts";
 
 const SEND_TIMEOUT_MS = 10_000;
 
@@ -25,7 +26,15 @@ function escapeHtml(s: string): string {
  * separates nothing a reader needs. What stays exact is the pane tag, where an agent really does
  * copy the address to answer.
  */
-export function formatForTg(msg: ChatMessage): string {
+export function formatForTg(msg: ChatMessage, externals: Record<string, string> = {}): string {
+  // A letter addressed OUTSIDE the fleet is not a notification, it is an errand: the person reading
+  // it is the transport, so it carries where to take it and the one command that brings the answer
+  // back. Rendering it like ordinary mail would leave the reader to work out that they are the
+  // route — and an answer nobody records leaves the letter waiting forever.
+  if (msg.to.kind === "external") {
+    const where = externals[msg.to.name] ?? "no route recorded on this machine";
+    return `📤 <b>[${escapeHtml(humanLabel(msg.from))} → outside the fleet]</b>\n\n<pre>${escapeHtml(courierNote(msg.to.name, where, msg.body, msg.task))}</pre>`;
+  }
   const from = escapeHtml(humanLabel(msg.from));
   // Mail to the human keeps the SAME shape rather than inverting the sentence — one route line to
   // learn to read, with the emoji doing the "this one is for you" work.
@@ -93,7 +102,7 @@ export async function mirrorPending(m: MachineConfig): Promise<void> {
       cur++;
       continue;
     }
-    const result = await sendTelegram(tg, formatForTg(msg));
+    const result = await sendTelegram(tg, formatForTg(msg, m.externals));
     if (result === "transient") {
       log.warn({ msg: "telegram mirror transient failure — holding, retry next pass", from: principalLabel(msg.from), to: targetLabel(msg.to) });
       break; // hold at `cur` — do not advance past an un-sent message
