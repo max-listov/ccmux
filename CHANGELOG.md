@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.36.1] — 2026-08-25
+
+below 1.0.0 the minor bump IS the breaking one
+
 ### Fixed
 
 - **`behind` now treats the leftmost non-zero position as the breaking axis.** It read the version
@@ -15,7 +19,6 @@ the GitHub Release with that section as the notes.
   and it is where this project and its neighbours live. A compatible bump stays `patch`, because
   overstating it in the other direction is no better. Caught in review by the consumer that draws
   this field: a dashboard colours by the word, and the reader acts on the colour.
-
 ## [0.36.0] — 2026-08-25
 
 a machine says how far behind the current release it is
