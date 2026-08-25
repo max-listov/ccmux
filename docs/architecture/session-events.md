@@ -93,6 +93,29 @@ runs from the later of "transcript last moved" and "pane last seen working", and
 session acts on nothing — it has no baseline to be a diff against. Nothing is loosened for a turn
 that really stopped: its pane stopped with it.
 
+That last point is not only the observer's business, and this is where the fact gets written down.
+A pane is instantaneous: a process that looks once learns about this moment and nothing before it.
+A transcript has an mtime, so anyone can ask how long a session has been quiet — the pane has no
+equivalent, and the two readers who need it most cannot keep the memory themselves:
+
+- **`ccmux wait`** is the fleet's only correct "is the peer done" test, and a fresh process on every
+  call. Its FIRST look is the dangerous one, and a false yes sends the caller to
+  `transcript --last-message`, which hands back what was said BEFORE the tool calls that had not
+  finished — a stale answer, reported as the result.
+- **deferred chat delivery** waits for a turn boundary; a false "between turns" spends that wait for
+  nothing and lands the message inside the turn it was meant to follow.
+
+So the observation pass writes what it saw to `<stateDir>/pane-activity.json`, and everything that
+judges silence reads it. Staleness is safe in the direction that matters: if the supervisor stops,
+entries stop advancing, an old instant contributes nothing to "recently alive", and every reader
+degrades to the transcript-only answer it used to give — never to a more confident one.
+
+This is also why the pass runs whether or not events are switched on, with the switch applied per
+session to what gets APPENDED. Repairing a `working` stamp and recording a pane are not a feature
+anybody subscribed to; `list`, the TUI, `wait` and chat delivery read them whether or not a feed
+exists, and gating them on a publication toggle would let switching off a feed quietly weaken
+delivery.
+
 **A late `Stop` on an already-closed turn says nothing.** Both writers would be describing the same
 ending, and the second one carries no duration. The hook recognises `ccmux:turn-closed` in the record
 it is replacing and stays quiet.

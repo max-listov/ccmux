@@ -22,7 +22,8 @@ const SESSION_EVENT_INTERVAL_MS = 2_000;
 /** Independent push-delivery loop (fire-and-forget from the daemon). Bounces with the daemon on
  *  auto-update; one bad pass never stops it. */
 /**
- * Watch what the turn hook cannot see, and publish it.
+ * Watch what the turn hook cannot see: publish what changed, and keep this machine's own record of
+ * what its sessions are doing.
  *
  * Its own loop, on its own cadence, for the same reason chat delivery has one: the heal pass runs
  * every 30 seconds by default, and "a session has been waiting at a menu" is stale news at that
@@ -30,7 +31,15 @@ const SESSION_EVENT_INTERVAL_MS = 2_000;
  * outside surface used to pay by polling `list --json` on a timer, except paid once here and
  * published to everyone instead of once per consumer.
  *
- * The memory of the previous observation lives in this process only. A daemon bounce therefore
+ * It runs whether or not events are switched on, and the switch is applied per session inside the
+ * pass, to what gets APPENDED. Two of the things this loop maintains are not a feature anybody
+ * subscribed to: a `working` stamp left behind by a turn that ended without its hook, and the
+ * record of when each pane was last seen working. `list`, the TUI, `ccmux wait` and chat delivery
+ * all read those whether or not a feed exists, so gating them on an events toggle would let
+ * switching off a publication quietly weaken delivery.
+ *
+ * The memory of the previous observation lives in this process only — apart from the pane record,
+ * which is written down precisely because a fresh process cannot have it. A daemon bounce therefore
  * re-observes rather than replaying: whatever is true after the bounce is emitted once, and nothing
  * that happened while it was down is invented.
  */
@@ -38,9 +47,7 @@ async function sessionEventLoop(): Promise<void> {
   const previous = new Map<string, Observed>();
   for (;;) {
     try {
-      const m = loadMachineConfig();
-      if (m.sessionEvents) await observeOnce(m, previous);
-      else previous.clear(); // switched off mid-flight: forget, so switching back does not emit a flood
+      await observeOnce(loadMachineConfig(), previous);
     } catch (e) {
       log.warn({ msg: "session event pass failed", err: String(e) });
     }

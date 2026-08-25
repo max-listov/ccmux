@@ -6,6 +6,30 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ccmux wait` no longer answers "done" about a session that is mid-work.** It is the fleet's only
+  correct "is the peer done" test, and a false yes is expensive: the documented next step is
+  `transcript --last-message`, which then hands back what was said BEFORE the tool calls that had
+  not finished, as if it were the answer. The cause is that a turn is judged over by SILENCE, and a
+  session four minutes into a tool call is legitimately silent — it writes nothing to the transcript
+  while its pane is plainly working.
+- **A pane is now a written fact, not a glance.** A transcript has an mtime, so any process can ask
+  how long a session has been quiet; a spinner is instantaneous, so looking once tells you about
+  this moment and nothing before it — and `ccmux wait` is a fresh process on every call, so no
+  memory of its own can cover its first look. The supervisor, which looks at every pane every couple
+  of seconds anyway, records what it saw in `<stateDir>/pane-activity.json`, and everything that
+  judges silence reads it. A stale or missing record only ever degrades a reader to the
+  transcript-only answer it used to give, never to a more confident one.
+- Deferred chat delivery gets the same correction: it waits for a turn boundary, and a false
+  "between turns" spent that wait for nothing and landed the message inside the turn it was meant to
+  follow.
+- The observation pass now runs whether or not the event feed is switched on, with the switch
+  applied per session to what gets appended. Repairing an abandoned `working` stamp and recording a
+  pane are not a feature anybody subscribed to — `list`, the TUI, `wait` and chat delivery read them
+  regardless — so gating them on a publication toggle let switching off a feed quietly weaken
+  delivery.
+
 ## [0.31.1] — 2026-08-25
 
 a spinner is activity, so a long tool call is not a dead turn

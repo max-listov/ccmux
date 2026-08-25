@@ -7,6 +7,7 @@ import { capturePane, listSessionNames } from "../tmux/tmux.ts";
 import { turnState } from "../chat/turnState.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { appendEvent, type EmitInput } from "./feed.ts";
+import { readPaneActivity, writePaneActivity } from "./paneActivity.ts";
 
 /**
  * The half of the feed the turn hook cannot write.
@@ -225,6 +226,10 @@ export function observe(
 export async function observeOnce(m: MachineConfig, previous: Map<string, Observed>, nowMs = Date.now()): Promise<number> {
   const sessions = loadSessions(m).filter((s) => !s.archived);
   const running = await listSessionNames(m);
+  // Seeded from disk so a supervisor that just restarted is not blind about panes it watched a
+  // moment ago — its own last write is the memory its predecessor kept.
+  const onDisk = readPaneActivity(m);
+  const paneWorking = new Map<string, number>();
   const seen = new Set<string>();
   let emitted = 0;
   for (const s of sessions) {
@@ -234,7 +239,8 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
     // session per pass spent to be told so.
     const pane = isRunning ? await capturePane(m, s.name, 40).catch(() => null) : null;
     const prev = previous.get(s.name) ?? UNSEEN;
-    const next = observe(m, s, isRunning, pane, nowMs, prev.paneWorkingMs);
+    const next = observe(m, s, isRunning, pane, nowMs, prev.paneWorkingMs ?? onDisk[s.name] ?? null);
+    if (next.paneWorkingMs !== null) paneWorking.set(s.name, next.paneWorkingMs);
     // The stamp is repaired whether or not the ending is announced — `transitions` stays silent
     // about an ending it never witnessed, and silence about an event is not a reason to leave a
     // false state behind.
@@ -253,6 +259,9 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
     });
   }
   for (const name of [...previous.keys()]) if (!seen.has(name)) previous.delete(name);
+  // Published for the readers that cannot keep this memory themselves — `ccmux wait`, a fresh
+  // process on every call, and deferred chat delivery. See `paneActivity.ts`.
+  await writePaneActivity(m, paneWorking);
   return emitted;
 }
 

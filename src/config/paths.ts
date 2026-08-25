@@ -101,6 +101,20 @@ export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, "out
  *  is a stream with no natural end, and read by outside surfaces that must not have to know the
  *  file layout (that is what `ccmux events` is for). */
 export const eventsPath = (m: MachineConfig): string => join(m.stateDir, "events.jsonl");
+/**
+ * When each session's pane was last seen doing work.
+ *
+ * A machine-wide map rather than a file per session: the supervisor rewrites the whole thing once
+ * per observation pass, and readers want "was THIS one alive recently" answered by one open.
+ *
+ * It is here, on disk, because the fact it records is the one thing a single glance cannot supply.
+ * A transcript's mtime is persisted, so any process can ask how long a session has been quiet; a
+ * spinner is instantaneous, so a process that looks once sees only this moment. `ccmux wait` is a
+ * fresh process every time and its FIRST look is the dangerous one — no memory of its own can help
+ * there, which is what makes this a written fact rather than a variable.
+ */
+export const paneActivityPath = (m: MachineConfig): string => join(m.stateDir, "pane-activity.json");
+
 /** Superseded state, kept readable but out of the way. One directory, so "what here is dead?" is
  *  answered by the path instead of by remembering which name came first. */
 export const archiveDir = (m: MachineConfig): string => join(m.stateDir, "archive");

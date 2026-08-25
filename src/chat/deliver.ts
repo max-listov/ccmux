@@ -4,6 +4,8 @@ import { capturePaneStyled, stripAnsi, clientTypingRecently, listSessionNames, p
 import type { ChatMessage, MachineConfig, Session } from "../types.ts";
 import { log } from "../util/log.ts";
 import { turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
+import { lastSignOfLife } from "../events/observe.ts";
+import { paneWorkingSince } from "../events/paneActivity.ts";
 import { promptInvocation } from "../env.ts";
 import { formatChatInjection } from "./format.ts";
 import { replyRouteToSender } from "./replyRoute.ts";
@@ -57,13 +59,22 @@ async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): 
 // short enough that simply watching a pane never blocks delivery.
 const TYPING_WINDOW_SEC = 3;
 
-/** Gather what `turnState` needs from this session's pane and transcript. The IO lives here so the
- *  decision itself stays pure and testable — the previous version was neither, which is how it
- *  shipped waiting on an event that a killed turn can never produce. */
+/**
+ * Gather what `turnState` needs from this session's pane and transcript. The IO lives here so the
+ * decision itself stays pure and testable — the previous version was neither, which is how it
+ * shipped waiting on an event that a killed turn can never produce.
+ *
+ * Silence is the evidence a turn is over, and the transcript is only half of what silence means. A
+ * session four minutes into a tool call writes nothing while its pane is plainly working, so the
+ * supervisor's record of when each pane was last seen working counts as activity beside the
+ * transcript's own mtime. Without it, one look at the pane in the gap between a tool finishing and
+ * its result being written reads as a turn nobody is coming back to — and `ccmux wait`, which is a
+ * fresh process with no memory of its own, would answer "done" about a session mid-work.
+ */
 export function readTurnState(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): TurnState {
   const scan = provider.scanPane(pane);
   const lm = lastTranscriptMessage(s, m);
-  const mt = lastActivityMs(s, m);
+  const mt = lastSignOfLife(lastActivityMs(s, m), scan.state === "working" ? nowMs : paneWorkingSince(m, s.name));
   return turnState({
     paneWorking: scan.state === "working",
     // `ready` is a HARD gate here, so it may only be trusted from a provider whose pane detectors are
