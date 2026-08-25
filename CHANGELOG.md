@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-08-25
+
+sessions publish what happened, and the wire's answer is read in full
+
 ### Fixed
 
 - **Cross-machine mail to a wire-only peer could be thrown away.** The outbox drain pass read the ssh
@@ -43,7 +47,6 @@ the GitHub Release with that section as the notes.
   meaningless once the feed rotates — so every event carries an `id` for consumers to dedupe on.
   Records parse leniently: a field added by a newer build cannot make the feed unreadable on an older
   machine. `sessionEvents` (machine) and `eventsEnabled` (session) switch it off; both default on.
-
 ## [0.29.0] — 2026-08-25
 
 the launch stamp sees the rules, MCP and environment that argv never showed
