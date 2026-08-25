@@ -2,7 +2,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { loadOutbox, outboundId, outboundTimestamp, type Outbound } from "./outbox.ts";
-import { runRemote } from "./transport.ts";
+import { peersOf, runPeer } from "./transport.ts";
+import { routeFor } from "./address.ts";
 import { run } from "../util/spawn.ts";
 import { log } from "../util/log.ts";
 import { outboxAckPath } from "../config/paths.ts";
@@ -101,8 +102,10 @@ async function runPreflight(m: MachineConfig): Promise<void> {
  * Never throws: this is best-effort recovery, and it must not be able to wedge chat delivery.
  */
 export async function flushOutbox(m: MachineConfig): Promise<void> {
-  const fleet = m.fleet;
-  if (fleet === undefined || Object.keys(fleet).length === 0) return;
+  // Routable at all? Asked through the SAME resolver a send uses, so a machine reachable only over
+  // the wire counts. Reading `fleet` alone here was a silent mail loss: on a fleet whose laptop is
+  // wire-only by design, every retry to it found no ssh alias and settled the letter as delivered.
+  if (peersOf(m).length === 0) return;
   let candidates: Outbound[] = [];
   try {
     candidates = retryCandidates(loadOutbox(m), loadOutboxAcked(m), Date.now());
@@ -115,19 +118,32 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
   for (const rec of candidates.slice(0, MAX_PER_TICK)) {
     if (rec.envelope.to.kind !== "managed") continue;
     const target = rec.envelope.to;
-    const alias = Object.hasOwn(fleet, target.machine) ? fleet[target.machine] : undefined;
-    if (alias === undefined) {
-      // The machine left the map — nothing to retry against. Settle it so we stop looking.
+    const route = routeFor(`${target.machine}:${target.session}`, m);
+    if (route.kind !== "remote") {
+      // Genuinely unaddressable from here — the machine is in neither map, or the label now resolves
+      // to this box. Settle it so we stop looking. NOT the same as "no ssh alias": a wire-only peer
+      // has no alias and is perfectly reachable, and treating the two alike is what threw mail away.
       appendOutboxAck(m, rec.envelope.id);
+      log.warn({ msg: "outbox: target is not addressable from here — settling", id: rec.envelope.id, to: `${target.machine}:${target.session}` });
       continue;
     }
-    const r = await runRemote(alias, ["ccmux", "_chat-receive-v2"], {
+    const r = await runPeer(m, route.machine, route.alias, ["ccmux", "_chat-receive-v2"], {
       stdin: JSON.stringify(rec.envelope),
       timeoutMs: 20_000,
     });
     if (!r.transportFailed && r.code === 0) {
       appendOutboxAck(m, rec.envelope.id);
       log.info({ msg: "outbox: delivered on retry", id: rec.envelope.id, to: `${target.machine}:${target.session}` });
+      continue;
+    }
+    // A PERMANENT refusal will refuse identically forever: the command is not on that node's
+    // allowlist, or policy forbids the call. Retrying it every tick for an hour is noise that also
+    // hides the real answer, so it settles and says why. A temporary one (capacity) stays queued —
+    // that is exactly the case the retry window exists for.
+    if (r.permanent === true) {
+      appendOutboxAck(m, rec.envelope.id);
+      log.warn({ msg: "outbox: permanently refused — settling", id: rec.envelope.id, to: `${target.machine}:${target.session}`, detail: r.failureDetail ?? "" });
+      continue;
     }
     // Still no route → leave it queued; the next tick tries again until the window closes.
   }

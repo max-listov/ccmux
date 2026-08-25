@@ -3,6 +3,7 @@ import { APP_BUNDLE, BOOT_ATTEMPTS } from "../config/paths.ts";
 import { convergeBundleLocation } from "../config/migrateBundle.ts";
 import { cmdEnsure } from "./ensure.ts";
 import { autoUpdateOnce } from "./update.ts";
+import { observeOnce, type Observed } from "../events/observe.ts";
 import { deliverPending } from "../chat/deliver.ts";
 import { mirrorPending } from "../chat/telegram.ts";
 import { flushOutbox } from "../fleet/flush.ts";
@@ -14,9 +15,39 @@ import { log, setLogLevel } from "../util/log.ts";
 // idle peer within a few seconds, not up to half a minute. Cheap when idle (only recipients with
 // a pending message ever scrape a pane), so a tight interval costs nothing on a quiet fleet.
 const CHAT_DELIVER_INTERVAL_MS = 3_000;
+// Faster than chat delivery on purpose: a menu a session is stuck at, and a turn that was
+// interrupted, are both states a person is actively waiting to be told about.
+const SESSION_EVENT_INTERVAL_MS = 2_000;
 
 /** Independent push-delivery loop (fire-and-forget from the daemon). Bounces with the daemon on
  *  auto-update; one bad pass never stops it. */
+/**
+ * Watch what the turn hook cannot see, and publish it.
+ *
+ * Its own loop, on its own cadence, for the same reason chat delivery has one: the heal pass runs
+ * every 30 seconds by default, and "a session has been waiting at a menu" is stale news at that
+ * interval. The cost is a pane capture per running session per pass — which is precisely what an
+ * outside surface used to pay by polling `list --json` on a timer, except paid once here and
+ * published to everyone instead of once per consumer.
+ *
+ * The memory of the previous observation lives in this process only. A daemon bounce therefore
+ * re-observes rather than replaying: whatever is true after the bounce is emitted once, and nothing
+ * that happened while it was down is invented.
+ */
+async function sessionEventLoop(): Promise<void> {
+  const previous = new Map<string, Observed>();
+  for (;;) {
+    try {
+      const m = loadMachineConfig();
+      if (m.sessionEvents) await observeOnce(m, previous);
+      else previous.clear(); // switched off mid-flight: forget, so switching back does not emit a flood
+    } catch (e) {
+      log.warn({ msg: "session event pass failed", err: String(e) });
+    }
+    await Bun.sleep(SESSION_EVENT_INTERVAL_MS);
+  }
+}
+
 async function chatDeliveryLoop(): Promise<void> {
   for (;;) {
     try {
@@ -64,6 +95,8 @@ export async function cmdDaemon(): Promise<number> {
 
   // Start the chat push-delivery loop alongside the heal loop (independent fast cadence).
   void chatDeliveryLoop();
+  // …and the observation loop that publishes what the turn hook cannot see.
+  void sessionEventLoop();
 
   let lastUpdateCheck = 0;
   let guardCleared = false;

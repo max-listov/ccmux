@@ -11,6 +11,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "adopt", args: "<claude|codex> <uuid> [name] [--fork | --takeover --confirm-writer <pid>]", desc: "manage a local external thread; Codex adopt is atomic resume, fork is provider-native, takeover is dedicated-CLI-only", example: "ccmux adopt codex 4e117aea-… --fork" },
   { verb: "start", args: "<name>", desc: "start a registered session" },
   { verb: "stop", args: "<name> [--force]", desc: "kill it (daemon re-heals unless archived)" },
+  { verb: "events", args: "[--follow] [--since <iso>] [--session <name>] [-n N] [--json|--framed]", desc: "what HAPPENED to sessions — turn boundaries, waiting at a menu, stop/blocked; --follow streams them as they occur; --framed wraps each line for a transport that resumes", example: "ccmux events --follow --json" },
   { verb: "env-file", args: "<name> <path|--none> | --adopt [--dry-run]", desc: "declare the env file a session's agent is launched with (applies on restart); --adopt declares what sessions are currently inheriting undeclared", example: "ccmux env-file cc-api .env" },
   { verb: "restart", args: "<name|machine:name> | --all", desc: "bounce a session (survives killing the caller); --all sweeps every session on this machine, one at a time and reports the result back to the session that started it", example: "ccmux restart --all" },
   { verb: "mode", args: "<name> <mode|default>", desc: "per-session permission-mode override (default = inherit machine); restart to apply", example: "ccmux mode cc-api auto" },

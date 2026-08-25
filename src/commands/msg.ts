@@ -217,7 +217,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     // lie, and a lie that costs — it is what sent two sessions chasing a transport problem that the
     // supervisor was already handling, and then to the owner with it.
     if (result.transportFailed) {
-      console.log(queuedForRetryNotice(`msg ${targetToken}`, result.failureDetail ?? null, RETRY_WINDOW_MS / 60_000));
+      console.log(queuedForRetryNotice(`msg ${targetToken}`, result.failureDetail ?? null, RETRY_WINDOW_MS / 60_000, result.permanent === true));
       return 0;
     }
     return relay(result, `msg ${targetToken}`);

@@ -25,6 +25,8 @@ import type {
   PendingSessionSchema,
   LifecycleBlockSchema,
   ExternalSessionSchema,
+  SessionEventSchema,
+  SessionEventKindSchema,
   ExternalCapabilitiesSchema,
   WriterRuntimeSchema,
 } from "./config/schema.ts";
@@ -56,5 +58,7 @@ export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type PendingSession = z.infer<typeof PendingSessionSchema>;
 export type LifecycleBlock = z.infer<typeof LifecycleBlockSchema>;
 export type ExternalSession = z.infer<typeof ExternalSessionSchema>;
+export type SessionEvent = z.infer<typeof SessionEventSchema>;
+export type SessionEventKind = z.infer<typeof SessionEventKindSchema>;
 export type ExternalCapabilities = z.infer<typeof ExternalCapabilitiesSchema>;
 export type WriterRuntime = z.infer<typeof WriterRuntimeSchema>;

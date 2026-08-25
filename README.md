@@ -273,6 +273,32 @@ Two levels — a machine default plus an optional per-session override:
 Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`, `dontAsk`,
 `bypassPermissions`.
 
+## Session events
+
+`ccmux list` says what is true now. The feed says what happened.
+
+```bash
+ccmux events                       # recent transitions, newest last
+ccmux events --follow --json       # stream them as they occur
+ccmux events --since <iso> --json  # catch up after a disconnect
+ccmux events --session cc-api      # one session only
+```
+
+Each line is a transition — `turn-start`, `turn-end` (with how long the turn ran), `waiting` at a
+blocking menu, `resumed`, `session-start`/`session-stop`/`session-blocked` — carrying the full
+`machine:session` address, the provider and the thread id.
+
+It exists because polling `list --json` cannot answer the question anything reactive actually asks: a
+turn that starts and ends between two polls leaves no trace, and "this ran for thirty minutes" is not
+recoverable from two snapshots. Nothing is executed on an event: the turn hook is what the agent
+waits on to finish a turn, so a consumer's command there would stall agents. The feed is written;
+reacting is the reader's job.
+
+Delivery is at-least-once — `--since` re-reads its boundary instant rather than risking a gap — so
+every event carries an `id` to dedupe on. `sessionEvents` in `machine.json` and `eventsEnabled` per
+session switch it off; both default on. Details in
+[`docs/architecture/session-events.md`](docs/architecture/session-events.md).
+
 ## Session environment
 
 A session's environment is a **declared recipe**, not whatever the supervisor happened to inherit.

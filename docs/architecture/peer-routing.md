@@ -157,6 +157,36 @@ A machine listed in `wire.peers` is reached over the wire even when it also has 
 what makes the wire adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.
 
+### What the wire's answer says, beyond yes and no
+
+The local door separates **who** said no (`failure`) from **what kind** of no it is (`refusal`), and
+the kinds behave oppositely:
+
+| refusal | lifetime | correct response |
+|---|---|---|
+| `capacity` | temporary | retry — the data is intact and the caller did nothing wrong |
+| `policy` | permanent | an allowlist or a grant says no; retrying changes nothing |
+| `request` | permanent for this request | change the request, then retry |
+
+Reading only `failure` made both mistakes at once: an hour of retries against a refusal that will
+never change, and a healthy-but-busy node drawn as a broken one. So a permanent refusal now settles
+instead of queueing, and says so in words — the queued-for-retry sentence promises an automatic
+recovery, and promising one that cannot come is worse than saying nothing, because nobody then looks
+at what actually needs fixing.
+
+The door also carries a contract version (`v`), and it is **compared, not pattern-matched**. Without
+the comparison, a door speaking a contract this build does not know is indistinguishable from a
+malformed answer — and the reader goes looking for a broken agent instead of a version skew. Unknown
+keys, by contrast, pass through: strict parsing of somebody else's evolving answer means "break on
+their next release".
+
+### A retry uses the same resolver as a send
+
+Not a second lookup. The drain pass used to read the ssh map directly and, finding no alias, settle
+the envelope as delivered — on a fleet whose laptop is reachable **only** over the wire, that threw
+away every retry to the one machine the wire exists for, silently and with no error anywhere. The
+only honest settle case is a target that is in neither map.
+
 ### The reply hint is the resolver's answer, not a second map
 
 An incoming chat tag carries a pinned `reply:` command, and the managed prompt tells the recipient to

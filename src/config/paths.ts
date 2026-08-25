@@ -97,6 +97,10 @@ export const chatCursorsPath = (m: MachineConfig): string => join(m.stateDir, "c
 export const chatAckPath = (m: MachineConfig): string => join(m.stateDir, "chat-ack.jsonl");
 export const outboxPath = (m: MachineConfig): string => join(m.stateDir, "outbox.jsonl");
 export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, "outbox-ack.jsonl");
+/** The session event feed — what HAPPENED, as opposed to what IS. Rotated like the log, because it
+ *  is a stream with no natural end, and read by outside surfaces that must not have to know the
+ *  file layout (that is what `ccmux events` is for). */
+export const eventsPath = (m: MachineConfig): string => join(m.stateDir, "events.jsonl");
 /** Superseded state, kept readable but out of the way. One directory, so "what here is dead?" is
  *  answered by the path instead of by remembering which name came first. */
 export const archiveDir = (m: MachineConfig): string => join(m.stateDir, "archive");

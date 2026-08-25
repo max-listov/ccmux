@@ -6,6 +6,44 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cross-machine mail to a wire-only peer could be thrown away.** The outbox drain pass read the ssh
+  fleet map directly, and a machine reachable only over the wire has no alias in it — so every retry
+  to it found "no route", marked the envelope delivered and dropped it, silently. Measured on a live
+  fleet: both servers reach the laptop over the wire and have no ssh alias for it at all, which is
+  the direction the wire was added for. Retries now resolve the route the same way a send does; the
+  only settle case left is a target in neither map, and it is logged.
+- A refusal that will never change is no longer retried for an hour and no longer described as
+  "queued, retried automatically". The wire distinguishes a temporary `capacity` refusal from a
+  permanent `policy`/`request` one; ccmux reads that distinction, settles the permanent kind and says
+  plainly that waiting will not deliver it. Promising a recovery that cannot come is what stops
+  anyone from looking at the thing that needs fixing.
+- The local agent's contract version is compared rather than ignored, so an agent speaking a door API
+  this build does not know is named as exactly that instead of surfacing as an unreadable answer.
+
+### Added
+
+- **A session event feed.** `ccmux events [--follow] [--since <iso>] [--session <name>] [--json]`
+  publishes what HAPPENED to sessions — turn boundaries with duration, waiting at a blocking menu and
+  leaving one, stop and blocked — instead of making every outside surface poll `list --json` for what
+  is true now. Polling could not answer the question anyway: a turn that starts and ends between two
+  polls leaves no trace, and duration is not recoverable from two snapshots.
+- Two writers, because one cannot see everything: the turn hook records exact voluntary boundaries
+  (duration measured from the status the previous hook left), and the daemon's observation pass
+  records what no hook can — a menu the agent is stuck at, a turn that was interrupted (`Stop` never
+  fires for those), and a session that stopped or blocked.
+- Nothing is executed on an event. The turn hook is what the agent waits on to finish a turn, so a
+  consumer's command there would put foreign code on the critical path of every turn on the machine.
+  An append is one syscall; reacting is the reader's job.
+- `--framed` wraps each line as `{ data, cursor }` for a transport that resumes a broken stream from
+  where the reader got to. Kept separate from `--json`, which stays the clean stream of events a
+  person reads: wrapping by default would make the common case pay for a transport's contract.
+- Delivery is at-least-once by design — `--since` is a time, not a byte offset, because an offset is
+  meaningless once the feed rotates — so every event carries an `id` for consumers to dedupe on.
+  Records parse leniently: a field added by a newer build cannot make the feed unreadable on an older
+  machine. `sessionEvents` (machine) and `eventsEnabled` (session) switch it off; both default on.
+
 ## [0.29.0] — 2026-08-25
 
 the launch stamp sees the rules, MCP and environment that argv never showed

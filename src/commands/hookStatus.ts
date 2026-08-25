@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { writeLifecycle, type LifecycleStatus } from "../agent/sessionStatus.ts";
+import { readLifecycle, writeLifecycle, type LifecycleStatus } from "../agent/sessionStatus.ts";
+import { appendEvent } from "../events/feed.ts";
+import { eventsEnabledFor } from "../config/events.ts";
+import { loadMachineConfig } from "../config/machine.ts";
+import { findSession, loadSessions } from "../config/sessions.ts";
+import type { EmitInput } from "../events/feed.ts";
 
 /**
  * `ccmux hook-status` — Claude Code lifecycle hooks (UserPromptSubmit / Stop / SessionStart) for a
@@ -53,6 +58,28 @@ export function parseLifecycle(raw: string, now: number): LifecycleStatus | null
   };
 }
 
+/**
+ * The same hook event, said as a TRANSITION for the feed.
+ *
+ * The lifecycle file answers "what is this session doing"; the feed answers "what just happened",
+ * and only the second one survives being read a minute later. `turn-end` carries how long the turn
+ * ran, measured from the `working` stamp the previous hook left — which is why the duration is
+ * available at all without anyone keeping a timer.
+ *
+ * Pure: the previous status and the clock come in as arguments. `null` means this event says nothing
+ * a reader would want (an unmapped event, or a `SessionStart` that is merely clearing a stale flag).
+ */
+export function eventForLifecycle(status: LifecycleStatus, previous: LifecycleStatus | null): EmitInput | null {
+  if (status.event === "UserPromptSubmit") return { event: "turn-start" };
+  if (status.event === "SessionStart") return { event: "session-start" };
+  if (status.event !== "Stop") return null;
+  // A turn we never saw start (the hook was added mid-conversation, or the daemon already closed an
+  // interrupted turn) still ended — report it without inventing a duration.
+  if (previous === null || previous.state !== "working") return { event: "turn-end" };
+  const durationMs = status.ts - previous.ts;
+  return durationMs >= 0 ? { event: "turn-end", durationMs } : { event: "turn-end" };
+}
+
 export async function cmdHookStatus(): Promise<number> {
   try {
     const raw = await Bun.stdin.text().catch(() => "");
@@ -60,7 +87,23 @@ export async function cmdHookStatus(): Promise<number> {
     if (self === undefined || self === "") return 0;
     const status = parseLifecycle(raw, Date.now());
     if (status === null) return 0;
+    // Read BEFORE the write: the previous status is what carries the turn's start instant, and this
+    // write is about to replace it.
+    const previous = readLifecycle(self);
     await writeLifecycle(self, status);
+    // The feed comes after the status file, and cannot fail into it. The status file is what the
+    // fleet's own health reads; the feed is what outside surfaces listen to, and an outside surface
+    // must never be able to cost a session its state.
+    try {
+      const input = eventForLifecycle(status, previous);
+      if (input !== null) {
+        const m = loadMachineConfig();
+        const session = findSession(loadSessions(m), self);
+        if (session && eventsEnabledFor(session, m)) appendEvent(m, session, input);
+      }
+    } catch {
+      // fail-open, separately from the status write above
+    }
     return 0;
   } catch {
     return 0; // fail-open — never break the turn over a status write

@@ -47,6 +47,21 @@ export interface RemoteResult {
    *  the difference between offline, denied and timed out, and saying "ssh unreachable" for a
    *  policy refusal would send the reader looking for a network problem that does not exist. */
   failureDetail?: string;
+  /**
+   * This refusal will refuse identically no matter how often it is repeated.
+   *
+   * The wire separates WHO said no from WHAT KIND of no it is, and the kinds behave oppositely:
+   * a policy refusal (the command is not on that node's allowlist) is permanent, while a capacity
+   * refusal is temporary and retrying is the correct response. Collapsing them — which is what
+   * reading only `failure` did — produces both mistakes at once: an hour of pointless retries
+   * against a permanent no, and a healthy-but-busy fleet drawn as broken.
+   *
+   * Unset where the transport cannot tell (ssh reports one exit code for everything).
+   */
+  permanent?: boolean;
+  /** How long the far side asked us to wait, when the limit is a timed window. Null/absent means
+   *  the ceiling frees when some other call finishes and there is no honest number to give. */
+  retryAfterMs?: number;
 }
 
 export async function runRemote(
@@ -79,8 +94,18 @@ export async function runRemote(
  * So: state what is true (queued, automatic retry, bounded window) and never name a cause that was
  * not reported.
  */
-export function queuedForRetryNotice(what: string, detail: string | null, windowMinutes: number): string {
+export function queuedForRetryNotice(what: string, detail: string | null, windowMinutes: number, permanent = false): string {
   const cause = detail ?? "the transport reported no reason";
+  // A PERMANENT refusal makes the sentence above a lie in the one direction that costs: it promises
+  // an automatic recovery that will never come, so nobody looks at the thing that actually needs
+  // fixing. The envelope is still recorded — the record is what it is for — but the wording must not
+  // send the reader away reassured.
+  if (permanent) {
+    return (
+      `${what}: refused, and it will be refused identically on every retry (${cause}). ` +
+      `The message is recorded in the outbox, but waiting will not deliver it — fix what was refused.`
+    );
+  }
   return (
     `${what}: the hop failed right now (${cause}) — the message is QUEUED, not lost. ` +
     `ccmux retries it automatically for up to ${windowMinutes} minutes. Nothing is required of you or of anyone else.`

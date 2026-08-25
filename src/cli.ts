@@ -10,6 +10,7 @@ import { cmdRestartAll, cmdRestartAllWorker } from "./commands/restartAll.ts";
 import { cmdSend } from "./commands/send.ts";
 import { cmdMode } from "./commands/mode.ts";
 import { cmdEnvFile } from "./commands/envFile.ts";
+import { cmdEvents } from "./commands/events.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdTranscript } from "./commands/transcript.ts";
 import { cmdWait } from "./commands/wait.ts";
@@ -110,6 +111,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdMode(rest[0], rest[1]);
     case "env-file":
       return cmdEnvFile(rest);
+    case "events":
+      return cmdEvents(rest);
     case "send":
       return cmdSend(rest[0], rest.slice(1));
     case "msg":
