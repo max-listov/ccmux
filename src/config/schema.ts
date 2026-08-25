@@ -103,6 +103,22 @@ export const SessionSchema = z.object({
   /** Per-session opt-out from the event feed. Undefined → follow the machine. Same two-level shape
    *  as `chatEnabled`, for the session nobody wants announced. */
   eventsEnabled: z.boolean().optional(),
+  /**
+   * What this session is FOR — the part of an identity a name does not carry.
+   *
+   * A name is chosen once, and it is usually the project's. A project has several sessions, and only
+   * one of them owns any given decision — so an address picked from a project name resolves, is
+   * delivered, exits zero, and lands on the neighbour. That failure reports nothing at all: the
+   * sender spends an hour believing it answered the owner.
+   *
+   * Deliberately free text under the address-token rules rather than an enum: the useful roles are a
+   * project's own vocabulary, and an enum would force every new kind of work through a schema
+   * change. Absent is the ordinary state — a session without one is addressed by name, as before.
+   *
+   * It must stay CHEAP to change (`ccmux role`, no restart). A second name that is expensive to
+   * update is worse than no second name: within a week it lies, and by then people trust it.
+   */
+  role: z.string().min(1).regex(SESSION_NAME_RE, "role: no '|', whitespace, '#' or ':' — a role is an address token").optional(),
 });
 
 /** A fresh managed launch that has not yet produced an authoritative provider thread id. */
@@ -677,7 +693,12 @@ export const ListItemSchema = z.object({
   context: ContextInfoSchema,
   uptime: z.object({ text: z.string().nullable(), seconds: z.number().nullable() }),
   // What a restart would change for this session; empty = nothing (or launched before stamping).
+  // Deliberately unaffected by `role`: a role is addressing metadata, not launch input, so declaring
+  // one must never paint a session as needing a restart.
   stale: z.array(z.string()).default([]),
+  /** What this session is FOR, when it declares it. Null is an ordinary state, not missing data —
+   *  such a session is addressed by name, as it always was. */
+  role: z.string().nullable().default(null),
   /**
    * When the turn that is running RIGHT NOW began, or null.
    *

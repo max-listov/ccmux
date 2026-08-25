@@ -6,6 +6,28 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- **`ccmux role` — a session declares what it is FOR, and an address can select on it.** A name is
+  chosen once and it is usually the project's; a project has several sessions and only one owns any
+  given decision. So an address picked from a project name resolves, delivers and exits zero — onto
+  the neighbour. Nothing reports a problem, and that is what makes it expensive: measured on a fleet,
+  an hour spent believing a report had reached the owner of a contract while it sat in a session that
+  does not decide contracts. It is the same class the machine label removed, one level in.
+- `ccmux msg <machine>:@<role>` addresses by role. `@` is a separate namespace rather than
+  decoration: without a sigil a role and a session name compete for one space, and an address that is
+  both would have to pick — which is the bug.
+- **A role matching two sessions refuses the address**, and the refusal carries what a reader needs
+  to choose: each candidate's directory, what it last said, and the exact address to retry with. The
+  refusal is the mechanism — a role merely printed somewhere is documentation, and documentation is
+  not read at the moment an address is chosen.
+- The role applies at once and never marks a session for restart. That is a requirement, not a
+  convenience: a second name that costs something to correct is one people put off correcting, and
+  within a week it lies while being trusted — worse than having no role at all.
+- Shown on the address line in `ccmux fleet` (the line people copy from) and in `list --json` /
+  `fleet --json`, including for remote machines. A remote role resolves against the same `list --json`
+  answer the peer identity comes from, so a session cannot be selected by a role it held one call ago.
+
 ## [0.32.0] — 2026-08-25
 
 a pane is a written fact, not a glance

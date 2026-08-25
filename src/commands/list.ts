@@ -209,6 +209,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     stale: r.stale,
+    role: r.session.role ?? null,
     turnStartedAt: r.turnStartedAt,
     envFile: envFileEntry(r.session),
     createdAt: r.createdAt,

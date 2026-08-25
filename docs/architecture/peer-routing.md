@@ -62,6 +62,44 @@ under `archive/` because name-only rows cannot be upgraded without inventing pro
 Lifecycle operations are not chat: `restart --then` does not exist, and a work hand-off must use a
 recorded `msg` envelope.
 
+### A name is not a role, and picking one for the other fails silently
+
+A session name is chosen once, and it is usually the project's. A project has several sessions and
+only one of them owns any given decision — so an address picked from a project name **resolves, is
+delivered, and exits zero**, onto the neighbour. Nothing anywhere reports a problem. Measured on the
+fleet: an hour spent believing a report had reached the owner of a contract, while it sat in a
+session that does not decide contracts.
+
+This is the same class the machine label removed, one level in. `host-a:api` and `host-b:api` are
+told apart; two sessions of one project on ONE machine were not.
+
+So a session may declare what it is FOR, and an address may select on that:
+
+```bash
+ccmux role agent-a contract-owner       # declare — applies at once, no restart
+ccmux role                              # what answers to what, on this machine
+ccmux msg host-a:@contract-owner "…"    # address by role
+```
+
+Four properties carry it, and the label itself is the least of them:
+
+- **`@` is a separate namespace, not decoration.** Without a sigil a role and a session name compete
+  for one space, and an address that is both would have to pick — which is the bug.
+- **Ambiguity REFUSES.** A role matching two sessions never chooses one. The refusal is the
+  mechanism; a role merely printed somewhere is documentation, and documentation is not read at the
+  moment an address is chosen.
+- **The refusal carries what a reader needs to choose** — each candidate's directory, what it last
+  said, and the exact address to retry with. A refusal that only redirects to another command leaves
+  the sender guessing from the same information that misled them.
+- **It costs nothing to change** (`ccmux role`, no restart, never a `stale` flag). A second name that
+  is expensive to correct is one people put off correcting, and within a week it lies while being
+  trusted — worse than having no role at all. Only the name is stored; nothing is snapshotted.
+
+Absent is the ordinary state: a session without a role is addressed by name exactly as before. A
+remote role resolves against the SAME `list --json` answer the peer identity comes from, so a session
+cannot be selected by a role it held one call ago, and a peer too old to report roles simply declares
+none.
+
 ## Two transports, one address
 
 `<machine>:<session>` never says how a call travels. Two transports carry it, chosen per direction in

@@ -97,6 +97,30 @@ export async function setSessionEnvFile(m: MachineConfig, name: string, envFile:
   });
 }
 
+/**
+ * Declare (or clear) what this session is FOR. `undefined` clears it.
+ *
+ * NOT launch-time, unlike `mode`, `chat` and `envFile`: a role is addressing metadata that no
+ * launch reads, so it takes effect at once and never shows up as a pending restart. That is a
+ * requirement, not a convenience — a second name that costs a restart to correct is one people put
+ * off correcting, and a role nobody corrects lies while being trusted.
+ *
+ * Returns false if the name wasn't present.
+ */
+export async function setSessionRole(m: MachineConfig, name: string, role: string | undefined): Promise<boolean> {
+  return withSessionRegistryLock(m, async () => {
+    await recoverPromotionsUnlocked(m);
+    const current = loadSessions(m);
+    if (!findSession(current, name)) return false;
+    await writeSessionsUnlocked(m, current.map((s) => {
+      if (s.name !== name) return s;
+      const { role: _drop, ...rest } = s;
+      return role === undefined ? rest : { ...rest, role };
+    }));
+    return true;
+  });
+}
+
 /** Enable/disable ROUTER mode on a session: add/remove the "router" prompt module, and — since a
  *  router drives ccmux chat (`msg`/`inbox`) — also enable chat when turning it on (leaving chat as-is
  *  when turning off). Launch-time, like the other prompt-affecting fields: applies on next restart.

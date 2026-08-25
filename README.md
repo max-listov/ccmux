@@ -361,6 +361,27 @@ keep it until you clear the override.
 Chat framing and the Stop hook are launch-time, so all three commands apply on the next restart —
 and flipping the machine default marks the affected sessions in the `RESTART` column.
 
+### Address by what a session DOES, not by what it is called
+
+A session name is chosen once, and it is usually the project's. A project has several sessions and
+only one of them owns any given decision — so an address picked from a project name **resolves, is
+delivered, and exits zero**, onto the neighbour. Nothing reports a problem, which is what makes it
+expensive: on this fleet it cost an hour of believing a report had reached a contract's owner.
+
+```bash
+ccmux role cc-api contract-owner        # declare — applies at once, no restart
+ccmux role                              # what answers to what, on this machine
+ccmux msg host-a:@contract-owner "…"    # address by role
+```
+
+`@` is a separate namespace, not decoration: without it a role and a session name would compete for
+one space. **A role matching two sessions refuses the address** and shows both — with their
+directories, what each last said, and the exact address to retry with — rather than silently picking
+one. A session without a role is addressed by name exactly as before.
+
+It is deliberately cheap to change and never marks a session for restart: a second name that costs
+something to correct is one people put off correcting, and within a week it lies while being trusted.
+
 Opt-in messaging between managed sessions, so one agent can hand off to another without you relaying.
 
 - `ccmux chat on <name>` — enable chat for a session (**default OFF**; nothing sends or receives

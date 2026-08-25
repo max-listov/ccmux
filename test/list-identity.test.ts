@@ -34,6 +34,7 @@ test("fleet renders a missing remote provider as unknown, never Claude", () => {
     model: null,
     running: true,
     stale: [],
+    role: null,
     turnStartedAt: null,
     uptime: { text: "1m" },
   });

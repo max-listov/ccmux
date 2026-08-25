@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { providerFor } from "../agent/index.ts";
+import { lastTranscriptMessage, providerFor } from "../agent/index.ts";
 import { cliPrincipal, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
 import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor, remoteTransportAncestor } from "../chat/auth.ts";
@@ -8,6 +8,7 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
 import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
+import { isRoleToken, resolveRole, type RoleCandidate } from "../chat/roleAddress.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
 import { RETRY_WINDOW_MS } from "../fleet/flush.ts";
 import { queuedForRetryNotice, relay, runPeer } from "../fleet/transport.ts";
@@ -54,13 +55,23 @@ function assertExpected(target: ManagedPeer, agent: AgentKind | null, threadId: 
   return null;
 }
 
-async function resolveRemotePeer(cfg: MachineConfig, alias: string | null, machine: string, name: string): Promise<ManagedPeer | { error: string }> {
+async function resolveRemotePeer(cfg: MachineConfig, alias: string | null, machine: string, token: string): Promise<ManagedPeer | { error: string }> {
+  const name = token;
   const result = await runPeer(cfg, machine, alias, ["ccmux", "list", "--json"], { timeoutMs: 20_000 });
   if (result.transportFailed) return { error: `msg ${machine}:${name}: transport failed while resolving exact peer${result.failureDetail === undefined ? "" : ` (${result.failureDetail})`}` };
   if (result.code !== 0) return { error: `msg ${machine}:${name}: remote peer resolution failed (exit ${result.code})` };
   try {
     const parsed = RemoteListSchema.parse(JSON.parse(result.stdout));
-    const matches = parsed.sessions.filter((session) => session.name === name);
+    // A role is resolved on the SAME answer the peer identity comes from, so a session cannot be
+    // selected by a role it held one call ago. A peer too old to report roles simply declares none,
+    // and the refusal says so rather than guessing.
+    let wanted = name;
+    if (isRoleToken(name)) {
+      const resolved = resolveRole(name, parsed.sessions.map(remoteCandidate), `${machine}:`);
+      if ("error" in resolved) return { error: `msg ${machine}:${name}: ${resolved.error}` };
+      wanted = resolved.name;
+    }
+    const matches = parsed.sessions.filter((session) => session.name === wanted);
     if (matches.length !== 1) {
       const candidates = matches.map((session) => `${session.agent ?? "unknown"}#${session.uuid}`).join(", ");
       const suffix = candidates === "" ? "" : `; candidates: ${candidates}`;
@@ -79,6 +90,16 @@ async function resolveRemotePeer(cfg: MachineConfig, alias: string | null, machi
   } catch {
     return { error: `msg ${machine}:${name}: remote identity is missing or version-incompatible` };
   }
+}
+
+/** One remote session, as a role lookup needs to see it. `lastMessage.text` is what tells two
+ *  sessions of one project apart — the same thing a person reads before choosing by hand. */
+function remoteCandidate(s: z.infer<typeof RemoteListSchema>["sessions"][number]): RoleCandidate {
+  return { name: s.name, role: s.role, dir: s.dir, lastText: s.lastMessage?.text ?? null };
+}
+
+function localCandidate(s: Session, m: MachineConfig): RoleCandidate {
+  return { name: s.name, role: s.role ?? null, dir: s.dir, lastText: lastTranscriptMessage(s, m)?.text ?? null };
 }
 
 /** Transport-only v2 receiver. Old binaries reject the unknown verb before appending anything. */
@@ -224,6 +245,11 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   }
 
   targetToken = route.session;
+  if (isRoleToken(targetToken)) {
+    const resolved = resolveRole(targetToken, sessions.map((s) => localCandidate(s, machine)));
+    if ("error" in resolved) return console.error(`msg: ${resolved.error}`), 1;
+    targetToken = resolved.name;
+  }
   const session = findSession(sessions, targetToken);
   if (!session) return console.error(`msg: no such session '${targetToken}'`), 1;
   const target = managedPeer(machine.rcPrefix, session);

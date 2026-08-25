@@ -3,6 +3,7 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { collectRows } from "./list.ts";
 import { peersOf, runPeer } from "../fleet/transport.ts";
 import { VERSION } from "../util/version.ts";
+import { ROLE_SIGIL } from "../chat/roleAddress.ts";
 import type { MachineConfig } from "../types.ts";
 
 /**
@@ -26,6 +27,9 @@ const RemoteSessionSchema = z.object({
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),
+  // What that session is FOR. Shown on the address line, because a role that a reader has to go and
+  // look up is not consulted at the moment an address is chosen — which is the moment it exists for.
+  role: z.string().nullable().default(null),
   // Absent on a peer running an older ccmux, which is exactly what `null` means here: not "that
   // session is idle" but "that build does not report it". `version` is on the machine row beside it,
   // so a consumer can tell the two apart without guessing.
@@ -64,6 +68,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       running: r.running,
       uptime: { text: r.uptimeText },
       stale: r.stale,
+      role: r.session.role ?? null,
       turnStartedAt: r.turnStartedAt,
     })),
   };
@@ -92,7 +97,10 @@ const pad = (s: string, n: number): string => (s.length >= n ? s : s + " ".repea
 export function formatFleetSession(machine: string, session: z.infer<typeof RemoteSessionSchema>): string {
   const restart = session.stale.length > 0 ? `  ⟳ ${session.stale.join(",")}` : "";
   const agent = session.agent ?? "unknown";
-  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(session.state, 9)} ${pad(session.model ?? "-", 11)} ${pad(session.uptime?.text ?? "", 7)}${restart}`;
+  // The role rides on the ADDRESS line, not in a column of its own, because it is part of the answer
+  // to "which of these do I write to" — and the line above is the one people copy from.
+  const role = session.role === null ? "" : `  ${ROLE_SIGIL}${session.role}`;
+  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(session.state, 9)} ${pad(session.model ?? "-", 11)} ${pad(session.uptime?.text ?? "", 7)}${role}${restart}`;
 }
 
 export async function cmdFleet(args: string[] = []): Promise<number> {
