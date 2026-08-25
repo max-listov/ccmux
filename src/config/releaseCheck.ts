@@ -75,28 +75,37 @@ export async function recordReleaseCheck(
 /** How far a version is behind another. Null = level with it, ahead of it, or nothing to compare. */
 export type BehindBy = "patch" | "minor" | "major" | null;
 
+const parts = (v: string): [number, number, number] => {
+  const [a = 0, b = 0, c = 0] = v.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  return [a, b, c];
+};
+
 /**
  * Classified once, by whoever owns the version scheme.
  *
  * Every consumer would otherwise reimplement a semver comparison and they would disagree — one
  * calling a machine two minors back "slightly behind" while another calls the same machine current.
  *
+ * **The breaking axis is the leftmost position that is not zero.** Below 1.0.0 that is the MINOR
+ * position, which is what `^0.23.0` encodes and what every project in this family lives under.
+ * Reading the positions literally instead makes `major` unreachable for the entire pre-1.0 life of a
+ * project and files every breaking jump under `minor` — 0.23 against 0.63 is forty breaking releases
+ * reported as a moderate one. The error points in the reassuring direction, which is the direction
+ * that costs: a dashboard colours by this word, and the reader acts on the colour.
+ *
  * A machine AHEAD of the published release is not behind: that is a development checkout, and
  * painting it red would train people to ignore the colour.
- *
- * ⚠️ `latest` must be the BEST KNOWN release, not what the machine being judged happens to have
- * read. A machine that lost its route to the release feed remembers an old "latest", and measuring
- * it against its own stale memory reports it as LESS behind than it is — sometimes as up to date.
- * The error would point in the reassuring direction, in exactly the case a person is checking
- * because something looks wrong. So this takes the yardstick as an argument, and the aggregate
- * supplies it.
  */
 export function behindBy(current: string, latest: string | null): BehindBy {
   if (latest === null || compareSemver(current, latest) >= 0) return null;
-  const [cm = 0, cn = 0] = current.split(".").map((n) => Number.parseInt(n, 10));
-  const [lm = 0, ln = 0] = latest.split(".").map((n) => Number.parseInt(n, 10));
-  if (lm > cm) return "major";
-  return ln > cn ? "minor" : "patch";
+  const c = parts(current);
+  const l = parts(latest);
+  const axis = l[0] > 0 ? 0 : l[1] > 0 ? 1 : 2;
+  const firstDiff = c[0] !== l[0] ? 0 : c[1] !== l[1] ? 1 : 2;
+  if (firstDiff <= axis) return "major"; // a difference at or above the breaking axis IS breaking
+  // Only a scheme with a real major has a middle class; below 1.0.0 there is breaking and there is
+  // compatible, and calling a compatible bump "minor" would overstate it in the other direction.
+  return firstDiff === 1 && axis === 0 ? "minor" : "patch";
 }
 
 /** The best release any of these machines has managed to read. Null when none of them knows. */

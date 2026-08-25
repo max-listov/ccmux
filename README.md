@@ -332,6 +332,11 @@ memory. A box that lost its route to the release feed remembers an old "latest",
 that memory reports it as *less* behind than it is, sometimes as up to date: the error would point in
 the reassuring direction, in exactly the case someone is looking because something seems wrong.
 
+`behind` is `patch` / `minor` / `major`, and the breaking axis is the **leftmost non-zero position**:
+below 1.0.0 a minor bump is the breaking one, which is what `^0.23.0` encodes. Reading the positions
+literally would make `major` unreachable for a project's whole pre-1.0 life and file every breaking
+jump under `minor`.
+
 Three states stay apart, and the third is what a bare version number hides: **behind**, **current**,
 and **nobody has been able to check** (`latest: null`, or `ok: false` beside a remembered version).
 The last one must never be drawn as current.

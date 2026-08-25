@@ -19,10 +19,28 @@ const machine = (name: string, current: string, latest: string | null, ok = true
 });
 
 test("behind is classified, not left to each reader to reinvent", () => {
-  expect(behindBy("0.34.0", "0.35.0")).toBe("minor");
-  expect(behindBy("0.35.0", "0.35.1")).toBe("patch");
-  expect(behindBy("0.35.0", "1.0.0")).toBe("major");
+  expect(behindBy("1.2.0", "2.0.0")).toBe("major");
+  expect(behindBy("1.2.0", "1.3.0")).toBe("minor");
+  expect(behindBy("1.2.0", "1.2.3")).toBe("patch");
   expect(behindBy("0.35.0", "0.35.0")).toBeNull();
+});
+
+test("below 1.0.0 the MINOR position is the breaking one, and is reported as such", () => {
+  // Reading the positions literally makes `major` unreachable for the entire pre-1.0 life of a
+  // project and files every breaking jump under `minor`: 0.23 against 0.63 is forty breaking
+  // releases reported as a moderate one. The error points in the reassuring direction, which is the
+  // direction that costs — a dashboard colours by this word and the reader acts on the colour.
+  expect(behindBy("0.34.0", "0.35.0")).toBe("major");
+  expect(behindBy("0.23.0", "0.63.0")).toBe("major");
+  // …and a compatible bump stays compatible. Calling it "minor" would overstate it the other way:
+  // below 1.0.0 there is breaking and there is compatible, and no middle class exists to name.
+  expect(behindBy("0.35.0", "0.35.1")).toBe("patch");
+});
+
+test("the axis is the leftmost NON-ZERO position, so 0.0.x is breaking on every bump", () => {
+  // What `^0.0.3` encodes: nothing else is allowed. The rule generalises rather than special-casing
+  // one shape of version.
+  expect(behindBy("0.0.3", "0.0.4")).toBe("major");
 });
 
 test("a machine AHEAD of the release is not behind", () => {
@@ -47,7 +65,7 @@ test("a machine that lost the release feed is judged by the fleet, not by its ow
   const view = fleetView([machine("host-a", "0.35.0", "0.35.0"), machine("host-b", "0.30.0", "0.30.0", false)]);
   expect(view.latest).toBe("0.35.0");
   expect(view.machines[0]?.behind).toBeNull();
-  expect(view.machines[1]?.behind).toBe("minor"); // NOT null, which its own memory would have said
+  expect(view.machines[1]?.behind).toBe("major"); // NOT null, which its own memory would have said
 });
 
 test("its own stale memory is still reported — that is WHY it is behind", () => {

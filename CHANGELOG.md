@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`behind` now treats the leftmost non-zero position as the breaking axis.** It read the version
+  positions literally, which makes `major` unreachable for the whole pre-1.0 life of a project and
+  files every breaking jump under `minor` — 0.23 against 0.63 is forty breaking releases reported as
+  a moderate one. Below 1.0.0 the minor position is the breaking one; that is what `^0.23.0` encodes,
+  and it is where this project and its neighbours live. A compatible bump stays `patch`, because
+  overstating it in the other direction is no better. Caught in review by the consumer that draws
+  this field: a dashboard colours by the word, and the reader acts on the colour.
+
 ## [0.36.0] — 2026-08-25
 
 a machine says how far behind the current release it is
