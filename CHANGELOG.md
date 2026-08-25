@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-08-25
+
+a pane is a written fact, not a glance
+
 ### Fixed
 
 - **`ccmux wait` no longer answers "done" about a session that is mid-work.** It is the fleet's only
@@ -29,7 +33,6 @@ the GitHub Release with that section as the notes.
   pane are not a feature anybody subscribed to — `list`, the TUI, `wait` and chat delivery read them
   regardless — so gating them on a publication toggle let switching off a feed quietly weaken
   delivery.
-
 ## [0.31.1] — 2026-08-25
 
 a spinner is activity, so a long tool call is not a dead turn
