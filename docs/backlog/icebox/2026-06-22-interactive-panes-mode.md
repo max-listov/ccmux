@@ -2,10 +2,11 @@
 title: `ccmux panes` — several agents side by side, and you can type into each
 description: One tmux window, one pane per agent, each pane a real live agent (not a mirror); the hard part is that a conversation uuid can only run once, so grouping must take sessions over rather than duplicate them
 type: task
-status: inbox
+status: icebox
 created: 2026-06-22
-updated: 2026-08-05
+updated: 2026-08-25
 related: docs/decisions/2026-06-22-no-readonly-pane-mirror.md
+defrost: по решению владельца. Разморозка — когда несколько агентов рядом в одном окне понадобятся на практике; до тех пор ручной tmux покрывает это без риска для инварианта «один uuid — один писатель».
 ---
 
 # Interactive pane mode
@@ -13,6 +14,9 @@ related: docs/decisions/2026-06-22-no-readonly-pane-mirror.md
 Seeing N agents at once **and being able to type into each**, from one command. Interactive — not a
 mirror; the read-only version was built, removed, and must not come back
 (`docs/decisions/2026-06-22-no-readonly-pane-mirror.md`).
+
+> **Заморожено 2026-08-25 по решению владельца** — задача и раньше несла «do not start without an
+> explicit go», теперь это состояние записано статусом, а не только строчкой в тексте.
 
 ## Sketch (deferred — do not start without an explicit go)
 - `ccmux panes agent-a agent-b` → one tmux window, one pane per agent, each running `ccmux _run
