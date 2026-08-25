@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-08-25
+
+the snapshot says when the current turn began
+
 ### Added
 
 - **`turnStartedAt` in `list --json` and `fleet --json` — when the turn that is running now began.**
@@ -39,7 +43,6 @@ the GitHub Release with that section as the notes.
   event as news. The stamp is repaired either way.
 - A late `Stop` on a turn the supervisor already closed says nothing, instead of announcing the same
   ending a second time without a duration.
-
 ## [0.30.3] — 2026-08-25
 
 a turn begins with a transition, not with a message
