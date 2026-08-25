@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-08-25
+
+address a session by what it does, not by what it is called
+
 ### Added
 
 - **`ccmux role` — a session declares what it is FOR, and an address can select on it.** A name is
@@ -27,7 +31,6 @@ the GitHub Release with that section as the notes.
 - Shown on the address line in `ccmux fleet` (the line people copy from) and in `list --json` /
   `fleet --json`, including for remote machines. A remote role resolves against the same `list --json`
   answer the peer identity comes from, so a session cannot be selected by a role it held one call ago.
-
 ## [0.32.0] — 2026-08-25
 
 a pane is a written fact, not a glance
