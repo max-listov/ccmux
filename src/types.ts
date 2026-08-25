@@ -8,6 +8,7 @@ import type {
   ContextInfoSchema,
   ListItemSchema,
   ListJsonSchema,
+  ReleaseStandingSchema,
   TranscriptRoleSchema,
   TranscriptKindSchema,
   TranscriptMessageSchema,
@@ -42,6 +43,7 @@ export type SessionState = z.infer<typeof SessionStateSchema>;
 export type ContextInfo = z.infer<typeof ContextInfoSchema>;
 export type ListItem = z.infer<typeof ListItemSchema>;
 export type ListJson = z.infer<typeof ListJsonSchema>;
+export type ReleaseStanding = z.infer<typeof ReleaseStandingSchema>;
 export type TranscriptRole = z.infer<typeof TranscriptRoleSchema>;
 export type TranscriptKind = z.infer<typeof TranscriptKindSchema>;
 export type TranscriptMessage = z.infer<typeof TranscriptMessageSchema>;

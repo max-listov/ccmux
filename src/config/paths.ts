@@ -115,6 +115,16 @@ export const eventsPath = (m: MachineConfig): string => join(m.stateDir, "events
  */
 export const paneActivityPath = (m: MachineConfig): string => join(m.stateDir, "pane-activity.json");
 
+/**
+ * What this machine last learned about the newest published release.
+ *
+ * The supervisor asks on every tick and used to throw the answer away, so a fleet view could show
+ * which version each machine RUNS and nothing about whether that is the right one. Written here, the
+ * machine can answer both halves itself — including "nobody has been able to check", which is a
+ * different state from "up to date" and must never be drawn as one.
+ */
+export const releaseCheckPath = (m: MachineConfig): string => join(m.stateDir, "release-check.json");
+
 /** Superseded state, kept readable but out of the way. One directory, so "what here is dead?" is
  *  answered by the path instead of by remembering which name came first. */
 export const archiveDir = (m: MachineConfig): string => join(m.stateDir, "archive");

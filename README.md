@@ -314,6 +314,28 @@ reports it for remote machines too.
 
 Details in [`docs/architecture/session-events.md`](docs/architecture/session-events.md).
 
+### Is everything rolled out?
+
+`ccmux fleet` answers both halves now — which version each machine runs, and whether that is the
+right one. The supervisor already fetched the release manifest on every tick and threw the answer
+away; it is written down instead.
+
+```bash
+ccmux fleet          # latest release, then each machine with how far behind it is
+ccmux fleet --json   # latest / latestAt at the top; per machine: release{} and behind
+```
+
+Each machine reports **facts about itself**: what is installed, the newest release it managed to
+read, when it last tried and whether that worked. The **yardstick is one per answer** — the best
+release any machine could report — and every machine is measured against that, never against its own
+memory. A box that lost its route to the release feed remembers an old "latest", and judging it by
+that memory reports it as *less* behind than it is, sometimes as up to date: the error would point in
+the reassuring direction, in exactly the case someone is looking because something seems wrong.
+
+Three states stay apart, and the third is what a bare version number hides: **behind**, **current**,
+and **nobody has been able to check** (`latest: null`, or `ok: false` beside a remembered version).
+The last one must never be drawn as current.
+
 ## Session environment
 
 A session's environment is a **declared recipe**, not whatever the supervisor happened to inherit.

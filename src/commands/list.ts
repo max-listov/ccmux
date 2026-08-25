@@ -13,6 +13,7 @@ import { existsSync } from "node:fs";
 import { promptInvocation } from "../env.ts";
 import { readLifecycle, readMetrics, resolveLiveState, type LifecycleStatus } from "../agent/sessionStatus.ts";
 import { VERSION } from "../util/version.ts";
+import { releaseStanding } from "../config/releaseCheck.ts";
 import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { fmtTokens } from "../tui/format.ts";
 import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionState, TranscriptMessage } from "../types.ts";
@@ -223,6 +224,7 @@ function printJson(m: MachineConfig, rows: ListRow[]): void {
     generatedAt: new Date().toISOString(),
     rcPrefix: m.rcPrefix,
     stateDir: m.stateDir,
+    release: releaseStanding(m, VERSION),
     sessions: rows.map((r) => toListItem(m, r)),
   };
   console.log(JSON.stringify(out));

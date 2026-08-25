@@ -6,6 +6,7 @@ import { VERSION, compareSemver } from "../util/version.ts";
 import { restartBoot } from "../boot/install.ts";
 import { APP_BUNDLE, STAGED_BUNDLE } from "../config/paths.ts";
 import { log } from "../util/log.ts";
+import { recordReleaseCheck } from "../config/releaseCheck.ts";
 import type { MachineConfig, Release } from "../types.ts";
 
 type UpdateOpts = { check: boolean; force: boolean; rollback: boolean };
@@ -229,6 +230,11 @@ async function downloadVerifyApply(m: MachineConfig, release: Release): Promise<
 export async function autoUpdateOnce(m: MachineConfig): Promise<void> {
   if (!m.releaseUrl) return;
   const release = await fetchRelease(m.releaseUrl);
+  // Written down whether or not it succeeded, and BEFORE acting on it. This is the only place in the
+  // system that looks at "what should be running" from the machine itself, and a fleet view needs
+  // the failed attempt as much as the successful one: a machine that cannot reach the release feed
+  // has not fallen behind, it has stopped being able to say.
+  await recordReleaseCheck(m, typeof release === "string" ? null : release, new Date().toISOString());
   if (typeof release === "string") {
     log.warn({ msg: "auto-update check failed", err: release });
     return;

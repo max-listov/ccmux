@@ -31,7 +31,9 @@ function sha256(path: string): { bytes: number; hex: string } {
 
 async function writeManifest(url: string, notes: string): Promise<string> {
   const { hex } = sha256(RELEASE_BUNDLE);
-  const manifest = { version: VERSION, notes, sha256: hex, url };
+  // Stamped at publish time, so a machine can say how OLD its lag is rather than only how many
+  // version components it spans. "Three days behind" is what decides whether anyone cares.
+  const manifest = { version: VERSION, notes, sha256: hex, url, releasedAt: new Date().toISOString() };
   await Bun.write(RELEASE_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
   return hex;
 }

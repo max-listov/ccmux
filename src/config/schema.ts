@@ -360,6 +360,10 @@ export const ReleaseSchema = z.object({
   // verify the artifact bytes BEFORE swapping it in (supply-chain safety).
   sha256: z.string().length(64),
   url: z.url(),
+  /** When this release was cut. Optional because manifests published before it exists have none —
+   *  and it is worth having: "two minors behind" is a class, while "three days behind" is the thing
+   *  a person actually wants to know when deciding whether to care. */
+  releasedAt: z.iso.datetime().optional(),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -756,10 +760,40 @@ export const ListItemSchema = z.object({
   lastMessage: TranscriptMessageSchema.nullable(),
 });
 
+/**
+ * How this machine stands against the newest published release.
+ *
+ * `latest: null` means NOT KNOWN — no release feed configured, or no check has ever completed. It is
+ * a different state from "up to date" (`latest` set, `behind: null`), and collapsing the two would
+ * draw a machine as healthiest exactly when nothing has verified it.
+ *
+ * `ok: false` with a non-null `latest` means "this is what we knew, and we can no longer reach the
+ * feed to confirm it" — a reader should dim that machine rather than trust it. `checkedAt` says when
+ * the last attempt was, so staleness is visible instead of assumed.
+ *
+ * `behind` is classified HERE rather than left to each reader: otherwise every consumer
+ * reimplements a semver comparison and they disagree about the same machine.
+ */
+export const ReleaseStandingSchema = z.object({
+  /** What is installed here. */
+  current: z.string(),
+  /** The newest release THIS machine has managed to read, retained across later failures.
+   *  Null = not known: no release feed configured, or no check has ever completed. */
+  latest: z.string().nullable().default(null),
+  /** When that release was published, when the manifest said. Null on an older manifest. */
+  latestAt: z.string().nullable().default(null),
+  /** When a check was last ATTEMPTED here — success or failure. */
+  checkedAt: z.string().nullable().default(null),
+  /** Did that last attempt succeed? `false` with a non-null `latest` means "this is what we knew,
+   *  and we can no longer reach the feed to confirm it". */
+  ok: z.boolean().default(true),
+});
+
 export const ListJsonSchema = z.object({
   version: z.string(),
   generatedAt: z.string(),
   rcPrefix: z.string(),
   stateDir: z.string(),
+  release: ReleaseStandingSchema,
   sessions: z.array(ListItemSchema),
 });

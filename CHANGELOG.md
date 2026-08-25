@@ -6,6 +6,28 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- **A machine says how far behind the current release it is.** `ccmux fleet` could show which version
+  each machine runs and nothing about whether that was the right one — the other half came from a
+  person reading the releases page and comparing by eye. The supervisor already fetched the release
+  manifest on every tick, compared it, acted on it, and then discarded the answer; it is recorded now
+  and reported in `list --json` and `fleet --json`.
+- Each machine reports facts about **itself**: `current`, the newest release it managed to read,
+  `latestAt` (stamped into the manifest at publish time, so lag can be read in days rather than in
+  version components), when it last tried, and whether that attempt worked.
+- **The yardstick is one per answer, and it is not the machine's own memory.** `fleet` takes the best
+  release any machine could report and measures every machine against it. Judging a disconnected box
+  by what it last managed to read reports it as *less* behind than it is — sometimes as up to date —
+  and that error points in the reassuring direction, in exactly the case someone is checking because
+  something looks wrong. Caught in review by the consumer this was designed with.
+- `behind` is classified as `patch` / `minor` / `major` by the side that owns the version scheme, so
+  consumers do not each reimplement a semver comparison and then disagree about the same machine. A
+  machine ahead of the release is not behind — that is a development checkout.
+- Three states stay distinguishable: behind, current, and **nobody has been able to check**. The last
+  must never be drawn as current, which is what it would look like if "unknown" and "up to date" were
+  the same value.
+
 ## [0.35.0] — 2026-08-25
 
 an owner outside the fleet has an address, and the hop through a person is written down
