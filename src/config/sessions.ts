@@ -80,6 +80,23 @@ export async function setSessionChatEnabled(m: MachineConfig, name: string, enab
   });
 }
 
+/** Declare (or clear) the env file this session's agent is launched with. `undefined` clears it, so
+ *  the session gets only the base environment. Launch-time, like `mode`: applies on next restart —
+ *  the recipe is read when the agent is spawned. Returns false if the name wasn't present. */
+export async function setSessionEnvFile(m: MachineConfig, name: string, envFile: string | undefined): Promise<boolean> {
+  return withSessionRegistryLock(m, async () => {
+    await recoverPromotionsUnlocked(m);
+    const current = loadSessions(m);
+    if (!findSession(current, name)) return false;
+    await writeSessionsUnlocked(m, current.map((s) => {
+      if (s.name !== name) return s;
+      const { envFile: _drop, ...rest } = s;
+      return envFile === undefined ? rest : { ...rest, envFile };
+    }));
+    return true;
+  });
+}
+
 /** Enable/disable ROUTER mode on a session: add/remove the "router" prompt module, and — since a
  *  router drives ccmux chat (`msg`/`inbox`) — also enable chat when turning it on (leaving chat as-is
  *  when turning off). Launch-time, like the other prompt-affecting fields: applies on next restart.

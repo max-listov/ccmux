@@ -28,6 +28,30 @@ function resolveSelfArgv(): string[] {
 }
 
 export const SELF_ARGV: readonly string[] = resolveSelfArgv();
+
+/**
+ * The same re-exec, with the runtime told NOT to load `.env` from wherever it lands.
+ *
+ * Used for the `_run` pane, whose cwd IS the session's directory. Without it the runtime loads that
+ * directory's env files into the supervisor, and everything the supervisor hands to the agent — and
+ * that the agent hands to every process it spawns — carries the project's secrets, undeclared.
+ * Measured before this existed: 5 of 14 sessions on one machine were carrying project variables,
+ * API keys among them.
+ *
+ * It only applies to the `bun <entry>` form, which is what production runs. A `bun build --compile`
+ * binary never sees the flag — it lands in the app's argv, not the runtime's, and no environment
+ * variable or bunfig substitutes for it (all four candidates probed). That is precisely why
+ * `agent/sessionEnv.ts` subtracts those names again when building the agent's environment: the
+ * guarantee must not rest on a flag one build shape silently ignores.
+ */
+export function withNoEnvFile(argv: readonly string[]): readonly string[] {
+  // A compiled single-file build is `[binary]` with no runtime in front of it, and the flag would
+  // land in the app's own argv — accepted, ignored, and quietly misleading. Left alone there on
+  // purpose: `agent/sessionEnv.ts` is what holds the guarantee in that shape.
+  return argv.length > 1 ? [argv[0] as string, "--no-env-file", ...argv.slice(1)] : argv;
+}
+
+export const SELF_ARGV_NO_ENV_FILE: readonly string[] = withNoEnvFile(SELF_ARGV);
 /** Absolute, always-spawnable invocation of THIS tool (bun+bundle / compiled binary). Correct
  *  for machine re-execs — the `_run` supervisor, the boot unit, the detached restart-worker —
  *  which must not depend on any PATH. NOT what we teach an in-session agent (see below). */

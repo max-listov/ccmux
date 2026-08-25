@@ -5,6 +5,7 @@ import { codexProvider } from "./codex/index.ts";
 import { rcName } from "../config/machine.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
 import { readLines, readTailLines, readTailUntil } from "../util/readLines.ts";
+import type { LaunchInput } from "./launchInputs.ts";
 
 // Format sniff lives in its own light module (normalize-only deps) so the public library seam can
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
@@ -37,12 +38,25 @@ export interface AgentProvider {
   // launch — `cli` is how the injected prompt should tell the agent to invoke ccmux
   // (bare shim when installed, else absolute; see env.promptInvocation)
   buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[];
-  launchEnv(m: MachineConfig, sessionName: string): Record<string, string>;
+  /** The environment for the spawned agent. Takes the SESSION, not just its name, because the
+   *  environment is a declared recipe (`envFile`) rather than whatever the supervisor happened to
+   *  inherit — see agent/sessionEnv.ts for why that distinction had to become explicit. */
+  launchEnv(m: MachineConfig, session: Session): Record<string, string>;
   /** The ccmux-controlled environment variable NAMES this launch injects — never their values.
    *  It exists so the launch stamp can see the one part of the recipe that is deliberately NOT in
    *  argv: a secret must not be an argument. Names are enough to answer "would relaunching give this
    *  session something it does not have", which is the only question the stamp asks. */
   launchEnvKeys(m: MachineConfig): readonly string[];
+  /**
+   * The EXTERNAL files this agent reads at startup and never re-reads — its global rule set, its MCP
+   * configuration. They shape the session exactly as argv does, but they live outside it, so the
+   * launch stamp could not see them: a fleet-wide rule change once left every session running
+   * yesterday's rules behind a clean RESTART column.
+   *
+   * Provider-owned because the locations are agent-specific and the core must not learn them. The
+   * core only asks "what did this launch read, and what is it now".
+   */
+  launchInputs(s: Session, m: MachineConfig): readonly LaunchInput[];
   // history / resume
   historyFile(s: Session, m: MachineConfig): string | null;
   /** The same conversation found somewhere OTHER than where this session expects it — used only

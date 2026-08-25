@@ -1,11 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { providerFor } from "../agent/index.ts";
 import { cliPrincipal, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
 import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor, remoteTransportAncestor } from "../chat/auth.ts";
+import { buildEnvelope } from "../chat/compose.ts";
 import { loadMachineConfig } from "../config/machine.ts";
-import { CHAT_GENERATION, ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
+import { ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
 import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
 import { appendOutbound } from "../fleet/outbox.ts";
@@ -79,29 +79,6 @@ async function resolveRemotePeer(cfg: MachineConfig, alias: string | null, machi
   } catch {
     return { error: `msg ${machine}:${name}: remote identity is missing or version-incompatible` };
   }
-}
-
-function buildEnvelope(
-  from: ChatPrincipal,
-  to: ManagedPeer | ReturnType<typeof ownerTarget>,
-  body: string,
-  task: string | null,
-  defer: boolean,
-  onBehalfOf: string | null,
-  notBefore: string | null,
-): ChatMessage {
-  return ChatMessageSchema.parse({
-    v: CHAT_GENERATION,
-    id: randomUUID(),
-    ts: new Date().toISOString(),
-    from,
-    to,
-    body,
-    task,
-    defer,
-    onBehalfOf,
-    notBefore,
-  });
 }
 
 /** Transport-only v2 receiver. Old binaries reject the unknown verb before appending anything. */
@@ -214,7 +191,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   }
   if (targetToken === OWNER) {
     if (expectedAgent !== null || expectedThread !== null) return console.error("msg: owner has no provider/thread"), 1;
-    appendMessage(machine, buildEnvelope(from, ownerTarget(), body, task, defer, onBehalfOf, notBefore));
+    appendMessage(machine, buildEnvelope(from, ownerTarget(), body, { task, defer, onBehalfOf, notBefore }));
     warnAboutAnonymousRemote(from, senderTransport);
     console.log(`sent ${principalLabel(from)} → owner: ${preview(body)}`);
     return 0;
@@ -228,7 +205,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     if ("error" in resolved) return console.error(resolved.error), 1;
     const mismatch = assertExpected(resolved, expectedAgent, expectedThread);
     if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
-    const envelope = buildEnvelope(from, resolved, body, task, false, onBehalfOf, null);
+    const envelope = buildEnvelope(from, resolved, body, { task, onBehalfOf });
     const result = await runPeer(machine, route.machine, route.alias, ["ccmux", "_chat-receive-v2"], { stdin: JSON.stringify(envelope), timeoutMs: 20_000 });
     appendOutbound(machine, {
       kind: "msg",
@@ -259,7 +236,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     const prior = pendingConditional(loadLedger(machine), loadAckedIds(machine), { from, to: target, task });
     for (const message of prior) appendAck(machine, message.id, "cancel", message.to);
   }
-  const envelope = buildEnvelope(from, target, body, task, defer, onBehalfOf, notBefore);
+  const envelope = buildEnvelope(from, target, body, { task, defer, onBehalfOf, notBefore });
   appendMessage(machine, envelope);
   warnAboutAnonymousRemote(from, senderTransport);
   log.info({ msg: "chat message sent", from: principalLabel(from), to: targetLabel(target), task });

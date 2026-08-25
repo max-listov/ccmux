@@ -9,6 +9,7 @@ import { cmdStart, cmdStop, cmdRestart, cmdRestartWorker } from "./commands/life
 import { cmdRestartAll, cmdRestartAllWorker } from "./commands/restartAll.ts";
 import { cmdSend } from "./commands/send.ts";
 import { cmdMode } from "./commands/mode.ts";
+import { cmdEnvFile } from "./commands/envFile.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdTranscript } from "./commands/transcript.ts";
 import { cmdWait } from "./commands/wait.ts";
@@ -78,10 +79,17 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       const router = positionals.includes("--router");
       const agentIndex = positionals.indexOf("--agent");
       const agent = agentIndex >= 0 ? (positionals[agentIndex + 1] ?? "") : undefined;
-      const pos = positionals.filter(
-        (a, index) => a !== "--router" && (agentIndex < 0 || (index !== agentIndex && index !== agentIndex + 1)),
-      );
-      return cmdNew(pos[0], pos[1], flags, agent === undefined ? { router } : { router, agent });
+      const envIndex = positionals.indexOf("--env-file");
+      const envFile = envIndex >= 0 ? positionals[envIndex + 1] : undefined;
+      const consumed = new Set<number>();
+      if (agentIndex >= 0) consumed.add(agentIndex).add(agentIndex + 1);
+      if (envIndex >= 0) consumed.add(envIndex).add(envIndex + 1);
+      const pos = positionals.filter((a, index) => a !== "--router" && !consumed.has(index));
+      return cmdNew(pos[0], pos[1], flags, {
+        router,
+        ...(agent === undefined ? {} : { agent }),
+        ...(envFile === undefined ? {} : { envFile }),
+      });
     }
     case "rm":
     case "remove": {
@@ -100,6 +108,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdRenew(rest[0], rest.slice(1));
     case "mode":
       return cmdMode(rest[0], rest[1]);
+    case "env-file":
+      return cmdEnvFile(rest);
     case "send":
       return cmdSend(rest[0], rest.slice(1));
     case "msg":

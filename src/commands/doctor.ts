@@ -11,6 +11,10 @@ import { wireSocketPath } from "../fleet/wire.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
 import { escalationRefusal } from "../agent/claude/launch.ts";
 import { chatEnabledFor } from "../config/chat.ts";
+import { launchInputsFor } from "../agent/launchStamp.ts";
+import { envFilePath, envInput, inheritedEnvInput } from "../agent/launchInputs.ts";
+import { inheritsUndeclaredEnv } from "../agent/sessionEnv.ts";
+import { readLaunchStamp } from "../agent/sessionStatus.ts";
 
 /** Sessions currently stranded at a blocking menu. Read through the same row builder `list` uses,
  *  so the two can never disagree about who is waiting. */
@@ -68,6 +72,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   const wireSocket = wireSocketPath(m);
   const wireExpected = peers.some((p) => p.via === "wire");
   const wireReady = wireSocket !== null && existsSync(wireSocket);
+  // What shapes these sessions besides argv: the agents' external files, and the environment the
+  // supervisor's own runtime mixes in from each session directory. Both were invisible until now,
+  // and the second one is the reason this section exists at all.
+  const inherited = envOrigins(m);
+  const external = externalInputOrigins(m);
 
   if (json) {
     console.log(
@@ -91,6 +100,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         fleet: fleetChecks,
         fleetSelfLabelled: selfLabelled,
         wire: wireExpected ? { socket: wireSocket, ready: wireReady } : null,
+        // Names, never values — an agent reading this is exactly the consumer that would otherwise
+        // paste a secret somewhere.
+        sessionEnv: inherited,
+        sessionEnvMigrationPending: inherited.filter((o) => o.kind === "inherited").length,
+        launchInputs: external,
         daemon,
       }),
     );
@@ -137,6 +151,36 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     );
     console.log(`        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`);
   }
+  if (external.length > 0) {
+    console.log("inputs: what shapes a session besides argv (hashed; a change here shows in RESTART)");
+    for (const o of external) {
+      const spread = o.variants > 1 ? `, ${o.variants} distinct configurations, e.g.` : " —";
+      console.log(`        ${o.reason.padEnd(6)} ${o.sessions} session(s)${spread} ${o.example}`);
+    }
+  }
+  const stillInheriting = inherited.filter((o) => o.kind === "inherited");
+  const declaredEnv = inherited.filter((o) => o.kind === "declared");
+  if (declaredEnv.length > 0) {
+    console.log(`env:    ${declaredEnv.length} session(s) declare an env file:`);
+    for (const o of declaredEnv) {
+      const note = o.missing ? " — MISSING; the session starts without it" : o.drifted ? " — file changed since launch, restart to pick it up" : "";
+      console.log(`        ${o.name} — ${o.keys.length} name(s) from ${o.paths.join(", ")}${note}`);
+    }
+  }
+  if (stillInheriting.length > 0) {
+    // A PROBLEM because it is one, and a FINITE one: these are sessions started before the recipe
+    // shipped. Naming the exact command to end it is the difference between a report and a chore.
+    console.log(`env:    PROBLEM — ${stillInheriting.length} session(s) still run on an UNDECLARED env file from their own directory:`);
+    for (const o of stillInheriting) {
+      console.log(`        ${o.name} — ${o.keys.length} name(s) from ${o.paths.join(", ")}${o.drifted ? " (file changed since launch — the session still has the old values)" : ""}`);
+      if (o.keys.length > 0) console.log(`          ${sampleNames(o.keys)}`);
+    }
+    console.log("        These were started before the environment became a declared recipe: the runtime loaded those files");
+    console.log("        into the supervisor and the launcher passed them to the agent — and to every process it spawns.");
+    console.log("        A restart now would take them away, so declare them first if they are needed:");
+    console.log("        fix: ccmux env-file --adopt --dry-run   (then without --dry-run, then restart)");
+    console.log("        Names only are shown here; values are never read into any diagnostic.");
+  }
   const waiting = await sessionsAtPrompt(m);
   if (waiting.length > 0) {
     console.log(`prompt: PROBLEM — ${waiting.length} session(s) sitting at a menu, unable to act until it is answered:`);
@@ -182,4 +226,106 @@ export function unhonourableModes(m: MachineConfig, isRoot: boolean): string[] {
     }
   }
   return out;
+}
+
+/**
+ * Where a session's environment comes from — and whether any session is still living on the old
+ * accident.
+ *
+ * The accident: `_run` is a Bun process whose cwd is the session directory, the runtime loaded that
+ * directory's `.env` into itself, and the launcher copied its environment into the agent — so a
+ * project's secrets reached the agent AND every process it spawned, undeclared. Measured before the
+ * fix, on a live fleet: 5 of 14 sessions were carrying project variables that way, API keys among
+ * them.
+ *
+ * Now the pane runs with `--no-env-file` and the launch recipe subtracts those names, so a NEW launch
+ * only gets what the session declares. A session started before that shipped still carries the old
+ * environment until it restarts — which is exactly what this section reports, because "it is fixed in
+ * the code" and "it is fixed on this machine" are different claims and only the second one matters.
+ *
+ * NAMES only, never values: a name answers the question ("is this session carrying project
+ * variables"), while a value would put the secret into a diagnostic people paste into chats.
+ */
+export interface EnvOrigin {
+  name: string;
+  /** `declared` — the session names its own file. `inherited` — it is still running on an undeclared
+   *  one and will lose those variables when it restarts. */
+  kind: "declared" | "inherited";
+  paths: readonly string[];
+  keys: readonly string[];
+  /** The file changed after this session launched — it is running yesterday's values. */
+  drifted: boolean;
+  /** A declared file that is not there. The session still starts; this is how anyone finds out. */
+  missing: boolean;
+}
+
+export function envOrigins(m: MachineConfig): EnvOrigin[] {
+  const out: EnvOrigin[] = [];
+  for (const s of loadSessions(m)) {
+    if (s.archived) continue;
+    const stamped = readLaunchStamp(s.name)?.inputs?.env;
+    const declared = envFilePath(s);
+    if (declared !== null) {
+      const input = envInput(s);
+      out.push({
+        name: s.name,
+        kind: "declared",
+        paths: [declared],
+        keys: input.keys ?? [],
+        drifted: stamped !== undefined && stamped !== null && stamped !== input.digest,
+        missing: input.digest === null,
+      });
+      continue;
+    }
+    // Undeclared: the shared predicate decides, so this report and `env-file --adopt` are always
+    // about the same set of sessions.
+    if (!inheritsUndeclaredEnv(s, readLaunchStamp(s.name), process.env.NODE_ENV)) continue;
+    const inherited = inheritedEnvInput(s.dir, process.env.NODE_ENV);
+    out.push({ name: s.name, kind: "inherited", paths: inherited.paths, keys: inherited.keys ?? [], drifted: stamped != null && stamped !== inherited.digest, missing: false });
+  }
+  return out;
+}
+
+/**
+ * The external files agents read at startup, grouped BY REASON rather than by session.
+ *
+ * Grouping matters more than it looks: on a normal machine every session shares one global rule set
+ * but each project brings its own MCP file, so a per-origin listing printed one line per project and
+ * buried the rest of the report. Per reason, the report says the two things a person needs — how many
+ * sessions this input shapes, and whether they are all looking at the same thing.
+ */
+export interface InputOrigin {
+  reason: string;
+  sessions: number;
+  /** How many DIFFERENT configurations of this input exist across those sessions. */
+  variants: number;
+  /** One representative, so the reader knows which files are meant. */
+  example: string;
+}
+
+export function externalInputOrigins(m: MachineConfig): InputOrigin[] {
+  const byReason = new Map<string, { sessions: number; labels: Set<string>; example: string }>();
+  for (const s of loadSessions(m)) {
+    if (s.archived) continue;
+    for (const input of launchInputsFor(s, m)) {
+      if (input.reason === "env") continue; // reported in full by envOrigins, with its own warning
+      const hit = byReason.get(input.reason);
+      if (hit === undefined) byReason.set(input.reason, { sessions: 1, labels: new Set([input.label]), example: input.label });
+      else {
+        hit.sessions += 1;
+        hit.labels.add(input.label);
+      }
+    }
+  }
+  return [...byReason.entries()]
+    .map(([reason, v]) => ({ reason, sessions: v.sessions, variants: v.labels.size, example: v.example }))
+    .sort((a, b) => a.reason.localeCompare(b.reason));
+}
+
+const NAME_SAMPLE = 8;
+
+/** `FOO, BAR, … (+12 more)` — enough to recognise what is being carried without printing a wall. */
+export function sampleNames(keys: readonly string[]): string {
+  const shown = keys.slice(0, NAME_SAMPLE).join(", ");
+  return keys.length > NAME_SAMPLE ? `${shown} (+${keys.length - NAME_SAMPLE} more)` : shown;
 }

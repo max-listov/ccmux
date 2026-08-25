@@ -2,6 +2,7 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { loadLedger, loadAckedIds, appendAck } from "../chat/store.ts";
 import { formatChatInjection } from "../chat/format.ts";
+import { replyRouteToSender } from "../chat/replyRoute.ts";
 import { promptInvocation } from "../env.ts";
 import { managedPeer, managedPeerKey } from "../chat/identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
@@ -59,11 +60,10 @@ export async function cmdStopHook(): Promise<number> {
     // Record acks FIRST (durable, fail-closed) so neither this hook nor the daemon re-delivers.
     for (const msg of pending) appendAck(m, msg.id, "hook", recipient);
 
+    // Same reply verdict as the daemon path — one resolver, so the two channels cannot disagree
+    // about whether this machine can answer the sender.
     const reason = pending
-      .map((msg) => {
-        const replyable = msg.from.kind === "managed" && (msg.from.machine === m.rcPrefix || m.fleet?.[msg.from.machine] !== undefined);
-        return formatChatInjection(msg, { cli: promptInvocation(), replyable });
-      })
+      .map((msg) => formatChatInjection(msg, { cli: promptInvocation(), reply: replyRouteToSender(m, msg.from) }))
       .join("\n\n");
     process.stdout.write(JSON.stringify({ decision: "block", reason }));
     return 0;

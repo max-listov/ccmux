@@ -65,7 +65,7 @@ test("settings ALWAYS inject status hooks + statusLine; chat stop-hook coexists 
 });
 
 test("launchEnv guarantees a usable PATH + tags the session for the self-guard", () => {
-  const env = launchEnv(makeMachine({ claudeBin: "/opt/x/claude", tmuxBin: "/usr/bin/tmux" }), "cc-x");
+  const env = launchEnv(makeMachine({ claudeBin: "/opt/x/claude", tmuxBin: "/usr/bin/tmux" }), makeSession({ name: "cc-x" }));
   expect(env.PATH).toContain("/opt/x");
   expect(env.PATH).toContain("/usr/bin");
   expect(env.CLAUDECODE).toBeUndefined();

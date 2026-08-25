@@ -85,6 +85,21 @@ export const SessionSchema = z.object({
   // free-form key), not a role enum: a new capability = a new registry entry, no schema change.
   // Today's one module is "router" (the autonomous-manager protocol).
   promptModules: z.array(z.string()).default([]),
+  /**
+   * The env file this session DECLARES, or absent for "no file". Relative paths resolve against
+   * `dir`; absolute is allowed.
+   *
+   * It exists because the alternative was already happening by accident. `_run` is a Bun process
+   * whose cwd is the session directory, the runtime loads that directory's `.env` into itself, and
+   * the launcher copied its whole environment into the agent — so a project's secrets reached the
+   * agent and every process it spawned, undeclared and invisible. Measured on a live fleet: 5 of 14
+   * sessions were carrying project variables that way, API keys among them.
+   *
+   * One file, not a list: a list would demand a precedence puzzle, and composition belongs inside
+   * the file. Named here rather than resolved at launch, because "what is this session's recipe" has
+   * to be answerable without launching it.
+   */
+  envFile: z.string().min(1).optional(),
 });
 
 /** A fresh managed launch that has not yet produced an authoritative provider thread id. */
@@ -592,6 +607,11 @@ export const ListItemSchema = z.object({
   uptime: z.object({ text: z.string().nullable(), seconds: z.number().nullable() }),
   // What a restart would change for this session; empty = nothing (or launched before stamping).
   stale: z.array(z.string()).default([]),
+  /** The env file this session declares (absolute), and whether it exists right now. A declared file
+   *  that is missing does not stop the session — the original decision was "raise it and shout", since
+   *  a session that will not boot is worse for a supervisor than one variable short — so this is how a
+   *  reader finds out at all. Null = nothing declared. */
+  envFile: z.object({ path: z.string(), present: z.boolean() }).nullable().default(null),
   createdAt: z.string().nullable(),
   lastMessage: TranscriptMessageSchema.nullable(),
 });

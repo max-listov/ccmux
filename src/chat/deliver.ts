@@ -6,6 +6,7 @@ import { log } from "../util/log.ts";
 import { turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
 import { promptInvocation } from "../env.ts";
 import { formatChatInjection } from "./format.ts";
+import { replyRouteToSender } from "./replyRoute.ts";
 import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors } from "./store.ts";
 import { writeChatHold, clearChatHold } from "../agent/sessionStatus.ts";
 import { managedPeer, managedPeerKey, principalLabel } from "./identity.ts";
@@ -36,10 +37,10 @@ export function recentInboundCount(recipient: ReturnType<typeof managedPeer>, le
  *  a PEER message, not the human (shared framer — same tag the Stop hook uses). Bracketed paste keeps
  *  a multi-line body intact (no early submit); falls back to a newline-collapsed literal on failure. */
 async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): Promise<boolean> {
-  // replyable = we can actually route back to the sender's machine from here (it is us, or it is in
-  // our fleet map) — otherwise we print the address without a command that would fail on this box.
-  const replyable = msg.from.kind === "managed" && (msg.from.machine === m.rcPrefix || m.fleet?.[msg.from.machine] !== undefined);
-  const text = formatChatInjection(msg, { cli: promptInvocation(), replyable });
+  // Whether a reply would actually reach the sender is asked of the SAME resolver `msg` delivers
+  // with — never re-derived here from one transport's map, which is how a live wire route came to be
+  // announced as "no route back" while it was carrying mail.
+  const text = formatChatInjection(msg, { cli: promptInvocation(), reply: replyRouteToSender(m, msg.from) });
   if (!(await pasteText(m, name, text)) && !(await sendKeysLiteral(m, name, text.replace(/\r?\n+/g, " ⏎ ")))) {
     return false; // the pane is gone (killed between our sample and this write) — nothing was typed
   }

@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import type { MachineConfig, Session } from "../types.ts";
 import { loadMachineConfig } from "../config/machine.ts";
-import { loadSessions, updateSessionUuid } from "../config/sessions.ts";
+import { findSession, loadSessions, updateSessionUuid } from "../config/sessions.ts";
 import { forkedUuid } from "../agent/index.ts";
-import { killSession } from "../tmux/tmux.ts";
+import { killSession, listSessionNames } from "../tmux/tmux.ts";
 import { STATE_DIR } from "../config/paths.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import { runDetached } from "../util/spawn.ts";
@@ -11,6 +11,11 @@ import { SELF_ARGV } from "../env.ts";
 import { log } from "../util/log.ts";
 import { startSession } from "./lifecycle.ts";
 import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
+import { appendMessage } from "../chat/store.ts";
+import { buildEnvelope } from "../chat/compose.ts";
+import { cliPrincipal, managedPeer, ownerTarget, targetLabel } from "../chat/identity.ts";
+import { chatEnabledFor } from "../config/chat.ts";
+import { providerFor } from "../agent/index.ts";
 
 /**
  * `ccmux restart --all` — bounce the WHOLE fleet on this machine with one command, so a changed
@@ -63,6 +68,87 @@ export async function restartAllOnce(deps: RestartAllDeps): Promise<string[]> {
   return done;
 }
 
+/**
+ * The sweep is the ONE command whose caller is dead when it finishes.
+ *
+ * Every other verb reports to whoever ran it. This one restarts the calling session last — by
+ * design, so the operator's own pane is not blank for the whole sweep — which means the result has
+ * physically nobody to return to. Measured: an agent swept the fleet, its own session came back, and
+ * it then sat silent until a human asked "well?", because the outcome had died with the process that
+ * asked for it.
+ *
+ * The old answer to this was `restart --then "<note>"`, and it is NOT coming back: it was removed in
+ * 0.12.0 because a note carried on a lifecycle flag has no sender, no reply address and no entry in
+ * the ledger. So the sweep says its piece the way everything else does — a recorded envelope, from
+ * this machine's CLI principal, which is what the sweep honestly is. Delivery then rides the normal
+ * chat path, including its wait for a pane that is actually drawn, so the report cannot land in a
+ * half-painted interface.
+ */
+export function sweepSummary(machine: string, done: readonly string[], failure: string | null, self: string | undefined): string {
+  const head = failure === null
+    ? `ccmux restart --all finished on ${machine}: ${done.length} session(s) restarted`
+    : `ccmux restart --all FAILED on ${machine} after ${done.length} session(s): ${failure}`;
+  const names = done.length === 0 ? "" : ` — ${done.join(", ")}`;
+  // Named explicitly, because the alternative is an agent wondering why a report arrived for
+  // something it does not remember starting: its own restart is why the answer came this way.
+  const why = self !== undefined && done.includes(self)
+    ? ` This session was restarted last by that sweep, which is why the result arrives as a message rather than as the command's output.`
+    : "";
+  return `${head}${names}.${why}`;
+}
+
+/**
+ * Deliver that summary. To the calling session when it exists, is running and can receive chat;
+ * otherwise to the owner — and a caller that did NOT come back is called out by name rather than
+ * quietly dropped along with its report, since "the session that ran the sweep is gone" is the one
+ * outcome nobody would otherwise notice.
+ */
+export interface SweepReport {
+  /** `caller` = the session that started the sweep; `owner` = the human, out of band. */
+  recipient: "caller" | "owner";
+  body: string;
+}
+
+/** Pure: facts about the caller → who hears about the sweep, and in what words. Kept separate from
+ *  the delivery so the decision is testable without a tmux server or a registry. */
+export function sweepReport(
+  machine: string,
+  self: string | undefined,
+  done: readonly string[],
+  failure: string | null,
+  caller: { known: boolean; running: boolean; canChat: boolean } | null,
+): SweepReport {
+  const body = sweepSummary(machine, done, failure, self);
+  // No calling session at all — a shell, or a scheduler. There is nobody to wake, so the owner is
+  // the honest recipient rather than a dropped report.
+  if (self === undefined || caller === null) return { recipient: "owner", body };
+  if (caller.known && caller.running && caller.canChat) return { recipient: "caller", body };
+  const why = !caller.known
+    ? "it is no longer in the registry"
+    : !caller.running
+      ? "it did NOT come back up after its restart"
+      : "it cannot receive chat";
+  // Said out loud rather than swallowed: a caller that never came back is the one outcome of a sweep
+  // that nobody would otherwise notice, because the thing that would have noticed is what is missing.
+  return { recipient: "owner", body: `${body} The session that started it ('${self}') could not be told: ${why}.` };
+}
+
+export async function reportSweep(m: MachineConfig, self: string | undefined, done: readonly string[], failure: string | null): Promise<void> {
+  const session = self === undefined ? undefined : findSession(loadSessions(m), self);
+  const running = await listSessionNames(m);
+  const caller = self === undefined
+    ? null
+    : {
+        known: session !== undefined,
+        running: session !== undefined && running.has(session.name),
+        canChat: session !== undefined && chatEnabledFor(session, m) && providerFor(session).chatDeliverable !== undefined,
+      };
+  const report = sweepReport(m.rcPrefix, self, done, failure, caller);
+  const to = report.recipient === "caller" && session !== undefined ? managedPeer(m.rcPrefix, session) : ownerTarget();
+  appendMessage(m, buildEnvelope(cliPrincipal(m.rcPrefix), to, report.body));
+  log.info({ msg: "restart --all: result reported", to: targetLabel(to) });
+}
+
 /** Single-flight: a stale lock (dead pid) is ignored, a live one refuses the sweep. */
 function sweepRunning(): boolean {
   try {
@@ -106,8 +192,10 @@ export async function cmdRestartAllWorker(): Promise<number> {
   const m: MachineConfig = loadMachineConfig();
   const self = process.env.CCMUX_SESSION;
   log.info({ msg: "restart --all: sweep started", self: self ?? null });
+  let done: string[] = [];
+  let failure: string | null = null;
   try {
-    const done = await restartAllOnce({
+    done = await restartAllOnce({
       sessions: () => loadSessions(m),
       self,
       followFork: async (s) => {
@@ -131,13 +219,22 @@ export async function cmdRestartAllWorker(): Promise<number> {
     });
     log.info({ msg: "restart --all: sweep finished", count: done.length });
   } catch (e) {
-    log.error({ msg: "restart --all: sweep failed", err: String(e) });
+    failure = String(e);
+    log.error({ msg: "restart --all: sweep failed", err: failure });
   } finally {
     try {
       rmSync(SWEEP_LOCK, { force: true });
     } catch {
       // best-effort
     }
+  }
+  // AFTER the lock is released: the report is delivered by the daemon on its own cadence, and a
+  // sweep that is finished must not look like one still running while it composes a sentence.
+  try {
+    await reportSweep(m, self, done, failure);
+  } catch (e) {
+    // The sweep itself succeeded; failing to announce it must not turn into a failure exit.
+    log.error({ msg: "restart --all: could not record the report", err: String(e) });
   }
   return 0;
 }

@@ -21,6 +21,9 @@ export type CreateManagedInput = {
   agent: AgentKind;
   flags: string[];
   router: boolean;
+  /** Declared at creation so the session's very FIRST launch already runs the recipe it will keep —
+   *  otherwise a session is born inheriting and has to be migrated the day it is made. */
+  envFile?: string;
 };
 
 export type CodexBootstrapOperation =
@@ -35,6 +38,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
     agent: input.agent,
     flags: input.flags,
     ...(input.router ? { promptModules: ["router"], chatEnabled: true } : {}),
+    ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
   });
 }
 

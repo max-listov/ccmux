@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for ccmux-managed sessi
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-25
 ---
 
 # Peer routing and session identity
@@ -156,6 +156,30 @@ message as a lost one.
 A machine listed in `wire.peers` is reached over the wire even when it also has an ssh alias. That is
 what makes the wire adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.
+
+### The reply hint is the resolver's answer, not a second map
+
+An incoming chat tag carries a pinned `reply:` command, and the managed prompt tells the recipient to
+use it verbatim. That makes the hint **prescriptive**: a wrong verdict does not look untidy, it sends
+the answer somewhere the sender will never see it — silently, with no error on either side.
+
+So the hint asks the same resolver `msg` delivers with (`routeFor`), and nothing else. It used to read
+the ssh map directly, which made every wire-only direction unreachable *in the tag* while it was
+carrying mail: a machine with `wire.peers: [<hub>]` and a live agent was told "no route back to
+`<hub>`" and answered the human, minutes after `ccmux msg <hub>:<session>` from that same box
+delivered instantly. One resolver means a direction that moves onto a new transport moves its hint
+with it.
+
+Beyond routing, exactly one thing is checked: the local end of the wire, because `msg` resolves the
+exact remote peer *before* queueing anything — with no agent socket here the reply command exits 1
+rather than queueing for retry, and a command that errors is worse than none. It is a file-existence
+check and never a probe: this runs on the daemon's delivery cadence, and a timeout-shaped question
+would answer "unreachable" for a healthy-but-busy agent — the same false negative in a new place.
+Whether the *far* side is up is not asked; the hop itself answers that, honestly (queued, retried).
+
+When the hint does fall back to `msg owner`, it names the reason the resolver gave — unknown machine,
+no transport configured, local agent down. A bare "no route" is the one shape a reader cannot act on:
+it names nothing to check, so it can only be believed.
 
 **Invariant: a stitchwire node id IS a ccmux `rcPrefix`.** One label names one machine in both
 systems. `ccmux doctor` proves it per peer by asking the far side which prefix it reports — a

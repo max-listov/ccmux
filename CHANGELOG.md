@@ -6,6 +6,56 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- The `RESTART` column now sees what an agent reads at startup from OUTSIDE argv: its global rule set
+  (with imports expanded for this machine), its MCP configuration, and the env files the supervisor's
+  runtime loads from the session's own directory — reported as `rules`, `mcp` and `env`. Previously
+  the column answered "a restart would change nothing" while knowing a quarter of the inputs; a
+  fleet-wide rule change left every session running yesterday's rules behind a clean column, and the
+  only remedy was bouncing two dozen sessions blind. Providers declare their own external inputs, so
+  a new agent brings its own file locations and the core learns none of them.
+- Digests are deliberately narrow: the `mcpServers` table rather than the file around it, global
+  rules rather than project rules, and never the agent's settings file. Those files are rewritten by
+  the agents themselves several times an hour, and a column that lights up hourly stops being read.
+  Reads are cached by mtime (measured ~1 ms cold, ~0.07 ms warm per session).
+- `ccmux doctor` reports where a session's environment came from — which env files the runtime mixed
+  in, how many variables, their NAMES (never values), and whether those files changed since launch.
+  On the first fleet it was run against, 5 of 14 sessions were carrying project variables nobody had
+  declared, API keys among them.
+- `ccmux restart --all` now reports its result. The sweep is the one command whose caller is dead
+  when it finishes — it restarts the calling session last — so the outcome had nobody to return to
+  and an agent that swept the fleet sat silent until a human asked. The report is a recorded chat
+  envelope, not a revival of `restart --then` (removed in 0.12.0 for having no sender, no reply
+  address and no ledger entry): it goes to the calling session, or to the owner when the sweep ran
+  from a shell — and a caller that did not come back is named out loud rather than lost with it.
+
+- A session's environment is now a declared recipe (`ccmux env-file <name> <path>`, `ccmux new
+  --env-file`) instead of whatever the supervisor inherited. Previously the runtime loaded the session
+  directory's `.env` into the supervisor and the launcher copied it into the agent, so a project's
+  secrets reached the agent and every process it spawns — MCP servers, shell tools, subagents —
+  undeclared and invisible. Two mechanisms hold the new behaviour because they fail in different
+  places: the pane re-exec carries `--no-env-file`, and the recipe subtracts those names again when
+  building the agent's environment (a `bun build --compile` binary never sees the flag, and nothing
+  else substitutes for it there). `CCMUX_*` names are refused from an env file and reported — a
+  session grants a project variables, it does not let a project reconfigure its supervisor.
+- `ccmux env-file --adopt` migrates sessions that are still running on an undeclared file, and
+  `ccmux doctor` lists exactly those until none are left, so "the migration is done" is a state you
+  can read rather than believe. A declared file that is missing costs a variable, never the session;
+  `list` prints the missing path.
+
+### Fixed
+
+- The `reply:` command in an incoming chat tag is now computed by the same resolver `msg` delivers
+  with, so a sender reachable over the stitchwire transport is answered on the wire instead of being
+  declared unreachable. The hint previously consulted only the ssh fleet map: a machine with a live
+  wire route to the sender was told "no route back", followed that prescriptive instruction, and
+  answered the owner while peer-to-peer delivery was working the same minute.
+- When a reply genuinely cannot be routed, the tag now names the resolver's reason — unknown machine,
+  no transport configured, local stitchwire agent down — instead of a bare verdict with nothing to
+  check. The local agent socket is checked by existence only, never probed, so a healthy-but-busy
+  agent can never be reported as unreachable.
+
 ## [0.28.0] — 2026-08-21
 
 anonymous remote messages now expose their missing return route

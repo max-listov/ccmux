@@ -54,7 +54,7 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
   setStderrLogging(false);
   const provider = getProvider("codex");
   const provisional = SessionSchema.parse({ ...pending.session, uuid: pending.generation });
-  const env = provider.launchEnv(m, provisional.name);
+  const env = provider.launchEnv(m, provisional);
   env[CODEX_LAUNCH_MARKER_ENV] = pending.marker;
   env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, provisional);
   const operation = pending.operation;

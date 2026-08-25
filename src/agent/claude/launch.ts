@@ -7,6 +7,9 @@ import { UID, HOME } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
 import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
 import { chatEnabledFor } from "../../config/chat.ts";
+import { digestOf, fileDigest, fileSetDigest, jsonFieldDigest, ruleSetFiles, type LaunchInput } from "../launchInputs.ts";
+import { sessionEnvRecipe } from "../sessionEnv.ts";
+import { log } from "../../util/log.ts";
 
 export function preflight(m: MachineConfig): void {
   accessSync(m.claudeBin, constants.X_OK);
@@ -140,9 +143,11 @@ export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): re
   return keys;
 }
 
-export function launchEnv(m: MachineConfig, sessionName: string): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
+export function launchEnv(m: MachineConfig, session: Session): Record<string, string> {
+  // The environment is BUILT, not inherited: the recipe drops what the working directory's env files
+  // leak in and applies the file this session actually declared. See agent/sessionEnv.ts.
+  const { env, refused } = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
+  if (refused.length > 0) log.warn({ msg: "env file tried to set ccmux-controlled names — ignored", name: session.name, keys: refused });
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
   if (hasOauthAccount()) delete env.ANTHROPIC_API_KEY;
@@ -151,7 +156,7 @@ export function launchEnv(m: MachineConfig, sessionName: string): Record<string,
   env.PATH = ensurePath(base, [dirname(m.claudeBin), dirname(m.tmuxBin)]);
   ensureUtf8Locale(env); // no LANG under launchd → claude draws box-rules as ASCII ('_'); force UTF-8
   // so a ccmux run from inside this session can recognize "self" (block rm/stop self)
-  env.CCMUX_SESSION = sessionName;
+  env.CCMUX_SESSION = session.name;
   // The declared machines, and only those: this is what the agent's root check reads.
   if (UID === 0 && m.allowEscalatedUnderRoot) env[SANDBOX_ENV] = "1";
   return env;
@@ -164,4 +169,40 @@ function hasOauthAccount(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * What Claude Code reads at startup besides argv.
+ *
+ * `rules` — the user's GLOBAL rule file plus whatever it imports, resolved for this machine. Project
+ * rules are deliberately NOT here: a person edits those several times an hour while working, so
+ * including them would light the column for whichever session is being worked in and turn a signal
+ * into wallpaper — the same "cries wolf" failure that got `version` removed from the comparison.
+ *
+ * `mcp` — the user-scope `mcpServers` table and the project's own `.mcp.json`. The user file around
+ * that table is rewritten constantly by the agent itself (start counters, per-project state, cached
+ * flags), so only the table is hashed; hashing the file would flag the fleet several times an hour.
+ * The project file IS hashed whole — it is small and it is entirely MCP.
+ *
+ * Not included, and on purpose: `~/.claude/settings.json`. Its permissions block is edited from
+ * inside a running session (`/permissions` writes it), which would make a session mark ITSELF stale
+ * mid-turn for a change that is already in effect.
+ */
+export function launchInputs(s: Session, _m: MachineConfig): LaunchInput[] {
+  const rules = ruleSetFiles(`${HOME}/.claude/CLAUDE.md`);
+  const userConfig = `${HOME}/.claude.json`;
+  const projectMcp = `${s.dir}/.mcp.json`;
+  const mcpParts = [
+    [`${userConfig}#mcpServers`, jsonFieldDigest(userConfig, "mcpServers")] as const,
+    [projectMcp, fileDigest(projectMcp)] as const,
+  ];
+  return [
+    { reason: "rules", label: `global rule set: ${rules.join(", ")}`, digest: fileSetDigest(rules), paths: rules },
+    {
+      reason: "mcp",
+      label: `MCP servers: ${userConfig} (mcpServers) + ${projectMcp}`,
+      digest: mcpParts.every(([, d]) => d === null) ? null : digestOf(JSON.stringify(mcpParts)),
+      paths: mcpParts.filter(([, d]) => d !== null).map(([p]) => p.split("#")[0] as string),
+    },
+  ];
 }

@@ -163,7 +163,7 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
       console.error(`ccmux: ${error}`);
       return 1;
     }
-    let env = provider.launchEnv(m, s.name);
+    let env = provider.launchEnv(m, s);
     // A session outlives the login that created it; that login's agent socket does not. A DEAD
     // socket left in the environment makes ssh wait on it instead of trying what the config points
     // at. A live one is never touched — it may be the only credential this machine has.

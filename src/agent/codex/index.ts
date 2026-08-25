@@ -1,5 +1,5 @@
 import type { AgentProvider } from "../index.ts";
-import { buildArgv, launchEnv, launchEnvKeys, preflight } from "./launch.ts";
+import { buildArgv, launchEnv, launchEnvKeys, launchInputs, preflight } from "./launch.ts";
 import { historyFile } from "./resume.ts";
 import { parse, usedTokens, lastModel } from "./transcript.ts";
 import { scanPane } from "./pane.ts";
@@ -11,6 +11,7 @@ export const codexProvider: AgentProvider = {
   buildArgv,
   launchEnv,
   launchEnvKeys,
+  launchInputs,
   historyFile,
   parse,
   usedTokens,

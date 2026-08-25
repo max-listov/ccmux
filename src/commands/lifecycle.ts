@@ -3,7 +3,7 @@ import { loadMachineConfig, rcName } from "../config/machine.ts";
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { hasSession, newSession, killSession, setOption, setPaneOption } from "../tmux/tmux.ts";
 import { runDetached } from "../util/spawn.ts";
-import { SELF_ARGV } from "../env.ts";
+import { SELF_ARGV, SELF_ARGV_NO_ENV_FILE } from "../env.ts";
 import { log } from "../util/log.ts";
 import { refusesSelf } from "./guard.ts";
 import { forwardIfRemote } from "../fleet/forward.ts";
@@ -15,7 +15,7 @@ export async function startSession(m: MachineConfig, name: string, dir: string):
     console.log(`${name} already running`);
     return;
   }
-  await newSession(m, name, dir, [...SELF_ARGV, "_run", name]);
+  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, "_run", name]);
   // lock the window/session name so claude's escape sequences can't rename it out
   // from under the =NAME exact-match invariant.
   await setOption(m, name, "automatic-rename", "off");
@@ -34,7 +34,7 @@ export async function startSession(m: MachineConfig, name: string, dir: string):
 /** Start the pending Codex bootstrap transaction. It is not a registry Session yet. */
 export async function startBootstrapSession(m: MachineConfig, name: string, dir: string, generation: string): Promise<void> {
   if (await hasSession(m, name)) throw new Error(`${name} already running`);
-  await newSession(m, name, dir, [...SELF_ARGV, "_bootstrap", generation], { CCMUX_BOOTSTRAP_GENERATION: generation });
+  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, "_bootstrap", generation], { CCMUX_BOOTSTRAP_GENERATION: generation });
   await setOption(m, name, "automatic-rename", "off");
   await setOption(m, name, "allow-rename", "off");
   await setOption(m, name, "mouse", "on");

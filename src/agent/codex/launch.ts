@@ -6,6 +6,9 @@ import { UID } from "../../env.ts";
 import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
 import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
 import { chatEnabledFor } from "../../config/chat.ts";
+import { fileSetDigest, ruleSetFiles, tomlTableDigest, type LaunchInput } from "../launchInputs.ts";
+import { sessionEnvRecipe } from "../sessionEnv.ts";
+import { log } from "../../util/log.ts";
 
 export const CODEX_LAUNCH_MARKER_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 
@@ -81,15 +84,40 @@ export function launchEnvKeys(_m: MachineConfig): readonly string[] {
   return [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
 }
 
-export function launchEnv(m: MachineConfig, sessionName: string): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
+export function launchEnv(m: MachineConfig, session: Session): Record<string, string> {
+  // Same recipe as every other provider — the env layer is core-owned precisely so two agents cannot
+  // end up with two different answers to "what is this session's environment".
+  const { env, refused } = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
+  if (refused.length > 0) log.warn({ msg: "env file tried to set ccmux-controlled names — ignored", name: session.name, keys: refused });
   const extra = [m.codexBin ? dirname(m.codexBin) : "", dirname(m.tmuxBin)].filter((p) => p !== "");
   const login = loginShellPath(); // re-derive the real login PATH (fish-aware) under a thin boot PATH
   const base = [login, env.PATH].filter((p): p is string => p !== null && p !== undefined).join(":");
   env.PATH = ensurePath(base, extra);
   ensureUtf8Locale(env); // force UTF-8 so the agent draws Unicode box-rules, not ASCII '_'
   if (m.codexHome) env.CODEX_HOME = m.codexHome;
-  env.CCMUX_SESSION = sessionName;
+  env.CCMUX_SESSION = session.name;
   return env;
+}
+
+/**
+ * What Codex reads at startup besides argv — same contract as the Claude provider, different files,
+ * which is exactly why this belongs to the provider and not to the core.
+ *
+ * `rules` — the global `AGENTS.md` under this machine's declared Codex home, plus its imports.
+ * `mcp` — the `mcp_servers` table of `config.toml`, and only that table: Codex appends a `[projects]`
+ * entry to the same file whenever a directory is trusted, so hashing the file would report a
+ * configuration change every time somebody opened a new project.
+ *
+ * A machine with no `codexHome` declared contributes nothing rather than guessing a path: an invented
+ * location would hash as permanently absent and quietly disagree with wherever Codex actually reads.
+ */
+export function launchInputs(_s: Session, m: MachineConfig): LaunchInput[] {
+  const home = m.codexHome;
+  if (home === undefined) return [];
+  const rules = ruleSetFiles(`${home}/AGENTS.md`);
+  const config = `${home}/config.toml`;
+  return [
+    { reason: "rules", label: `global rule set: ${rules.join(", ")}`, digest: fileSetDigest(rules), paths: rules },
+    { reason: "mcp", label: `MCP servers: ${config} (mcp_servers)`, digest: tomlTableDigest(config, "mcp_servers"), paths: [config] },
+  ];
 }

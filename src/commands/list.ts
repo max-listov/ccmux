@@ -8,6 +8,8 @@ import type { PaneScan } from "../agent/index.ts";
 import { prettyModel } from "../agent/format.ts";
 import { readLaunchStamp } from "../agent/sessionStatus.ts";
 import { computeStamp, staleReasons } from "../agent/launchStamp.ts";
+import { envFilePath } from "../agent/launchInputs.ts";
+import { existsSync } from "node:fs";
 import { promptInvocation } from "../env.ts";
 import { readLifecycle, readMetrics, resolveLiveState } from "../agent/sessionStatus.ts";
 import { VERSION } from "../util/version.ts";
@@ -153,7 +155,20 @@ function printTable(m: MachineConfig, rows: ListRow[]): void {
       `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(r.model ?? "-", 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(",") : "-", 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
     );
     if (r.lifecycleError !== null) console.log(`  blocked: ${r.lifecycleError}`);
+    // A declared env file that is not on disk. The session still starts — that was the deliberate
+    // choice, since a supervisor whose sessions refuse to boot is worse than one variable short — so
+    // this line is the only place a person finds out before wondering why a variable is empty.
+    const env = envFileEntry(r.session);
+    if (env !== null && !env.present) console.log(`  env file declared but missing: ${env.path}`);
   }
+}
+
+/** A session's declared env file, as the JSON contract reports it. Existence is checked HERE rather
+ *  than trusted from the registry: the file is somebody's working file and can appear or vanish
+ *  between launches, and "declared but not there" is the state worth seeing. */
+function envFileEntry(s: Session): { path: string; present: boolean } | null {
+  const path = envFilePath(s);
+  return path === null ? null : { path, present: existsSync(path) };
 }
 
 function toListItem(m: MachineConfig, r: ListRow): ListItem {
@@ -172,6 +187,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     stale: r.stale,
+    envFile: envFileEntry(r.session),
     createdAt: r.createdAt,
     lastMessage: r.lastMessage,
   };

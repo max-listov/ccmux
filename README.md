@@ -178,8 +178,18 @@ SESSION     AGENT   MODEL    CTX            STATE  UPTIME  RESTART    RC
 agent-a     claude  Opus 5   180k/1M 18%    idle   2d1h    chat,mode  host-a-agent-a
 ```
 
-The column names *what* would change — `chat`, `mode`, `modules`, or `config` (anything else in the
-launch recipe, e.g. a reworded prompt or changed flags). Empty means a restart would change nothing.
+The column names *what* would change — `rules`, `mcp`, `env`, `chat`, `mode`, `modules`, or `config`
+(anything else in the launch recipe, e.g. a reworded prompt or changed flags). Empty means a restart
+would change nothing.
+
+The first three are things the agent reads at startup from **outside** argv and never re-reads: its
+global rule set (and whatever that imports, resolved for this machine), its MCP configuration, and
+the env file the session declares. They are hashed, not
+stored, and hashed narrowly — the `mcpServers` table rather than the file it lives in, because agents
+rewrite those files constantly and a column that lights up hourly stops being read. Without them the
+column answered "a restart would change nothing" while knowing only a quarter of the inputs: a
+fleet-wide rule change once left every session running yesterday's rules behind a clean column, and
+the only remedy left was bouncing two dozen sessions blind.
 
 Deliberately **not** a version comparison. That measure lies in both directions: `ccmux chat on`
 doesn't move the version at all yet certainly needs a restart, while an upgrade that only touched the
@@ -262,6 +272,33 @@ Two levels — a machine default plus an optional per-session override:
 
 Modes match `claude --permission-mode`: `auto`, `plan`, `acceptEdits`, `manual`, `dontAsk`,
 `bypassPermissions`.
+
+## Session environment
+
+A session's environment is a **declared recipe**, not whatever the supervisor happened to inherit.
+
+```bash
+ccmux env-file cc-api .env               # declare (relative to the session dir, or absolute)
+ccmux env-file cc-api --none             # clear it — base environment only
+ccmux env-file --adopt --dry-run         # what is still inheriting undeclared; drop --dry-run to declare it
+ccmux new cc-api ~/src/api --env-file .env
+```
+
+It applies on the next restart, like `mode` and `chat`, and a change to the file shows as `env` in
+the `RESTART` column.
+
+This exists because the opposite was already happening, undeclared. `_run` is a Bun process whose cwd
+is the session's directory; the runtime loaded that directory's `.env` into itself and the launcher
+copied its environment into the agent — so a project's secrets reached the agent **and every process
+the agent spawns** (MCP servers, shell tools, subagents), invisibly. On the first fleet this was
+measured against, 5 of 14 sessions were carrying project variables that way, API keys among them.
+
+Now the pane runs with `--no-env-file` and the recipe subtracts those names, so only the declared file
+gets through — and `CCMUX_*` names are refused from it, because a session grants a project variables,
+it does not let a project reconfigure its supervisor. A declared file that is missing costs a
+variable, never the session: `list` and `doctor` say so instead. Sessions started before this keep
+what they were launched with until they restart; `ccmux doctor` lists exactly those, and the list
+emptying is what "the migration is done" means.
 
 ## Inter-agent chat
 
