@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-08-25
+
+the ledger survives a record it cannot read, without moving the others
+
 ### Fixed
 
 - **A chat record written by a newer ccmux no longer takes down the whole ledger.** `loadLedger`
@@ -24,7 +28,6 @@ the GitHub Release with that section as the notes.
   record from an *older* generation, which needs a person to migrate it.
 - `ccmux doctor` and `ccmux inbox` report how many records this build cannot read. An append-only
   history that quietly looks shorter than it is has stopped being one.
-
 ## [0.33.0] — 2026-08-25
 
 address a session by what it does, not by what it is called
