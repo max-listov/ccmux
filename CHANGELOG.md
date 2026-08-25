@@ -6,6 +6,26 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A dead lock holder no longer outlasts every waiter.** The session registry lock reaped an
+  abandoned lock only after 30 seconds of staleness, while a waiter gave up after 10 — so the reap
+  was unreachable for anyone who arrived before the lock went stale. Measured: a lock abandoned one
+  second earlier by a process that had died wedged the next caller for the full 10 seconds and then
+  failed, even though `process.kill(pid, 0)` would have called that owner dead immediately. The same
+  probe now succeeds in 25ms.
+- **Death is proven by the pid, and age is asked exactly one question.** A dead owner's lock is
+  reapable the instant it is seen, at any age. Age now decides only whether a directory with *no
+  readable owner* is a claim in flight — there are two syscalls between creating the directory and
+  writing the owner file — or the wreck of one. A live owner is still never taken, however old the
+  lock is.
+- **A creator that fails to claim its own directory clears it immediately** instead of leaving a
+  lock nobody owns and nothing will come for. That shape blocked every caller, including the one
+  that made it, over a failure already known about.
+- The timeout now says what was in the way — the pid of a live holder, or that no owner was
+  recorded. A bare "timed out" sends a reader looking for contention that may not exist; this
+  happened, and the message was the reason it could not be diagnosed.
+
 ## [0.36.1] — 2026-08-25
 
 below 1.0.0 the minor bump IS the breaking one
