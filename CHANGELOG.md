@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A reopened `--follow` now resumes where the reader left off.** A feed with no natural end is
+  capped by a deadline, so a transport reopens it on a schedule and returns the cursor through the
+  producer's environment — not its arguments, since the profile refuses caller-supplied ones.
+  `ccmux events` did not read that variable, so every reopen silently restarted from "now": the
+  stream opened, frames flowed, and the gap simply did not exist for the consumer. No error, once
+  every fifteen minutes. An explicit `--since` still wins over the variable, and an unparseable
+  cursor fails loudly rather than degrading back into that silence.
+
 ## [0.30.0] — 2026-08-25
 
 sessions publish what happened, and the wire's answer is read in full

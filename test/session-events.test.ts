@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { appendEvent, buildEvent, feedFiles, parseEvent, readEvents } from "../src/events/feed.ts";
 import { observe, transitions, UNSEEN, type Observed } from "../src/events/observe.ts";
 import { eventForLifecycle } from "../src/commands/hookStatus.ts";
-import { formatEvent, framedLine } from "../src/commands/events.ts";
+import { formatEvent, framedLine, resolveSince } from "../src/commands/events.ts";
 import { eventsEnabledFor } from "../src/config/events.ts";
 import { eventsPath } from "../src/config/paths.ts";
 import { SessionEventSchema } from "../src/config/schema.ts";
@@ -198,4 +198,27 @@ test("--framed produces exactly the envelope a resuming transport accepts", () =
 test("a plain --json line is NOT a framed chunk — the reason the mode exists", () => {
   const event = buildEvent(machine(), session(), { event: "turn-start" }, "22222222-2222-4222-8222-222222222222", "2026-08-25T09:41:07.000Z");
   expect(FramedChunk.safeParse(event).success).toBe(false);
+});
+
+// ── resuming a reopened stream ───────────────────────────────────────────────────────────────────
+
+// A feed with no natural end is capped by a deadline, so the transport reopens it on a schedule and
+// hands back the cursor through the producer's ENVIRONMENT — the node profile refuses caller-supplied
+// arguments, so there is nowhere else to put it. A producer that ignores the variable starts from
+// "now" and nothing fails: frames flow, and the gap is silently absent. That is why the resume
+// promise cannot be declared until this is read.
+
+test("the transport's resume point is used when no --since was given", () => {
+  expect(resolveSince(undefined, "2026-08-25T09:00:00.000Z")).toBe("2026-08-25T09:00:00.000Z");
+});
+
+test("an explicit --since wins — a person's question outranks a transport's mechanism", () => {
+  expect(resolveSince("2026-08-25T08:00:00.000Z", "2026-08-25T09:00:00.000Z")).toBe("2026-08-25T08:00:00.000Z");
+});
+
+test("no variable and no flag leaves the behaviour exactly as it was", () => {
+  expect(resolveSince(undefined, undefined)).toBeUndefined();
+  // An empty variable is "not set", not "resume from the epoch": the transport clears it that way on
+  // a first open, and treating it as a value would replay the entire retained feed on every start.
+  expect(resolveSince(undefined, "")).toBeUndefined();
 });

@@ -90,6 +90,19 @@ same machine — does not pay for a contract it is not using.
 The cursor is the event's timestamp, which is exactly what `--since` takes. So whatever a reader
 hands back after a break, both sides are asking the same question in the same units.
 
+**And the way it comes back is through the environment, not the arguments.** A feed with no natural
+end is capped by a deadline, so a transport reopens it on a schedule — every fifteen minutes under
+the profile this one runs behind — and hands the cursor to the producer as an environment variable,
+because the node profile deliberately refuses caller-supplied arguments. `ccmux events` reads it, and
+an explicit `--since` still wins: a person's deliberate question outranks a transport's mechanism.
+
+Reading it is what makes the envelope's promise true. A producer that ignores that variable starts
+from "now" and **nothing fails** — the stream opens, frames flow, and everything from the gap is
+silently absent. There is no error to notice, only events that quietly do not exist for the consumer,
+once every reopen. That shape is why the transport refuses to advertise resume (`stableCursor`) for a
+producer that has not been shown to read the cursor: a resume that lies is worse than one that is not
+offered.
+
 ## Two switches, defaulting on
 
 `sessionEvents` in `machine.json`, and `eventsEnabled` per session — the same two-level shape as

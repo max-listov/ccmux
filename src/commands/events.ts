@@ -57,6 +57,31 @@ export function framedLine(event: SessionEvent): string {
   return `${JSON.stringify({ data: `${JSON.stringify(event)}\n`, cursor: event.ts })}\n`;
 }
 
+/**
+ * Where the transport hands back a resume point.
+ *
+ * A stream that has no natural end is capped by a deadline, so it is reopened on a schedule — every
+ * fifteen minutes under the profile this feed runs behind. On reopen the transport passes the cursor
+ * the reader got to through the producer's ENVIRONMENT, not through its arguments, because the node
+ * profile deliberately refuses caller-supplied arguments.
+ *
+ * A producer that ignores it starts from "now" and nothing fails: the stream opens, frames flow, and
+ * everything that happened during the gap is silently absent. That is the worst shape a defect can
+ * take here — there is no error to notice, only events that quietly do not exist for the consumer —
+ * and it is why the resume promise (`stableCursor`) cannot be declared until this is read.
+ */
+const RESUME_CURSOR_ENV = "STITCHWIRE_STREAM_CURSOR";
+
+/**
+ * Which instant to resume from. An explicit `--since` wins: it is a person asking a deliberate
+ * question, while the variable is a transport mechanism, and the person must be able to override
+ * the machine. Pure, so both precedence and the empty-string case are testable.
+ */
+export function resolveSince(explicit: string | undefined, fromEnv: string | undefined): string | undefined {
+  if (explicit !== undefined) return explicit;
+  return fromEnv !== undefined && fromEnv !== "" ? fromEnv : undefined;
+}
+
 export async function cmdEvents(args: string[]): Promise<number> {
   let follow = false;
   let json = false;
@@ -80,8 +105,15 @@ export async function cmdEvents(args: string[]): Promise<number> {
       limit = parsed;
     } else if (a?.startsWith("-")) return console.error(`events: unknown flag '${a}'\n${usageLine("events")}`), 1;
   }
+  const explicitSince = since;
+  since = resolveSince(since, process.env[RESUME_CURSOR_ENV]);
   if (since !== undefined && !Number.isFinite(Date.parse(since))) {
-    console.error(`events: --since needs an ISO instant (e.g. ${new Date().toISOString()})`);
+    // Loud, deliberately — including when it came from the environment. The transport only ever
+    // hands back a cursor this same producer emitted, so an unparseable one is a defect somewhere,
+    // and the alternative (ignore it, start from "now") is precisely the silent gap this reads the
+    // variable to close.
+    const source = explicitSince === undefined ? `${RESUME_CURSOR_ENV} carried` : "--since needs";
+    console.error(`events: ${source} an ISO instant (e.g. ${new Date().toISOString()}), got '${since}'`);
     return 1;
   }
 
