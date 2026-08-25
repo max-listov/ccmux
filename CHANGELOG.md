@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.36.2] — 2026-08-25
+
+a dead lock holder no longer outlasts every waiter
+
 ### Fixed
 
 - **A dead lock holder no longer outlasts every waiter.** The session registry lock reaped an
@@ -25,7 +29,6 @@ the GitHub Release with that section as the notes.
 - The timeout now says what was in the way — the pid of a live holder, or that no owner was
   recorded. A bare "timed out" sends a reader looking for contention that may not exist; this
   happened, and the message was the reason it could not be diagnosed.
-
 ## [0.36.1] — 2026-08-25
 
 below 1.0.0 the minor bump IS the breaking one
