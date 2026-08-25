@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-08-25
+
+the launch stamp sees the rules, MCP and environment that argv never showed
+
 ### Added
 
 - The `RESTART` column now sees what an agent reads at startup from OUTSIDE argv: its global rule set
@@ -55,7 +59,6 @@ the GitHub Release with that section as the notes.
   no transport configured, local stitchwire agent down — instead of a bare verdict with nothing to
   check. The local agent socket is checked by existence only, never probed, so a healthy-but-busy
   agent can never be reported as unreachable.
-
 ## [0.28.0] — 2026-08-21
 
 anonymous remote messages now expose their missing return route
