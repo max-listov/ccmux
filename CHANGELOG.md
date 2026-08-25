@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An abandoned turn is announced once, not once per observation pass.** Found by the first live
+  look at the feed on the fleet: one interrupted turn produced three events in six minutes with a
+  growing duration. The "this turn was interrupted" signal is derived from how long the transcript
+  has been quiet, so it drops to false the moment the file stirs and rises again after the next
+  silence — deduping on "was it true last pass" therefore re-announced the same turn. It now dedupes
+  on the identity of the turn, which does not flicker. For a consumer that speaks an event out loud,
+  this was three announcements of one thing.
+
 ## [0.30.1] — 2026-08-25
 
 a reopened event stream resumes where the reader left off

@@ -38,9 +38,23 @@ export interface Observed {
   turnInterrupted: boolean;
   /** Start instant of the running turn, when one is known — the duration for an interrupted end. */
   turnStartedMs: number | null;
+  /**
+   * Which turn we have already reported as interrupted, by its start instant.
+   *
+   * NOT a boolean, and that distinction is the whole fix. `turnInterrupted` is derived from how long
+   * the transcript has been quiet, so it returns to false the moment the file stirs and rises again
+   * after the next silence — it flickers within a single turn. Deduping on "was it true last pass"
+   * therefore reported the SAME abandoned turn over and over: measured on a live machine, one turn
+   * produced three events in six minutes with a growing duration, which for a consumer that speaks
+   * and blinks is three announcements of one thing.
+   *
+   * Identity of the turn does not flicker. Remember which turn was announced, and stay quiet until a
+   * different one starts.
+   */
+  interruptReportedFor: number | null;
 }
 
-export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null, turnInterrupted: false, turnStartedMs: null };
+export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null, turnInterrupted: false, turnStartedMs: null, interruptReportedFor: null };
 
 /**
  * Transitions between two observations. Pure, and the reason the daemon side stays testable without
@@ -61,7 +75,8 @@ export function transitions(prev: Observed, next: Observed, nowMs: number): Emit
   if (next.blocked !== null && prev.blocked !== next.blocked) out.push({ event: "session-blocked", detail: next.blocked });
   if (next.waitingAt !== null && prev.waitingAt !== next.waitingAt) out.push({ event: "waiting", detail: next.waitingAt });
   if (prev.waitingAt !== null && next.waitingAt === null) out.push({ event: "resumed" });
-  if (next.turnInterrupted && !prev.turnInterrupted) {
+  // Once per TURN, not once per rise of a flickering signal — see `interruptReportedFor`.
+  if (next.turnInterrupted && prev.interruptReportedFor !== next.turnStartedMs) {
     // Reported as an ordinary end, flagged — a consumer that only wants "it finished" should not
     // have to know about interruption, and one that cares can see it.
     const durationMs = next.turnStartedMs === null ? undefined : Math.max(0, nowMs - next.turnStartedMs);
@@ -92,6 +107,8 @@ export function observe(m: MachineConfig, s: Session, running: boolean, pane: st
         });
   return {
     running: true,
+    // Carried forward by the caller after each pass; an observation cannot know it on its own.
+    interruptReportedFor: null,
     waitingAt: scan?.atPrompt ?? null,
     blocked: block?.error ?? null,
     // Only an OBSERVED interruption counts: the lifecycle file claims a turn is running while the
@@ -123,11 +140,16 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
     const pane = isRunning ? await capturePane(m, s.name, 40).catch(() => null) : null;
     const next = observe(m, s, isRunning, pane, nowMs);
     const prev = previous.get(s.name) ?? UNSEEN;
-    for (const input of transitions(prev, next, nowMs)) {
+    const events = transitions(prev, next, nowMs);
+    for (const input of events) {
       appendEvent(m, s, input);
       emitted += 1;
     }
-    previous.set(s.name, next);
+    // Carry the "already announced" mark across passes: set when this pass announced an interrupted
+    // turn, inherited otherwise. Kept out of `observe` because it is memory, not observation — and
+    // out of `transitions` because that stays pure.
+    const announcedInterrupt = events.some((e) => e.event === "turn-end" && e.interrupted === true);
+    previous.set(s.name, { ...next, interruptReportedFor: announcedInterrupt ? next.turnStartedMs : prev.interruptReportedFor });
   }
   for (const name of [...previous.keys()]) if (!seen.has(name)) previous.delete(name);
   return emitted;

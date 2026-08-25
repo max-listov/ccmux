@@ -135,6 +135,26 @@ test("an interrupted turn is closed by observation — Stop never fires for one"
   expect(out).toEqual([{ event: "turn-end", interrupted: true, durationMs: 42_000 }]);
 });
 
+test("ONE interrupted turn is announced once, however much the signal flickers", () => {
+  // Measured on a live machine before this was deduped by identity: one abandoned turn produced
+  // three events in six minutes with a growing duration. The signal is derived from how long the
+  // transcript has been quiet, so it drops to false the moment the file stirs and rises again after
+  // the next silence — deduping on "was it true last pass" therefore re-announced the same turn.
+  const turn = 1_000;
+  const announced = observed({ turnInterrupted: true, turnStartedMs: turn, interruptReportedFor: turn });
+  // it flickered off…
+  expect(transitions(announced, observed({ turnInterrupted: false, turnStartedMs: turn, interruptReportedFor: turn }), 50_000)).toEqual([]);
+  // …and back on, still the same turn
+  expect(transitions(announced, observed({ turnInterrupted: true, turnStartedMs: turn, interruptReportedFor: turn }), 60_000)).toEqual([]);
+});
+
+test("a NEW turn abandoned the same way is announced again", () => {
+  // The mark is identity, not a permanent silence: a different turn is a different event.
+  const prev = observed({ turnInterrupted: true, turnStartedMs: 1_000, interruptReportedFor: 1_000 });
+  const out = transitions(prev, observed({ turnInterrupted: true, turnStartedMs: 90_000 }), 100_000);
+  expect(out).toEqual([{ event: "turn-end", interrupted: true, durationMs: 10_000 }]);
+});
+
 test("steady state emits nothing at all", () => {
   const state = observed({ waitingAt: "Continue?", blocked: "boom" });
   expect(transitions(state, state, 0)).toEqual([]);
