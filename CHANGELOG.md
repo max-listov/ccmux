@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-08-25
+
+an owner outside the fleet has an address, and the hop through a person is written down
+
 ### Added
 
 - **An owner outside the fleet has an address: `owner/<name>`.** A component owner can work as an
@@ -28,7 +32,6 @@ the GitHub Release with that section as the notes.
   of* that owner, never as that party speaking, since ccmux cannot authenticate them — delivered to
   whoever wrote, and the letter stops waiting. Answers are counted per letter and per task, so two
   errands want two answers and one reply cannot close both.
-
 ## [0.34.0] — 2026-08-25
 
 the ledger survives a record it cannot read, without moving the others
