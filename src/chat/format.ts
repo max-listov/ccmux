@@ -14,6 +14,7 @@ import type { ReplyRoute } from "./replyRoute.ts";
  */
 export function formatChatInjection(msg: ChatMessage, opts?: { cli?: string; reply?: ReplyRoute | undefined }): string {
   const task = msg.task ? ` · task: ${msg.task}` : "";
+  const id = ` · id: ${msg.id}`;
   const behalf = msg.onBehalfOf ? ` on behalf of ${msg.onBehalfOf}` : "";
   // A cross-machine sender is named by its FULL address, and the reply command is spelled out. The
   // incident this fixes: an agent was asked to report back, saw only a bare name, resolved it against
@@ -43,5 +44,5 @@ export function formatChatInjection(msg: ChatMessage, opts?: { cli?: string; rep
           // to answer.
           ` · reply: ${opts.cli ?? "ccmux"} msg ${msg.from.machine}:${msg.from.session} --to-agent ${msg.from.agent} --to-thread ${msg.from.threadId}${msg.task ? ` --task ${msg.task}` : ""} "<your reply>"`
         : ` · cannot reach ${msg.from.machine} from here (${opts.reply.reason}) — answer with ${opts.cli ?? "ccmux"} msg owner "<your reply>"`;
-  return `[chat from ${sender}${behalf}${task}${reply}] ${msg.body}`;
+  return `[chat from ${sender}${behalf}${task}${id}${reply}] ${msg.body}`;
 }

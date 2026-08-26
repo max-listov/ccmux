@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for ccmux-managed sessi
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-25
+updated: 2026-08-26
 ---
 
 # Peer routing and session identity
@@ -30,10 +30,13 @@ does not send it, the human view says `unknown` instead of silently claiming Cla
 The human selector is the exact `<machine>:<session>` address. At send time it resolves to and pins
 `source + machine + provider + session + thread UUID`; queued delivery and retry validate that full
 endpoint, so reusing a name cannot redirect mail. A bare session name means the current machine only.
-ccmux owns the registry, tmux persistence, daemon self-heal, transcript
-adapter, wait state, and managed routing identity for these sessions. Claude currently has a
-calibrated pane chat adapter; Codex targets fail explicitly until the separate managed-Codex chat
-task supplies equivalent delivery detection. Identity support never implies a delivery capability.
+ccmux owns the registry, tmux persistence, daemon self-heal, transcript adapter, wait state, and
+managed routing identity for these sessions. Both Claude and Codex expose provider-owned structured
+pane inspection. Claude keeps its verified queue-while-working behavior. Codex delivers only through
+a structurally proven idle composer; working, queued input, partial input, selection/approval menus,
+startup, reconnect, and unknown frames all hold fail-closed with an explicit reason. Pane input is
+gated across the final inspection and one atomic paste+submit command queue, so a client keystroke
+cannot be merged into the injected turn. Identity support still never implies delivery capability.
 The provider remains visible next
 to the address so a human or agent can choose deliberately between, for example,
 `host-a:agent-a` (`claude`) and `host-a:agent-b` (`codex`) in the same directory.
@@ -59,6 +62,10 @@ ancestry, not from forgeable environment variables or a guess based on the recip
 The active state bundle keeps canonical names: `chat.jsonl`, `chat-cursors.json`, `chat-ack.jsonl`,
 `outbox.jsonl`, and `outbox-ack.jsonl`. Its records carry the generation; superseded state lives
 under `archive/` because name-only rows cannot be upgraded without inventing provider and UUID.
+For a hookless provider, the cursors file also carries one exact message pickup barrier per recipient.
+The barrier and immediate cursor advance are persisted together before submission; `wait` cannot
+finish until that immutable ID appears as a user transcript record and a later assistant boundary
+settles. A pane-local submission receipt reconciles a daemon crash without a duplicate paste.
 Lifecycle operations are not chat: `restart --then` does not exist, and a work hand-off must use a
 recorded `msg` envelope.
 

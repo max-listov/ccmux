@@ -26,6 +26,14 @@ export interface PaneScan {
   context: ContextInfo; // structured
 }
 
+export type ChatPaneState = "deliverable" | "working" | "queued-input" | "menu" | "input-busy" | "not-drawn" | "unknown";
+
+export interface ChatPaneInspection {
+  state: ChatPaneState;
+  /** Stable, user-facing reason persisted in the recipient's chat hold. */
+  reason: string;
+}
+
 /**
  * One agent CLI = one provider. It owns EVERYTHING agent-specific: how to launch
  * (`buildArgv`/`launchEnv`), where the conversation history lives (`historyFile`),
@@ -85,15 +93,14 @@ export interface AgentProvider {
   // config → key. The supervisor polls this right after launch and sends the key (+Enter only if
   // the number key didn't already confirm). Optional: agents without such a picker omit it.
   promptAnswer?(paneText: string, m: MachineConfig): string | null;
-  // Inter-agent chat: is it safe to inject a chat message into this pane RIGHT NOW? Pure: pane
-  // text → bool. False when the session sits at a selection menu (injecting would pick an option
-  // it never chose — proven live), so the daemon holds and retries. Optional: an agent with no
-  // readiness detector is never delivered to (safe default). Used by src/chat/deliver.ts.
-  chatDeliverable?(paneText: string): boolean;
-  // Is the human's composer occupied right now (they typed a line and haven't sent it)? Injection
-  // appends + hits Enter, so delivering then would send THEIR half-written text. Pure: pane → bool.
-  // Optional: an agent without a detectable composer never reports busy (delivery proceeds).
-  inputBusy?(paneText: string): boolean;
+  // Inter-agent chat is a structured provider-owned pane verdict. A bool cannot distinguish a
+  // blocking menu from a running turn, an occupied composer or a half-painted/unknown frame; those
+  // states have different wait semantics and different hold explanations. Styled capture is kept so
+  // providers can distinguish real input from dim placeholders. Missing capability means fail closed.
+  inspectChatPane?(styledPaneText: string): ChatPaneInspection;
+  /** Codex has no lifecycle hook at turn start, so wait must observe the exact injected user record
+   * before an older assistant record can count as this turn's completion. */
+  chatPickup?: "transcript";
 }
 
 const REGISTRY: Record<AgentKind, AgentProvider> = {

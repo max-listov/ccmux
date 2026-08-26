@@ -1,0 +1,14 @@
+{
+  "version": "codex-cli 0.147.0",
+  "geometry": "120x40",
+  "idle": "\u001b[2m•\u001b[0m Done.\n\n\u001b[1m›\u001b[0m \u001b[2mSummarize recent commits\u001b[0m\n\n  \u001b[38;2;246;226;183mgpt-5.6-sol medium\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m/work/project\u001b[39m\n",
+  "working": "\u001b[1;2m› \u001b[0mRun a bounded command.\n\n\u001b[1m\u001b[38;2;138;138;138m•\u001b[0m \u001b[1mWorking\u001b[0m \u001b[2m(3s • esc to interrupt)\u001b[0m\n\n\u001b[1m›\u001b[0m \u001b[2mSummarize recent commits\u001b[0m\n\n  \u001b[38;2;246;226;183mgpt-5.6-sol medium\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m/work/project\u001b[39m\n",
+  "queued": "\u001b[1;2m› \u001b[0mRun a bounded command.\n\n\u001b[1m\u001b[38;2;138;138;138m•\u001b[0m \u001b[1mWorking\u001b[0m \u001b[2m(3s • esc to interrupt)\u001b[0m\n\n\u001b[1m›\u001b[0m queued follow-up\n\n  \u001b[38;2;246;226;183mgpt-5.6-sol medium\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m/work/project\u001b[39m\n",
+  "partial": "\u001b[2m•\u001b[0m Done.\n\n\u001b[1m›\u001b[0m draft text that must remain untouched\n\n  \u001b[38;2;246;226;183mgpt-5.6-sol medium\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m/work/project\u001b[39m\n",
+  "partialWithDimCompletion": "\u001b[2m•\u001b[0m Done.\n\n\u001b[1m›\u001b[0m typed\u001b[2m completion\u001b[0m\n\n  \u001b[38;2;246;226;183mgpt-5.6-sol medium\u001b[2m\u001b[39m · \u001b[0m\u001b[38;2;171;223;167m/work/project\u001b[39m\n",
+  "menu": "Hooks need review\n2 hooks are new or changed.\n\n› 1. Review hooks\n  2. Trust all and continue\n  3. Continue without trusting (hooks won't run)\n\nPress enter to confirm or esc to go back\n",
+  "commandApproval": "Would you like to run the following command?\n\n  bun test\n\n› 1. Yes\n  2. Yes, and don't ask again\n  3. No\n\nPress enter to confirm or esc to go back\n",
+  "notDrawn": "\n\n",
+  "reconnectOverlay": "Hooks\nLifecycle hooks from config and enabled plugins.\n\n2 hooks need review before they can run.\n\nPress t to trust all; enter to review hooks; esc to close\n",
+  "unknown": "OpenAI Codex\nA future footer shape\n› placeholder\n"
+}

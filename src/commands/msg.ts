@@ -140,7 +140,7 @@ export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(),
     console.error(`chat receive: ${mismatch}`);
     return 1;
   }
-  if (!chatEnabledFor(session, machine) || providerFor(session).chatDeliverable === undefined) {
+  if (!chatEnabledFor(session, machine) || providerFor(session).inspectChatPane === undefined) {
     console.error(`chat receive: target '${session.name}' cannot receive chat`);
     return 1;
   }
@@ -273,7 +273,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   const target = managedPeer(machine.rcPrefix, session);
   const mismatch = assertExpected(target, expectedAgent, expectedThread);
   if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
-  if (!chatEnabledFor(session, machine) || providerFor(session).chatDeliverable === undefined) {
+  if (!chatEnabledFor(session, machine) || providerFor(session).inspectChatPane === undefined) {
     return console.error(`msg: recipient '${targetToken}' cannot receive chat`), 1;
   }
   if ((defer || notBefore !== null) && task !== null) {

@@ -1,7 +1,7 @@
 import { loadSessions, findSession } from "../config/sessions.ts";
 import { providerFor } from "../agent/index.ts";
-import { capturePane, hasSession } from "../tmux/tmux.ts";
-import { readTurnState } from "../chat/deliver.ts";
+import { capturePaneStyled, hasSession } from "../tmux/tmux.ts";
+import { chatTurnProgress, readTurnState } from "../chat/deliver.ts";
 import { WHY_TEXT, type TurnWhy } from "../chat/turnState.ts";
 import { holdReason } from "../chat/holdReason.ts";
 import { readChatHold } from "../agent/sessionStatus.ts";
@@ -9,7 +9,7 @@ import { notBeforeDue } from "../chat/deliver.ts";
 import { forwardIfRemote } from "../fleet/forward.ts";
 import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.ts";
 import type { MachineConfig, ChatMessage, Session } from "../types.ts";
-import { managedPeer } from "../chat/identity.ts";
+import { managedPeer, managedPeerKey } from "../chat/identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 
 /**
@@ -102,7 +102,7 @@ function mailHold(m: MachineConfig, s: Session, blocking: ChatMessage[], nowMs: 
       chatEnabled: chatEnabledFor(s, m),
       running: true, // `wait` only reaches this with the session present
       nowMs,
-      chatDeliverable: providerFor(s).chatDeliverable !== undefined,
+      chatDeliverable: providerFor(s).inspectChatPane !== undefined,
       daemonHold: readChatHold(s.name),
     }).text;
   } catch {
@@ -114,7 +114,7 @@ function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessa
   try {
     return mailBlocksSettle(
       unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map((u) => u.msg),
-      { chatEnabled: chatEnabledFor(s, m), canReceiveChat: providerFor(s).chatDeliverable !== undefined, nowMs },
+      { chatEnabled: chatEnabledFor(s, m), canReceiveChat: providerFor(s).inspectChatPane !== undefined, nowMs },
     );
   } catch {
     // Chat is optional; a missing or unreadable ledger must never break a plain `wait`.
@@ -170,13 +170,26 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       continue;
     }
     const now = Date.now();
-    const pane = await capturePane(m, name, 40);
+    const pane = await capturePaneStyled(m, name, 40);
     // Undelivered mail means the work has not STARTED, and an idle pane is therefore not an answer.
     // Without this the documented recipe raced itself: `msg` queues, the daemon delivers a beat
     // later, and a `wait` fired immediately after reported a finished turn that had never begun.
     const blocking = blockingInbound(m, s, now);
     if (blocking.length === 0) {
-      const ts = readTurnState(m, s, provider, pane, now);
+      const pickup = provider.chatPickup === "transcript"
+        ? loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))]
+        : undefined;
+      const progress = pickup === undefined ? null : chatTurnProgress(m, s, pickup.messageId);
+      if (progress === "awaiting-pickup") {
+        lastWhy = "awaiting-pickup";
+        mailWhy = null;
+        await Bun.sleep(POLL_MS);
+        continue;
+      }
+      const injected = pickup === undefined || progress === null
+        ? undefined
+        : { turnStartedMs: Date.parse(pickup.injectedAt), assistantAnswered: progress === "answered" };
+      const ts = readTurnState(m, s, provider, pane, now, injected);
       if (ts.settled) {
         // Both settle paths exit 0 — a third exit code would break every existing script — but the
         // line must not claim a turn "finished" when it was killed: the documented next step is

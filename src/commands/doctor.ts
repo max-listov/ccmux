@@ -248,7 +248,7 @@ export function stalledMail(m: MachineConfig): { session: string; reason: string
         chatEnabled: chatEnabledFor(s, m),
         running: true,
         nowMs: Date.now(),
-        chatDeliverable: providerFor(s).chatDeliverable !== undefined,
+        chatDeliverable: providerFor(s).inspectChatPane !== undefined,
         daemonHold: hold,
       }).text,
     });

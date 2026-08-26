@@ -141,7 +141,7 @@ export async function reportSweep(m: MachineConfig, self: string | undefined, do
     : {
         known: session !== undefined,
         running: session !== undefined && running.has(session.name),
-        canChat: session !== undefined && chatEnabledFor(session, m) && providerFor(session).chatDeliverable !== undefined,
+        canChat: session !== undefined && chatEnabledFor(session, m) && providerFor(session).inspectChatPane !== undefined,
       };
   const report = sweepReport(m.rcPrefix, self, done, failure, caller);
   const to = report.recipient === "caller" && session !== undefined ? managedPeer(m.rcPrefix, session) : ownerTarget();

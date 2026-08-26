@@ -69,7 +69,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
       running,
       nowMs: now,
       isOwner: name === OWNER,
-      chatDeliverable: providerFor(recipient).chatDeliverable !== undefined,
+      chatDeliverable: providerFor(recipient).inspectChatPane !== undefined,
       daemonHold,
     };
     for (const { msg } of unread) {

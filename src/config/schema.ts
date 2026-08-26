@@ -472,6 +472,16 @@ export const ChatCursorsSchema = z.object({
   // from `read` (advanced by `ccmux inbox` too) so a push and a manual pull don't double-count.
   // The daemon is the sole writer; survives restarts so a bounce never re-pushes old messages.
   delivered: z.record(z.string(), z.number()).default({}),
+  // A pane injection is not yet a turn. Hookless providers keep the exact message here until its
+  // immutable id appears as a user record in the transcript; `wait` cannot reuse an older answer.
+  pickups: z.record(z.string(), z.object({
+    messageId: z.uuid(),
+    injectedAt: z.iso.datetime(),
+    // Stored in the same atomic cursor write as the pickup intent. An immediate cursor therefore
+    // cannot hide a submitted turn without leaving the exact transcript barrier behind.
+    ledgerIndex: z.number().int().nonnegative().nullable().default(null),
+    conditional: z.boolean().default(false),
+  }).strict()).default({}),
   // Telegram mirror progress: ledger LENGTH mirrored to the bot (a BROADCAST sink — every message,
   // in order). Persisted so a restart resends only the un-mirrored backlog, never the whole history.
   // `null` = the mirror has never run on this machine. Distinct from 0 on purpose: turning the

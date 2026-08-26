@@ -1,7 +1,17 @@
 import { loadSessions } from "../config/sessions.ts";
-import { providerFor, lastTranscriptMessage, lastActivityMs, type AgentProvider } from "../agent/index.ts";
-import { capturePaneStyled, stripAnsi, clientTypingRecently, listSessionNames, pasteText, sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
-import type { ChatMessage, MachineConfig, Session } from "../types.ts";
+import { providerFor, lastTranscriptMessage, lastActivityMs, readTranscript, type AgentProvider } from "../agent/index.ts";
+import {
+  capturePaneStyled,
+  stripAnsi,
+  clientTypingRecently,
+  listSessionNames,
+  loadPasteBuffer,
+  setPaneInputEnabled,
+  submitPasteBuffer,
+  submittedChatId,
+  deletePasteBuffer,
+} from "../tmux/tmux.ts";
+import type { ChatMessage, MachineConfig, Session, TranscriptMessage } from "../types.ts";
 import { log } from "../util/log.ts";
 import { assistantEndedCurrentTurn, turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
 import { lastSignOfLife } from "../events/observe.ts";
@@ -37,19 +47,38 @@ export function recentInboundCount(recipient: ReturnType<typeof managedPeer>, le
 
 /** Inject a message into the recipient's pane as its next user turn, tagged so the agent knows it's
  *  a PEER message, not the human (shared framer — same tag the Stop hook uses). Bracketed paste keeps
- *  a multi-line body intact (no early submit); falls back to a newline-collapsed literal on failure. */
-async function deliverToPane(m: MachineConfig, name: string, msg: ChatMessage): Promise<boolean> {
+ *  a multi-line body intact; pane input is gated across the final classification and submission. */
+async function deliverToPane(
+  m: MachineConfig,
+  name: string,
+  msg: ChatMessage,
+  provider: AgentProvider,
+  beforeSubmit: () => Promise<void>,
+): Promise<{ submitted: boolean; hold: string | null }> {
   // Whether a reply would actually reach the sender is asked of the SAME resolver `msg` delivers
   // with — never re-derived here from one transport's map, which is how a live wire route came to be
   // announced as "no route back" while it was carrying mail.
   const text = formatChatInjection(msg, { cli: promptInvocation(), reply: replyRouteToSender(m, msg.from) });
-  if (!(await pasteText(m, name, text)) && !(await sendKeysLiteral(m, name, text.replace(/\r?\n+/g, " ⏎ ")))) {
-    return false; // the pane is gone (killed between our sample and this write) — nothing was typed
+  const buffer = await loadPasteBuffer(m, text);
+  if (buffer === null) return { submitted: false, hold: null };
+  let inputDisabled = false;
+  try {
+    inputDisabled = await setPaneInputEnabled(m, name, false);
+    if (!inputDisabled) return { submitted: false, hold: null };
+    // This is the authoritative sample: client input is already gated and cannot change the
+    // composer between classification and the paste+Enter command queue.
+    const inspection = provider.inspectChatPane?.(await capturePaneStyled(m, name, 40));
+    if (inspection === undefined || inspection.state !== "deliverable") {
+      return { submitted: false, hold: inspection?.reason ?? "this provider cannot receive managed chat" };
+    }
+    await beforeSubmit();
+    const submitted = await submitPasteBuffer(m, name, buffer, msg.id);
+    if (submitted) inputDisabled = false; // submit's first queued command re-enabled the pane
+    return { submitted, hold: null };
+  } finally {
+    if (inputDisabled) await setPaneInputEnabled(m, name, true);
+    await deletePasteBuffer(m, buffer);
   }
-  await Bun.sleep(150); // let the paste/text land before the separate Enter
-  // The Enter is what SUBMITS it. If the session died in the 150ms gap the text is stranded in a
-  // composer nobody will read, so this is the honest place to say "not delivered".
-  return sendKeysNamed(m, name, "Enter");
 }
 
 // The Stop hook delivers a deferred message the instant a turn ends; this daemon path is the
@@ -71,12 +100,21 @@ const TYPING_WINDOW_SEC = 3;
  * its result being written reads as a turn nobody is coming back to — and `ccmux wait`, which is a
  * fresh process with no memory of its own, would answer "done" about a session mid-work.
  */
-export function readTurnState(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): TurnState {
-  const scan = provider.scanPane(pane);
+export function readTurnState(
+  m: MachineConfig,
+  s: Session,
+  provider: AgentProvider,
+  pane: string,
+  nowMs: number,
+  injected?: { turnStartedMs: number; assistantAnswered: boolean },
+): TurnState {
+  const plain = stripAnsi(pane);
+  const scan = provider.scanPane(plain);
+  const inspection = provider.inspectChatPane?.(pane);
   const lm = lastTranscriptMessage(s, m);
   const activity = lastActivityMs(s, m);
   const lifecycle = readLifecycle(s.name);
-  const turnStartedMs = lifecycle?.state === "working" ? lifecycle.ts : null;
+  const turnStartedMs = injected?.turnStartedMs ?? (lifecycle?.state === "working" ? lifecycle.ts : null);
   const mt = lastSignOfLife(activity, scan.state === "working" ? nowMs : paneWorkingSince(m, s.name), turnStartedMs);
   return turnState({
     paneWorking: scan.state === "working",
@@ -84,15 +122,55 @@ export function readTurnState(m: MachineConfig, s: Session, provider: AgentProvi
     // calibrated. `chatDeliverable` is that marker: an agent that can say "this pane is safe to type
     // into" has had its chrome mapped; one that cannot has not. Treating an unreliable "not drawn" as
     // a permanent block would recreate the very hang this change removes, on another agent.
-    paneReady: provider.chatDeliverable === undefined ? true : scan.ready,
-    // Honest limitation: a provider with no menu detector gets `false` — we cannot see a menu we have
-    // no pattern for. For chat that is harmless (deliverPending skips such agents entirely); for
-    // `wait` it means the menu guard simply does not exist on that agent, which is a gap in the
-    // agent's pane support, not something this function can invent.
-    atMenu: provider.chatDeliverable?.(pane) === false,
-    endedOnAssistantText: assistantEndedCurrentTurn(lm, activity, turnStartedMs),
+    paneReady: provider.inspectChatPane === undefined ? true : scan.ready,
+    atMenu: scan.atPrompt !== null,
+    paneBlock: inspection?.state === "input-busy"
+      ? "input-occupied"
+      : inspection?.state === "unknown"
+        ? "unknown-pane"
+        : null,
+    endedOnAssistantText: injected?.assistantAnswered ?? assistantEndedCurrentTurn(lm, activity, turnStartedMs),
     msSinceActivity: mt === null ? null : nowMs - mt,
   });
+}
+
+export type ChatTurnProgress = "awaiting-pickup" | "running" | "answered";
+
+export function chatTurnProgressFromMessages(messages: readonly TranscriptMessage[], messageId: string): ChatTurnProgress {
+  const marker = `id: ${messageId}`;
+  let pickedUp = false;
+  let lastAfterPickup: TranscriptMessage | null = null;
+  for (const message of messages) {
+    if (!pickedUp && message.role === "user" && message.kind === "message" && message.text?.includes(marker) === true) {
+      pickedUp = true;
+      continue;
+    }
+    if (pickedUp) lastAfterPickup = message;
+  }
+  if (!pickedUp) return "awaiting-pickup";
+  return lastAfterPickup?.role === "assistant" && lastAfterPickup.kind === "message" ? "answered" : "running";
+}
+
+/** Provider-neutral normalized transcript proof for a pane-injected turn. Full history is read
+ * because a tool-heavy turn may put thousands of records between the exact user marker and answer. */
+export function chatTurnProgress(m: MachineConfig, s: Session, messageId: string): ChatTurnProgress {
+  const messages = readTranscript(s, m, { tail: Number.MAX_SAFE_INTEGER }).messages;
+  return chatTurnProgressFromMessages(messages, messageId);
+}
+
+/** Persisted pre-submit transition. Cursor and pickup move in one atomic cursors-file write. */
+export function armTranscriptPickup(
+  cursors: ReturnType<typeof loadCursors>,
+  recipientKey: string,
+  pick: { msg: ChatMessage; idx: number },
+  injectedAt: string,
+): void {
+  const conditional = isConditional(pick.msg);
+  cursors.pickups[recipientKey] = { messageId: pick.msg.id, injectedAt, ledgerIndex: pick.idx, conditional };
+  if (!conditional) {
+    cursors.delivered[recipientKey] = pick.idx + 1;
+    cursors.read[recipientKey] = Math.max(cursors.read[recipientKey] ?? 0, pick.idx + 1);
+  }
 }
 
 
@@ -144,7 +222,43 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const provider = providerFor(s);
     const recipient = managedPeer(m.rcPrefix, s);
     const recipientKey = managedPeerKey(recipient);
-    if (!provider.chatDeliverable) continue; // agent has no readiness detector → never inject (safe)
+    if (!provider.inspectChatPane) continue; // agent has no readiness detector → never inject (safe)
+
+    const activePickup = cursors.pickups[recipientKey];
+    if (provider.chatPickup === "transcript" && activePickup !== undefined) {
+      const progress = chatTurnProgress(m, s, activePickup.messageId);
+      if (progress !== "answered") {
+        // The intent is durable before Enter. A restart in that window must not select a second
+        // ledger item or immediately paste this one twice. If Enter never happened, a structurally
+        // idle pane may retry only after the transcript has had a bounded chance to expose pickup.
+        if (progress === "running" || await submittedChatId(m, s.name) === activePickup.messageId || now - Date.parse(activePickup.injectedAt) < 15_000) continue;
+        const activeMessage = ledger.find((slot) => slot?.id === activePickup.messageId);
+        if (activeMessage === null || activeMessage === undefined) continue;
+        const retry = await deliverToPane(m, s.name, activeMessage, provider, async () => {});
+        if (!retry.submitted) {
+          if (retry.hold !== null) await writeChatHold(s.name, activeMessage.id, retry.hold);
+          continue;
+        }
+        clearChatHold(s.name);
+        deliveries += 1;
+        continue;
+      }
+      const pickupPane = await capturePaneStyled(m, s.name, 40);
+      const pickupTurn = readTurnState(m, s, provider, pickupPane, now, {
+        turnStartedMs: Date.parse(activePickup.injectedAt),
+        assistantAnswered: true,
+      });
+      if (!pickupTurn.settled) continue;
+      if (activePickup.conditional) appendAck(m, activePickup.messageId, "daemon", recipient);
+      else if (activePickup.ledgerIndex !== null) {
+        cursors.delivered[recipientKey] = Math.max(cursors.delivered[recipientKey] ?? 0, activePickup.ledgerIndex + 1);
+        cursors.read[recipientKey] = Math.max(cursors.read[recipientKey] ?? 0, activePickup.ledgerIndex + 1);
+      }
+      const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
+      cursors.pickups = remaining;
+      await saveCursors(m, cursors);
+      changed = false;
+    }
 
     // Track A: advance the cursor past non-recipient + conditional mail to the next IMMEDIATE to-me
     // message (conditional mail is Track B's; skipping it here is what prevents head-of-line blocking).
@@ -187,9 +301,9 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // ONE capture, with attributes kept. `inputBusy` needs them to tell a human's typing from
     // Claude's dim autosuggestion; every other detector reads the stripped text.
     const styled = await capturePaneStyled(m, s.name, 40);
-    const pane = stripAnsi(styled);
-    if (!provider.chatDeliverable(pane)) {
-      await writeChatHold(s.name, pick.msg.id, "recipient is at a selection menu — injecting would pick an option it never chose");
+    const inspection = provider.inspectChatPane(styled);
+    if (inspection.state !== "deliverable") {
+      await writeChatHold(s.name, pick.msg.id, inspection.reason);
       continue;
     }
     // WATCHING a session must not block its chat — only actively TYPING does. Injection appends a
@@ -197,20 +311,12 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // it and sent. Two precise signals replace the old blunt "someone is attached" hold (which made
     // the channel look dead for as long as you kept the pane open): an occupied composer, or a
     // keystroke in the last few seconds (guards the gap between two keys).
-    if (provider.inputBusy?.(styled) === true) {
-      log.info({ msg: "chat delivery held — human is typing (composer not empty)", to: s.name, from: principalLabel(pick.msg.from) });
-      // Worded for both ends of its own lifetime. "A human is typing right now" is true at three
-      // seconds and a lie at eleven hours — and the lie is the costly direction, because it reads as
-      // transient and sends nobody to look. A parked draft is what this actually detects.
-      await writeChatHold(s.name, pick.msg.id, "that pane has unsent text in its composer — delivery waits rather than appending to it");
-      continue;
-    }
     if (await clientTypingRecently(m, s.name, TYPING_WINDOW_SEC)) {
       log.info({ msg: "chat delivery held — human typed a moment ago", to: s.name, from: principalLabel(pick.msg.from) });
       await writeChatHold(s.name, pick.msg.id, "a human typed in that pane a moment ago");
       continue;
     }
-    const ts = readTurnState(m, s, provider, pane, now);
+    const ts = readTurnState(m, s, provider, styled, now);
     // "The UI has not painted yet" blocks EVERY track, not just deferred mail: delivery acks what it
     // types, so a keystroke swallowed by a half-drawn pane is a letter marked delivered and never
     // seen. Immediate and time-delayed mail were just as losable there.
@@ -232,14 +338,27 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // window is narrow but it is a double-injection, not a lost letter, so it is worth one cheap read.
     if (isConditional(pick.msg) && loadAckedIds(m).has(pick.msg.id)) continue;
 
-    if (!(await deliverToPane(m, s.name, pick.msg))) {
+    const transcriptPickup = provider.chatPickup === "transcript";
+    const delivery = await deliverToPane(m, s.name, pick.msg, provider, async () => {
+      if (!transcriptPickup) return;
+      armTranscriptPickup(cursors, recipientKey, pick, new Date(now).toISOString());
+      await saveCursors(m, cursors);
+    });
+    if (delivery.hold !== null) {
+      await writeChatHold(s.name, pick.msg.id, delivery.hold);
+      continue;
+    }
+    if (!delivery.submitted) {
       // Nothing was typed (the session died mid-write). Acking here would bury the letter forever;
       // leaving it alone lets the next pass try again.
       log.warn({ msg: "chat delivery failed — target vanished mid-write, not acked", to: s.name });
       continue;
     }
     clearChatHold(s.name);
-    if (isConditional(pick.msg)) {
+    if (transcriptPickup) {
+      // Cursor + exact barrier were persisted together before the atomic pane submission. Completion
+      // clears the barrier only after transcript answer + structural settle.
+    } else if (isConditional(pick.msg)) {
       appendAck(m, pick.msg.id, "daemon", recipient); // off-cursor; dedup vs the Stop hook
     } else {
       cursors.delivered[recipientKey] = pick.idx + 1;

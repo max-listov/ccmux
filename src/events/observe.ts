@@ -195,8 +195,8 @@ export function observe(
       ? null
       : turnState({
           paneWorking,
-          paneReady: provider.chatDeliverable === undefined ? true : scan?.ready === true,
-          atMenu: provider.chatDeliverable?.(pane) === false,
+          paneReady: provider.inspectChatPane === undefined ? true : scan?.ready === true,
+          atMenu: scan?.atPrompt !== null,
           endedOnAssistantText: assistantEndedCurrentTurn(lm, activity, claimed),
           msSinceActivity: aliveMs === null ? null : nowMs - aliveMs,
         });

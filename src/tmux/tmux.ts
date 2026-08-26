@@ -148,6 +148,49 @@ export async function pasteText(m: MachineConfig, name: string, text: string): P
   return code === 0;
 }
 
+/**
+ * Load one private paste buffer for a chat delivery attempt. The random name prevents concurrent
+ * recipients from replacing each other's payload while the daemon is fanning out a pass.
+ */
+export async function loadPasteBuffer(m: MachineConfig, text: string): Promise<string | null> {
+  const buffer = `ccmux-chat-${crypto.randomUUID()}`;
+  const loaded = await runWithInput(tmuxArgv(m, "load-buffer", "-b", buffer, "-"), text);
+  return loaded.code === 0 ? buffer : null;
+}
+
+/** Stop/start client input to one pane. While disabled, tmux also blocks programmatic send-keys. */
+export async function setPaneInputEnabled(m: MachineConfig, name: string, enabled: boolean): Promise<boolean> {
+  const { code } = await run(tmuxArgv(m, "select-pane", enabled ? "-e" : "-d", "-t", paneTarget(name)));
+  return code === 0;
+}
+
+/**
+ * Re-enable input, bracket-paste one already-loaded buffer, and submit it in ONE tmux command queue.
+ * None of these commands yields, so a client key cannot interleave between re-enable, paste and
+ * Enter. Callers must first disable input and classify the pane while that gate is held.
+ */
+export async function submitPasteBuffer(m: MachineConfig, name: string, buffer: string, messageId: string): Promise<boolean> {
+  const target = paneTarget(name);
+  const { code } = await run(tmuxArgv(
+    m,
+    "select-pane", "-e", "-t", target,
+    ";", "paste-buffer", "-p", "-d", "-b", buffer, "-t", target,
+    ";", "send-keys", "-t", target, "Enter",
+    ";", "set-option", "-p", "-t", target, "@ccmux-chat-submitted", messageId,
+  ));
+  return code === 0;
+}
+
+/** Last chat id whose paste+Enter command queue completed on this pane. */
+export async function submittedChatId(m: MachineConfig, name: string): Promise<string | null> {
+  const { code, stdout } = await run(tmuxArgv(m, "show-options", "-p", "-v", "-t", paneTarget(name), "@ccmux-chat-submitted"));
+  return code === 0 && stdout.trim() !== "" ? stdout.trim() : null;
+}
+
+export async function deletePasteBuffer(m: MachineConfig, buffer: string): Promise<void> {
+  await run(tmuxArgv(m, "delete-buffer", "-b", buffer));
+}
+
 export async function capturePane(m: MachineConfig, name: string, lines: number): Promise<string> {
   const { stdout } = await run(tmuxArgv(m, "capture-pane", "-t", paneTarget(name), "-p", "-S", `-${lines}`));
   return stdout;

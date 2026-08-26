@@ -6,6 +6,21 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- **Managed Codex sessions can participate in ccmux chat.** Local, cross-provider, and fleet-address
+  messages preserve the exact provider, machine, session, and thread identity already carried by the
+  v2 envelope and reply route.
+
+### Fixed
+
+- **Codex delivery is fail-closed around live terminal state.** Structured pane inspection separates
+  idle, working, queued input, partial input, approval/menu, startup, reconnect, and unknown frames.
+  The final inspection and paste+submit are protected from concurrent client input.
+- **`wait` follows the injected Codex turn, not an older answer.** An immutable message ID, durable
+  pickup barrier, pane submission receipt, and transcript boundary prevent premature completion and
+  duplicate delivery across daemon or session restart.
+
 ## [0.39.2] — 2026-08-26
 
 retain anonymous turns across spinner frames

@@ -1,4 +1,5 @@
-import type { PaneScan } from "../index.ts";
+import type { ChatPaneInspection, PaneScan } from "../index.ts";
+import { stripAnsi } from "../../tmux/tmux.ts";
 import { atInteractiveMenu as atMenu, detectPrompt as detectPromptImpl } from "./prompts.ts";
 import { parseContext } from "../context.ts";
 
@@ -113,4 +114,17 @@ export function inputBusy(styledPaneText: string): boolean {
     return typed !== "";
   }
   return false; // no composer in view (booting / alt-screen) → nothing typed to clobber
+}
+
+export function inspectChatPane(styledPaneText: string): ChatPaneInspection {
+  const paneText = stripAnsi(styledPaneText);
+  if (atMenu(paneText)) {
+    return { state: "menu", reason: "recipient is at a selection menu — injecting would pick an option it never chose" };
+  }
+  if (inputBusy(styledPaneText)) {
+    return { state: "input-busy", reason: "that pane has unsent text in its composer — delivery waits rather than appending to it" };
+  }
+  const scan = scanPane(paneText);
+  if (!scan.ready) return { state: "not-drawn", reason: "the recipient's UI has not painted yet (starting or resuming)" };
+  return { state: "deliverable", reason: "ready" };
 }

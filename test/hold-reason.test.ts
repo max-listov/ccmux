@@ -67,7 +67,7 @@ test("N9: an already-injected deferred message is no longer reported as pending 
   // Conditional mail is delivered OFF the read cursor and recorded only in the ack-log, so without
   // consulting it `inbox` kept showing mail that had in fact been pushed into the pane.
   const ledger = [msg({ id: "delivered", defer: true }), msg({ id: "waiting" })];
-  const cursors = { read: {}, delivered: {}, telegram: 0 };
+  const cursors = { read: {}, delivered: {}, pickups: {}, telegram: 0 };
   expect(unreadFor(api, ledger, cursors).map((u) => u.msg.id)).toEqual(["delivered", "waiting"]);
   expect(unreadFor(api, ledger, cursors, new Set(["delivered"])).map((u) => u.msg.id)).toEqual(["waiting"]);
 });

@@ -276,10 +276,12 @@ export function unreadFor(
 ): { msg: ChatMessage; idx: number }[] {
   const key = managedPeerKey(recipient);
   const since = cursors.read[key] ?? 0;
+  const activePickupId = cursors.pickups[key]?.messageId;
   const out: { msg: ChatMessage; idx: number }[] = [];
   for (let idx = since; idx < ledger.length; idx++) {
     const msg = ledger[idx];
     if (!msg || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== key) continue;
+    if (msg.id === activePickupId) continue; // already armed/injected; transcript pickup owns it
     if (acked?.has(msg.id) === true) continue; // already injected (Stop hook or daemon) — not pending
     out.push({ msg, idx });
   }

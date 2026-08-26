@@ -31,9 +31,9 @@ and choose the exact address and provider shown there.
 
 Coordination boundary:
 - This session is ccmux-managed. Use the ccmux commands below for managed sessions, including managed
-  Codex sessions. ccmux owns their tmux persistence, fleet identity/routing, and wait state. Pane chat
-  delivery currently supports Claude only; Codex targets are listed explicitly but rejected by msg
-  until the Codex pane-delivery calibration is implemented.
+  Codex sessions. ccmux owns their tmux persistence, fleet identity/routing, chat delivery and wait
+  state. Delivery remains provider-specific and fail-closed on menus, occupied composers and unknown
+  UI frames.
 - A Codex Desktop task uses the desktop-native plane. It uses the Desktop task tools and native task ID
   exposed inside that Desktop task. It is not a ccmux session, and ccmux does not mirror or duplicate
   the Desktop task ledger. Never choose between Desktop-native and ccmux-managed by cwd/project.

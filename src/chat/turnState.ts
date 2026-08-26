@@ -39,6 +39,9 @@ export type TurnWhy =
   | "working" // the agent is mid-work right now
   | "not-drawn" // the UI has not painted yet (starting/resuming) — typing here is swallowed
   | "at-menu" // sitting on a selection prompt — typing here picks an option it never chose
+  | "input-occupied" // the composer contains unsent human/follow-up text
+  | "unknown-pane" // a drawn provider frame is not structurally calibrated
+  | "awaiting-pickup" // injected chat has not appeared in the recipient transcript yet
   | "settling" // ended on text, but too recently to be sure the turn is over
   | "quiet-unproven" // last record is not text and the silence is not yet long enough to mean anything
   | "turn-ended" // finished on its own words
@@ -49,6 +52,7 @@ export interface TurnFacts {
   paneWorking: boolean;
   paneReady: boolean;
   atMenu: boolean;
+  paneBlock?: "input-occupied" | "unknown-pane" | null;
   /** true when the transcript's last record is an assistant MESSAGE (not a tool call / thinking). */
   endedOnAssistantText: boolean;
   /** ms since the transcript last moved; null = no transcript at all (a session that never had a
@@ -84,6 +88,7 @@ export function turnState(f: TurnFacts): TurnState {
   if (f.paneWorking) return { settled: false, why: "working" };
   if (!f.paneReady) return { settled: false, why: "not-drawn" };
   if (f.atMenu) return { settled: false, why: "at-menu" };
+  if (f.paneBlock !== null && f.paneBlock !== undefined) return { settled: false, why: f.paneBlock };
 
   // "Never had a turn" is its own answer, not an interrupted one. Both are settled — the session is
   // genuinely between turns — but only one of them may be described as a turn that was cut short,
@@ -104,6 +109,9 @@ export const WHY_TEXT: Record<TurnWhy, string> = {
   working: "the recipient is working right now — deferred mail waits for a turn boundary",
   "not-drawn": "the recipient's UI has not painted yet (starting or resuming)",
   "at-menu": "the recipient is at a selection prompt — typing there would pick an option for it",
+  "input-occupied": "the recipient has unsent text in its composer",
+  "unknown-pane": "the recipient's UI is drawn in an unknown shape",
+  "awaiting-pickup": "the injected message has not appeared in the recipient transcript yet",
   settling: "the recipient just spoke; holding a moment to be sure the turn really ended",
   "quiet-unproven": "the recipient's last record is not speech and it has not been quiet long enough to tell a dead turn from a pause",
   "turn-ended": "the recipient finished its turn",

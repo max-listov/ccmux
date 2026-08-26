@@ -88,7 +88,7 @@ const msg = (over: Partial<ChatMessage>): ChatMessage => ({
 });
 
 test("sender identity always includes source, provider, machine, session and thread", () => {
-  expect(formatChatInjection(msg({}))).toBe("[chat from ccmux/codex@host-b:api#11111111-1111-4111-8111-111111111111] hello");
+  expect(formatChatInjection(msg({}))).toBe("[chat from ccmux/codex@host-b:api#11111111-1111-4111-8111-111111111111 · id: 1] hello");
 });
 
 test("the reply command is offered only when this machine can actually route back", () => {
@@ -117,7 +117,7 @@ test("silence when routing was never asked about — absence of knowledge is not
   // The Telegram mirror and other read-only renderers format messages without knowing any machine's
   // routing table. They must not start announcing that a peer is unreachable.
   const out = formatChatInjection(msg({}));
-  expect(out).toBe("[chat from ccmux/codex@host-b:api#11111111-1111-4111-8111-111111111111] hello");
+  expect(out).toBe("[chat from ccmux/codex@host-b:api#11111111-1111-4111-8111-111111111111 · id: 1] hello");
 });
 
 test("the reply prefix precedes the body, so a forged 'reply:' inside the body can't impersonate it", () => {

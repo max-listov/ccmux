@@ -106,7 +106,7 @@ async function buildRow(
   const aliveMs = lastSignOfLife(activity, paneWorking ? nowSec * 1000 : paneWorkingSince(m, s.name), turnStartedMs);
   const evidence = turnState({
     paneWorking,
-    paneReady: provider.chatDeliverable === undefined ? true : scan.ready,
+    paneReady: provider.inspectChatPane === undefined ? true : scan.ready,
     atMenu: scan.atPrompt !== null,
     endedOnAssistantText: assistantEndedCurrentTurn(lastMessage, activity, turnStartedMs),
     msSinceActivity: aliveMs === null ? null : nowSec * 1000 - aliveMs,
