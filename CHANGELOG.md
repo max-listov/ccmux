@@ -6,6 +6,38 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- **`ccmux chat log --follow` — the chat log as a resumable feed.** The snapshot answers "what is
+  there now", which a live surface has to ask again and again: every poll re-serialises history the
+  consumer already holds, and one long message pushes that single document past a transport's cap,
+  where it stops being partly readable and becomes unreadable — a cut document has no last brace.
+  Bounded records cannot fail that way.
+- **The cursor is a POSITION, not a timestamp** — `<generation>.<ledger>.<outbox>`. Rows carry the
+  clock of the machine that minted the message, so many share a second and a corrected clock can put
+  a later record behind an earlier one; a time cursor would replay what a consumer has or, silently,
+  skip what it has not. Both sources are append-only, so record N is record N forever. A cursor from
+  a retired record generation is refused rather than reinterpreted, because that is the one event
+  that moves positions.
+- **Every record is bounded to one transport chunk (32 KiB), and an oversized body is REPLACED
+  rather than cut** — with a sentence naming its real size. Route, time and position all survive, so
+  the cursor still advances and nothing after it is lost.
+- `--framed` wraps each frame for a transport that resumes, and `STITCHWIRE_STREAM_CURSOR` is read
+  on reopen — the same contract the session event feed already speaks. An unusable cursor is refused
+  loudly from either source: ignoring it and starting from "now" is the failure with no symptom.
+- One strict frame schema covers rows and machine availability, so "nothing happened there" stays
+  distinguishable from "we could not look".
+
+### Fixed
+
+- **`chat log --fleet` asked only ssh peers.** A machine reachable only over the wire was not shown
+  as unreachable — it was absent, which reads as a machine where nothing has ever happened. Same
+  resolver as everything else now.
+- **A peer answer cut by the transport is named as cut, not blamed on an old build.** Both produce
+  the same parse failure and are nothing alike: one is fixed by asking for fewer rows, the other by
+  upgrading a machine. This snapshot serialises whole message bodies, so being cut is the failure
+  that actually happens, and "older ccmux?" sent the reader to the wrong machine entirely.
+
 ## [0.36.2] — 2026-08-25
 
 a dead lock holder no longer outlasts every waiter

@@ -438,6 +438,33 @@ must remember is wrong within a week. `ccmux relay` records the answer as a rela
 owner/<name>`, never as that party speaking, since ccmux cannot authenticate them), delivers it to
 whoever wrote, and closes the letter. Two letters want two answers; one reply cannot close both.
 
+### Reading the log live
+
+`ccmux chat log --json` is a snapshot — right for first paint, wrong for staying current: polling it
+means re-serialising history the consumer already has, and one long message can push that single
+document past a transport's cap, at which point it is not partly readable but **unreadable**, because
+a cut document has no last brace.
+
+```bash
+ccmux chat log --follow --json                 # every new row as it lands
+ccmux chat log --follow --since 2.145.154      # resume exactly where you left off
+ccmux chat log --follow --framed               # wrapped for a transport that resumes
+```
+
+The cursor is a **position, not a time**: `<generation>.<ledger>.<outbox>`. Rows carry the timestamp
+of the machine that minted the message, so many share a second and a corrected clock can move one
+behind another — a time cursor would replay what you have or, silently, skip what you have not. Both
+sources are append-only, so record N is record N forever. A cursor from a retired record generation
+is refused rather than reinterpreted.
+
+Every record is bounded (32 KiB, one transport chunk). An oversized body is **replaced** by a
+sentence naming its real size, never cut: the route, the time and the position all survive, so the
+stream keeps flowing and nothing after it is lost.
+
+The feed is local, and a fleet view is N of them — a machine's chat log is its own two files, and
+the transport that carries one carries all of them, which is how the session event feed already
+reaches a dashboard. `--fleet` stays a snapshot for first paint.
+
 The ledger tolerates a mixed fleet. A record written by a **newer** ccmux is stepped over rather than
 refusing the whole file — otherwise one upgrade would take down `msg`, `inbox`, delivery and the TUI
 on every machine that had not caught up yet, and there is always such a window: rollout takes minutes

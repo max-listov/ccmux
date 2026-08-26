@@ -54,44 +54,53 @@ export const LogPayloadSchema = z.object({
 });
 export type LogPayload = z.infer<typeof LogPayloadSchema>;
 
+/**
+ * One ledger record as a row. ONE definition, used by the snapshot and by the feed alike — two
+ * renderings of the same record that could drift is precisely the kind of difference nobody notices
+ * until a consumer is reading both.
+ *
+ * A record this build cannot read still happened, so it becomes a row saying so rather than being
+ * closed over: the one thing an append-only history must never do is look shorter than it is.
+ */
+export function rowFromLedgerRecord(machine: string, msg: LedgerSlot): LogRow {
+  if (msg === null) {
+    return { machine, ts: "", kind: "chat", from: "?", to: "?", task: null, body: "(a record this ccmux cannot read — written by a newer build)", note: "" };
+  }
+  return {
+    machine,
+    ts: msg.ts,
+    kind: "chat",
+    // A remote sender is shown with its machine, because that is the only rendering from which a
+    // full pinned source can be read directly — no cwd/name inference is needed.
+    from: principalLabel(msg.from),
+    to: targetLabel(msg.to),
+    task: msg.task,
+    body: msg.body,
+    note: "",
+  };
+}
+
+/** One outbox record as a row. A failed send the daemon later drained is no longer bad news —
+ *  saying otherwise would send someone chasing a message that did arrive. */
+export function rowFromOutbound(machine: string, o: Outbound, settled: ReadonlySet<string> = new Set()): LogRow {
+  return {
+    machine,
+    ts: outboundTimestamp(o),
+    kind: "sent",
+    from: principalLabel(o.envelope.from),
+    to: targetLabel(o.envelope.to),
+    task: o.envelope.task,
+    body: o.envelope.body,
+    note: o.result.ok ? "" : settled.has(outboundId(o)) ? "sent later, on retry" : `NOT SENT — ${o.result.detail === "" ? "unknown error" : o.result.detail}`,
+  };
+}
+
 /** Ledger + outbox of ONE machine as a single row list, oldest first. Pure. */
 export function localRows(machine: string, ledger: readonly LedgerSlot[], outbox: Outbound[], settled: ReadonlySet<string> = new Set()): LogRow[] {
-  const rows: LogRow[] = [];
-  for (const msg of ledger) {
-    // A record this build cannot read still happened. The log is the place a person goes to ask
-    // "what passed through here", so the position is shown as itself rather than closed over — the
-    // one thing an append-only history must never do is look shorter than it is.
-    if (msg === null) {
-      rows.push({ machine, ts: "", kind: "chat", from: "?", to: "?", task: null, body: "(a record this ccmux cannot read — written by a newer build)", note: "" });
-      continue;
-    }
-    rows.push({
-      machine,
-      ts: msg.ts,
-      kind: "chat",
-      // A remote sender is shown with its machine, because that is the only rendering from which a
-      // full pinned source can be read directly — no cwd/name inference is needed.
-      from: principalLabel(msg.from),
-      to: targetLabel(msg.to),
-      task: msg.task,
-      body: msg.body,
-      note: "",
-    });
-  }
-  for (const o of outbox) {
-    rows.push({
-      machine,
-      ts: outboundTimestamp(o),
-      kind: "sent",
-      from: principalLabel(o.envelope.from),
-      to: targetLabel(o.envelope.to),
-      task: o.envelope.task,
-      body: o.envelope.body,
-      // A failed send that the daemon later drained is no longer bad news — saying otherwise would
-      // send someone chasing a message that did arrive.
-      note: o.result.ok ? "" : settled.has(outboundId(o)) ? "sent later, on retry" : `NOT SENT — ${o.result.detail === "" ? "unknown error" : o.result.detail}`,
-    });
-  }
+  const rows = [
+    ...ledger.map((msg) => rowFromLedgerRecord(machine, msg)),
+    ...outbox.map((o) => rowFromOutbound(machine, o, settled)),
+  ];
   return sortByTime(rows);
 }
 
