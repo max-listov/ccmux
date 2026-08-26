@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.5] — 2026-08-26
+
+connect Codex App threads to shared chat
 ## [0.39.4] — 2026-08-26
 
 release interrupted Codex chat pickups
