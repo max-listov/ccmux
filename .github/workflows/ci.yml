@@ -51,6 +51,10 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      - name: Install tmux on macOS recovery runner
+        if: runner.os == 'macOS'
+        run: brew install tmux
+
       - name: Typecheck + tests
         run: bun run check
 
