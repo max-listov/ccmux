@@ -20,6 +20,15 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner image for manual recovery
+        required: false
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-latest
   push:
     branches: [main]
     tags: ['v*']
@@ -30,7 +39,7 @@ permissions:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -46,7 +55,7 @@ jobs:
         run: bun run check
 
   smoke:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     needs: ci
     steps:
       - uses: actions/checkout@v6
@@ -90,7 +99,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     needs: [ci, smoke]
     steps:
       - uses: actions/checkout@v6
