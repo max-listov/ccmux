@@ -3,6 +3,14 @@ import { render } from "ink-testing-library";
 import { App, type Intent } from "../src/tui/App.tsx";
 import { makeMachine } from "./helpers.ts";
 
+async function waitForFrame(screen: ReturnType<typeof render>, needle: string): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!screen.lastFrame()?.includes(needle)) {
+    if (Date.now() >= deadline) throw new Error(`TUI did not render ${JSON.stringify(needle)} within 1s`);
+    await Bun.sleep(10);
+  }
+}
+
 test("TUI Tab selects Codex and emits an explicit provider in the create intent", async () => {
   const tmuxBin = Bun.which("tmux");
   if (!tmuxBin) throw new Error("tmux is required for the TUI integration test");
@@ -19,13 +27,13 @@ test("TUI Tab selects Codex and emits an explicit provider in the create intent"
   );
 
   screen.stdin.write("n");
-  await Bun.sleep(10);
+  await waitForFrame(screen, "provider: claude");
   expect(screen.lastFrame()).toContain("provider: claude");
   screen.stdin.write("\t");
-  await Bun.sleep(10);
+  await waitForFrame(screen, "provider: codex");
   expect(screen.lastFrame()).toContain("provider: codex");
   screen.stdin.write("agent-tui");
-  await Bun.sleep(10);
+  await waitForFrame(screen, "agent-tui");
   screen.stdin.write("\r");
 
   await expect(intent).resolves.toEqual({
