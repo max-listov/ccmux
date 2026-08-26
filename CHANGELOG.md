@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.38.0] — 2026-08-26
+
+carry each session's declared directory through the fleet fan-out
+
 ### Fixed
 
 - **`fleet --json` no longer drops each session's declared directory.** `list --json` has always
@@ -19,7 +23,6 @@ the GitHub Release with that section as the notes.
   directory MEANS belongs to whoever keeps the catalogue.
 - `null` from a peer whose `list --json` predates the field, and that peer's other sessions still
   arrive — one missing field must never cost a machine.
-
 ## [0.37.0] — 2026-08-26
 
 the chat log as a resumable feed, with a cursor that is a position
