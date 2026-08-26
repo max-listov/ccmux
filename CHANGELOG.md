@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-08-26
+
+a held message no longer looks the same as a quiet peer
+
 ### Fixed
 
 - **A held message no longer looks the same as a quiet peer.** Delivery holds when the recipient's
@@ -26,7 +30,6 @@ the GitHub Release with that section as the notes.
 - **`ccmux doctor` reports mail held past that point.** A stall is invisible from the sending side by
   construction — the send succeeded and everything after happens on the receiving machine — so it
   has to be findable there, or it is findable nowhere.
-
 ## [0.38.0] — 2026-08-26
 
 carry each session's declared directory through the fleet fan-out
