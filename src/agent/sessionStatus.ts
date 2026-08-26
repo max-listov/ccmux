@@ -38,7 +38,15 @@ export type LifecycleStatus = z.infer<typeof LifecycleStatusSchema>;
 // `msgId` is what keeps the reason ATTACHED to the message it describes: the daemon holds on ONE
 // picked message per recipient, so stamping that reason under every unread letter would confidently
 // label a deferred one "a human is typing" when the hold was about something else entirely.
-export const ChatHoldSchema = z.object({ reason: z.string(), ts: z.number(), msgId: z.string().nullable().default(null) });
+export const ChatHoldSchema = z.object({
+  reason: z.string(),
+  ts: z.number(),
+  /** When the daemon FIRST held this same message. A hold is rewritten every pass, so `ts` only ever
+   *  says "a moment ago" — which is true and useless: it is the same answer after three seconds and
+   *  after eleven hours, and the difference between those two is the whole question. */
+  since: z.number().optional(),
+  msgId: z.string().nullable().default(null),
+});
 export type ChatHold = z.infer<typeof ChatHoldSchema>;
 
 export const MetricsStatusSchema = z.object({
@@ -126,16 +134,23 @@ export async function writeMetrics(name: string, data: MetricsStatus): Promise<v
 export async function writeChatHold(name: string, msgId: string, reason: string): Promise<void> {
   try {
     mkdirSync(STATUS_DIR, { recursive: true });
-    await atomicWrite(chatHoldPath(name), JSON.stringify({ reason, ts: Date.now(), msgId }));
+    const now = Date.now();
+    // Carried forward while it is the SAME letter being held, so "how long has this been stuck" is a
+    // fact rather than an inference. A different message starts its own clock: a reason recorded
+    // about another letter is not evidence about this one.
+    const previous = ChatHoldSchema.safeParse(readRaw(chatHoldPath(name))).data;
+    const since = previous !== undefined && previous.msgId === msgId ? previous.since ?? previous.ts : now;
+    await atomicWrite(chatHoldPath(name), JSON.stringify({ reason, ts: now, since, msgId }));
   } catch {
     // best-effort diagnostics
   }
 }
 
-export function readChatHold(name: string, maxAgeMs = 15_000): { reason: string; msgId: string | null } | null {
+export function readChatHold(name: string, maxAgeMs = 15_000): { reason: string; msgId: string | null; heldForMs: number } | null {
   const h = ChatHoldSchema.safeParse(readRaw(chatHoldPath(name))).data;
   if (h === undefined) return null;
-  return Date.now() - h.ts <= maxAgeMs ? { reason: h.reason, msgId: h.msgId } : null;
+  const now = Date.now();
+  return now - h.ts <= maxAgeMs ? { reason: h.reason, msgId: h.msgId, heldForMs: Math.max(0, now - (h.since ?? h.ts)) } : null;
 }
 
 export function clearChatHold(name: string): void {

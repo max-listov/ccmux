@@ -1,5 +1,6 @@
 import type { ChatMessage, Session } from "../types.ts";
 import { targetLabel } from "./identity.ts";
+import { humanizeDuration } from "../util/duration.ts";
 
 /**
  * Why is this message still sitting undelivered?
@@ -36,8 +37,18 @@ export interface HoldContext {
   /** True when `to` is the reserved `owner` — the human has no pane, so mail waits for a mirror. */
   isOwner?: boolean;
   /** The daemon's last hold for this recipient, if fresh — and the message it was ABOUT. */
-  daemonHold?: { reason: string; msgId: string | null } | null;
+  daemonHold?: { reason: string; msgId: string | null; heldForMs?: number } | null;
 }
+
+/**
+ * Past this, a hold has stopped being a moment and become a stall.
+ *
+ * The delivery loop passes every three seconds and a person pauses between keystrokes for a second
+ * or two, so anything measured in minutes is no longer the transient condition the hold was designed
+ * around. Naming the duration is what separates "wait a moment" from "this is not moving", and those
+ * two were previously the same sentence.
+ */
+export const STALLED_HOLD_MS = 10 * 60_000;
 
 /** Pure: message + recipient state → the honest reason it hasn't landed yet. */
 export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
@@ -67,7 +78,10 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
   // is not evidence about this one.
   const hold = ctx.daemonHold;
   if (hold != null && hold.reason !== "" && (hold.msgId === null || hold.msgId === msg.id)) {
-    return { kind: "live", text: hold.reason };
+    const held = hold.heldForMs ?? 0;
+    if (held < STALLED_HOLD_MS) return { kind: "live", text: hold.reason };
+    // The same reason, plus the one fact that changes what a reader should do about it.
+    return { kind: "live", text: `held for ${humanizeDuration(Math.round(held / 1000))} — ${hold.reason}` };
   }
   // Deliberately does NOT assert that a turn is in progress. This branch is reached whenever the
   // daemon has no fresh hold on record — which happens when the daemon is not running at all, when

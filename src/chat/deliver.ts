@@ -196,7 +196,10 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // keystroke in the last few seconds (guards the gap between two keys).
     if (provider.inputBusy?.(styled) === true) {
       log.info({ msg: "chat delivery held — human is typing (composer not empty)", to: s.name, from: principalLabel(pick.msg.from) });
-      await writeChatHold(s.name, pick.msg.id, "a human is typing in that pane right now");
+      // Worded for both ends of its own lifetime. "A human is typing right now" is true at three
+      // seconds and a lie at eleven hours — and the lie is the costly direction, because it reads as
+      // transient and sends nobody to look. A parked draft is what this actually detects.
+      await writeChatHold(s.name, pick.msg.id, "that pane has unsent text in its composer — delivery waits rather than appending to it");
       continue;
     }
     if (await clientTypingRecently(m, s.name, TYPING_WINDOW_SEC)) {

@@ -3,6 +3,8 @@ import { providerFor } from "../agent/index.ts";
 import { capturePane, hasSession } from "../tmux/tmux.ts";
 import { readTurnState } from "../chat/deliver.ts";
 import { WHY_TEXT, type TurnWhy } from "../chat/turnState.ts";
+import { holdReason } from "../chat/holdReason.ts";
+import { readChatHold } from "../agent/sessionStatus.ts";
 import { notBeforeDue } from "../chat/deliver.ts";
 import { forwardIfRemote } from "../fleet/forward.ts";
 import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.ts";
@@ -81,6 +83,33 @@ export function mailBlocksSettle(
   return unread.filter((msg) => notBeforeDue(msg, opts.nowMs));
 }
 
+/**
+ * Why the mail this session is waiting on has not landed.
+ *
+ * `wait` runs ON the machine that holds the message — everything needed to answer this is a file
+ * away, and saying only "waiting on undelivered mail" threw it away. That silence is what the
+ * timeout costs: a caller reads it as "the peer is thinking", reports "waiting for a reply", and the
+ * peer meanwhile has nothing to reply to. Measured on this fleet: a message held for eleven hours
+ * behind a parked composer, three more sent on top of it, and a working session spent reporting a
+ * wait that could never end.
+ */
+function mailHold(m: MachineConfig, s: Session, blocking: ChatMessage[], nowMs: number): string | null {
+  const first = blocking[0];
+  if (first === undefined) return null;
+  try {
+    return holdReason(first, {
+      recipient: s,
+      chatEnabled: chatEnabledFor(s, m),
+      running: true, // `wait` only reaches this with the session present
+      nowMs,
+      chatDeliverable: providerFor(s).chatDeliverable !== undefined,
+      daemonHold: readChatHold(s.name),
+    }).text;
+  } catch {
+    return null; // diagnosis is a courtesy; never let it break the wait itself
+  }
+}
+
 function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessage[] {
   try {
     return mailBlocksSettle(
@@ -120,6 +149,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
   const deadline = Date.now() + o.timeoutSec * 1000;
   let missingSince: number | null = null;
   let lastWhy: TurnWhy | null = null;
+  let mailWhy: string | null = null;
   while (Date.now() < deadline) {
     // Liveness is re-checked every pass, not once at the start: a session stopped mid-wait (a fleet
     // restart sweep, say) used to run to the deadline and then report "still working" about a
@@ -144,7 +174,8 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     // Undelivered mail means the work has not STARTED, and an idle pane is therefore not an answer.
     // Without this the documented recipe raced itself: `msg` queues, the daemon delivers a beat
     // later, and a `wait` fired immediately after reported a finished turn that had never begun.
-    if (blockingInbound(m, s, now).length === 0) {
+    const blocking = blockingInbound(m, s, now);
+    if (blocking.length === 0) {
       const ts = readTurnState(m, s, provider, pane, now);
       if (ts.settled) {
         // Both settle paths exit 0 — a third exit code would break every existing script — but the
@@ -155,11 +186,21 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
         return 0;
       }
       lastWhy = ts.why;
+      mailWhy = null;
+    } else {
+      mailWhy = mailHold(m, s, blocking, now);
     }
     await Bun.sleep(POLL_MS);
   }
   // Say WHAT it was doing. "Still working" was a guess, and a false one for a session parked at a
   // permission prompt — which now blocks the full timeout and used to be described as busy.
-  if (!o.quiet) console.error(`${name}: timed out after ${o.timeoutSec}s — ${lastWhy === null ? "waiting on undelivered mail" : WHY_TEXT[lastWhy]}`);
+  if (!o.quiet) {
+    const why = lastWhy !== null
+      ? WHY_TEXT[lastWhy]
+      : mailWhy === null
+        ? "waiting on undelivered mail"
+        : `waiting on undelivered mail — ${mailWhy}`;
+    console.error(`${name}: timed out after ${o.timeoutSec}s — ${why}`);
+  }
   return 2;
 }

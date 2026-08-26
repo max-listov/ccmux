@@ -6,6 +6,27 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A held message no longer looks the same as a quiet peer.** Delivery holds when the recipient's
+  composer has unsent text in it — correct, since appending to a half-written line would send
+  somebody's draft — but the hold was unbounded and told nobody. Measured on this fleet: a message
+  held eleven hours behind a parked composer, three more sent on top of it, and a working session
+  spent reporting "waiting for a reply" about a peer that had nothing to reply to. The send
+  succeeded, so from the sending side there was nothing to see.
+- **`ccmux wait` now names the hold.** It runs on the machine that holds the message, so the answer
+  was a file away the whole time; saying only "waiting on undelivered mail" threw it away, and a
+  caller reads that as "the peer is thinking".
+- **The composer hold no longer claims a human is typing *right now*.** True at three seconds and a
+  lie at eleven hours — and the lie is the costly direction, because it reads as transient and sends
+  nobody to look. It says what it actually detects: unsent text in the composer.
+- **A hold past ten minutes says how long it has lasted.** One sentence used to answer both "wait a
+  moment" and "this is not moving"; only one of them is worth acting on. The daemon now remembers
+  when it FIRST held a given message, rather than only that it held it a moment ago.
+- **`ccmux doctor` reports mail held past that point.** A stall is invisible from the sending side by
+  construction — the send succeeded and everything after happens on the receiving machine — so it
+  has to be findable there, or it is findable nowhere.
+
 ## [0.38.0] — 2026-08-26
 
 carry each session's declared directory through the fleet fan-out

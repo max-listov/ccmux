@@ -3,6 +3,7 @@ import { loadMachineConfig } from "../config/machine.ts";
 import { run } from "../util/spawn.ts";
 import { APP_BUNDLE, CACHE_DIR, DATA_DIR, chatAuthPath } from "../config/paths.ts";
 import { loadSessions } from "../config/sessions.ts";
+import { providerFor } from "../agent/index.ts";
 import { collectRows } from "./list.ts";
 import type { MachineConfig } from "../types.ts";
 import { VERSION } from "../util/version.ts";
@@ -11,7 +12,10 @@ import { wireSocketPath } from "../fleet/wire.ts";
 import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
 import { escalationRefusal } from "../agent/claude/launch.ts";
 import { chatEnabledFor } from "../config/chat.ts";
-import { loadLedger, unreadableCount } from "../chat/store.ts";
+import { loadAckedIds, loadCursors, loadLedger, unreadFor, unreadableCount } from "../chat/store.ts";
+import { STALLED_HOLD_MS, holdReason } from "../chat/holdReason.ts";
+import { managedPeer } from "../chat/identity.ts";
+import { readChatHold } from "../agent/sessionStatus.ts";
 import { launchInputsFor } from "../agent/launchStamp.ts";
 import { envFilePath, envInput, inheritedEnvInput } from "../agent/launchInputs.ts";
 import { inheritsUndeclaredEnv } from "../agent/sessionEnv.ts";
@@ -152,6 +156,20 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     );
     console.log(`        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`);
   }
+  // Mail that is held rather than delivered is invisible from the sending side by construction: the
+  // send succeeded, and everything after that happens on this machine. A stall therefore has to be
+  // findable HERE, or it is findable nowhere — which is how a message sat behind a parked composer
+  // for eleven hours while three more were sent on top of it.
+  try {
+    const stuck = stalledMail(m);
+    if (stuck.length > 0) {
+      console.log(`chat:   ${stuck.length} message(s) held longer than ${Math.round(STALLED_HOLD_MS / 60_000)} minutes and not delivered:`);
+      for (const s of stuck) console.log(`        ${s.session} — ${s.reason}`);
+      console.log(`        the mail is not lost; nothing will move it until that condition clears. See: ccmux inbox <session>`);
+    }
+  } catch {
+    // diagnosis is a courtesy — never fail the check that reports it
+  }
   // A skipped record must be VISIBLE somewhere prominent. The reader steps over what a newer build
   // wrote so the whole ledger does not fall over during an upgrade — but an append-only history that
   // quietly looks shorter than it is has stopped being one, so the count is reported here.
@@ -207,6 +225,35 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   }
   console.log(`daemon: ${daemon.state}${daemon.manager ? ` (${daemon.manager})` : ""}`);
   return 0;
+}
+
+/** Sessions on this machine with mail the daemon has been holding past the point where a hold is a
+ *  moment. Read-only: the same records `inbox` reads, asked once per session. */
+export function stalledMail(m: MachineConfig): { session: string; reason: string }[] {
+  const out: { session: string; reason: string }[] = [];
+  const ledger = loadLedger(m);
+  const cursors = loadCursors(m);
+  const acked = loadAckedIds(m);
+  for (const s of loadSessions(m)) {
+    if (s.archived) continue;
+    const hold = readChatHold(s.name);
+    if (hold === null || hold.heldForMs < STALLED_HOLD_MS) continue;
+    const unread = unreadFor(managedPeer(m.rcPrefix, s), ledger, cursors, acked);
+    const first = unread[0];
+    if (first === undefined) continue; // held about something already delivered since
+    out.push({
+      session: s.name,
+      reason: holdReason(first.msg, {
+        recipient: s,
+        chatEnabled: chatEnabledFor(s, m),
+        running: true,
+        nowMs: Date.now(),
+        chatDeliverable: providerFor(s).chatDeliverable !== undefined,
+        daemonHold: hold,
+      }).text,
+    });
+  }
+  return out;
 }
 
 /**
