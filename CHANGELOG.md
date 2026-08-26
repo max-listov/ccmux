@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.3] — 2026-08-26
+
+enable managed Codex chat
+
 ### Added
 
 - **Managed Codex sessions can participate in ccmux chat.** Local, cross-provider, and fleet-address
@@ -20,7 +24,6 @@ the GitHub Release with that section as the notes.
 - **`wait` follows the injected Codex turn, not an older answer.** An immutable message ID, durable
   pickup barrier, pane submission receipt, and transcript boundary prevent premature completion and
   duplicate delivery across daemon or session restart.
-
 ## [0.39.2] — 2026-08-26
 
 retain anonymous turns across spinner frames
