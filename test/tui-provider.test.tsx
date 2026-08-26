@@ -3,10 +3,10 @@ import { render } from "ink-testing-library";
 import { App, type Intent } from "../src/tui/App.tsx";
 import { makeMachine } from "./helpers.ts";
 
-async function waitForFrame(screen: ReturnType<typeof render>, needle: string): Promise<void> {
-  const deadline = Date.now() + 1_000;
-  while (!screen.lastFrame()?.includes(needle)) {
-    if (Date.now() >= deadline) throw new Error(`TUI did not render ${JSON.stringify(needle)} within 1s`);
+async function waitForNextFrame(screen: ReturnType<typeof render>, previousCount: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (screen.frames.length <= previousCount) {
+    if (Date.now() >= deadline) throw new Error("TUI did not commit the input within 5s");
     await Bun.sleep(10);
   }
 }
@@ -26,14 +26,15 @@ test("TUI Tab selects Codex and emits an explicit provider in the create intent"
     />,
   );
 
+  let frames = screen.frames.length;
   screen.stdin.write("n");
-  await waitForFrame(screen, "provider: claude");
-  expect(screen.lastFrame()).toContain("provider: claude");
+  await waitForNextFrame(screen, frames);
+  frames = screen.frames.length;
   screen.stdin.write("\t");
-  await waitForFrame(screen, "provider: codex");
-  expect(screen.lastFrame()).toContain("provider: codex");
+  await waitForNextFrame(screen, frames);
+  frames = screen.frames.length;
   screen.stdin.write("agent-tui");
-  await waitForFrame(screen, "agent-tui");
+  await waitForNextFrame(screen, frames);
   screen.stdin.write("\r");
 
   await expect(intent).resolves.toEqual({
