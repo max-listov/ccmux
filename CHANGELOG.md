@@ -18,6 +18,9 @@ enable managed Codex chat
 
 ### Fixed
 
+- **Interrupted Codex turns release their durable pickup.** A terminal abort record now closes the
+  injected turn after the normal settle boundary, without replaying its message, so later queued
+  mail can continue after an interrupted or restarted recipient.
 - **Codex delivery is fail-closed around live terminal state.** Structured pane inspection separates
   idle, working, queued input, partial input, approval/menu, startup, reconnect, and unknown frames.
   The final inspection and paste+submit are protected from concurrent client input.

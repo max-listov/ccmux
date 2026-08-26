@@ -134,7 +134,7 @@ export function readTurnState(
   });
 }
 
-export type ChatTurnProgress = "awaiting-pickup" | "running" | "answered";
+export type ChatTurnProgress = "awaiting-pickup" | "running" | "answered" | "interrupted";
 
 export function chatTurnProgressFromMessages(messages: readonly TranscriptMessage[], messageId: string): ChatTurnProgress {
   const marker = `id: ${messageId}`;
@@ -148,6 +148,7 @@ export function chatTurnProgressFromMessages(messages: readonly TranscriptMessag
     if (pickedUp) lastAfterPickup = message;
   }
   if (!pickedUp) return "awaiting-pickup";
+  if (lastAfterPickup?.role === "system" && lastAfterPickup.text?.includes("<turn_aborted>") === true) return "interrupted";
   return lastAfterPickup?.role === "assistant" && lastAfterPickup.kind === "message" ? "answered" : "running";
 }
 
@@ -227,7 +228,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const activePickup = cursors.pickups[recipientKey];
     if (provider.chatPickup === "transcript" && activePickup !== undefined) {
       const progress = chatTurnProgress(m, s, activePickup.messageId);
-      if (progress !== "answered") {
+      if (progress !== "answered" && progress !== "interrupted") {
         // The intent is durable before Enter. A restart in that window must not select a second
         // ledger item or immediately paste this one twice. If Enter never happened, a structurally
         // idle pane may retry only after the transcript has had a bounded chance to expose pickup.

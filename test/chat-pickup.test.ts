@@ -8,7 +8,7 @@ import type { TranscriptMessage } from "../src/types.ts";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 
-function message(role: "user" | "assistant", text: string): TranscriptMessage {
+function message(role: "user" | "assistant" | "system", text: string): TranscriptMessage {
   return {
     id: crypto.randomUUID(),
     seq: 1,
@@ -45,6 +45,14 @@ test("intermediate assistant commentary before a tool is not a completed reply",
   ];
   expect(chatTurnProgressFromMessages(turn, ID)).toBe("running");
   expect(chatTurnProgressFromMessages([...turn, message("assistant", "done")], ID)).toBe("answered");
+});
+
+test("an interrupted Codex turn releases its durable pickup without retrying the message", () => {
+  const turn = [
+    message("user", `[chat from peer · id: ${ID}] hi`),
+    message("system", "<turn_aborted>\nThe previous turn was interrupted on purpose.\n</turn_aborted>"),
+  ];
+  expect(chatTurnProgressFromMessages(turn, ID)).toBe("interrupted");
 });
 
 test("crash after durable arm keeps one pickup barrier and hides the same ledger row from retry", () => {
