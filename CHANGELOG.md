@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Marker-free Claude turns stay stable even when `turnStartedAt` is unavailable.** The 0.39.1
+  resolver protected only lifecycle=`working`; a prematurely closed or hook-less turn still became
+  idle on every blank spinner frame. `indeterminate` now consumes bounded turn evidence in that
+  branch too, while a real Stop and structural idle remain immediate and expired evidence returns
+  to idle instead of creating permanent work.
+
 ## [0.39.1] — 2026-08-26
 
 keep active turns stable across spinner frames

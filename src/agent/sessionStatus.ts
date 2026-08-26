@@ -4,6 +4,7 @@ import { LaunchStampSchema, type LaunchStamp } from "./launchStamp.ts";
 import { STATUS_DIR } from "../config/paths.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import type { PaneScan } from "./index.ts";
+import type { TurnState } from "../chat/turnState.ts";
 
 // Per-session structured status, written by the Claude hooks (`ccmux hook-status`) and the statusLine
 // tee (`ccmux status-line`), read by `list`/TUI. TWO files per session, one topic each, so a write
@@ -61,16 +62,25 @@ export type MetricsStatus = z.infer<typeof MetricsStatusSchema>;
 
 /**
  * Resolve live working/idle once for every snapshot consumer. A positive pane marker is immediate
- * proof of work. A lifecycle Stop is immediate proof of idle. A negative/indeterminate frame cannot
- * override a running lifecycle turn until the shared bounded turn model proves that turn settled.
+ * proof of work. A lifecycle Stop or structural pane idle is immediate proof of idle. An
+ * indeterminate frame is resolved by bounded turn evidence even when a hook identity is absent or
+ * the supervisor previously closed it: otherwise a blank spinner frame erases a live anonymous turn.
  */
 export function resolveLiveState(
   paneState: PaneScan["state"],
-  lifecycleState: LifecycleStatus["state"] | null,
-  turnSettled: boolean | null,
+  lifecycle: LifecycleStatus | null,
+  evidence: TurnState | null,
 ): LifecycleStatus["state"] {
   if (paneState === "working") return "working";
-  if (lifecycleState === "working") return turnSettled === true ? "idle" : "working";
+  if (paneState === "idle") return "idle";
+  if (lifecycle?.state === "working") return evidence?.settled === true ? "idle" : "working";
+  // Stop is the one idle lifecycle record that is itself a real turn boundary. SessionStart says
+  // nothing about a later anonymous turn, and a supervisor close can be invalidated by new pane
+  // activity after it was written.
+  if (lifecycle?.state === "idle" && lifecycle.event === "Stop") return "idle";
+  if (evidence?.why === "working" || evidence?.why === "settling" || evidence?.why === "quiet-unproven") {
+    return "working";
+  }
   return "idle";
 }
 

@@ -98,9 +98,12 @@ The pane contract therefore has three observations: `working` (a positive live m
 not prove either boundary). Claude's star spinner has animation frames whose plain tmux capture
 contains no spinner text, so a ready Claude frame without the marker is always `indeterminate`.
 `list`, the TUI and `fleet` resolve that observation with the same `turnState` used by `wait`, chat
-delivery and the daemon observer: a lifecycle `working` remains working until Stop says idle or the
-bounded silence model proves the turn settled. The activity window begins at the current lifecycle
-start and ignores transcript/pane evidence left by an older turn.
+delivery and the daemon observer. A lifecycle `working` remains working until Stop says idle or the
+bounded silence model proves the turn settled. A turn without a usable lifecycle identity — or one
+the supervisor closed before later pane activity disproved the close — is still held by recent
+positive pane/transcript evidence; once that evidence expires it becomes idle. A real `Stop` remains
+an immediate boundary. When a lifecycle start exists, the activity window begins there and ignores
+evidence left by an older turn.
 
 That last point is not only the observer's business, and this is where the fact gets written down.
 A pane is instantaneous: a process that looks once learns about this moment and nothing before it.

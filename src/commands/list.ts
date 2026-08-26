@@ -111,7 +111,7 @@ async function buildRow(
     endedOnAssistantText: assistantEndedCurrentTurn(lastMessage, activity, turnStartedMs),
     msSinceActivity: aliveMs === null ? null : nowSec * 1000 - aliveMs,
   });
-  const state: SessionState = resolveLiveState(scan.state, lifecycle?.state ?? null, evidence.settled);
+  const state: SessionState = resolveLiveState(scan.state, lifecycle, evidence);
   let context = scan.context;
   let contextLabel = scan.contextLabel;
   const metrics = readMetrics(s.name);
