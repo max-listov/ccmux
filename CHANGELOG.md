@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.1] — 2026-08-26
+
+keep active turns stable across spinner frames
+
 ### Fixed
 
 - **A Claude spinner animation frame no longer makes an active turn flicker to `idle`.** Pane scans
@@ -13,7 +17,6 @@ the GitHub Release with that section as the notes.
   negative frames with the same lifecycle-scoped, bounded turn evidence used by `wait`, deferred
   delivery and daemon observation. Stop still closes voluntarily finished turns immediately;
   interrupted turns still close after bounded silence instead of staying `working` forever.
-
 ## [0.39.0] — 2026-08-26
 
 a held message no longer looks the same as a quiet peer
