@@ -1,5 +1,5 @@
 import type { ChatMessage } from "../types.ts";
-import { principalLabel } from "./identity.ts";
+import { codexAppAddress, principalLabel } from "./identity.ts";
 import type { ReplyRoute } from "./replyRoute.ts";
 
 /**
@@ -42,7 +42,7 @@ export function formatChatInjection(msg: ChatMessage, opts?: { cli?: string; rep
         ? // The body placeholder matters: the prompt says to use this command verbatim, and a command
           // without one runs as an empty send — usage error, exit 1 — right when the agent is trying
           // to answer.
-          ` · reply: ${opts.cli ?? "ccmux"} msg ${msg.from.machine}:${msg.from.session} --to-agent ${msg.from.agent} --to-thread ${msg.from.threadId}${msg.task ? ` --task ${msg.task}` : ""} "<your reply>"`
+          ` · reply: ${opts.cli ?? "ccmux"} msg ${msg.from.machine}:${msg.from.kind === "managed" ? msg.from.session : codexAppAddress(msg.from.threadId)} --to-agent ${msg.from.agent} --to-thread ${msg.from.threadId}${msg.task ? ` --task ${msg.task}` : ""} "<your reply>"`
         : ` · cannot reach ${msg.from.machine} from here (${opts.reply.reason}) — answer with ${opts.cli ?? "ccmux"} msg owner "<your reply>"`;
   return `[chat from ${sender}${behalf}${task}${id}${reply}] ${msg.body}`;
 }

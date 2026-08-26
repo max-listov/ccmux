@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { lastTranscriptMessage, providerFor } from "../agent/index.ts";
-import { cliPrincipal, externalTarget, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
+import { cliPrincipal, codexAppThreadId, externalTarget, isCodexAppToken, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
 import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor, remoteTransportAncestor } from "../chat/auth.ts";
 import { buildEnvelope } from "../chat/compose.ts";
@@ -14,11 +14,12 @@ import { appendOutbound } from "../fleet/outbox.ts";
 import { RETRY_WINDOW_MS } from "../fleet/flush.ts";
 import { queuedForRetryNotice, relay, runPeer } from "../fleet/transport.ts";
 import type { RemoteTransport } from "../chat/auth.ts";
-import type { AgentKind, ChatMessage, ChatPrincipal, ManagedPeer, Session, MachineConfig } from "../types.ts";
+import type { AgentKind, ChatMessage, ChatPrincipal, CodexAppPeer, ManagedPeer, Session, MachineConfig } from "../types.ts";
 import { log } from "../util/log.ts";
 import { preview } from "../util/preview.ts";
 import { usageLine } from "./help.ts";
 import { chatEnabledFor } from "../config/chat.ts";
+import { currentCodexAppThreadId, resolveCodexAppPeer } from "../chat/codexApp.ts";
 
 const RemoteListSchema = ListJsonSchema.pick({ sessions: true });
 
@@ -37,23 +38,62 @@ function warnAboutAnonymousRemote(from: ChatPrincipal, transport: RemoteTranspor
   if (warning !== null) console.error(warning);
 }
 
-function senderFor(machine: string, sessions: Session[], m: MachineConfig): ChatPrincipal | { error: string } {
+async function senderFor(machine: string, sessions: Session[], m: MachineConfig): Promise<ChatPrincipal | { error: string }> {
   const name = process.env.CCMUX_SESSION;
-  if (name === undefined || name === "") return cliPrincipal(machine);
-  const session = findSession(sessions, name);
-  if (!session || !chatEnabledFor(session, m)) {
-    return { error: `msg: this session '${name}' has chat disabled — enable with: ccmux chat on ${name}` };
+  if (name !== undefined && name !== "") {
+    const session = findSession(sessions, name);
+    if (!session || !chatEnabledFor(session, m)) {
+      return { error: `msg: this session '${name}' has chat disabled — enable with: ccmux chat on ${name}` };
+    }
+    if (!hasChatCredential(loadMachineConfig(), session, process.env[CHAT_CREDENTIAL_ENV])) {
+      return { error: `msg: CCMUX_SESSION does not identify the calling process as managed session '${name}'` };
+    }
+    return managedPeer(machine, session);
   }
-  if (!hasChatCredential(loadMachineConfig(), session, process.env[CHAT_CREDENTIAL_ENV])) {
-    return { error: `msg: CCMUX_SESSION does not identify the calling process as managed session '${name}'` };
+  const appThreadId = currentCodexAppThreadId();
+  if (appThreadId !== null) {
+    try {
+      return await resolveCodexAppPeer(m, appThreadId);
+    } catch (error) {
+      return { error: `msg: Codex App sender identity could not be verified (${error instanceof Error ? error.message : String(error)})` };
+    }
   }
-  return managedPeer(machine, session);
+  return cliPrincipal(machine);
 }
 
-function assertExpected(target: ManagedPeer, agent: AgentKind | null, threadId: string | null): string | null {
+function assertExpected(target: ManagedPeer | CodexAppPeer, agent: AgentKind | null, threadId: string | null): string | null {
   if (agent !== null && target.agent !== agent) return `provider mismatch: expected ${agent}, found ${target.agent}`;
   if (threadId !== null && target.threadId !== threadId) return `thread mismatch: expected ${threadId}, found ${target.threadId}`;
   return null;
+}
+
+async function resolveRemoteCodexAppPeer(cfg: MachineConfig, alias: string | null, machine: string, token: string): Promise<CodexAppPeer | { error: string }> {
+  const parsed = z.uuid().safeParse(codexAppThreadId(token));
+  if (!parsed.success) return { error: `msg ${machine}:${token}: app address needs a thread UUID` };
+  const result = await runPeer(cfg, machine, alias, ["ccmux", "_codex-app-resolve", parsed.data], { timeoutMs: 20_000 });
+  if (result.transportFailed) return { error: `msg ${machine}:${token}: transport failed while resolving exact App thread${result.failureDetail === undefined ? "" : ` (${result.failureDetail})`}` };
+  if (result.code !== 0) return { error: `msg ${machine}:${token}: App thread resolution failed (exit ${result.code})` };
+  try {
+    const peer = z.object({
+      kind: z.literal("codex-app"), source: z.literal("codex-app"), machine: z.literal(machine),
+      agent: z.literal("codex"), threadId: z.literal(parsed.data), name: z.string().nullable(),
+    }).strict().parse(JSON.parse(result.stdout));
+    return peer;
+  } catch {
+    return { error: `msg ${machine}:${token}: remote App identity is missing or version-incompatible` };
+  }
+}
+
+export async function cmdResolveCodexApp(args: string[]): Promise<number> {
+  const parsed = z.uuid().safeParse(args[0]);
+  if (!parsed.success) return console.error("codex app resolve: thread UUID required"), 1;
+  try {
+    console.log(JSON.stringify(await resolveCodexAppPeer(loadMachineConfig(), parsed.data)));
+    return 0;
+  } catch (error) {
+    console.error(`codex app resolve: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
 }
 
 async function resolveRemotePeer(cfg: MachineConfig, alias: string | null, machine: string, token: string): Promise<ManagedPeer | { error: string }> {
@@ -120,7 +160,7 @@ export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(),
     console.error("chat receive: invalid v2 envelope");
     return 1;
   }
-  if (message.to.kind !== "managed") {
+  if (message.to.kind !== "managed" && message.to.kind !== "codex-app") {
     console.error("chat receive: remote owner target is not allowed");
     return 1;
   }
@@ -129,20 +169,31 @@ export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(),
     console.error(`chat receive: target machine mismatch (${message.to.machine} != ${machine.rcPrefix})`);
     return 1;
   }
-  const session = findSession(loadSessions(machine), message.to.session);
-  if (!session) {
-    console.error(`chat receive: target session '${message.to.session}' no longer exists`);
-    return 1;
-  }
-  const current = managedPeer(machine.rcPrefix, session);
-  const mismatch = assertExpected(current, message.to.agent, message.to.threadId);
-  if (mismatch !== null) {
-    console.error(`chat receive: ${mismatch}`);
-    return 1;
-  }
-  if (!chatEnabledFor(session, machine) || providerFor(session).inspectChatPane === undefined) {
-    console.error(`chat receive: target '${session.name}' cannot receive chat`);
-    return 1;
+  if (message.to.kind === "managed") {
+    const session = findSession(loadSessions(machine), message.to.session);
+    if (!session) {
+      console.error(`chat receive: target session '${message.to.session}' no longer exists`);
+      return 1;
+    }
+    const current = managedPeer(machine.rcPrefix, session);
+    const mismatch = assertExpected(current, message.to.agent, message.to.threadId);
+    if (mismatch !== null) {
+      console.error(`chat receive: ${mismatch}`);
+      return 1;
+    }
+    if (!chatEnabledFor(session, machine) || providerFor(session).inspectChatPane === undefined) {
+      console.error(`chat receive: target '${session.name}' cannot receive chat`);
+      return 1;
+    }
+  } else {
+    try {
+      const current = await resolveCodexAppPeer(machine, message.to.threadId);
+      const mismatch = assertExpected(current, message.to.agent, message.to.threadId);
+      if (mismatch !== null) return console.error(`chat receive: ${mismatch}`), 1;
+    } catch (error) {
+      console.error(`chat receive: App thread unavailable (${error instanceof Error ? error.message : String(error)})`);
+      return 1;
+    }
   }
   if (!(await appendMessageOnce(machine, message))) {
     console.log(`already delivered (${message.id}) — retry ignored`);
@@ -183,7 +234,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
 
   const machine = loadMachineConfig();
   const sessions = loadSessions(machine);
-  const from = senderFor(machine.rcPrefix, sessions, machine);
+  const from = await senderFor(machine.rcPrefix, sessions, machine);
   if ("error" in from) return console.error(from.error), 1;
   const senderTransport = transport === undefined
     ? (from.kind === "cli" ? remoteTransportAncestor() : null)
@@ -240,7 +291,9 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   if (route.kind === "error") return console.error(route.message), 1;
   if (route.kind === "remote") {
     if (defer || notBefore !== null) return console.error("msg: --defer/--after are local-only"), 1;
-    const resolved = await resolveRemotePeer(machine, route.alias, route.machine, route.session);
+    const resolved = isCodexAppToken(route.session)
+      ? await resolveRemoteCodexAppPeer(machine, route.alias, route.machine, route.session)
+      : await resolveRemotePeer(machine, route.alias, route.machine, route.session);
     if ("error" in resolved) return console.error(resolved.error), 1;
     const mismatch = assertExpected(resolved, expectedAgent, expectedThread);
     if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
@@ -263,6 +316,28 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   }
 
   targetToken = route.session;
+  if (isCodexAppToken(targetToken)) {
+    const parsed = z.uuid().safeParse(codexAppThreadId(targetToken));
+    if (!parsed.success) return console.error("msg: app address needs a thread UUID"), 1;
+    let target: CodexAppPeer;
+    try {
+      target = await resolveCodexAppPeer(machine, parsed.data);
+    } catch (error) {
+      return console.error(`msg: App thread unavailable (${error instanceof Error ? error.message : String(error)})`), 1;
+    }
+    const mismatch = assertExpected(target, expectedAgent, expectedThread);
+    if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
+    if ((defer || notBefore !== null) && task !== null) {
+      const prior = pendingConditional(loadLedger(machine), loadAckedIds(machine), { from, to: target, task });
+      for (const message of prior) appendAck(machine, message.id, "cancel", message.to);
+    }
+    const envelope = buildEnvelope(from, target, body, { task, defer, onBehalfOf, notBefore });
+    appendMessage(machine, envelope);
+    warnAboutAnonymousRemote(from, senderTransport);
+    log.info({ msg: "chat message sent", from: principalLabel(from), to: targetLabel(target), task });
+    console.log(`sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
+    return 0;
+  }
   if (isRoleToken(targetToken)) {
     const resolved = resolveRole(targetToken, sessions.map((s) => localCandidate(s, machine)));
     if ("error" in resolved) return console.error(`msg: ${resolved.error}`), 1;

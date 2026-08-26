@@ -11,7 +11,7 @@ import {
   submittedChatId,
   deletePasteBuffer,
 } from "../tmux/tmux.ts";
-import type { ChatMessage, MachineConfig, Session, TranscriptMessage } from "../types.ts";
+import type { ChatMessage, ChatTarget, MachineConfig, Session, TranscriptMessage } from "../types.ts";
 import { log } from "../util/log.ts";
 import { assistantEndedCurrentTurn, turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
 import { lastSignOfLife } from "../events/observe.ts";
@@ -21,8 +21,9 @@ import { formatChatInjection } from "./format.ts";
 import { replyRouteToSender } from "./replyRoute.ts";
 import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors, type LedgerSlot } from "./store.ts";
 import { writeChatHold, clearChatHold, readLifecycle } from "../agent/sessionStatus.ts";
-import { managedPeer, managedPeerKey, principalLabel } from "./identity.ts";
+import { chatTargetKey, managedPeer, managedPeerKey, principalLabel, targetLabel } from "./identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
+import { deliverCodexAppMessage } from "./codexApp.ts";
 
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
@@ -35,10 +36,10 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_INBOUND = 12;
 
 /** Messages addressed to `name` sent within the window (by ledger `ts`). Pure — `nowMs` passed in. */
-export function recentInboundCount(recipient: ReturnType<typeof managedPeer>, ledger: readonly LedgerSlot[], nowMs: number): number {
+export function recentInboundCount(recipient: ChatTarget, ledger: readonly LedgerSlot[], nowMs: number): number {
   let n = 0;
   for (const msg of ledger) {
-    if (msg === null || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== managedPeerKey(recipient)) continue;
+    if (msg === null || chatTargetKey(msg.to) !== chatTargetKey(recipient)) continue;
     const t = Date.parse(msg.ts);
     if (Number.isFinite(t) && nowMs - t <= RATE_WINDOW_MS) n += 1;
   }
@@ -369,6 +370,90 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     changed = true;
     deliveries += 1;
     log.info({ msg: "chat delivered", from: principalLabel(pick.msg.from), to: s.name, conditional: isConditional(pick.msg) });
+  }
+
+  // App threads are ledger peers but not tmux sessions. The shared App Server is their only writer
+  // boundary; delivery uses the immutable client message id as its crash-safe pickup proof.
+  const appRecipients = new Map<string, Extract<ChatTarget, { kind: "codex-app" }>>();
+  for (const slot of ledger) {
+    if (slot?.to.kind !== "codex-app" || slot.to.machine !== m.rcPrefix) continue;
+    appRecipients.set(chatTargetKey(slot.to), slot.to);
+  }
+  for (const [recipientKey, recipient] of appRecipients) {
+    if (deliveries >= MAX_PER_PASS) break;
+    const activePickup = cursors.pickups[recipientKey];
+    if (activePickup !== undefined) {
+      const activeMessage = ledger.find((slot) => slot?.id === activePickup.messageId);
+      if (activeMessage === null || activeMessage === undefined) continue;
+      try {
+        const text = formatChatInjection(activeMessage, { cli: promptInvocation(), reply: replyRouteToSender(m, activeMessage.from) });
+        const result = await deliverCodexAppMessage(m, activeMessage, text);
+        if (!result.delivered) {
+          log.info({ msg: "Codex App chat pickup held", to: targetLabel(recipient), reason: result.reason });
+          continue;
+        }
+        if (activePickup.conditional) appendAck(m, activePickup.messageId, "daemon", recipient);
+        const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
+        cursors.pickups = remaining;
+        await saveCursors(m, cursors);
+        deliveries += 1;
+        log.info({ msg: "Codex App chat pickup completed", to: targetLabel(recipient), duplicate: result.duplicate });
+      } catch (error) {
+        log.warn({ msg: "Codex App chat pickup unavailable — barrier retained", to: targetLabel(recipient), error: error instanceof Error ? error.message : String(error) });
+      }
+      continue;
+    }
+    const from = cursors.delivered[recipientKey] ?? 0;
+    let immediate: { msg: ChatMessage; idx: number } | null = null;
+    for (let i = from; i < ledger.length; i++) {
+      const msg = ledger[i];
+      if (!msg || chatTargetKey(msg.to) !== recipientKey || isConditional(msg)) continue;
+      immediate = { msg, idx: i };
+      break;
+    }
+    const cursorTo = immediate ? immediate.idx : ledger.length;
+    if (cursors.delivered[recipientKey] !== cursorTo) {
+      cursors.delivered[recipientKey] = cursorTo;
+      changed = true;
+    }
+    let conditional: { msg: ChatMessage; idx: number } | null = null;
+    if (!immediate) {
+      for (let i = 0; i < ledger.length; i++) {
+        const msg = ledger[i];
+        if (!msg || chatTargetKey(msg.to) !== recipientKey || !isConditional(msg)) continue;
+        if (acked.has(msg.id) || !notBeforeDue(msg, now)) continue;
+        conditional = { msg, idx: i };
+        break;
+      }
+    }
+    const pick = immediate ?? conditional;
+    if (pick === null) continue;
+    if (recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND) {
+      log.warn({ msg: "chat rate limit — holding App delivery (possible loop)", to: targetLabel(recipient) });
+      continue;
+    }
+    if (isConditional(pick.msg) && loadAckedIds(m).has(pick.msg.id)) continue;
+    try {
+      const text = formatChatInjection(pick.msg, { cli: promptInvocation(), reply: replyRouteToSender(m, pick.msg.from) });
+      armTranscriptPickup(cursors, recipientKey, pick, new Date(now).toISOString());
+      await saveCursors(m, cursors);
+      // This barrier was created in this process immediately before the first submission, so there
+      // is no prior accepted turn to scan for. A restarted process takes the activePickup path above
+      // and performs the persisted client-id proof before it retries.
+      const result = await deliverCodexAppMessage(m, pick.msg, text, undefined, async () => false);
+      if (!result.delivered) {
+        log.info({ msg: "Codex App chat delivery held", to: targetLabel(recipient), from: principalLabel(pick.msg.from), reason: result.reason });
+        continue;
+      }
+      if (isConditional(pick.msg)) appendAck(m, pick.msg.id, "daemon", recipient);
+      const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
+      cursors.pickups = remaining;
+      changed = true;
+      deliveries += 1;
+      log.info({ msg: "chat delivered to Codex App", from: principalLabel(pick.msg.from), to: targetLabel(recipient), duplicate: result.duplicate });
+    } catch (error) {
+      log.warn({ msg: "Codex App chat delivery unavailable — not acked", to: targetLabel(recipient), error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   if (changed) await saveCursors(m, cursors);

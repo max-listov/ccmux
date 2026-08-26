@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { routeFor } from "../fleet/address.ts";
 import { isWirePeer, wireSocketPath } from "../fleet/wire.ts";
+import { codexAppAddress } from "./identity.ts";
 import type { ChatPrincipal, MachineConfig } from "../types.ts";
 
 /**
@@ -47,5 +48,7 @@ export function replyRouteFor(m: MachineConfig, machine: string, session: string
 /** The verdict for a message's sender. `undefined` for a non-managed (`cli`) sender: there is no
  *  agent behind it to reply to, so the tag says nothing about routing rather than inventing a fact. */
 export function replyRouteToSender(m: MachineConfig, from: ChatPrincipal): ReplyRoute | undefined {
-  return from.kind === "managed" ? replyRouteFor(m, from.machine, from.session) : undefined;
+  if (from.kind === "managed") return replyRouteFor(m, from.machine, from.session);
+  if (from.kind === "codex-app") return replyRouteFor(m, from.machine, codexAppAddress(from.threadId));
+  return undefined;
 }

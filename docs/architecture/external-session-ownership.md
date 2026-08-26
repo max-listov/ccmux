@@ -47,4 +47,7 @@ must release the thread at the source. A dedicated CLI requires a second explici
 ccmux revalidates UUID, PID, start time and process group immediately before SIGTERM. PID reuse,
 changed evidence or a respawn aborts or loses the subsequent atomic admission without registration.
 
-External inventory does not extend the fleet JSON wire, Desktop control plane or ccmux chat ledger.
+External inventory itself remains read-only and does not grant takeover. A narrower capability now
+exists for a Codex thread whose exact UUID is confirmed by an already-running App Server: it may be
+addressed as `app/<uuid>` in the chat ledger. That endpoint is not a managed registry row and does
+not imply lifecycle ownership, daemon healing or takeover rights.

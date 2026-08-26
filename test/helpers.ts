@@ -1,5 +1,5 @@
 import { CHAT_GENERATION, SessionSchema, MachineConfigSchema } from "../src/config/schema.ts";
-import type { ChatMessage, ChatPrincipal, ChatTarget, ManagedPeer, Session, MachineConfig } from "../src/types.ts";
+import type { ChatMessage, ChatPrincipal, ChatTarget, CodexAppPeer, ManagedPeer, Session, MachineConfig } from "../src/types.ts";
 
 export const UUID = "11111111-1111-4111-8111-111111111111";
 
@@ -33,6 +33,18 @@ export function makePeer(over: Partial<ManagedPeer> = {}): ManagedPeer {
 
 export function makeCli(machine = "host-a"): ChatPrincipal {
   return { kind: "cli", source: "ccmux", machine };
+}
+
+export function makeAppPeer(over: Partial<CodexAppPeer> = {}): CodexAppPeer {
+  return {
+    kind: "codex-app",
+    source: "codex-app",
+    machine: "host-a",
+    agent: "codex",
+    threadId: UUID,
+    name: "App task",
+    ...over,
+  };
 }
 
 export function makeOwner(): ChatTarget {

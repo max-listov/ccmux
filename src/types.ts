@@ -17,6 +17,7 @@ import type {
   AgentKindSchema,
   ManagedPeerSchema,
   CliPrincipalSchema,
+  CodexAppPeerSchema,
   ChatPrincipalSchema,
   OwnerTargetSchema,
   ExternalTargetSchema,
@@ -52,6 +53,7 @@ export type TranscriptJson = z.infer<typeof TranscriptJsonSchema>;
 export type AgentKind = z.infer<typeof AgentKindSchema>;
 export type ManagedPeer = z.infer<typeof ManagedPeerSchema>;
 export type CliPrincipal = z.infer<typeof CliPrincipalSchema>;
+export type CodexAppPeer = z.infer<typeof CodexAppPeerSchema>;
 export type ChatPrincipal = z.infer<typeof ChatPrincipalSchema>;
 export type OwnerTarget = z.infer<typeof OwnerTargetSchema>;
 export type ExternalTarget = z.infer<typeof ExternalTargetSchema>;

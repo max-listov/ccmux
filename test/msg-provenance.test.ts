@@ -38,7 +38,11 @@ async function runMsg(cfgPath: string, session: string | undefined, args: string
     const managed = loadSessions(m).find((item) => item.name === session);
     if (managed !== undefined) env[CHAT_CREDENTIAL_ENV] = (await Bun.file(chatAuthPath(m, managed.name)).text()).trim();
   }
-  else delete env.CCMUX_SESSION;
+  else {
+    delete env.CCMUX_SESSION;
+    delete env.CODEX_THREAD_ID;
+    delete env.CODEX_SESSION_ID;
+  }
   const proc = Bun.spawn(["bun", CLI, "msg", ...args], { env, stdout: "pipe", stderr: "pipe" });
   await new Response(proc.stdout).text();
   return await proc.exited;

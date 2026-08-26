@@ -10,7 +10,8 @@ updated: 2026-08-10
 # ccmux — куда идём
 
 ## Что это
-Супервайзер **постоянных агентских сессий** (Claude Code, дальше — любые CLI-агенты).
+Супервайзер **постоянных агентских сессий** и единый identity-pinned chat для поддерживаемых
+interactive runtimes (Claude Code, Codex CLI и Codex App Server threads).
 Один демон на машину держит флот живых сессий в tmux: хилит упавшие, поднимает на ребуте,
 резюмит ту же беседу по фикс-uuid. Сессии — полноценные интерактивные provider CLI на подписке
 пользователя, не headless-обвязка. Remote Control/statusline и permission-mode — Claude-specific
@@ -20,9 +21,9 @@ capabilities; Codex сохраняет свой TUI/config/approvals и provider
 - **Интерактивный CLI, не SDK** — сессии остаются на подписке пользователя и сохраняют
   provider-specific capabilities: Claude — RC/statusline, Codex — TUI/config/approvals/resume.
   Мы супервайзим, а не реимплементируем.
-- **Один provider process = один writer одной managed session** — ccmux не подключает параллельный
-  mutating client к тому же thread. Для Codex production boundary остаётся обычным TUI под tmux;
-  внешний App Server вернётся в рассмотрение после production support и parity probes.
+- **Один provider runtime = один writer** — managed Codex остаётся обычным TUI под tmux. Для thread,
+  уже принадлежащего Codex App, ccmux подключается клиентом к существующему shared App Server и
+  отправляет provider-native `turn/start`; второй runtime и второй writer не создаются.
 - **Агент-агностичность** — провайдер на агента (`src/agent/<id>/`), ядро говорит только
   с контрактом. Claude сегодня, Codex и ACP-агенты — когда дозреют.
 - **jsonl — источник правды беседы**: транскрипт, токены, «где остановилось» читаются из
@@ -41,5 +42,6 @@ capabilities; Codex сохраняет свой TUI/config/approvals и provider
    (ACP-ресёрч 2026-06-10); acpx и адаптеры — single-machine, без хилинга/флота.
 
 ## Что ccmux НЕ делает
-Не IDE-клиент, не замена tmux, не прокси API. Не хостит процессы агентов сам, пока
+Не IDE-клиент, не замена tmux, не прокси model API. Не копирует native Desktop task bus и не
+объявляет App threads daemon-healed managed sessions. Не хостит процессы агентов сам, пока
 интерактивный CLI даёт больше (см. icebox: stream-json driver, defrost 2026-06-15).

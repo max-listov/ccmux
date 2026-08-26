@@ -26,7 +26,7 @@ import { cmdBootstrap } from "./commands/bootstrap.ts";
 import { cmdInstall, cmdUninstall } from "./commands/install.ts";
 import { cmdUpdate } from "./commands/update.ts";
 import { cmdAdopt } from "./commands/adopt.ts";
-import { cmdMsg, cmdReceiveChat } from "./commands/msg.ts";
+import { cmdMsg, cmdReceiveChat, cmdResolveCodexApp } from "./commands/msg.ts";
 import { cmdInbox } from "./commands/inbox.ts";
 import { cmdChat } from "./commands/chat.ts";
 import { cmdRouter } from "./commands/router.ts";
@@ -125,6 +125,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdMsg(rest);
     case "_chat-receive-v2":
       return cmdReceiveChat();
+    case "_codex-app-resolve":
+      return cmdResolveCodexApp(rest);
     case "inbox":
       return cmdInbox(rest);
     case "chat":

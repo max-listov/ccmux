@@ -395,8 +395,21 @@ export const CliPrincipalSchema = z
   })
   .strict();
 
+/** Exact identity of a Codex thread owned by an already-running App Server. The title is a
+ * human-readable snapshot only; routing and equality use the immutable thread UUID. */
+export const CodexAppPeerSchema = z
+  .object({
+    kind: z.literal("codex-app"),
+    source: z.literal("codex-app"),
+    machine: z.string().regex(RC_PREFIX_RE),
+    agent: z.literal("codex"),
+    threadId: z.uuid(),
+    name: z.string().min(1).max(240).nullable(),
+  })
+  .strict();
+
 /** Valid senders. Owner authority is provenance, not a spoofable sender route. */
-export const ChatPrincipalSchema = z.union([ManagedPeerSchema, CliPrincipalSchema]);
+export const ChatPrincipalSchema = z.union([ManagedPeerSchema, CodexAppPeerSchema, CliPrincipalSchema]);
 
 /** The owner is an out-of-band sink, never a fake managed peer. */
 export const OwnerTargetSchema = z.object({ kind: z.literal("owner") }).strict();
@@ -421,7 +434,7 @@ export const ExternalTargetSchema = z
   .object({ kind: z.literal("external"), source: z.literal("ccmux"), name: z.string().min(1).regex(SESSION_NAME_RE) })
   .strict();
 
-export const ChatTargetSchema = z.union([ManagedPeerSchema, OwnerTargetSchema, ExternalTargetSchema]);
+export const ChatTargetSchema = z.union([ManagedPeerSchema, CodexAppPeerSchema, OwnerTargetSchema, ExternalTargetSchema]);
 
 /** One immutable v2 chat envelope. `task` is an optional pointer so the channel stays a phone call
  * (details live in the task). There are deliberately no defaults: mixed/old wire shapes fail. */

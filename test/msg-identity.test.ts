@@ -59,6 +59,8 @@ async function send(
   env.CCMUX_CONFIG = configPath;
   delete env.CCMUX_SESSION;
   delete env.CCMUX_CHAT_CREDENTIAL;
+  delete env.CODEX_THREAD_ID;
+  delete env.CODEX_SESSION_ID;
   if (transport === null) delete env.CCMUX_TEST_REMOTE_TRANSPORT;
   else env.CCMUX_TEST_REMOTE_TRANSPORT = transport;
   const processHandle = Bun.spawn(["bun", MSG_FIXTURE, ...args], {
@@ -140,6 +142,8 @@ test("receiver rejects a local invocation even when it self-sets SSH_CONNECTION"
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
   env.CCMUX_CONFIG = configPath;
   delete env.CCMUX_SESSION;
+  delete env.CODEX_THREAD_ID;
+  delete env.CODEX_SESSION_ID;
   env.SSH_CONNECTION = "forged";
   const proc = Bun.spawn(["bun", CLI, "_chat-receive-v2"], {
     env,

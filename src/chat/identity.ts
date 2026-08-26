@@ -1,4 +1,4 @@
-import type { ChatPrincipal, ChatTarget, CliPrincipal, ExternalTarget, ManagedPeer, OwnerTarget, Session } from "../types.ts";
+import type { ChatPrincipal, ChatTarget, CliPrincipal, CodexAppPeer, ExternalTarget, ManagedPeer, OwnerTarget, Session } from "../types.ts";
 
 /** Durable peer key for cursors, acks and equality. Every routing-relevant field participates. */
 export function managedPeerKey(peer: ManagedPeer): string {
@@ -20,6 +20,24 @@ export function cliPrincipal(machine: string): CliPrincipal {
   return { kind: "cli", source: "ccmux", machine };
 }
 
+export function codexAppPeer(machine: string, threadId: string, name: string | null): CodexAppPeer {
+  return { kind: "codex-app", source: "codex-app", machine, agent: "codex", threadId, name };
+}
+
+export const CODEX_APP_PREFIX = "app/";
+
+export function isCodexAppToken(token: string): boolean {
+  return token.startsWith(CODEX_APP_PREFIX) && token.length > CODEX_APP_PREFIX.length;
+}
+
+export function codexAppThreadId(token: string): string {
+  return token.slice(CODEX_APP_PREFIX.length);
+}
+
+export function codexAppAddress(threadId: string): string {
+  return `${CODEX_APP_PREFIX}${threadId}`;
+}
+
 export function ownerTarget(): OwnerTarget {
   return { kind: "owner" };
 }
@@ -38,11 +56,14 @@ export function externalAddress(name: string): string {
 }
 
 export function chatPrincipalKey(principal: ChatPrincipal): string {
-  return principal.kind === "managed" ? managedPeerKey(principal) : `${principal.source}:${principal.machine}:cli`;
+  if (principal.kind === "managed") return managedPeerKey(principal);
+  if (principal.kind === "codex-app") return `${principal.source}:${principal.machine}#${principal.threadId}`;
+  return `${principal.source}:${principal.machine}:cli`;
 }
 
 export function chatTargetKey(target: ChatTarget): string {
   if (target.kind === "managed") return managedPeerKey(target);
+  if (target.kind === "codex-app") return `${target.source}:${target.machine}#${target.threadId}`;
   return target.kind === "owner" ? "owner" : `external:${target.name}`;
 }
 
@@ -56,6 +77,7 @@ export function sameTarget(left: ChatTarget, right: ChatTarget): boolean {
 
 export function principalLabel(principal: ChatPrincipal): string {
   if (principal.kind === "cli") return `ccmux/cli@${principal.machine}`;
+  if (principal.kind === "codex-app") return `codex-app@${principal.machine}:${principal.name ?? "thread"}#${principal.threadId}`;
   return `ccmux/${principal.agent}@${principal.machine}:${principal.session}#${principal.threadId}`;
 }
 
@@ -78,7 +100,9 @@ export function targetLabel(target: ChatTarget): string {
  * needs. The provider is metadata here, not part of the address.
  */
 export function humanLabel(principal: ChatPrincipal): string {
-  return principal.kind === "cli" ? `${principal.machine}:cli` : `${principal.machine}:${principal.session}`;
+  if (principal.kind === "cli") return `${principal.machine}:cli`;
+  if (principal.kind === "codex-app") return `${principal.machine}:${principal.name ?? codexAppAddress(principal.threadId)}`;
+  return `${principal.machine}:${principal.session}`;
 }
 
 /** A human-facing recipient. Mail addressed to the owner says so in their own words. */

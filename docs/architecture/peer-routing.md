@@ -1,6 +1,6 @@
 ---
 title: Peer routing and session identity
-description: Canonical identity and transport boundaries for ccmux-managed sessions and Codex Desktop tasks
+description: Canonical identity and transport boundaries for managed sessions and Codex App threads
 type: architecture
 status: active
 created: 2026-08-10
@@ -16,9 +16,9 @@ into a cwd-based guess.
 |---|---|---|---|
 | Provider | Which agent runtime owns the conversation? | `claude`, `codex` | Selects launch, transcript, pane, and lifecycle adapters. |
 | Source | Which system emitted the identity/message? | `ccmux`, Codex Desktop | Names the source of truth; it is not a provider. |
-| Coordination plane | Which routing contract is active? | `ccmux-managed`, `desktop-native` | Selects the discovery, addressing, and delivery operations. |
-| Address | Which exact managed session is the target? | `host-a:agent-a` | Routes a ccmux command to one registered session. |
-| Capability | What can that source/provider pair actually do? | managed chat, wait, native Desktop task messaging | Decides which operation is legal; capability is not identity. |
+| Coordination plane | Which routing contract is active? | `ccmux-managed`, `ccmux-app`, `desktop-native` | Selects discovery, addressing, and delivery. |
+| Address | Which exact conversation is the target? | `host-a:agent-a`, `host-a:app/<uuid>` | Routes to one registry session or App thread. |
+| Capability | What can that source/provider pair actually do? | managed chat, App Server turn input, native task messaging | Decides which operation is legal; capability is not identity. |
 
 Two sessions can share one project directory while using different providers or sources. Therefore
 cwd, project name, model name, and recency are never routing keys. `ccmux list --json` requires an
@@ -142,8 +142,9 @@ ccmux relay owner/contract-owner --task release "shipped in 1.2.0"
   impersonate a party ccmux cannot authenticate. Answers are counted per letter and per task; two
   errands want two answers.
 
-An external record never crosses a machine boundary: `_chat-receive-v2` accepts managed targets only,
-and the address is intercepted before any route is resolved. It does live in the local ledger, which
+An `owner/<name>` external-party record never crosses a machine boundary: the address is intercepted
+before any fleet route is resolved, and `_chat-receive-v2` accepts only managed or Codex App targets.
+The external-party record does live in the local ledger, which
 is why the ledger had to learn to step over a record it cannot read — with its position kept, since
 delivery cursors are positions — **before** this kind could be written anywhere. That ordering is not
 optional, and it is the same one the event feed already follows: the consumer's machine goes first.
@@ -310,22 +311,28 @@ an environment variable is a claim the caller writes. `stitchwire call` is expli
 it is the outbound side, and treating it as a transport would let any local process launder itself
 into delivery by shelling out through the CLI.
 
-## Desktop-native plane
+## Codex App chat endpoint
 
-A Codex Desktop task is owned by the Desktop app and addressed by its native task ID. Coordination
-uses the task tools injected into that Desktop task. Desktop process lifetime, task discovery, and
-native task messaging are not ccmux registry state.
+A Codex App task remains owned by the App and addressed by its immutable native thread UUID. It is
+not adopted into the registry and ccmux does not supervise its lifecycle. The chat endpoint is a
+narrow bridge into the shared conversation:
 
-The boundary is intentionally zero-ledger: ccmux does not copy Desktop messages into its managed
-chat ledger, and it does not synthesize managed chat records for native Desktop calls. This avoids
-duplicate delivery, conflicting unread state, and false claims that a Desktop task is daemon-healed.
-If a workflow needs both planes, the caller must name the target source and exact identity; a shared
-cwd is not a bridge.
+- `CODEX_THREAD_ID` is only a candidate sender identity. ccmux confirms that exact UUID through the
+  local App Server before writing an envelope; failure is loud and never degrades to `cli`.
+- `app/<uuid>` locally and `<machine>:app/<uuid>` across the fleet resolve through that same server.
+  Title is a human-readable snapshot; cwd, recency and title never route.
+- Delivery joins the App's existing shared daemon over its private WebSocket control socket. It uses
+  `turn/start`, never pane keystrokes and never a second Codex runtime. Active/approval/elicitation,
+  `systemError`, unavailable direct input and unknown state hold without steer.
+- ccmux persists a pickup barrier before submission. A restart proves acceptance from the
+  provider-written `client_id` in JSONL before retrying, so the crash window cannot duplicate a turn.
+- The ordinary ccmux ledger/feed/mirror carries both directions. Native Desktop task messaging
+  remains native and is not copied; only explicit `ccmux msg` participates in this channel.
 
 ## Capability-driven routing
 
-1. Identify the coordination plane: `desktop-native` or `ccmux-managed`.
-2. Resolve the exact native task ID or ccmux fleet address from that source's own discovery surface.
+1. Identify the coordination plane: `desktop-native`, `ccmux-managed` or `ccmux-app`.
+2. Resolve the exact native task ID, managed address or App thread UUID from its own source.
 3. Confirm the provider/capability shown by that surface.
 4. Invoke only the source-native operation.
 
@@ -336,7 +343,7 @@ that requires a provider adapter must fail explicitly rather than defaulting to 
 |---|---|---|---|---|
 | `ccmux-managed` | `ccmux list/fleet` | `ccmux msg` only when the provider exposes managed chat | `ccmux wait` | `idle/working/stopped` are ccmux lifecycle/pane states. |
 | `desktop-native` | Desktop task list/read tools | Desktop native task send tool | Desktop native task wait tool | Native task state belongs to the Desktop host. |
-| Codex App Server observer | `thread/list/read` | No write capability is inferred from visibility | Protocol-specific | `notLoaded` is process-local and does not mean dead, unowned, or writable. |
+| `ccmux-app` | external inventory + exact UUID | `ccmux msg app/<uuid>` through existing App Server | provider turn status | `notLoaded` may resume; active/error/unknown hold fail-closed. |
 
 Transcript visibility is read capability only. It never grants write ownership or authorizes moving
 a native task into the managed registry.
