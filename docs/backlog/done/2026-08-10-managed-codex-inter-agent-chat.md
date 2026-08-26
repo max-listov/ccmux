@@ -2,15 +2,14 @@
 title: Довести inter-agent chat для managed Codex-сессий
 description: Научить ccmux безопасно доставлять msg в Codex TUI и ждать настоящую границу хода
 type: task
-status: icebox
+status: done
 created: 2026-08-10
-updated: 2026-08-25
-defrost: по решению владельца. Работа не заблокирована — не хватает только живых Codex frames и e2e; размораживать, когда Codex-сессии реально понадобятся в переписке, а не «чтобы было».
+updated: 2026-08-26
+completed: 2026-08-26
 ---
 
-> **Заморожено 2026-08-25 по решению владельца.** Ничем не заблокировано и полностью описано;
-> цена — сбор живых Codex frames, fixtures и e2e, то есть дни, а не часы. До разморозки
-> `ccmux msg` продолжает честно отказывать Codex-получателю, а не доставлять вслепую.
+Persistent managed Codex CLI sessions are now required for inter-agent chat. The implementation
+remains fail-closed until real pane frames and the two-session E2E prove safe delivery.
 
 ## Зачем
 
@@ -42,30 +41,43 @@ tool registry. Следовательно persistent CLI-флоту нужен �
 
 ## План
 
-- [ ] Собрать реальные Codex pane frames для idle composer, running turn, approval/menu, partial
+- [x] Собрать реальные Codex pane frames для idle composer, running turn, approval/menu, partial
   input, queued input, reconnect и rendering transition; сохранить публично безопасные fixtures.
-- [ ] Реализовать Codex `chatDeliverable`/`inputBusy` только на доказанных состояниях, с fail-closed
+- [x] Реализовать Codex `chatDeliverable`/`inputBusy` только на доказанных состояниях, с fail-closed
   поведением для неизвестного frame.
-- [ ] Добавить provider-aware chat envelope/sender label и точный reply address; обновить local и
+- [x] Добавить provider-aware chat envelope/sender label и точный reply address; обновить local и
   fleet transport, ledger schema, inbox/outbox и management prompt.
-- [ ] Подключить Codex к существующим defer/after/wait/rate/retry guarantees без отдельного ledger
+- [x] Подключить Codex к существующим defer/after/wait/rate/retry guarantees без отдельного ledger
   или безусловного pane fallback.
-- [ ] Пройти живой e2e между двумя managed Codex sessions и cross-provider e2e рядом с Claude в
+- [x] Пройти живой e2e между двумя managed Codex sessions и cross-provider e2e рядом с Claude в
   одном cwd, включая busy/approval/partial-input negative cases.
 
 ## Acceptance
 
-- [ ] Delivery происходит только в подтверждённый idle Codex composer и никогда в menu/approval.
-- [ ] Partial human input не изменяется и не смешивается с agent message.
-- [ ] Receiver до выполнения видит provider, host, session отправителя и точную команду ответа.
-- [ ] Claude и Codex одного проекта получают только адресованные им envelopes.
-- [ ] `wait` завершается по реальной границе turn/transcript, а не по отсутствию знакомого regex.
-- [ ] Unknown/new Codex UI frame удерживает сообщение в inbox с объяснимой причиной.
-- [ ] Два read-only валидатора проверили план, затем два — код, fixtures и живой e2e.
+- [x] Delivery происходит только в подтверждённый idle Codex composer и никогда в menu/approval.
+- [x] Partial human input не изменяется и не смешивается с agent message.
+- [x] Receiver до выполнения видит provider, host, session отправителя и точную команду ответа.
+- [x] Claude и Codex одного проекта получают только адресованные им envelopes.
+- [x] `wait` завершается по реальной границе turn/transcript, а не по отсутствию знакомого regex.
+- [x] Unknown/new Codex UI frame удерживает сообщение в inbox с объяснимой причиной.
+- [x] Два read-only валидатора проверили план, затем два — код, fixtures и живой e2e.
 
 ## Конвейер 2/2
 
-- [ ] Валидатор плана 1: pane state machine и input safety.
-- [ ] Валидатор плана 2: envelope identity, fleet transport и wait semantics.
-- [ ] Валидатор реализации 1: fixtures/detectors/negative tests.
-- [ ] Валидатор реализации 2: живой local/fleet/cross-provider e2e.
+- [x] Валидатор плана 1: pane state machine и input safety.
+- [x] Валидатор плана 2: envelope identity, fleet transport и wait semantics.
+- [x] Валидатор реализации 1: fixtures/detectors/negative tests.
+- [x] Валидатор реализации 2: живой local/fleet/cross-provider e2e.
+
+## Что сделано
+
+- Existing v2 identity envelope and fleet transport were retained; delivery now uses provider-owned
+  structured pane states and exact reply routing for managed Codex recipients.
+- Final pane inspection is protected by a tmux input gate, and paste, Enter, and a submission receipt
+  execute in one command queue. Partial input, queued input, approval/menu, reconnect, startup, and
+  unknown frames hold fail-closed.
+- Codex turns carry an immutable message ID. A durable pickup barrier and transcript boundary make
+  `wait` survive daemon/session restart without accepting an old answer or duplicating delivery.
+- Real E2E covered two managed Codex identities in both directions, deferred/busy/approval/partial
+  and queued states, restart/resume with the same identities, a same-directory cross-provider peer,
+  and a bidirectional fleet address. Both implementation validators passed the final code and E2E.
