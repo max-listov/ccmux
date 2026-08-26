@@ -6,6 +6,20 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`fleet --json` no longer drops each session's declared directory.** `list --json` has always
+  reported it; the fleet layer's tolerant remote schema and local projection rebuilt session rows
+  without it, so a fleet consumer got an address and a provider and nothing that said WHERE a session
+  works. The only thing left to join a session to a project was its NAME — chosen by a person,
+  usually the project's, and precisely the guess that has misrouted work on this fleet before.
+- Transported, never interpreted. A consumer matching by longest same-host path prefix needs the
+  string as the owner declared it: shortening it, resolving a symlink or trimming a trailing slash
+  would each silently change which project it matches. ccmux knows what a session declared; what that
+  directory MEANS belongs to whoever keeps the catalogue.
+- `null` from a peer whose `list --json` predates the field, and that peer's other sessions still
+  arrive — one missing field must never cost a machine.
+
 ## [0.37.0] — 2026-08-26
 
 the chat log as a resumable feed, with a cursor that is a position

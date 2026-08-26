@@ -29,6 +29,22 @@ const RemoteSessionSchema = z.object({
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),
+  /**
+   * The directory that session was declared with, carried through UNCHANGED.
+   *
+   * The only factual checkout identity a fleet consumer gets. Without it a peer's session arrives
+   * with an address and a provider and nothing that says WHERE it works, so anything wanting to join
+   * a session to a project has to guess from its name — and a name is chosen by a person, is usually
+   * the project's, and is exactly the guess that has already misrouted work on this fleet.
+   *
+   * Transported, never interpreted. A consumer matching by longest path prefix needs the string as
+   * the owner declared it: shortening it, resolving symlinks or trimming a trailing slash would each
+   * silently change which project it matches. ccmux knows what a session declared; what that
+   * directory MEANS belongs to whoever keeps the catalogue.
+   *
+   * Null from a peer too old to report it — which is a peer whose other sessions still arrive.
+   */
+  dir: z.string().nullable().default(null),
   // What that session is FOR. Shown on the address line, because a role that a reader has to go and
   // look up is not consulted at the moment an address is chosen — which is the moment it exists for.
   role: z.string().nullable().default(null),
@@ -97,6 +113,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       running: r.running,
       uptime: { text: r.uptimeText },
       stale: r.stale,
+      dir: r.session.dir,
       role: r.session.role ?? null,
       turnStartedAt: r.turnStartedAt,
     })),
