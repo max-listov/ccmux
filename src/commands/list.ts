@@ -17,6 +17,9 @@ import { releaseStanding } from "../config/releaseCheck.ts";
 import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { fmtTokens } from "../tui/format.ts";
 import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionState, TranscriptMessage } from "../types.ts";
+import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
+import { lastSignOfLife } from "../events/observe.ts";
+import { paneWorkingSince } from "../events/paneActivity.ts";
 
 // Last pane scan per session — lets the TUI skip the `tmux capture-pane` FORK for cards that
 // aren't visible (off-screen state is invisible anyway; it refreshes the moment it scrolls in).
@@ -98,9 +101,17 @@ async function buildRow(
   // else the pane. Context: prefer the statusLine-tee metrics (Claude's own %, no regex, no statusline-
   // format dependency), else the pane label, else the used-tokens count from the transcript.
   const lifecycle = readLifecycle(s.name);
-  // Pane-decisive working/idle (see resolveLiveState): a stale lifecycle `working` after an interrupt
-  // can never win over a drawn idle pane; the hook only fills the cold-start gap.
-  const state: SessionState = resolveLiveState(scan.state === "working", scan.ready, lifecycle?.state ?? null);
+  const turnStartedMs = lifecycle?.state === "working" ? lifecycle.ts : null;
+  const paneWorking = scan.state === "working";
+  const aliveMs = lastSignOfLife(activity, paneWorking ? nowSec * 1000 : paneWorkingSince(m, s.name), turnStartedMs);
+  const evidence = turnState({
+    paneWorking,
+    paneReady: provider.chatDeliverable === undefined ? true : scan.ready,
+    atMenu: scan.atPrompt !== null,
+    endedOnAssistantText: assistantEndedCurrentTurn(lastMessage, activity, turnStartedMs),
+    msSinceActivity: aliveMs === null ? null : nowSec * 1000 - aliveMs,
+  });
+  const state: SessionState = resolveLiveState(scan.state, lifecycle?.state ?? null, evidence.settled);
   let context = scan.context;
   let contextLabel = scan.contextLabel;
   const metrics = readMetrics(s.name);
@@ -141,11 +152,10 @@ async function buildRow(
 /**
  * When the turn that is running now began — reported only when BOTH signals agree there IS one.
  *
- * The pane-decisive state says whether the session is working; the lifecycle file is the only thing
- * that knows WHEN, and it is only talking about the current turn while it too says `working`. A
- * `working` stamp under a drawn-idle pane describes a turn that is already over, and handing that
- * instant to a consumer would show a finished turn as one still running — the precise error a
- * counter next to `working` would make most visible.
+ * The resolved state says whether the session is working; the lifecycle file is the only thing that
+ * knows WHEN, and it is only talking about the current turn while it too says `working`. Bounded
+ * turn evidence can close a stale working stamp after an interrupt without treating one negative
+ * spinner frame as an ending.
  *
  * Null is also the honest answer for a turn nothing recorded the start of: a provider without turn
  * hooks, or a turn already under way when ccmux started. `state` still says `working`, so "in a

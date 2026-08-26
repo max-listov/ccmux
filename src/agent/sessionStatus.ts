@@ -3,6 +3,7 @@ import { z } from "zod";
 import { LaunchStampSchema, type LaunchStamp } from "./launchStamp.ts";
 import { STATUS_DIR } from "../config/paths.ts";
 import { atomicWrite } from "../util/atomic.ts";
+import type { PaneScan } from "./index.ts";
 
 // Per-session structured status, written by the Claude hooks (`ccmux hook-status`) and the statusLine
 // tee (`ccmux status-line`), read by `list`/TUI. TWO files per session, one topic each, so a write
@@ -59,19 +60,18 @@ export const MetricsStatusSchema = z.object({
 export type MetricsStatus = z.infer<typeof MetricsStatusSchema>;
 
 /**
- * Resolve the live working/idle state, pane-DECISIVE. A live pane spinner → working; a drawn idle UI
- * (`paneReady`) → idle — this OVERRIDES a stale lifecycle `working` (e.g. after an ESC-interrupt,
- * where Claude fires no Stop hook, so the lifecycle file would otherwise stay `working` forever). The
- * lifecycle file only fills the ambiguous cold-start window where the pane isn't drawn yet.
+ * Resolve live working/idle once for every snapshot consumer. A positive pane marker is immediate
+ * proof of work. A lifecycle Stop is immediate proof of idle. A negative/indeterminate frame cannot
+ * override a running lifecycle turn until the shared bounded turn model proves that turn settled.
  */
 export function resolveLiveState(
-  paneWorking: boolean,
-  paneReady: boolean,
+  paneState: PaneScan["state"],
   lifecycleState: LifecycleStatus["state"] | null,
+  turnSettled: boolean | null,
 ): LifecycleStatus["state"] {
-  if (paneWorking) return "working";
-  if (paneReady) return "idle";
-  return lifecycleState ?? "idle";
+  if (paneState === "working") return "working";
+  if (lifecycleState === "working") return turnSettled === true ? "idle" : "working";
+  return "idle";
 }
 
 const safe = (name: string): string => name.replace(/[^\w.-]/g, "_");

@@ -15,7 +15,9 @@ export { detect } from "./detect.ts";
  *  conversation metadata read from jsonl (source of truth), not a live pane signal. */
 export interface PaneScan {
   ready: boolean; // the agent's interactive UI is drawn (booted) — restart waitReady gates on this
-  state: "working" | "idle";
+  /** What this ONE rendered frame proves. `indeterminate` is a drawn frame with no positive work
+   *  marker, but also no structural proof of an idle turn boundary. */
+  state: "working" | "idle" | "indeterminate";
   /** Short title of the blocking menu the pane is sitting at, else null. A session at a menu is not
    *  idle: it cannot act until a human (or the machine's policy) answers, and calling that state
    *  "idle" is how six sessions once came back from a restart dead while the fleet read healthy. */

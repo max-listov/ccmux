@@ -296,6 +296,12 @@ test("either source alone still answers, and neither invents an instant", () => 
   expect(lastSignOfLife(null, null)).toBeNull();
 });
 
+test("turn evidence is scoped to the lifecycle turn that is being resolved", () => {
+  expect(lastSignOfLife(900, 950, 1_000)).toBe(1_000); // older turn cannot leak forward
+  expect(lastSignOfLife(1_100, 1_050, 1_000)).toBe(1_100);
+  expect(lastSignOfLife(null, null, 1_000)).toBe(1_000); // the start is current-turn activity
+});
+
 test("the first look at a session closes nothing — it has no baseline to be a diff against", () => {
   const over = observed({ turnStartedMs: 1_000, turnOverMs: 2_000 });
   expect(shouldCloseTurn(UNSEEN, over)).toBe(false);

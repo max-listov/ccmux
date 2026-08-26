@@ -4,7 +4,7 @@ import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { eventsEnabledFor } from "../config/events.ts";
 import { loadSessions } from "../config/sessions.ts";
 import { capturePane, listSessionNames } from "../tmux/tmux.ts";
-import { turnState } from "../chat/turnState.ts";
+import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { appendEvent, type EmitInput } from "./feed.ts";
 import { readPaneActivity, writePaneActivity } from "./paneActivity.ts";
@@ -132,10 +132,23 @@ export function transitions(prev: Observed, next: Observed): EmitInput[] {
  * the first declares a long tool call dead: a session four minutes into a build writes nothing, and
  * the pane is the only thing still saying otherwise.
  */
-export function lastSignOfLife(transcriptMs: number | null, paneWorkingMs: number | null): number | null {
-  if (transcriptMs === null) return paneWorkingMs;
-  if (paneWorkingMs === null) return transcriptMs;
-  return Math.max(transcriptMs, paneWorkingMs);
+export function lastSignOfLife(
+  transcriptMs: number | null,
+  paneWorkingMs: number | null,
+  turnStartedMs: number | null = null,
+): number | null {
+  if (turnStartedMs === null) {
+    if (transcriptMs === null) return paneWorkingMs;
+    if (paneWorkingMs === null) return transcriptMs;
+    return Math.max(transcriptMs, paneWorkingMs);
+  }
+  // Evidence from an older turn cannot keep this one alive or claim that it ended in assistant
+  // text. The lifecycle start itself is the first current-turn sign of life.
+  return Math.max(
+    turnStartedMs,
+    transcriptMs !== null && transcriptMs >= turnStartedMs ? transcriptMs : turnStartedMs,
+    paneWorkingMs !== null && paneWorkingMs >= turnStartedMs ? paneWorkingMs : turnStartedMs,
+  );
 }
 
 /**
@@ -175,7 +188,8 @@ export function observe(
   const activity = lastActivityMs(s, m);
   const paneWorking = scan?.state === "working";
   const paneWorkingMs = paneWorking ? nowMs : lastPaneWorkingMs;
-  const aliveMs = lastSignOfLife(activity, paneWorkingMs);
+  const claimed = lifecycle?.state === "working" ? lifecycle.ts : null;
+  const aliveMs = lastSignOfLife(activity, paneWorkingMs, claimed);
   const state =
     pane === null
       ? null
@@ -183,14 +197,13 @@ export function observe(
           paneWorking,
           paneReady: provider.chatDeliverable === undefined ? true : scan?.ready === true,
           atMenu: provider.chatDeliverable?.(pane) === false,
-          endedOnAssistantText: lm !== null && lm.role === "assistant" && lm.kind === "message",
+          endedOnAssistantText: assistantEndedCurrentTurn(lm, activity, claimed),
           msSinceActivity: aliveMs === null ? null : nowMs - aliveMs,
         });
   // The lifecycle file claims a turn is running, and the turn state proves it is not. Only a SETTLED
   // turn counts: `settling`/`quiet-unproven` are not yet proof, and acting on them would close a
   // turn during a pause between tool calls. A pane we could not capture yields no turn state at all,
   // which is correctly no proof of anything.
-  const claimed = lifecycle?.state === "working" ? lifecycle.ts : null;
   const over = claimed !== null && state?.settled === true;
   return {
     running: true,

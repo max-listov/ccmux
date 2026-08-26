@@ -32,10 +32,10 @@ const WORKING_PANE = ["✻ Transmuting…", "  (esc to interrupt)"].join("\n");
 
 const BOOTING_PANE = ["", "loading…", ""].join("\n");
 
-test("a booted idle pane is ready and idle — even on a Fable statusline (no model whitelist)", () => {
+test("a booted pane without a spinner is ready but indeterminate — even on a Fable statusline", () => {
   const scan = scanPane(IDLE_PANE);
   expect(scan.ready).toBe(true);
-  expect(scan.state).toBe("idle");
+  expect(scan.state).toBe("indeterminate");
   expect(scan.context.percent).toBe(25); // context still read structurally
 });
 
@@ -51,7 +51,7 @@ test("a background shell does not un-draw the interface", () => {
   // mail, timed out every `wait` on it, and printed `working` for a session sitting idle.
   const scan = scanPane(SHELLS_PANE);
   expect(scan.ready).toBe(true);
-  expect(scan.state).toBe("idle"); // "Brewed for 4m 55s" is a completion marker, not a live spinner
+  expect(scan.state).toBe("indeterminate"); // completion marker is not a live spinner or a boundary
 });
 
 test("readiness survives on the mode footer alone, in every mode", () => {

@@ -694,7 +694,8 @@ export const SessionEventSchema = z
 // cross-imported, so the two evolve independently.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Live state of a session. working/idle are scraped from the pane; stopped = not running;
+/** Live state of a session. working/idle resolve pane, lifecycle and bounded turn evidence;
+ *  stopped = not running;
  *  external = a live Claude session running OUTSIDE ccmux (discovered, read-only). */
 export const SessionStateSchema = z.enum(["working", "idle", "stopped", "blocked", "external"]);
 

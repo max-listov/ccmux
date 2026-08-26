@@ -50,7 +50,9 @@ export function scanPane(paneText: string): PaneScan {
   const prompt = detectPromptImpl(paneText);
   return {
     ready: READY_MARKERS.some((re) => re.test(tail)),
-    state: WORKING_RE.test(tail) ? "working" : "idle",
+    // The star spinner has blank animation frames, so its absence in one capture proves nothing
+    // about a turn boundary. Stop/lifecycle and bounded turn evidence decide idle outside the pane.
+    state: WORKING_RE.test(tail) ? "working" : "indeterminate",
     atPrompt: prompt === null ? null : prompt.title,
     contextLabel: contextLabel ?? "-",
     context: parseContext(contextLabel),

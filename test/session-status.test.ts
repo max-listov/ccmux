@@ -15,11 +15,21 @@ test("metrics roundtrip", async () => {
   expect(readMetrics(NAME)?.pct).toBe(12);
 });
 
-test("resolveLiveState is pane-decisive — a stale lifecycle `working` never beats a drawn idle pane", () => {
-  expect(resolveLiveState(true, true, "idle")).toBe("working"); // live spinner wins
-  expect(resolveLiveState(false, true, "working")).toBe("idle"); // the interrupt fix: idle pane overrides stale hook working
-  expect(resolveLiveState(false, false, "working")).toBe("working"); // cold-start (pane not drawn) → hook fills the gap
-  expect(resolveLiveState(false, false, null)).toBe("idle"); // nothing known → idle
+test("resolveLiveState requires positive or bounded evidence for each transition", () => {
+  expect(resolveLiveState("working", "idle", true)).toBe("working");
+  expect(resolveLiveState("indeterminate", "idle", false)).toBe("idle");
+  expect(resolveLiveState("indeterminate", "working", false)).toBe("working");
+  expect(resolveLiveState("indeterminate", "working", true)).toBe("idle");
+  expect(resolveLiveState("indeterminate", null, null)).toBe("idle");
+});
+
+test("one ready frame without a spinner does not split one working turn", () => {
+  const frames = ["working", "indeterminate", "working"] as const;
+  expect(frames.map((paneState) => resolveLiveState(paneState, "working", false))).toEqual([
+    "working",
+    "working",
+    "working",
+  ]);
 });
 
 test("missing / malformed file → null (safeParse guards, never throws)", () => {

@@ -1,3 +1,5 @@
+import type { TranscriptMessage } from "../types.ts";
+
 /**
  * Is this session between turns right now?
  *
@@ -57,6 +59,21 @@ export interface TurnFacts {
 export interface TurnState {
   settled: boolean;
   why: TurnWhy;
+}
+
+/** Whether the transcript's last assistant text belongs to THIS lifecycle turn. A line left by the
+ * previous turn is not evidence that a newly-started turn ended in words. */
+export function assistantEndedCurrentTurn(
+  message: TranscriptMessage | null,
+  transcriptMs: number | null,
+  turnStartedMs: number | null,
+): boolean {
+  return (
+    message !== null &&
+    message.role === "assistant" &&
+    message.kind === "message" &&
+    (turnStartedMs === null || (transcriptMs !== null && transcriptMs >= turnStartedMs))
+  );
 }
 
 export function turnState(f: TurnFacts): TurnState {

@@ -3,14 +3,14 @@ import { providerFor, lastTranscriptMessage, lastActivityMs, type AgentProvider 
 import { capturePaneStyled, stripAnsi, clientTypingRecently, listSessionNames, pasteText, sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
 import type { ChatMessage, MachineConfig, Session } from "../types.ts";
 import { log } from "../util/log.ts";
-import { turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
+import { assistantEndedCurrentTurn, turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
 import { lastSignOfLife } from "../events/observe.ts";
 import { paneWorkingSince } from "../events/paneActivity.ts";
 import { promptInvocation } from "../env.ts";
 import { formatChatInjection } from "./format.ts";
 import { replyRouteToSender } from "./replyRoute.ts";
 import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors, type LedgerSlot } from "./store.ts";
-import { writeChatHold, clearChatHold } from "../agent/sessionStatus.ts";
+import { writeChatHold, clearChatHold, readLifecycle } from "../agent/sessionStatus.ts";
 import { managedPeer, managedPeerKey, principalLabel } from "./identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 
@@ -74,7 +74,10 @@ const TYPING_WINDOW_SEC = 3;
 export function readTurnState(m: MachineConfig, s: Session, provider: AgentProvider, pane: string, nowMs: number): TurnState {
   const scan = provider.scanPane(pane);
   const lm = lastTranscriptMessage(s, m);
-  const mt = lastSignOfLife(lastActivityMs(s, m), scan.state === "working" ? nowMs : paneWorkingSince(m, s.name));
+  const activity = lastActivityMs(s, m);
+  const lifecycle = readLifecycle(s.name);
+  const turnStartedMs = lifecycle?.state === "working" ? lifecycle.ts : null;
+  const mt = lastSignOfLife(activity, scan.state === "working" ? nowMs : paneWorkingSince(m, s.name), turnStartedMs);
   return turnState({
     paneWorking: scan.state === "working",
     // `ready` is a HARD gate here, so it may only be trusted from a provider whose pane detectors are
@@ -87,7 +90,7 @@ export function readTurnState(m: MachineConfig, s: Session, provider: AgentProvi
     // `wait` it means the menu guard simply does not exist on that agent, which is a gap in the
     // agent's pane support, not something this function can invent.
     atMenu: provider.chatDeliverable?.(pane) === false,
-    endedOnAssistantText: lm !== null && lm.role === "assistant" && lm.kind === "message",
+    endedOnAssistantText: assistantEndedCurrentTurn(lm, activity, turnStartedMs),
     msSinceActivity: mt === null ? null : nowMs - mt,
   });
 }

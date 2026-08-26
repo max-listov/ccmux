@@ -4,7 +4,7 @@ description: Why session state is published as transitions rather than polled as
 type: architecture
 status: active
 created: 2026-08-25
-updated: 2026-08-25
+updated: 2026-08-26
 ---
 
 # Session events
@@ -92,6 +92,15 @@ seen working on one pass read still on the very next one, two seconds later. So 
 runs from the later of "transcript last moved" and "pane last seen working", and the first look at a
 session acts on nothing — it has no baseline to be a diff against. Nothing is loosened for a turn
 that really stopped: its pane stopped with it.
+
+The pane contract therefore has three observations: `working` (a positive live marker), `idle`
+(structural proof when a provider has one), and `indeterminate` (the UI is drawn but this frame does
+not prove either boundary). Claude's star spinner has animation frames whose plain tmux capture
+contains no spinner text, so a ready Claude frame without the marker is always `indeterminate`.
+`list`, the TUI and `fleet` resolve that observation with the same `turnState` used by `wait`, chat
+delivery and the daemon observer: a lifecycle `working` remains working until Stop says idle or the
+bounded silence model proves the turn settled. The activity window begins at the current lifecycle
+start and ignores transcript/pane evidence left by an older turn.
 
 That last point is not only the observer's business, and this is where the fact gets written down.
 A pane is instantaneous: a process that looks once learns about this moment and nothing before it.
