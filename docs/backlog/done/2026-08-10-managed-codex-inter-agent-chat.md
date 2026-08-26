@@ -78,6 +78,9 @@ tool registry. Следовательно persistent CLI-флоту нужен �
   unknown frames hold fail-closed.
 - Codex turns carry an immutable message ID. A durable pickup barrier and transcript boundary make
   `wait` survive daemon/session restart without accepting an old answer or duplicating delivery.
+- Post-release restart verification also covered a turn interrupted after pickup: its terminal abort
+  record now releases the barrier after settle without replaying the old message, and queued mail
+  continues on the same resumed identity.
 - Real E2E covered two managed Codex identities in both directions, deferred/busy/approval/partial
   and queued states, restart/resume with the same identities, a same-directory cross-provider peer,
   and a bidirectional fleet address. Both implementation validators passed the final code and E2E.
