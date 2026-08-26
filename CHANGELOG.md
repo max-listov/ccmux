@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-08-26
+
+the chat log as a resumable feed, with a cursor that is a position
+
 ### Added
 
 - **`ccmux chat log --follow` — the chat log as a resumable feed.** The snapshot answers "what is
@@ -37,7 +41,6 @@ the GitHub Release with that section as the notes.
   the same parse failure and are nothing alike: one is fixed by asking for fewer rows, the other by
   upgrading a machine. This snapshot serialises whole message bodies, so being cut is the failure
   that actually happens, and "older ccmux?" sent the reader to the wrong machine entirely.
-
 ## [0.36.2] — 2026-08-25
 
 a dead lock holder no longer outlasts every waiter
