@@ -88,10 +88,11 @@ jobs:
           OUT="$(bun "$BUNDLE" version)"
           echo "bundle reports: $OUT (package.json: $PKG)"
           [ "$OUT" = "ccmux $PKG" ]
+          FALSE_BIN="$(command -v false)"
           cat > "$RUNNER_TEMP/machine.json" <<EOF
           {
-            "claudeBin": "/bin/false",
-            "tmuxBin": "/bin/false",
+            "claudeBin": "$FALSE_BIN",
+            "tmuxBin": "$FALSE_BIN",
             "projectsDir": "$RUNNER_TEMP/projects",
             "rcPrefix": "ci",
             "stateDir": "$RUNNER_TEMP/state",
