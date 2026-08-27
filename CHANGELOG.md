@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.6] — 2026-08-27
+
+expose the external thread inventory
 ## [0.39.5] — 2026-08-26
 
 connect Codex App threads to shared chat
