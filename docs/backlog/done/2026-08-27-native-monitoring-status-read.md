@@ -2,9 +2,10 @@
 title: Native bounded monitoring-status read without a reader process
 description: Expose the existing status authority to resident consumers without starting a CLI for each read.
 type: task
-status: in-progress
+status: done
 created: 2026-08-27
 updated: 2026-08-27
+completed: 2026-08-27 21:46 +07:00
 priority: P2
 ---
 
@@ -32,7 +33,7 @@ refresh selector, session mutation or implicit expensive fallback.
       additional observation pass; measure latency/CPU and a 15-minute bounded-cache window.
 - [x] Cover absent producer, stale data, corrupt/oversized input, restart/root migration,
       cancellation and removed sessions without terminating any supervised session.
-- [ ] Release and document exact contract/artifact and rollback evidence.
+- [x] Release and document exact contract/artifact and rollback evidence.
 
 The CLI remains valid. Do not expose transcript bodies, environment values or arbitrary paths.
 
@@ -69,3 +70,23 @@ against real publication and a 15-minute live workload, then release and verify 
 - [x] Linux kernel trace of the self-contained reader: 201 successful calls, only the initial
   Bun execve and zero child execve; 102 snapshot opens and 204 configuration opens, with no
   transcript/tmux access. A second Linux runtime passed 201 reads with five rows/zero omissions.
+- [x] Published [v0.39.10](https://github.com/max-listov/ccmux/releases/tag/v0.39.10),
+  tag/source `b8a46e682e0a5e520cd903bad83909356ab0fcff`; implementation
+  `5206605f52ae7b9dd44fa302699faa16f778180b`. Main CI 33083720387 and release CI
+  33083720923 passed, including typecheck/tests, built-bundle smoke and library publication.
+- [x] Published and installed daemon bundle SHA-256:
+  `beddede924936e14106ecf8fd604ec27b06ce24b69a4ecc7c75e8dd6be6c236f` (2180998 bytes).
+  Native ESM SHA-256:
+  `f202aed71b3ed272a0a2f905ee43ca90de614d755e67de734a46b7e7e863359d` (564515 bytes).
+  The downloaded bytes match the release manifest/checksum and GitHub asset digests.
+- [x] All three owned runtimes report 0.39.10 with the exact daemon hash. Native artifact
+  verification passed 201 calls per runtime, reader/producer versions both 0.39.10, rows
+  14/14/5 and zero omissions. Snapshot PID matches the service PID; generation changed on
+  rollout, sequence advances, registry identities match and all pre-rollout tmux panes survive.
+  Current daemon boot logs have no warnings/errors. Published-artifact Linux trace again shows
+  only the initial Bun execve, zero child execve, 102 snapshot and 204 configuration opens.
+- [x] Rollback predecessor is preserved on every runtime: 0.39.9 bundle SHA-256
+  `6f5b0ceb4310773fd304475ddbe81521a4204e0b9765107cc26d70256f2391b5`.
+  Native protocol-1 compatibility with that producer was exercised by the full live benchmark;
+  no production rollback or supervised-session restart was needed. Consumer deployments are
+  separate from this owner release; importing the native library does not start another daemon.
