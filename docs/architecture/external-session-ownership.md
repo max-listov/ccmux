@@ -90,6 +90,13 @@ interruption and reconnect returned idle while both locks remained observed. Tes
 archived afterward. A separate 100-read native benchmark made exactly 100 list requests (about
 33 ms median / 51 ms p95 on the measured host); discovery was performed once before the benchmark.
 
+To repeat the live acceptance check against the **installed release**, run
+`bun scripts/verify-external-turns.ts --run` on a host with an accessible App Server. This opt-in
+script creates two new read-only test threads, verifies both exact identities through installed
+`ccmux external --json`, observes working/idle under one shared writer, interrupts only its own
+test turn, reconnects, and archives both test threads. It fails if the installed version differs
+from the checkout or any lifecycle/ownership check fails. It never resumes an existing thread.
+
 ## Codex ownership transactions
 
 Adopt reserves a pending generation, starts one ordinary process-TUI `codex resume <uuid>`, and

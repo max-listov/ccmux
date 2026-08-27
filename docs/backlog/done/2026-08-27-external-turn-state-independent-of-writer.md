@@ -2,9 +2,10 @@
 title: External thread turn-state independent of writer ownership
 description: Expose explicit bounded turn lifecycle evidence so consumers do not infer execution from shared writer locks.
 type: task
-status: in-progress
+status: done
 created: 2026-08-27
 updated: 2026-08-27
+completed: 2026-08-27T23:14:33+07:00
 ---
 
 ## Problem
@@ -34,7 +35,7 @@ Recent transcript activity and a final-looking message are not substitutes for t
       evidence without retaining a false working state.
 - [x] Bound observation cost and avoid consumer-side transcript scans on every poll.
 - [x] Add regression tests and verify against real active and completed App threads.
-- [ ] Update the external contract documentation and publish the release.
+- [x] Update the external contract documentation and publish the release.
 
 ## Plan
 
@@ -60,6 +61,24 @@ publishing and rolling out the owner patch.
 - Real 100-read benchmark: 100 list requests with `useStateDbOnly`, p50 32.9 ms, p95 51.3 ms,
   max 53.6 ms, reader CPU 0.80 s user / 0.51 s system across all reads. Discovery ran once.
 - Contract and freshness/unsupported-runtime boundaries documented in
-  `docs/architecture/external-session-ownership.md` and README. Publication/rollout remains pending.
+  `docs/architecture/external-session-ownership.md` and README.
 - Full pre-release gate: typecheck and 715 tests / 106 files, 2,827 assertions passed. Built CLI
   verification found native working evidence independently from historical/not-loaded threads.
+
+## Release verification
+
+- Implementation `ec8849b`; immutable tag `v0.39.11` at
+  `105eb9d5a94550b00f2b174f60f28ab8583e0a56`. CI runs 33091834169 (tag) and 33091834637
+  (main) passed; release assets published by CI.
+- All three owned runtimes report 0.39.11 and the same 2,188,791-byte bundle SHA-256:
+  `47d7440b71338316855cf813714631327c3cc1891ba4027c472b6f8fa46e3648`.
+  Daemon generation/sequence advanced, registry identities matched, all pre-rollout tmux sessions
+  survived unchanged, no omitted rows, and new daemon boot logs contained no warnings/errors.
+- All runtimes retained the 0.39.10 rollback predecessor:
+  `beddede924936e14106ecf8fd604ec27b06ce24b69a4ecc7c75e8dd6be6c236f`.
+- `scripts/verify-external-turns.ts --run` passed against the installed 0.39.11 CLI, not source:
+  both test threads initially working; then working/idle under the same observed shared writer;
+  then idle/idle after interruption and on a new connection. Both test threads were archived.
+  The script is opt-in and contains no private identities.
+- A stdio-only App host correctly returned unknown/connection-unavailable; another host's
+  unloaded thread returned unknown/not-loaded. Neither borrowed execution state from its lock.
