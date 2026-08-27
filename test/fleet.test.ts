@@ -41,6 +41,7 @@ function ext(dir: string, lastActivityMs: number | null, provider: "claude" | "c
     origin: provider === "codex" ? "vscode" : "cli",
     storage: "stored",
     writerEvidence: "observed",
+    turnState: unknownTurnState("codex-app-server"),
     writerRuntime: { kind: "desktop", pid: 42, startTime: null, processGroup: null, reason: "desktop owns the writer" },
     capabilities: { inspect: true, attemptAdopt: false, fork: false, terminateAndAdopt: false, releaseAtSource: true, reasons: ["release at source first"] },
     lastActivityMs,
@@ -156,3 +157,4 @@ describe("fmtAge", () => {
     expect(fmtAge(now - 2 * 86400_000)).toBe("2d ago");
   });
 });
+import { unknownTurnState } from "../src/external/turnSchema.ts";

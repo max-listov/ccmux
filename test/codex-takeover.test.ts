@@ -21,6 +21,7 @@ function external(kind: WriterRuntime["kind"], terminateAndAdopt: boolean, pid =
     origin: kind === "app-server" ? "app-server" : kind === "desktop" ? "desktop" : "cli",
     storage: "stored",
     writerEvidence: "observed",
+    turnState: unknownTurnState("codex-app-server"),
     writerRuntime: { kind, pid, startTime: "start-a", processGroup: 40, reason: `writer is ${kind}` },
     capabilities: {
       inspect: true,
@@ -132,3 +133,4 @@ describe("Codex external takeover", () => {
     expect(signals).toBe(1);
   });
 });
+import { unknownTurnState } from "../src/external/turnSchema.ts";

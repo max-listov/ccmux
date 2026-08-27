@@ -27,9 +27,13 @@ const ThreadSchema = z.object({
 }).passthrough();
 
 export type CodexAppThread = z.infer<typeof ThreadSchema>;
-type RpcResponse = { id?: number; result?: unknown; error?: { code?: number; message?: string } };
+const RpcResponseSchema = z.object({
+  id: z.number().optional(), result: z.unknown().optional(),
+  error: z.object({ code: z.number().optional(), message: z.string().optional() }).optional(),
+});
 
 export interface CodexAppRpc {
+  userAgent?: string | undefined;
   request(method: string, params: unknown): Promise<unknown>;
   close(): void;
 }
@@ -59,24 +63,30 @@ function clientFrame(opcode: number, data: string | Buffer): Buffer {
 }
 
 /** JSON-RPC over the private WebSocket control socket of the daemon the App already owns. */
-export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppRpc> {
+export async function connectCodexAppServer(
+  m: MachineConfig,
+  options: { signal?: AbortSignal; maxMessageBytes?: number } = {},
+): Promise<CodexAppRpc> {
+  options.signal?.throwIfAborted();
   if (!m.codexHome) throw new Error("Codex home is not configured");
   const socketPath = join(m.codexHome, "app-server-control", "app-server-control.sock");
   if (!existsSync(socketPath)) throw new Error("Codex App Server control socket is unavailable");
 
   const socket = net.createConnection(socketPath);
+  const maxBytes = options.maxMessageBytes ?? 16 * 1024 * 1024;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   let nextId = 1;
   let closed: Error | null = null;
   let handshake = Buffer.alloc(0);
   let frames = Buffer.alloc(0);
   let fragmented: Buffer[] | null = null;
+  let fragmentBytes = 0;
   let resolveOpen: (() => void) | null = null;
   let rejectOpen: ((error: Error) => void) | null = null;
 
   const onText = (data: Buffer) => {
-    let msg: RpcResponse;
-    try { msg = JSON.parse(data.toString()) as RpcResponse; } catch { return; }
+    let msg: z.infer<typeof RpcResponseSchema>;
+    try { msg = RpcResponseSchema.parse(JSON.parse(data.toString())); } catch { return; }
     if (typeof msg.id !== "number") return;
     const waiter = pending.get(msg.id);
     if (!waiter) return;
@@ -96,7 +106,11 @@ export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppR
       waiter.reject(error);
     }
     pending.clear();
+    options.signal?.removeEventListener("abort", onAbort);
+    socket.destroy();
   };
+  const onAbort = () => failAll(new Error("Codex App Server observation cancelled"));
+  options.signal?.addEventListener("abort", onAbort, { once: true });
 
   const parseFrames = () => {
     while (frames.length >= 2) {
@@ -118,6 +132,7 @@ export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppR
         length = Number(wide);
         offset = 10;
       }
+      if (length > maxBytes || fragmentBytes + length > maxBytes) return failAll(new Error("Codex App Server message is too large"));
       const maskBytes = masked ? 4 : 0;
       if (frames.length < offset + maskBytes + length) return;
       const mask = masked ? frames.subarray(offset, offset + 4) : null;
@@ -132,12 +147,15 @@ export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppR
       }
       if (opcode === 0xA) continue;
       if (opcode === 0x1 && fin) onText(payload);
-      else if (opcode === 0x1) fragmented = [payload];
+      else if (opcode === 0x1) { fragmented = [payload]; fragmentBytes = payload.length; }
       else if (opcode === 0x0 && fragmented !== null) {
         fragmented.push(payload);
+        fragmentBytes += payload.length;
+        if (fragmented.length > 1024) return failAll(new Error("Codex App Server message has too many fragments"));
         if (fin) {
           onText(Buffer.concat(fragmented));
           fragmented = null;
+          fragmentBytes = 0;
         }
       }
     }
@@ -155,6 +173,7 @@ export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppR
     if (resolveOpen !== null) {
       handshake = Buffer.concat([handshake, bytes]);
       const end = handshake.indexOf("\r\n\r\n");
+      if (end > 16 * 1024 || (end === -1 && handshake.length > 16 * 1024)) return failAll(new Error("Codex App Server upgrade headers are too large"));
       if (end === -1) return;
       const headers = handshake.subarray(0, end).toString();
       const expected = createHash("sha1").update(key + WS_GUID).digest("base64");
@@ -170,6 +189,7 @@ export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppR
       parseFrames();
       return;
     }
+    if (frames.length + bytes.length > maxBytes + 64 * 1024) return failAll(new Error("Codex App Server receive buffer is too large"));
     frames = Buffer.concat([frames, bytes]);
     parseFrames();
   });
@@ -178,9 +198,7 @@ export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppR
 
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
-      rejectOpen = null;
-      resolveOpen = null;
-      reject(new Error("Codex App Server handshake timed out"));
+      failAll(new Error("Codex App Server handshake timed out"));
     }, REQUEST_TIMEOUT_MS);
     resolveOpen = () => { clearTimeout(timer); resolve(); };
     rejectOpen = (error) => { clearTimeout(timer); reject(error); };
@@ -206,12 +224,19 @@ export async function connectCodexAppServer(m: MachineConfig): Promise<CodexAppR
     });
   };
 
-  await request("initialize", {
-    clientInfo: { name: "ccmux", title: "ccmux", version: "0" },
-    capabilities: { experimentalApi: false },
-  });
+  let userAgent: string | undefined;
+  try {
+    const initialized = await request("initialize", {
+      clientInfo: { name: "ccmux", title: "ccmux", version: "0" },
+      capabilities: { experimentalApi: false },
+    });
+    userAgent = z.object({ userAgent: z.string().optional() }).parse(initialized).userAgent;
+  } catch (error) {
+    failAll(new Error("Codex App Server initialization failed"));
+    throw error;
+  }
   socket.write(clientFrame(0x1, JSON.stringify({ method: "initialized", params: {} })));
-  return { request, close: () => socket.end(clientFrame(0x8, Buffer.alloc(0))) };
+  return { userAgent, request, close: () => failAll(new Error("Codex App Server client closed")) };
 }
 
 export async function readCodexAppThread(rpc: CodexAppRpc, threadId: string, includeTurns = false): Promise<CodexAppThread> {

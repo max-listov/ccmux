@@ -5,6 +5,7 @@ import { classifyWriters, externalResumingUuids, parsePs, type Writer } from "..
 import { rec, str } from "../agent/normalize.ts";
 import { loadSessions } from "../config/sessions.ts";
 import type { ExternalSession, MachineConfig, WriterRuntime } from "../types.ts";
+import { unknownTurnState } from "./turnSchema.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
 import { readHeadLines, readTailUntil } from "../util/readLines.ts";
 import { externalCapabilities } from "./capabilities.ts";
@@ -113,6 +114,7 @@ export function discoverClaude(m: MachineConfig): ExternalSession[] {
         storage: "stored",
         writerEvidence: evidence,
         writerRuntime: runtime,
+        turnState: unknownTurnState("unsupported", "unsupported-provider"),
         capabilities: externalCapabilities("stored", evidence, runtime),
         lastActivityMs: data.lastActivityMs,
         lastModel: data.lastModel,

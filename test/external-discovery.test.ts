@@ -25,6 +25,7 @@ describe("external discovery DTO", () => {
     origin: "desktop",
     storage: "stored",
     writerEvidence: "observed",
+    turnState: unknownTurnState("codex-app-server"),
     writerRuntime: {
       kind: "desktop",
       pid: 42,
@@ -171,3 +172,4 @@ describe("Codex session metadata", () => {
     expect(isDedicatedCodexCommand("code", "/opt/tools/codex")).toBe(false);
   });
 });
+import { unknownTurnState } from "../src/external/turnSchema.ts";

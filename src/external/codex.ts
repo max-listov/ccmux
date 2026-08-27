@@ -5,6 +5,7 @@ import { z } from "zod";
 import { lastModel, parse, usedTokens } from "../agent/codex/transcript.ts";
 import { loadSessions } from "../config/sessions.ts";
 import type { ExternalSession, MachineConfig, WriterRuntime } from "../types.ts";
+import { unknownTurnState } from "./turnSchema.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
 import { readFirstLine, readTailUntil } from "../util/readLines.ts";
 import { externalCapabilities } from "./capabilities.ts";
@@ -214,6 +215,7 @@ export function discoverCodex(m: MachineConfig): ExternalSession[] {
       storage,
       writerEvidence: inspection.evidence,
       writerRuntime,
+      turnState: unknownTurnState("codex-app-server"),
       capabilities: externalCapabilities(storage, inspection.evidence, writerRuntime),
       ...data,
     });

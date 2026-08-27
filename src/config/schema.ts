@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ExternalTurnStateSchema } from "../external/turnSchema.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single source of truth for every persisted/remote shape. No bare interfaces,
@@ -576,6 +577,8 @@ export const ExternalCapabilitiesSchema = z
   })
   .strict();
 
+export { ExternalTurnStateSchema } from "../external/turnSchema.ts";
+
 export const ExternalSessionSchema = z
   .object({
     key: z.string().min(1),
@@ -589,6 +592,7 @@ export const ExternalSessionSchema = z
     storage: ExternalStorageSchema,
     writerEvidence: WriterEvidenceSchema,
     writerRuntime: WriterRuntimeSchema.nullable(),
+    turnState: ExternalTurnStateSchema,
     capabilities: ExternalCapabilitiesSchema,
     lastActivityMs: z.number().nonnegative().nullable(),
     lastModel: z.string().nullable(),

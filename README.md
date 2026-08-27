@@ -108,6 +108,11 @@ Every action re-reads the exact provider+host+UUID row before mutating. External
 `ccmux fleet` remains the managed-session wire. Adopted-in-place Codex sessions gain lifecycle
 management but no hidden management/chat prompt is inserted into the existing conversation.
 
+`ccmux external --json` exposes independent `turnState` evidence from an accessible native Codex
+App Server; a shared writer lock never means the thread is working. States include working, idle,
+approval/input wait and unknown, with provenance and a five-second expiry. Unsupported or
+unavailable runtimes remain unknown. See the [external read contract](docs/architecture/external-session-ownership.md#external-turn-observation).
+
 ### Reaching another machine
 
 An address is `<machine>:<session>` and it never says how the call travels. Two transports carry it,

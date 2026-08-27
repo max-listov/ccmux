@@ -4,7 +4,7 @@ description: Provider-neutral identity, advisory writer evidence and atomic Code
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-27
 ---
 
 # External session discovery and ownership
@@ -27,12 +27,68 @@ the TUI's initial `externalInventory` preference, just as toggling the inventory
 | origin | cli / desktop / vscode / exec / app-server / subagent / unknown | Immutable creation metadata, not the current writer. |
 | writer evidence | observed / none-observed / unknown | Result of this poll. `none-observed` never means free. |
 | runtime | dedicated CLI / Desktop / editor / App Server / shared / self / unknown | Best classification of positive process evidence. |
+| turnState | working / idle / waiting-approval / waiting-input / unknown | Independent, expiring provider-native execution observation. |
 | admission | accepted / conflict | Result of the mutating managed process, never a discovery inference. |
 
 Codex inventory is the union of persisted `session_meta` rollouts and positively held writer-lock
 UUIDs. This exposes a pre-turn task whose rollout does not exist yet as storage missing + observed
 writer, without inventing cwd or origin. A stale lock filename without an OS holder is not a live
 item. `thread/list` loaded status and argv are enrichment only.
+
+## External turn observation
+
+`ccmux external --json` adds a required `turnState` object to every row. The human command has a
+separate `TURN` column. Writer locks, PID, origin, last message and activity age never select its
+value. The synchronous ownership lookup used by adoption remains independent and starts with
+`unknown/not-observed`; it does not wait for execution observation or change admission rights.
+
+The execution reader connects only to the **existing** Codex App Server control socket under the
+configured Codex home (`app-server-control/app-server-control.sock`). It does not start a runtime,
+resume/subscribe a thread, read Desktop's internal IPC, or insert a turn. Stdio-only App runtimes,
+missing sockets and other providers have no supported observation through this door. A positive
+writer lock still does not allow them to claim a turn state.
+
+The reader uses `thread/list` with `useStateDbOnly: true`, all supported source kinds, and exact UUID
+matching. Native `status`, not inclusion in the loaded set, is authoritative:
+
+| Native status | `turnState.state` |
+|---|---|
+| `active`, no flags | `working` |
+| `active`, `waitingOnApproval` | `waiting-approval` |
+| `active`, `waitingOnUserInput` | `waiting-input` |
+| `idle` after completion or interruption | `idle` |
+| `notLoaded`, `systemError`, missing or unsupported status | `unknown` |
+
+Approval takes precedence if both waiting flags occur. Unknown active flags fail closed. Provider
+protocols were verified at versions 0.144.6 and 0.149.0; an absent/unrecognized initialize user agent
+or a version below 0.144.6 produces `unknown/unsupported-runtime` **without** a list request, because
+older servers could ignore the no-scan option. See the [provider status protocol](https://learn.chatgpt.com/docs/app-server).
+
+Each object carries `state`, `evidence`, `source`, `observedAt`, `expiresAt`, and a fixed `reason` code.
+`source` is `codex-app-server` or `unsupported`; no raw RPC errors, messages or paths are copied into
+it. Evidence is `observed` only for a known state, `unknown` for absent/unsupported state,
+`unavailable` on connection/protocol failure, and `stale` on the observation deadline. Failures clear
+all partial results for that read, never inheriting previous working state. A new connection reads
+current status, including idle after interruption. Unknown evidence has nullable timestamps.
+
+Receipt timestamps are not turn start/completion timestamps. Observations expire **5 seconds** after
+receipt. Consumers must treat an expired observation as `state=unknown, evidence=stale`, even if a
+cached inventory still contains `working` or `idle`; a recent activity timestamp cannot renew it.
+There is no completed-result cache in the reader.
+
+Per call: one connection, one request at a time, at most **4 pages × 128 entries**, **2 MiB** per RPC
+message, **2 seconds total** including connection/initialization, 16 KiB handshake headers and 1,024
+fragments maximum. Deadline or oversized input closes the socket. Unvisited identities are
+`unknown/read-limit`, never idle. Native status observation spawns no CLI, tmux, or transcript scan;
+the existing inventory's ownership/metadata discovery cost is unchanged. This is not a resident
+replacement for the full external inventory scan, nor permission for consumers to parse transcripts.
+
+Validation covers lifecycle mappings, shared writer independence, lost/reconnected/missing/stale
+evidence, pagination and byte/deadline bounds. Real App Server verification created two isolated
+test threads: both held by one shared writer while one was working and the other completed/idle;
+interruption and reconnect returned idle while both locks remained observed. Test threads were
+archived afterward. A separate 100-read native benchmark made exactly 100 list requests (about
+33 ms median / 51 ms p95 on the measured host); discovery was performed once before the benchmark.
 
 ## Codex ownership transactions
 

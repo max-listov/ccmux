@@ -21,6 +21,7 @@ const session = ExternalSessionSchema.parse({
   storage: "stored",
   writerEvidence: "none-observed",
   writerRuntime: null,
+  turnState: unknownTurnState("codex-app-server"),
   capabilities: {
     inspect: true,
     attemptAdopt: true,
@@ -128,3 +129,4 @@ describe("external inventory command", () => {
     expect(await proc.exited).toBe(1);
   });
 });
+import { unknownTurnState } from "../src/external/turnSchema.ts";
