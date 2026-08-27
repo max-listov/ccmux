@@ -102,7 +102,7 @@ export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, "out
  *  file layout (that is what `ccmux events` is for). */
 export const eventsPath = (m: MachineConfig): string => join(m.stateDir, "events.jsonl");
 /** Bounded read-only monitoring projection published by the existing observation loop. */
-export const monitoringStatusPath = (m: MachineConfig): string => join(m.stateDir, "monitoring-status.json");
+export const monitoringStatusPath = (m: Pick<MachineConfig, "stateDir">): string => join(m.stateDir, "monitoring-status.json");
 /**
  * When each session's pane was last seen doing work.
  *

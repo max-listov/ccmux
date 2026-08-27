@@ -47,7 +47,7 @@ export type MonitoringSnapshot = z.infer<typeof MonitoringSnapshotSchema>;
 export const MonitoringReadSchema = z.object({
   protocol: z.literal(1),
   status: z.enum(["live", "stale", "unavailable"]),
-  reason: z.enum(["missing", "invalid", "oversized", "producer-stopped", "expired", "clock-skew", "read-failed"]).nullable(),
+  reason: z.enum(["missing", "invalid", "oversized", "producer-stopped", "expired", "clock-skew", "read-failed", "unauthorized", "config-changed", "cancelled", "deadline", "busy"]).nullable(),
   snapshot: MonitoringSnapshotSchema.nullable(),
 }).strict();
 export type MonitoringRead = z.infer<typeof MonitoringReadSchema>;

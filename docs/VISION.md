@@ -33,7 +33,8 @@ capabilities; Codex сохраняет свой TUI/config/approvals и provider
 
 ## Траектория
 Для периодического мониторинга демон публикует ограниченный status snapshot: чтение готового
-наблюдения не запускает новый обход transcript и panes. Контракт — в
+наблюдения не запускает новый обход transcript и panes. Resident consumer использует native
+reader без CLI-процесса на каждый poll, с ограниченными чтением, deadline и concurrency. Контракт — в
 [monitoring-status](architecture/monitoring-status.md).
 
 1. **Сейчас**: Bun-версия боевая локально (паритет с прежней реализацией подтверждён аудитом),

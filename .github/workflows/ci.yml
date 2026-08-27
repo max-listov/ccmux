@@ -4,7 +4,7 @@
 #   ci      — typecheck + full test suite (every push / PR)
 #   smoke   — build the prod bundle and RUN it (`version`, `list --json`): a bundle that
 #             cannot even load dies here, before it can ever reach the fleet
-#   release — GitHub Release with the 3 fleet assets (only on a `v*` tag, needs ci+smoke)
+#   release — GitHub Release with fleet assets and native reader library (tag only, needs ci+smoke)
 #
 # Release invariants (docs/architecture/tui-and-dev-flow.md → «Раздача на флот»):
 #   - a release is born ONLY from a tag, and the tag must equal package.json version;
@@ -165,5 +165,7 @@ jobs:
             --title "ccmux $GITHUB_REF_NAME" \
             --notes-file /tmp/release-notes.md \
             --draft \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux.js" "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/release.json" scripts/install.sh
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux.js" "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/release.json" scripts/install.sh \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/monitoring-reader.js" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/monitoring-reader.sha256"
           gh release edit "$GITHUB_REF_NAME" --draft=false

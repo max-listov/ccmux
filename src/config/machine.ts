@@ -3,10 +3,7 @@ import { MachineConfigSchema } from "./schema.ts";
 import type { MachineConfig } from "../types.ts";
 import { HOME, PLATFORM } from "../env.ts";
 import { STATE_DIR } from "./paths.ts";
-
-function configPath(): string {
-  return process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`;
-}
+import { machineConfigPath, resolveMonitoringLocation } from "./monitoring-location.ts";
 
 /** Per-platform defaults; everything here is overridable by machine.json. */
 function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {
@@ -56,18 +53,16 @@ function detectTmuxBin(): string {
  * module-level cache (the structural fix for the bash mapfile-once staleness bug).
  */
 export function loadMachineConfig(): MachineConfig {
-  const path = configPath();
+  const path = machineConfigPath();
   const fileRaw: unknown = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
   const file = MachineConfigSchema.partial().parse(fileRaw); // validates file, all-optional
-  const merged: Record<string, unknown> = { ...resolveDefaults(PLATFORM), ...file };
+  const merged: Record<string, unknown> = { ...resolveDefaults(PLATFORM), ...file, ...resolveMonitoringLocation(fileRaw) };
   if (merged.claudeBin === undefined) merged.claudeBin = detectClaudeBin();
   if (merged.codexBin === undefined) {
     const codex = Bun.which("codex");
     if (codex) merged.codexBin = codex;
   }
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();
-  const envRc = process.env.CCMUX_RC_PREFIX;
-  if (envRc) merged.rcPrefix = envRc;
   return MachineConfigSchema.parse(merged);
 }
 

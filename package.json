@@ -8,7 +8,8 @@
     "ccmux": "./dist/ccmux"
   },
   "exports": {
-    "./session-reader": "./src/lib.ts"
+    "./session-reader": "./src/lib.ts",
+    "./monitoring-reader": "./src/monitoring-reader.ts"
   },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",

@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { writeSessionsUnlocked } from "../src/config/sessions.ts";
 import { histFile } from "../src/agent/claude/resume.ts";
 import { readMonitoringStatus } from "../src/monitoring/read.ts";
+import { readMonitoringStatus as readNativeStatus } from "../src/monitoring-reader.ts";
 import type { MonitoringSnapshot } from "../src/monitoring/schema.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
 
@@ -26,6 +27,10 @@ test.skipIf(!Bun.which("tmux"))("real isolated daemon publishes lifecycle, rotat
   writeFileSync(history, record("model-a"));
   await writeSessionsUnlocked(machine, [a, b]);
   const config = join(root, "machine.json"); writeFileSync(config, JSON.stringify(machine));
+  const previousConfig = process.env.CCMUX_CONFIG;
+  const previousPrefix = process.env.CCMUX_RC_PREFIX;
+  process.env.CCMUX_CONFIG = config;
+  process.env.CCMUX_RC_PREFIX = "host-a";
   const env = { ...process.env, CCMUX_CONFIG: config, CCMUX_STATE_DIR: root, CCMUX_DATA_DIR: join(root, "data"), CCMUX_CACHE_DIR: join(root, "cache"), CCMUX_RC_PREFIX: "host-a", LANG: "C", LC_ALL: "C" };
   const start = () => Bun.spawn([process.execPath, join(import.meta.dir, "../src/cli.ts"), "daemon"], { env, stdout: "ignore", stderr: "ignore", stdin: "ignore" });
   const runTmux = (...args: string[]) => Bun.spawnSync([tmux, "-L", socket, ...args], { stdout: "pipe", stderr: "pipe" });
@@ -33,7 +38,7 @@ test.skipIf(!Bun.which("tmux"))("real isolated daemon publishes lifecycle, rotat
   async function waitFor(matches: (snapshot: MonitoringSnapshot) => boolean): Promise<MonitoringSnapshot> {
     const deadline = Date.now() + 6000;
     while (Date.now() < deadline) {
-      const result = readMonitoringStatus(machine);
+      const result = await readNativeStatus({ timeoutMs: 1000 });
       if (result.snapshot !== null && matches(result.snapshot)) return result.snapshot;
       await Bun.sleep(50);
     }
@@ -54,15 +59,40 @@ test.skipIf(!Bun.which("tmux"))("real isolated daemon publishes lifecycle, rotat
     await waitFor((s) => s.sessions[0]?.state === "working");
     daemon.kill("SIGTERM"); await daemon.exited;
     expect(readMonitoringStatus(machine).status).not.toBe("live");
+    expect((await readNativeStatus()).status).not.toBe("live");
     expect(runTmux("has-session", "-t", "=agent-a").exitCode).toBe(0);
     daemon = start();
     const restarted = await waitFor((s) => s.generation !== first.generation);
     expect(restarted.sessions[0]?.uuid).toBe(a.uuid);
+    const cancellation = new AbortController();
+    const cancelled = readNativeStatus({ signal: cancellation.signal });
+    cancellation.abort();
+    expect((await cancelled).reason).toBe("cancelled");
+    expect(runTmux("has-session", "-t", "=agent-a").exitCode).toBe(0);
+    daemon.kill("SIGKILL"); await daemon.exited;
+    expect((await readNativeStatus()).reason).toBe("producer-stopped");
+    expect(runTmux("has-session", "-t", "=agent-a").exitCode).toBe(0);
+    daemon = start();
+    await waitFor((s) => s.generation !== restarted.generation);
     await writeSessionsUnlocked(machine, [b]);
-    await waitFor((s) => s.sessions.length === 1 && s.sessions[0]?.name === b.name);
+    const removed = await waitFor((s) => s.sessions.length === 1 && s.sessions[0]?.name === b.name);
+    expect(runTmux("has-session", "-t", "=agent-a").exitCode).toBe(0);
+    const migrated = { ...machine, stateDir: join(root, "migrated-state") };
+    mkdirSync(migrated.stateDir);
+    await writeSessionsUnlocked(migrated, [b]);
+    writeFileSync(config, JSON.stringify(migrated));
+    const moved = await waitFor((s) => s.sequence > removed.sequence);
+    expect(moved.generation).toBe(removed.generation);
+    expect(existsSync(join(migrated.stateDir, "monitoring-status.json"))).toBe(true);
+    expect(moved.sessions.map((s) => s.uuid)).toEqual([b.uuid]);
+    expect(runTmux("has-session", "-t", "=agent-a").exitCode).toBe(0);
   } finally {
     daemon.kill("SIGTERM"); await daemon.exited;
     runTmux("kill-session", "-t", "=agent-a");
+    if (previousConfig === undefined) delete process.env.CCMUX_CONFIG;
+    else process.env.CCMUX_CONFIG = previousConfig;
+    if (previousPrefix === undefined) delete process.env.CCMUX_RC_PREFIX;
+    else process.env.CCMUX_RC_PREFIX = previousPrefix;
     rmSync(root, { recursive: true, force: true });
   }
 }, 30000);

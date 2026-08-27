@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { RELEASES_DIR, RELEASE_BUNDLE, RELEASE_MANIFEST, STAGED_BUNDLE } from "../src/config/paths.ts";
 import { VERSION, compareSemver } from "../src/util/version.ts";
 import { buildBundle } from "./bundle.ts";
+import { buildMonitoringReader } from "./build-monitoring-reader.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PKG_JSON = join(ROOT, "package.json");
@@ -73,6 +74,7 @@ async function doCiAssets(url: string): Promise<number> {
   if (!(await buildBundle(RELEASE_BUNDLE))) return fail("build failed");
   const notes = changelogSection(VERSION) ?? `ccmux v${VERSION}`;
   const hex = await writeManifest(url, notes.split("\n")[0] ?? "");
+  await buildMonitoringReader(RELEASES_DIR);
   console.log(`assets ready: ${RELEASE_BUNDLE} + ${RELEASE_MANIFEST} (sha256 ${hex.slice(0, 12)}…)`);
   return 0;
 }

@@ -42,6 +42,7 @@ Requires macOS (launchd) or Linux (systemd) and `tmux`.
 ```bash
 ccmux                      # interactive fleet TUI (add -f for fullscreen; new: Tab switches provider)
 ccmux list                 # managed sessions + live status/uptime
+ccmux status --json        # bounded daemon snapshot; no per-reader transcript/tmux scan
 ccmux new cc-api ~/code/api   # create + start a session (returns after authoritative thread bind)
 ccmux new cc-review ~/code/api --agent codex   # provider is explicit
 ccmux send cc-api '/compact'  # PRESS KEYS in a session (slash commands) — see msg for writing to an agent
@@ -59,6 +60,12 @@ ccmux help                 # full command list
 `list` and `fleet` show the provider (`claude` or `codex`) explicitly. A managed identity is the
 provider plus its exact fleet address, not its working directory: two providers may intentionally
 work in the same project. Never choose a target by cwd, project name, or model.
+
+Resident applications can import `readMonitoringStatus` from `ccmux/monitoring-reader` to read
+the same snapshot in-process, with cancellation, deadlines and bounded concurrency—no CLI per
+poll. Releases also include a self-contained `monitoring-reader.js` ESM asset and SHA-256 file.
+See the [native monitoring contract](docs/architecture/monitoring-status.md) and
+[resident example](examples/monitoring-reader.ts).
 
 ccmux-managed sessions and Codex Desktop tasks are separate coordination planes. Managed sessions
 use ccmux addresses, persistence, and wait state. Claude managed sessions can use the ccmux chat
