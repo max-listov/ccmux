@@ -2,9 +2,10 @@
 title: Resident monitoring status without per-reader transcript rescans
 description: Serve a bounded authoritative status snapshot without restarting list aggregation for every monitoring read.
 type: task
-status: in-progress
+status: done
 created: 2026-08-27
 updated: 2026-08-27
+completed: 2026-08-27 18:43 +07:00
 priority: P1
 ---
 
@@ -43,7 +44,7 @@ cached metadata and subprocess deadlines. Unknown evidence stays unknown, not id
       No caller-selected path or shell, arbitrary transcript access, or implicit session mutation.
 - [x] Test live/idle/prompt/stopped/unknown, new sessions, provider restart, transcript rotation,
       absent daemon and cancelled reads. A monitoring read never starts a daemon or session.
-- [ ] Run project gates, document the exact consumer contract, release and verify owned runtimes.
+- [x] Run project gates, document the exact consumer contract, release and verify owned runtimes.
 
 ## Acceptance
 
@@ -53,7 +54,7 @@ cached metadata and subprocess deadlines. Unknown evidence stays unknown, not id
 - [x] At least 100 sequential/concurrent reads and a 15-minute workload window report CPU
       including children, exec count, latency and freshness. Cache memory has a declared byte cap.
 - [x] Restart/shutdown/cancellation is bounded and does not terminate supervised sessions.
-- [ ] Exact released version/artifact, running-byte verification, rollback and consumer DTO are
+- [x] Exact released version/artifact, running-byte verification, rollback and consumer DTO are
       recorded before closing the task. No private identifiers appear in docs/tests/evidence.
 
 ## Что сделано
@@ -104,3 +105,20 @@ cached metadata and subprocess deadlines. Unknown evidence stays unknown, not id
   real-process installers preserve the predecessor and that failed backup leaves the live file intact.
   Monitoring producer/reader code is unchanged from the completed 15-minute workload.
   Follow-up full typecheck/test gate passed: 696 tests, zero failures.
+- [x] Final release: [v0.39.9](https://github.com/max-listov/ccmux/releases/tag/v0.39.9), tag commit
+  48a2ea6962b942e252d21cda5b38ec795276e3e8, published 2026-08-27T11:41:45Z.
+  [Tag CI](https://github.com/max-listov/ccmux/actions/runs/33068438008) passed ci, smoke and release;
+  main CI also passed. The downloaded 2,180,154-byte bundle matched its manifest SHA-256:
+  6f5b0ceb4310773fd304475ddbe81521a4204e0b9765107cc26d70256f2391b5.
+- [x] Final owned-runtime parity: all three installed bundles match that exact SHA and report
+  0.39.9. Each snapshot producer PID matches its boot-managed daemon; generation remains stable
+  while sequence advances. Managed row counts are 14/14/5, zero omissions, exact registry identity
+  parity, unchanged tmux identities/creation times, and a positive daemon boot record with no
+  warnings/errors for each current producer.
+- [x] Real duplicate-install E2E: two concurrent installed CLI update --force processes both
+  exited 0. The final producer remained live, all panes survived, and every owned runtime retained
+  the actual 0.39.8 rollback predecessor SHA-256
+  b5f103b47c7757e5aec70a06a519a0d91a02130f67c34331fd716833c58b4b81.
+  Earlier real rollback restored the exact prior published bundle and a subsequent update restored
+  live observations. The final verification record follows publication; no runtime code changed
+  after the release tag.
