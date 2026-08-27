@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.11] — 2026-08-27
+
+separate external turn state from writer ownership
+
 ### Added
 
 - Independent external `turnState` evidence and a `TURN` table column, separating native execution
@@ -13,7 +17,6 @@ the GitHub Release with that section as the notes.
   unavailable and stale outcomes with timestamps and provenance.
 - Bounded read-only App Server status observation without thread mutation or transcript scans;
   unsupported runtimes fail closed. Existing ownership and adoption semantics are unchanged.
-
 ## [0.39.10] — 2026-08-27
 
 read monitoring status natively without CLI processes
