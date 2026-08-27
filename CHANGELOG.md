@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.10] — 2026-08-27
+
+read monitoring status natively without CLI processes
+
 ### Added
 
 - `ccmux/monitoring-reader`: native asynchronous monitoring reads for resident applications,
@@ -13,7 +17,6 @@ the GitHub Release with that section as the notes.
 - A self-contained `monitoring-reader.js` release asset with SHA-256, shared configuration
   resolution and protocol validation, independent deadlines/cancellation, bounded concurrency
   and no completed-snapshot cache. Root changes and unsafe/stale/unavailable data fail closed.
-
 ## [0.39.9] — 2026-08-27
 
 preserve rollback during concurrent updates
