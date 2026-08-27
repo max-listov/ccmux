@@ -197,4 +197,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
   }
 }
 
-process.exit(await dispatch(Bun.argv[2], Bun.argv.slice(3)));
+// Let Bun drain stdout/stderr before exiting. `process.exit()` can discard a large JSON response
+// while a pipeline is still reading it; assigning the code preserves command failures without
+// terminating the event loop ahead of its pending writes.
+process.exitCode = await dispatch(Bun.argv[2], Bun.argv.slice(3));

@@ -36,7 +36,16 @@ export function externalTableLines(sessions: ExternalSession[]): string[] {
   return lines;
 }
 
-export function cmdExternal(args: string[] = []): number {
+function writeStdout(text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(text, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+export async function cmdExternal(args: string[] = []): Promise<number> {
   const unsupported = args.find((arg) => arg !== "--json");
   if (unsupported !== undefined) {
     console.error(`${usageLine("external")}\nunknown option: ${unsupported}`);
@@ -46,7 +55,9 @@ export function cmdExternal(args: string[] = []): number {
   const machine = loadMachineConfig();
   const sessions = discoverExternal(machine);
   if (args.includes("--json")) {
-    console.log(JSON.stringify(externalInventoryJson(machine.rcPrefix, sessions)));
+    // This projection can be much larger than a pipe buffer. Await the stream callback: bundled
+    // Bun may otherwise terminate after queueing only part of a `console.log` string for a pipeline.
+    await writeStdout(`${JSON.stringify(externalInventoryJson(machine.rcPrefix, sessions))}\n`);
   } else {
     for (const line of externalTableLines(sessions)) console.log(line);
   }
