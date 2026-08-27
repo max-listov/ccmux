@@ -6,6 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Concurrent manual and automatic updates serialize bundle swaps. Installing identical bytes
+  preserves the previous rollback bundle; a failed backup aborts the swap.
+
 ## [0.39.8] — 2026-08-27
 
 publish bounded resident monitoring status

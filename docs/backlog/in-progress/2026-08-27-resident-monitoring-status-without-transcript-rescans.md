@@ -89,3 +89,18 @@ cached metadata and subprocess deadlines. Unknown evidence stays unknown, not id
   946 reader processes and zero reader-triggered observation children. Read latency p50/p95:
   56.265/83.008 ms; observation freshness p95/max: 741/1,107 ms. Sampled producer maximum RSS:
   217,808,896 bytes; retained metadata caches remain separately capped at 1 MiB/512 entries each.
+
+### Release verification
+
+- [x] Version 0.39.8 was published from tag commit 3e5b391db986904a4b52a2e9f876a2b01bd80391.
+  CI and bundle smoke passed. The 2,179,594-byte artifact SHA-256 was
+  b5f103b47c7757e5aec70a06a519a0d91a02130f67c34331fd716833c58b4b81.
+  All three owned runtimes matched it and returned advancing live snapshots with 14/14/5 rows,
+  no omissions, registry identity parity, and unchanged tmux identities/creation times.
+- [x] Rollout exposed a duplicate-install race: manual and automatic installers could replace
+  the rollback backup with the already-installed release. src/commands/update.ts now serializes
+  swaps with the existing owner-aware lock in src/config/registryLock.ts, skips backup replacement
+  for identical bytes, and aborts if backing up fails. test/update-swap.test.ts proves 20 concurrent
+  real-process installers preserve the predecessor and that failed backup leaves the live file intact.
+  Monitoring producer/reader code is unchanged from the completed 15-minute workload.
+  Follow-up full typecheck/test gate passed: 696 tests, zero failures.

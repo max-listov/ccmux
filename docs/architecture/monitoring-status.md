@@ -99,5 +99,7 @@ It reports producer and observation-child CPU, reader CPU including children, ex
 latency, freshness and sampled RSS. The temporary config/results are local, never publication data.
 
 Rollback uses ccmux update --rollback. Existing managed sessions outlive the daemon bounce.
+Bundle replacement and rollback share an owner-aware filesystem lock. Reinstalling identical
+bytes does not replace the predecessor backup; backup failure aborts installation.
 An older producer does not publish this surface; callers receive unavailable/stale rather than
 falling back to an expensive scan. There is no implicit consumer-side fallback.

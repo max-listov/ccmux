@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { loadMachineConfig } from "../config/machine.ts";
 import { ReleaseSchema } from "../config/schema.ts";
@@ -7,6 +7,7 @@ import { restartBoot } from "../boot/install.ts";
 import { APP_BUNDLE, STAGED_BUNDLE } from "../config/paths.ts";
 import { log } from "../util/log.ts";
 import { recordReleaseCheck } from "../config/releaseCheck.ts";
+import { withDirectoryLock } from "../config/registryLock.ts";
 import type { MachineConfig, Release } from "../types.ts";
 
 type UpdateOpts = { check: boolean; force: boolean; rollback: boolean };
@@ -44,17 +45,25 @@ async function bundleVersion(path: string): Promise<string> {
 /** Atomic swap into APP_BUNDLE: backup current → move/copy new over. The running daemon
  *  keeps the old (now-unlinked) inode; restartBoot relaunches it on the new file. */
 async function swapAndBounce(m: MachineConfig, from: string, move: boolean): Promise<void> {
-  mkdirSync(dirname(APP_BUNDLE), { recursive: true });
-  if (existsSync(APP_BUNDLE)) {
-    try {
-      copyFileSync(APP_BUNDLE, `${APP_BUNDLE}.bak`);
-    } catch {
-      /* best-effort backup */
-    }
-  }
-  if (move) renameSync(from, APP_BUNDLE);
-  else copyFileSync(from, APP_BUNDLE);
+  await replaceBundle(from, APP_BUNDLE, move);
   await restartBoot(m);
+}
+
+/** Serialize manual/automatic swaps and preserve the predecessor on duplicate installs. */
+export async function replaceBundle(from: string, target: string, move: boolean): Promise<void> {
+  await withDirectoryLock(target + ".update-lock", async () => {
+    mkdirSync(dirname(target), { recursive: true });
+    if (existsSync(target)) {
+      if (readFileSync(target).equals(readFileSync(from))) {
+        if (move && from !== target) rmSync(from);
+        return;
+      }
+      // A failed backup aborts the swap; a claimed rollback must contain the actual predecessor.
+      copyFileSync(target, target + ".bak");
+    }
+    if (move) renameSync(from, target);
+    else copyFileSync(from, target);
+  }, "bundle update");
 }
 
 async function rollback(m: MachineConfig): Promise<number> {
@@ -63,7 +72,9 @@ async function rollback(m: MachineConfig): Promise<number> {
     console.log("update: no backup (.bak) to roll back to");
     return 1;
   }
-  copyFileSync(bak, APP_BUNDLE);
+  await withDirectoryLock(APP_BUNDLE + ".update-lock", async () => {
+    copyFileSync(bak, APP_BUNDLE);
+  }, "bundle update");
   await restartBoot(m);
   log.info({ msg: "update: rolled back to .bak bundle" });
   console.log("rolled back to previous bundle; daemon bounced (sessions keep running).");

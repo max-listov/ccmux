@@ -111,7 +111,11 @@ function inspectAndReap(lock: string): LockVerdict {
 
 /** Serialize every sessions/pending read-modify-write transaction across ccmux processes. */
 export async function withSessionRegistryLock<T>(m: MachineConfig, run: () => Promise<T>): Promise<T> {
-  const lock = sessionRegistryLockPath(m);
+  return withDirectoryLock(sessionRegistryLockPath(m), run, "session registry");
+}
+
+/** The same owner-aware exclusion for a fixed, caller-owned filesystem resource. */
+export async function withDirectoryLock<T>(lock: string, run: () => Promise<T>, label = "directory"): Promise<T> {
   const token = randomUUID();
   mkdirSync(dirname(lock), { recursive: true });
   const deadline = Date.now() + TIMEOUT_MS;
@@ -140,7 +144,7 @@ export async function withSessionRegistryLock<T>(m: MachineConfig, run: () => Pr
         // Say what was in the way. A bare "timed out" sent a reader looking for contention that did
         // not exist; the pid of a live holder, or the absence of one, is the first thing to know.
         const detail = last.kind === "held" ? `held by pid ${last.pid}` : last.why;
-        throw new Error(`session registry lock timed out after ${TIMEOUT_MS}ms (${detail})`);
+        throw new Error(label + " lock timed out after " + TIMEOUT_MS + "ms (" + detail + ")");
       }
       await Bun.sleep(WAIT_MS);
     }
