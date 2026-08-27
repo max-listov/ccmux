@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.8] — 2026-08-27
+
+publish bounded resident monitoring status
+
 ### Added
 
 - `ccmux status --json` reads a bounded managed-session snapshot published by the existing
@@ -17,7 +21,6 @@ the GitHub Release with that section as the notes.
 
 - Bound observation subprocess duration/output and transcript metadata cache memory; invalidate
   metadata on file replacement and rotation. Monitoring also works in boot-service locales.
-
 ## [0.39.7] — 2026-08-27
 
 flush large JSON output before exit
