@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.7] — 2026-08-27
+
+flush large JSON output before exit
 ## [0.39.6] — 2026-08-27
 
 expose the external thread inventory
