@@ -605,6 +605,15 @@ export const ExternalSessionSchema = z
     }
   });
 
+export const ExternalInventoryJsonSchema = z
+  .object({
+    version: z.string().min(1),
+    generatedAt: z.iso.datetime(),
+    rcPrefix: z.string().regex(RC_PREFIX_RE),
+    sessions: z.array(ExternalSessionSchema),
+  })
+  .strict();
+
 // Whole-session composition (counted over the ENTIRE JSONL, not just the loaded window),
 // so the header reads true totals that don't drift as you scroll/paginate.
 export const TranscriptStatsSchema = z.object({

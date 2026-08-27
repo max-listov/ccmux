@@ -26,6 +26,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: "wait", args: "<name|machine:name> [--timeout N] [--quiet]", desc: "block until the session is between turns — exit 0 settled (the line says whether it finished or was interrupted), 2 timed out, 1 unknown/stopped; no polling loops, works without chat", example: "ccmux wait cc-api && ccmux transcript cc-api --last-message" },
   { verb: "doctor", args: "[--json]", desc: "health check: bins, config, daemon; verifies the fleet map really points where it claims" },
   { verb: "fleet", args: "[--json]", desc: "every managed session on every fleet machine, with explicit provider and full address; never infer a target from cwd/project; an older peer with no provider reports unknown, not Claude", example: "ccmux fleet" },
+  { verb: "external", args: "[--json]", desc: "local unmanaged threads as observed evidence (storage/origin/writer/runtime), separate from managed list/fleet lifecycle promises", example: "ccmux external --json" },
   { verb: "completions", args: "<bash|zsh|fish>", desc: "print a shell completion script (generated from the command list)", example: "ccmux completions zsh > \"${fpath[1]}/_ccmux\"" },
   { verb: "update", args: "[--check|--rollback|--force]", desc: "self-update binary + bounce daemon (sessions live)" },
   { verb: "install", args: "[--rc-prefix <name>] [--release-url URL]", desc: "write config + boot unit; start daemon (--rc-prefix = this machine's label, e.g. local/dev/prod; --release-url wires autoUpdate)" },

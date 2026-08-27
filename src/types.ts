@@ -28,6 +28,7 @@ import type {
   PendingSessionSchema,
   LifecycleBlockSchema,
   ExternalSessionSchema,
+  ExternalInventoryJsonSchema,
   SessionEventSchema,
   SessionEventKindSchema,
   ExternalCapabilitiesSchema,
@@ -64,6 +65,7 @@ export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
 export type PendingSession = z.infer<typeof PendingSessionSchema>;
 export type LifecycleBlock = z.infer<typeof LifecycleBlockSchema>;
 export type ExternalSession = z.infer<typeof ExternalSessionSchema>;
+export type ExternalInventoryJson = z.infer<typeof ExternalInventoryJsonSchema>;
 export type SessionEvent = z.infer<typeof SessionEventSchema>;
 export type SessionEventKind = z.infer<typeof SessionEventKindSchema>;
 export type ExternalCapabilities = z.infer<typeof ExternalCapabilitiesSchema>;

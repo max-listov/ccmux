@@ -14,6 +14,11 @@ External inventory is a local, read-only projection. Its identity is
 metadata and never selectors. Managed rows use a separate plane key including provider, host,
 registry name and UUID, so equal cwd or UUID fixtures remain independently selectable.
 
+`ccmux external` reads that projection explicitly; `ccmux external --json` returns its strict
+machine-readable shape. The command is local because the rows are observations, not lifecycle
+promises. `list` and `fleet` remain managed-only. An explicit read performs the scan regardless of
+the TUI's initial `externalInventory` preference, just as toggling the inventory on in the TUI does.
+
 ## Independent evidence
 
 | Axis | Values | Meaning |
