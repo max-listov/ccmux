@@ -30,27 +30,39 @@ the default footer. `.githooks/commit-msg` refuses them, and `.githooks/pre-comm
 content containing the maintainer's paths — a rule alone cannot hold against a default set outside
 this repository, so the check is the mechanism and the rule is only its explanation.
 
-## 🚫 Don't deploy without explicit approval
-ccmux is a production tool that supervises live agent sessions, so a bad release affects real
-running work. Do NOT autonomously: bump the version, build, `ccmux update`, restart/touch the
-prod daemon, or publish a release.
-- Code changes (edits, types, tests) — fine.
-- When ready to ship — **ASK** ("version X.Y.Z ready, ship to prod?") and wait for an explicit yes.
-- Only after that — `build` + `update`/publish. The human decides *when* to deploy, not the agent.
+## Release authority and completion
+Follow the current maintainer mandate and global Git/index rules. An authorized owned-project
+release includes gates, publication, rollout to owned runtimes and post-rollout verification;
+do not ask for the same approval again. It does not authorize another project's deployment.
+Close task checkboxes only against actual evidence. Implementation documentation travels with its
+meaningful code commit, not an unsolicited separate bookkeeping commit. Documentation-only work
+does not require a runtime version bump or rollout.
 
-## 🚫 Order is fixed: finish → done/ → commit → deploy. And NEVER bundle the task into a code commit
-The maintainer gates every commit. Do NOT commit until explicitly told to. The sequence is:
-1. Finish the work AND fully close the task — `## Что сделано`, every checkbox `[x]`, `git mv` the
-   doc into `docs/backlog/done/` (done = "fully complete", it goes there FIRST, not last).
-2. ONLY THEN commit — and only on an explicit "commit"/"go".
-3. ONLY THEN deploy/release.
+### Required order: finish → document → done/ → commit → release
+1. Finish the implementation and its authorized checks.
+2. Update the affected architecture documentation and record `## Что сделано` in the existing
+   task with concrete file paths and evidence. Close acceptance checkboxes individually, only
+   when verified; never mark an unperformed check as complete.
+3. Once the task's acceptance is satisfied, set `status: done`, add the actual `completed`
+   timestamp and move it to `docs/backlog/done/` before committing the completed work.
+4. Commit under the current mandate, then release and verify the owned runtimes. If acceptance
+   requires post-release evidence, keep those items and the task open until that evidence exists.
 
-Never run ahead of that order (no committing before the task is in `done/`, no deploying before the
-commit is approved). And a code/release commit NEVER carries a backlog task doc: `docs/backlog/` is a
-working buffer, committed **separately** from code when the task changes state. NEVER `git add -A` for
-a code/release commit — stage the code explicitly (`src/`, `test/`, `CHANGELOG.md`, …) and leave the
-backlog file out. (Burned repeatedly: `git add -A` during a release swept an open `in-progress/` task
-into the code commit, and code shipped before the task was closed.)
+This documentation obligation is independent of the checkout rule below: fixing the release
+location must not remove task completion or architecture-documentation requirements. Routine
+Git synchronization does not need a new backlog task.
+
+## One canonical working checkout
+Implementation, commits and the local release ceremony run from the maintainer's normal working
+checkout. Never create a temporary release clone, secondary worktree or alternate-index commit
+path to bypass the clean-tree guard or leave the visible checkout behind published history.
+CI may check out the published tag to build assets; it is not a second development/release source.
+
+Before releasing, reconcile the authorized changes in this checkout while preserving unrelated
+reviewed changes. A clean-tree requirement is not permission to discard or reorganize the review
+buffer. After publication, verify local HEAD, the published commit/tag and package version agree;
+identify any deliberately retained local-only changes explicitly. A release is not complete while
+the working checkout still presents already-published implementation as uncommitted work.
 
 ## ⚠️ TUI: горячий цикл и сироты (если «комп горячий»)
 Интерактивный TUI (Ink) умеет жечь ядро и сиротеть — это **реальный инцидент** (`ccmux-dev -f`

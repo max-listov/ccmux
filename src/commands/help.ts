@@ -4,6 +4,7 @@ type HelpEntry = { verb: string; args: string; desc: string; example?: string; n
 
 /** Public command surface (hidden internals `_run`/`_restart-worker` are intentionally omitted). */
 export const COMMANDS: HelpEntry[] = [
+  { verb: "status", args: "[--json]", desc: "bounded daemon monitoring snapshot; managed-only, no per-reader pane/transcript scans; exit 2 stale, 3 unavailable", example: "ccmux status --json" },
   { verb: "list", args: "", desc: "managed sessions with explicit agent provider + status/uptime; the RESTART column names what a restart would change (rules/mcp/env/chat/mode/modules/config) — empty means nothing to pick up", example: "ccmux list" },
   { verb: "new", args: "<name> <dir> [--agent claude|codex] [-- flags]", desc: "create + start a provider-explicit session (Claude default; pins a fresh uuid)", example: "ccmux new cc-api ~/code/api --agent codex" },
   { verb: "rm", args: "<name> [--force]", desc: "stop + unregister (jsonl history kept)" },

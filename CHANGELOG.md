@@ -6,6 +6,18 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- `ccmux status --json` reads a bounded managed-session snapshot published by the existing
+  daemon. Concurrent readers share observations without opening transcripts or capturing panes.
+- Explicit protocol, producer generation, freshness and unavailable outcomes; provider identity,
+  model, context, activity and uptime retain unknown values rather than inventing defaults.
+
+### Fixed
+
+- Bound observation subprocess duration/output and transcript metadata cache memory; invalidate
+  metadata on file replacement and rotation. Monitoring also works in boot-service locales.
+
 ## [0.39.7] — 2026-08-27
 
 flush large JSON output before exit

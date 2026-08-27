@@ -1,21 +1,36 @@
-import { expect, test, beforeEach } from "bun:test";
+import { expect, test, beforeEach, afterAll } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// log.ts resolves LOG_FILE from the state root at import time (HOME-derived). Rather than fight
-// that, test the two pure-ish behaviors directly against a sandbox: level threshold and the
-// size-based rotation shift. We re-implement nothing — we import the real symbols and point
-// HOME at a temp dir BEFORE importing.
-
+// A fresh process resolves the real logger's state path before any module can cache it.
+// Changing an environment variable around a cached dynamic import cannot isolate filesystem IO.
 const sandbox = mkdtempSync(join(tmpdir(), "ccmux-log-"));
-const realHome = process.env.HOME;
-process.env.HOME = sandbox;
-
-// dynamic import AFTER HOME is set, so the state root and LOG_FILE land in the sandbox…
-const { log, setLogLevel, LOG_FILE } = await import("../src/util/log.ts");
-// …then restore HOME so this file doesn't pollute HOME-dependent tests (resume tripwire etc.)
-if (realHome !== undefined) process.env.HOME = realHome;
+const LOG_FILE = join(sandbox, "ccmux.log");
+let threshold = "info";
+const setLogLevel = (level: string) => { threshold = level; };
+function emit(level: string, fields: Record<string, unknown>): void {
+  const child = Bun.spawnSync([process.execPath, "-e", [
+    "const { log, setLogLevel, LOG_FILE } = await import(process.env.CCMUX_TEST_LOGGER);",
+    "setLogLevel(process.env.CCMUX_TEST_LEVEL);",
+    "log[process.env.CCMUX_TEST_METHOD](JSON.parse(process.env.CCMUX_TEST_FIELDS));",
+    "console.log(LOG_FILE);",
+  ].join("\n")], {
+    env: { ...process.env, CCMUX_STATE_DIR: sandbox,
+      CCMUX_TEST_LOGGER: new URL("../src/util/log.ts", import.meta.url).href,
+      CCMUX_TEST_LEVEL: threshold, CCMUX_TEST_METHOD: level, CCMUX_TEST_FIELDS: JSON.stringify(fields) },
+    stdout: "pipe", stderr: "pipe",
+  });
+  expect(child.exitCode).toBe(0);
+  expect(child.stdout.toString().trim()).toBe(LOG_FILE);
+}
+const log = {
+  debug: (fields: Record<string, unknown>) => emit("debug", fields),
+  info: (fields: Record<string, unknown>) => emit("info", fields),
+  warn: (fields: Record<string, unknown>) => emit("warn", fields),
+  error: (fields: Record<string, unknown>) => emit("error", fields),
+};
+afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
 
 function reset(): void {
   rmSync(LOG_FILE, { force: true });

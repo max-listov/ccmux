@@ -10,6 +10,8 @@ import { flushOutbox } from "../fleet/flush.ts";
 import { bootGuardStart, clearBootGuard } from "../util/bootGuard.ts";
 import { IS_DEV } from "../env.ts";
 import { log, setLogLevel } from "../util/log.ts";
+import { MonitoringPublisher } from "../monitoring/publish.ts";
+import { STATUS_INTERVAL_MS } from "../monitoring/schema.ts";
 
 // Chat delivery runs on its OWN fast cadence, not the 30s heal tick — a message should reach an
 // idle peer within a few seconds, not up to half a minute. Cheap when idle (only recipients with
@@ -17,7 +19,7 @@ import { log, setLogLevel } from "../util/log.ts";
 const CHAT_DELIVER_INTERVAL_MS = 3_000;
 // Faster than chat delivery on purpose: a menu a session is stuck at, and a turn that was
 // interrupted, are both states a person is actively waiting to be told about.
-const SESSION_EVENT_INTERVAL_MS = 2_000;
+const SESSION_EVENT_INTERVAL_MS = STATUS_INTERVAL_MS;
 
 /** Independent push-delivery loop (fire-and-forget from the daemon). Bounces with the daemon on
  *  auto-update; one bad pass never stops it. */
@@ -43,11 +45,14 @@ const SESSION_EVENT_INTERVAL_MS = 2_000;
  * re-observes rather than replaying: whatever is true after the bounce is emitted once, and nothing
  * that happened while it was down is invented.
  */
-async function sessionEventLoop(): Promise<void> {
+async function sessionEventLoop(status: MonitoringPublisher): Promise<void> {
   const previous = new Map<string, Observed>();
   for (;;) {
     try {
-      await observeOnce(loadMachineConfig(), previous);
+      const m = loadMachineConfig();
+      status.begin(m);
+      await observeOnce(m, previous, Date.now(), status.sample);
+      await status.publish(m);
     } catch (e) {
       log.warn({ msg: "session event pass failed", err: String(e) });
     }
@@ -75,7 +80,8 @@ async function chatDeliveryLoop(): Promise<void> {
  * dropping a live conversation. Run by the boot unit (systemd/launchd).
  */
 export async function cmdDaemon(): Promise<number> {
-  installSignals();
+  const status = new MonitoringPublisher();
+  installSignals(status);
 
   // Boot-loop guard: a crash-looping (freshly auto-updated) bundle reverts itself to .bak
   // after MAX_ATTEMPTS starts without one good ensure pass. Exit non-zero → boot unit
@@ -103,7 +109,7 @@ export async function cmdDaemon(): Promise<number> {
   // Start the chat push-delivery loop alongside the heal loop (independent fast cadence).
   void chatDeliveryLoop();
   // …and the observation loop that publishes what the turn hook cannot see.
-  void sessionEventLoop();
+  void sessionEventLoop(status);
 
   let lastUpdateCheck = 0;
   let guardCleared = false;
@@ -138,7 +144,7 @@ export function signalExitCode(sig: NodeJS.Signals): number {
   return sig === "SIGINT" ? 130 : 143;
 }
 
-function installSignals(): void {
+function installSignals(status: MonitoringPublisher): void {
   // Exit NON-zero on signals: a stray SIGTERM (a neighbor's unscoped `pkill bun`,
   // incident 2026-06-11) must bring the daemon back via KeepAlive SuccessfulExit=false /
   // Restart=on-failure. Every INTENTIONAL stop path is exit-code-agnostic: uninstall
@@ -150,6 +156,7 @@ function installSignals(): void {
     process.on(sig, () => {
       const code = signalExitCode(sig);
       log.info({ msg: "daemon stopping", sig, code });
+      try { status.stop(); } catch (error) { log.warn({ msg: "status cleanup failed", err: String(error) }); }
       process.exit(code);
     });
   }

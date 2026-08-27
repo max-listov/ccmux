@@ -3,7 +3,7 @@ import { closeLifecycleTurn, readLifecycle } from "../agent/sessionStatus.ts";
 import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { eventsEnabledFor } from "../config/events.ts";
 import { loadSessions } from "../config/sessions.ts";
-import { capturePane, listSessionNames } from "../tmux/tmux.ts";
+import { observedPane, observedSessionInventory } from "../monitoring/tmux.ts";
 import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { appendEvent, type EmitInput } from "./feed.ts";
@@ -236,9 +236,11 @@ export function observe(
  * with events switched off would otherwise keep a `working` stamp from a turn that ended days ago,
  * and hand that stale instant to its next turn as a start time.
  */
-export async function observeOnce(m: MachineConfig, previous: Map<string, Observed>, nowMs = Date.now()): Promise<number> {
-  const sessions = loadSessions(m).filter((s) => !s.archived);
-  const running = await listSessionNames(m);
+export async function observeOnce(m: MachineConfig, previous: Map<string, Observed>, nowMs = Date.now(),
+  sample?: (m: MachineConfig, s: Session, startedAt: number | undefined, pane: string | null, seen: Observed) => void,
+): Promise<number> {
+  const sessions = loadSessions(m);
+  const running = await observedSessionInventory(m);
   // Seeded from disk so a supervisor that just restarted is not blind about panes it watched a
   // moment ago — its own last write is the memory its predecessor kept.
   const onDisk = readPaneActivity(m);
@@ -250,9 +252,11 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
     const isRunning = running.has(s.name);
     // Capture only what is running: a stopped session has no pane, and asking for one is a fork per
     // session per pass spent to be told so.
-    const pane = isRunning ? await capturePane(m, s.name, 40).catch(() => null) : null;
+    const pane = isRunning ? await observedPane(m, s.name).catch(() => null) : null;
     const prev = previous.get(s.name) ?? UNSEEN;
     const next = observe(m, s, isRunning, pane, nowMs, prev.paneWorkingMs ?? onDisk[s.name] ?? null);
+    sample?.(m, s, running.get(s.name), pane, next);
+    if (s.archived) continue;
     if (next.paneWorkingMs !== null) paneWorking.set(s.name, next.paneWorkingMs);
     // The stamp is repaired whether or not the ending is announced — `transitions` stays silent
     // about an ending it never witnessed, and silence about an event is not a reason to leave a

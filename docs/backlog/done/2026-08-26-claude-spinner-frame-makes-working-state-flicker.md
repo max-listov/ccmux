@@ -164,3 +164,9 @@ lifecycle уже был закрыт наблюдателем в `idle` (`event:
 - [x] Pre-release live window: за 24 секунды на доступном флоте не было реально работающего Claude
       turn с `turnStartedAt: null`, поэтому поведенческий verdict не выдуман; installed probe остаётся
       postcondition release-result и выполняется только на фактически появившемся target.
+- [x] Consumer post-release probe: все три доступные машины сообщили `ccmux 0.39.2`; двенадцать
+      последовательных fleet snapshots сохранили `working` и один `turnStartedAt` у каждого
+      доступного lifecycle-scoped turn. В четырёх UI snapshots через 32 секунды working count не
+      менялся при независимо меняющемся chat-log health. Работающего turn с `turnStartedAt: null`
+      после rollout по-прежнему не появилось, поэтому live-verdict именно для этой ветки всё ещё
+      честно отсутствует — regression покрыт тестом, но не наблюдением на реальном target.

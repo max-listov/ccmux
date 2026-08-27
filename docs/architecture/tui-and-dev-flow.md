@@ -46,6 +46,9 @@ Bun-ccmux **заменил** bash-ccmux локально (bash-демон уби
   различает compiled-бинарь / dev-исходник / bundle → плист печёт `bun ~/.ccmux/app/ccmux.js daemon`.
 
 ### Раздача на флот (GitHub Releases, без своего бэкенда)
+Monitoring consumers use the resident [status snapshot](monitoring-status.md), not repeated
+list aggregation. It is produced by the existing daemon observation loop.
+
 - **Инварианты релиза**: релиз рождается ТОЛЬКО из тега в CI; тег стоит ровно на коммите
   с этим кодом (`git diff vA..vB` = что вошло); красный check = релиза физически нет;
   локального publish-пути не существует.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { VERSION } from "./util/version.ts";
 import { cmdList } from "./commands/list.ts";
+import { cmdStatus } from "./commands/status.ts";
 import { cmdNew } from "./commands/new.ts";
 import { cmdRm } from "./commands/rm.ts";
 import { cmdRenew } from "./commands/renew.ts";
@@ -74,6 +75,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     return 1;
   }
   switch (verb) {
+    case "status":
+      return cmdStatus(rest);
     case "list":
     case "ls":
     case "l":
