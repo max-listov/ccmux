@@ -14,10 +14,12 @@ export async function cmdControl(args: string[]): Promise<number> {
       ...(process.env.CCMUX_SESSION ? { session: process.env.CCMUX_SESSION } : {}),
       ...(process.env.CCMUX_CHAT_CREDENTIAL ? { credential: process.env.CCMUX_CHAT_CREDENTIAL } : {}),
     };
-    if (args[0] === "watch" && args.length === 1) {
+    if ((args[0] === "watch" || args[0] === "watch-external") && args.length === 1) {
       const client = createControlClient(options);
       try {
-        const stream = await client.watch.withOptions({ signal: controller.signal });
+        const stream = args[0] === "watch-external"
+          ? await client.watchExternal.withOptions({ signal: controller.signal })
+          : await client.watch.withOptions({ signal: controller.signal });
         for await (const snapshot of stream) {
           if (!process.stdout.write(`${JSON.stringify(snapshot)}\n`)) await once(process.stdout, "drain", { signal: controller.signal });
         }

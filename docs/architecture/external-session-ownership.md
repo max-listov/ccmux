@@ -90,6 +90,11 @@ fragments maximum. Deadline or oversized input closes the socket. Unvisited iden
 the existing inventory's ownership/metadata discovery cost is unchanged. This is not a resident
 replacement for the full external inventory scan, nor permission for consumers to parse transcripts.
 
+For resident consumers, use the separate [external native status contract](external-resident-status.md):
+`ccmux control external --json`, `ccmux control watch-external`, or `ccmux/control-client`'s
+`external`/`watchExternal`. One existing-daemon connection publishes prepared facts independently
+of this slower discovery inventory. The native runtime-access prerequisite is unchanged.
+
 Validation covers lifecycle mappings, shared writer independence, lost/reconnected/missing/stale
 evidence, pagination and byte/deadline bounds. Real App Server verification created two isolated
 test threads: both held by one shared writer while one was working and the other completed/idle;

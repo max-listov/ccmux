@@ -76,6 +76,12 @@ for messages, exact native turn interruption and between-turn waits; the release
 self-contained `control-client.js` and SHA-256 asset. Commands retain exact provider/machine/session
 identity and existing delivery gates. See the [resident control contract](docs/architecture/control-plane.md).
 
+For existing external Codex threads, `ccmux control external --json` and
+`ccmux control watch-external` expose a separate prepared native-status projection. Resident
+consumers use `external()` / `watchExternal()` from the same client, without repeated inventory
+scans. This observes an accessible existing App Server; it does not attach to a private stdio-only
+Desktop runtime or adopt its threads. See [external resident status](docs/architecture/external-resident-status.md).
+
 ccmux-managed sessions and Codex Desktop tasks are separate coordination planes. Managed sessions
 use ccmux addresses, persistence, and wait state. Claude and Codex managed sessions use the ccmux
 chat ledger; delivery follows the selected provider/runtime boundary. Desktop tasks use the task tools and

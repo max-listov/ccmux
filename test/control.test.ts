@@ -141,6 +141,47 @@ test("slow readers retain only the latest revision; capacity and abort-before-re
   expect(f.p.subscribers).toBe(0);
 });
 
+test.each(["abort", "return-unread", "return-baseline"] as const)("configured control streams release and reuse Unix capacity on %s", async (terminal) => {
+  const f = await fixture();
+  for (let attempt = 0; attempt <= CONTROL_MAX_READERS; attempt++) {
+    const stop = new AbortController();
+    const stream = await f.client.watch.withOptions({ signal: stop.signal });
+    expect(f.p.subscribers).toBe(1);
+    if (terminal === "return-baseline") expect((await stream.next()).value).toEqual(f.p.read());
+    if (terminal === "abort") stop.abort();
+    else await stream.return?.();
+    for (let i = 0; i < 100 && f.p.subscribers; i++) await Bun.sleep(10);
+    expect(f.p.subscribers).toBe(0);
+    if (terminal === "abort") await stream.return?.();
+  }
+}, 10_000);
+
+test("a quiet control stream outlives its header deadline and abort releases a pending read", async () => {
+  const f = await fixture();
+  const client = createControlClient({ socket: f.socket, timeoutMs: 100 });
+  cleanup.push(() => client.close());
+  const stop = new AbortController();
+  const stream = await client.watch.withOptions({ signal: stop.signal });
+  expect((await stream.next()).value).toEqual(f.p.read());
+  expect(f.p.subscribers).toBe(1);
+  let settled = false;
+  const pending = stream.next().then(
+    () => { settled = true; return "received"; },
+    () => { settled = true; return "cancelled"; },
+  );
+  await Bun.sleep(150);
+  expect(settled).toBe(false);
+  expect(f.p.subscribers).toBe(1);
+  stop.abort();
+  expect(await pending).toBe("cancelled");
+  for (let i = 0; i < 100 && f.p.subscribers; i++) await Bun.sleep(10);
+  expect(f.p.subscribers).toBe(0);
+  await stream.return?.();
+  const next = await client.watch();
+  expect((await next.next()).value).toEqual(f.p.read());
+  await next.return?.();
+}, 5000);
+
 test("oversize bodies refuse early and cancelled lock waiters cannot append later", async () => {
   const f = await fixture();
   const response = await fetch("http://ccmux.local/control/message", { unix: f.socket, method: "POST",

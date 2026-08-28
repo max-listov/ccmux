@@ -7,6 +7,7 @@ import { machineConfigPath, resolveMonitoringLocation } from "../config/monitori
 import { controlContract, controlEventsContract } from "./contract.ts";
 import { controlSocket } from "./path.ts";
 import { CONTROL_MAX_BYTES, CONTROL_MAX_READERS } from "./schema.ts";
+import { EXTERNAL_MAX_BYTES } from "../external/resident-schema.ts";
 
 export const ControlClientOptionsSchema = z.object({
   socket: z.string().startsWith("/").optional(),
@@ -28,11 +29,11 @@ function controlTransport(options: ControlClientOptions) {
   const socket = config.socket ?? controlSocket(resolveMonitoringLocation(existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {}));
   const common = { socketPath: socket, maxRequestBytes: 64 * 1024,
     maxHeaderBytes: 16 * 1024, headersTimeoutMs: config.timeoutMs };
-  const unary = createUnixClientTransport({ ...common, maxConnections: 128, maxResponseBytes: CONTROL_MAX_BYTES + 1024 });
+  const unary = createUnixClientTransport({ ...common, maxConnections: 128, maxResponseBytes: Math.max(CONTROL_MAX_BYTES, EXTERNAL_MAX_BYTES) + 1024 });
   const streaming = createUnixClientTransport({ ...common, maxConnections: CONTROL_MAX_READERS, responseBodyMode: "streaming" });
   return {
     http: createHttpClient({ baseUrl: "http://ccmux.local", fetch: unary.fetch, timeout: config.timeoutMs, retry: { limit: 0 }, headers }),
-    stream: { baseUrl: "http://ccmux.local", fetch: streaming.fetch, timeout: config.timeoutMs, headers },
+    stream: createHttpClient({ baseUrl: "http://ccmux.local", fetch: streaming.fetch, timeout: config.timeoutMs, retry: { limit: 0 }, headers }),
     close: async () => { await Promise.all([unary.close(), streaming.close()]); },
   };
 }

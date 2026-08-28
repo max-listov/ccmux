@@ -21,9 +21,10 @@ same durable chat + native turn operations ← control contract ← ├─ CLI/t
                                                                └─ resident stream
 ```
 
-Only registered managed sessions are in this surface. Desktop-owned threads are not imported,
-adopted, restarted or counted as managed sessions. The external inventory and its independent
-observation prerequisites remain separate. No TCP listener or fleet-routing replacement is added.
+Managed operations and `list`/`watch` contain only registered managed sessions. The same listener
+also exposes a separate read-only [external native projection](external-resident-status.md).
+Desktop-owned threads are not imported, adopted, restarted or counted as managed sessions.
+Their observation prerequisites remain separate. No TCP listener or fleet-routing replacement is added.
 
 # Connection and identity
 
@@ -63,6 +64,8 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `interrupt` | POST `/control/interrupt` | Interrupt the exact working native turn |
 | `wait` | POST `/control/wait` | Between-turn outcome, timeout or unavailable |
 | `watch` | GET `/control-events/` | Absolute snapshots over typed NDJSON |
+| `external` | GET `/control/external` | Prepared external native status; no lifecycle rights |
+| `watchExternal` / `watch-external` | GET `/control-events/external` | External absolute snapshots, separate from managed rows |
 
 New session creation remains `ccmux new`; this API cannot change directories, launch flags,
 provider settings or credentials. `message` requires a caller-generated immutable UUID. Retrying
@@ -103,9 +106,10 @@ try {
 ```
 
 `close()` releases this client's connections. Iterator return and `AbortSignal` also release a
-subscription, including a quiet stream or an iterator not yet consumed. Unary calls use Stitchkit's
-configured HTTP client over a finite Unix transport. Subscriptions use its Fetch-config typed
-client with a dedicated streaming Unix transport. Both retain framework validation and framing;
+subscription, including a quiet stream or an iterator not yet consumed. Both contracts use
+Stitchkit's configured HTTP client. Unary calls use a finite Unix transport; subscriptions use
+a separate streaming Unix transport. The header deadline ends at response headers, while caller
+cancellation remains attached through body ownership. Both retain framework validation and framing;
 there is no custom HTTP parser, stream decoder, cancellation shim or application event engine.
 
 `createControlProxy()` exposes the same unary contract as a peer-free Stitchkit `ServiceDef`.
@@ -130,15 +134,17 @@ install an MCP server into existing provider sessions or change Desktop configur
   Unix transport applies physical socket backpressure; no cumulative lifetime cap on a stream.
 - Mutations: 8 concurrent globally, 1 per target, at most 256 active target keys, no queue.
   Waits: 16 concurrent, deadline at most 60 seconds. Body/request cap: 64 KiB; client response
-  header cap: 16 KiB; unary response cap: 512 KiB + 1 KiB. Client header deadline at most 65 seconds.
+  header cap: 16 KiB; shared unary response cap: 1 MiB + 1 KiB to accommodate external snapshots.
+  Managed snapshot bounds remain 512 KiB. Client header deadline at most 65 seconds.
 - Mutation caller budgets are 15 seconds (message/start) and 10 seconds (interrupt). A timed-out
   call retains its admission lease until its underlying operation really settles; retries must
   reconcile an immutable message ID. Capacity refusal is `BUSY`/429; draining is 503.
 
 # Daemon lifecycle and verification
 
-`createApplication` orders projection, local control owner/server, observation, freshness, delivery
-and healing schedules. Schedules do not overlap; healing retains the configured interval. Stop
+`createApplication` orders managed/external projections, local control owner/server, independent
+managed/external observation, freshness, delivery and healing schedules. Schedules do not overlap;
+healing retains the configured interval. Stop
 closes admission and streams, drains up to 5 seconds, then spends at most 2 seconds on forced
 cleanup. SIGINT/SIGTERM retain exit codes 130/143 for boot-unit restart policy. `_run`, native
 provider writers and tmux sessions are not application resources and survive daemon shutdown.

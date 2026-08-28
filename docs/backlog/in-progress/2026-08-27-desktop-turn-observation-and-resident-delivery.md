@@ -54,19 +54,28 @@ not a substitute for a CCMux consumer contract.
 
 ## Plan
 
+- Continue the owned implementation and release for connectable runtimes independently of the
+  local Desktop attachment prerequisite. A failed host must not suppress another host's facts.
+  Add an external read/subscription contract to the existing protected control listener, without
+  importing external identities into the managed registry. Native metadata reconciliation and
+  status notifications belong to one bounded daemon connection; consumer reads never initiate
+  provider or transcript work. Preserve the existing configured root and provider launch mode.
+
 - [x] Inspect the actual Desktop runtime and provider-supported observation interfaces. The
       installed stdio-only runtime has no connectable local status endpoint; exact evidence and
       the missing provider capability are recorded below. This investigation is complete, not
       the Desktop observation acceptance. No second runtime, ownership takeover, internal
       Desktop-process bridge or screen scraping was used.
-- [ ] Implement the supported observer in `src/agent/codex/appServer.ts` and
-      `src/external/turnState.ts`, retaining explicit unavailable outcomes when unsupported.
-- [ ] Publish external inventory and turn observations through a bounded resident interface,
+- [x] Implement the supported observer in `src/external/resident-observer.ts`, reusing
+      `src/agent/codex/appServer.ts` and native state mapping, retaining explicit unavailable
+      outcomes when unsupported.
+- [x] Publish external inventory and turn observations through a bounded resident interface,
       reusing the existing daemon. Declare discovery, protocol, limits, freshness, cancellation,
       sequence/generation and reconnect behavior. Separate slow inventory from fresh turn state.
-- [ ] Make the same contract usable per host over the supported fleet transport, with independent
-      host failure outcomes. Document what the consumer must aggregate; no private consumer code.
-- [ ] Add regressions and real existing-thread verification for both runtime shapes; measure
+- [x] Make the same contract usable per host over configured SSH, with independent host failure
+      outcomes. Document what the consumer must aggregate; no private consumer code. Wire-only
+      routing is not claimed; a resident consumer holds one connection rather than polling a CLI.
+- [x] Add regressions and real existing-thread verification for both runtime shapes; measure
       observer/reader costs without transcript rescans or CLI execution per refresh.
 - [ ] Update `docs/architecture/external-session-ownership.md` and the resident contract;
       run gates, publish a patch from the canonical checkout and verify every owned runtime.
@@ -89,8 +98,8 @@ do not close this task by substituting a controllable test runtime.
 
 - [ ] Real existing Desktop threads under one runtime: concurrent working and idle states agree
       with independent native observation, then completion/interruption/approval transitions.
-- [ ] Endpoint absent, deadline and disconnect expire positive state and never report false idle.
-- [ ] Resident consumer can stay fresh within 5-second TTL without running full inventory scans.
+- [x] Endpoint absent, deadline and disconnect expire positive state and never report false idle.
+- [x] Resident consumer can stay fresh within 5-second TTL without running full inventory scans.
 - [ ] Document versioned contract and release evidence; preserve all user threads and sessions.
 - [ ] A consumer using only the published CCMux contract observes the same exact existing thread
       identities and transitions on a local and remote host. One unavailable host cannot erase
@@ -324,3 +333,53 @@ attachment. Existing remote Desktop threads do return native working and idle th
 CCMux, so available-host observation must not be conflated with the local attachment prerequisite.
 The research separates immediate resident observation, an opt-in owned App Server driver and
 official Desktop qualification. It does not close any unperformed acceptance or claim a release.
+
+## Что сделано
+
+The resident implementation now exists independently of the local Desktop attachment prerequisite:
+
+- `src/external/native-list.ts` supplies bounded native metadata reads and the shared version floor.
+  `resident-observer.ts` owns one connection, event/list ordering, reconciliation, root changes and
+  cancellation. `resident-publisher.ts` supplies bounded/coalescing subscribers; `resident-schema.ts`
+  declares protocol 1 identity, availability, leases, omission and consumer-side expiry.
+- `src/daemon/application.ts` owns the observer in the existing managed lifecycle. The existing
+  control listener/client exposes `external` and `watchExternal`; CLI commands are
+  `control external --json` and `control watch-external`. Managed operations and identities do not
+  change. The self-contained control-client asset includes both contracts.
+- `docs/architecture/external-resident-status.md` documents discovery, authorization, bounds,
+  native versions, freshness, cancellation, roots, reconnect, SSH consumption and rollback.
+- Stitchkit 0.68.5 supplies the configured client's post-header cancellation; the associated
+  reviewed adoption is included in the same release, without a consumer-side cancellation shim.
+
+### Candidate validation: 2026-08-28
+
+- Full `bun run check`: typecheck and 762 tests pass, zero failures, 3,510 assertions. New real-socket
+  tests cover event/list races, working/idle/approval/input/unsupported flags, failed hosts, deadline,
+  malformed/cyclic pages, expired/future data, changed roots, cancellation, row/byte/subscriber bounds,
+  real daemon restart and provider survival. The offline release-client test exercises 100 reads
+  per surface and 33 successive stream disposal/reconnect cycles per stream type.
+- Existing remote Desktop threads: one minute, one observer connection, 30 reconciliations,
+  2 working + 4 idle + 5 unknown; direct native reads had zero identity/state mismatches. An
+  independent application-native read confirmed one exact existing working identity as `active`.
+  The additional 100 concurrent IPC reads caused no provider observation, completed in 101 ms
+  total (94 ms p95 under concurrent contention). Probe-process CPU was 1.16 CPU seconds over
+  60.3 seconds, including the 100-reader burst and verification. No transition occurred in this
+  natural observation window; it is not claimed as existing-thread interruption/approval proof.
+- Another runtime: one connection, 30 seconds, one unknown row, no native mismatch. Local runtime:
+  one connection, 30 seconds, 67 unknown rows, no native mismatch. Local bundled Desktop is now
+  `0.150.0-alpha.12.2`; its actual provider child still uses private stdio with no named listener.
+  The accessible retained test runtime is different and still returns `notLoaded` for the exact
+  current Desktop identity. A connected source is not coverage of that Desktop writer.
+- `scripts/external-resident-e2e.ts --run --source` creates only two read-only test threads under
+  the accessible provider. Both working→idle transitions reached the resident stream; concurrent
+  working/idle, completion, explicit interruption and consumer reconnect passed with the same
+  UUIDs. One observer connection, 3 reconciliations, 4 native notifications and 7 stream frames.
+  Both test threads were archived. No existing user thread was interrupted or adopted.
+- The first E2E attempt incorrectly expected an empty pre-turn thread in the provider's database
+  inventory. Native empty threads can lack persisted metadata until the first turn; the probe now
+  establishes its first positive resident match after real turn start. This is not evidence that
+  a missing row is idle. The successful retry tests actual execution rather than empty history.
+
+Publication/rollout evidence is recorded after the installed path is verified. The unperformed
+existing-local-Desktop and existing-thread approval/interruption acceptance remains open; a
+controlled test must not be substituted for it. No consumer rendering/deployment is claimed here.

@@ -2,9 +2,10 @@
 title: Contract-first resident control plane and managed daemon lifecycle
 description: Use Stitchkit for one bounded session-control API, live delivery and daemon resource lifecycle while retaining native session ownership.
 type: task
-status: in-progress
+status: done
 created: 2026-08-28
 updated: 2026-08-28
+completed: 2026-08-28T09:41:31Z
 related:
   - docs/backlog/done/2026-08-28-owned-codex-app-server-runtime.md
 ---
@@ -47,7 +48,7 @@ deployment or replacement inference loop is included.
 - [x] Compose daemon observation, delivery, healing and control resources with Stitchkit lifecycle.
 - [x] Cover identity/auth/refusal, idempotency, stale/disconnect, slow readers and shutdown races;
       validate real owned native sessions and self-contained release artifacts.
-- [ ] Update reference documentation, publish a patch from the canonical checkout and verify rollout.
+- [x] Update reference documentation, publish a patch from the canonical checkout and verify rollout.
 
 ## Acceptance
 
@@ -60,7 +61,7 @@ deployment or replacement inference loop is included.
       verified; supervised session identities and provider processes survive daemon shutdown.
 - [x] Full gates and offline self-contained artifact checks pass. No unsupported Desktop coverage
       is claimed.
-- [ ] Exact published release, asset hashes and owned-runtime parity are recorded after rollout.
+- [x] Exact published release, asset hashes and owned-runtime parity are recorded after rollout.
 
 ## Что сделано
 
@@ -100,4 +101,40 @@ configured-HTTP-client stream cancellation defect is recorded separately in Stit
 `docs/backlog/inbox/2026-08-28-http-client-stream-cancellation-after-headers.md`; this release does
 not use that affected streaming construction and adds no cancellation or framing workaround.
 
-Publication and rollout evidence is still pending; this task remains open until it is verified.
+## Publication and rollout evidence
+
+- Implementation commit: `34802b925a0ccc1cbf483ec87ec979764a524d0f`.
+- Release commit / immutable tag: `ac6d5be0c2441b2ed9b14a626318a7bc12160e46` /
+  [`v0.39.13`](https://github.com/max-listov/ccmux/releases/tag/v0.39.13).
+  The canonical checkout HEAD, remote main, tag and package version agree. No secondary checkout,
+  alternate index, stash or manually substituted runtime bundle was used.
+- [Tag CI](https://github.com/max-listov/ccmux/actions/runs/33159762450): gate, self-contained
+  smoke and release jobs all succeeded. Linux CI: 749 tests, 0 failures, 3,137 assertions;
+  local macOS gates: 749 tests, 0 failures, 3,139 assertions.
+- All nine assets were published atomically. Downloaded `ccmux.js` matches the manifest:
+  `f052a83615e8cb58173f4c5174b6906b531498038f68865ca2c57a86250e859b`.
+  `control-client.js` matches its checksum:
+  `6c8b2b1f16d1128cca5eea0989d3d87171925f2ee3da24c4dff7c5f876b35edb`.
+  Both existing reader assets also matched their published checksums.
+- All three owned runtimes report 0.39.13 and the exact published bundle hash. Each retains the
+  prior 0.39.12 bytes as its rollback backup. Registry identities and all existing pane PIDs were
+  unchanged across rollout: 14 + 14 + 5 managed entries, none omitted by the control projection.
+- The released resident client passed against every real daemon: 100 concurrent reads each,
+  stable identity digest/generation, one observation sequence during each batch, a fresh stream
+  baseline plus an advancing update, zero spawned reader processes. Client batch wall times were
+  46, 129 and 113 ms respectively; these are client request timings, not daemon CPU measurements.
+- Both native E2E scripts were repeated using the downloaded published CLI bundle. Exact A→B→A,
+  duplicate acceptance, busy/defer/wait, interruption and subsequent completed pickup all passed.
+  Daemon restart preserved both provider PIDs; a repeated round-trip completed after reconnect.
+  The real shutdown report was clean: all seven resources closed, 15/15 operations completed,
+  no pending operations or resource failures. Published safety checks again passed partial input,
+  approval, input request, provider restart and same-identity resume.
+- The isolated test daemon and its two provider processes were stopped after verification;
+  their registry and conversation history were retained. Ordinary supervised sessions were not
+  restarted or stopped. No Desktop-owned thread was imported or mutated.
+
+Operational boundaries remain explicit: existing CLI sessions without usable provider/UI evidence
+still report `unknown`; publication does not repair a missing external project directory, answer
+an existing composer/menu, refresh a provider login or change legacy environment declarations.
+The new daemon/control resources are ready on all owned runtimes; this evidence does not claim
+that every historical CLI session or official Desktop session is healthy or natively observable.

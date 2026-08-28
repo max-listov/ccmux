@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeMachine } from "./helpers.ts";
 import { ControlPublisher } from "../src/control/publisher.ts";
+import { CONTROL_MAX_READERS } from "../src/control/schema.ts";
 import { createControlServer } from "../src/control/server.ts";
 import { buildControlClient } from "../scripts/build-control-client.ts";
 import { VERSION } from "../src/util/version.ts";
@@ -29,11 +30,19 @@ test("published control asset discovers IPC without provider binaries and stream
       try {
         const reads = await Promise.all(Array.from({length:100},()=>client.list()));
         if(!reads.every(r=>r.machine==="host-a"&&r.status==="unavailable")) throw Error("snapshot");
-        const abort = new AbortController();
-        const stream = await client.watch.withOptions({signal:abort.signal});
-        if((await stream.next()).value.machine!=="host-a") throw Error("baseline");
-        abort.abort(); await stream.return();
-        const unopened = await client.watch(); await unopened.return();
+        const external = await Promise.all(Array.from({length:100},()=>client.external()));
+        if(!external.every(r=>api.ExternalStatusSnapshotSchema.parse(r).reason==="observation-pending")) throw Error("external snapshot");
+        for (const watch of [client.watch, client.watchExternal]) for (let round = 0; round <= ${CONTROL_MAX_READERS}; round++) {
+          const abort = new AbortController();
+          const stream = await watch.withOptions({signal:abort.signal});
+          if (round % 3 !== 0 && (await stream.next()).value.machine!=="host-a") throw Error("baseline");
+          if (round % 3 === 2) {
+            const pending = stream.next().then(()=>"received",()=>"cancelled");
+            abort.abort();
+            if(await pending!=="cancelled") throw Error("pending read survived cancellation");
+          }
+          await stream.return();
+        }
       } finally { await client.close(); }
       console.log("control asset OK");
     `;
@@ -43,5 +52,6 @@ test("published control asset discovers IPC without provider binaries and stream
     expect({ out, err, code }).toEqual({ out: "control asset OK\n", err: "", code: 0 });
     for (let i = 0; i < 100 && p.subscribers; i++) await Bun.sleep(10);
     expect(p.subscribers).toBe(0);
-  } finally { p.close(); await owned.server.shutdown({ gracePeriodMs: 200 }); await owned.observability.close(); rmSync(root, { recursive: true, force: true }); }
+    expect(owned.external.subscribers).toBe(0);
+  } finally { p.close(); owned.external.close(); await owned.server.shutdown({ gracePeriodMs: 200 }); await owned.observability.close(); rmSync(root, { recursive: true, force: true }); }
 }, 15_000);

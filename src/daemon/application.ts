@@ -16,11 +16,16 @@ import { clearBootGuard } from "../util/bootGuard.ts";
 import { IS_DEV } from "../env.ts";
 import { log, setLogLevel } from "../util/log.ts";
 import type { MachineConfig } from "../types.ts";
+import { ExternalStatusObserver } from "../external/resident-observer.ts";
+import { ExternalStatusPublisher } from "../external/resident-publisher.ts";
+import { EXTERNAL_INTERVAL_MS } from "../external/resident-schema.ts";
 
 /** The daemon owns these resources, not the independently supervised provider writers. */
 export function createDaemonApplication(initial: MachineConfig) {
   const monitoring = new MonitoringPublisher();
   const publisher = new ControlPublisher(initial);
+  const external = new ExternalStatusPublisher(initial.rcPrefix);
+  const externalObserver = new ExternalStatusObserver(initial, external);
   const previous = new Map<string, Observed>();
   const machine = loadMachineConfig;
   const projection = defineManagedResource({ id: "projection",
@@ -29,9 +34,13 @@ export function createDaemonApplication(initial: MachineConfig) {
     close: () => { publisher.close(); monitoring.stop(); },
   });
   let closeAudit = async (): Promise<void> => {};
-  const controlOwner = defineManagedResource({ id: "control-owner", dependsOn: [projection],
+  const externalOwner = defineManagedResource({ id: "external-status",
+    start: () => ({ value: externalObserver }),
+    stopAdmission: () => external.close(), close: () => externalObserver.close(),
+  });
+  const controlOwner = defineManagedResource({ id: "control-owner", dependsOn: [projection, externalOwner],
     start: (ctx) => {
-      const owned = createControlServer(initial, ctx.use(projection), application.admission, machine);
+      const owned = createControlServer(initial, ctx.use(projection), application.admission, machine, external);
       closeAudit = async () => { await owned.observability.close(); };
       return { value: owned };
     },
@@ -55,7 +64,12 @@ export function createDaemonApplication(initial: MachineConfig) {
     onError: (error) => { publisher.unavailable("observation-failed"); log.warn({ msg: "session event pass failed", err: String(error) }); },
   });
   const freshness = createManagedSchedule({ id: "freshness", dependsOn: [projection.id], everyMs: 250,
-    overlap: { mode: "skip" }, run: () => publisher.expire() });
+    overlap: { mode: "skip" }, run: () => { publisher.expire(); external.expire(); } });
+  const externalObservation = createManagedSchedule({ id: "external-observation", dependsOn: [externalOwner.id],
+    everyMs: EXTERNAL_INTERVAL_MS, startAfterMs: 0, overlap: { mode: "skip" },
+    run: ({ signal }) => externalObserver.refresh(machine(), signal),
+    onError: (error) => { external.unavailable("invalid-response"); log.warn({ msg: "external observation failed", err: String(error) }); },
+  });
   const delivery = createManagedSchedule({ id: "delivery", everyMs: 3000, startAfterMs: 0, overlap: { mode: "skip" },
     run: async ({ signal }) => {
       const m = machine();
@@ -89,9 +103,9 @@ export function createDaemonApplication(initial: MachineConfig) {
     }, onError: (error) => log.warn({ msg: "config re-read / auto-update failed", err: String(error) }),
   });
   const application: ApplicationHandle = createApplication({ id: "ccmux-daemon",
-    resources: [projection, controlOwner, control, observation, freshness, delivery, healing],
+    resources: [projection, externalOwner, controlOwner, control, observation, externalObservation, freshness, delivery, healing],
     shutdown: { gracePeriodMs: 5000, forceTimeoutMs: 2000 },
     onResourceFailure: ({ resourceId, phase, error }) => log.error({ msg: "daemon resource failed", resourceId, phase, err: String(error) }),
   });
-  return { application, publisher, monitoring, schedules: { observation, freshness, delivery, healing } };
+  return { application, publisher, external, externalObserver, monitoring, schedules: { observation, externalObservation, freshness, delivery, healing } };
 }

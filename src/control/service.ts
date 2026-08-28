@@ -12,13 +12,15 @@ import { acceptControlMessage } from "./message.ts";
 import { interruptControlTurn, waitControlSession } from "./native.ts";
 import type { ControlPublisher } from "./publisher.ts";
 import { controlTarget } from "./target.ts";
+import type { ExternalStatusPublisher } from "../external/resident-publisher.ts";
 
-export function controlServices(m: MachineConfig, publisher: ControlPublisher, upstream?: ApplicationAdmission) {
+export function controlServices(m: MachineConfig, publisher: ControlPublisher, external: ExternalStatusPublisher, upstream?: ApplicationAdmission) {
   const mutations = createBoundedAdmission({ ...(upstream ? { upstream } : {}),
     policy: { global: { maxConcurrent: 8 }, perKey: { maxConcurrent: 1, maxKeys: 256 } } });
   const waits = createBoundedAdmission({ ...(upstream ? { upstream } : {}), policy: { global: { maxConcurrent: 16 } } });
   const service = implement(controlContract, {
     list: () => publisher.read(),
+    external: () => external.read(),
     get: ({ input }) => {
       controlTarget(m, input.target);
       const row = publisher.read().sessions.find((s) => s.identity.session === input.target.session && s.identity.threadId === input.target.threadId);
@@ -43,7 +45,10 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, u
       ({ signal }) => waitControlSession(m, publisher, ctx.input.target, ctx.input.timeoutMs, signal),
       { ...(ctx.signal ? { signal: ctx.signal } : {}), timeoutMs: 61_000 }).catch(controlRefusal),
   });
-  const events = implement(controlEventsContract, { watch: ({ signal }) => publisher.subscribe(signal) });
+  const events = implement(controlEventsContract, {
+    watch: ({ signal }) => publisher.subscribe(signal),
+    watchExternal: ({ signal }) => external.subscribe(signal),
+  });
   return { services: [service, events], service, mutations, waits };
 }
 

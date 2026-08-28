@@ -2,7 +2,7 @@ import { z } from "zod";
 import { connectCodexAppServer, type CodexAppRpc } from "../agent/codex/appServer.ts";
 import type { ExternalSession, MachineConfig } from "../types.ts";
 import { unknownTurnState, type ExternalTurnState } from "./turnSchema.ts";
-import { compareSemver } from "../util/version.ts";
+import { supportsNativeStatus } from "./native-list.ts";
 
 export const TURN_OBSERVATION_TTL_MS = 5_000;
 export const TURN_OBSERVATION_DEADLINE_MS = 2_000;
@@ -55,11 +55,7 @@ export async function observeExternalTurns(
     rpc = await connect(machine, { signal: abort.signal, maxMessageBytes: 2 * 1024 * 1024 });
     // Older servers may silently ignore unknown request fields. Never risk their JSONL
     // repair fallback: this floor was verified against the installed provider protocol.
-    const version = rpc.userAgent?.match(/^[^/]+\/(\d+\.\d+\.\d+)(-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\s|$)/);
-    const core = version?.[1];
-    const compared = core ? compareSemver(core, "0.144.6") : -1;
-    // A newer prerelease contains the floor's contract; a prerelease of the floor does not.
-    if (!core || compared < 0 || (compared === 0 && version?.[2])) {
+    if (!supportsNativeStatus(rpc.userAgent)) {
       return sessions.map((row) => ({ ...row, turnState: row.provider === "codex"
         ? unknownTurnState("codex-app-server", "unsupported-runtime")
         : unknownTurnState("unsupported", "unsupported-provider") }));

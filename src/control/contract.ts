@@ -1,4 +1,5 @@
 import { defineContract } from "stitchkit";
+import { ExternalStatusSnapshotSchema, EXTERNAL_MAX_BYTES } from "../external/resident-schema.ts";
 import {
   CONTROL_MAX_BYTES, ControlActionReceiptSchema, ControlInterruptSchema, ControlMessageReceiptSchema,
   ControlMessageSchema, ControlRowSchema, ControlSnapshotSchema, ControlTargetSchema,
@@ -8,6 +9,8 @@ import {
 export const controlContract = defineContract({ prefix: "control", scope: "local" }, {
   list: { method: "GET", path: "/sessions", desc: "Read the prepared managed-session snapshot",
     toolName: "sessions", expose: ["HTTP", "CLI", "MCP"], output: ControlSnapshotSchema },
+  external: { method: "GET", path: "/external", desc: "Read prepared external native thread states; does not adopt or start threads",
+    toolName: "external", expose: ["HTTP", "CLI", "MCP"], output: ExternalStatusSnapshotSchema },
   get: { method: "POST", path: "/session", desc: "Read one exact managed session",
     toolName: "session", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
     input: ControlTargetSchema, output: ControlRowSchema },
@@ -28,4 +31,6 @@ export const controlContract = defineContract({ prefix: "control", scope: "local
 export const controlEventsContract = defineContract({ prefix: "control-events", scope: "local" }, {
   watch: { method: "GET", path: "/", desc: "Subscribe to bounded absolute snapshots; reconnect establishes a fresh baseline",
     stream: { item: ControlSnapshotSchema, format: "ndjson", maxFrameBytes: CONTROL_MAX_BYTES + 1024, heartbeatMs: 2000 } },
+  watchExternal: { method: "GET", path: "/external", desc: "Subscribe to prepared external native status, including unavailable and stale outcomes",
+    stream: { item: ExternalStatusSnapshotSchema, format: "ndjson", maxFrameBytes: EXTERNAL_MAX_BYTES + 1024, heartbeatMs: 2000 } },
 });
