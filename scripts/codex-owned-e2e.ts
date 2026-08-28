@@ -11,6 +11,7 @@ import { loadLedger } from "../src/chat/store.ts";
 import { managedPeer, chatPrincipalKey, chatTargetKey } from "../src/chat/identity.ts";
 import { readCodexRuntime } from "../src/agent/codex/ownedRead.ts";
 import type { Session } from "../src/types.ts";
+import { shellJoin } from "../src/util/shellQuote.ts";
 
 const config = process.argv[2];
 if (config === undefined || !basename(dirname(config)).startsWith("ccmux-owned-probe-")) throw new Error("Pass the isolated probe's machine.json");
@@ -51,7 +52,9 @@ progress("baseline", [a, b].map((s) => ({ name: s.name, uuid: s.uuid, snapshot: 
 await Promise.all([command(["wait", a.name, "--timeout", "10"]), command(["wait", b.name, "--timeout", "10"])]);
 
 const token = `native-${crypto.randomUUID()}`;
-const request = `Authorized native runtime communication test ${token}. Use your injected ccmux command to send ${m.rcPrefix}:${b.name} --to-agent codex --to-thread ${b.uuid} this exact request: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by ccmux. This is a receipt test; do not message the owner or any other session.' When the B_TO_A receipt arrives, finish with RECEIVED and do not send another message. Do not change files or run unrelated work.`;
+const invocation = shellJoin([process.execPath, "--no-env-file", cli]);
+// Resumed test history can contain older source invocations. Pin this run's artifact explicitly.
+const request = `Authorized native runtime communication test ${token}. For this run invoke exactly ${invocation} msg ${m.rcPrefix}:${b.name} --to-agent codex --to-thread ${b.uuid} with this message body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by ccmux. This is a receipt test; do not message the owner or any other session.' Do not reuse CLI paths from earlier conversation history. When the B_TO_A receipt arrives, finish with RECEIVED and do not send another message. Do not change files or run unrelated work.`;
 await command(["msg", a.name, request]);
 const peerA = managedPeer(m.rcPrefix, a), peerB = managedPeer(m.rcPrefix, b);
 const roundTrip = () => {

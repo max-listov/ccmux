@@ -92,12 +92,27 @@ try {
   check(resumed.thread.id === session.uuid, "Provider resumed a different identity");
   progress("restart-resume", { threadId: session.uuid, beforePid: beforeRestart.providerPid, afterPid: current()?.providerPid });
 
+  // A resumed provider can retain stale mode guidance despite reporting Plan in turn_context.
+  // Establish a real Default -> Plan transition, rather than treating a repeated mode as a reset.
+  const baseline = z.object({ turn: z.object({ id: z.string() }) }).parse(await rpc.request("turn/start", {
+    threadId: session.uuid, clientUserMessageId: crypto.randomUUID(),
+    collaborationMode: { mode: "default", settings: { model: resumed.model, reasoning_effort: "low",
+      developer_instructions: "The current collaboration mode is Default. Reply MODE_BASELINE_READY only for this isolated test." } },
+    input: [{ type: "text", text: "Reply MODE_BASELINE_READY only.", text_elements: [] }],
+  }));
+  await until("known Default-mode baseline", () => current()?.turn?.id === baseline.turn.id
+    && current()?.turn?.status === "completed" && current()?.state === "idle");
   const response = z.object({ turn: z.object({ id: z.string() }) }).parse(await rpc.request("turn/start", {
     threadId: session.uuid, clientUserMessageId: crypto.randomUUID(),
-    collaborationMode: { mode: "plan", settings: { model: resumed.model, reasoning_effort: "low", developer_instructions: null } },
+    collaborationMode: { mode: "plan", settings: { model: resumed.model, reasoning_effort: "low",
+      developer_instructions: "The current collaboration mode is Plan. request_user_input is available. For this isolated boundary test, call request_user_input once with Red and Blue options, then wait for the user. Do not perform other work." } },
     input: [{ type: "text", text: "Use request_user_input to ask me to choose Red or Blue. This is a user-input boundary test. Do not decide for me or do other work.", text_elements: [] }],
   }));
-  await until("actual native input wait", () => current()?.state === "waiting-input");
+  await until("actual native input wait", () => {
+    const state = current();
+    check(state?.turn?.id !== response.turn.id || state.turn.status === "inProgress", "Native input-test turn ended without requesting input; inspect its actual provider response");
+    return state?.state === "waiting-input";
+  });
   await command(["msg", session.name, `${token} input gate: reply INPUT_GATE_DONE only.`, "--defer"]);
   await command(["wait", session.name, "--timeout", "2"], 2);
   check(current()?.turn?.id === response.turn.id && current()?.state === "waiting-input", "Input request was bypassed");

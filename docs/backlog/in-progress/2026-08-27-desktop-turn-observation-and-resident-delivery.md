@@ -10,7 +10,7 @@ related:
   - docs/backlog/done/2026-08-27-external-turn-state-independent-of-writer.md
   - docs/research/2026-08-28-codex-control-and-desktop-coexistence.md
   - docs/research/2026-08-28-happy-and-codexmonitor.md
-  - docs/backlog/in-progress/2026-08-28-owned-codex-app-server-runtime.md
+  - docs/backlog/done/2026-08-28-owned-codex-app-server-runtime.md
 ---
 
 ## Problem

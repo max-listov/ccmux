@@ -2,9 +2,10 @@
 title: Add opt-in native ownership of Codex App Server sessions
 description: Own native Codex App Server sessions directly in CCMux, with stable identity, resident native state and reliable control through the existing chat contracts.
 type: task
-status: in-progress
+status: done
 created: 2026-08-28
 updated: 2026-08-28
+completed: 2026-08-28 15:31 +07:00
 priority: high
 related:
   - docs/research/2026-08-28-happy-and-codexmonitor.md
@@ -62,7 +63,7 @@ an uncertain send is reconciled by immutable message identity, never blindly ret
 - [x] Demonstrate an interactive client and a CCMux reader controlling/observing the same owned
       runtime. Separately state whether the official Desktop client can attach with its native
       capabilities intact; history visibility alone is not live coexistence.
-- [ ] Add regression coverage, update architecture, run agreed gates and release from the
+- [x] Add regression coverage, update architecture, run agreed gates and release from the
       canonical checkout. For an authorized implementation release, include all owned runtime
       rollout, version/hash parity and post-rollout verification.
 
@@ -78,7 +79,7 @@ an uncertain send is reconciled by immutable message identity, never blindly ret
       measure bounded CPU/RSS and event delivery under load.
 - [x] The selected interactive client and CCMux share one actual writer. Existing official
       Desktop sessions are untouched and are not claimed as covered by this new-runtime test.
-- [ ] A released implementation includes complete task evidence, public-safe documentation,
+- [x] A released implementation includes complete task evidence, public-safe documentation,
       release/tag and fleet runtime verification; a design or pilot alone is not a release.
 
 ## Что сделано
@@ -116,5 +117,35 @@ an uncertain send is reconciled by immutable message identity, never blindly ret
       89.7→100.1 MB, prepared file at most 1,328 bytes. A native turn started/completed during
       this load; its completion reached the resident reader 71 ms after the independent native
       event. Reader count did not replace the provider or add per-reader RPC/process starts.
-- [ ] Publication and owned rollout: record the exact release/tag, published asset verification,
-      post-rollout native test and fleet version/hash agreement before closing this task.
+- [x] Publication: implementation `5c1f06bc399cfb3303d898354708cca4540af7a9`, release/tag
+      `v0.39.12` at `f60605c9d9cac7044612cf2d7cf8ee4848506cda`. Public release, CI and bundle
+      smoke passed in [run 33154356120](https://github.com/max-listov/ccmux/actions/runs/33154356120).
+      The downloaded `ccmux.js` SHA-256 matched `release.json`:
+      `cc39c15a67a649d123bd13c227323fc9bdf9c5d6c1d2b4e2424f8cb39bfabe20`.
+      The self-contained native reader matched its checksum file and exported version `0.39.12`:
+      `e286eaee57c627e69670e7b3d172383d38f4708ed90ec6cc2e71968a03e76e0e`.
+- [x] Owned rollout: all three resident daemons reported live `0.39.12`, and each installed
+      bundle matched the published SHA-256. All 33 pre-existing managed identities remained
+      running and unchanged; no agent restart was needed. Pre-existing held-composer and legacy
+      environment diagnostics were unchanged, not reported as newly healthy.
+- [x] Released-runtime E2E: the downloaded bundle resumed both original test UUIDs. A→B→A,
+      `wait`, busy/defer receipts, partial input, denied approval, interrupted pickup and input
+      waiting passed. After provider SIGKILL, the same UUID resumed; positive state expired in
+      51.9 ms. Interactive native input and the existing event feed shared one writer, and a
+      daemon restart preserved an active turn. The final round trip pinned the release artifact
+      for both agent senders, avoiding older source invocations retained in test history.
+- [x] Reproducible input probe: the resumed provider returned a text question while its metadata
+      already said Plan. The safety probe now establishes a known Default→Plan transition with
+      explicit mode instructions and fails immediately if the turn ends without a real input
+      request. The full corrected safety probe passed against the unchanged release bundle;
+      no synthetic status or automatic approval was substituted for provider evidence.
+- [x] Released-runtime load: 58,300 reads in 60.02 seconds, 2.14 seconds reader-process CPU,
+      RSS 91.7→99.3 MB, prepared snapshot at most 1,329 bytes and native completion delivery
+      102 ms after an independent event. The release ESM reader also returned exact live
+      identities directly. Final post-release gates again passed 739 tests, 3,028 assertions
+      and typecheck with zero failures.
+- [x] Qualification boundary: real native E2E used Codex CLI `0.147.0`; Linux CI passed.
+      One rollout host still has CLI `0.144.6`, below the documented native-mode minimum, so
+      admission there remains intentionally unavailable until that provider is upgraded.
+      Ordinary sessions remain supported. Provider upgrades, Happy deployment and takeover of
+      existing official Desktop sessions were not performed or claimed by this release.

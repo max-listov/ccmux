@@ -8,7 +8,7 @@ updated: 2026-08-28
 defrost: The maintainer explicitly requests evaluating adoption of Happy as a product rather than borrowing architecture patterns.
 related:
   - docs/research/2026-08-28-happy-and-codexmonitor.md
-  - docs/backlog/in-progress/2026-08-28-owned-codex-app-server-runtime.md
+  - docs/backlog/done/2026-08-28-owned-codex-app-server-runtime.md
 ---
 
 ## Why

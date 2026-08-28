@@ -9,7 +9,7 @@ related:
   - docs/research/2026-08-28-codex-control-and-desktop-coexistence.md
   - docs/research/2026-07-30-t3code-analysis-ideas.md
   - docs/backlog/icebox/2026-08-28-happy-controlled-adoption-pilot.md
-  - docs/backlog/in-progress/2026-08-28-owned-codex-app-server-runtime.md
+  - docs/backlog/done/2026-08-28-owned-codex-app-server-runtime.md
   - docs/backlog/in-progress/2026-08-27-desktop-turn-observation-and-resident-delivery.md
 ---
 
@@ -417,7 +417,7 @@ CodexMonitor и не доказал live attachment официального Des
 ## Записанные задачи
 
 - [Happy adoption pilot — замороженная альтернатива](../backlog/icebox/2026-08-28-happy-controlled-adoption-pilot.md).
-- [Opt-in owned native Codex App Server](../backlog/in-progress/2026-08-28-owned-codex-app-server-runtime.md).
+- [Opt-in owned native Codex App Server](../backlog/done/2026-08-28-owned-codex-app-server-runtime.md).
 - [Существующий Desktop observer](../backlog/in-progress/2026-08-27-desktop-turn-observation-and-resident-delivery.md)
   связан с этим исследованием; новая дублирующая задача не создавалась.
 
