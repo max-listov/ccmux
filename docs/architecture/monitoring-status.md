@@ -21,6 +21,10 @@ can prove a running session even where the caller cannot inspect tmux; missing u
 
 ## Native resident reader
 
+For pushed snapshots and exact-session commands, use the separate [local control API](control-plane.md).
+It consumes this same observation pass and preserves native approval/input distinctions. File-reader
+protocol, bounds and discovery below are unchanged.
+
 Import `readMonitoringStatus` from **ccmux/monitoring-reader** in a Bun application. Pin the
 package to a release tag and bundle this library into the consumer; no CLI or installation
 checkout is imported. GitHub releases also publish a self-contained `monitoring-reader.js`

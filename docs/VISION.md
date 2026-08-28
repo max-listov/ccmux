@@ -40,6 +40,12 @@ capabilities; Codex сохраняет свой TUI/config/approvals и provider
 reader без CLI-процесса на каждый poll, с ограниченными чтением, deadline и concurrency. Контракт — в
 [monitoring-status](architecture/monitoring-status.md).
 
+Resident control объединяет typed HTTP/CLI/tool API и bounded live snapshots на локальном Unix
+socket. Stitchkit управляет контрактом, transport и lifecycle ресурсов daemon; CCMux сохраняет
+session identity, журнал сообщений, provider adapters и restart policy. Контракт —
+[control-plane](architecture/control-plane.md). Это не замена provider harness и не подключение
+официального Desktop к чужому writer.
+
 1. **Сейчас**: Bun-версия боевая локально (паритет с прежней реализацией подтверждён аудитом),
    раскатка на серверы — по команде владельца.
 2. **Флот без рук**: CI + GitHub Releases → демоны сами подтягивают апдейты

@@ -70,6 +70,12 @@ poll. Releases also include a self-contained `monitoring-reader.js` ESM asset an
 See the [native monitoring contract](docs/architecture/monitoring-status.md) and
 [resident example](examples/monitoring-reader.ts).
 
+For live control, `ccmux control sessions` reads the prepared inventory and `ccmux control watch`
+streams bounded full snapshots. `ccmux/control-client` provides the same typed local Unix API
+for messages, exact native turn interruption and between-turn waits; the release includes a
+self-contained `control-client.js` and SHA-256 asset. Commands retain exact provider/machine/session
+identity and existing delivery gates. See the [resident control contract](docs/architecture/control-plane.md).
+
 ccmux-managed sessions and Codex Desktop tasks are separate coordination planes. Managed sessions
 use ccmux addresses, persistence, and wait state. Claude and Codex managed sessions use the ccmux
 chat ledger; delivery follows the selected provider/runtime boundary. Desktop tasks use the task tools and

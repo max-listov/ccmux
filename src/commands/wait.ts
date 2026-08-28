@@ -13,6 +13,7 @@ import { managedPeer, managedPeerKey } from "../chat/identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
 import { readOwnedCodexStatus } from "../agent/codex/ownedStatus.ts";
+import { pickPendingDelivery } from "../chat/pendingDelivery.ts";
 
 /**
  * `ccmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
@@ -112,8 +113,16 @@ function mailHold(m: MachineConfig, s: Session, blocking: ChatMessage[], nowMs: 
   }
 }
 
-function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessage[] {
+export function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessage[] {
   try {
+    if (isOwnedCodex(s)) {
+      if (!chatEnabledFor(s, m)) return [];
+      const key = managedPeerKey(managedPeer(m.rcPrefix, s));
+      // Reading inbox does not cancel daemon delivery. The delivery cursor, not the
+      // human/read cursor, decides whether another native turn is still due.
+      const pick = pickPendingDelivery(loadLedger(m), key, loadCursors(m).delivered[key] ?? 0, loadAckedIds(m), nowMs).pick;
+      return pick === null ? [] : [pick.msg];
+    }
     return mailBlocksSettle(
       unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map((u) => u.msg),
       { chatEnabled: chatEnabledFor(s, m), canReceiveChat: providerFor(s).inspectChatPane !== undefined, nowMs },

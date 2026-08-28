@@ -213,12 +213,13 @@ export function appendMessage(m: MachineConfig, msg: ChatMessage): void {
 
 /** Atomically admit an idempotent remote envelope across competing receiver processes. The lock
  * covers check+append, not merely line integrity. A crashed holder becomes reclaimable after 30s. */
-export async function appendMessageOnce(m: MachineConfig, msg: ChatMessage): Promise<boolean> {
+export async function appendMessageOnce(m: MachineConfig, msg: ChatMessage, signal?: AbortSignal): Promise<boolean> {
   const { ledger } = chatPaths(m);
   const lock = `${ledger}.receive-lock`;
   mkdirSync(dirname(ledger), { recursive: true });
   const deadline = Date.now() + 10_000;
   for (;;) {
+    signal?.throwIfAborted();
     try {
       mkdirSync(lock, { mode: 0o700 });
       break;
@@ -233,6 +234,7 @@ export async function appendMessageOnce(m: MachineConfig, msg: ChatMessage): Pro
     }
   }
   try {
+    signal?.throwIfAborted();
     if (loadLedger(m).some((item) => item?.id === msg.id)) return false;
     appendMessage(m, msg);
     return true;

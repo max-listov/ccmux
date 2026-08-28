@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Add a typed same-user Unix control API, generated CLI/tool proxy and bounded resident session
+  streams using Stitchkit. Release a self-contained `control-client.js` with SHA-256 verification.
+- Compose daemon observation, chat delivery, healing and control resources under one bounded
+  lifecycle; supervised conversations keep their identities and provider processes across restarts.
+- Keep exact identity, durable message deduplication and native approval/input/partial-composer
+  admission. Native waits follow delivery rather than inbox-read cursors; resident waits require
+  a fresh observation after their call begins.
+
 ## [0.39.12] — 2026-08-28
 
 own native Codex App Server sessions
