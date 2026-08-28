@@ -107,11 +107,30 @@ describe("independent native external turn evidence", () => {
   });
 
   test("unknown or older runtime never receives a potentially scanning list request", async () => {
-    for (const userAgent of [undefined, "custom", "Codex Desktop/0.140.0 (test)"]) {
+    for (const userAgent of [undefined, "custom", "Codex Desktop/0.140.0 (test)",
+      "Codex Desktop/0.140.0-alpha.8 (test)", "Codex Desktop/0.144.6-alpha.8 (test)",
+      "Codex Desktop/0.150.0invalid (test)", "Codex Desktop/0.150.0-.. (test)"]) {
       const result = await observeExternalTurns(machine, [row()], async () => ({
         userAgent, request: async () => { throw new Error("must not request"); }, close() {},
       }));
       expect(result[0]?.turnState.reason).toBe("unsupported-runtime");
+    }
+  });
+
+  test("newer prereleases and floor build metadata retain bounded native observation", async () => {
+    for (const userAgent of ["Codex Desktop/0.150.0-alpha.8 (test)",
+      "Codex Desktop/0.144.6+build.1 (test)", "codex/0.150.0-alpha.8+build.1"]) {
+      let requests = 0;
+      const result = await observeExternalTurns(machine, [row()], async () => ({
+        userAgent, request: async (method, params) => {
+          requests++;
+          expect(method).toBe("thread/list");
+          expect(params).toMatchObject({ useStateDbOnly: true });
+          return { data: [{ id: UUID, status: active }], nextCursor: null };
+        }, close() {},
+      }));
+      expect(requests).toBe(1);
+      expect(result[0]?.turnState.state).toBe("working");
     }
   });
 });

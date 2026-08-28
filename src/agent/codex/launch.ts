@@ -9,6 +9,8 @@ import { chatEnabledFor } from "../../config/chat.ts";
 import { fileSetDigest, ruleSetFiles, tomlTableDigest, type LaunchInput } from "../launchInputs.ts";
 import { sessionEnvRecipe } from "../sessionEnv.ts";
 import { log } from "../../util/log.ts";
+import { isOwnedCodex } from "./ownedPaths.ts";
+import { ownedCodexArgv } from "./ownedLaunch.ts";
 
 export const CODEX_LAUNCH_MARKER_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 
@@ -33,6 +35,7 @@ export function preflight(m: MachineConfig): void {
  * There is no `-n`/RC equivalent for Codex (no claude.ai Remote Control), so RC naming is Claude-only.
  */
 export function buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[] {
+  if (isOwnedCodex(s)) return ownedCodexArgv(s, m, cli);
   const bin = m.codexBin;
   if (!bin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
   const flags = UID === 0 ? stripDangerous(s.flags) : s.flags; // root guard (servers)

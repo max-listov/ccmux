@@ -10,13 +10,15 @@ import {
   promotePendingSession,
   removePendingSession,
 } from "../config/pendingSessions.ts";
-import { removeSessionIfGeneration } from "../config/sessions.ts";
+import { loadSessions, removeSessionIfGeneration } from "../config/sessions.ts";
 import { SessionSchema } from "../config/schema.ts";
 import { writeLifecycleBlock } from "../config/lifecycleBlocks.ts";
 import { promptInvocation } from "../env.ts";
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from "../chat/auth.ts";
 import { setStderrLogging } from "../util/log.ts";
 import { superviseReady } from "./run.ts";
+import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { OwnedCodexRuntimeExit, runOwnedCodexProcess } from "../agent/codex/ownedProcess.ts";
 
 const POLL_MS = 50;
 
@@ -37,6 +39,14 @@ async function block(generation: string, error: string): Promise<number> {
     // as an identity-scoped error side channel for a still-alive initiator.
     await removeSessionIfGeneration(m, pending.session.name, generation);
     await removePendingSession(m, generation);
+  } else {
+    // Admission may already have promoted the row. A later client/identity failure still needs
+    // a terminal block; silently dropping it here would let the daemon retry indefinitely.
+    const ready = loadSessions(m).find((session) => session.registrationGeneration === generation);
+    if (ready !== undefined) await writeLifecycleBlock(m, {
+      name: ready.name, agent: ready.agent, uuid: ready.uuid, generation, error,
+      at: new Date().toISOString(),
+    });
   }
   console.error(`ccmux: ${error}`);
   return 1;
@@ -54,6 +64,16 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
   setStderrLogging(false);
   const provider = getProvider("codex");
   const provisional = SessionSchema.parse({ ...pending.session, uuid: pending.generation });
+  if (isOwnedCodex(provisional)) {
+    if (pending.operation.kind !== "create") return block(generation, "App Server bootstrap requires a new conversation");
+    try {
+      await runOwnedCodexProcess(m, provisional, (uuid) => promotePendingSession(m, generation, uuid));
+      return 0;
+    } catch (error) {
+      if (error instanceof OwnedCodexRuntimeExit) return superviseReady(m, provisional.name, "codex");
+      return block(generation, `Native Codex bootstrap failed: ${String(error)}`);
+    }
+  }
   const env = provider.launchEnv(m, provisional);
   env[CODEX_LAUNCH_MARKER_ENV] = pending.marker;
   env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, provisional);

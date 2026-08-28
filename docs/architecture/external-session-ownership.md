@@ -4,7 +4,7 @@ description: Provider-neutral identity, advisory writer evidence and atomic Code
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # External session discovery and ownership
@@ -35,6 +35,11 @@ UUIDs. This exposes a pre-turn task whose rollout does not exist yet as storage 
 writer, without inventing cwd or origin. A stale lock filename without an OS holder is not a live
 item. `thread/list` loaded status and argv are enrichment only.
 
+Writer ancestry stops before a shared tmux server: its retained launch arguments can describe
+another pane's supervisor. A real `_run`/`_bootstrap` ancestor below that boundary remains managed.
+Desktop ancestry requires the application executable, not merely a provider binary located inside
+the application bundle. A standalone bundled App Server is still an App Server runtime.
+
 ## External turn observation
 
 `ccmux external --json` adds a required `turnState` object to every row. The human command has a
@@ -60,9 +65,11 @@ matching. Native `status`, not inclusion in the loaded set, is authoritative:
 | `notLoaded`, `systemError`, missing or unsupported status | `unknown` |
 
 Approval takes precedence if both waiting flags occur. Unknown active flags fail closed. Provider
-protocols were verified at versions 0.144.6 and 0.149.0; an absent/unrecognized initialize user agent
+protocols were verified at versions 0.144.6, 0.149.0 and 0.150.0-alpha.8; an absent/unrecognized initialize user agent
 or a version below 0.144.6 produces `unknown/unsupported-runtime` **without** a list request, because
 older servers could ignore the no-scan option. See the [provider status protocol](https://learn.chatgpt.com/docs/app-server).
+Newer prerelease versions satisfy the numeric contract floor; prereleases of 0.144.6 itself do
+not. Build metadata does not change the contract version.
 
 Each object carries `state`, `evidence`, `source`, `observedAt`, `expiresAt`, and a fixed `reason` code.
 `source` is `codex-app-server` or `unsupported`; no raw RPC errors, messages or paths are copied into

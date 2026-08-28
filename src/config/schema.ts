@@ -66,6 +66,9 @@ export const SessionSchema = z.object({
   // Which agent CLI backs this session. It is authoritative routing identity, so it is
   // required on every row and can never be inferred from history, cwd, or a default.
   agent: AgentKindSchema,
+  // Opt-in native Codex App Server; the terminal is a client of the same provider writer.
+  // Absent keeps the ordinary interactive provider launch.
+  runtime: z.enum(["tui", "app-server"]).optional(),
   // Per-session permission-mode OVERRIDE. Undefined → inherit the machine default
   // (MachineConfig.permissionMode). Set it to gate ONE session differently from the box
   // default — e.g. the box is bypassPermissions but a client-prod session stays "auto".
@@ -495,6 +498,10 @@ export const ChatCursorsSchema = z.object({
     // cannot hide a submitted turn without leaving the exact transcript barrier behind.
     ledgerIndex: z.number().int().nonnegative().nullable().default(null),
     conditional: z.boolean().default(false),
+    native: z.object({
+      phase: z.enum(["intent", "accepted"]),
+      turnId: z.string().min(1).max(256).nullable(),
+    }).strict().optional(),
   }).strict()).default({}),
   // Telegram mirror progress: ledger LENGTH mirrored to the bot (a BROADCAST sink — every message,
   // in order). Persisted so a restart resends only the un-mirrored backlog, never the whole history.

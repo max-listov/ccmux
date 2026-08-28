@@ -11,6 +11,8 @@ import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.
 import type { MachineConfig, ChatMessage, Session } from "../types.ts";
 import { managedPeer, managedPeerKey } from "../chat/identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
+import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { readOwnedCodexStatus } from "../agent/codex/ownedStatus.ts";
 
 /**
  * `ccmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
@@ -141,7 +143,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     console.error(`unknown session: ${name}`);
     return 1;
   }
-  if (!(await hasSession(m, name))) {
+  if (!(isOwnedCodex(s) && readOwnedCodexStatus(m, s).status === "live") && !(await hasSession(m, name))) {
     console.error(`${name} is not running — start it first: ccmux start ${name}`);
     return 1;
   }
@@ -154,7 +156,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     // Liveness is re-checked every pass, not once at the start: a session stopped mid-wait (a fleet
     // restart sweep, say) used to run to the deadline and then report "still working" about a
     // session that was not running at all.
-    if (await hasSession(m, name)) {
+    if ((isOwnedCodex(s) && readOwnedCodexStatus(m, s).status === "live") || await hasSession(m, name)) {
       missingSince = null;
     } else {
       // A restart makes the session absent for a few seconds (kill → relaunch), and `restart --all`
@@ -170,6 +172,29 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       continue;
     }
     const now = Date.now();
+    if (isOwnedCodex(s)) {
+      const latest = findSession(loadSessions(m), name);
+      if (latest?.uuid !== s.uuid || latest.agent !== s.agent) {
+        console.error(`${name}: session identity changed while waiting`);
+        return 2;
+      }
+      const native = readOwnedCodexStatus(m, s, now);
+      const pickup = loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))];
+      if (native.status === "live" && native.snapshot?.turn?.status === "failed") {
+        if (!o.quiet) console.error(`${name}: native turn failed`);
+        return 2;
+      }
+      if (native.status === "live" && native.snapshot?.state === "idle" && native.snapshot.turn?.status !== "inProgress"
+        && pickup === undefined && blockingInbound(m, s, now).length === 0) {
+        const status = native.snapshot.turn?.status;
+        if (status === "failed") { if (!o.quiet) console.error(`${name}: native turn failed`); return 2; }
+        if (!o.quiet) console.log(`${name}: ${status === "interrupted" ? SETTLED_TEXT["idle-after-interrupt"] : status === "completed" ? SETTLED_TEXT["turn-ended"] : SETTLED_TEXT["never-spoke"]}`);
+        return 0;
+      }
+      mailWhy = native.status === "live" ? native.snapshot?.state ?? "unknown" : `native runtime unavailable: ${native.reason}`;
+      await Bun.sleep(POLL_MS);
+      continue;
+    }
     const pane = await capturePaneStyled(m, name, 40);
     // Undelivered mail means the work has not STARTED, and an idle pane is therefore not an answer.
     // Without this the documented recipe raced itself: `msg` queues, the daemon delivers a beat

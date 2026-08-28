@@ -55,8 +55,11 @@ export async function observeExternalTurns(
     rpc = await connect(machine, { signal: abort.signal, maxMessageBytes: 2 * 1024 * 1024 });
     // Older servers may silently ignore unknown request fields. Never risk their JSONL
     // repair fallback: this floor was verified against the installed provider protocol.
-    const version = rpc.userAgent?.match(/^[^/]+\/(\d+\.\d+\.\d+)(?:\s|$)/)?.[1];
-    if (!version || compareSemver(version, "0.144.6") < 0) {
+    const version = rpc.userAgent?.match(/^[^/]+\/(\d+\.\d+\.\d+)(-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\s|$)/);
+    const core = version?.[1];
+    const compared = core ? compareSemver(core, "0.144.6") : -1;
+    // A newer prerelease contains the floor's contract; a prerelease of the floor does not.
+    if (!core || compared < 0 || (compared === 0 && version?.[2])) {
       return sessions.map((row) => ({ ...row, turnState: row.provider === "codex"
         ? unknownTurnState("codex-app-server", "unsupported-runtime")
         : unknownTurnState("unsupported", "unsupported-provider") }));

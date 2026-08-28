@@ -5,6 +5,7 @@ import { stripAnsi } from "../../tmux/tmux.ts";
 const WORKING_RE = /\bWorking\b[^\n]*(?:esc to interrupt|\d+s)/i;
 const WORKED_RE = /\bWorked for\b/i;
 const FOOTER_RE = /^\s*gpt-[^\n]+\s+·\s+.+$/m;
+const DRAFT_FOOTER_RE = /^\s*tab to queue message\s+\d+% context left\s*$/m;
 const CONTEXT_RE = /[\d.]+[kKMG]\/[\d.]+[kKMG] +\d+%|\d+%\s*context/i;
 const MENU_CONFIRM_RE = /Press enter to (?:continue|confirm)|Press enter to confirm or esc to go back/i;
 const MENU_OPTION_RE = /^\s*(?:›\s*)?\d+\.\s+\S/m;
@@ -31,7 +32,11 @@ function composerLine(styled: string): string | null {
   const lines = styled.split("\n");
   for (let i = lines.length - 1; i >= Math.max(0, lines.length - 40); i--) {
     const line = lines[i];
-    if (line !== undefined && /^\s*(?:\u001b\[[0-9;]*m)*›/.test(line)) return line;
+    if (line !== undefined && /^\s*(?:\u001b\[[0-9;]*m)*›/.test(line)) {
+      const tail = lines.slice(i);
+      const footer = tail.findIndex((text, index) => index > 0 && (FOOTER_RE.test(stripAnsi(text)) || DRAFT_FOOTER_RE.test(stripAnsi(text))));
+      return tail.slice(0, footer < 0 ? undefined : footer).join("\n");
+    }
   }
   return null;
 }
@@ -59,22 +64,32 @@ function liveWorking(plain: string): boolean {
 /** One classifier owns every Codex pane decision. Delivery is allowed only on the complete idle
  * composer shape measured from Codex CLI 0.147.0; every new or cropped frame fails closed. */
 export function inspectChatPane(styledPaneText: string): ChatPaneInspection {
+  return inspectInput(styledPaneText, true);
+}
+
+/** Native turn state is already authoritative. Only menus, typed bytes and known composer chrome
+ * are read from its client; a client-side background spinner is not a provider turn. */
+export function inspectNativeCodexInput(styledPaneText: string): ChatPaneInspection {
+  return inspectInput(styledPaneText, false);
+}
+
+function inspectInput(styledPaneText: string, inspectActivity: boolean): ChatPaneInspection {
   const plain = stripAnsi(styledPaneText);
   const prompt = menuTitle(plain);
   if (prompt !== null) return { state: "menu", reason: `recipient is at a selection menu (${prompt}) — injecting would choose for it` };
   const composer = composerLine(styledPaneText);
-  if (liveWorking(plain)) {
+  if (inspectActivity && liveWorking(plain)) {
     return composerOccupied(composer)
       ? { state: "queued-input", reason: "the recipient is working with queued input already in its composer — delivery waits rather than merging with it" }
       : { state: "working", reason: "the recipient is working right now — Codex delivery waits for its idle composer" };
   }
   if (plain.trim() === "") return { state: "not-drawn", reason: "the recipient's UI has not painted yet (starting or resuming)" };
 
+  if (composerOccupied(composer) && (FOOTER_RE.test(plain) || DRAFT_FOOTER_RE.test(plain))) {
+    return { state: "input-busy", reason: "that Codex pane has unsent text in its composer — delivery waits rather than appending to it" };
+  }
   if (composer === null || !FOOTER_RE.test(plain)) {
     return { state: "unknown", reason: "the Codex pane is drawn in an unknown shape — delivery is held until a proven idle composer appears" };
-  }
-  if (composerOccupied(composer)) {
-    return { state: "input-busy", reason: "that Codex pane has unsent text in its composer — delivery waits rather than appending to it" };
   }
   return { state: "deliverable", reason: "ready" };
 }

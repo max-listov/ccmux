@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { basename, isAbsolute } from "node:path";
 import { Glob } from "bun";
 import { z } from "zod";
 import { lastModel, parse, usedTokens } from "../agent/codex/transcript.ts";
@@ -91,7 +91,7 @@ export function isDedicatedCodexCommand(command: string, codexBin: string | unde
   }
 }
 
-function runtimeFor(
+export function codexWriterRuntime(
   inspection: CodexLockInspection,
   rows: ProcessSnapshot[] | null,
   holderThreadCounts: Map<number, number>,
@@ -123,7 +123,11 @@ function runtimeFor(
       reason: "one shared runtime holds writer locks for multiple threads",
     };
   }
-  const chain = processAncestors(rows, holder.pid);
+  const ancestors = processAncestors(rows, holder.pid);
+  // The shared tmux server retains the command that created its first pane. That command
+  // does not supervise every other pane hosted by the same server.
+  const tmuxIndex = ancestors.findIndex((item) => basename(item.command.trim().split(/\s+/, 1)[0] ?? "") === "tmux");
+  const chain = tmuxIndex < 0 ? ancestors : ancestors.slice(0, tmuxIndex);
   const commands = chain.map((item) => item.command.toLowerCase());
   const ownAncestors = new Set(processAncestors(rows, currentPid).map((item) => item.pid));
   let kind: WriterRuntime["kind"] = "unknown";
@@ -134,7 +138,7 @@ function runtimeFor(
   } else if (commands.some((command) => /(?:^|\s)_(?:run|bootstrap)\s/.test(command))) {
     kind = "managed";
     reason = "writer descends from a ccmux supervisor";
-  } else if (commands.some((command) => command.includes("chatgpt.app/") || command.includes("codex.app/"))) {
+  } else if (commands.some((command) => /(?:chatgpt|codex)\.app\/contents\/macos\//.test(command))) {
     kind = "desktop";
     reason = "writer descends from a desktop application";
   } else if (commands.some((command) => command.includes("visual studio code.app/") || command.includes("cursor.app/") || command.includes("extensionhost"))) {
@@ -198,7 +202,7 @@ export function discoverCodex(m: MachineConfig): ExternalSession[] {
     if (!inspection) continue;
     // A pre-turn lock file is inventory only while a real process holds it. Stale lock files vanish.
     if (!storedItem && inspection.evidence !== "observed") continue;
-    const writerRuntime = runtimeFor(inspection, rows, holderThreadCounts, process.pid, m.codexBin);
+    const writerRuntime = codexWriterRuntime(inspection, rows, holderThreadCounts, process.pid, m.codexBin);
     // A correlated pending bootstrap is already ccmux-owned even before registry promotion.
     if (writerRuntime?.kind === "managed") continue;
     const storage = storedItem ? "stored" : "missing";

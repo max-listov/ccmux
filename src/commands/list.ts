@@ -20,6 +20,8 @@ import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionSt
 import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
 import { lastSignOfLife } from "../events/observe.ts";
 import { paneWorkingSince } from "../events/paneActivity.ts";
+import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { ownedCodexView } from "../agent/codex/ownedView.ts";
 
 // Last pane scan per session — lets the TUI skip the `tmux capture-pane` FORK for cards that
 // aren't visible (off-screen state is invisible anyway; it refreshes the moment it scrolls in).
@@ -63,7 +65,8 @@ async function buildRow(
 ): Promise<ListRow> {
   const lastMessage = lastTranscriptMessage(s, m); // works running or stopped
   const activity = lastActivityMs(s, m);
-  if (startedAt === undefined) {
+  const native = isOwnedCodex(s) ? ownedCodexView(m, s) : null;
+  if (startedAt === undefined && native?.read.status !== "live") {
     scanCache.delete(s.name); // stopped → drop stale scan so a restart re-captures
     const block = readLifecycleBlockForSession(m, s);
     return {
@@ -89,7 +92,9 @@ async function buildRow(
   // last scan — one fewer fork per off-screen running session, every poll.
   const cached = scanCache.get(s.name);
   let scan: PaneScan;
-  if (shouldCapture || !cached) {
+  if (native !== null) {
+    scan = native.scan;
+  } else if (shouldCapture || !cached) {
     scan = provider.scanPane(await capturePane(m, s.name, 30));
     scanCache.set(s.name, scan);
   } else {
@@ -111,7 +116,7 @@ async function buildRow(
     endedOnAssistantText: assistantEndedCurrentTurn(lastMessage, activity, turnStartedMs),
     msSinceActivity: aliveMs === null ? null : nowSec * 1000 - aliveMs,
   });
-  const state: SessionState = resolveLiveState(scan.state, lifecycle, evidence);
+  const state: SessionState = native?.state ?? resolveLiveState(scan.state, lifecycle, evidence);
   let context = scan.context;
   let contextLabel = scan.contextLabel;
   const metrics = readMetrics(s.name);
@@ -126,24 +131,24 @@ async function buildRow(
       context = { text: contextLabel, usedTokens: used, limitTokens: null, percent: null };
     }
   }
-  const uptimeSeconds = Math.floor(nowSec - startedAt);
+  const uptimeSeconds = startedAt === undefined ? null : Math.floor(nowSec - startedAt);
   return {
     session: s,
     running: true,
     state,
     atPrompt: scan.atPrompt,
-    lifecycleError: null,
+    lifecycleError: native?.state === "blocked" ? `native status unavailable: ${native.read.reason ?? native.read.snapshot?.reason ?? "unknown"}` : null,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
     model: prettyModel(sessionModel(s, m)),
     contextLabel,
     context,
-    uptimeText: humanizeDuration(uptimeSeconds),
+    uptimeText: uptimeSeconds === null ? "—" : humanizeDuration(uptimeSeconds),
     // A stopped session is never "stale": it will pick everything up whenever it next starts.
     stale: staleReasons(readLaunchStamp(s.name), computeStamp(s, m, promptInvocation())),
-    turnStartedAt: turnStartedAt(state, lifecycle),
+    turnStartedAt: native === null ? turnStartedAt(state, lifecycle) : native.turnStartedAt,
     uptimeSeconds,
-    createdAt: new Date(startedAt * 1000).toISOString(),
+    createdAt: startedAt === undefined ? null : new Date(startedAt * 1000).toISOString(),
     lastMessage,
     lastActivityMs: activity,
   };

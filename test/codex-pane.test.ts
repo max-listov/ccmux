@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import frames from "./fixtures/codex-pane/v0.147.0.json";
-import { inspectChatPane, scanPane } from "../src/agent/codex/pane.ts";
+import { inspectChatPane, inspectNativeCodexInput, scanPane } from "../src/agent/codex/pane.ts";
 
 describe("Codex pane state machine from real 0.147.0 frame shapes", () => {
   test("only the structural idle composer is deliverable", () => {
@@ -22,6 +22,12 @@ describe("Codex pane state machine from real 0.147.0 frame shapes", () => {
     expect(inspectChatPane(frames.partial)).toMatchObject({ state: "input-busy" });
     expect(inspectChatPane(frames.partialWithDimCompletion)).toMatchObject({ state: "input-busy" });
     expect(scanPane(frames.partial)).toMatchObject({ ready: true, state: "idle" });
+  });
+
+  test("a multiline draft with an empty first line still occupies the native composer", () => {
+    const pane = "› \n  unsent second line\n\n  gpt-5.6 · /tmp/demo";
+    expect(inspectNativeCodexInput(pane).state).toBe("input-busy");
+    expect(inspectChatPane(pane).state).toBe("input-busy");
   });
 
   test("an anchored selection prompt is a menu, not generic idle", () => {

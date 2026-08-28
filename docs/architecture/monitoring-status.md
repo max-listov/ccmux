@@ -4,14 +4,20 @@ description: A bounded local snapshot from the daemon observation loop, with no 
 type: architecture
 status: active
 created: 2026-08-27
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # Monitoring status
 
 The daemon's existing session observation loop owns this projection. It captures each running
-managed pane once per pass, maintains lifecycle evidence, and atomically publishes a compact
+ordinary managed pane once per pass, maintains lifecycle evidence, and atomically publishes a compact
 snapshot. It is not another supervisor or mutable session registry.
+
+Opt-in [owned Codex App Server sessions](owned-codex-runtime.md) instead supply a prepared native
+snapshot from their existing session supervisor. The daemon does not capture their pane for turn
+state or create another provider observer. Native approval/input waits map to the existing `prompt`
+state here; the per-session native reader preserves their distinct states. A live native producer
+can prove a running session even where the caller cannot inspect tmux; missing uptime stays null.
 
 ## Native resident reader
 

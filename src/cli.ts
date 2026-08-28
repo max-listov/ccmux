@@ -3,6 +3,7 @@ import { VERSION } from "./util/version.ts";
 import { cmdList } from "./commands/list.ts";
 import { cmdStatus } from "./commands/status.ts";
 import { cmdNew } from "./commands/new.ts";
+import { cmdRuntime } from "./commands/runtime.ts";
 import { cmdRm } from "./commands/rm.ts";
 import { cmdRenew } from "./commands/renew.ts";
 import { retiredNotice } from "./commands/retired.ts";
@@ -75,6 +76,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     return 1;
   }
   switch (verb) {
+    case "runtime":
+      return cmdRuntime(rest[0], rest.slice(1));
     case "status":
       return cmdStatus(rest);
     case "list":
@@ -88,14 +91,18 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       const agent = agentIndex >= 0 ? (positionals[agentIndex + 1] ?? "") : undefined;
       const envIndex = positionals.indexOf("--env-file");
       const envFile = envIndex >= 0 ? positionals[envIndex + 1] : undefined;
+      const runtimeIndex = positionals.indexOf("--runtime");
+      const runtime = runtimeIndex >= 0 ? (positionals[runtimeIndex + 1] ?? "") : undefined;
       const consumed = new Set<number>();
       if (agentIndex >= 0) consumed.add(agentIndex).add(agentIndex + 1);
       if (envIndex >= 0) consumed.add(envIndex).add(envIndex + 1);
+      if (runtimeIndex >= 0) consumed.add(runtimeIndex).add(runtimeIndex + 1);
       const pos = positionals.filter((a, index) => a !== "--router" && !consumed.has(index));
       return cmdNew(pos[0], pos[1], flags, {
         router,
         ...(agent === undefined ? {} : { agent }),
         ...(envFile === undefined ? {} : { envFile }),
+        ...(runtime === undefined ? {} : { runtime }),
       });
     }
     case "rm":

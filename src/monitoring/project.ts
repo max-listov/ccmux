@@ -6,11 +6,14 @@ import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { lastSignOfLife, type Observed } from "../events/observe.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import type { MonitoringRow } from "./schema.ts";
+import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { ownedCodexView } from "../agent/codex/ownedView.ts";
 
 /** Reuses the observation loop's captured pane and process-local transcript metadata caches. */
 export function projectMonitoringRow(m: MachineConfig, s: Session, startedAt: number | undefined,
   pane: string | null, seen: Observed, now = Date.now()): MonitoringRow {
-  const running = startedAt !== undefined;
+  const native = isOwnedCodex(s) ? ownedCodexView(m, s, now) : null;
+  const running = startedAt !== undefined || native?.read.status === "live";
   const provider = providerFor(s);
   const scan = pane === null ? null : provider.scanPane(pane);
   const lifecycle = readLifecycle(s.name);
@@ -26,6 +29,8 @@ export function projectMonitoringRow(m: MachineConfig, s: Session, startedAt: nu
   });
   const blocked = readLifecycleBlockForSession(m, s) !== null;
   const state: MonitoringRow["state"] = blocked ? "blocked" : !running ? "stopped"
+    : native !== null ? native.read.status !== "live" || native.read.snapshot?.state === "unknown" ? "unknown"
+      : native.atPrompt !== null ? "prompt" : native.state
     : scan?.atPrompt !== null && scan?.atPrompt !== undefined ? "prompt"
     : scan === null || (!scan.ready && scan.state === "indeterminate") ? "unknown"
     : resolveLiveState(scan.state, lifecycle, evidence);
@@ -39,7 +44,7 @@ export function projectMonitoringRow(m: MachineConfig, s: Session, startedAt: nu
     contextPercent: running && pct !== null && pct >= 0 && pct <= 100 ? pct : null,
     uptimeSeconds: startedAt === undefined ? null : Math.max(0, Math.floor(now / 1000 - startedAt)),
     lastActivityAt: activity === null ? null : new Date(activity).toISOString(),
-    turnStartedAt: state === "working" && claimed !== null ? new Date(claimed).toISOString() : null,
+    turnStartedAt: native !== null ? native.turnStartedAt : state === "working" && claimed !== null ? new Date(claimed).toISOString() : null,
     observedAt: new Date(now).toISOString(),
   };
 }

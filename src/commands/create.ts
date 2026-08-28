@@ -14,6 +14,7 @@ import { clearLifecycleBlockIfGeneration, readLifecycleBlock } from "../config/l
 import { getProvider } from "../agent/index.ts";
 import { killSessionIfGeneration } from "../tmux/tmux.ts";
 import { startBootstrapSession, startSession } from "./lifecycle.ts";
+import { preflightOwnedCodex } from "../agent/codex/ownedLaunch.ts";
 
 export type CreateManagedInput = {
   name: string;
@@ -21,6 +22,7 @@ export type CreateManagedInput = {
   agent: AgentKind;
   flags: string[];
   router: boolean;
+  runtime?: string;
   /** Declared at creation so the session's very FIRST launch already runs the recipe it will keep —
    *  otherwise a session is born inheriting and has to be migrated the day it is made. */
   envFile?: string;
@@ -37,6 +39,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
     dir: input.dir,
     agent: input.agent,
     flags: input.flags,
+    ...(input.runtime === undefined ? {} : { runtime: input.runtime }),
     ...(input.router ? { promptModules: ["router"], chatEnabled: true } : {}),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
   });
@@ -147,6 +150,9 @@ export async function forkCodexThread(
 
 /** Shared transactional create path for CLI and TUI. */
 export async function createManagedSession(m: MachineConfig, input: CreateManagedInput): Promise<Session> {
+  const fields = sessionFields(input);
+  if (fields.runtime === "app-server" && fields.agent !== "codex") throw new Error("app-server runtime requires --agent codex");
+  if (fields.runtime === "app-server") preflightOwnedCodex(m, input.flags);
   getProvider(input.agent).preflight(m);
   if (findSession(loadSessions(m), input.name) || loadPendingSessions(m).some((item) => item.session.name === input.name)) {
     throw new Error(`'${input.name}' already exists`);

@@ -6,7 +6,8 @@ A single daemon per machine keeps a fleet of long-running agent sessions alive i
 it heals crashed ones, brings them back on reboot, and resumes the *same* conversation by a
 pinned uuid. Sessions are full interactive provider CLI processes (`claude` or `codex`) — ccmux
 supervises them, it does not reimplement them. Provider-specific features remain provider-specific:
-for example Claude has Remote Control/statusline, while managed Codex pane chat is not yet enabled.
+for example Claude has Remote Control/statusline, while Codex can opt into its native App Server
+for structured state and chat delivery.
 
 ```
 ┌─ daemon (launchd/systemd) ─ heals every 30s, self-updates ─┐
@@ -45,6 +46,8 @@ ccmux list                 # managed sessions + live status/uptime
 ccmux status --json        # bounded daemon snapshot; no per-reader transcript/tmux scan
 ccmux new cc-api ~/code/api   # create + start a session (returns after authoritative thread bind)
 ccmux new cc-review ~/code/api --agent codex   # provider is explicit
+ccmux new cc-native ~/code/api --agent codex --runtime app-server  # owned native runtime
+ccmux runtime cc-native --json   # exact native turn state, without a pane/history scan
 ccmux send cc-api '/compact'  # PRESS KEYS in a session (slash commands) — see msg for writing to an agent
 ccmux restart cc-api       # bounce it (survives killing the caller)
 ccmux restart --all        # bounce EVERY session, one at a time (TUI: R) — picks up new rules/MCP/release
@@ -68,13 +71,31 @@ See the [native monitoring contract](docs/architecture/monitoring-status.md) and
 [resident example](examples/monitoring-reader.ts).
 
 ccmux-managed sessions and Codex Desktop tasks are separate coordination planes. Managed sessions
-use ccmux addresses, persistence, and wait state. Claude managed sessions can use the ccmux chat
-ledger; managed Codex delivery is rejected until its pane behavior is calibrated. Desktop tasks use the task tools and
+use ccmux addresses, persistence, and wait state. Claude and Codex managed sessions use the ccmux
+chat ledger; delivery follows the selected provider/runtime boundary. Desktop tasks use the task tools and
 native task IDs exposed by the Desktop app. ccmux does not mirror the Desktop task ledger; sharing a
 cwd does not bridge the two planes. See [`docs/architecture/peer-routing.md`](docs/architecture/peer-routing.md).
 
 Attach to a session like any tmux pane: `tmux attach -t cc-api` (detach with `Ctrl-b d`), or
 press Enter on it in the TUI.
+
+### Owned native Codex runtime
+
+`new --agent codex --runtime app-server` runs one native Codex App Server under the existing
+supervisor. Its native terminal client attaches to the same writer with `resume --remote`.
+Codex CLI 0.147.0 or newer, Unix transport and native remote resume support are required; use
+your existing provider login and permission settings. Ordinary TUI sessions are unchanged.
+
+CCMux reads native working/idle/approval/input events, preserves the same conversation UUID
+across restart, and routes `msg`/`--defer`/`wait` through native turn boundaries. It never
+submits over a partial composer or approval dialog. A disconnected/expired observation is
+unknown, not idle. This does **not** attach the official Desktop app to the owned runtime or
+migrate its existing conversations.
+
+Resident consumers can import `readCodexRuntime` from `ccmux/codex-runtime-reader`, or use the
+release's self-contained `codex-runtime-reader.js` and SHA-256 asset. See the
+[ownership and read contract](docs/architecture/owned-codex-runtime.md) and
+[resident example](examples/codex-runtime-reader.ts).
 
 ### Adopt an external session
 
@@ -507,9 +528,9 @@ Opt-in messaging between managed sessions, so one agent can hand off to another 
   to other machines (including sends that never left). `--fleet` merges every machine's log into one
   time-ordered stream; `--json` for consumers.
 
-**Delivery.** Claude is the currently calibrated managed chat recipient; managed Codex targets fail
-explicitly until its pane adapter lands. For a deliverable target, the daemon push-delivers each
-message into the recipient's pane as its next turn,
+**Delivery.** Managed Claude and ordinary Codex sessions use their calibrated pane adapters.
+Owned App Server sessions use native `turn/start`, durable message intent and exact provider
+receipts. For a deliverable target, the daemon delivers each message as its next turn,
 tagged `[chat from ccmux/<provider>@<machine>:<session>#<thread-uuid>]` so the agent sees the exact
 source/provider/reply identity and treats it as a peer, not you. It **never injects while the
 recipient is at a selection menu** (that would pick an option it didn't choose) or while a human is

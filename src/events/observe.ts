@@ -8,6 +8,8 @@ import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { appendEvent, type EmitInput } from "./feed.ts";
 import { readPaneActivity, writePaneActivity } from "./paneActivity.ts";
+import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { ownedCodexView } from "../agent/codex/ownedView.ts";
 
 /**
  * The half of the feed the turn hook cannot write.
@@ -180,6 +182,12 @@ export function observe(
   lastPaneWorkingMs: number | null = null,
 ): Observed {
   if (!running) return { ...UNSEEN, running: false };
+  if (isOwnedCodex(s)) {
+    const native = ownedCodexView(m, s, nowMs);
+    return { ...UNSEEN, running: true, waitingAt: native.atPrompt,
+      blocked: native.read.status === "live" ? null : `native status unavailable: ${native.read.reason}`,
+      turnStartedMs: native.turnStartedAt === null ? null : Date.parse(native.turnStartedAt) };
+  }
   const provider = providerFor(s);
   const block = readLifecycleBlockForSession(m, s);
   const lifecycle = readLifecycle(s.name);
@@ -252,7 +260,7 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
     const isRunning = running.has(s.name);
     // Capture only what is running: a stopped session has no pane, and asking for one is a fork per
     // session per pass spent to be told so.
-    const pane = isRunning ? await observedPane(m, s.name).catch(() => null) : null;
+    const pane = isRunning && !isOwnedCodex(s) ? await observedPane(m, s.name).catch(() => null) : null;
     const prev = previous.get(s.name) ?? UNSEEN;
     const next = observe(m, s, isRunning, pane, nowMs, prev.paneWorkingMs ?? onDisk[s.name] ?? null);
     sample?.(m, s, running.get(s.name), pane, next);

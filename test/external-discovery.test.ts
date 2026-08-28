@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ExternalSessionSchema } from "../src/config/schema.ts";
 import { discoverOne } from "../src/external/discover.ts";
-import { codexOrigin, isDedicatedCodexCommand } from "../src/external/codex.ts";
+import { codexOrigin, codexWriterRuntime, isDedicatedCodexCommand } from "../src/external/codex.ts";
 import { externalSessionKey, managedSessionKey } from "../src/external/keys.ts";
 import { codexThreadLockPath, lockHeldByDescendant, parseLsofHolders } from "../src/external/codexLocks.ts";
 import { isDescendantProcess, parseProcessSnapshot } from "../src/external/processes.ts";
@@ -136,6 +136,25 @@ describe("writer lock evidence", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("shared tmux launch arguments do not make an unrelated pane managed", () => {
+    const rows = parseProcessSnapshot([
+      "  10     1    10 Mon Aug 10 12:00:00 2026 /opt/bin/tmux new-session bun /opt/ccmux.js _run agent-a",
+      "  20    10    20 Mon Aug 10 12:00:01 2026 /opt/codex app-server --listen unix://",
+      "  30    10    30 Mon Aug 10 12:00:02 2026 bun /opt/ccmux.js _run agent-b",
+      "  40    30    30 Mon Aug 10 12:00:03 2026 /opt/codex resume thread",
+      "  50    10    50 Mon Aug 10 12:00:04 2026 /Applications/ChatGPT.app/Contents/Resources/codex app-server --listen unix://",
+      "  60     1    60 Mon Aug 10 12:00:05 2026 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
+      "  70    60    60 Mon Aug 10 12:00:06 2026 /Applications/ChatGPT.app/Contents/Resources/codex app-server",
+    ].join("\n"));
+    const classify = (pid: number) => codexWriterRuntime({
+      evidence: "observed", path: lock, holders: [{ pid, command: "codex" }],
+    }, rows, new Map([[20, 1], [40, 1]]), 99, "/opt/codex");
+    expect(classify(20)?.kind).toBe("app-server");
+    expect(classify(40)?.kind).toBe("managed");
+    expect(classify(50)?.kind).toBe("app-server");
+    expect(classify(70)?.kind).toBe("desktop");
   });
 });
 

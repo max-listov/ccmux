@@ -24,6 +24,8 @@ import { writeChatHold, clearChatHold, readLifecycle } from "../agent/sessionSta
 import { chatTargetKey, managedPeer, managedPeerKey, principalLabel, targetLabel } from "./identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 import { deliverCodexAppMessage } from "./codexApp.ts";
+import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { deliverOwnedCodexPending } from "./ownedCodex.ts";
 
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
@@ -224,6 +226,15 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const provider = providerFor(s);
     const recipient = managedPeer(m.rcPrefix, s);
     const recipientKey = managedPeerKey(recipient);
+    if (isOwnedCodex(s)) {
+      try {
+        deliveries += await deliverOwnedCodexPending(m, s, ledger, cursors, acked,
+          recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND, now);
+      } catch (error) {
+        log.warn({ msg: "native managed chat held", name: s.name, error: String(error) });
+      }
+      continue;
+    }
     if (!provider.inspectChatPane) continue; // agent has no readiness detector → never inject (safe)
 
     const activePickup = cursors.pickups[recipientKey];

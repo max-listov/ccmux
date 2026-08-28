@@ -14,7 +14,9 @@ export function loadReadyRows(m: MachineConfig): Session[] {
     if (line === "" || line.startsWith("#")) continue;
     if (!line.startsWith("{")) throw new Error("bad sessions v2 line (expected JSON with explicit agent)");
     const value: unknown = JSON.parse(line);
-    out.push(SessionSchema.parse(value));
+    const session = SessionSchema.parse(value);
+    if (session.runtime === "app-server" && session.agent !== "codex") throw new Error("app-server runtime requires agent=codex");
+    out.push(session);
   }
   return out;
 }

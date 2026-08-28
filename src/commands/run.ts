@@ -12,6 +12,8 @@ import { computeStamp } from "../agent/launchStamp.ts";
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from "../chat/auth.ts";
 import { readLifecycleBlockForSession, writeLifecycleBlock } from "../config/lifecycleBlocks.ts";
 import { readLaunchStamp } from "../agent/sessionStatus.ts";
+import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { OwnedCodexRuntimeExit, runOwnedCodexProcess } from "../agent/codex/ownedProcess.ts";
 
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -118,6 +120,22 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
       return 1;
     }
     const provider = providerFor(s);
+    if (isOwnedCodex(s)) {
+      const started = Date.now();
+      try { await runOwnedCodexProcess(m, s); return 0; }
+      catch (error) {
+        if (error instanceof OwnedCodexRuntimeExit) {
+          backoff = Date.now() - started < FAST_FAIL_MS ? Math.min(backoff * 2, MAX_BACKOFF_MS) : MIN_BACKOFF_MS;
+          log.warn({ msg: "native provider exited; resuming pinned identity", name, backoffMs: backoff });
+          await Bun.sleep(backoff);
+          continue;
+        }
+        await writeLifecycleBlock(m, { name, agent: "codex", uuid: s.uuid,
+          ...(s.registrationGeneration === undefined ? {} : { generation: s.registrationGeneration }),
+          error: String(error), at: new Date().toISOString() });
+        return 1;
+      }
+    }
     const hf = provider.historyFile(s, m);
     const present = hf !== null && existsSync(hf); // re-checked every loop
     if (provider.id === "codex" && !present) {

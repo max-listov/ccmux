@@ -4,7 +4,7 @@ description: Persistent self-healing флот агентских сессий н
 type: vision
 status: active
 created: 2026-06-11
-updated: 2026-08-10
+updated: 2026-08-28
 ---
 
 # ccmux — куда идём
@@ -21,7 +21,10 @@ capabilities; Codex сохраняет свой TUI/config/approvals и provider
 - **Интерактивный CLI, не SDK** — сессии остаются на подписке пользователя и сохраняют
   provider-specific capabilities: Claude — RC/statusline, Codex — TUI/config/approvals/resume.
   Мы супервайзим, а не реимплементируем.
-- **Один provider runtime = один writer** — managed Codex остаётся обычным TUI под tmux. Для thread,
+- **Один provider runtime = один writer** — managed Codex поддерживает обычный TUI и opt-in
+  native App Server под существующим supervisor. В App Server режиме терминальный CLI — клиент
+  того же writer, статусы и управление идут по native protocol. Изоляция env сохраняется на
+  уровне каждой сессии. Решение: [owned native runtime](decisions/2026-08-28-owned-native-codex-runtime.md). Для thread,
   уже принадлежащего Codex App, ccmux подключается клиентом к существующему shared App Server и
   отправляет provider-native `turn/start`; второй runtime и второй writer не создаются.
 - **Агент-агностичность** — провайдер на агента (`src/agent/<id>/`), ядро говорит только
@@ -48,5 +51,6 @@ reader без CLI-процесса на каждый poll, с ограничен
 
 ## Что ccmux НЕ делает
 Не IDE-клиент, не замена tmux, не прокси model API. Не копирует native Desktop task bus и не
-объявляет App threads daemon-healed managed sessions. Не хостит процессы агентов сам, пока
-интерактивный CLI даёт больше (см. icebox: stream-json driver, defrost 2026-06-15).
+объявляет чужие App threads daemon-healed managed sessions. Не заменяет provider harness,
+inference transport или authentication собственной реализацией. Native App Server mode
+сохраняет интерактивный CLI как клиент и не обещает подключения официального Desktop.

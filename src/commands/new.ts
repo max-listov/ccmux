@@ -13,10 +13,10 @@ export async function cmdNew(
   name: string | undefined,
   dir: string | undefined,
   flags: string[],
-  opts: { router?: boolean; agent?: string; envFile?: string } = {},
+  opts: { router?: boolean; agent?: string; envFile?: string; runtime?: string } = {},
 ): Promise<number> {
   if (!name || !dir) {
-    console.log("usage: ccmux new <name> <dir> [--agent claude|codex] [--router] [--env-file <path>] [-- provider flags...]");
+    console.log("usage: ccmux new <name> <dir> [--agent claude|codex] [--runtime tui|app-server] [--router] [--env-file <path>] [-- provider flags...]");
     return 1;
   }
   if (name.includes("|")) {
@@ -34,7 +34,9 @@ export async function cmdNew(
     // has chat enabled. Just DATA (a module key + a bool), resolved to live code at launch.
     const router = opts.router === true;
     const agent = AgentKindSchema.parse(opts.agent ?? "claude");
-    const session = await createManagedSession(m, { name, dir: abs, agent, flags, router, ...(opts.envFile === undefined ? {} : { envFile: opts.envFile }) });
+    const session = await createManagedSession(m, { name, dir: abs, agent, flags, router,
+      ...(opts.runtime === undefined ? {} : { runtime: opts.runtime }),
+      ...(opts.envFile === undefined ? {} : { envFile: opts.envFile }) });
     log.info({ msg: "session registered", name, dir: abs, uuid: session.uuid });
     console.log(`added: ${JSON.stringify(session)}`);
   } catch (e) {

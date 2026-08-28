@@ -64,6 +64,10 @@ export async function cmdRenew(name: string | undefined, args: string[] = []): P
     console.log(`unknown session: ${name}`);
     return 1;
   }
+  if (s.agent === "codex" && s.runtime === "app-server") {
+    console.error("Codex assigns conversation identities itself; use new for a fresh managed session or restart to resume this identity.");
+    return 1;
+  }
   const historyFile = providerFor(s).historyFile(s, m);
   const present = historyFile !== null && existsSync(historyFile);
   const refusal = renewRefusal(name, historyFile, present, force);
@@ -85,4 +89,3 @@ export async function cmdRenew(name: string | undefined, args: string[] = []): P
   console.log(renewSummary(s, uuid));
   return 0;
 }
-

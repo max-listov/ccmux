@@ -6,6 +6,24 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in `new --agent codex --runtime app-server`: native process ownership, private Unix
+  transport, an attached native terminal client and deterministic resume of the provider UUID.
+- Native working/idle/approval/input state, bounded connection generations and event cursors,
+  `runtime <name> --json`, and a self-contained `codex-runtime-reader.js` release asset.
+- Managed chat through native turn operations with durable message intent, exact receipts,
+  fail-closed busy/composer/approval boundaries, deferred delivery and interruption-aware wait.
+
+### Fixed
+
+- Provider launcher crashes dispose the entire owned process group before resuming, preventing
+  orphaned native writers and inherited pipes from stranding supervision.
+- Shared external writers are classified at the correct terminal-multiplexer boundary;
+  supported native prerelease versions retain bounded turn-state observation.
+
+Existing TUI sessions and official Desktop-owned conversations are not migrated by this opt-in mode.
+
 ## [0.39.11] — 2026-08-27
 
 separate external turn state from writer ownership

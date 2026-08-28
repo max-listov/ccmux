@@ -9,7 +9,8 @@
   },
   "exports": {
     "./session-reader": "./src/lib.ts",
-    "./monitoring-reader": "./src/monitoring-reader.ts"
+    "./monitoring-reader": "./src/monitoring-reader.ts",
+    "./codex-runtime-reader": "./src/codex-runtime-reader.ts"
   },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
