@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.12] — 2026-08-28
+
+own native Codex App Server sessions
+
 ### Added
 
 - Opt-in `new --agent codex --runtime app-server`: native process ownership, private Unix
@@ -23,7 +27,6 @@ the GitHub Release with that section as the notes.
   supported native prerelease versions retain bounded turn-state observation.
 
 Existing TUI sessions and official Desktop-owned conversations are not migrated by this opt-in mode.
-
 ## [0.39.11] — 2026-08-27
 
 separate external turn state from writer ownership
