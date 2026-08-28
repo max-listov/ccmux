@@ -6,9 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.15] — 2026-08-28
+
+drain automatic updates before daemon restart
+
 - Fix automatic update shutdown: install and verify first, settle the healing run, then request
   normal daemon shutdown. The daemon no longer waits on the service manager restarting itself.
-
 ## [0.39.14] — 2026-08-28
 
 publish resident external native session status
