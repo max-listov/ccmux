@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.14] — 2026-08-28
+
+publish resident external native session status
+
 - Add daemon-owned external native status through `control external`, `control watch-external`
   and the typed control client. One bounded provider connection serves all readers; native
   events, snapshot reconciliation and five-second leases keep execution separate from availability.
@@ -14,7 +18,6 @@ the GitHub Release with that section as the notes.
 - Adopt Stitchkit 0.68.5 and use its configured HTTP adapter for resident control streams.
   Verify post-header cancellation, quiet pending reads and reusable Unix connection capacity
   without adding a consumer cancellation shim or changing session ownership.
-
 ## [0.39.13] — 2026-08-28
 
 add typed resident control and managed daemon lifecycle
