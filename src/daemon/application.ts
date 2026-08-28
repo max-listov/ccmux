@@ -97,7 +97,11 @@ export function createDaemonApplication(initial: MachineConfig) {
         signal.throwIfAborted();
         if (m.autoUpdate && Date.now() - lastUpdateCheck >= m.updateCheckInterval * 1000) {
           lastUpdateCheck = Date.now();
-          await autoUpdateOnce(m);
+          if (await autoUpdateOnce(m)) {
+            // The next event-loop turn follows this schedule's promise settlement. Signal the
+            // normal shutdown path; the boot unit restarts exit 143. Never wait for our own exit.
+            setTimeout(() => process.kill(process.pid, "SIGTERM"), 0);
+          }
         }
       } finally { nextEnsureAt = Date.now() + m.ensureInterval * 1000; }
     }, onError: (error) => log.warn({ msg: "config re-read / auto-update failed", err: String(error) }),

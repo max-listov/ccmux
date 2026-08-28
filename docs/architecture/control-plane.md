@@ -150,6 +150,12 @@ cleanup. SIGINT/SIGTERM retain exit codes 130/143 for boot-unit restart policy. 
 provider writers and tmux sessions are not application resources and survive daemon shutdown.
 Operation audit records contain action/outcome/duration, never payloads or capability headers.
 
+Automatic updates return a verified-installation outcome to the healing schedule. A subsequent
+event-loop turn requests the normal SIGTERM/exit-143 path, allowing that schedule to settle before
+drain; the existing boot unit starts the new artifact. The daemon never awaits a service-manager
+restart of itself. Manual CLI updates retain their ordinary service-manager restart. The bundled
+daemon regression in `test/daemon-update.test.ts` verifies install, clean shutdown and restart.
+
 Tests: `test/control.test.ts`, `test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
 and `test/bundle-selfcontained.test.ts`. Explicit provider E2E: run
 `scripts/codex-owned-runtime-probe.ts`, then `scripts/control-native-e2e.ts <isolated-config>`

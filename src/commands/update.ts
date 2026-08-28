@@ -208,7 +208,7 @@ export async function preflightBundle(path: string, expectedVersion: string): Pr
 /** Download the release bytes, verify sha256 + preflight BEFORE touching the live binary,
  *  then atomic-swap + bounce. Returns null on success, or an error string. Shared by
  *  manual + auto update. */
-async function downloadVerifyApply(m: MachineConfig, release: Release): Promise<string | null> {
+async function downloadVerifyApply(m: MachineConfig, release: Release, bounce = true): Promise<string | null> {
   let bytes: Uint8Array;
   try {
     const resp = await fetch(release.url);
@@ -227,19 +227,20 @@ async function downloadVerifyApply(m: MachineConfig, release: Release): Promise<
     rmSync(tmp, { force: true });
     return bad;
   }
-  await swapAndBounce(m, tmp, true);
+  await replaceBundle(tmp, APP_BUNDLE, true);
+  if (bounce) await restartBoot(m);
   return null;
 }
 
-/** Daemon auto-update tick: if releaseUrl has a NEWER version — or if the bundle we launch from has
- *  gone missing — pull+verify+apply (bounce — sessions survive). No-op when nothing newer AND the
- *  install is intact. File-logged; the bounce restarts the daemon.
+/** Daemon auto-update tick: verify/install and return whether a restart is needed.
+ *  Never await a service-manager restart from inside the daemon being stopped: its managed
+ *  schedule must settle before shutdown can drain. The caller requests normal process shutdown.
  *
  *  The missing-file arm is not a nicety. A running daemon serves from memory, so a deleted bundle
  *  changes nothing it can observe about itself while making it unable to ever start again; version
  *  equality then reads as "healthy" for as long as the process happens to live. */
-export async function autoUpdateOnce(m: MachineConfig): Promise<void> {
-  if (!m.releaseUrl) return;
+export async function autoUpdateOnce(m: MachineConfig): Promise<boolean> {
+  if (!m.releaseUrl) return false;
   const release = await fetchRelease(m.releaseUrl);
   // Written down whether or not it succeeded, and BEFORE acting on it. This is the only place in the
   // system that looks at "what should be running" from the machine itself, and a fleet view needs
@@ -248,18 +249,19 @@ export async function autoUpdateOnce(m: MachineConfig): Promise<void> {
   await recordReleaseCheck(m, typeof release === "string" ? null : release, new Date().toISOString());
   if (typeof release === "string") {
     log.warn({ msg: "auto-update check failed", err: release });
-    return;
+    return false;
   }
   const missing = !existsSync(APP_BUNDLE);
   if (!missing && compareSemver(VERSION, release.version) >= 0) {
     log.debug({ msg: "auto-update check: no newer release", local: VERSION, remote: release.version });
-    return;
+    return false;
   }
   if (missing) log.warn({ msg: "bundle missing from disk — restoring it", path: APP_BUNDLE, version: release.version });
   else log.info({ msg: "auto-update seen", from: VERSION, to: release.version });
-  const err = await downloadVerifyApply(m, release);
+  const err = await downloadVerifyApply(m, release, false);
   if (err) log.error({ msg: "auto-update failed", to: release.version, err });
-  else log.info({ msg: "auto-update applied — daemon bouncing onto new bundle", to: release.version });
+  else log.info({ msg: "auto-update applied — daemon restart requested", to: release.version });
+  return err === null;
 }
 
 /**

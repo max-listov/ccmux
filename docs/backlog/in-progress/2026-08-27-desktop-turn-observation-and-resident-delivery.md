@@ -77,7 +77,7 @@ not a substitute for a CCMux consumer contract.
       routing is not claimed; a resident consumer holds one connection rather than polling a CLI.
 - [x] Add regressions and real existing-thread verification for both runtime shapes; measure
       observer/reader costs without transcript rescans or CLI execution per refresh.
-- [ ] Update `docs/architecture/external-session-ownership.md` and the resident contract;
+- [x] Update `docs/architecture/external-session-ownership.md` and the resident contract;
       run gates, publish a patch from the canonical checkout and verify every owned runtime.
 
 ## State and delivery contract
@@ -100,11 +100,11 @@ do not close this task by substituting a controllable test runtime.
       with independent native observation, then completion/interruption/approval transitions.
 - [x] Endpoint absent, deadline and disconnect expire positive state and never report false idle.
 - [x] Resident consumer can stay fresh within 5-second TTL without running full inventory scans.
-- [ ] Document versioned contract and release evidence; preserve all user threads and sessions.
+- [x] Document versioned contract and release evidence; preserve all user threads and sessions.
 - [ ] A consumer using only the published CCMux contract observes the same exact existing thread
       identities and transitions on a local and remote host. One unavailable host cannot erase
       healthy-host observations; no native application tool is used as the delivery channel.
-- [ ] Record release/tag, artifact hashes and post-rollout runtime parity; a controlled test
+- [x] Record release/tag, artifact hashes and post-rollout runtime parity; a controlled test
       runtime alone cannot satisfy existing-Desktop acceptance.
 
 Priority: high. This blocks truthful live activity in downstream fleet interfaces.
@@ -380,6 +380,31 @@ The resident implementation now exists independently of the local Desktop attach
   establishes its first positive resident match after real turn start. This is not evidence that
   a missing row is idle. The successful retry tests actual execution rather than empty history.
 
-Publication/rollout evidence is recorded after the installed path is verified. The unperformed
-existing-local-Desktop and existing-thread approval/interruption acceptance remains open; a
-controlled test must not be substituted for it. No consumer rendering/deployment is claimed here.
+### Publication and installed verification
+
+- Implementation `5508d20`; release commit `09676c6e0a5ee6944d4f12692cd373f400704333`,
+  [v0.39.14](https://github.com/max-listov/ccmux/releases/tag/v0.39.14).
+  [Tag CI](https://github.com/max-listov/ccmux/actions/runs/33169420065): gate, smoke and release
+  all succeeded. All nine assets were published; every downloaded reader checksum matched.
+- Bundle SHA-256: `25ae656d6492c816ee54669d32d52ca4b551f20ff4708bd984e167d3781b66fa`.
+  Control client SHA-256: `5017c513e265ca3b56491e1bd965b1a46f2891f0d71f3496a33d3c343cbd114b`.
+  All three owned runtimes report 0.39.14 and the exact bundle hash.
+- The published control client completed 100 reads, an advancing resident stream and 33
+  abort/reconnect cycles on each runtime with reader-process creation prohibited. Read p95 under
+  100-way contention: 75, 114 and 107 ms. Existing remote states remained 2 working/4 idle/5 unknown;
+  local and third-host unknowns remained explicit. A real long-lived SSH CLI stream returned valid
+  baseline/update pairs on both remote hosts, preserving their distinct machine identities.
+- The opt-in installed E2E passed on 0.39.14: both test threads delivered working→idle through
+  10 stream frames; completion, interruption and consumer reconnect retained exact UUIDs. Both
+  were archived. The two empty threads from the initial failed probe were separately completed
+  and archived; a native loaded-list check confirmed zero retained test writers.
+- Managed identities (14 + 14 + 5) and all pre-existing pane PIDs (15 + 14 + 5) were unchanged.
+  An explicit 0.39.14 daemon restart on every host closed all nine resources cleanly and returned
+  ready; external provider sessions were not restarted. The earlier automatic upgrade exposed a
+  distinct self-restart deadlock, tracked and fixed in
+  `docs/backlog/in-progress/2026-08-28-self-update-without-restart-deadlock.md`; it is not an
+  observation transport failure.
+
+The unperformed existing-local-Desktop and existing-thread approval/interruption acceptance
+remains open; a controlled test must not be substituted for it. The local provider-supported
+attachment prerequisite is unchanged. No consumer rendering/deployment is claimed here.
