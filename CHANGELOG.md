@@ -6,12 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.18] — 2026-08-29
+
+make control service effects policy-compatible
+
 ### Fixed
 
 - Make revision-1 control-service effects valid declared-service authorization identifiers and
   keep descriptor, typed-client metadata and packaged JSON on one exact dot-delimited mapping.
   Packed Bun/Node consumers now verify the transport policy shape and descriptor-file parity.
-
 ## [0.39.17] — 2026-08-29
 
 publish declared service ingress and native stream adapter
