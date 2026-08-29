@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.22] — 2026-08-29
+
+expose the provider-owned Codex model catalog as a bounded control read
+
 ### Added
 
 - Expose the provider-owned Codex App Server `model/list` contract as a bounded read-only control
@@ -20,7 +24,6 @@ the GitHub Release with that section as the notes.
 - Fail the model-catalog read closed on provider errors, deadline, malformed or oversized pages
   instead of reporting a partial or substituted catalog; unknown identities are refused before any
   provider contact, and no credentials, paths, argv or machine configuration cross the response.
-
 ## [0.39.21] — 2026-08-29
 
 add managed collaboration policy
