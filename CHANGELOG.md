@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.19] — 2026-08-29
+
+bound managed creation and installed transports
+
 ### Fixed
 
 - Make idempotent managed Codex creation tolerate the provider's rollout publication boundary.
@@ -17,7 +21,6 @@ the GitHub Release with that section as the notes.
 - Bound local Unix RPC request, header and response bytes with one deadline through body completion
   and owned transport cleanup. Preserve version, refusal, command and no-fallback semantics using
   the public Stitchkit transport already shipped by CCMux.
-
 ## [0.39.18] — 2026-08-29
 
 make control service effects policy-compatible
