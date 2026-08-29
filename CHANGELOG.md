@@ -6,6 +6,21 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Expose the provider-owned Codex App Server `model/list` contract as a bounded read-only control
+  operation (`POST /control/models`, dot-form effect `model.read`, typed `models` client method).
+  A call forwards `cursor`, `limit` and `includeHidden` to the connected runtime of one exact
+  owned App Server session and returns one deterministic page plus the provider's `nextCursor`,
+  carrying only selector metadata: id, display name, description, default/hidden markers, input
+  modalities, service tiers and supported/default reasoning efforts.
+
+### Fixed
+
+- Fail the model-catalog read closed on provider errors, deadline, malformed or oversized pages
+  instead of reporting a partial or substituted catalog; unknown identities are refused before any
+  provider contact, and no credentials, paths, argv or machine configuration cross the response.
+
 ## [0.39.21] — 2026-08-29
 
 add managed collaboration policy

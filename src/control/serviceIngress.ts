@@ -83,6 +83,9 @@ export async function dispatchControlService(
       case "session.wait":
         result = await operations.wait(controlServiceInputs["session.wait"].parse(decoded), signal);
         break;
+      case "model.list":
+        result = await operations.models(controlServiceInputs["model.list"].parse(decoded), signal);
+        break;
     }
   } catch (error) {
     if (error instanceof AppError) throw error;

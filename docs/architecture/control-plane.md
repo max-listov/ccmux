@@ -65,6 +65,7 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `start` | POST `/control/start` | Start existing non-archived identity; no duplicate writer |
 | `interrupt` | POST `/control/interrupt` | Interrupt the exact working native turn |
 | `native` / `native-items` | POST `/control/native` | Bounded native-item snapshot after an optional cursor |
+| `models` | POST `/control/models` | Bounded provider-owned model catalog after an optional cursor |
 | `respond` / `respond-native` | POST `/control/native/respond` | Exact current approval/input response receipt |
 | `wait` | POST `/control/wait` | Between-turn outcome, timeout or unavailable |
 | `watch` | GET `/control-events/` | Absolute snapshots over typed NDJSON |
@@ -119,6 +120,18 @@ tool type/status, numeric usage, terminal state and approval/input prompts. Comm
 working directories, diffs, arbitrary tool payloads and credentials are not copied. The snapshot
 generation plus sequence is the cursor. A first read, runtime generation change or retained-window
 gap returns `reset=initial|generation|gap`; the included bounded snapshot is authoritative.
+
+`models` forwards the provider-owned App Server `model/list` contract for one exact owned
+App Server session target. The daemon dials the connected runtime itself; the caller supplies no
+model registry, credentials, paths, argv or executable configuration, and each read opens one
+deadline-bounded read-only provider connection under a global read admission. Inputs are
+`cursor` (opaque, ≤ 4 KiB), `limit` (1–64, default 64) and `includeHidden`; one call returns one
+page plus the provider's `nextCursor`, so pagination is deterministic and never loops the
+provider internally. Only selector metadata crosses the boundary: id, display name, description,
+default and hidden markers, input modalities, service tiers and supported/default reasoning
+efforts when present. Provider errors, deadline and malformed or oversized pages fail closed as
+`UNAVAILABLE`/`TIMEOUT` — no static or local catalog is ever substituted, and a model from a
+different runtime is never reported.
 
 `respond` addresses the exact target, projection generation and current request ID. Approval
 decisions are restricted to the provider-advertised simple choices: `accept`, `acceptForSession`,
@@ -254,7 +267,7 @@ virtual routing metadata and the descriptor. It grants nothing and opens no conn
 operator owns the private ingress socket path, node binding, credentials and exact
 service/revision/operation/effect grants.
 
-The descriptor declares nine operations and their byte/deadline budgets. A remote wait is capped
+The descriptor declares ten operations and their byte/deadline budgets. A remote wait is capped
 at 25 seconds inside a 30-second service deadline. Service delivery is never retried by the owner
 client. If transport delivery is unknown, the caller retains that uncertainty. An idempotent
 `session.create` may deliberately retry the same immutable `requestId`: the durable create receipt
@@ -263,13 +276,14 @@ idempotency identity or an authoritative read before any caller-selected retry.
 
 Revision 1 effects are stable dot-delimited authorization identifiers: `session.read`,
 `session.create`, `session.archive`, `message.send`, `session.start`, `turn.interrupt`,
-`native.read`, `native.respond` and `session.wait`. Operation metadata, the typed client contract
-and `descriptor.json` all read them from one owner mapping. Every service, operation and effect
-identifier satisfies `^[a-z0-9][a-z0-9._-]*$`; an operator must feed the descriptor unchanged into
-its declared-service policy parser. A valid activated revision pins its effects and requires a new
-revision for any later authorization-identity change. A descriptor that cannot pass the policy
-parser cannot have a valid activation or grant migration; correcting that descriptor retains its
-unactivated revision.
+`native.read`, `native.respond`, `session.wait` and `model.read`. Operation metadata, the typed
+client contract and `descriptor.json` all read them from one owner mapping. Every service,
+operation and effect identifier satisfies `^[a-z0-9][a-z0-9._-]*$`; an operator must feed the
+descriptor unchanged into its declared-service policy parser. A valid activated revision pins its
+effects and requires a new revision for any later authorization-identity change. `model.read` is
+additive: the nine original effect identifiers are unchanged, and an operator grants the tenth
+operation when it adopts it. A descriptor that cannot pass the policy parser cannot have a valid
+activation or grant migration; correcting that descriptor retains its unactivated revision.
 
 Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
 created with `createCcmuxNativeStreamProfile(<absolute standard ccmux executable>)`. The standard
@@ -307,7 +321,9 @@ provider credential, arbitrary executable, shell text or consumer-owned parser c
   16 framed items per connection. Frames are capped at 512 KiB + 1 KiB, heartbeats every 2 seconds.
   Unix transport applies physical socket backpressure; no cumulative lifetime cap on a stream.
 - Mutations: 8 concurrent globally, 1 per target, at most 256 active target keys, no queue.
-  Waits: 16 concurrent, deadline at most 60 seconds. Body/request cap: 64 KiB; client response
+  Waits: 16 concurrent, deadline at most 60 seconds. Provider model reads: 4 concurrent with a
+  5-second deadline; one page holds at most 64 models and the declared-service response budget is
+  256 KiB. Body/request cap: 64 KiB; client response
   header cap: 16 KiB; shared unary response cap: 1 MiB + 1 KiB to accommodate external snapshots.
   Managed snapshot bounds remain 512 KiB. Client header deadline at most 65 seconds.
 - Mutation caller budgets are 60 seconds (create), 15 seconds (message/start/archive), and 10 seconds
@@ -339,13 +355,14 @@ drain; the existing boot unit starts the new artifact. The daemon never awaits a
 restart of itself. Manual CLI updates retain their ordinary service-manager restart. The bundled
 daemon regression in `test/daemon-update.test.ts` verifies install, clean shutdown and restart.
 
-Tests: `test/control.test.ts`, `test/control-service.test.ts`, `test/control-lifecycle.test.ts`, `test/codex-owned-connection.test.ts`,
+Tests: `test/control.test.ts`, `test/control-service.test.ts`, `test/control-lifecycle.test.ts`, `test/control-models.test.ts`, `test/codex-owned-connection.test.ts`,
 `test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
 and `test/bundle-selfcontained.test.ts`. `scripts/verify-control-service-client.ts` installs the
 fresh tarball outside the checkout and runs Bun, Node, NodeNext and bundler gates. Explicit provider E2E: run
 `scripts/codex-owned-runtime-probe.ts`, then
 `scripts/codex-control-lifecycle-probe.ts <isolated-config>`,
-`scripts/control-native-e2e.ts <isolated-config>` and the native safety/recovery probes. These spend
-provider usage and only target isolated test sessions. Rollback to the preceding
+`scripts/control-native-e2e.ts <isolated-config>`, `scripts/control-models-e2e.ts` and the native
+safety/recovery probes. These spend
+provider usage and only target isolated test sessions; the model-catalog probe is read-only. Rollback to the preceding
 native-runtime-capable release removes the new control API
 without changing conversation UUIDs, chat storage or ordinary CLI behavior.

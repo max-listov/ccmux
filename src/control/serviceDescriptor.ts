@@ -11,6 +11,8 @@ import {
   ControlInterruptSchema,
   ControlMessageReceiptSchema,
   ControlMessageSchema,
+  ControlModelCatalogSchema,
+  ControlModelsReadSchema,
   ControlNativeReadSchema,
   ControlNativeResponseReceiptSchema,
   ControlNativeResponseSchema,
@@ -39,6 +41,7 @@ export const ControlServiceOperationSchema = z.enum([
   "native.read",
   "native.respond",
   "session.wait",
+  "model.list",
 ]);
 export type ControlServiceOperation = z.infer<typeof ControlServiceOperationSchema>;
 
@@ -52,6 +55,7 @@ export const ControlServiceEffectSchema = z.enum([
   "native.read",
   "native.respond",
   "session.wait",
+  "model.read",
 ]).refine((effect) => /^[a-z0-9][a-z0-9._-]*$/.test(effect), "invalid service effect identifier");
 export type ControlServiceEffect = z.infer<typeof ControlServiceEffectSchema>;
 
@@ -65,6 +69,7 @@ export const controlServiceEffects = {
   "native.read": "native.read",
   "native.respond": "native.respond",
   "session.wait": "session.wait",
+  "model.list": "model.read",
 } satisfies Record<ControlServiceOperation, ControlServiceEffect>;
 
 const ControlServiceLimitsSchema = z
@@ -118,6 +123,7 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
     { id: "native.read", effect: controlServiceEffects["native.read"], limits: { requestBytes: 8192, responseBytes: CONTROL_MAX_BYTES + 4096, timeoutMs: 5000 } },
     { id: "native.respond", effect: controlServiceEffects["native.respond"], limits: { requestBytes: 64 * 1024, responseBytes: 8192, timeoutMs: 10_000 } },
     { id: "session.wait", effect: controlServiceEffects["session.wait"], limits: { requestBytes: 8192, responseBytes: 64 * 1024, timeoutMs: 30_000 } },
+    { id: "model.list", effect: controlServiceEffects["model.list"], limits: { requestBytes: 4096, responseBytes: 256 * 1024, timeoutMs: 10_000 } },
   ],
 });
 
@@ -168,6 +174,7 @@ export const controlServiceInputs = {
   "native.read": ControlNativeReadSchema,
   "native.respond": ControlNativeResponseSchema,
   "session.wait": ControlServiceWaitSchema,
+  "model.list": ControlModelsReadSchema,
 };
 
 export const controlServiceOutputs = {
@@ -180,6 +187,7 @@ export const controlServiceOutputs = {
   "native.read": ControlNativeSnapshotSchema,
   "native.respond": ControlNativeResponseReceiptSchema,
   "session.wait": ControlWaitResultSchema,
+  "model.list": ControlModelCatalogSchema,
 };
 
 function serviceReply<T>(result: z.ZodType<T>) {
@@ -205,6 +213,7 @@ export const ccmuxControlServiceContract = defineContract(
     native: { method: "POST", path: "/native.read", desc: "Read bounded native items after a cursor", input: ControlNativeReadSchema, output: serviceReply(ControlNativeSnapshotSchema), idempotent: true, meta: { effect: controlServiceEffects["native.read"] } },
     respond: { method: "POST", path: "/native.respond", desc: "Answer one exact current native request", input: ControlNativeResponseSchema, output: serviceReply(ControlNativeResponseReceiptSchema), idempotent: true, meta: { effect: controlServiceEffects["native.respond"] } },
     wait: { method: "POST", path: "/session.wait", desc: "Wait for a managed native session between turns", input: ControlServiceWaitSchema, output: serviceReply(ControlWaitResultSchema), idempotent: true, timeout: 30_000, meta: { effect: controlServiceEffects["session.wait"] } },
+    models: { method: "POST", path: "/model.list", desc: "Read the connected App Server model catalog after an optional cursor", input: ControlModelsReadSchema, output: serviceReply(ControlModelCatalogSchema), idempotent: true, timeout: 10_000, meta: { effect: controlServiceEffects["model.list"] } },
   },
 );
 

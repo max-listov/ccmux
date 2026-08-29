@@ -82,6 +82,35 @@ export const ControlNativeResponseReceiptSchema = z.object({
   operationId: z.uuid(), requestId: z.string(), outcome: z.enum(["submitted", "uncertain"]),
 }).strict();
 export type ControlNativeResponseReceipt = z.infer<typeof ControlNativeResponseReceiptSchema>;
+export const CONTROL_MODELS_MAX_PAGE = 64;
+export const ControlModelsReadSchema = ControlTargetSchema.extend({
+  cursor: z.string().min(1).max(4_096).nullable().default(null),
+  limit: z.number().int().min(1).max(CONTROL_MODELS_MAX_PAGE).default(CONTROL_MODELS_MAX_PAGE),
+  includeHidden: z.boolean().default(false),
+}).strict();
+export type ControlModelsRead = z.input<typeof ControlModelsReadSchema>;
+export const ControlModelSchema = z.object({
+  id: z.string().min(1).max(256),
+  displayName: z.string().min(1).max(256),
+  description: z.string().max(2_048),
+  hidden: z.boolean(),
+  isDefault: z.boolean(),
+  inputModalities: z.array(z.string().min(1).max(64)).max(16),
+  serviceTiers: z.array(z.object({
+    id: z.string().min(1).max(64), name: z.string().min(1).max(256), description: z.string().max(1_024),
+  }).strict()).max(16),
+  supportedReasoningEfforts: z.array(z.object({
+    reasoningEffort: z.string().min(1).max(64), description: z.string().max(1_024),
+  }).strict()).max(32).optional(),
+  defaultReasoningEffort: z.string().min(1).max(64).optional(),
+}).strict();
+export type ControlModel = z.infer<typeof ControlModelSchema>;
+export const ControlModelCatalogSchema = z.object({
+  target: ManagedPeerSchema,
+  data: z.array(ControlModelSchema).max(CONTROL_MODELS_MAX_PAGE),
+  nextCursor: z.string().max(4_096).nullable(),
+}).strict();
+export type ControlModelCatalog = z.infer<typeof ControlModelCatalogSchema>;
 export const ControlWaitSchema = ControlTargetSchema.extend({ timeoutMs: z.number().int().min(1).max(60_000).default(30_000) }).strict();
 export const ControlWaitResultSchema = z.object({
   target: ManagedPeerSchema, outcome: z.enum(["idle", "completed", "interrupted", "failed", "timeout", "unavailable"]),

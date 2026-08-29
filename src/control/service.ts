@@ -11,7 +11,7 @@ import { createControlServiceIngress } from "./serviceIngress.ts";
 
 export function controlServices(m: MachineConfig, publisher: ControlPublisher, external: ExternalStatusPublisher,
   upstream?: ApplicationAdmission, dependencies: ControlOperationDependencies = {}) {
-  const { operations, mutations, waits } = createControlOperations(m, publisher, external, upstream, dependencies);
+  const { operations, mutations, waits, reads } = createControlOperations(m, publisher, external, upstream, dependencies);
   const service = implement(controlContract, {
     list: operations.list,
     external: operations.external,
@@ -22,6 +22,7 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
     start: ({ input, signal }) => operations.start(input, signal),
     interrupt: ({ input, signal }) => operations.interrupt(input, signal),
     native: ({ input }) => operations.native(input),
+    models: ({ input, signal }) => operations.models(input, signal),
     respond: ({ input, signal }) => operations.respond(input, signal),
     wait: ({ input, signal }) => operations.wait(input, signal),
   });
@@ -31,5 +32,5 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
     watchNative: ({ input, signal }) => subscribeControlNative(m, publisher, input.target, input.cursor, signal),
   });
   const ingress = createControlServiceIngress(operations);
-  return { services: [service, events, ingress], service, ingress, mutations, waits };
+  return { services: [service, events, ingress], service, ingress, mutations, waits, reads };
 }

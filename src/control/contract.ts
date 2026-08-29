@@ -1,9 +1,9 @@
 import { defineContract } from "stitchkit";
 import { ExternalStatusSnapshotSchema, EXTERNAL_MAX_BYTES } from "../external/resident-schema.ts";
 import {
-  CONTROL_MAX_BYTES, ControlActionReceiptSchema, ControlInterruptSchema, ControlMessageReceiptSchema,
-  ControlArchiveReceiptSchema, ControlCreateReceiptSchema, ControlCreateSchema,
-  ControlMessageSchema, ControlNativeReadSchema, ControlNativeResponseReceiptSchema, ControlNativeResponseSchema,
+  CONTROL_MAX_BYTES, ControlActionReceiptSchema, ControlArchiveReceiptSchema, ControlCreateReceiptSchema, ControlCreateSchema,
+  ControlInterruptSchema, ControlMessageReceiptSchema, ControlMessageSchema, ControlModelCatalogSchema,
+  ControlModelsReadSchema, ControlNativeReadSchema, ControlNativeResponseReceiptSchema, ControlNativeResponseSchema,
   ControlNativeSnapshotSchema, ControlRowSchema, ControlSnapshotSchema, ControlTargetSchema,
   ControlWaitResultSchema, ControlWaitSchema,
 } from "./schema.ts";
@@ -34,6 +34,9 @@ export const controlContract = defineContract({ prefix: "control", scope: "local
   native: { method: "POST", path: "/native", desc: "Read a bounded native item snapshot after an optional cursor",
     toolName: "native_items", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
     input: ControlNativeReadSchema, output: ControlNativeSnapshotSchema },
+  models: { method: "POST", path: "/models", desc: "Read the connected App Server model catalog after an optional cursor; provider-owned and read-only",
+    toolName: "models", expose: ["HTTP", "CLI", "MCP"], idempotent: true, timeout: 10_000,
+    input: ControlModelsReadSchema, output: ControlModelCatalogSchema },
   respond: { method: "POST", path: "/native/respond", desc: "Answer one exact current native approval or input request",
     toolName: "respond_native", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
     input: ControlNativeResponseSchema, output: ControlNativeResponseReceiptSchema },

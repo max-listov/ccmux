@@ -15,6 +15,7 @@ import { acceptControlMessage } from "./message.ts";
 import { interruptControlTurn, waitControlSession } from "./native.ts";
 import { archiveControlSession, createControlSession } from "./lifecycle.ts";
 import { readControlNative, respondControlNative } from "./nativeFeed.ts";
+import { readControlModels } from "./models.ts";
 import { controlTarget } from "./target.ts";
 import type { ControlPublisher } from "./publisher.ts";
 import type { ExternalStatusPublisher } from "../external/resident-publisher.ts";
@@ -23,6 +24,7 @@ import {
   ControlCreateSchema,
   ControlInterruptSchema,
   ControlMessageSchema,
+  ControlModelsReadSchema,
   ControlNativeReadSchema,
   ControlNativeResponseSchema,
   ControlTargetSchema,
@@ -35,9 +37,13 @@ type MessageInput = z.output<typeof ControlMessageSchema>;
 type InterruptInput = z.output<typeof ControlInterruptSchema>;
 type NativeReadInput = z.output<typeof ControlNativeReadSchema>;
 type NativeResponseInput = z.output<typeof ControlNativeResponseSchema>;
+type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
 type WaitInput = z.output<typeof ControlWaitSchema>;
 
 const detachedSignal = (): AbortSignal => new AbortController().signal;
+
+/** Caller budget for one bounded provider model-catalog read. */
+export const CONTROL_MODELS_CALL_BUDGET_MS = 5_000;
 
 export type ControlOperationDependencies = {
   createManagedSession?: (machine: MachineConfig, input: CreateManagedInput) => Promise<Session>;
@@ -61,6 +67,10 @@ export function createControlOperations(
   const waits = createBoundedAdmission({
     ...(upstream ? { upstream } : {}),
     policy: { global: { maxConcurrent: 16 } },
+  });
+  const reads = createBoundedAdmission({
+    ...(upstream ? { upstream } : {}),
+    policy: { global: { maxConcurrent: 4 } },
   });
   const operations = {
     list: () => publisher.read(),
@@ -133,6 +143,14 @@ export function createControlOperations(
         )
         .catch(controlRefusal),
     native: (input: NativeReadInput) => readControlNative(m, input.target, input.cursor),
+    models: (input: ModelsReadInput, signal?: AbortSignal) =>
+      reads
+        .run(
+          undefined,
+          ({ signal: admitted }) => readControlModels(m, input, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: CONTROL_MODELS_CALL_BUDGET_MS },
+        )
+        .catch(controlRefusal),
     respond: (input: NativeResponseInput, signal?: AbortSignal) =>
       mutations
         .run(
@@ -151,7 +169,7 @@ export function createControlOperations(
         )
         .catch(controlRefusal),
   };
-  return { operations, mutations, waits };
+  return { operations, mutations, waits, reads };
 }
 
 export type ControlOperations = ReturnType<typeof createControlOperations>["operations"];
