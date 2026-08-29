@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.21] — 2026-08-29
+
+add managed collaboration policy
+
 ### Added
 
 - Let an immutable host launch recipe select an installed Codex collaboration-mode preset for
@@ -17,7 +21,6 @@ the GitHub Release with that section as the notes.
 - Probe the installed provider's collaboration-mode catalog before persisting a turn pickup or
   starting a turn. Unsupported policies fail closed without a false pending request, while
   recipe-less/default sessions keep their existing behavior.
-
 ## [0.39.20] — 2026-08-29
 
 add server-owned launch recipes
