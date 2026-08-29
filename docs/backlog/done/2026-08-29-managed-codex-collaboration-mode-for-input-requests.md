@@ -2,9 +2,10 @@
 title: Managed Codex collaboration mode for input requests
 description: Let a trusted managed-session policy enable native request_user_input without caller-authored flags or prompts.
 type: task
-status: in-progress
+status: done
 created: 2026-08-29
 updated: 2026-08-29
+completed: 2026-08-29 15:58 +0700
 priority: P1
 related:
   - docs/architecture/control-plane.md
@@ -49,7 +50,7 @@ change the provider mode and would create a false approval/input path.
 - [x] Wrong generation, request ID, kind, question IDs and duplicate changed payload refuse.
 - [x] Daemon/provider restart preserves the selected collaboration mode and same native identity.
 - [x] Default-policy sessions retain current behavior and receive no implicit mode change.
-- [ ] Full gate, exact-SHA CI, patch release and owned-runtime rollout are green.
+- [x] Full gate, exact-SHA CI, patch release and owned-runtime rollout are green.
 
 ## Evidence
 
@@ -74,3 +75,8 @@ serialization or pending-request projection.
 - A real isolated managed session produced and answered native input twice. Wrong generation,
   request, kind, question IDs and changed idempotency payloads refused. Provider and daemon restart
   retained one thread identity, recipe digest and Plan policy before the second round-trip.
+- Exact-SHA CI run `33244165089` passed on implementation commit
+  `61a4c531c6f003a651d1af06fc10251cea5b4c06`. Release/tag `v0.39.21` points to
+  `5f2b5c1c1713b77409cf648699b20eaa7ac9dc05`; tag CI run `33244283954` published the release.
+  Every owned runtime reports `0.39.21` and the exact released bundle SHA-256
+  `788c24cbe39555e2798c290aa08a5460dda5f9540fc568f839f69db704f08fce`.

@@ -2,9 +2,10 @@
 title: Server-owned launch recipes for managed control sessions
 description: Let trusted control callers select an immutable host-defined Codex launch policy without sending paths, commands, credentials, or secret values.
 type: task
-status: in-progress
+status: done
 created: 2026-08-29
 updated: 2026-08-29
+completed: 2026-08-29 15:58 +0700
 priority: P1
 related:
   - docs/architecture/control-plane.md
@@ -39,7 +40,7 @@ policies. Sending an env-file path, executable, shell fragment or credential thr
 - [x] Prove a default create, a generic external-provider recipe, secret non-disclosure, same-id
       retry, unknown/changed fail-closed behavior, restart reconciliation and the existing native,
       message, wait, approval/input, interrupt and archive surfaces.
-- [ ] Pass the full local gate and exact-SHA CI, publish the next patch and verify every owned
+- [x] Pass the full local gate and exact-SHA CI, publish the next patch and verify every owned
       runtime on the released version and artifact hash.
 
 ## Что сделано
@@ -52,6 +53,10 @@ policies. Sending an env-file path, executable, shell fragment or credential thr
 - The isolated host-recipe path kept its secret-like fixture out of the request, receipt, status,
   native projection, service log and provider argv. Same-request, provider-restart and daemon-restart
   retries retained one identity and digest; unknown, edited and removed definitions failed closed.
+- The recipe implementation shipped in `v0.39.20` and the complete combined owner surface shipped
+  in `v0.39.21` at `5f2b5c1c1713b77409cf648699b20eaa7ac9dc05`. Tag CI run `33244283954`
+  published the release. Every owned runtime reports `0.39.21` and the exact released bundle
+  SHA-256 `788c24cbe39555e2798c290aa08a5460dda5f9540fc568f839f69db704f08fce`.
 
 ## Boundary
 
