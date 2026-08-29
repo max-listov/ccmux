@@ -2,9 +2,10 @@
 title: Read the Codex model catalog through the control service
 description: Expose the provider-owned Codex App Server model/list response as a bounded typed control read.
 type: task
-status: in-progress
+status: done
 created: 2026-08-29
 updated: 2026-08-29
+completed: 2026-08-29 17:43 +0700
 priority: high
 ---
 
@@ -39,9 +40,11 @@ existing revision-1 descriptor, with typed methods on both published clients.
 - [x] A real connected App Server returns its current catalog through the published client, with no
       credentials, paths, argv or private machine configuration in the response.
 - [x] The operation is available from the normal installation and the public package artifact.
-- [ ] Full checks and a published patch release are green. Full checks are green (see
-      `## Что сделано`); the patch release itself happens on the maintainer's explicit command and
-      closes this item (evidence: version, tag, artifact sha256, owned-runtime rollout).
+- [x] Full checks and a published patch release are green. Patch release **v0.39.22** published
+      2026-08-29T10:38:24Z from commit `ef8bc461d5c3105880848e0ef3d892160a6fcd96` (tag `v0.39.22`):
+      both CI runs (main + tag) succeeded, the release carries the atomic manifest+bundle pair
+      (manifest sha256 `3593727e…` = actual `ccmux.js` sha256) plus reader/control/service-client
+      assets and `install.sh`; fleet self-update verified live on all owned runtimes.
 
 ## Boundaries
 
@@ -88,3 +91,13 @@ catalog projection and must fail closed when this read is unavailable.
 
 Release note: implementation and every pre-release gate are complete; the remaining acceptance
 item is the published patch release itself, reserved for the maintainer's explicit command.
+
+## Что сделано в релизе
+
+- [x] Release v0.39.22 (`ef8bc46…`, tag `v0.39.22`) published via CI (gate → build → publish,
+      runs `33248235677`/`33248235772` both green); manifest `release.json` sha256 matches the
+      published `ccmux.js` byte-for-byte.
+- [x] Rollout verified on owned runtimes: local `m5`, `prod` (ML-PROD) and `dev` (ML-DEV) all
+      report `release.current = latest = 0.39.22` with `ok: true`, daemons active after
+      self-update; `ccmux control --help` lists the new `models` command from the installed
+      bundle.
