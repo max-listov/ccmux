@@ -71,7 +71,7 @@ try {
     if (!receipt.archived || calls !== 1) throw new Error('typed reply failed');
     const launchRecipe = LaunchRecipeReferenceSchema.parse({id:'provider-a',revision:'r1'});
     const recipeMetadata = LaunchRecipeMetadataSchema.parse({
-      ...launchRecipe,digest:'a'.repeat(64),capabilities:['external-provider','responses'],
+      ...launchRecipe,digest:'a'.repeat(64),capabilities:['external-provider','responses'],collaborationMode:'plan',
     });
     let createPayload = '';
     const creator = createCcmuxControlServiceClient(async (_url, init) => {
@@ -82,7 +82,8 @@ try {
       }});
     });
     const created = await creator.create({requestId:'11111111-1111-4111-8111-111111111111',name:'agent-a',workspace:'/work',flags:[],launchRecipe});
-    if (created.launchRecipe?.digest !== recipeMetadata.digest || createPayload.includes('fixture-secret'))
+    if (created.launchRecipe?.digest !== recipeMetadata.digest || created.launchRecipe.collaborationMode !== 'plan' ||
+      createPayload.includes('fixture-secret') || createPayload.includes('collaborationMode'))
       throw new Error('safe recipe contract failed');
     if (ccmuxControlServiceComposition.descriptor !== ccmuxControlServiceDescriptor ||
         !ControlServiceDescriptorSchema.safeParse(ccmuxControlServiceDescriptor).success) throw new Error('descriptor failed');

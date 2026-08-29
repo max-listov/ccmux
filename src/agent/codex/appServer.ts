@@ -1,6 +1,8 @@
 import { join } from "node:path";
 import { z } from "zod";
-import type { MachineConfig } from "../../types.ts";
+import { AppError } from "stitchkit";
+import type { CodexCollaborationMode, MachineConfig, Session } from "../../types.ts";
+import { log } from "../../util/log.ts";
 import { connectCodexSocket } from "./socket.ts";
 import type { CodexAppRpc, CodexRpcOptions } from "./rpc.ts";
 export type { CodexAppRpc } from "./rpc.ts";
@@ -27,6 +29,63 @@ export const ThreadSchema = z.object({
 }).passthrough();
 
 export type CodexAppThread = z.infer<typeof ThreadSchema>;
+export const CodexAppThreadContextSchema = z.object({
+  thread: ThreadSchema,
+  model: z.string().min(1).optional(),
+  reasoningEffort: z.string().nullable().optional(),
+}).passthrough();
+export type CodexAppThreadContext = z.infer<typeof CodexAppThreadContextSchema>;
+
+const CollaborationModePresetSchema = z.object({
+  name: z.string(),
+  mode: z.enum(["default", "plan"]).nullable(),
+  model: z.string().min(1).nullable(),
+  reasoning_effort: z.string().nullable().optional(),
+}).passthrough();
+
+export type CodexAppTurnPolicy = {
+  collaborationMode: {
+    mode: CodexCollaborationMode;
+    settings: { model: string; reasoning_effort: string | null; developer_instructions: null };
+  };
+};
+
+function collaborationUnavailable(session: Session, reason: string): never {
+  log.error({ msg: "managed collaboration policy is unavailable", name: session.name,
+    recipeId: session.launchRecipe?.id ?? null, mode: session.launchRecipe?.collaborationMode ?? null, reason });
+  throw new AppError("COLLABORATION_MODE_UNAVAILABLE", "Managed collaboration policy is unavailable", 409);
+}
+
+/** Resolve the installed provider preset before accepting a turn. The caller cannot supply model,
+ * effort or instructions: those values come from the loaded thread and provider catalog. */
+export async function prepareManagedCodexTurn(
+  rpc: CodexAppRpc,
+  session: Session,
+  context: CodexAppThreadContext,
+): Promise<CodexAppTurnPolicy | undefined> {
+  const mode = session.launchRecipe?.collaborationMode;
+  if (mode === undefined) return undefined;
+  let presets: z.infer<typeof CollaborationModePresetSchema>[];
+  try {
+    const response = z.object({ data: z.array(CollaborationModePresetSchema) }).parse(
+      await rpc.request("collaborationMode/list", {}),
+    );
+    presets = response.data;
+  } catch (error) {
+    return collaborationUnavailable(session, `provider capability probe failed: ${String(error)}`);
+  }
+  const preset = presets.find((candidate) => candidate.mode === mode);
+  if (preset === undefined) collaborationUnavailable(session, `installed provider does not advertise ${mode}`);
+  const model = preset.model ?? context.model;
+  if (model === undefined) collaborationUnavailable(session, "loaded thread did not report a model");
+  return { collaborationMode: { mode, settings: {
+    model,
+    reasoning_effort: preset.reasoning_effort === undefined
+      ? context.reasoningEffort ?? null
+      : preset.reasoning_effort,
+    developer_instructions: null,
+  } } };
+}
 export function connectCodexAppServer(m: MachineConfig, options: CodexRpcOptions = {}): Promise<CodexAppRpc> {
   if (!m.codexHome) return Promise.reject(new Error("Codex home is not configured"));
   return connectCodexSocket(join(m.codexHome, "app-server-control", "app-server-control.sock"), options);
@@ -49,16 +108,23 @@ export function appThreadHoldReason(thread: CodexAppThread): string | null {
 }
 
 export async function resumeCodexAppThread(rpc: CodexAppRpc, threadId: string): Promise<CodexAppThread> {
-  const response = z.object({ thread: ThreadSchema }).passthrough().parse(await rpc.request("thread/resume", { threadId }));
-  if (response.thread.id !== threadId) throw new Error("Codex App Server resumed a different thread identity");
+  const response = await resumeCodexAppThreadContext(rpc, threadId);
   return response.thread;
 }
 
-export async function startCodexAppTurn(rpc: CodexAppRpc, threadId: string, messageId: string, text: string): Promise<string> {
+export async function resumeCodexAppThreadContext(rpc: CodexAppRpc, threadId: string): Promise<CodexAppThreadContext> {
+  const response = CodexAppThreadContextSchema.parse(await rpc.request("thread/resume", { threadId }));
+  if (response.thread.id !== threadId) throw new Error("Codex App Server resumed a different thread identity");
+  return response;
+}
+
+export async function startCodexAppTurn(rpc: CodexAppRpc, threadId: string, messageId: string, text: string,
+  policy?: CodexAppTurnPolicy): Promise<string> {
   const response = z.object({ turn: z.object({ id: z.string().min(1) }).passthrough() }).parse(await rpc.request("turn/start", {
     threadId,
     clientUserMessageId: messageId,
     input: [{ type: "text", text, text_elements: [] }],
+    ...(policy ?? {}),
   }));
   return response.turn.id;
 }

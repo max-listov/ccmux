@@ -34,6 +34,9 @@ export const AgentKindSchema = z.enum(["claude", "codex"]);
 export const LaunchRecipeIdSchema = z.string().min(1).max(128).regex(/^[a-z][a-z0-9._-]*$/);
 export const LaunchRecipeRevisionSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 export const LaunchRecipeCapabilitySchema = z.string().min(1).max(128).regex(/^[a-z][a-z0-9._-]*$/);
+/** Native provider collaboration modes that a host recipe may pin. The public caller never sends
+ * the mode or its settings; it selects only the immutable recipe reference. */
+export const CodexCollaborationModeSchema = z.enum(["default", "plan"]);
 export const LaunchRecipeReferenceSchema = z.object({
   id: LaunchRecipeIdSchema,
   revision: LaunchRecipeRevisionSchema,
@@ -41,6 +44,7 @@ export const LaunchRecipeReferenceSchema = z.object({
 export const LaunchRecipeMetadataSchema = LaunchRecipeReferenceSchema.extend({
   digest: z.string().regex(/^[0-9a-f]{64}$/),
   capabilities: z.array(LaunchRecipeCapabilitySchema).max(32),
+  collaborationMode: CodexCollaborationModeSchema.optional(),
 }).strict();
 
 /** Private host configuration. Values stay on the execution host; only LaunchRecipeMetadata is
@@ -52,6 +56,9 @@ export const MachineLaunchRecipeSchema = z.object({
   flags: z.array(z.string().min(1).max(4_096)).max(32).default([]),
   environment: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)).max(32).default([]),
   capabilities: z.array(LaunchRecipeCapabilitySchema).max(32).default([]),
+  /** Select the provider's installed preset on every turn. Model, effort and built-in instructions
+   * are resolved from the provider; the recipe stores no caller-authored prompt. */
+  collaborationMode: CodexCollaborationModeSchema.optional(),
 }).strict();
 
 /**

@@ -33,6 +33,7 @@ function configured(root: string) {
     ],
     environment: ["MODEL_SERVICE_TOKEN"],
     capabilities: ["responses", "external-provider"],
+    collaborationMode: "plan" as const,
   };
   return {
     envFile,
@@ -52,7 +53,7 @@ test("public create accepts only a safe immutable recipe reference", () => {
   expect(ControlCreateSchema.parse(safe).launchRecipe).toEqual({ id: "provider-a", revision: "r1" });
   for (const extra of [
     { envFile: "/tmp/private.env" }, { executable: "/bin/codex" }, { shell: "echo no" },
-    { environment: { MODEL_SERVICE_TOKEN: FIXTURE_SECRET } },
+    { environment: { MODEL_SERVICE_TOKEN: FIXTURE_SECRET } }, { collaborationMode: "plan" },
   ]) expect(() => ControlCreateSchema.parse({ ...safe, launchRecipe: { ...safe.launchRecipe, ...extra } })).toThrow();
 });
 
@@ -63,7 +64,7 @@ test("host recipe reuses flags and envFile without putting secret values in publ
     const resolved = resolveControlLaunchRecipe(f.machine, root, { id: "provider-a", revision: "r1" }, []);
     expect(resolved.envFile).toBe(f.envFile);
     expect(resolved.launchRecipe).toMatchObject({ id: "provider-a", revision: "r1",
-      capabilities: ["external-provider", "responses"] });
+      capabilities: ["external-provider", "responses"], collaborationMode: "plan" });
     expect(resolved.launchRecipe?.digest).toHaveLength(64);
     const session = makeSession({ name: "agent-a", dir: root, agent: "codex", runtime: "app-server",
       flags: resolved.flags, envFile: resolved.envFile, launchRecipe: resolved.launchRecipe });
@@ -117,6 +118,13 @@ test("recipe create is one-writer idempotent and rejects unknown, removed or cha
       ...f.definition, flags: [...f.definition.flags, "-c", 'model="changed"'],
     } } });
     await expect(createControlSession(changed, input, new AbortController().signal, create))
+      .rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+    expect(calls).toBe(1);
+
+    const modeChanged = makeMachine({ ...f.machine, launchRecipes: { "provider-a": {
+      ...f.definition, collaborationMode: "default",
+    } } });
+    await expect(createControlSession(modeChanged, input, new AbortController().signal, create))
       .rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
     expect(calls).toBe(1);
     const persisted = loadSessions(f.machine)[0];

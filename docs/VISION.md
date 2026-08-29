@@ -51,7 +51,10 @@ handlers/admission; локальный socket не проксируется на
 Managed create может выбрать immutable host-owned launch recipe безопасной ссылкой id+revision.
 Recipe остаётся конфигурацией execution host и разворачивается в уже существующие `flags`,
 `envFile`, session environment и launch stamp; caller не передаёт path, executable, shell или
-secret. Решение: [server-owned control launch recipes](decisions/2026-08-29-server-owned-control-launch-recipes.md).
+secret. Та же immutable recipe может выбрать установленный Codex collaboration preset: provider
+support проверяется до каждого turn, который начинает CCMux, а native input продолжает идти через один exact response
+contract. Решения: [server-owned control launch recipes](decisions/2026-08-29-server-owned-control-launch-recipes.md)
+и [managed collaboration policy](decisions/2026-08-29-managed-codex-collaboration-policy.md).
 
 1. **Сейчас**: Bun-версия боевая локально (паритет с прежней реализацией подтверждён аудитом),
    раскатка на серверы — по команде владельца.

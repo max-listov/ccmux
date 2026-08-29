@@ -89,13 +89,22 @@ request. Unknown, removed, changed or unavailable definitions return the generic
 `LAUNCH_RECIPE_UNAVAILABLE`; the owner log retains the exact cause. A same-ID retry can only
 reconcile the accepted digest and one writer.
 
-The session persists `{ id, revision, digest, capabilities }` beside the already-existing resolved
+The session persists `{ id, revision, digest, capabilities, collaborationMode? }` beside the already-existing resolved
 `flags` and `envFile`. App Server bootstrap, provider restart and daemon reconciliation revalidate
 that immutable host definition before spawn and resume the same UUID. Create receipts, managed rows
 and native snapshots may carry only that safe metadata. Recipe fields, paths, environment names and
 values never cross the control boundary. Recipe-less create omits the field and keeps the existing
 behavior. The rationale and failure model are recorded in
 [server-owned control launch recipes](../decisions/2026-08-29-server-owned-control-launch-recipes.md).
+
+An optional recipe `collaborationMode` selects only an installed App Server preset. Before each
+managed `turn/start`—bootstrap, immediate or deferred delivery, and delivery after restart—CCMux
+reads `collaborationMode/list`, verifies the requested mode and combines the preset with the loaded
+thread model. It sends `developer_instructions: null`, which delegates instructions to the
+provider's built-in preset. Missing support returns generic `COLLABORATION_MODE_UNAVAILABLE` before
+pickup intent or turn acceptance; the owner log keeps the exact probe failure. The existing native
+pending request and exact response contract remains the sole input path. See the
+[managed collaboration policy decision](../decisions/2026-08-29-managed-codex-collaboration-policy.md).
 
 `message` requires a caller-generated immutable UUID. Retrying
 the same sender/target/body/defer/notBefore/task with that UUID returns `duplicate: true`.
@@ -171,7 +180,7 @@ const created = await client.create({
   flags: [],
   launchRecipe: { id: "provider-a", revision: "r1" },
 });
-console.log(created.launchRecipe); // id, revision, digest, public-safe capabilities
+console.log(created.launchRecipe); // id, revision, digest, public-safe capabilities/mode
 ```
 
 One possible execution-host declaration is:
@@ -190,7 +199,8 @@ One possible execution-host declaration is:
         "-c", "model_providers.provider-a.wire_api=\"responses\""
       ],
       "environment": ["MODEL_SERVICE_TOKEN"],
-      "capabilities": ["external-provider", "responses"]
+      "capabilities": ["external-provider", "responses", "input-requests"],
+      "collaborationMode": "plan"
     }
   }
 }

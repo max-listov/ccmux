@@ -23,6 +23,7 @@ function fixture() {
   let nativeStatus: unknown = { type: "idle" };
   let canAcceptDirectInput = true;
   let failStart = false;
+  let collaborationModes: unknown[] = [{ name: "Plan", mode: "plan", model: null, reasoning_effort: "medium" }];
   let receipts: unknown[] = [];
   let hold = "";
   const rpc: CodexAppRpc = {
@@ -30,10 +31,17 @@ function fixture() {
     async request(method, params) {
       calls.push(method);
       if (method === "thread/read") return { thread: { id: s.uuid, name: s.name, source: "appServer", status: nativeStatus, canAcceptDirectInput } };
+      if (method === "thread/resume") return { thread: { id: s.uuid, name: s.name, source: "appServer", status: nativeStatus,
+        canAcceptDirectInput }, model: "model-current", reasoningEffort: "low" };
+      if (method === "collaborationMode/list") return { data: collaborationModes };
       if (method === "turn/start") {
         expect(cursors.pickups[key]?.native).toEqual({ phase: "intent", turnId: null });
         expect(calls.at(-2)).toBe("save");
         expect(params).toMatchObject({ threadId: s.uuid, clientUserMessageId: msg.id });
+        if (s.launchRecipe?.collaborationMode !== undefined) expect(params).toMatchObject({
+          collaborationMode: { mode: "plan", settings: { model: "model-current",
+            reasoning_effort: "medium", developer_instructions: null } },
+        });
         if (failStart) throw new Error("response lost after request was sent");
         return { turn: { id: "native-turn" } };
       }
@@ -51,6 +59,7 @@ function fixture() {
   return { m, s, msg, key, cursors, calls, deps, projection,
     setRead(value: OwnedCodexRead) { read = value; }, setPane(value: string) { pane = value; },
     setNativeStatus(value: unknown) { nativeStatus = value; }, setPolicy(value: boolean) { canAcceptDirectInput = value; },
+    setCollaborationModes(value: unknown[]) { collaborationModes = value; },
     loseResponse() { failStart = true; }, receipts(value: unknown[]) { receipts = value; }, hold: () => hold,
     run: (rateHeld = false) => deliverOwnedCodexPending(m, s, [msg], cursors, new Set(), rateHeld, Date.now(), deps),
   };
@@ -62,6 +71,27 @@ test("native delivery gates input, checks exact native identity and persists int
   expect(f.calls).toEqual(["connect", "gate", "capture", "thread/read", "save", "turn/start", "save", "ungate", "close"]);
   expect(f.cursors.pickups[f.key]?.native).toEqual({ phase: "accepted", turnId: "native-turn" });
   expect(f.cursors.delivered[f.key]).toBe(1);
+});
+
+test("host recipe applies an installed collaboration preset before persisting native pickup", async () => {
+  const f = fixture();
+  f.s.launchRecipe = { id: "input-policy", revision: "r1", digest: "a".repeat(64),
+    capabilities: ["input-requests"], collaborationMode: "plan" };
+  expect(await f.run()).toBe(1);
+  expect(f.calls).toEqual(["connect", "gate", "capture", "thread/resume", "collaborationMode/list",
+    "save", "turn/start", "save", "ungate", "close"]);
+});
+
+test("unsupported collaboration preset fails closed before pickup intent or turn submission", async () => {
+  const f = fixture();
+  f.s.launchRecipe = { id: "input-policy", revision: "r1", digest: "a".repeat(64),
+    capabilities: ["input-requests"], collaborationMode: "plan" };
+  f.setCollaborationModes([{ name: "Default", mode: "default", model: null, reasoning_effort: null }]);
+  expect(await f.run()).toBe(0);
+  expect(f.cursors.pickups[f.key]).toBeUndefined();
+  expect(f.calls).not.toContain("save");
+  expect(f.calls).not.toContain("turn/start");
+  expect(f.hold()).toBe("managed collaboration policy is unavailable");
 });
 
 test("native working/approval/input/unknown and unavailable snapshots never open a send connection", async () => {

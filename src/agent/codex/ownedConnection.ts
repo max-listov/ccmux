@@ -1,7 +1,7 @@
-import { z } from "zod";
 import type { MachineConfig, Session } from "../../types.ts";
 import { SessionSchema } from "../../config/schema.ts";
-import { ThreadSchema, readCodexAppThread, startCodexAppTurn } from "./appServer.ts";
+import { CodexAppThreadContextSchema, readCodexAppThread, prepareManagedCodexTurn,
+  startCodexAppTurn } from "./appServer.ts";
 import { connectOwnedCodex } from "./ownedRpc.ts";
 import type { CodexAppRpc, CodexRpcEvent, CodexRpcRequest } from "./rpc.ts";
 import { ownedCodexThreadParams } from "./ownedLaunch.ts";
@@ -65,7 +65,7 @@ export class OwnedCodexConnection {
 
   async admit(fresh: boolean, signal: AbortSignal): Promise<Session> {
     const rpc = this.liveRpc();
-    const response = z.object({ thread: ThreadSchema }).parse(await rpc.request(fresh ? "thread/start" : "thread/resume", {
+    const response = CodexAppThreadContextSchema.parse(await rpc.request(fresh ? "thread/start" : "thread/resume", {
       ...ownedCodexThreadParams(this.initial, this.m),
       ...(fresh ? {} : { threadId: this.initial.uuid, excludeTurns: true }),
     }));
@@ -81,11 +81,12 @@ export class OwnedCodexConnection {
     this.bufferedRequests = [];
     projection.reconcile(response.thread.status, 0);
     if (fresh) {
+      const policy = await prepareManagedCodexTurn(rpc, session, response);
       const deadline = Date.now() + this.m.codexCorrelationTimeoutMs;
       let turnError: unknown = null;
       try {
         await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
-          "Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.");
+          "Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.", policy);
       } catch (error) {
         turnError = error;
       }
@@ -107,7 +108,7 @@ export class OwnedCodexConnection {
         if (!/thread-store.*(?:rollout is empty|session metadata)/i.test(String(turnError))) throw turnError;
         if (!(await codexAppMessagePersisted(this.m, session.uuid, this.initial.uuid))) {
           await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
-            "Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.");
+            "Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.", policy);
         }
       }
     }

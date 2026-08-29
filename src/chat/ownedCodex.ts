@@ -1,6 +1,7 @@
 import type { MachineConfig, Session } from "../types.ts";
 import { inspectNativeCodexInput } from "../agent/codex/pane.ts";
-import { appThreadHoldReason, readCodexAppThread, startCodexAppTurn } from "../agent/codex/appServer.ts";
+import { appThreadHoldReason, prepareManagedCodexTurn, readCodexAppThread,
+  resumeCodexAppThreadContext, startCodexAppTurn } from "../agent/codex/appServer.ts";
 import { connectOwnedCodex } from "../agent/codex/ownedRpc.ts";
 import { loadSessions } from "../config/sessions.ts";
 import { readOwnedCodexStatus } from "../agent/codex/ownedStatus.ts";
@@ -69,13 +70,23 @@ export async function deliverOwnedCodexPending(m: MachineConfig, s: Session, led
     if (!gated) { await hold("native client input could not be gated"); return 0; }
     const inspection = inspectNativeCodexInput(await deps.capture(m, s.name, 40));
     if (inspection?.state !== "deliverable") { await hold(inspection?.reason ?? "native client readiness unavailable"); return 0; }
-    const thread = await readCodexAppThread(rpc, s.uuid);
+    const context = s.launchRecipe?.collaborationMode === undefined
+      ? { thread: await readCodexAppThread(rpc, s.uuid) }
+      : await resumeCodexAppThreadContext(rpc, s.uuid);
+    const thread = context.thread;
     const reason = appThreadHoldReason(thread);
     if (reason !== null || thread.status.type !== "idle") { await hold(reason ?? "native runtime is not idle"); return 0; }
     const currentIdentity = deps.sessions(m).find((row) => row.name === s.name);
     if (currentIdentity?.uuid !== s.uuid || currentIdentity.agent !== s.agent || currentIdentity.runtime !== s.runtime
       || currentIdentity.registrationGeneration !== s.registrationGeneration) {
       await hold("managed identity changed before native submission"); return 0;
+    }
+    let policy: Awaited<ReturnType<typeof prepareManagedCodexTurn>>;
+    try {
+      policy = await prepareManagedCodexTurn(rpc, s, context);
+    } catch {
+      await hold("managed collaboration policy is unavailable");
+      return 0;
     }
     const conditional = conditionalMessage(pick.msg);
     cursors.pickups[key] = { messageId: pick.msg.id, ledgerIndex: pick.idx, conditional,
@@ -86,7 +97,7 @@ export async function deliverOwnedCodexPending(m: MachineConfig, s: Session, led
     }
     await deps.save(m, cursors);
     const text = formatChatInjection(pick.msg, { cli: promptInvocation(), reply: replyRouteToSender(m, pick.msg.from) });
-    const turnId = await startCodexAppTurn(rpc, s.uuid, pick.msg.id, text);
+    const turnId = await startCodexAppTurn(rpc, s.uuid, pick.msg.id, text, policy);
     const current = cursors.pickups[key];
     if (current === undefined) throw new Error("Native pickup intent disappeared");
     current.native = { phase: "accepted", turnId };

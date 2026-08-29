@@ -79,7 +79,9 @@ identity and existing delivery gates. See the [resident control contract](docs/a
 
 Managed create may select a host-defined launch recipe with only `{ id, revision }`. The host keeps
 the env file, native model-provider flags and required environment names; receipts/status expose only
-the recipe digest and safe capabilities. Recipe-less create remains the default. See
+the recipe digest and safe capabilities. A recipe may also pin an installed Codex collaboration
+preset; CCMux verifies provider support before every turn it starts and never accepts caller-authored mode
+settings or instructions. Recipe-less create remains the default. See
 [server-owned control recipes](docs/decisions/2026-08-29-server-owned-control-launch-recipes.md).
 
 For existing external Codex threads, `ccmux control external --json` and
@@ -119,7 +121,9 @@ release's self-contained `codex-runtime-reader.js` and SHA-256 asset. See the
 The same local typed client can create a workspace-scoped owned runtime idempotently, archive it
 without deleting provider history, follow a generation/sequence native cursor and answer one exact
 current approval or input request. Responses stay on the owning App Server connection; stale or
-already-resolved request IDs fail closed. See the control contract linked above.
+already-resolved request IDs fail closed. An owner recipe with `collaborationMode: "plan"` enables
+native input requests through the provider's own installed preset; no second input protocol is
+added. See the control contract linked above.
 
 ### Adopt an external session
 

@@ -44,7 +44,7 @@ policies. Sending an env-file path, executable, shell fragment or credential thr
 
 ## Что сделано
 
-- `bun run check`: 787 tests, 0 failures; typecheck and packed Bun/Node service-client gates pass.
+- `bun run check`: 791 tests, 0 failures; typecheck and packed Bun/Node service-client gates pass.
 - The real no-recipe control-service path created one native App Server writer, reconciled local and
   service retries, completed an exact model reply and wait, resumed the native cursor, and archived.
 - A separate real managed session preserved partial input, deferred across approval/input waits,

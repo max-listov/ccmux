@@ -12,7 +12,7 @@ import { supportsOwnedCodexVersion } from "../src/agent/codex/ownedLaunch.ts";
 import { readEvents } from "../src/events/feed.ts";
 import { nativeResponseFingerprint, readNativeReceipt, writeNativeCommand } from "../src/agent/codex/ownedControl.ts";
 
-function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none") {
+function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none", collaboration = false) {
   const codexSessionsDir = mkdtempSync("/tmp/ccmux-native-rollouts-");
   const m = makeMachine({
     stateDir: mkdtempSync("/tmp/ccmux-native-connection-"),
@@ -20,7 +20,9 @@ function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none
     codexCorrelationTimeoutMs: 150,
     sessionEvents: true,
   });
-  const s = makeSession({ agent: "codex", runtime: "app-server", eventsEnabled: true });
+  const s = makeSession({ agent: "codex", runtime: "app-server", eventsEnabled: true,
+    ...(collaboration ? { launchRecipe: { id: "input-policy", revision: "r1", digest: "a".repeat(64),
+      capabilities: ["input-requests"], collaborationMode: "plan" as const } } : {}) });
   const path = ownedCodexSocket(m, s.name); privateRuntimeDirectory(dirname(path));
   let client: ServerWebSocket<unknown> | null = null;
   let admissionRace = true, readRace = true, wrongIdentity = false;
@@ -28,6 +30,8 @@ function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none
   const requests: string[] = [];
   const turnMessageIds: string[] = [];
   const responses: unknown[] = [];
+  const turnParams: unknown[] = [];
+  let supportsCollaboration = true;
   const send = (method: string, params: unknown) => client?.send(JSON.stringify({ method, params }));
   const request = (id: number | string, method: string, params: unknown) => client?.send(JSON.stringify({ id, method, params }));
   const turn = (status: string) => ({ threadId: s.uuid, turn: { id: "turn-a", status } });
@@ -56,9 +60,11 @@ function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none
               payload: { id: s.uuid, originator: "test" },
             })}\n`), 40);
           }
-          respond({ thread: { id: s.uuid, name: null, source: "cli", status: native, canAcceptDirectInput: true } });
+          respond({ thread: { id: s.uuid, name: null, source: "cli", status: native, canAcceptDirectInput: true },
+            model: "model-current", reasoningEffort: "low" });
         }
         if (message.method === "turn/start") {
+          turnParams.push(message.params);
           turnMessageIds.push(z.object({ clientUserMessageId: z.string() }).parse(message.params).clientUserMessageId);
           const rollout = join(codexSessionsDir, "2026", "08", "29", `rollout-2026-08-29T00-00-00-${s.uuid}.jsonl`);
           const committed = readFileSync(rollout, "utf8").includes('"type":"session_meta"');
@@ -71,15 +77,20 @@ function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none
             send("thread/status/changed", { threadId: s.uuid, status: { type: "active", activeFlags: ["waitingOnApproval"] } });
             readRace = false;
           }
-          respond({ thread: { id: wrongIdentity ? crypto.randomUUID() : s.uuid, name: null, source: "cli", status: native, canAcceptDirectInput: true } });
+          respond({ thread: { id: wrongIdentity ? crypto.randomUUID() : s.uuid, name: null, source: "cli", status: native, canAcceptDirectInput: true },
+            model: "model-current", reasoningEffort: "low" });
         }
+        if (message.method === "collaborationMode/list") respond({ data: supportsCollaboration
+          ? [{ name: "Plan", mode: "plan", model: null, reasoning_effort: "medium" }]
+          : [{ name: "Default", mode: "default", model: null, reasoning_effort: null }] });
         if (message.method === "thread/turns/list") respond({ data: [{ id: "turn-a", status: "inProgress" }] });
       },
     },
   });
-  return { m, s, requests, responses, turnMessageIds, send, request, turn,
+  return { m, s, requests, responses, turnMessageIds, turnParams, send, request, turn,
     setNative(value: unknown) { native = value; },
     mismatch() { wrongIdentity = true; },
+    refuseCollaboration() { supportsCollaboration = false; },
     disconnect() { client?.close(); }, close() { server.stop(true); },
   };
 }
@@ -92,6 +103,31 @@ test("fresh admission retries the named empty-rollout failure only after committ
     expect(f.requests.indexOf("thread/start")).toBeLessThan(f.requests.indexOf("turn/start"));
     expect(f.requests.filter((method) => method === "turn/start")).toHaveLength(2);
     expect(f.turnMessageIds).toEqual([f.s.uuid, f.s.uuid]);
+  } finally { await connection.close("stopped"); f.close(); }
+});
+
+test("fresh managed admission applies the owner collaboration policy to every bootstrap retry", async () => {
+  const f = fixture("delayed", true), connection = new OwnedCodexConnection(f.m, f.s, process.pid);
+  try {
+    await connection.open(new AbortController().signal);
+    await connection.admit(true, new AbortController().signal);
+    expect(f.requests.filter((method) => method === "collaborationMode/list")).toHaveLength(1);
+    expect(f.turnParams).toHaveLength(2);
+    for (const params of f.turnParams) expect(params).toMatchObject({ collaborationMode: { mode: "plan",
+      settings: { model: "model-current", reasoning_effort: "medium", developer_instructions: null } } });
+  } finally { await connection.close("stopped"); f.close(); }
+});
+
+test("fresh managed admission refuses an unsupported collaboration policy before its first turn", async () => {
+  const f = fixture("delayed", true), connection = new OwnedCodexConnection(f.m, f.s, process.pid);
+  try {
+    f.refuseCollaboration();
+    await connection.open(new AbortController().signal);
+    await expect(connection.admit(true, new AbortController().signal)).rejects.toMatchObject({
+      code: "COLLABORATION_MODE_UNAVAILABLE", message: "Managed collaboration policy is unavailable",
+    });
+    expect(f.requests).toContain("collaborationMode/list");
+    expect(f.requests).not.toContain("turn/start");
   } finally { await connection.close("stopped"); f.close(); }
 });
 

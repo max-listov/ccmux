@@ -29,6 +29,7 @@ function recipeDigest(recipe: MachineLaunchRecipe): string {
     flags: recipe.flags,
     environment: [...new Set(recipe.environment)].sort(),
     capabilities: [...new Set(recipe.capabilities)].sort(),
+    ...(recipe.collaborationMode === undefined ? {} : { collaborationMode: recipe.collaborationMode }),
   };
   return createHash("sha256").update(stableJson(canonical)).digest("hex");
 }
@@ -98,6 +99,7 @@ export function resolveControlLaunchRecipe(
     revision: recipe.revision,
     digest: recipeDigest(recipe),
     capabilities: [...new Set(recipe.capabilities)].sort(),
+    ...(recipe.collaborationMode === undefined ? {} : { collaborationMode: recipe.collaborationMode }),
   };
   return {
     flags: [...recipe.flags],

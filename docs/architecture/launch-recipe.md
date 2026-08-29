@@ -41,7 +41,15 @@ the existing allowed `-c key=value` argv. A provider config names an environment
 value remains in the declared env file or host environment and never becomes argv. Missing inputs,
 reserved CCMux names, refused native flags and revision/digest drift fail before provider spawn.
 
-The control projections show only `{ id, revision, digest, capabilities }`. They do not show recipe
+A recipe may additionally pin `collaborationMode: "plan"` (or the explicit provider default). This
+is turn policy, not caller-authored prompt text: before every managed turn it starts, CCMux asks the installed
+App Server for its collaboration-mode catalog, selects the named preset and uses the provider's
+model, effort and built-in instructions. The check happens before a delivery pickup is persisted.
+An absent method/preset or missing loaded-thread model fails closed; recipe-less sessions send no
+mode override and retain the provider default. A human turn submitted directly by an attached TUI
+uses that TUI's explicit interactive selector; it does not pass through the control turn boundary.
+
+The control projections show only `{ id, revision, digest, capabilities, collaborationMode? }`. They do not show recipe
 flags, paths, required environment names, file contents or values. See the
 [control launch recipe decision](../decisions/2026-08-29-server-owned-control-launch-recipes.md).
 

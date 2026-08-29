@@ -6,6 +6,18 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Let an immutable host launch recipe select an installed Codex collaboration-mode preset for
+  every CCMux-started managed turn. Plan-policy sessions can now emit native `request_user_input` requests that
+  the existing exact response channel can answer; callers still send only recipe id and revision.
+
+### Fixed
+
+- Probe the installed provider's collaboration-mode catalog before persisting a turn pickup or
+  starting a turn. Unsupported policies fail closed without a false pending request, while
+  recipe-less/default sessions keep their existing behavior.
+
 ## [0.39.20] — 2026-08-29
 
 add server-owned launch recipes

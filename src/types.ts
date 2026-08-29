@@ -36,6 +36,7 @@ import type {
   LaunchRecipeReferenceSchema,
   LaunchRecipeMetadataSchema,
   MachineLaunchRecipeSchema,
+  CodexCollaborationModeSchema,
 } from "./config/schema.ts";
 
 // Single import surface for the inferred types. No bare interfaces anywhere — these
@@ -76,3 +77,4 @@ export type WriterRuntime = z.infer<typeof WriterRuntimeSchema>;
 export type LaunchRecipeReference = z.infer<typeof LaunchRecipeReferenceSchema>;
 export type LaunchRecipeMetadata = z.infer<typeof LaunchRecipeMetadataSchema>;
 export type MachineLaunchRecipe = z.infer<typeof MachineLaunchRecipeSchema>;
+export type CodexCollaborationMode = z.infer<typeof CodexCollaborationModeSchema>;

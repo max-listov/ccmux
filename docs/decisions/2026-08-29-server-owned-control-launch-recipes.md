@@ -16,7 +16,8 @@ with a recipe also cannot carry caller flags, because flag ordering would let th
 owner policy while appearing to use it.
 
 A host recipe contains one revision, the existing session `envFile`, native Codex/App Server flags,
-required environment variable names and public-safe capability identifiers. Native flags go through
+required environment variable names, public-safe capability identifiers and an optional typed
+Codex collaboration mode. Native flags go through
 the same `ownedCodexFlags` allowlist as every owned App Server launch. Provider credentials remain
 environment values: native model-provider configuration names an `env_key`; it never puts the value
 in argv. This matches Codex's machine-local provider boundary: provider/auth configuration belongs
@@ -26,7 +27,7 @@ project or request.
 # Resolution and identity
 
 The host canonicalizes the definition and computes a SHA-256 digest. Safe metadata
-`{ id, revision, digest, capabilities }` is persisted on the session and durable create receipt.
+`{ id, revision, digest, capabilities, collaborationMode? }` is persisted on the session and durable create receipt.
 The already-existing `Session.flags` and `Session.envFile` remain the executable launch truth; there
 is no second environment loader or provider launcher.
 
