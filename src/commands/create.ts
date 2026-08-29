@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import type { AgentKind, MachineConfig, PendingSession, Session } from "../types.ts";
+import type { AgentKind, LaunchRecipeMetadata, MachineConfig, PendingSession, Session } from "../types.ts";
 import { PendingSessionSchema, SessionSchema } from "../config/schema.ts";
 import {
   appendSession,
@@ -28,6 +28,7 @@ export type CreateManagedInput = {
   /** Declared at creation so the session's very FIRST launch already runs the recipe it will keep —
    *  otherwise a session is born inheriting and has to be migrated the day it is made. */
   envFile?: string;
+  launchRecipe?: LaunchRecipeMetadata;
 };
 
 export type CodexBootstrapOperation =
@@ -45,6 +46,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
     ...(input.router ? { promptModules: ["router"], chatEnabled: true } : {}),
     ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
+    ...(input.launchRecipe === undefined ? {} : { launchRecipe: input.launchRecipe }),
   });
 }
 

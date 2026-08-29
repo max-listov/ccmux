@@ -12,13 +12,17 @@ import { killSession } from "../tmux/tmux.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import type { ControlCreateSchema } from "./schema.ts";
-import { ManagedPeerSchema } from "../config/schema.ts";
+import { LaunchRecipeMetadataSchema, ManagedPeerSchema } from "../config/schema.ts";
 import { privateRuntimeDirectory } from "../agent/codex/ownedPaths.ts";
+import { resolveControlLaunchRecipe } from "../config/launchRecipes.ts";
+import { stableJson } from "../agent/launchInputs.ts";
+import { log } from "../util/log.ts";
 
 type CreateInput = z.input<typeof ControlCreateSchema>;
 const CreateRowSchema = z.object({
   requestId: z.uuid(), fingerprint: z.string().length(64), generation: z.uuid(),
   name: z.string(), workspace: z.string(), flags: z.array(z.string()),
+  envFile: z.string().min(1).optional(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
   status: z.enum(["pending", "complete", "failed"]), threadId: z.uuid().nullable(),
   error: z.string().max(512).nullable(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
 }).strict();
@@ -44,8 +48,8 @@ async function save(m: MachineConfig, rows: CreateRow[]): Promise<void> {
   privateRuntimeDirectory(dirname(storePath(m)));
   await atomicWrite(storePath(m), JSON.stringify(StoreSchema.parse(rows)), 0o600);
 }
-const fingerprint = (input: { name: string; workspace: string; flags: string[] }) =>
-  createHash("sha256").update(JSON.stringify([input.name, input.workspace, input.flags])).digest("hex");
+const fingerprint = (input: { name: string; workspace: string; flags: string[]; envFile?: string; launchRecipe?: unknown }) =>
+  createHash("sha256").update(stableJson(input)).digest("hex");
 function normalizeWorkspace(path: string): string {
   let resolved: string;
   try { resolved = realpathSync(path); } catch { throw new AppError("INVALID_WORKSPACE", "Workspace does not exist", 400); }
@@ -60,7 +64,14 @@ function matchingSession(m: MachineConfig, row: CreateRow): Session | null {
 export async function createControlSession(m: MachineConfig, input: CreateInput, signal: AbortSignal,
   create: typeof createManagedSession = createManagedSession) {
   const workspace = normalizeWorkspace(input.workspace);
-  const canonical = { name: input.name, workspace, flags: input.flags ?? [] };
+  const resolved = resolveControlLaunchRecipe(m, workspace, input.launchRecipe, input.flags ?? []);
+  const canonical = {
+    name: input.name,
+    workspace,
+    flags: resolved.flags,
+    ...(resolved.envFile === undefined ? {} : { envFile: resolved.envFile }),
+    ...(resolved.launchRecipe === undefined ? {} : { launchRecipe: resolved.launchRecipe }),
+  };
   const digest = fingerprint(canonical);
   privateRuntimeDirectory(dirname(storeLockPath(m)));
   return withDirectoryLock(requestLockPath(m, input.requestId), async () => {
@@ -81,20 +92,23 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
       await save(m, [...rows.slice(-255), row]);
     }, "control create receipt");
     signal.throwIfAborted();
-    if (row.status === "failed") throw new AppError("CREATE_FAILED", row.error ?? "Create request failed", 409);
+    if (row.status === "failed") throw new AppError("CREATE_FAILED", "Managed Codex create failed", 409);
     let session = matchingSession(m, row);
     if (session === null) {
       const pending = loadPendingSessions(m).some((item) => item.generation === row.generation);
       if (!pending) {
         try {
           session = await create(m, { name: row.name, dir: row.workspace, agent: "codex", flags: row.flags,
-            router: false, runtime: "app-server", registrationGeneration: row.generation, chatEnabled: true });
+            router: false, runtime: "app-server", registrationGeneration: row.generation, chatEnabled: true,
+            ...(row.envFile === undefined ? {} : { envFile: row.envFile }),
+            ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }) });
         } catch (error) {
           session = matchingSession(m, row);
           if (session === null) {
             const message = String(error).slice(0, 512);
             await withDirectoryLock(storeLockPath(m), async () => save(m, load(m).map((item) => item.requestId === row.requestId
               ? { ...item, status: "failed" as const, error: message, updatedAt: new Date().toISOString() } : item)), "control create receipt");
+            log.error({ msg: "managed control create failed", requestId: row.requestId, recipeId: row.launchRecipe?.id ?? null, error: message });
             throw new AppError("CREATE_FAILED", "Managed Codex create failed", 409);
           }
         }
@@ -107,9 +121,15 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
       session = matchingSession(m, row);
     }
     if (session === null) throw new AppError("CREATE_PENDING", "Create is still reconciling; retry the same request", 503);
+    if (
+      stableJson(session.flags) !== stableJson(row.flags) || session.envFile !== row.envFile ||
+      stableJson(session.launchRecipe ?? null) !== stableJson(row.launchRecipe ?? null)
+    ) throw new AppError("CORRUPT_STATE", "Managed create identity does not match its receipt", 503);
+    const ready = session;
     await withDirectoryLock(storeLockPath(m), async () => save(m, load(m).map((item) => item.requestId === row.requestId
-      ? { ...item, status: "complete" as const, threadId: session!.uuid, updatedAt: new Date().toISOString() } : item)), "control create receipt");
-    return { requestId: row.requestId, target: managedPeer(m.rcPrefix, session), workspace: row.workspace, duplicate };
+      ? { ...item, status: "complete" as const, threadId: ready.uuid, updatedAt: new Date().toISOString() } : item)), "control create receipt");
+    return { requestId: row.requestId, target: managedPeer(m.rcPrefix, session), workspace: row.workspace, duplicate,
+      ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }) };
   }, "control create request");
 }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ManagedPeerSchema } from "../config/schema.ts";
+import { LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ManagedPeerSchema } from "../config/schema.ts";
 import { OwnedCodexTurnSchema } from "../agent/codex/ownedSchema.ts";
 import { OwnedCodexNativeItemSchema, OwnedCodexPendingRequestSchema } from "../agent/codex/ownedSchema.ts";
 import { SESSION_NAME_RE } from "../config/schema.ts";
@@ -17,6 +17,7 @@ export const ControlRowSchema = z.object({
   expiresAt: z.iso.datetime(),
   turn: OwnedCodexTurnSchema.nullable(),
   model: z.string().max(512).nullable(),
+  launchRecipe: LaunchRecipeMetadataSchema.optional(),
   capabilities: z.object({ message: z.boolean(), start: z.boolean(), interrupt: z.boolean(), wait: z.boolean() }).strict(),
 }).strict();
 export type ControlRow = z.infer<typeof ControlRowSchema>;
@@ -50,11 +51,12 @@ export const ControlActionReceiptSchema = z.object({ target: ManagedPeerSchema, 
 export const ControlCreateSchema = z.object({
   requestId: z.uuid(), name: z.string().min(1).max(256).regex(SESSION_NAME_RE),
   workspace: z.string().startsWith("/").max(4_096), flags: z.array(z.string().max(4_096)).max(32).default([]),
+  launchRecipe: LaunchRecipeReferenceSchema.optional(),
 }).strict();
 export type ControlCreate = z.input<typeof ControlCreateSchema>;
 export const ControlCreateReceiptSchema = z.object({
   requestId: z.uuid(), target: ManagedPeerSchema, workspace: z.string().startsWith("/").max(4_096),
-  duplicate: z.boolean(),
+  duplicate: z.boolean(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
 }).strict();
 export type ControlCreateReceipt = z.infer<typeof ControlCreateReceiptSchema>;
 export const ControlArchiveReceiptSchema = z.object({
@@ -67,6 +69,7 @@ export const ControlNativeSnapshotSchema = z.object({
   target: ManagedPeerSchema, generation: z.uuid(), sequence: z.number().int().nonnegative(),
   reset: z.enum(["initial", "generation", "gap"]).nullable(), observedAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
   items: z.array(OwnedCodexNativeItemSchema).max(128), pending: z.array(OwnedCodexPendingRequestSchema.omit({ rpcId: true })).max(16),
+  launchRecipe: LaunchRecipeMetadataSchema.optional(),
 }).strict();
 export type ControlNativeSnapshot = z.infer<typeof ControlNativeSnapshotSchema>;
 export const ControlNativeResponseSchema = ControlTargetSchema.extend({

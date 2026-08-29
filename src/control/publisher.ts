@@ -43,6 +43,7 @@ export class ControlPublisher {
         observedAt: native?.snapshot?.observedAt ?? item.observedAt,
         expiresAt: native?.snapshot?.expiresAt ?? expiry,
         turn: native?.snapshot?.turn ?? null, model: item.model,
+        ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
         capabilities: { message: chatEnabledFor(session, m), start: !session.archived, interrupt: owned, wait: owned },
       };
       const size = Buffer.byteLength(JSON.stringify(row)) + 1;

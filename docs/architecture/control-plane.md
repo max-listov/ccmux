@@ -80,6 +80,23 @@ UUID for another name, workspace or flag set is `IDEMPOTENCY_CONFLICT`. `archive
 identity before stopping its process group, so healing and routing stop while registry and provider
 history remain available for deliberate resume.
 
+An optional `launchRecipe: { id, revision }` selects an execution-host definition. In that form
+caller flags must be empty: native flags, an optional existing session `envFile`, required
+environment variable names and model-provider configuration are all owner configuration. The host
+validates the native allowlist and environment availability before writing a receipt, reserving a
+registry generation or spawning Codex, then fingerprints the canonical recipe digest with the
+request. Unknown, removed, changed or unavailable definitions return the generic
+`LAUNCH_RECIPE_UNAVAILABLE`; the owner log retains the exact cause. A same-ID retry can only
+reconcile the accepted digest and one writer.
+
+The session persists `{ id, revision, digest, capabilities }` beside the already-existing resolved
+`flags` and `envFile`. App Server bootstrap, provider restart and daemon reconciliation revalidate
+that immutable host definition before spawn and resume the same UUID. Create receipts, managed rows
+and native snapshots may carry only that safe metadata. Recipe fields, paths, environment names and
+values never cross the control boundary. Recipe-less create omits the field and keeps the existing
+behavior. The rationale and failure model are recorded in
+[server-owned control launch recipes](../decisions/2026-08-29-server-owned-control-launch-recipes.md).
+
 `message` requires a caller-generated immutable UUID. Retrying
 the same sender/target/body/defer/notBefore/task with that UUID returns `duplicate: true`.
 Reusing it for different content or identity is `IDEMPOTENCY_CONFLICT`. Acceptance means stored,
@@ -143,6 +160,46 @@ const feed = await client.watchNative.withOptions({
   target: created.target, cursor: { generation: native.generation, sequence: native.sequence },
 }, { signal: stop.signal });
 ```
+
+Selecting a host recipe sends only its safe immutable reference:
+
+```ts
+const created = await client.create({
+  requestId: crypto.randomUUID(),
+  name: "worker",
+  workspace: "/absolute/workspace",
+  flags: [],
+  launchRecipe: { id: "provider-a", revision: "r1" },
+});
+console.log(created.launchRecipe); // id, revision, digest, public-safe capabilities
+```
+
+One possible execution-host declaration is:
+
+```json
+{
+  "launchRecipes": {
+    "provider-a": {
+      "revision": "r1",
+      "envFile": "~/.config/ccmux/provider-a.env",
+      "flags": [
+        "-c", "model_provider=\"provider-a\"",
+        "-c", "model_providers.provider-a.name=\"Provider A\"",
+        "-c", "model_providers.provider-a.base_url=\"https://api.example.invalid/v1\"",
+        "-c", "model_providers.provider-a.env_key=\"MODEL_SERVICE_TOKEN\"",
+        "-c", "model_providers.provider-a.wire_api=\"responses\""
+      ],
+      "environment": ["MODEL_SERVICE_TOKEN"],
+      "capabilities": ["external-provider", "responses"]
+    }
+  }
+}
+```
+
+The env file contains the value and never crosses the API or appears in process argv. Changing any
+definition field requires a new revision for new calls; accepted receipts and sessions additionally
+pin the computed digest. Machine configuration changes require the normal daemon restart before the
+control service accepts the new definition.
 
 `close()` releases this client's connections. Iterator return and `AbortSignal` also release a
 subscription, including a quiet stream or an iterator not yet consumed. Both contracts use

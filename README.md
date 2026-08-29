@@ -77,6 +77,11 @@ approval/input responses, native turn interruption and between-turn waits; the r
 self-contained `control-client.js` and SHA-256 asset. Commands retain exact provider/machine/session
 identity and existing delivery gates. See the [resident control contract](docs/architecture/control-plane.md).
 
+Managed create may select a host-defined launch recipe with only `{ id, revision }`. The host keeps
+the env file, native model-provider flags and required environment names; receipts/status expose only
+the recipe digest and safe capabilities. Recipe-less create remains the default. See
+[server-owned control recipes](docs/decisions/2026-08-29-server-owned-control-launch-recipes.md).
+
 For existing external Codex threads, `ccmux control external --json` and
 `ccmux control watch-external` expose a separate prepared native-status projection. Resident
 consumers use `external()` / `watchExternal()` from the same client, without repeated inventory

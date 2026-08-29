@@ -51,11 +51,14 @@ const hash = (value: string): string => createHash("sha256").update(value).diges
 
 async function oneStreamFrame(request: ControlNativeStreamRequest) {
   const profile = createCcmuxNativeStreamProfile(executable);
-  const child = Bun.spawn([profile.bin, ...profile.argv], {
+  const command = profile.bin.endsWith(".ts")
+    ? [process.execPath, "--no-env-file", profile.bin, ...profile.argv]
+    : [profile.bin, ...profile.argv];
+  const child = Bun.spawn(command, {
     stdin: new TextEncoder().encode(JSON.stringify(request)),
     stdout: "pipe",
     stderr: "pipe",
-    env: profile.env.set,
+    env: { ...process.env, ...profile.env.set },
   });
   const frames = parseNDJSON<unknown>(new Response(child.stdout), {
     maxLineBytes: 2 * 1024 * 1024,
@@ -72,7 +75,10 @@ async function oneStreamFrame(request: ControlNativeStreamRequest) {
   } finally {
     child.kill("SIGTERM");
     const code = await child.exited;
-    if (code !== 0) throw new Error(`native stream cancellation exited ${code}`);
+    // The packaged executable drains SIGTERM to exit 0. A source .ts profile
+    // has one extra Bun launcher, which reports the same deliberate signal as 1.
+    if (code !== 0 && !(profile.bin.endsWith(".ts") && code === 1))
+      throw new Error(`native stream cancellation exited ${code}`);
   }
 }
 
@@ -81,10 +87,13 @@ let archived = false;
 try {
   const requestId = crypto.randomUUID();
   const name = `service-probe-${crypto.randomUUID().slice(0, 8)}`;
-  const created = await remote.create({ requestId, name, workspace, flags: [] });
+  // Keep the real acceptance lane independent from account-level model-switch
+  // notices: this is still the ordinary no-recipe create path.
+  const flags = ["-m", "gpt-5.6-luna"];
+  const created = await remote.create({ requestId, name, workspace, flags });
   target = created.target;
-  const retried = await remote.create({ requestId, name, workspace, flags: [] });
-  const localRetry = await local.create({ requestId, name, workspace, flags: [] });
+  const retried = await remote.create({ requestId, name, workspace, flags });
+  const localRetry = await local.create({ requestId, name, workspace, flags });
   if (
     created.duplicate ||
     !retried.duplicate ||

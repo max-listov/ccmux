@@ -49,6 +49,11 @@ export {
   type ControlRow,
 } from "./control/schema.ts";
 export {
+  LaunchRecipeMetadataSchema,
+  LaunchRecipeReferenceSchema,
+} from "./config/schema.ts";
+export type { LaunchRecipeMetadata, LaunchRecipeReference } from "./types.ts";
+export {
   CCMUX_NATIVE_STREAM_COMMAND,
   CCMUX_NATIVE_STREAM_HEARTBEAT_MS,
   CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,

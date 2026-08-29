@@ -33,6 +33,9 @@ import type {
   SessionEventKindSchema,
   ExternalCapabilitiesSchema,
   WriterRuntimeSchema,
+  LaunchRecipeReferenceSchema,
+  LaunchRecipeMetadataSchema,
+  MachineLaunchRecipeSchema,
 } from "./config/schema.ts";
 
 // Single import surface for the inferred types. No bare interfaces anywhere — these
@@ -70,3 +73,6 @@ export type SessionEvent = z.infer<typeof SessionEventSchema>;
 export type SessionEventKind = z.infer<typeof SessionEventKindSchema>;
 export type ExternalCapabilities = z.infer<typeof ExternalCapabilitiesSchema>;
 export type WriterRuntime = z.infer<typeof WriterRuntimeSchema>;
+export type LaunchRecipeReference = z.infer<typeof LaunchRecipeReferenceSchema>;
+export type LaunchRecipeMetadata = z.infer<typeof LaunchRecipeMetadataSchema>;
+export type MachineLaunchRecipe = z.infer<typeof MachineLaunchRecipeSchema>;

@@ -6,6 +6,19 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Add server-owned launch recipes to managed `session.create`. Callers select only an immutable
+  id/revision; the execution host resolves existing session env files and allowed native Codex
+  model-provider flags, pins a canonical digest through create/restart reconciliation and exposes
+  only safe recipe metadata in receipts and resident projections.
+
+### Fixed
+
+- Refuse unknown, removed, changed or unavailable launch recipes before registry mutation or
+  provider spawn. Recipe creates cannot mix caller flags, leak secret values into argv/projections,
+  or turn a late retry into a second writer.
+
 ## [0.39.19] — 2026-08-29
 
 bound managed creation and installed transports

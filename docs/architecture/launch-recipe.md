@@ -4,7 +4,7 @@ description: The launch recipe — argv plus the external inputs an agent reads 
 type: architecture
 status: active
 created: 2026-08-25
-updated: 2026-08-25
+updated: 2026-08-29
 ---
 
 # What shapes a session
@@ -27,6 +27,23 @@ The first two were there from the start. The last two were not, and their absenc
 cost: a global rule set changed, every session on the fleet was running yesterday's rules, and the
 column was blank for all of them. The only remedy left was bouncing two dozen sessions on three
 machines without knowing which had actually fallen behind.
+
+## Server-owned recipes selected through control
+
+The public control API can select a named execution-host recipe for a newly managed Codex App
+Server session. The reference contains only id and revision. The host definition resolves to the
+same `Session.flags`, `Session.envFile`, environment builder and launch stamp described above; it is
+not another launch path. Its canonical digest and safe capability labels are stored with the
+session so create retry and restart can prove they are applying the same recipe.
+
+The definition can require environment variable names and configure a native model provider through
+the existing allowed `-c key=value` argv. A provider config names an environment key; the secret
+value remains in the declared env file or host environment and never becomes argv. Missing inputs,
+reserved CCMux names, refused native flags and revision/digest drift fail before provider spawn.
+
+The control projections show only `{ id, revision, digest, capabilities }`. They do not show recipe
+flags, paths, required environment names, file contents or values. See the
+[control launch recipe decision](../decisions/2026-08-29-server-owned-control-launch-recipes.md).
 
 ## Why the digests are narrow
 

@@ -5,6 +5,7 @@ import { providerFor } from "./index.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 import { envInput, type LaunchInput } from "./launchInputs.ts";
+import { LaunchRecipeMetadataSchema } from "../config/schema.ts";
 
 /**
  * What a session was LAUNCHED with — so "does this one still need a restart?" is a fact you can
@@ -38,6 +39,9 @@ export const LaunchStampSchema = z.object({
    * governs a missing stamp.
    */
   inputs: z.record(z.string(), z.string().nullable()).nullable().default(null),
+  /** Safe immutable host recipe identity. Older stamps omit it and therefore remain unknown rather
+   * than stale; recipe definitions and environment values never enter the stamp. */
+  launchRecipe: LaunchRecipeMetadataSchema.optional(),
   ts: z.number(),
 });
 export type LaunchStamp = z.infer<typeof LaunchStampSchema>;
@@ -87,6 +91,7 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
     permissionMode: s.permissionMode ?? m.permissionMode,
     chatEnabled: chatEnabledFor(s, m),
     promptModules: [...s.promptModules].sort(),
+    ...(s.launchRecipe === undefined ? {} : { launchRecipe: s.launchRecipe }),
   };
 }
 
@@ -134,8 +139,12 @@ export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, "
   // "the same modules in a different order" is not a change anyone should be asked to act on.
   const mods = (xs: readonly string[]): string => JSON.stringify([...xs].sort());
   if (mods(stamp.promptModules) !== mods(now.promptModules)) out.push("modules");
+  if (stamp.launchRecipe !== undefined && stableRecipe(stamp.launchRecipe) !== stableRecipe(now.launchRecipe))
+    out.push("recipe");
   // Anything else the launch recipe covers — a reworded prompt, ownerLang, extraFlags. Reported only
   // when nothing more specific explains it, so the message stays as precise as the evidence allows.
   if (out.length === 0 && stamp.hash !== now.hash) out.push("config");
   return out;
 }
+
+const stableRecipe = (recipe: LaunchStamp["launchRecipe"]): string => JSON.stringify(recipe ?? null);

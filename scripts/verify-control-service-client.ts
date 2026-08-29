@@ -46,6 +46,7 @@ try {
     import descriptorFile from '@ccmux/control-service-client/descriptor.json' with {type:'json'};
     import {
       ApiError, ControlServiceDescriptorSchema, ControlNativeStreamFrameSchema, ControlTargetSchema,
+      LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -68,6 +69,21 @@ try {
     });
     const receipt = await client.archive({target});
     if (!receipt.archived || calls !== 1) throw new Error('typed reply failed');
+    const launchRecipe = LaunchRecipeReferenceSchema.parse({id:'provider-a',revision:'r1'});
+    const recipeMetadata = LaunchRecipeMetadataSchema.parse({
+      ...launchRecipe,digest:'a'.repeat(64),capabilities:['external-provider','responses'],
+    });
+    let createPayload = '';
+    const creator = createCcmuxControlServiceClient(async (_url, init) => {
+      createPayload = typeof init?.body === 'string' ? init.body : '';
+      return Response.json({v:1,revision:'1',result:{
+        requestId:'11111111-1111-4111-8111-111111111111',target,workspace:'/work',duplicate:false,
+        launchRecipe:recipeMetadata,
+      }});
+    });
+    const created = await creator.create({requestId:'11111111-1111-4111-8111-111111111111',name:'agent-a',workspace:'/work',flags:[],launchRecipe});
+    if (created.launchRecipe?.digest !== recipeMetadata.digest || createPayload.includes('fixture-secret'))
+      throw new Error('safe recipe contract failed');
     if (ccmuxControlServiceComposition.descriptor !== ccmuxControlServiceDescriptor ||
         !ControlServiceDescriptorSchema.safeParse(ccmuxControlServiceDescriptor).success) throw new Error('descriptor failed');
     if (JSON.stringify(transportDescriptor.parse(descriptorFile)) !== JSON.stringify(ccmuxControlServiceDescriptor))

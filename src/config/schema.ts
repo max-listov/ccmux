@@ -29,6 +29,31 @@ export const SESSION_NAME_RE = /^[^|\s#:]+$/;
 /** Agent CLI backing a managed session. Persisted explicitly on every registry row. */
 export const AgentKindSchema = z.enum(["claude", "codex"]);
 
+/** Public-safe identity of an execution-host launch recipe. The reference contains no path,
+ * command, environment value or provider credential. */
+export const LaunchRecipeIdSchema = z.string().min(1).max(128).regex(/^[a-z][a-z0-9._-]*$/);
+export const LaunchRecipeRevisionSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+export const LaunchRecipeCapabilitySchema = z.string().min(1).max(128).regex(/^[a-z][a-z0-9._-]*$/);
+export const LaunchRecipeReferenceSchema = z.object({
+  id: LaunchRecipeIdSchema,
+  revision: LaunchRecipeRevisionSchema,
+}).strict();
+export const LaunchRecipeMetadataSchema = LaunchRecipeReferenceSchema.extend({
+  digest: z.string().regex(/^[0-9a-f]{64}$/),
+  capabilities: z.array(LaunchRecipeCapabilitySchema).max(32),
+}).strict();
+
+/** Private host configuration. Values stay on the execution host; only LaunchRecipeMetadata is
+ * projected through control APIs. `environment` names capabilities the recipe requires without
+ * carrying their values, and `flags` goes through the existing owned App Server allowlist. */
+export const MachineLaunchRecipeSchema = z.object({
+  revision: LaunchRecipeRevisionSchema,
+  envFile: z.string().min(1).optional(),
+  flags: z.array(z.string().min(1).max(4_096)).max(32).default([]),
+  environment: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)).max(32).default([]),
+  capabilities: z.array(LaunchRecipeCapabilitySchema).max(32).default([]),
+}).strict();
+
 /**
  * One ccmux-managed agent conversation.
  *
@@ -104,6 +129,9 @@ export const SessionSchema = z.object({
    * to be answerable without launching it.
    */
   envFile: z.string().min(1).optional(),
+  /** Safe immutable identity of the host recipe that produced `flags` and `envFile`. The resolved
+   * definition is deliberately not stored here: the existing session fields remain launch truth. */
+  launchRecipe: LaunchRecipeMetadataSchema.optional(),
   /** Per-session opt-out from the event feed. Undefined → follow the machine. Same two-level shape
    *  as `chatEnabled`, for the session nobody wants announced. */
   eventsEnabled: z.boolean().optional(),
@@ -199,6 +227,9 @@ export const MachineConfigSchema = z.object({
   codexHome: z.string().startsWith("/").optional(),
   // Bound for a fresh Codex TUI to persist its launch marker before the create transaction fails.
   codexCorrelationTimeoutMs: z.number().int().min(100).default(30_000),
+  /** Named launch policies selected by the public control API. Callers can name and pin one, but
+   * cannot supply any definition field or secret value themselves. */
+  launchRecipes: z.record(LaunchRecipeIdSchema, MachineLaunchRecipeSchema).default({}),
   // RC display-name prefix so the phone/Telegram client knows which box a session is on. A
   // free-form lowercase slug (local, dev, prod, staging, …) — see RC_PREFIX_RE. The regex
   // loud-fails on garbage (the real intent), and `install` refuses if it can't be set.

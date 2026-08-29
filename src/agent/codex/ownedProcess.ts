@@ -14,6 +14,7 @@ import { promptInvocation } from "../../env.ts";
 import { log } from "../../util/log.ts";
 import { loadSessions } from "../../config/sessions.ts";
 import { ownedChildAlive, stopOwnedChildGroup } from "./ownedChild.ts";
+import { verifyManagedLaunchRecipe } from "../../config/launchRecipes.ts";
 
 type Process = ReturnType<typeof Bun.spawn>;
 /** Admission failures block; a crashed, already admitted provider can resume its exact identity. */
@@ -39,6 +40,7 @@ async function socketOccupied(path: string): Promise<boolean> {
 /** One native server per session; the provider's own OS writer lock also guards its UUID. */
 export async function runOwnedCodexProcess(m: MachineConfig, initial: Session,
   promote?: (uuid: string) => Promise<Session>): Promise<void> {
+  verifyManagedLaunchRecipe(m, initial);
   const socket = ownedCodexSocket(m, initial.name);
   privateRuntimeDirectory(dirname(socket));
   await withDirectoryLock(`${socket}.owner`, async () => {

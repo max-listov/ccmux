@@ -48,6 +48,11 @@ session identity, журнал сообщений, provider adapters и restart 
 handlers/admission; локальный socket не проксируется наружу. Это не замена provider harness и не
 подключение официального Desktop к чужому writer.
 
+Managed create может выбрать immutable host-owned launch recipe безопасной ссылкой id+revision.
+Recipe остаётся конфигурацией execution host и разворачивается в уже существующие `flags`,
+`envFile`, session environment и launch stamp; caller не передаёт path, executable, shell или
+secret. Решение: [server-owned control launch recipes](decisions/2026-08-29-server-owned-control-launch-recipes.md).
+
 1. **Сейчас**: Bun-версия боевая локально (паритет с прежней реализацией подтверждён аудитом),
    раскатка на серверы — по команде владельца.
 2. **Флот без рук**: CI + GitHub Releases → демоны сами подтягивают апдейты

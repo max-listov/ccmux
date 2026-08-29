@@ -33,8 +33,11 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
-async function fixture() {
+async function fixture(options: { launchRecipe?: boolean } = {}) {
   const root = mkdtempSync("/tmp/ccmux-service-test-");
+  const recipeEnvFile = join(root, "provider.env");
+  const recipeSecret = "fixture-service-secret-never-public";
+  if (options.launchRecipe) writeFileSync(recipeEnvFile, `MODEL_SERVICE_TOKEN=${recipeSecret}\n`);
   const machine = makeMachine({
     stateDir: root,
     rcPrefix: "host-a",
@@ -42,6 +45,14 @@ async function fixture() {
     chatEnabled: true,
     codexHome: join(root, "codex"),
     codexSessionsDir: join(root, "codex", "sessions"),
+    ...(options.launchRecipe ? { launchRecipes: { "provider-a": {
+      revision: "r1", envFile: recipeEnvFile,
+      flags: ["-c", 'model_provider="provider-a"',
+        "-c", 'model_providers.provider-a.name="Provider A"',
+        "-c", 'model_providers.provider-a.base_url="https://api.example.invalid/v1"',
+        "-c", 'model_providers.provider-a.env_key="MODEL_SERVICE_TOKEN"'],
+      environment: ["MODEL_SERVICE_TOKEN"], capabilities: ["external-provider"],
+    } } } : {}),
   });
   const session = makeSession({
     name: "agent-a",
@@ -90,6 +101,9 @@ async function fixture() {
           runtime: "app-server",
           registrationGeneration: input.registrationGeneration,
           chatEnabled: true,
+          flags: input.flags,
+          envFile: input.envFile,
+          launchRecipe: input.launchRecipe,
         });
         await writeSessionsUnlocked(machine, [...loadSessions(machine), created]);
         return created;
@@ -98,11 +112,14 @@ async function fixture() {
   );
   const socket = controlSocket(machine);
   const local = createControlClient({ socket });
+  const servicePayloads: string[] = [];
   const remote = createCcmuxControlServiceClient(async (url, init) => {
     const route = new URL(String(url));
     const operation = ControlServiceOperationSchema.parse(
       route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
     );
+    const payload = typeof init?.body === "string" ? init.body : "{}";
+    servicePayloads.push(payload);
     return fetch("http://ccmux.local/ccmux-control/v1/invoke", {
       unix: socket,
       method: "POST",
@@ -114,7 +131,7 @@ async function fixture() {
         service: "ccmux.control",
         revision: "1",
         operation,
-        payload: typeof init?.body === "string" ? init.body : "{}",
+        payload,
       }),
     });
   });
@@ -128,8 +145,23 @@ async function fixture() {
     rmSync(root, { recursive: true, force: true });
   });
   return { root, machine, session, native, writer, publisher, publish, owned, socket, local, remote, target,
-    createCalls: () => createCalls };
+    recipeEnvFile, recipeSecret, servicePayloads, createCalls: () => createCalls };
 }
+
+test("declared service activates a host-owned recipe without carrying its environment source or value", async () => {
+  const f = await fixture({ launchRecipe: true });
+  const receipt = await f.remote.create({
+    requestId: crypto.randomUUID(), name: "recipe-a", workspace: f.root, flags: [],
+    launchRecipe: { id: "provider-a", revision: "r1" },
+  });
+  expect(receipt.launchRecipe).toMatchObject({ id: "provider-a", revision: "r1", capabilities: ["external-provider"] });
+  const wire = f.servicePayloads.at(-1) ?? "";
+  expect(wire).not.toContain(f.recipeSecret);
+  expect(wire).not.toContain(f.recipeEnvFile);
+  expect(JSON.stringify(receipt)).not.toContain(f.recipeSecret);
+  expect(JSON.stringify(receipt)).not.toContain(f.recipeEnvFile);
+  expect(f.createCalls()).toBe(1);
+});
 
 test("declared service reuses exact control operations, identity and admission", async () => {
   const f = await fixture();
