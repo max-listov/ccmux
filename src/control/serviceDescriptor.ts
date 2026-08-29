@@ -43,16 +43,29 @@ export const ControlServiceOperationSchema = z.enum([
 export type ControlServiceOperation = z.infer<typeof ControlServiceOperationSchema>;
 
 export const ControlServiceEffectSchema = z.enum([
-  "session:read",
-  "session:create",
-  "session:archive",
-  "message:send",
-  "session:start",
-  "turn:interrupt",
-  "native:read",
-  "native:respond",
-  "session:wait",
-]);
+  "session.read",
+  "session.create",
+  "session.archive",
+  "message.send",
+  "session.start",
+  "turn.interrupt",
+  "native.read",
+  "native.respond",
+  "session.wait",
+]).refine((effect) => /^[a-z0-9][a-z0-9._-]*$/.test(effect), "invalid service effect identifier");
+export type ControlServiceEffect = z.infer<typeof ControlServiceEffectSchema>;
+
+export const controlServiceEffects = {
+  "session.get": "session.read",
+  "session.create": "session.create",
+  "session.archive": "session.archive",
+  "message.send": "message.send",
+  "session.start": "session.start",
+  "turn.interrupt": "turn.interrupt",
+  "native.read": "native.read",
+  "native.respond": "native.respond",
+  "session.wait": "session.wait",
+} satisfies Record<ControlServiceOperation, ControlServiceEffect>;
 
 const ControlServiceLimitsSchema = z
   .object({
@@ -96,15 +109,15 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
   revision: CCMUX_CONTROL_SERVICE_REVISION,
   maxInflight: 8,
   operations: [
-    { id: "session.get", effect: "session:read", limits: { requestBytes: 4096, responseBytes: 32 * 1024, timeoutMs: 5000 } },
-    { id: "session.create", effect: "session:create", limits: { requestBytes: 64 * 1024, responseBytes: 16 * 1024, timeoutMs: 30_000 } },
-    { id: "session.archive", effect: "session:archive", limits: { requestBytes: 4096, responseBytes: 16 * 1024, timeoutMs: 15_000 } },
-    { id: "message.send", effect: "message:send", limits: { requestBytes: 32 * 1024, responseBytes: 8192, timeoutMs: 15_000 } },
-    { id: "session.start", effect: "session:start", limits: { requestBytes: 4096, responseBytes: 8192, timeoutMs: 15_000 } },
-    { id: "turn.interrupt", effect: "turn:interrupt", limits: { requestBytes: 8192, responseBytes: 8192, timeoutMs: 10_000 } },
-    { id: "native.read", effect: "native:read", limits: { requestBytes: 8192, responseBytes: CONTROL_MAX_BYTES + 4096, timeoutMs: 5000 } },
-    { id: "native.respond", effect: "native:respond", limits: { requestBytes: 64 * 1024, responseBytes: 8192, timeoutMs: 10_000 } },
-    { id: "session.wait", effect: "session:wait", limits: { requestBytes: 8192, responseBytes: 64 * 1024, timeoutMs: 30_000 } },
+    { id: "session.get", effect: controlServiceEffects["session.get"], limits: { requestBytes: 4096, responseBytes: 32 * 1024, timeoutMs: 5000 } },
+    { id: "session.create", effect: controlServiceEffects["session.create"], limits: { requestBytes: 64 * 1024, responseBytes: 16 * 1024, timeoutMs: 30_000 } },
+    { id: "session.archive", effect: controlServiceEffects["session.archive"], limits: { requestBytes: 4096, responseBytes: 16 * 1024, timeoutMs: 15_000 } },
+    { id: "message.send", effect: controlServiceEffects["message.send"], limits: { requestBytes: 32 * 1024, responseBytes: 8192, timeoutMs: 15_000 } },
+    { id: "session.start", effect: controlServiceEffects["session.start"], limits: { requestBytes: 4096, responseBytes: 8192, timeoutMs: 15_000 } },
+    { id: "turn.interrupt", effect: controlServiceEffects["turn.interrupt"], limits: { requestBytes: 8192, responseBytes: 8192, timeoutMs: 10_000 } },
+    { id: "native.read", effect: controlServiceEffects["native.read"], limits: { requestBytes: 8192, responseBytes: CONTROL_MAX_BYTES + 4096, timeoutMs: 5000 } },
+    { id: "native.respond", effect: controlServiceEffects["native.respond"], limits: { requestBytes: 64 * 1024, responseBytes: 8192, timeoutMs: 10_000 } },
+    { id: "session.wait", effect: controlServiceEffects["session.wait"], limits: { requestBytes: 8192, responseBytes: 64 * 1024, timeoutMs: 30_000 } },
   ],
 });
 
@@ -183,15 +196,15 @@ function serviceReply<T>(result: z.ZodType<T>) {
 export const ccmuxControlServiceContract = defineContract(
   { prefix: CCMUX_CONTROL_SERVICE_PREFIX },
   {
-    get: { method: "POST", path: "/session.get", desc: "Read one exact managed session", input: ControlTargetSchema, output: serviceReply(ControlRowSchema), idempotent: true, meta: { effect: "session:read" } },
-    create: { method: "POST", path: "/session.create", desc: "Idempotently create one managed Codex session", input: ControlCreateSchema, output: serviceReply(ControlCreateReceiptSchema), idempotent: true, timeout: 30_000, meta: { effect: "session:create" } },
-    archive: { method: "POST", path: "/session.archive", desc: "Archive one exact managed identity", input: ControlTargetSchema, output: serviceReply(ControlArchiveReceiptSchema), idempotent: true, meta: { effect: "session:archive" } },
-    message: { method: "POST", path: "/message.send", desc: "Accept one identity-pinned durable message", input: ControlMessageSchema, output: serviceReply(ControlMessageReceiptSchema), idempotent: true, meta: { effect: "message:send" } },
-    start: { method: "POST", path: "/session.start", desc: "Start one existing managed identity", input: ControlTargetSchema, output: serviceReply(ControlActionReceiptSchema), meta: { effect: "session:start" } },
-    interrupt: { method: "POST", path: "/turn.interrupt", desc: "Interrupt one exact active native turn", input: ControlInterruptSchema, output: serviceReply(ControlActionReceiptSchema), meta: { effect: "turn:interrupt" } },
-    native: { method: "POST", path: "/native.read", desc: "Read bounded native items after a cursor", input: ControlNativeReadSchema, output: serviceReply(ControlNativeSnapshotSchema), idempotent: true, meta: { effect: "native:read" } },
-    respond: { method: "POST", path: "/native.respond", desc: "Answer one exact current native request", input: ControlNativeResponseSchema, output: serviceReply(ControlNativeResponseReceiptSchema), idempotent: true, meta: { effect: "native:respond" } },
-    wait: { method: "POST", path: "/session.wait", desc: "Wait for a managed native session between turns", input: ControlServiceWaitSchema, output: serviceReply(ControlWaitResultSchema), idempotent: true, timeout: 30_000, meta: { effect: "session:wait" } },
+    get: { method: "POST", path: "/session.get", desc: "Read one exact managed session", input: ControlTargetSchema, output: serviceReply(ControlRowSchema), idempotent: true, meta: { effect: controlServiceEffects["session.get"] } },
+    create: { method: "POST", path: "/session.create", desc: "Idempotently create one managed Codex session", input: ControlCreateSchema, output: serviceReply(ControlCreateReceiptSchema), idempotent: true, timeout: 30_000, meta: { effect: controlServiceEffects["session.create"] } },
+    archive: { method: "POST", path: "/session.archive", desc: "Archive one exact managed identity", input: ControlTargetSchema, output: serviceReply(ControlArchiveReceiptSchema), idempotent: true, meta: { effect: controlServiceEffects["session.archive"] } },
+    message: { method: "POST", path: "/message.send", desc: "Accept one identity-pinned durable message", input: ControlMessageSchema, output: serviceReply(ControlMessageReceiptSchema), idempotent: true, meta: { effect: controlServiceEffects["message.send"] } },
+    start: { method: "POST", path: "/session.start", desc: "Start one existing managed identity", input: ControlTargetSchema, output: serviceReply(ControlActionReceiptSchema), meta: { effect: controlServiceEffects["session.start"] } },
+    interrupt: { method: "POST", path: "/turn.interrupt", desc: "Interrupt one exact active native turn", input: ControlInterruptSchema, output: serviceReply(ControlActionReceiptSchema), meta: { effect: controlServiceEffects["turn.interrupt"] } },
+    native: { method: "POST", path: "/native.read", desc: "Read bounded native items after a cursor", input: ControlNativeReadSchema, output: serviceReply(ControlNativeSnapshotSchema), idempotent: true, meta: { effect: controlServiceEffects["native.read"] } },
+    respond: { method: "POST", path: "/native.respond", desc: "Answer one exact current native request", input: ControlNativeResponseSchema, output: serviceReply(ControlNativeResponseReceiptSchema), idempotent: true, meta: { effect: controlServiceEffects["native.respond"] } },
+    wait: { method: "POST", path: "/session.wait", desc: "Wait for a managed native session between turns", input: ControlServiceWaitSchema, output: serviceReply(ControlWaitResultSchema), idempotent: true, timeout: 30_000, meta: { effect: controlServiceEffects["session.wait"] } },
   },
 );
 
@@ -238,17 +251,7 @@ export function serviceOperation(operation: ControlServiceOperation) {
 }
 
 function controlServiceEffect(operation: ControlServiceOperation): z.output<typeof ControlServiceEffectSchema> {
-  switch (operation) {
-    case "session.get": return "session:read";
-    case "session.create": return "session:create";
-    case "session.archive": return "session:archive";
-    case "message.send": return "message:send";
-    case "session.start": return "session:start";
-    case "turn.interrupt": return "turn:interrupt";
-    case "native.read": return "native:read";
-    case "native.respond": return "native:respond";
-    case "session.wait": return "session:wait";
-  }
+  return controlServiceEffects[operation];
 }
 
 export type { ClientFetch } from "stitchkit";

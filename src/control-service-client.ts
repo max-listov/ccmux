@@ -14,11 +14,13 @@ export {
   ccmuxControlServiceComposition,
   ccmuxControlServiceContract,
   ccmuxControlServiceDescriptor,
+  controlServiceEffects,
   controlServiceInputs,
   controlServiceOutputs,
   createCcmuxControlServiceClient,
   serviceOperation,
   type ClientFetch,
+  type ControlServiceEffect,
   type ControlServiceInvocation,
   type ControlServiceOperation,
 } from "./control/serviceDescriptor.ts";

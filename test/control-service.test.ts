@@ -196,7 +196,7 @@ test("service envelope, effect, nested selector, size and stale identity fail cl
     ControlServiceDescriptorSchema.parse({
       ...ccmuxControlServiceDescriptor,
       operations: ccmuxControlServiceDescriptor.operations.map((operation) =>
-        operation.id === "session.get" ? { ...operation, effect: "session:create" } : operation,
+        operation.id === "session.get" ? { ...operation, effect: "session.create" } : operation,
       ),
     }),
   ).toThrow("wrong effect");

@@ -194,6 +194,16 @@ client. If transport delivery is unknown, the caller retains that uncertainty. A
 reconciles one registration generation and one writer. Other mutations require their own exact
 idempotency identity or an authoritative read before any caller-selected retry.
 
+Revision 1 effects are stable dot-delimited authorization identifiers: `session.read`,
+`session.create`, `session.archive`, `message.send`, `session.start`, `turn.interrupt`,
+`native.read`, `native.respond` and `session.wait`. Operation metadata, the typed client contract
+and `descriptor.json` all read them from one owner mapping. Every service, operation and effect
+identifier satisfies `^[a-z0-9][a-z0-9._-]*$`; an operator must feed the descriptor unchanged into
+its declared-service policy parser. A valid activated revision pins its effects and requires a new
+revision for any later authorization-identity change. A descriptor that cannot pass the policy
+parser cannot have a valid activation or grant migration; correcting that descriptor retains its
+unactivated revision.
+
 Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
 created with `createCcmuxNativeStreamProfile(<absolute installed ccmux path>)`. Every other field is
 owner-fixed: command `control-native-stream`, no caller argv, one strict target on bounded stdin,

@@ -42,12 +42,24 @@ try {
   );
   await Bun.write(
     join(consumer, "check.ts"),
-    `import {
+    `import {z} from 'zod';
+    import descriptorFile from '@ccmux/control-service-client/descriptor.json' with {type:'json'};
+    import {
       ApiError, ControlServiceDescriptorSchema, ControlNativeStreamFrameSchema, ControlTargetSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
-      createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
+      controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
     } from '@ccmux/control-service-client';
+    const identifier = z.string().max(64).regex(/^[a-z0-9][a-z0-9._-]*$/);
+    const transportDescriptor = z.object({
+      service:z.string().max(128).regex(/^[a-z0-9][a-z0-9._-]*$/),
+      revision:z.string().max(64).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
+      maxInflight:z.number().int().min(1).max(32),
+      operations:z.array(z.object({
+        id:identifier,effect:identifier,
+        limits:z.object({requestBytes:z.number().int().min(1).max(65536),responseBytes:z.number().int().min(1).max(1048576),timeoutMs:z.number().int().min(1).max(30000)}).strict(),
+      }).strict()).min(1).max(64),
+    }).strict();
     const {target} = ControlTargetSchema.parse({target:{kind:'managed',source:'ccmux',machine:'host-a',agent:'codex',session:'agent-a',threadId:crypto.randomUUID()}});
     let calls = 0;
     const client = createCcmuxControlServiceClient(async () => {
@@ -58,6 +70,10 @@ try {
     if (!receipt.archived || calls !== 1) throw new Error('typed reply failed');
     if (ccmuxControlServiceComposition.descriptor !== ccmuxControlServiceDescriptor ||
         !ControlServiceDescriptorSchema.safeParse(ccmuxControlServiceDescriptor).success) throw new Error('descriptor failed');
+    if (JSON.stringify(transportDescriptor.parse(descriptorFile)) !== JSON.stringify(ccmuxControlServiceDescriptor))
+      throw new Error('descriptor export/file mismatch');
+    for (const operation of ccmuxControlServiceDescriptor.operations)
+      if (operation.effect !== controlServiceEffects[operation.id]) throw new Error('effect metadata mismatch');
     const profile = createCcmuxNativeStreamProfile('/opt/bin/ccmux');
     if (profile.argv[0] !== 'control-native-stream' || profile.callerArgs.mode !== 'none') throw new Error('profile failed');
     const cursor = encodeControlNativeStreamCursor(target,{generation:crypto.randomUUID(),sequence:7});
@@ -88,6 +104,8 @@ try {
         resolution,
         "--target",
         "es2022",
+        "--resolveJsonModule",
+        "true",
         "--lib",
         "es2022,dom",
         "check.ts",
