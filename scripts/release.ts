@@ -22,6 +22,7 @@ import { buildBundle } from "./bundle.ts";
 import { buildMonitoringReader } from "./build-monitoring-reader.ts";
 import { buildCodexRuntimeReader } from "./build-codex-runtime-reader.ts";
 import { buildControlClient } from "./build-control-client.ts";
+import { packageControlServiceClient } from "./package-control-service.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PKG_JSON = join(ROOT, "package.json");
@@ -79,6 +80,7 @@ async function doCiAssets(url: string): Promise<number> {
   await buildMonitoringReader(RELEASES_DIR);
   await buildCodexRuntimeReader(RELEASES_DIR);
   await buildControlClient(RELEASES_DIR);
+  await packageControlServiceClient(RELEASES_DIR);
   console.log(`assets ready: ${RELEASE_BUNDLE} + ${RELEASE_MANIFEST} (sha256 ${hex.slice(0, 12)}…)`);
   return 0;
 }

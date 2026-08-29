@@ -157,6 +157,58 @@ can pass the proxy to its own MCP/agent mount. Authorization is always checked a
 not trusted from an in-process tool context. Close the proxy with `proxy.close()`. CCMux does not
 install an MCP server into existing provider sessions or change Desktop configuration.
 
+# Declared service and native stream binding
+
+The local control routes remain a same-user API and are never exposed directly as a remote
+service. A transport that already authenticates nodes and grants declared operations binds the
+separate fixed owner ingress at `/ccmux-control/v1/invoke`. The transport constructs this strict
+envelope:
+
+```ts
+{
+  v: 1, id, caller,
+  service: "ccmux.control", revision: "1",
+  operation, payload: JSON.stringify(input),
+}
+```
+
+`operation` is trusted outer metadata. The ingress selects one handler from it and only then parses
+`payload` with the existing control input schema; a nested selector cannot change the handler.
+The result is validated with the matching existing output schema and wrapped as
+`{ v: 1, revision: "1", result }`. The ingress and local routes share one in-process operation
+surface, mutation admission, wait admission, registry, chat ledger and native provider adapter.
+It is not an HTTP-to-CLI proxy and cannot create another provider writer.
+
+The release asset `ccmux-control-service-client-<version>.tgz` contains the typed injected-fetch
+client, `descriptor.json`, `native-stream.json` and declarations. Its adjacent
+`control-service-client.sha256` authenticates the artifact. The same surface is available from
+`ccmux/control-service-client` in a source checkout. `ccmuxControlServiceComposition` contains only
+virtual routing metadata and the descriptor. It grants nothing and opens no connection. The
+operator owns the private ingress socket path, node binding, credentials and exact
+service/revision/operation/effect grants.
+
+The descriptor declares nine operations and their byte/deadline budgets. A remote wait is capped
+at 25 seconds inside a 30-second service deadline. Service delivery is never retried by the owner
+client. If transport delivery is unknown, the caller retains that uncertainty. An idempotent
+`session.create` may deliberately retry the same immutable `requestId`: the durable create receipt
+reconciles one registration generation and one writer. Other mutations require their own exact
+idempotency identity or an authoritative read before any caller-selected retry.
+
+Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
+created with `createCcmuxNativeStreamProfile(<absolute installed ccmux path>)`. Every other field is
+owner-fixed: command `control-native-stream`, no caller argv, one strict target on bounded stdin,
+no inherited environment, stable-cursor NDJSON, four concurrent producers, a 15-minute deadline
+and a 64 MiB total ceiling. The typed stdin request contains the exact target and an optional
+owner cursor; it contains no path, executable, credential or operation selector.
+
+Each producer line is exactly `{ channel: "data", data, cursor }`. `data` is a validated bounded
+`ControlNativeSnapshot`; `cursor` binds exact target, generation and sequence and is capped at 512
+bytes. The producer repeats the last snapshot every two seconds as a heartbeat with the same cursor.
+Reconnect passes that cursor back in the next typed stdin request: a matching generation resumes after the sequence, while a new
+generation or retained-window miss returns the canonical `generation` or `gap` reset snapshot.
+Cancellation aborts the local subscription and closes both Unix transports. No workspace path,
+provider credential, arbitrary executable, shell text or consumer-owned parser crosses this API.
+
 # Bounds and freshness
 
 - One existing observation pass every 2 seconds; subscribers create no provider connection,
@@ -198,9 +250,10 @@ drain; the existing boot unit starts the new artifact. The daemon never awaits a
 restart of itself. Manual CLI updates retain their ordinary service-manager restart. The bundled
 daemon regression in `test/daemon-update.test.ts` verifies install, clean shutdown and restart.
 
-Tests: `test/control.test.ts`, `test/control-lifecycle.test.ts`, `test/codex-owned-connection.test.ts`,
+Tests: `test/control.test.ts`, `test/control-service.test.ts`, `test/control-lifecycle.test.ts`, `test/codex-owned-connection.test.ts`,
 `test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
-and `test/bundle-selfcontained.test.ts`. Explicit provider E2E: run
+and `test/bundle-selfcontained.test.ts`. `scripts/verify-control-service-client.ts` installs the
+fresh tarball outside the checkout and runs Bun, Node, NodeNext and bundler gates. Explicit provider E2E: run
 `scripts/codex-owned-runtime-probe.ts`, then
 `scripts/codex-control-lifecycle-probe.ts <isolated-config>`,
 `scripts/control-native-e2e.ts <isolated-config>` and the native safety/recovery probes. These spend

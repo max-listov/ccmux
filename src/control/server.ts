@@ -9,13 +9,14 @@ import { controlSocket, prepareControlDirectory } from "./path.ts";
 import type { ControlPublisher } from "./publisher.ts";
 import { controlServices } from "./service.ts";
 import { ExternalStatusPublisher } from "../external/resident-publisher.ts";
+import type { ControlOperationDependencies } from "./operations.ts";
 
 /** Same-user IPC only. Provider credentials never cross this boundary. */
 export function createControlServer(m: MachineConfig, publisher: ControlPublisher,
   upstream?: ApplicationAdmission, currentMachine: () => MachineConfig = () => m,
-  external = new ExternalStatusPublisher(m.rcPrefix)) {
+  external = new ExternalStatusPublisher(m.rcPrefix), dependencies: ControlOperationDependencies = {}) {
   prepareControlDirectory(m);
-  const controls = controlServices(m, publisher, external, upstream);
+  const controls = controlServices(m, publisher, external, upstream, dependencies);
   const authorize = controlAuth(m);
   const observability = createObservability({ request: {
     includePayload: false, maxPending: 64,

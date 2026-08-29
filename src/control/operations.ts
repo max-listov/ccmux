@@ -1,0 +1,180 @@
+import { AppError } from "stitchkit";
+import {
+  BoundedAdmissionRefusalError,
+  BoundedOperationWaitError,
+  createBoundedAdmission,
+  type ApplicationAdmission,
+} from "stitchkit/application";
+import { z } from "zod";
+import type { CreateManagedInput } from "../commands/create.ts";
+import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
+import { ChatPrincipalSchema } from "../config/schema.ts";
+import { withSessionRegistryLock } from "../config/registryLock.ts";
+import { startSession } from "../commands/lifecycle.ts";
+import { acceptControlMessage } from "./message.ts";
+import { interruptControlTurn, waitControlSession } from "./native.ts";
+import { archiveControlSession, createControlSession } from "./lifecycle.ts";
+import { readControlNative, respondControlNative } from "./nativeFeed.ts";
+import { controlTarget } from "./target.ts";
+import type { ControlPublisher } from "./publisher.ts";
+import type { ExternalStatusPublisher } from "../external/resident-publisher.ts";
+import type { ChatPrincipal, MachineConfig, Session } from "../types.ts";
+import {
+  ControlCreateSchema,
+  ControlInterruptSchema,
+  ControlMessageSchema,
+  ControlNativeReadSchema,
+  ControlNativeResponseSchema,
+  ControlTargetSchema,
+  ControlWaitSchema,
+} from "./schema.ts";
+
+type TargetInput = z.output<typeof ControlTargetSchema>;
+type CreateInput = z.output<typeof ControlCreateSchema>;
+type MessageInput = z.output<typeof ControlMessageSchema>;
+type InterruptInput = z.output<typeof ControlInterruptSchema>;
+type NativeReadInput = z.output<typeof ControlNativeReadSchema>;
+type NativeResponseInput = z.output<typeof ControlNativeResponseSchema>;
+type WaitInput = z.output<typeof ControlWaitSchema>;
+
+const detachedSignal = (): AbortSignal => new AbortController().signal;
+
+export type ControlOperationDependencies = {
+  createManagedSession?: (machine: MachineConfig, input: CreateManagedInput) => Promise<Session>;
+};
+
+/**
+ * One domain operation surface shared by local IPC and declared-service ingress.
+ * Admission is created once here, so adding a transport cannot add capacity or a writer.
+ */
+export function createControlOperations(
+  m: MachineConfig,
+  publisher: ControlPublisher,
+  external: ExternalStatusPublisher,
+  upstream?: ApplicationAdmission,
+  dependencies: ControlOperationDependencies = {},
+) {
+  const mutations = createBoundedAdmission({
+    ...(upstream ? { upstream } : {}),
+    policy: { global: { maxConcurrent: 8 }, perKey: { maxConcurrent: 1, maxKeys: 256 } },
+  });
+  const waits = createBoundedAdmission({
+    ...(upstream ? { upstream } : {}),
+    policy: { global: { maxConcurrent: 16 } },
+  });
+  const operations = {
+    list: () => publisher.read(),
+    external: () => external.read(),
+    get: (input: TargetInput) => {
+      controlTarget(m, input.target);
+      const row = publisher.read().sessions.find(
+        (session) =>
+          session.identity.session === input.target.session &&
+          session.identity.threadId === input.target.threadId,
+      );
+      if (!row) throw new AppError("UNAVAILABLE", "Session has no prepared observation", 503);
+      return row;
+    },
+    create: (input: CreateInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          `create:${input.requestId}`,
+          ({ signal: admitted }) =>
+            dependencies.createManagedSession === undefined
+              ? createControlSession(m, input, admitted)
+              : createControlSession(m, input, admitted, dependencies.createManagedSession),
+          { ...(signal ? { signal } : {}), timeoutMs: 60_000 },
+        )
+        .catch(controlRefusal),
+    archive: (input: TargetInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          () => {
+            controlTarget(m, input.target);
+            return archiveControlSession(m, input.target);
+          },
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    message: (input: MessageInput, principal: ChatPrincipal, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) =>
+            acceptControlMessage(m, ChatPrincipalSchema.parse(principal), input, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    start: (input: TargetInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) =>
+            withSessionRegistryLock(m, async () => {
+              admitted.throwIfAborted();
+              const session = controlTarget(m, input.target);
+              if (session.archived)
+                throw new AppError("ARCHIVED", "Archived sessions cannot be started", 409);
+              clearLifecycleBlock(m, session.name);
+              await startSession(m, session.name, session.dir);
+              return { target: input.target, accepted: true as const };
+            }),
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    interrupt: (input: InterruptInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) =>
+            interruptControlTurn(m, input.target, input.turnId, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 10_000 },
+        )
+        .catch(controlRefusal),
+    native: (input: NativeReadInput) => readControlNative(m, input.target, input.cursor),
+    respond: (input: NativeResponseInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) => respondControlNative(m, input, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 10_000 },
+        )
+        .catch(controlRefusal),
+    wait: (input: WaitInput, signal?: AbortSignal) =>
+      waits
+        .run(
+          undefined,
+          ({ signal: admitted }) =>
+            waitControlSession(m, publisher, input.target, input.timeoutMs, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 61_000 },
+        )
+        .catch(controlRefusal),
+  };
+  return { operations, mutations, waits };
+}
+
+export type ControlOperations = ReturnType<typeof createControlOperations>["operations"];
+
+export function controlOperationSignal(signal?: AbortSignal): AbortSignal {
+  return signal ?? detachedSignal();
+}
+
+function controlRefusal(error: unknown): never {
+  if (error instanceof BoundedAdmissionRefusalError) {
+    const draining = error.reason === "not-accepting" || error.reason === "upstream";
+    throw new AppError(
+      draining ? "UNAVAILABLE" : "BUSY",
+      draining ? "Control is draining" : "Control capacity reached",
+      draining ? 503 : 429,
+    );
+  }
+  if (error instanceof BoundedOperationWaitError) {
+    throw new AppError(
+      error.reason === "timed-out" ? "TIMEOUT" : "CANCELLED",
+      "Control call did not finish within its caller budget",
+      504,
+    );
+  }
+  throw error;
+}

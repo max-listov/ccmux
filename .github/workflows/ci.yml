@@ -171,5 +171,7 @@ jobs:
             "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/codex-runtime-reader.js" \
             "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/codex-runtime-reader.sha256" \
             "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-client.js" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-client.sha256"
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-client.sha256" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux-control-service-client-${GITHUB_REF_NAME#v}.tgz" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-service-client.sha256"
           gh release edit "$GITHUB_REF_NAME" --draft=false

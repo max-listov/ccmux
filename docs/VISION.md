@@ -4,7 +4,7 @@ description: Persistent self-healing флот агентских сессий н
 type: vision
 status: active
 created: 2026-06-11
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 
 # ccmux — куда идём
@@ -43,8 +43,10 @@ reader без CLI-процесса на каждый poll, с ограничен
 Resident control объединяет typed HTTP/CLI/tool API и bounded live snapshots на локальном Unix
 socket. Stitchkit управляет контрактом, transport и lifecycle ресурсов daemon; CCMux сохраняет
 session identity, журнал сообщений, provider adapters и restart policy. Контракт —
-[control-plane](architecture/control-plane.md). Это не замена provider harness и не подключение
-официального Desktop к чужому writer.
+[control-plane](architecture/control-plane.md). Для authenticated declared-service transport CCMux
+также публикует owner descriptor, fixed ingress и stable-cursor native stream profile поверх тех же
+handlers/admission; локальный socket не проксируется наружу. Это не замена provider harness и не
+подключение официального Desktop к чужому writer.
 
 1. **Сейчас**: Bun-версия боевая локально (паритет с прежней реализацией подтверждён аудитом),
    раскатка на серверы — по команде владельца.

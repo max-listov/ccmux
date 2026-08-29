@@ -37,6 +37,7 @@ import { cmdRouter } from "./commands/router.ts";
 import { cmdStopHook } from "./commands/stopHook.ts";
 import { cmdHookStatus } from "./commands/hookStatus.ts";
 import { cmdStatusLine } from "./commands/statusLine.ts";
+import { cmdControlNativeStream } from "./commands/controlNativeStream.ts";
 import { cmdHelp, COMMANDS } from "./commands/help.ts";
 
 /** Lazy-load the TUI (ink/react) only when actually launching it — keeps every plain
@@ -187,6 +188,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdHookStatus(); // hidden: Claude lifecycle hooks → working/idle status file
     case "status-line":
       return cmdStatusLine(); // hidden: Claude statusLine tee → context% metrics + render original
+    case "control-native-stream":
+      return cmdControlNativeStream();
     case "version":
     case "-v":
     case "--version":

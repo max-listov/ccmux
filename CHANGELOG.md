@@ -6,6 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Publish a versioned declared-service descriptor, strict private ingress and transport-injected
+  typed client for bounded managed session control. Local and declared-service calls share the
+  same operation admission, durable receipts, registry and native provider writer.
+- Add a fixed stable-cursor NDJSON native stream producer with target-bound resume cursors,
+  explicit generation/gap resets, heartbeats and cancellation. Release the Bun/Node client
+  package with descriptor/profile metadata, declarations and SHA-256 integrity.
+
 ## [0.39.16] — 2026-08-29
 
 add workspace-scoped Codex control surface

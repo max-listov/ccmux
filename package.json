@@ -11,7 +11,8 @@
     "./session-reader": "./src/lib.ts",
     "./monitoring-reader": "./src/monitoring-reader.ts",
     "./codex-runtime-reader": "./src/codex-runtime-reader.ts",
-    "./control-client": "./src/control-client.ts"
+    "./control-client": "./src/control-client.ts",
+    "./control-service-client": "./src/control-service-client.ts"
   },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
@@ -20,7 +21,7 @@
     "tui:hot": "bun --hot src/cli.ts",
     "daemon:watch": "bun --watch src/cli.ts daemon",
     "smoke": "bash scripts/tui-smoke.sh",
-    "check": "tsc --noEmit && bun test",
+    "check": "tsc --noEmit && bun test && bun scripts/verify-control-service-client.ts",
     "stage": "bun scripts/release.ts --stage",
     "release": "bun scripts/release.ts",
     "test": "bun test",
