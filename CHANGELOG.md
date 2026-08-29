@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.20] — 2026-08-29
+
+add server-owned launch recipes
+
 ### Added
 
 - Add server-owned launch recipes to managed `session.create`. Callers select only an immutable
@@ -18,7 +22,6 @@ the GitHub Release with that section as the notes.
 - Refuse unknown, removed, changed or unavailable launch recipes before registry mutation or
   provider spawn. Recipe creates cannot mix caller flags, leak secret values into argv/projections,
   or turn a late retry into a second writer.
-
 ## [0.39.19] — 2026-08-29
 
 bound managed creation and installed transports
