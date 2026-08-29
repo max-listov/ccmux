@@ -8,10 +8,11 @@ import { ownedCodexThreadParams } from "./ownedLaunch.ts";
 import { OwnedCodexProjection } from "./ownedProjection.ts";
 import { OwnedCodexStatusWriter } from "./ownedStatus.ts";
 import { restoreOwnedTurn } from "./ownedObserver.ts";
-import { historyFile } from "./resume.ts";
+import { rolloutReadiness } from "./resume.ts";
 import { log } from "../../util/log.ts";
 import { emitOwnedCodexBoundary } from "./ownedEvents.ts";
 import { clearNativeCommand, readNativeCommand, writeNativeReceipt } from "./ownedControl.ts";
+import { codexAppMessagePersisted } from "./appPickup.ts";
 
 const OBSERVED_EVENTS = new Set(["thread/status/changed", "turn/started", "turn/completed",
   "item/started", "item/completed", "thread/tokenUsage/updated", "serverRequest/resolved"]);
@@ -80,15 +81,35 @@ export class OwnedCodexConnection {
     this.bufferedRequests = [];
     projection.reconcile(response.thread.status, 0);
     if (fresh) {
-      await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
-        "Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.");
       const deadline = Date.now() + this.m.codexCorrelationTimeoutMs;
-      while (historyFile(session, this.m) === null && Date.now() < deadline) {
+      let turnError: unknown = null;
+      try {
+        await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
+          "Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.");
+      } catch (error) {
+        turnError = error;
+      }
+      let rollout = rolloutReadiness(session, this.m);
+      while (rollout.status !== "ready" && Date.now() < deadline) {
         signal.throwIfAborted();
         this.liveRpc();
         await Bun.sleep(50);
+        rollout = rolloutReadiness(session, this.m);
       }
-      if (historyFile(session, this.m) === null) throw new Error("Native session did not persist its conversation before admission");
+      if (rollout.status !== "ready") {
+        throw new Error(`Native session rollout metadata did not become readable before admission (${rollout.detail}; turn=${String(turnError)})`);
+      }
+      if (turnError !== null) {
+        // A provider can expose the rollout inode before committing session_meta, then reject the
+        // first turn while its own thread store is between those two states. Retry only that named
+        // pre-dispatch failure, with the same immutable client id, and first rule out a persisted
+        // acceptance after a lost response.
+        if (!/thread-store.*(?:rollout is empty|session metadata)/i.test(String(turnError))) throw turnError;
+        if (!(await codexAppMessagePersisted(this.m, session.uuid, this.initial.uuid))) {
+          await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
+            "Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.");
+        }
+      }
     }
     await restoreOwnedTurn(rpc, projection, session.uuid);
     await this.refresh(session);

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { z } from "zod";
 import type { MachineConfig } from "../types.ts";
 import type { RemoteResult } from "./transport.ts";
+import { callWireDoor } from "./wireDoor.ts";
 
 /**
  * The second transport: a call handed to the local stitchwire agent instead of to ssh.
@@ -12,9 +13,10 @@ import type { RemoteResult } from "./transport.ts";
  * to a broker and keeps that link, so "who can reach whom" stops depending on who has an address.
  * ccmux gains a direction it never had (server → laptop) and gives up nothing.
  *
- * Deliberately dependency-free. We speak to an agent that already runs on this machine, over a Unix
- * socket, with `fetch` — no client library, no second credential, and nothing new in the bundle.
- * The socket file IS the permission: anything that can open it speaks with this machine's identity.
+ * The protocol and routing stay here, while bounded Unix HTTP I/O is delegated to the public
+ * Stitchkit transport already shipped in this bundle. There is still no second credential or
+ * fallback transport. The socket file IS the permission: anything that can open it speaks with
+ * this machine's identity.
  *
  * The invariant that ties the two systems together: a stitchwire **node id equals a ccmux
  * `rcPrefix`**. One label, one machine, both systems. Breaking that would silently route mail to
@@ -54,7 +56,9 @@ const WireResultSchema = z.object({
  *  `capacity` is deliberately NOT permanent: it is the one the retry window exists for. */
 export function refusalIsPermanent(refusal: string | undefined): boolean | undefined {
   if (refusal === undefined || refusal === "none") return undefined;
-  return refusal === "policy" || refusal === "request";
+  if (refusal === "capacity") return false;
+  if (refusal === "policy" || refusal === "request") return true;
+  return undefined;
 }
 
 export function wireSocketPath(m: MachineConfig): string | null {
@@ -93,24 +97,24 @@ export async function runWire(
   }
 
   const timeoutMs = opts?.timeoutMs ?? 30_000;
-  let res: Response;
+  let response: Response;
+  let body: string;
   try {
-    res = await fetch("http://localhost/wire/call", {
-      unix: socket,
-      method: "POST",
-      headers: { "content-type": "application/json" },
+    const result = await callWireDoor({
+      socket,
       body: JSON.stringify({ to: machine, argv, stdin: opts?.stdin ?? null, timeoutMs }),
-      // The agent runs the caller's own deadline; this one only guards against a wedged agent, so it
-      // must be the LATER of the two or it would report a healthy slow call as a dead socket.
-      signal: AbortSignal.timeout(timeoutMs + 10_000),
+      // The agent runs the caller's own deadline; this one guards headers AND body completion, so it
+      // remains later than the remote budget without leaving a stalled local response unbounded.
+      deadlineMs: timeoutMs + 10_000,
     });
+    response = result.response;
+    body = result.body;
   } catch (e) {
     return { code: 1, stdout: "", stderr: "", transportFailed: true, failureDetail: `stitchwire agent did not answer: ${String(e)}` };
   }
 
-  const body = await res.text();
-  if (!res.ok) {
-    return { code: 1, stdout: "", stderr: "", transportFailed: true, failureDetail: `stitchwire agent returned HTTP ${res.status}: ${body.slice(0, 200)}` };
+  if (!response.ok) {
+    return { code: 1, stdout: "", stderr: "", transportFailed: true, failureDetail: `stitchwire agent returned HTTP ${response.status}: ${body.slice(0, 200)}` };
   }
 
   let parsed: z.infer<typeof WireResultSchema> | undefined;

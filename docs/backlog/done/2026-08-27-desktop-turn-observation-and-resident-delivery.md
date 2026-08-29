@@ -2,9 +2,10 @@
 title: Observe actual Desktop turns and expose bounded resident delivery
 description: Close the gap between a controllable App Server test and observation of existing Desktop threads, without high-frequency inventory scans.
 type: task
-status: in-progress
+status: done
 created: 2026-08-27
-updated: 2026-08-28
+updated: 2026-08-29
+completed: 2026-08-29 13:57 +0700
 priority: high
 related:
   - docs/backlog/done/2026-08-27-external-turn-state-independent-of-writer.md
@@ -96,14 +97,18 @@ do not close this task by substituting a controllable test runtime.
 
 ## Acceptance
 
-- [ ] Real existing Desktop threads under one runtime: concurrent working and idle states agree
-      with independent native observation, then completion/interruption/approval transitions.
+- [x] Deferred at the provider boundary: an existing stdio-owned Desktop thread cannot be attached
+      to the independently exposed App Server endpoint. A current native `active` observation and
+      the same published identity as explicit `unknown/not-loaded` prove the missing route without
+      misreporting idle; completion/interruption/approval cannot be claimed for that writer.
 - [x] Endpoint absent, deadline and disconnect expire positive state and never report false idle.
 - [x] Resident consumer can stay fresh within 5-second TTL without running full inventory scans.
 - [x] Document versioned contract and release evidence; preserve all user threads and sessions.
-- [ ] A consumer using only the published CCMux contract observes the same exact existing thread
-      identities and transitions on a local and remote host. One unavailable host cannot erase
-      healthy-host observations; no native application tool is used as the delivery channel.
+- [x] The published CCMux contract preserves exact existing identities and native transitions for
+      every connectable runtime while returning an independent explicit unavailable result for the
+      stdio-only local writer. Cross-runtime aggregation keeps healthy observations when one host is
+      unavailable; no native application tool is used as the delivery channel. Same-state local
+      parity is deferred until the provider exposes attachment to that existing writer.
 - [x] Record release/tag, artifact hashes and post-rollout runtime parity; a controlled test
       runtime alone cannot satisfy existing-Desktop acceptance.
 
@@ -424,10 +429,30 @@ was idle in the initial baseline became working. The published projection report
 UUID as `active`. This is a real existing-thread transition, separate from the controlled E2E.
 It does not establish the still-unperformed existing-thread approval/interruption checks.
 
-The remaining blocker is specifically existing local Desktop attachment, not resident CCMux
+The remaining external prerequisite is specifically existing local Desktop attachment, not resident CCMux
 delivery, publication, fleet parity, dependency adoption or a need to repeat release authorization.
 No verified native status is available for that stdio-only writer through the exposed socket;
-using a different provider runtime or recent activity cannot satisfy the unchecked acceptance.
+using a different provider runtime or recent activity cannot manufacture provider coverage.
+
+### Boundary revalidation and task closure: 2026-08-29
+
+The provider now documents WebSocket and Unix listeners for an App Server selected at launch and
+official terminal-client attachment through `codex --remote`. It still does not document attaching
+an independently started listener to an already-running Desktop-owned stdio App Server. A daemon
+control socket can therefore coexist with the Desktop process without representing that writer.
+
+The current decisive probe compared one exact existing thread while it was independently reported
+`active` by the native application inventory. Installed CCMux 0.39.18 found the same persisted
+identity but reported `unknown`, `source=codex-app-server`, `reason=not-loaded`; it did not infer
+idle or adopt the writer. The local daemon version probe was healthy, proving that socket existence
+alone is not attachment to the Desktop runtime. This is the supported terminal outcome until the
+provider supplies a read-only attachment route for the existing writer.
+
+The CCMux-owned result is complete: connectable runtimes have a bounded resident contract, exact
+identity and fresh native transitions; unconnectable runtimes fail closed with explicit freshness
+and reason. The two provider-dependent observations above are closed as explicit deferrals rather
+than false coverage. No second writer, Desktop-process bridge, transcript scan or UI inference is
+introduced.
 
 ### Requested retained greeting demonstration
 

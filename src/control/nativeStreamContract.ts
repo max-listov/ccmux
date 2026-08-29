@@ -110,7 +110,9 @@ export const CcmuxNativeStreamProfileSchema = z
   })
   .strict();
 
-/** Operator supplies only the installed executable path; argv and framing remain owner-fixed. */
+/** Operator supplies only the standard installed `ccmux` executable path. The installer publishes
+ * a PATH-independent POSIX shim with absolute runtime and bundle paths, so the fixed empty
+ * environment is executable without weakening the profile. argv and framing remain owner-fixed. */
 export function createCcmuxNativeStreamProfile(bin: string) {
   return CcmuxNativeStreamProfileSchema.parse({
     bin,

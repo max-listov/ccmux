@@ -39,8 +39,11 @@ export const STATE_DIR: string =
  *  so a wiped cache left a machine whose CLI could not run and whose daemon could not be restarted —
  *  alive only as an already-loaded process. A directory whose contract invites deletion must not hold
  *  the one artifact that deletion makes unrecoverable. */
-export const DATA_DIR: string =
-  process.env.CCMUX_DATA_DIR ?? join(xdgRoot(process.env.XDG_DATA_HOME, join(HOME, ".local", "share")), "ccmux");
+export const DEFAULT_DATA_DIR = join(
+  xdgRoot(process.env.XDG_DATA_HOME, join(HOME, ".local", "share")),
+  "ccmux",
+);
+export const DATA_DIR: string = process.env.CCMUX_DATA_DIR ?? DEFAULT_DATA_DIR;
 
 /** Disposable: a locally staged build and downloaded releases. Both are re-derivable WITHOUT the
  *  tool being intact — a stage command or a fresh download — so deleting them really does cost

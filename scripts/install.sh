@@ -104,13 +104,15 @@ if [ -f "$LEGACY_APP" ]; then
 fi
 
 # ── shim ─────────────────────────────────────────────────────────────────────
-WANT_SHIM="$(printf '#!/usr/bin/env bash\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR")"
+WANT_SHIM="$(printf '#!/bin/sh\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR")"
 if [ -f "$SHIM" ] && [ "$(cat "$SHIM")" = "$WANT_SHIM" ]; then
   say "shim: already correct (unchanged)"
 else
   mkdir -p "$BIN_DIR"
-  printf '%s' "$WANT_SHIM" > "$SHIM"
-  chmod +x "$SHIM"
+  NEXT_SHIM="${TMP}/ccmux"
+  printf '%s' "$WANT_SHIM" > "$NEXT_SHIM"
+  chmod +x "$NEXT_SHIM"
+  mv "$NEXT_SHIM" "$SHIM"
   note_change "shim written: ${SHIM}"
 fi
 case ":${PATH}:" in *":${BIN_DIR}:"*) ;; *) warn "add ${BIN_DIR} to PATH (not currently on it)";; esac

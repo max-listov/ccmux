@@ -205,7 +205,11 @@ parser cannot have a valid activation or grant migration; correcting that descri
 unactivated revision.
 
 Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
-created with `createCcmuxNativeStreamProfile(<absolute installed ccmux path>)`. Every other field is
+created with `createCcmuxNativeStreamProfile(<absolute standard ccmux executable>)`. The standard
+installer writes that executable as a POSIX `/bin/sh` shim with absolute Bun and bundle paths and
+replaces it atomically. It therefore runs with the profile's empty environment; `PATH`, a
+caller-authored wrapper and copied argv are not prerequisites. Bundle upgrades and rollback retain
+the same stable executable while atomically replacing the bundle it launches. Every other field is
 owner-fixed: command `control-native-stream`, no caller argv, one strict target on bounded stdin,
 no inherited environment, stable-cursor NDJSON, four concurrent producers, a 15-minute deadline
 and a 64 MiB total ceiling. The typed stdin request contains the exact target and an optional
@@ -243,6 +247,14 @@ provider credential, arbitrary executable, shell text or consumer-owned parser c
   (interrupt/respond). A timed-out
   call retains its admission lease until its underlying operation really settles; retries must
   reconcile an immutable message ID. Capacity refusal is `BUSY`/429; draining is 503.
+
+The optional local fleet door uses the existing public Stitchkit Unix transport directly. Unary
+replies have a 52 MiB cumulative ceiling, 64 KiB header ceiling, 8 MiB request ceiling, one owned
+connection per call and a deadline that includes body completion. Cancellation, malformed framing,
+oversize and stalled bodies close the socket before returning. The door protocol remains parsed by
+CCMux so additive fields, version refusal, command exit, truncation and policy/request/capacity
+outcomes retain their existing meaning. There is no private client artifact in the public install,
+no socket discovery, daemon start, automatic replay or SSH fallback.
 
 # Daemon lifecycle and verification
 

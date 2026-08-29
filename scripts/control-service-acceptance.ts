@@ -10,6 +10,7 @@ import {
   createCcmuxControlServiceClient,
 } from "../src/control/serviceDescriptor.ts";
 import {
+  createCcmuxNativeStreamProfile,
   ControlNativeStreamFrameSchema,
   type ControlNativeStreamRequest,
 } from "../src/control/nativeStreamContract.ts";
@@ -49,10 +50,12 @@ const remote = createCcmuxControlServiceClient(async (url, init) => {
 const hash = (value: string): string => createHash("sha256").update(value).digest("hex").slice(0, 16);
 
 async function oneStreamFrame(request: ControlNativeStreamRequest) {
-  const child = Bun.spawn([executable, "control-native-stream"], {
+  const profile = createCcmuxNativeStreamProfile(executable);
+  const child = Bun.spawn([profile.bin, ...profile.argv], {
     stdin: new TextEncoder().encode(JSON.stringify(request)),
     stdout: "pipe",
     stderr: "pipe",
+    env: profile.env.set,
   });
   const frames = parseNDJSON<unknown>(new Response(child.stdout), {
     maxLineBytes: 2 * 1024 * 1024,

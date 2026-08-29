@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { APP_BUNDLE, LEGACY_APP_BUNDLE, bootArgv } from "./paths.ts";
-import { SHIM_PATH } from "../env.ts";
+import { APP_BUNDLE, DATA_DIR, DEFAULT_DATA_DIR, LEGACY_APP_BUNDLE, bootArgv } from "./paths.ts";
+import { IS_DEV, SHIM_PATH } from "../env.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import { log } from "../util/log.ts";
 import { writeBootUnitOnly } from "../boot/install.ts";
@@ -42,7 +42,7 @@ export function migrateBundleToDurableRoot(appBundle: string = APP_BUNDLE, legac
 export function shimContents(): string {
   const [exec, entry] = bootArgv();
   const target = entry === undefined ? `"${exec}"` : `"${exec}" "${entry}"`;
-  return `#!/usr/bin/env bash\nexec ${target} "$@"\n`;
+  return `#!/bin/sh\nexec ${target} "$@"\n`;
 }
 
 /** Rewrite the shim only when it does not already say the right thing. Convergent on purpose: a
@@ -62,6 +62,12 @@ export async function ensureShim(): Promise<boolean> {
   return true;
 }
 
+/** The fixed user-facing shim belongs only to the default installation. Release sandboxes and
+ * isolated instances carry their own data root and must never repoint that shared command. */
+export function ownsInstalledShim(dataDir: string = DATA_DIR, isDev: boolean = IS_DEV): boolean {
+  return !isDev && dataDir === DEFAULT_DATA_DIR;
+}
+
 /**
  * Converge this machine onto the durable bundle location. Safe to call on every invocation: on a
  * machine that is already correct it does two `existsSync` calls and returns. Failures are reported
@@ -70,17 +76,23 @@ export async function ensureShim(): Promise<boolean> {
  */
 export async function convergeBundleLocation(m: MachineConfig): Promise<BundleMigration> {
   const moved = migrateBundleToDurableRoot();
-  if (moved !== "moved") return moved;
-  log.info({ msg: "bundle moved out of the cache root", from: LEGACY_APP_BUNDLE, to: APP_BUNDLE });
-  try {
-    await writeBootUnitOnly(m);
-  } catch (e) {
-    log.warn({ msg: "bundle moved but the boot unit still points at the old path", err: String(e) });
+  if (moved === "moved") {
+    log.info({ msg: "bundle moved out of the cache root", from: LEGACY_APP_BUNDLE, to: APP_BUNDLE });
+    try {
+      await writeBootUnitOnly(m);
+    } catch (e) {
+      log.warn({ msg: "bundle moved but the boot unit still points at the old path", err: String(e) });
+    }
   }
-  try {
-    await ensureShim();
-  } catch (e) {
-    log.warn({ msg: "bundle moved but the PATH shim still points at the old path", err: String(e) });
+  // Every installed daemon start converges the executable contract too. This upgrades an existing
+  // env-based shim after an ordinary bundle rollout; source/dev daemons must never rewrite the
+  // operator's installed command to point into a checkout.
+  if (ownsInstalledShim() && moved !== "absent") {
+    try {
+      await ensureShim();
+    } catch (e) {
+      log.warn({ msg: "installed PATH shim could not be converged", err: String(e) });
+    }
   }
   return moved;
 }

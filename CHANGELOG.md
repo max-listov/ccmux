@@ -6,6 +6,18 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Make idempotent managed Codex creation tolerate the provider's rollout publication boundary.
+  The bootstrap turn now retries only the named empty-metadata failure, after an exact committed
+  `session_meta` record and persisted client-ID check, without minting another writer.
+- Make the published native-stream profile execute the standard installed command with an empty
+  environment. Install and daemon convergence now publish an atomic PATH-independent POSIX shim,
+  while isolated runtimes cannot repoint the shared entrypoint.
+- Bound local Unix RPC request, header and response bytes with one deadline through body completion
+  and owned transport cleanup. Preserve version, refusal, command and no-fallback semantics using
+  the public Stitchkit transport already shipped by CCMux.
+
 ## [0.39.18] — 2026-08-29
 
 make control service effects policy-compatible

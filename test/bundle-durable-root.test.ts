@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { migrateBundleToDurableRoot } from "../src/config/migrateBundle.ts";
+import { migrateBundleToDurableRoot, ownsInstalledShim } from "../src/config/migrateBundle.ts";
+import { DEFAULT_DATA_DIR } from "../src/config/paths.ts";
 
 function tmpRoot(): string {
   return mkdtempSync(join(tmpdir(), "ccmux-roots-"));
@@ -81,4 +82,10 @@ test("migration reports an empty machine honestly and never overwrites a live bu
   expect(migrateBundleToDurableRoot(app, legacy)).toBe("already");
   expect(readFileSync(app, "utf8")).toBe("// current");
   rmSync(root, { recursive: true, force: true });
+});
+
+test("an isolated data root never owns the shared installed shim", () => {
+  expect(ownsInstalledShim(join(tmpdir(), "isolated-ccmux-data"), false)).toBe(false);
+  expect(ownsInstalledShim(DEFAULT_DATA_DIR, false)).toBe(true);
+  expect(ownsInstalledShim(DEFAULT_DATA_DIR, true)).toBe(false);
 });

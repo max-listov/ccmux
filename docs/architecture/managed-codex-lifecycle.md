@@ -44,6 +44,13 @@ only, so chat, transcript, list, and fleet code cannot accidentally address a bo
 6. The bootstrap process remains the pane supervisor. When the first child exits it reloads the
    ready registry row and runs `codex resume <real UUID>`; it never launches fresh again.
 
+Native App Server creation uses the same bounded correlation budget with a different provider
+boundary. `thread/start` supplies the UUID, but the rollout is not readable until its first
+newline-terminated `session_meta` record is committed. CCMux waits for that exact UUID and record
+before issuing the initialization turn. An empty, partial, malformed or mismatched rollout remains
+pending only until the existing correlation deadline; it is never promoted or replaced by a second
+writer.
+
 CLI and TUI call the same create service. The TUI new-session bar uses Tab to choose
 `claude`/`codex`; Claude remains the default.
 
