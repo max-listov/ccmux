@@ -10,6 +10,7 @@ import { readOwnedCodexStatus } from "../src/agent/codex/ownedStatus.ts";
 import { OWNED_CODEX_OMIT_NOTIFICATIONS } from "../src/agent/codex/ownedRpc.ts";
 import { supportsOwnedCodexVersion } from "../src/agent/codex/ownedLaunch.ts";
 import { readEvents } from "../src/events/feed.ts";
+import { nativeResponseFingerprint, readNativeReceipt, writeNativeCommand } from "../src/agent/codex/ownedControl.ts";
 
 function fixture() {
   const m = makeMachine({ stateDir: mkdtempSync("/tmp/ccmux-native-connection-"), sessionEvents: true });
@@ -19,14 +20,18 @@ function fixture() {
   let admissionRace = true, readRace = true, wrongIdentity = false;
   let native: unknown = { type: "idle" };
   const requests: string[] = [];
+  const responses: unknown[] = [];
   const send = (method: string, params: unknown) => client?.send(JSON.stringify({ method, params }));
+  const request = (id: number | string, method: string, params: unknown) => client?.send(JSON.stringify({ id, method, params }));
   const turn = (status: string) => ({ threadId: s.uuid, turn: { id: "turn-a", status } });
   const server = Bun.serve<unknown>({ unix: path,
     fetch(request, server) { if (server.upgrade(request, { data: undefined })) return; return new Response(null, { status: 400 }); },
     websocket: {
       open(ws) { client = ws; },
       message(ws, raw) {
-        const message = z.object({ id: z.number().optional(), method: z.string(), params: z.unknown() }).parse(JSON.parse(String(raw)));
+        const decoded = JSON.parse(String(raw));
+        if (decoded.method === undefined) { responses.push(decoded); return; }
+        const message = z.object({ id: z.number().optional(), method: z.string(), params: z.unknown() }).parse(decoded);
         requests.push(message.method);
         const respond = (result: unknown) => ws.send(JSON.stringify({ id: message.id, result }));
         if (message.method === "initialize") {
@@ -45,7 +50,7 @@ function fixture() {
       },
     },
   });
-  return { m, s, requests, send, turn,
+  return { m, s, requests, responses, send, request, turn,
     setNative(value: unknown) { native = value; },
     mismatch() { wrongIdentity = true; },
     disconnect() { client?.close(); }, close() { server.stop(true); },
@@ -106,4 +111,44 @@ test("mismatched native resume and malformed active flags never admit an idle re
 test("native version floor excludes older/unknown/floor prerelease binaries", () => {
   for (const version of ["codex-cli 0.147.0", "codex-cli 0.147.0+build.1", "codex-cli 0.150.0-alpha.8", "codex-cli 1.0.0"]) expect(supportsOwnedCodexVersion(version)).toBe(true);
   for (const version of ["unknown", "codex-cli 0.146.0", "codex-cli 0.147.0-alpha.1", "codex-cli 0.150.0-..", "codex-cli 0.150.0invalid"]) expect(supportsOwnedCodexVersion(version)).toBe(false);
+});
+
+test("approval and input responses stay on the owning RPC connection and reject stale projection generations", async () => {
+  const f = fixture(), connection = new OwnedCodexConnection(f.m, f.s, process.pid);
+  try {
+    await connection.open(new AbortController().signal); await connection.admit(false, new AbortController().signal);
+    f.request("approval-1", "item/commandExecution/requestApproval", { threadId: f.s.uuid, turnId: "turn-a",
+      itemId: "command-a", startedAtMs: Date.now(), reason: "needs permission", availableDecisions: ["accept", "decline"] });
+    for (let i = 0; i < 100 && readOwnedCodexStatus(f.m, f.s).snapshot?.pendingRequests.length !== 1; i++) await Bun.sleep(5);
+    const approval = readOwnedCodexStatus(f.m, f.s).snapshot!;
+    expect(approval.pendingRequests[0]).toMatchObject({ requestId: "s:approval-1", kind: "approval", decisions: ["accept", "decline"] });
+    const approvalCommand = { operationId: crypto.randomUUID(), generation: approval.generation,
+      requestId: "s:approval-1", kind: "approval" as const, decision: "accept" as const, answers: null };
+    await writeNativeCommand(f.m, f.s.name, { ...approvalCommand, fingerprint: nativeResponseFingerprint(approvalCommand) });
+    await connection.applyControlResponse();
+    for (let i = 0; i < 100 && f.responses.length === 0; i++) await Bun.sleep(5);
+    expect(f.responses.at(-1)).toEqual({ id: "approval-1", result: { decision: "accept" } });
+    expect(readNativeReceipt(f.m, f.s.name)).toMatchObject({ outcome: "submitted", requestId: "s:approval-1" });
+    expect(readOwnedCodexStatus(f.m, f.s).snapshot?.pendingRequests).toEqual([]);
+
+    f.request(42, "item/tool/requestUserInput", { threadId: f.s.uuid, turnId: "turn-a", itemId: "input-a",
+      isBlocking: true, autoResolutionMs: null, questions: [{ id: "choice", header: "Choice", question: "Pick one",
+        isOther: false, isSecret: false, options: [{ label: "A", description: "first" }] }] });
+    for (let i = 0; i < 100 && readOwnedCodexStatus(f.m, f.s).snapshot?.pendingRequests.length !== 1; i++) await Bun.sleep(5);
+    const input = readOwnedCodexStatus(f.m, f.s).snapshot!;
+    const inputCommand = { operationId: crypto.randomUUID(), generation: input.generation,
+      requestId: "n:42", kind: "input" as const, decision: null, answers: { choice: ["A"] } };
+    await writeNativeCommand(f.m, f.s.name, { ...inputCommand, fingerprint: nativeResponseFingerprint(inputCommand) });
+    await connection.applyControlResponse();
+    for (let i = 0; i < 100 && f.responses.length < 2; i++) await Bun.sleep(5);
+    expect(f.responses.at(-1)).toEqual({ id: 42, result: { answers: { choice: { answers: ["A"] } } } });
+
+    const before = f.responses.length;
+    const staleCommand = { operationId: crypto.randomUUID(), generation: crypto.randomUUID(),
+      requestId: "n:42", kind: "input" as const, decision: null, answers: { choice: ["A"] } };
+    await writeNativeCommand(f.m, f.s.name, { ...staleCommand, fingerprint: nativeResponseFingerprint(staleCommand) });
+    await connection.applyControlResponse();
+    expect(f.responses).toHaveLength(before);
+    expect(readNativeReceipt(f.m, f.s.name)).toMatchObject({ outcome: "rejected", reason: "projection-generation-mismatch" });
+  } finally { await connection.close("stopped"); f.close(); }
 });

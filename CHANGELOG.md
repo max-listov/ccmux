@@ -6,6 +6,19 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Add typed same-user control operations for idempotent workspace-scoped Codex creation, exact
+  archive/stop receipts and bounded generation/cursor native item streams.
+- Answer exact current App Server approval and user-input requests through the resident supervisor;
+  stale identity, generation, request and changed idempotency payloads fail closed.
+
+### Fixed
+
+- Reconcile concurrent or ambiguous create retries to one registration generation and provider
+  writer. Distinguish response submission from provider resolution and require explicit resync
+  after writer generation changes.
+
 ## [0.39.15] — 2026-08-28
 
 drain automatic updates before daemon restart

@@ -61,7 +61,8 @@ export async function connectCodexSocket(
     if (!parsed.success) return failAll(new Error("Invalid Codex App Server message"));
     const msg = parsed.data;
     if (msg.method !== undefined) {
-      options.onEvent?.({ method: msg.method, params: msg.params });
+      if (msg.id !== undefined) options.onRequest?.({ id: msg.id, method: msg.method, params: msg.params });
+      else options.onEvent?.({ method: msg.method, params: msg.params });
       return;
     }
     if (typeof msg.id !== "number") return;
@@ -218,5 +219,9 @@ export async function connectCodexSocket(
     throw error;
   }
   socket.write(clientFrame(0x1, JSON.stringify({ method: "initialized", params: {} })));
-  return { userAgent, request, close: () => failAll(new Error("Codex App Server client closed")) };
+  const respond = (id: number | string, result: unknown): Promise<void> => new Promise((resolve, reject) => {
+    if (closed) return reject(closed);
+    socket.write(clientFrame(0x1, JSON.stringify({ id, result })), (error) => error ? reject(error) : resolve());
+  });
+  return { userAgent, request, respond, close: () => failAll(new Error("Codex App Server client closed")) };
 }

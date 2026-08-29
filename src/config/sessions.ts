@@ -80,6 +80,19 @@ export async function setSessionChatEnabled(m: MachineConfig, name: string, enab
   });
 }
 
+/** Exact archive CAS: preserve the registry row/history and stop future healing or routing. */
+export async function archiveSessionExact(m: MachineConfig, name: string, uuid: string): Promise<"archived" | "duplicate" | "missing"> {
+  return withSessionRegistryLock(m, async () => {
+    await recoverPromotionsUnlocked(m);
+    const current = loadSessions(m);
+    const target = findSession(current, name);
+    if (!target || target.uuid !== uuid) return "missing";
+    if (target.archived) return "duplicate";
+    await writeSessionsUnlocked(m, current.map((session) => session.name === name ? { ...session, archived: true } : session));
+    return "archived";
+  });
+}
+
 /** Declare (or clear) the env file this session's agent is launched with. `undefined` clears it, so
  *  the session gets only the base environment. Launch-time, like `mode`: applies on next restart —
  *  the recipe is read when the agent is spawned. Returns false if the name wasn't present. */

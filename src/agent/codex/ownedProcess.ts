@@ -111,7 +111,10 @@ async function run(m: MachineConfig, initial: Session, promote?: (uuid: string) 
             await candidate.open(abort.signal);
             await candidate.admit(false, abort.signal);
             candidate.activateEvents(session);
-          } else await connection.refresh(session);
+          } else {
+            await connection.applyControlResponse();
+            await connection.refresh(session);
+          }
           reconnectDelay = 500;
         } catch (error) {
           if (!abort.signal.aborted) log.warn({ msg: "native observer reconnecting", name: session.name, error: String(error) });

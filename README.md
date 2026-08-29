@@ -72,7 +72,8 @@ See the [native monitoring contract](docs/architecture/monitoring-status.md) and
 
 For live control, `ccmux control sessions` reads the prepared inventory and `ccmux control watch`
 streams bounded full snapshots. `ccmux/control-client` provides the same typed local Unix API
-for messages, exact native turn interruption and between-turn waits; the release includes a
+for idempotent owned-session create/archive, messages, bounded native item streams, exact
+approval/input responses, native turn interruption and between-turn waits; the release includes a
 self-contained `control-client.js` and SHA-256 asset. Commands retain exact provider/machine/session
 identity and existing delivery gates. See the [resident control contract](docs/architecture/control-plane.md).
 
@@ -98,7 +99,8 @@ supervisor. Its native terminal client attaches to the same writer with `resume 
 Codex CLI 0.147.0 or newer, Unix transport and native remote resume support are required; use
 your existing provider login and permission settings. Ordinary TUI sessions are unchanged.
 
-CCMux reads native working/idle/approval/input events, preserves the same conversation UUID
+CCMux reads bounded native user/assistant/reasoning/tool/usage/terminal and approval/input events,
+preserves the same conversation UUID
 across restart, and routes `msg`/`--defer`/`wait` through native turn boundaries. It never
 submits over a partial composer or approval dialog. A disconnected/expired observation is
 unknown, not idle. This does **not** attach the official Desktop app to the owned runtime or
@@ -108,6 +110,11 @@ Resident consumers can import `readCodexRuntime` from `ccmux/codex-runtime-reade
 release's self-contained `codex-runtime-reader.js` and SHA-256 asset. See the
 [ownership and read contract](docs/architecture/owned-codex-runtime.md) and
 [resident example](examples/codex-runtime-reader.ts).
+
+The same local typed client can create a workspace-scoped owned runtime idempotently, archive it
+without deleting provider history, follow a generation/sequence native cursor and answer one exact
+current approval or input request. Responses stay on the owning App Server connection; stale or
+already-resolved request IDs fail closed. See the control contract linked above.
 
 ### Adopt an external session
 

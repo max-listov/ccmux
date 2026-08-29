@@ -4,7 +4,7 @@ description: Process ownership, identity, state, delivery, recovery and the resi
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 
 # Ownership and admission
@@ -54,8 +54,12 @@ reconciliation does not replay old completion notifications.
 
 Turn completion, interruption and failure remain distinct even when the next native thread state
 is idle. An observed turn start carries its timestamp; historical starts not observed by this
-connection remain null. Subscription traffic excludes token/item/app-catalog notifications.
-Native RPC messages are capped at 2 MiB; oversized/invalid messages disconnect fail-closed.
+connection remain null. The observer subscribes to bounded item boundaries and usage while
+excluding unbounded deltas, catalogues and progress. It retains a separate native-item ring for
+user/assistant/reasoning/tool items, numeric usage, terminal boundaries and exact approval/input
+requests. Known text is clipped and the retained ring
+has an independent byte budget; commands, output, cwd, diffs and arbitrary provider payloads never
+enter the projection. Native RPC messages are capped at 2 MiB; oversized/invalid messages disconnect fail-closed.
 Metadata reconciliation is at most once per 500 ms per session, not per reader. Reconnect backoff
 is bounded at 500 ms..10 s. The only history reconciliation is a one-turn native summary at resume.
 
@@ -126,6 +130,14 @@ the reader cannot interrupt a blocked JavaScript event loop or forcibly cancel a
 `codexRuntimeUpdates` accepts an optional `CodexRuntimeCursor` and returns a reset/baseline on first read, unavailable state, generation change
 or an event-window gap. Otherwise it returns only new events. Polling cadence belongs to the
 consumer; imports create no timers, processes, provider connections or subscriptions.
+
+The richer same-user control surface lives in `ccmux/control-client`. `create` uses the existing
+pending/promotion registry transaction with an immutable request receipt and normalized workspace;
+retries cannot create a second writer. `archive` retains the provider rollout and ready row while
+stopping healing and the owned process group. `native` and `watchNative` expose the bounded item
+projection with generation/sequence cursors and explicit resync. `respond` can answer only a current
+exact approval/input request and forwards the response to the connection that received it. Restart
+changes projection generation and invalidates old requests/cursors without changing the thread UUID.
 
 # Interactive and Desktop boundaries
 

@@ -21,6 +21,7 @@ import { CONTROL_MAX_READERS, CONTROL_MAX_BYTES, currentControlSnapshot } from "
 import { createControlServer } from "../src/control/server.ts";
 import { createControlClient, createControlProxy } from "../src/control/client.ts";
 import { controlSocket, prepareControlDirectory } from "../src/control/path.ts";
+import { readNativeCommand, writeNativeReceipt } from "../src/agent/codex/ownedControl.ts";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -235,6 +236,59 @@ test("native approval/input/working states remain distinct; interruption cannot 
   expect(stale).toMatchObject({ status: "stale", sessions: [{ state: "unknown", availability: "stale" }] });
   f.p.unavailable("producer-stopped");
   expect(f.p.read().sessions[0]).toMatchObject({ state: "unknown", availability: "unavailable" });
+});
+
+test("native feed is bounded, cursored and exact responses expose submission uncertainty honestly", async () => {
+  const f = await fixture(true);
+  const p = new OwnedCodexProjection(f.m, f.s, process.pid);
+  const writer = new OwnedCodexStatusWriter(f.m, f.s.name);
+  p.reconcile({ type: "idle" }, 0);
+  p.event({ method: "item/completed", params: { threadId: f.s.uuid, turnId: "turn-a",
+    item: { id: "user-a", type: "userMessage", content: [{ type: "text", text: "hello" }] } } });
+  p.event({ method: "item/completed", params: { threadId: f.s.uuid, turnId: "turn-a",
+    item: { id: "tool-a", type: "commandExecution", status: "completed", command: "private", cwd: "/private" } } });
+  p.request({ id: "approval-a", method: "item/fileChange/requestApproval", params: { threadId: f.s.uuid,
+    turnId: "turn-a", itemId: "tool-a", startedAtMs: Date.now(), reason: "confirm", availableDecisions: ["accept", "decline"] } });
+  await writer.write(p.snapshot()); await f.publish();
+  const baseline = await f.client.native({ target: f.target, cursor: null });
+  expect(baseline).toMatchObject({ reset: "initial", pending: [{ requestId: "s:approval-a", kind: "approval" }] });
+  expect(baseline.items.map((item) => item.kind)).toEqual(["user", "tool", "approval"]);
+  expect(JSON.stringify(baseline)).not.toContain("private");
+  expect(JSON.stringify(baseline)).not.toContain("rpcId");
+  const cursor = { generation: baseline.generation, sequence: baseline.sequence };
+  expect(await f.client.native({ target: f.target, cursor })).toMatchObject({ reset: null, items: [] });
+  expect((await f.client.native({ target: f.target, cursor: { generation: crypto.randomUUID(), sequence: 0 } })).reset).toBe("generation");
+
+  const stop = new AbortController();
+  const stream = await f.client.watchNative.withOptions({ target: f.target, cursor }, { signal: stop.signal });
+  expect((await stream.next()).value).toMatchObject({ reset: null, items: [] });
+  p.event({ method: "item/completed", params: { threadId: f.s.uuid, turnId: "turn-a",
+    item: { id: "assistant-a", type: "agentMessage", text: "done" } } });
+  await writer.write(p.snapshot()); await f.publish();
+  expect((await stream.next()).value.items).toMatchObject([{ kind: "assistant", nativeId: "assistant-a", text: "done" }]);
+  stop.abort(); await stream.return?.();
+
+  const operationId = crypto.randomUUID();
+  const response = f.client.respond({ target: f.target, operationId, generation: baseline.generation,
+    requestId: "s:approval-a", kind: "approval", decision: "decline", answers: null });
+  let command = null;
+  for (let i = 0; i < 100 && command === null; i++) { command = readNativeCommand(f.m, f.s.name); await Bun.sleep(5); }
+  expect(command).toMatchObject({ operationId, requestId: "s:approval-a", decision: "decline" });
+  await writeNativeReceipt(f.m, f.s.name, { operationId, requestId: "s:approval-a", fingerprint: command!.fingerprint,
+    outcome: "submitted", reason: null });
+  expect(await response).toEqual({ operationId, requestId: "s:approval-a", outcome: "submitted" });
+  p.resolveRequest("s:approval-a"); await writer.write(p.snapshot()); await f.publish();
+  expect(await f.client.respond({ target: f.target, operationId, generation: baseline.generation,
+    requestId: "s:approval-a", kind: "approval", decision: "decline", answers: null }))
+    .toEqual({ operationId, requestId: "s:approval-a", outcome: "submitted" });
+  await expect(f.client.respond({ target: { ...f.target, threadId: crypto.randomUUID() }, operationId,
+    generation: baseline.generation, requestId: "s:approval-a", kind: "approval", decision: "decline", answers: null }))
+    .rejects.toMatchObject({ code: "IDENTITY_MISMATCH" });
+  await expect(f.client.respond({ target: f.target, operationId, generation: baseline.generation,
+    requestId: "s:approval-a", kind: "approval", decision: "accept", answers: null }))
+    .rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+  await expect(f.client.respond({ target: f.target, operationId: crypto.randomUUID(), generation: baseline.generation,
+    requestId: "s:approval-a", kind: "approval", decision: "accept", answers: null })).rejects.toMatchObject({ code: "STALE_REQUEST" });
 });
 
 test("wait never returns a cached idle observation from before the call", async () => {

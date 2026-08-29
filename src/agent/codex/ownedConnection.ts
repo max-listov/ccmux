@@ -3,7 +3,7 @@ import type { MachineConfig, Session } from "../../types.ts";
 import { SessionSchema } from "../../config/schema.ts";
 import { ThreadSchema, readCodexAppThread, startCodexAppTurn } from "./appServer.ts";
 import { connectOwnedCodex } from "./ownedRpc.ts";
-import type { CodexAppRpc, CodexRpcEvent } from "./rpc.ts";
+import type { CodexAppRpc, CodexRpcEvent, CodexRpcRequest } from "./rpc.ts";
 import { ownedCodexThreadParams } from "./ownedLaunch.ts";
 import { OwnedCodexProjection } from "./ownedProjection.ts";
 import { OwnedCodexStatusWriter } from "./ownedStatus.ts";
@@ -11,12 +11,17 @@ import { restoreOwnedTurn } from "./ownedObserver.ts";
 import { historyFile } from "./resume.ts";
 import { log } from "../../util/log.ts";
 import { emitOwnedCodexBoundary } from "./ownedEvents.ts";
+import { clearNativeCommand, readNativeCommand, writeNativeReceipt } from "./ownedControl.ts";
+
+const OBSERVED_EVENTS = new Set(["thread/status/changed", "turn/started", "turn/completed",
+  "item/started", "item/completed", "thread/tokenUsage/updated", "serverRequest/resolved"]);
 
 /** A connection owns its projection and callbacks. A retired connection cannot change a new one. */
 export class OwnedCodexConnection {
   private rpc: CodexAppRpc | null = null;
   private projection: OwnedCodexProjection | null = null;
   private buffered: CodexRpcEvent[] = [];
+  private bufferedRequests: CodexRpcRequest[] = [];
   private active = true;
   private failure: Error | null = null;
   private feedSession: Session | null = null;
@@ -30,7 +35,7 @@ export class OwnedCodexConnection {
     this.rpc = await connectOwnedCodex(this.m, this.initial, {
       signal,
       onEvent: (event) => {
-        if (!this.active || !["thread/status/changed", "turn/started", "turn/completed"].includes(event.method)) return;
+        if (!this.active || !OBSERVED_EVENTS.has(event.method)) return;
         if (this.projection === null) {
           if (this.buffered.length >= 128) this.failure = new Error("Native admission event window overflow");
           else this.buffered.push(event);
@@ -40,6 +45,13 @@ export class OwnedCodexConnection {
             emitOwnedCodexBoundary(this.m, this.feedSession, this.projection.snapshot());
           }
         }
+      },
+      onRequest: (request) => {
+        if (!this.active) return;
+        if (this.projection === null) {
+          if (this.bufferedRequests.length >= 16) this.failure = new Error("Native request admission window overflow");
+          else this.bufferedRequests.push(request);
+        } else if (this.projection.request(request)) this.publish();
       },
       onClose: (error) => {
         if (!this.active) return;
@@ -64,6 +76,8 @@ export class OwnedCodexConnection {
     // a snapshot that raced a newer event must never overwrite that event.
     for (const event of this.buffered) projection.event(event);
     this.buffered = [];
+    for (const request of this.bufferedRequests) projection.request(request);
+    this.bufferedRequests = [];
     projection.reconcile(response.thread.status, 0);
     if (fresh) {
       await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
@@ -93,6 +107,39 @@ export class OwnedCodexConnection {
   }
 
   activateEvents(session: Session): void { this.feedSession = session; }
+
+  async applyControlResponse(): Promise<void> {
+    const command = readNativeCommand(this.m, this.initial.name);
+    if (command === null) return;
+    const projection = this.projection;
+    const rpc = this.liveRpc();
+    const reject = async (reason: string) => {
+      await writeNativeReceipt(this.m, this.initial.name, { operationId: command.operationId,
+        requestId: command.requestId, fingerprint: command.fingerprint, outcome: "rejected", reason });
+      clearNativeCommand(this.m, this.initial.name);
+    };
+    if (projection === null || projection.snapshot().generation !== command.generation) return reject("projection-generation-mismatch");
+    const pending = projection.pendingRequest(command.requestId);
+    if (pending === null) return reject("request-is-not-pending");
+    if (pending.kind !== command.kind) return reject("request-kind-mismatch");
+    let result: unknown;
+    if (pending.kind === "approval") {
+      if (command.decision === null || !pending.decisions.includes(command.decision)) return reject("decision-is-not-available");
+      result = { decision: command.decision };
+    } else {
+      if (command.answers === null) return reject("answers-are-required");
+      const expected = pending.questions.map((question) => question.id).sort();
+      if (JSON.stringify(Object.keys(command.answers).sort()) !== JSON.stringify(expected)) return reject("question-id-mismatch");
+      result = { answers: Object.fromEntries(Object.entries(command.answers).map(([id, answers]) => [id, { answers }])) };
+    }
+    if (rpc.respond === undefined) return reject("native-response-channel-unavailable");
+    await rpc.respond(pending.rpcId, result);
+    projection.submitRequest(command.requestId);
+    this.publish();
+    await writeNativeReceipt(this.m, this.initial.name, { operationId: command.operationId,
+      requestId: command.requestId, fingerprint: command.fingerprint, outcome: "submitted", reason: null });
+    clearNativeCommand(this.m, this.initial.name);
+  }
 
   async close(reason: string): Promise<void> {
     if (!this.active) return;

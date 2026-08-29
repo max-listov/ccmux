@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 
 # Ownership
@@ -59,22 +59,49 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | --- | --- | --- |
 | `list` / `sessions` | GET `/control/sessions` | Prepared complete bounded snapshot |
 | `get` / `session` | POST `/control/session` | One exact registered identity |
+| `create` / `create-session` | POST `/control/create` | Idempotent workspace-scoped owned Codex creation |
+| `archive` / `archive-session` | POST `/control/archive` | Exact archive/stop receipt; history retained |
 | `message` | POST `/control/message` | Durable acceptance and duplicate flag |
 | `start` | POST `/control/start` | Start existing non-archived identity; no duplicate writer |
 | `interrupt` | POST `/control/interrupt` | Interrupt the exact working native turn |
+| `native` / `native-items` | POST `/control/native` | Bounded native-item snapshot after an optional cursor |
+| `respond` / `respond-native` | POST `/control/native/respond` | Exact current approval/input response receipt |
 | `wait` | POST `/control/wait` | Between-turn outcome, timeout or unavailable |
 | `watch` | GET `/control-events/` | Absolute snapshots over typed NDJSON |
 | `external` | GET `/control/external` | Prepared external native status; no lifecycle rights |
 | `watchExternal` / `watch-external` | GET `/control-events/external` | External absolute snapshots, separate from managed rows |
+| `watchNative` / `watch-native` | POST `/control-events/native` | Cursored native item frames with explicit resync |
 
-New session creation remains `ccmux new`; this API cannot change directories, launch flags,
-provider settings or credentials. `message` requires a caller-generated immutable UUID. Retrying
+`create` accepts an absolute workspace, a legal registry name, explicit native flags and a
+caller-generated immutable request UUID. The workspace is normalized before the request fingerprint
+is persisted. It reuses the same pending/promotion transaction as `ccmux new`; a lost reply or retry
+reconciles the stable registration generation and cannot mint a second writer. Reusing the request
+UUID for another name, workspace or flag set is `IDEMPOTENCY_CONFLICT`. `archive` marks the exact
+identity before stopping its process group, so healing and routing stop while registry and provider
+history remain available for deliberate resume.
+
+`message` requires a caller-generated immutable UUID. Retrying
 the same sender/target/body/defer/notBefore/task with that UUID returns `duplicate: true`.
 Reusing it for different content or identity is `IDEMPOTENCY_CONFLICT`. Acceptance means stored,
 not delivered or completed. Existing delivery gates hold messages during busy turns, approvals,
 input requests, partial composers and ambiguous native pickup. The API never types into those UI
 states. `interrupt` requires both the exact session identity and current native turn ID, rechecks
 provider state and never answers an approval or input request.
+
+`native` projects only known native item fields: user/assistant text, bounded reasoning summaries,
+tool type/status, numeric usage, terminal state and approval/input prompts. Commands, output,
+working directories, diffs, arbitrary tool payloads and credentials are not copied. The snapshot
+generation plus sequence is the cursor. A first read, runtime generation change or retained-window
+gap returns `reset=initial|generation|gap`; the included bounded snapshot is authoritative.
+
+`respond` addresses the exact target, projection generation and current request ID. Approval
+decisions are restricted to the provider-advertised simple choices: `accept`, `acceptForSession`,
+`decline` or `cancel`; structured policy amendments are not exposed. Input answers must cover the
+exact question ID set. A private same-user mailbox forwards the command to the session supervisor,
+which responds over the same App Server connection that received the request.
+`submitted` means the JSON-RPC response was written; `serverRequest/resolved` remains the provider's
+separate resolution boundary. A timeout returns `uncertain`, never false delivery. Stale,
+mismatched, terminal and already-resolved requests fail closed.
 
 `wait` is native-runtime-only and requires an observation made after the call began. It checks
 the delivery cursor and unresolved pickup as well as idle/terminal state: reading inbox does not
@@ -105,6 +132,18 @@ try {
 }
 ```
 
+Create and follow an owned workspace without polling provider history:
+
+```ts
+const created = await client.create({
+  requestId: crypto.randomUUID(), name: "worker", workspace: "/absolute/workspace", flags: [],
+});
+const native = await client.native({ target: created.target, cursor: null });
+const feed = await client.watchNative.withOptions({
+  target: created.target, cursor: { generation: native.generation, sequence: native.sequence },
+}, { signal: stop.signal });
+```
+
 `close()` releases this client's connections. Iterator return and `AbortSignal` also release a
 subscription, including a quiet stream or an iterator not yet consumed. Both contracts use
 Stitchkit's configured HTTP client. Unary calls use a finite Unix transport; subscriptions use
@@ -127,8 +166,10 @@ install an MCP server into existing provider sessions or change Desktop configur
 - Availability (`live/stale/unavailable`) is distinct from execution state. Native approvals and
   input waits stay distinct. Expiry or clock skew clears positive execution claims. Consumers
   must re-evaluate `expiresAt` while retaining a snapshot; disconnect is not idle.
-- First stream item is a full baseline. Pending revisions coalesce to one latest notice per reader;
-  no durable replay is claimed. Reconnect gets a fresh generation/sequence baseline.
+- Managed status streams begin with a full baseline. Native streams begin with a cursor-relative
+  frame and carry an explicit reset when a baseline is required. Pending revisions coalesce to one
+  latest notice per reader; no durable replay is claimed. Reconnect gets a fresh
+  generation/sequence baseline.
 - At most 32 subscribers (including active resident waits); framework output buffering is at most
   16 framed items per connection. Frames are capped at 512 KiB + 1 KiB, heartbeats every 2 seconds.
   Unix transport applies physical socket backpressure; no cumulative lifetime cap on a stream.
@@ -136,7 +177,8 @@ install an MCP server into existing provider sessions or change Desktop configur
   Waits: 16 concurrent, deadline at most 60 seconds. Body/request cap: 64 KiB; client response
   header cap: 16 KiB; shared unary response cap: 1 MiB + 1 KiB to accommodate external snapshots.
   Managed snapshot bounds remain 512 KiB. Client header deadline at most 65 seconds.
-- Mutation caller budgets are 15 seconds (message/start) and 10 seconds (interrupt). A timed-out
+- Mutation caller budgets are 60 seconds (create), 15 seconds (message/start/archive), and 10 seconds
+  (interrupt/respond). A timed-out
   call retains its admission lease until its underlying operation really settles; retries must
   reconcile an immutable message ID. Capacity refusal is `BUSY`/429; draining is 503.
 
@@ -156,9 +198,12 @@ drain; the existing boot unit starts the new artifact. The daemon never awaits a
 restart of itself. Manual CLI updates retain their ordinary service-manager restart. The bundled
 daemon regression in `test/daemon-update.test.ts` verifies install, clean shutdown and restart.
 
-Tests: `test/control.test.ts`, `test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
+Tests: `test/control.test.ts`, `test/control-lifecycle.test.ts`, `test/codex-owned-connection.test.ts`,
+`test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
 and `test/bundle-selfcontained.test.ts`. Explicit provider E2E: run
-`scripts/codex-owned-runtime-probe.ts`, then `scripts/control-native-e2e.ts <isolated-config>`
-and the native safety/recovery probes. These spend provider usage and only target isolated test
-sessions. Rollback to the preceding native-runtime-capable release removes the new control API
+`scripts/codex-owned-runtime-probe.ts`, then
+`scripts/codex-control-lifecycle-probe.ts <isolated-config>`,
+`scripts/control-native-e2e.ts <isolated-config>` and the native safety/recovery probes. These spend
+provider usage and only target isolated test sessions. Rollback to the preceding
+native-runtime-capable release removes the new control API
 without changing conversation UUIDs, chat storage or ordinary CLI behavior.

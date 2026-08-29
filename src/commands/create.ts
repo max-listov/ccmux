@@ -23,6 +23,8 @@ export type CreateManagedInput = {
   flags: string[];
   router: boolean;
   runtime?: string;
+  registrationGeneration?: string;
+  chatEnabled?: boolean;
   /** Declared at creation so the session's very FIRST launch already runs the recipe it will keep —
    *  otherwise a session is born inheriting and has to be migrated the day it is made. */
   envFile?: string;
@@ -41,6 +43,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
     flags: input.flags,
     ...(input.runtime === undefined ? {} : { runtime: input.runtime }),
     ...(input.router ? { promptModules: ["router"], chatEnabled: true } : {}),
+    ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
   });
 }
@@ -74,7 +77,7 @@ export async function createCodexBootstrap(
   if (findSession(loadSessions(m), input.name) || loadPendingSessions(m).some((item) => item.session.name === input.name)) {
     throw new Error(`'${input.name}' already exists`);
   }
-  const generation = randomUUID();
+  const generation = input.registrationGeneration ?? randomUUID();
   const pending = PendingSessionSchema.parse({
     generation,
     marker: `ccmux_${generation}`,

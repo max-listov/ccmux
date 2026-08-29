@@ -63,6 +63,21 @@ test("turn boundaries are identity pinned, deduplicated, and restore preserves o
   expect(p.snapshot()).toMatchObject({ state: "unknown", reason: "turn-failed", turn: { status: "failed" } });
 });
 
+test("native requests distinguish transport submission from provider resolution", () => {
+  const p = new OwnedCodexProjection(machine, session, process.pid);
+  turn(p, "turn/started", "inProgress");
+  expect(p.request({ id: "approval-a", method: "item/commandExecution/requestApproval", params: {
+    threadId: session.uuid, turnId: "turn-1", itemId: "command-a", startedAtMs: Date.now(),
+    reason: "confirm", availableDecisions: ["accept", "decline"],
+  } })).toBe(true);
+  expect(p.submitRequest("s:approval-a")).toBe(true);
+  expect(p.snapshot().pendingRequests).toEqual([]);
+  expect(p.snapshot().nativeItems.at(-1)).toMatchObject({ requestId: "s:approval-a", stage: "submitted" });
+  expect(p.event({ method: "serverRequest/resolved", params: { threadId: session.uuid, requestId: "approval-a" } })).toBe(true);
+  expect(p.snapshot().nativeItems.at(-1)).toMatchObject({ requestId: "s:approval-a", stage: "resolved" });
+  expect(p.event({ method: "serverRequest/resolved", params: { threadId: session.uuid, requestId: "approval-a" } })).toBe(false);
+});
+
 test("resident events are bounded and readers detect cursor gaps and generation changes", () => {
   const p = new OwnedCodexProjection(machine, session, process.pid);
   state(p, { type: "idle" });

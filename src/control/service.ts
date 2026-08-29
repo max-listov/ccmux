@@ -13,6 +13,8 @@ import { interruptControlTurn, waitControlSession } from "./native.ts";
 import type { ControlPublisher } from "./publisher.ts";
 import { controlTarget } from "./target.ts";
 import type { ExternalStatusPublisher } from "../external/resident-publisher.ts";
+import { archiveControlSession, createControlSession } from "./lifecycle.ts";
+import { readControlNative, respondControlNative, subscribeControlNative } from "./nativeFeed.ts";
 
 export function controlServices(m: MachineConfig, publisher: ControlPublisher, external: ExternalStatusPublisher, upstream?: ApplicationAdmission) {
   const mutations = createBoundedAdmission({ ...(upstream ? { upstream } : {}),
@@ -27,6 +29,15 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
       if (!row) throw new AppError("UNAVAILABLE", "Session has no prepared observation", 503);
       return row;
     },
+    create: (ctx) => mutations.run(`create:${ctx.input.requestId}`,
+      ({ signal }) => createControlSession(m, ctx.input, signal),
+      { ...(ctx.signal ? { signal: ctx.signal } : {}), timeoutMs: 60_000 }).catch(controlRefusal),
+    archive: (ctx) => mutations.run(ctx.input.target.session,
+      () => {
+        controlTarget(m, ctx.input.target);
+        return archiveControlSession(m, ctx.input.target);
+      },
+      { ...(ctx.signal ? { signal: ctx.signal } : {}), timeoutMs: 15_000 }).catch(controlRefusal),
     message: (ctx) => mutations.run(ctx.input.target.session,
       ({ signal }) => acceptControlMessage(m, ChatPrincipalSchema.parse(ctx.principal), ctx.input, signal),
       { ...(ctx.signal ? { signal: ctx.signal } : {}), timeoutMs: 15_000 }).catch(controlRefusal),
@@ -41,6 +52,10 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
     interrupt: (ctx) => mutations.run(ctx.input.target.session,
       ({ signal }) => interruptControlTurn(m, ctx.input.target, ctx.input.turnId, signal),
       { ...(ctx.signal ? { signal: ctx.signal } : {}), timeoutMs: 10_000 }).catch(controlRefusal),
+    native: ({ input }) => readControlNative(m, input.target, input.cursor),
+    respond: (ctx) => mutations.run(ctx.input.target.session,
+      ({ signal }) => respondControlNative(m, ctx.input, signal),
+      { ...(ctx.signal ? { signal: ctx.signal } : {}), timeoutMs: 10_000 }).catch(controlRefusal),
     wait: (ctx) => waits.run(undefined,
       ({ signal }) => waitControlSession(m, publisher, ctx.input.target, ctx.input.timeoutMs, signal),
       { ...(ctx.signal ? { signal: ctx.signal } : {}), timeoutMs: 61_000 }).catch(controlRefusal),
@@ -48,6 +63,7 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
   const events = implement(controlEventsContract, {
     watch: ({ signal }) => publisher.subscribe(signal),
     watchExternal: ({ signal }) => external.subscribe(signal),
+    watchNative: ({ input, signal }) => subscribeControlNative(m, publisher, input.target, input.cursor, signal),
   });
   return { services: [service, events], service, mutations, waits };
 }

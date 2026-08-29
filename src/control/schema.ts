@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ManagedPeerSchema } from "../config/schema.ts";
 import { OwnedCodexTurnSchema } from "../agent/codex/ownedSchema.ts";
+import { OwnedCodexNativeItemSchema, OwnedCodexPendingRequestSchema } from "../agent/codex/ownedSchema.ts";
+import { SESSION_NAME_RE } from "../config/schema.ts";
 
 export const CONTROL_MAX_BYTES = 512 * 1024;
 export const CONTROL_MAX_READERS = 32;
@@ -45,6 +47,38 @@ export const ControlMessageReceiptSchema = z.object({
 }).strict();
 export const ControlInterruptSchema = ControlTargetSchema.extend({ turnId: z.string().min(1).max(256) }).strict();
 export const ControlActionReceiptSchema = z.object({ target: ManagedPeerSchema, accepted: z.literal(true) }).strict();
+export const ControlCreateSchema = z.object({
+  requestId: z.uuid(), name: z.string().min(1).max(256).regex(SESSION_NAME_RE),
+  workspace: z.string().startsWith("/").max(4_096), flags: z.array(z.string().max(4_096)).max(32).default([]),
+}).strict();
+export type ControlCreate = z.input<typeof ControlCreateSchema>;
+export const ControlCreateReceiptSchema = z.object({
+  requestId: z.uuid(), target: ManagedPeerSchema, workspace: z.string().startsWith("/").max(4_096),
+  duplicate: z.boolean(),
+}).strict();
+export type ControlCreateReceipt = z.infer<typeof ControlCreateReceiptSchema>;
+export const ControlArchiveReceiptSchema = z.object({
+  target: ManagedPeerSchema, archived: z.literal(true), duplicate: z.boolean(), stopped: z.boolean(),
+}).strict();
+export type ControlArchiveReceipt = z.infer<typeof ControlArchiveReceiptSchema>;
+export const ControlNativeCursorSchema = z.object({ generation: z.uuid(), sequence: z.number().int().nonnegative() }).strict();
+export const ControlNativeReadSchema = ControlTargetSchema.extend({ cursor: ControlNativeCursorSchema.nullable().default(null) }).strict();
+export const ControlNativeSnapshotSchema = z.object({
+  target: ManagedPeerSchema, generation: z.uuid(), sequence: z.number().int().nonnegative(),
+  reset: z.enum(["initial", "generation", "gap"]).nullable(), observedAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
+  items: z.array(OwnedCodexNativeItemSchema).max(128), pending: z.array(OwnedCodexPendingRequestSchema.omit({ rpcId: true })).max(16),
+}).strict();
+export type ControlNativeSnapshot = z.infer<typeof ControlNativeSnapshotSchema>;
+export const ControlNativeResponseSchema = ControlTargetSchema.extend({
+  operationId: z.uuid(), generation: z.uuid(), requestId: z.string().min(1).max(256),
+  kind: z.enum(["approval", "input"]), decision: z.enum(["accept", "acceptForSession", "decline", "cancel"]).nullable().default(null),
+  answers: z.record(z.string().min(1).max(256), z.array(z.string().max(4_096)).min(1).max(32)).nullable().default(null),
+}).strict();
+export type ControlNativeResponse = z.input<typeof ControlNativeResponseSchema>;
+export const ControlNativeResponseReceiptSchema = z.object({
+  operationId: z.uuid(), requestId: z.string(), outcome: z.enum(["submitted", "uncertain"]),
+}).strict();
+export type ControlNativeResponseReceipt = z.infer<typeof ControlNativeResponseReceiptSchema>;
 export const ControlWaitSchema = ControlTargetSchema.extend({ timeoutMs: z.number().int().min(1).max(60_000).default(30_000) }).strict();
 export const ControlWaitResultSchema = z.object({
   target: ManagedPeerSchema, outcome: z.enum(["idle", "completed", "interrupted", "failed", "timeout", "unavailable"]),

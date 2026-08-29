@@ -402,9 +402,48 @@ The resident implementation now exists independently of the local Desktop attach
   An explicit 0.39.14 daemon restart on every host closed all nine resources cleanly and returned
   ready; external provider sessions were not restarted. The earlier automatic upgrade exposed a
   distinct self-restart deadlock, tracked and fixed in
-  `docs/backlog/in-progress/2026-08-28-self-update-without-restart-deadlock.md`; it is not an
+  `docs/backlog/done/2026-08-28-self-update-without-restart-deadlock.md`; it is not an
   observation transport failure.
 
 The unperformed existing-local-Desktop and existing-thread approval/interruption acceptance
 remains open; a controlled test must not be substituted for it. The local provider-supported
 attachment prerequisite is unchanged. No consumer rendering/deployment is claimed here.
+
+Final owner patch: [v0.39.15](https://github.com/max-listov/ccmux/releases/tag/v0.39.15),
+commit `a41f5fab44e117b149949a7368caf1800a72d1bc`, resolves the self-update shutdown defect.
+All three runtimes match bundle SHA-256
+`4a476199c8fa8e45fbafc771193453805b023e055dc08dd92ce038f31e919b41`.
+Full gates: 763 tests, zero failures, 3,524 assertions. The downloaded published client passed
+100 reads and 33 subscription reconnects on every host; the installed two-thread E2E passed again
+through nine stream frames. The native observer and all nine daemon resources close cleanly.
+Exact artifact/rollback evidence is in the completed self-update task linked above.
+
+After test-thread cleanup and the final daemon restart, an existing remote Desktop thread that
+was idle in the initial baseline became working. The published projection reported 3 working,
+3 idle and 5 unknown rows; an independent application-native read confirmed the same newly active
+UUID as `active`. This is a real existing-thread transition, separate from the controlled E2E.
+It does not establish the still-unperformed existing-thread approval/interruption checks.
+
+The remaining blocker is specifically existing local Desktop attachment, not resident CCMux
+delivery, publication, fleet parity, dependency adoption or a need to repeat release authorization.
+No verified native status is available for that stdio-only writer through the exposed socket;
+using a different provider runtime or recent activity cannot satisfy the unchecked acceptance.
+
+### Requested retained greeting demonstration
+
+The maintainer requested one additional read-only test conversation in this project on the
+already connectable shared App Server, with a greeting and visible native working state. Keep
+the conversation for inspection and compare its exact identity through the installed CCMux
+resident reader. Existing Desktop threads and application launch settings must remain unchanged.
+This demonstration does not replace the still-open existing-Desktop attachment acceptance.
+
+Validation on 2026-08-28: one new conversation was created through native `thread/start` on
+the existing Unix-socket runtime in the canonical project directory, with read-only sandbox
+and a greeting-only scope. Native `turn/start` accepted the Russian greeting. The installed
+0.39.15 resident reader reported the exact identity as `working/native-status` at
+14:38:22.079Z and `idle/native-status` at 14:38:54.085Z. The provider completed the greeting
+without an error. The downstream resident API returned the same identity and fresh native idle
+state. Desktop successfully opened the pinned conversation and read its completed greeting,
+but still reported `notLoaded`; this confirms history visibility, not shared live attachment.
+The conversation is retained for the maintainer. No existing writer, application launch
+configuration, repository implementation, Git index or published release was changed.
