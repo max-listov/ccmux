@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.27] — 2026-08-30
+
+use unversioned control API and enforce Biome checks
+
 ### Changed
 
 - Use one unversioned public control surface: `/ccmux/control`, owner ingress
@@ -16,7 +20,6 @@ the GitHub Release with that section as the notes.
   Align source, tests and tooling on two-space indentation, single quotes and a 100-column width.
 - Keep cleanup failures explicit without throwing from `finally`, and replace unchecked probe
   assertions and ambiguous return expressions with typed guards and direct control flow.
-
 ## [0.39.26] — 2026-08-30
 
 exclude native internal context from public history
