@@ -6,13 +6,13 @@ import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
 import { lastSignOfLife, type Observed } from "../events/observe.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import type { MonitoringRow } from "./schema.ts";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
-import { ownedCodexView } from "../agent/codex/ownedView.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
+import { managedRuntimeView } from "../runtime/view.ts";
 
 /** Reuses the observation loop's captured pane and process-local transcript metadata caches. */
 export function projectMonitoringRow(m: MachineConfig, s: Session, startedAt: number | undefined,
   pane: string | null, seen: Observed, now = Date.now()): MonitoringRow {
-  const native = isOwnedCodex(s) ? ownedCodexView(m, s, now) : null;
+  const native = hasNativeRuntime(s) ? managedRuntimeView(m, s, now) : null;
   const running = startedAt !== undefined || native?.read.status === "live";
   const provider = providerFor(s);
   const scan = pane === null ? null : provider.scanPane(pane);
@@ -40,7 +40,7 @@ export function projectMonitoringRow(m: MachineConfig, s: Session, startedAt: nu
     plane: "managed", name: s.name, agent: s.agent, uuid: s.uuid, rc: rcName(m, s.name),
     address: `${m.rcPrefix}:${s.name}`,
     dir: s.dir, archived: s.archived, running, state,
-    model: running ? sessionModel(s, m) : null,
+    model: running ? native?.read.snapshot?.modelSelection?.model ?? sessionModel(s, m) : null,
     contextPercent: running && pct !== null && pct >= 0 && pct <= 100 ? pct : null,
     uptimeSeconds: startedAt === undefined ? null : Math.max(0, Math.floor(now / 1000 - startedAt)),
     lastActivityAt: activity === null ? null : new Date(activity).toISOString(),

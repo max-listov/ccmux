@@ -52,6 +52,10 @@ export async function dispatchControlService(
   let result: unknown;
   try {
     switch (invocation.operation) {
+      case "runtime.list":
+        controlServiceInputs["runtime.list"].parse(decoded);
+        result = operations.runtimes();
+        break;
       case "directory.list":
         result = await operations.directories(controlServiceInputs["directory.list"].parse(decoded), signal);
         break;

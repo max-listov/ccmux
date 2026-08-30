@@ -40,7 +40,8 @@ export async function removePendingSession(m: MachineConfig, generation: string)
 }
 
 /** CAS promotion: exact generation+name must still be pending and the real UUID must be unclaimed. */
-export async function promotePendingSession(m: MachineConfig, generation: string, uuid: string): Promise<Session> {
+export async function promotePendingSession(m: MachineConfig, generation: string, uuid: string,
+  nativeSession?: Session["nativeSession"]): Promise<Session> {
   return withSessionRegistryLock(m, async () => {
     await recoverPromotionsUnlocked(m);
     const pending = loadPendingRows(m);
@@ -49,10 +50,13 @@ export async function promotePendingSession(m: MachineConfig, generation: string
     const sessions = loadSessions(m);
     if (findSession(sessions, target.session.name)) throw new Error("session name was claimed before promotion");
     if (sessions.some((item) => item.uuid === uuid)) throw new Error("provider thread id is already claimed");
-    const ready = SessionSchema.parse({ ...target.session, uuid, registrationGeneration: generation });
+    if (nativeSession && sessions.some(item => item.nativeSession?.runtime === nativeSession.runtime && item.nativeSession.id === nativeSession.id))
+      throw new Error("native conversation is already registered");
+    const fields = { ...target.session, ...(nativeSession === undefined ? {} : { nativeSession }) };
+    const ready = SessionSchema.parse({ ...fields, uuid, registrationGeneration: generation });
     // Journal first: every read treats `promoted` as ready, and the next locked mutation completes
     // either interrupted write boundary idempotently.
-    await writePendingRows(m, pending.map((item) => item.generation === generation ? promotedPending(item, uuid) : item));
+    await writePendingRows(m, pending.map((item) => item.generation === generation ? promotedPending({ ...item, session: fields }, uuid) : item));
     await writeSessionsUnlocked(m, [...sessions, ready]);
     await writePendingRows(m, pending.filter((item) => item.generation !== generation));
     return ready;

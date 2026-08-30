@@ -4,7 +4,7 @@ import { collectRows } from "./list.ts";
 import { peersOf, runPeer } from "../fleet/transport.ts";
 import { VERSION } from "../util/version.ts";
 import { behindBy, bestKnownRelease, releaseStanding, type BehindBy } from "../config/releaseCheck.ts";
-import { ReleaseStandingSchema } from "../config/schema.ts";
+import { AgentKindSchema, ReleaseStandingSchema } from "../config/schema.ts";
 import { ROLE_SIGIL } from "../chat/roleAddress.ts";
 import type { MachineConfig, ReleaseStanding } from "../types.ts";
 
@@ -24,7 +24,7 @@ import type { MachineConfig, ReleaseStanding } from "../types.ts";
  */
 const RemoteSessionSchema = z.object({
   name: z.string(),
-  agent: z.enum(["claude", "codex"]).nullable().default(null),
+  agent: AgentKindSchema.nullable().default(null),
   state: z.string().default("?"),
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),

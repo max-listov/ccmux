@@ -26,6 +26,8 @@ import { chatEnabledFor } from "../config/chat.ts";
 import { deliverCodexAppMessage } from "./codexApp.ts";
 import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
 import { deliverOwnedCodexPending } from "./ownedCodex.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
+import { deliverNativeRuntimePending } from "./nativeRuntime.ts";
 
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
@@ -226,9 +228,10 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const provider = providerFor(s);
     const recipient = managedPeer(m.rcPrefix, s);
     const recipientKey = managedPeerKey(recipient);
-    if (isOwnedCodex(s)) {
+    if (hasNativeRuntime(s)) {
       try {
-        deliveries += await deliverOwnedCodexPending(m, s, ledger, cursors, acked,
+        const deliver = isOwnedCodex(s) ? deliverOwnedCodexPending : deliverNativeRuntimePending;
+        deliveries += await deliver(m, s, ledger, cursors, acked,
           recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND, now);
       } catch (error) {
         log.warn({ msg: "native managed chat held", name: s.name, error: String(error) });

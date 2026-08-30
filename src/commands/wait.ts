@@ -11,8 +11,8 @@ import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.
 import type { MachineConfig, ChatMessage, Session } from "../types.ts";
 import { managedPeer, managedPeerKey } from "../chat/identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
-import { readOwnedCodexStatus } from "../agent/codex/ownedStatus.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
+import { readManagedRuntimeStatus } from "../runtime/status.ts";
 import { pickPendingDelivery } from "../chat/pendingDelivery.ts";
 
 /**
@@ -115,7 +115,7 @@ function mailHold(m: MachineConfig, s: Session, blocking: ChatMessage[], nowMs: 
 
 export function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessage[] {
   try {
-    if (isOwnedCodex(s)) {
+    if (hasNativeRuntime(s)) {
       if (!chatEnabledFor(s, m)) return [];
       const key = managedPeerKey(managedPeer(m.rcPrefix, s));
       // Reading inbox does not cancel daemon delivery. The delivery cursor, not the
@@ -152,7 +152,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     console.error(`unknown session: ${name}`);
     return 1;
   }
-  if (!(isOwnedCodex(s) && readOwnedCodexStatus(m, s).status === "live") && !(await hasSession(m, name))) {
+  if (!(hasNativeRuntime(s) && readManagedRuntimeStatus(m, s).status === "live") && !(await hasSession(m, name))) {
     console.error(`${name} is not running — start it first: ccmux start ${name}`);
     return 1;
   }
@@ -165,7 +165,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     // Liveness is re-checked every pass, not once at the start: a session stopped mid-wait (a fleet
     // restart sweep, say) used to run to the deadline and then report "still working" about a
     // session that was not running at all.
-    if ((isOwnedCodex(s) && readOwnedCodexStatus(m, s).status === "live") || await hasSession(m, name)) {
+    if ((hasNativeRuntime(s) && readManagedRuntimeStatus(m, s).status === "live") || await hasSession(m, name)) {
       missingSince = null;
     } else {
       // A restart makes the session absent for a few seconds (kill → relaunch), and `restart --all`
@@ -181,13 +181,13 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       continue;
     }
     const now = Date.now();
-    if (isOwnedCodex(s)) {
+    if (hasNativeRuntime(s)) {
       const latest = findSession(loadSessions(m), name);
       if (latest?.uuid !== s.uuid || latest.agent !== s.agent) {
         console.error(`${name}: session identity changed while waiting`);
         return 2;
       }
-      const native = readOwnedCodexStatus(m, s, now);
+      const native = readManagedRuntimeStatus(m, s, now);
       const pickup = loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))];
       if (native.status === "live" && native.snapshot?.turn?.status === "failed") {
         if (!o.quiet) console.error(`${name}: native turn failed`);

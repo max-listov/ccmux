@@ -1,6 +1,7 @@
 import { ApiError, createClient, type ClientFetch } from "stitchkit";
 import { defineContract } from "stitchkit/contract";
 import { z } from "zod";
+import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from "../runtime/capabilities.ts";
 import { ControlDirectoryReadSchema, ControlDirectoryResultSchema } from "./directorySchema.ts";
 import { RC_PREFIX_RE } from "../config/schema.ts";
 import {
@@ -33,6 +34,7 @@ export const CCMUX_CONTROL_SERVICE_MAX_REQUEST_BYTES = 64 * 1024;
 export const CCMUX_CONTROL_SERVICE_MAX_RESPONSE_BYTES = CONTROL_MAX_BYTES + 4096;
 
 export const ControlServiceOperationSchema = z.enum([
+  "runtime.list",
   "session.get",
   "session.create",
   "session.archive",
@@ -48,6 +50,7 @@ export const ControlServiceOperationSchema = z.enum([
 export type ControlServiceOperation = z.infer<typeof ControlServiceOperationSchema>;
 
 export const ControlServiceEffectSchema = z.enum([
+  "runtime.read",
   "session.read",
   "session.create",
   "session.archive",
@@ -63,6 +66,7 @@ export const ControlServiceEffectSchema = z.enum([
 export type ControlServiceEffect = z.infer<typeof ControlServiceEffectSchema>;
 
 export const controlServiceEffects = {
+  "runtime.list": "runtime.read",
   "session.get": "session.read",
   "session.create": "session.create",
   "session.archive": "session.archive",
@@ -118,6 +122,7 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
   revision: CCMUX_CONTROL_SERVICE_REVISION,
   maxInflight: 8,
   operations: [
+    { id: "runtime.list", effect: controlServiceEffects["runtime.list"], limits: { requestBytes: 4096, responseBytes: 16 * 1024, timeoutMs: 5000 } },
     { id: "session.get", effect: controlServiceEffects["session.get"], limits: { requestBytes: 4096, responseBytes: 32 * 1024, timeoutMs: 5000 } },
     { id: "session.create", effect: controlServiceEffects["session.create"], limits: { requestBytes: 64 * 1024, responseBytes: 16 * 1024, timeoutMs: 30_000 } },
     { id: "session.archive", effect: controlServiceEffects["session.archive"], limits: { requestBytes: 4096, responseBytes: 16 * 1024, timeoutMs: 15_000 } },
@@ -170,6 +175,7 @@ export const ControlServiceWaitSchema = ControlWaitSchema.extend({
 }).strict();
 
 export const controlServiceInputs = {
+  "runtime.list": RuntimeCatalogInputSchema,
   "session.get": ControlTargetSchema,
   "session.create": ControlCreateSchema,
   "session.archive": ControlTargetSchema,
@@ -184,6 +190,7 @@ export const controlServiceInputs = {
 };
 
 export const controlServiceOutputs = {
+  "runtime.list": RuntimeCatalogSchema,
   "session.get": ControlRowSchema,
   "session.create": ControlCreateReceiptSchema,
   "session.archive": ControlArchiveReceiptSchema,
@@ -211,6 +218,7 @@ function serviceReply<T>(result: z.ZodType<T>) {
 export const ccmuxControlServiceContract = defineContract(
   { prefix: CCMUX_CONTROL_SERVICE_PREFIX },
   {
+    runtimes: { method: "POST", path: "/runtime.list", desc: "Discover configured execution runtimes and capabilities", input: RuntimeCatalogInputSchema, output: serviceReply(RuntimeCatalogSchema), idempotent: true, meta: { effect: controlServiceEffects["runtime.list"] } },
     get: { method: "POST", path: "/session.get", desc: "Read one exact managed session", input: ControlTargetSchema, output: serviceReply(ControlRowSchema), idempotent: true, meta: { effect: controlServiceEffects["session.get"] } },
     directories: { method: "POST", path: "/directory.list", desc: "Read a bounded directory page", input: ControlDirectoryReadSchema, output: serviceReply(ControlDirectoryResultSchema), idempotent: true, meta: { effect: controlServiceEffects["directory.list"] } },
     create: { method: "POST", path: "/session.create", desc: "Idempotently create one managed Codex session", input: ControlCreateSchema, output: serviceReply(ControlCreateReceiptSchema), idempotent: true, timeout: 30_000, meta: { effect: controlServiceEffects["session.create"] } },

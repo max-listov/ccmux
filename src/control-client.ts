@@ -2,6 +2,7 @@ export { createControlClient, createControlProxy, ControlClientOptionsSchema, ty
 export { ControlDirectoryReadSchema, ControlDirectoryResultSchema,
   type ControlDirectoryRead, type ControlDirectoryResult } from "./control/directorySchema.ts";
 export { ModelSelectionSchema } from "./config/schema.ts";
+export { RuntimeCatalogInputSchema, RuntimeCatalogSchema, RuntimeCapabilitiesSchema, type RuntimeCapabilities } from "./runtime/capabilities.ts";
 export type { ModelSelection } from "./config/modelSelectionFlags.ts";
 export { controlContract, controlEventsContract } from "./control/contract.ts";
 export { ControlSnapshotSchema, ControlRowSchema, ControlNativeSnapshotSchema, ControlNativeCursorSchema,

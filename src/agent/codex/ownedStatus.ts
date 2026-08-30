@@ -5,6 +5,7 @@ import { atomicWrite } from "../../util/atomic.ts";
 import { ownedCodexStatusPath, privateRuntimeDirectory } from "./ownedPaths.ts";
 import { OwnedCodexSnapshotSchema, CODEX_RUNTIME_MAX_BYTES, CODEX_RUNTIME_TTL_MS,
   type OwnedCodexSnapshot, type OwnedCodexRead } from "./ownedSchema.ts";
+import { readRuntimeLease } from "../../runtime/lease.ts";
 
 export function unavailableOwnedCodex(reason: string): OwnedCodexRead {
   return { protocol: 1, status: "unavailable", reason, snapshot: null };
@@ -21,21 +22,8 @@ export function validateOwnedCodex(bytes: string, identity: { machine: string; s
 }
 
 export function validateOwnedCodexLiveness(snapshot: OwnedCodexSnapshot, now = Date.now()): OwnedCodexRead {
-  for (const pid of [snapshot.pid, snapshot.providerPid]) {
-    try { process.kill(pid, 0); }
-    catch (error) {
-      // A sandboxed resident reader may read the private projection but be denied kill(pid, 0).
-      // EPERM is not proof of death: its positive state is still bounded by the producer's lease.
-      if (error instanceof Error && "code" in error && error.code === "EPERM") continue;
-      return unavailableOwnedCodex("producer-stopped");
-    }
-  }
-  if (!snapshot.connected) return unavailableOwnedCodex(snapshot.reason ?? "disconnected");
-  const observed = Date.parse(snapshot.observedAt);
-  const expires = Date.parse(snapshot.expiresAt);
-  if (now < observed || expires < observed || expires - observed > CODEX_RUNTIME_TTL_MS) return unavailableOwnedCodex("clock-skew");
-  if (now >= expires) return { protocol: 1, status: "stale", reason: "expired", snapshot: null };
-  return { protocol: 1, status: "live", reason: null, snapshot };
+  const lease = readRuntimeLease(snapshot, now, CODEX_RUNTIME_TTL_MS);
+  return { protocol: 1, ...lease, snapshot: lease.status === "live" ? snapshot : null };
 }
 
 /** Small local prepared file only; never inspect panes, provider history or a live RPC. */

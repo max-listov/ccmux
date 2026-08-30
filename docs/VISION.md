@@ -4,33 +4,35 @@ description: Persistent self-healing флот агентских сессий н
 type: vision
 status: active
 created: 2026-06-11
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # ccmux — куда идём
 
 ## Что это
 Супервайзер **постоянных агентских сессий** и единый identity-pinned chat для поддерживаемых
-interactive runtimes (Claude Code, Codex CLI и Codex App Server threads).
+interactive и structured runtimes (Claude Code, Codex CLI/App Server и OpenCode server).
 Один демон на машину держит флот живых сессий в tmux: хилит упавшие, поднимает на ребуте,
-резюмит ту же беседу по фикс-uuid. Сессии — полноценные интерактивные provider CLI на подписке
-пользователя, не headless-обвязка. Remote Control/statusline и permission-mode — Claude-specific
-capabilities; Codex сохраняет свой TUI/config/approvals и provider-specific resume.
+резюмит ту же беседу по фиксированному managed ID и native continuation. Provider runtime может
+быть интерактивным CLI или headless server: inference, tools и история остаются у него.
+Remote Control/statusline и permission-mode — Claude-specific capabilities; Codex сохраняет
+свой TUI/App Server, а OpenCode работает через authenticated API и SSE.
 
 ## Принципы
-- **Интерактивный CLI, не SDK** — сессии остаются на подписке пользователя и сохраняют
-  provider-specific capabilities: Claude — RC/statusline, Codex — TUI/config/approvals/resume.
-  Мы супервайзим, а не реимплементируем.
+- **Супервизор, не agent loop** — native CLI/SDK/API выбирается по runtime. Подписка, API account,
+  inference, tools и prompts принадлежат runtime/host configuration, не новому общему циклу CCMux.
+  Capability discovery честно различает поддерживаемые операции, не обещая равенства всех адаптеров.
 - **Один provider runtime = один writer** — managed Codex поддерживает обычный TUI и opt-in
   native App Server под существующим supervisor. В App Server режиме терминальный CLI — клиент
   того же writer, статусы и управление идут по native protocol. Изоляция env сохраняется на
   уровне каждой сессии. Решение: [owned native runtime](decisions/2026-08-28-owned-native-codex-runtime.md). Для thread,
   уже принадлежащего Codex App, ccmux подключается клиентом к существующему shared App Server и
   отправляет provider-native `turn/start`; второй runtime и второй writer не создаются.
-- **Агент-агностичность** — провайдер на агента (`src/agent/<id>/`), ядро говорит только
-  с контрактом. Claude сегодня, Codex и ACP-агенты — когда дозреют.
-- **jsonl — источник правды беседы**: транскрипт, токены, «где остановилось» читаются из
-  истории агента, не скрейпом. Пейн-скрейп — только для live-статуса.
+- **Runtime отдельно от model provider** — Claude, Codex и OpenCode имеют разные протоколы;
+  выбор модели не создаёт новый вид сессии. Optional Custom использует только опубликованный
+  Stitchkit harness; до доступности этого seam он явно unavailable, без скопированного цикла.
+- **Native история — источник правды беседы**: JSONL у interactive CLI, structured API/events
+  у headless server. Пейн-скрейп остаётся только в существующих interactive adapters.
 - **Production-система**: рулит реальными сессиями на флоте машин. Деплой — только по
   явному «го» (см. CLAUDE.md), сессии переживают апдейты и ребуты.
 
@@ -61,6 +63,11 @@ Native model catalog читается до создания первого threa
 native Codex/GPT, не универсальный inference runtime. Workspace picker использует bounded
 `directory.list`, а не shell-команду. Решение: [catalog and selection](decisions/2026-08-30-native-catalog-and-model-selection.md).
 
+`runtime.list` сообщает установленные execution runtimes и их capabilities. `session.create`
+выбирает runtime отдельно от `modelSelection`; omitted runtime сохраняет Codex. OpenCode использует
+host-native provider catalog, отдельный `ses_…` continuation и тот же control/chat/wait plane.
+Решение: [managed runtime drivers](decisions/2026-08-30-managed-runtime-drivers.md).
+
 1. **Сейчас**: Bun-версия боевая локально (паритет с прежней реализацией подтверждён аудитом),
    раскатка на серверы — по команде владельца.
 2. **Флот без рук**: CI + GitHub Releases → демоны сами подтягивают апдейты
@@ -75,3 +82,10 @@ native Codex/GPT, не универсальный inference runtime. Workspace p
 объявляет чужие App threads daemon-healed managed sessions. Не заменяет provider harness,
 inference transport или authentication собственной реализацией. Native App Server mode
 сохраняет интерактивный CLI как клиент и не обещает подключения официального Desktop.
+
+## Название
+
+В текущем scope сохраняется CCMux: continuity существующих addresses, packages и deployments
+важнее косметического переименования. «Agent session supervisor» описывает роль точнее, чем
+«Claude multiplexer»; «runtime control plane» описывает публичный API, но не отдельный продукт.
+Возможный будущий rename требует отдельного migration decision и не меняет пути/бинарники сейчас.

@@ -1,17 +1,18 @@
 # ccmux
 
-**Persistent, self-healing Claude Code and Codex sessions in tmux — across a fleet of machines.**
+**Persistent, self-healing Claude Code, Codex and OpenCode sessions — across a fleet of machines.**
 
 A single daemon per machine keeps a fleet of long-running agent sessions alive in tmux:
 it heals crashed ones, brings them back on reboot, and resumes the *same* conversation by a
-pinned uuid. Sessions are full interactive provider CLI processes (`claude` or `codex`) — ccmux
-supervises them, it does not reimplement them. Provider-specific features remain provider-specific:
+pinned managed identity and native continuation. Sessions use interactive CLI processes or structured
+native servers — ccmux supervises their lifetime, it does not implement their agent loops.
+Provider-specific features remain provider-specific:
 for example Claude has Remote Control/statusline, while Codex can opt into its native App Server
-for structured state and chat delivery.
+for structured state and chat delivery. OpenCode uses its authenticated server API and SSE.
 
 ```
 ┌─ daemon (launchd/systemd) ─ heals every 30s, self-updates ─┐
-│   tmux: cc-api   cc-web   cc-infra   …   (each = `ccmux _run` → claude|codex, auto-restart)
+│   tmux: cc-api   cc-web   cc-infra   …   (each = managed CLI/native writer, auto-restart)
 └────────────────────────────────────────────────────────────┘
         ▲ ccmux list / new / attach / send / restart …          ▲ interactive TUI (bare `ccmux`)
 ```
@@ -47,6 +48,7 @@ ccmux status --json        # bounded daemon snapshot; no per-reader transcript/t
 ccmux new cc-api ~/code/api   # create + start a session (returns after authoritative thread bind)
 ccmux new cc-review ~/code/api --agent codex   # provider is explicit
 ccmux new cc-native ~/code/api --agent codex --runtime app-server  # owned native runtime
+ccmux new cc-open ~/code/api --agent opencode  # authenticated native server, not a TUI scraper
 ccmux runtime cc-native --json   # exact native turn state, without a pane/history scan
 ccmux send cc-api '/compact'  # PRESS KEYS in a session (slash commands) — see msg for writing to an agent
 ccmux restart cc-api       # bounce it (survives killing the caller)
@@ -60,7 +62,7 @@ ccmux completions zsh > "${fpath[1]}/_ccmux"   # shell completions (bash|zsh|fis
 ccmux help                 # full command list
 ```
 
-`list` and `fleet` show the provider (`claude` or `codex`) explicitly. A managed identity is the
+`list` and `fleet` show the runtime (`claude`, `codex` or `opencode`) explicitly. A managed identity is the
 provider plus its exact fleet address, not its working directory: two providers may intentionally
 work in the same project. Never choose a target by cwd, project name, or model.
 
@@ -77,7 +79,15 @@ approval/input responses, native turn interruption and between-turn waits; the r
 self-contained `control-client.js` and SHA-256 asset. Commands retain exact provider/machine/session
 identity and existing delivery gates. See the [resident control contract](docs/architecture/control-plane.md).
 
-Managed create may select a host-defined launch recipe with only `{ id, revision }`. The host keeps
+`client.runtimes({})` discovers configured runtimes and explicit capabilities. Public create accepts
+`runtime` independently from `modelSelection: { provider, model }`; omitted runtime remains Codex.
+`models({ runtime: "opencode" })` reads the host's configured native provider catalog before a chat.
+OpenCode requires an existing authenticated native installation (1.18.20 or newer). It stores its
+native session ID separately, reuses the existing chat/control plane, and preserves it on resume.
+The optional custom Stitchkit harness is explicitly unavailable until its published adapter passes
+acceptance. See [runtime drivers](docs/architecture/managed-runtime-drivers.md) for setup and limits.
+
+Managed Codex create may select a host-defined launch recipe with only `{ id, revision }`. The host keeps
 the env file, native model-provider flags and required environment names; receipts/status expose only
 the recipe digest and safe capabilities. A recipe may also pin an installed Codex collaboration
 preset; CCMux verifies provider support before every turn it starts and never accepts caller-authored mode
@@ -91,7 +101,7 @@ scans. This observes an accessible existing App Server; it does not attach to a 
 Desktop runtime or adopt its threads. See [external resident status](docs/architecture/external-resident-status.md).
 
 ccmux-managed sessions and Codex Desktop tasks are separate coordination planes. Managed sessions
-use ccmux addresses, persistence, and wait state. Claude and Codex managed sessions use the ccmux
+use ccmux addresses, persistence, and wait state. Claude, Codex and OpenCode managed sessions use the ccmux
 chat ledger; delivery follows the selected provider/runtime boundary. Desktop tasks use the task tools and
 native task IDs exposed by the Desktop app. ccmux does not mirror the Desktop task ledger; sharing a
 cwd does not bridge the two planes. See [`docs/architecture/peer-routing.md`](docs/architecture/peer-routing.md).

@@ -16,6 +16,10 @@ export function loadReadyRows(m: MachineConfig): Session[] {
     const value: unknown = JSON.parse(line);
     const session = SessionSchema.parse(value);
     if (session.runtime === "app-server" && session.agent !== "codex") throw new Error("app-server runtime requires agent=codex");
+    if ((session.agent === "opencode" || session.agent === "custom") && session.runtime !== "native")
+      throw new Error("This provider requires a native runtime");
+    if (session.runtime === "native" && (!session.nativeSession || session.agent !== session.nativeSession.runtime))
+      throw new Error("Native runtime requires an exact provider continuation");
     out.push(session);
   }
   return out;

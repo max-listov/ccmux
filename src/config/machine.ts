@@ -62,6 +62,10 @@ export function loadMachineConfig(): MachineConfig {
     const codex = Bun.which("codex");
     if (codex) merged.codexBin = codex;
   }
+  if (merged.opencodeBin === undefined) {
+    const opencode = Bun.which("opencode");
+    if (opencode) merged.opencodeBin = opencode;
+  }
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();
   return MachineConfigSchema.parse(merged);
 }

@@ -6,6 +6,24 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Discover execution runtimes and explicit capabilities through `runtime.list` and typed clients;
+  select runtime independently of model provider/model while preserving default Codex creation.
+- Supervise authenticated OpenCode servers through the pinned native SDK and bounded SSE, with
+  stable managed/native identities, native configured-model catalogs and exact approval/input control.
+- Reuse the existing chat ledger for cross-runtime messaging, busy/defer, wait, interruption and
+  restart/resume. Preserve provider writers across daemon restart and native history on archive.
+
+### Safety
+
+- Reconcile uncertain native create/prompt receipts without replaying side effects. Repair the
+  cursor/mailbox crash gap only with positive terminal evidence; corrupt/uncertain state fails closed.
+- Bound HTTP frames, SSE admission, native history and projections. Keep raw provider errors and
+  tool payloads out of the public feed; retain bounded private diagnostics for the execution host.
+- Preserve existing Claude/Codex behavior. The optional custom harness remains explicitly unavailable
+  pending its published dependency and real acceptance; no substitute agent loop is shipped.
+
 ## [0.39.23] — 2026-08-30
 
 discover models before first chat and preserve native selection

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ManagedPeerSchema, ModelSelectionSchema } from "../config/schema.ts";
+import { AgentKindSchema, NativeSessionSchema, LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ManagedPeerSchema, ModelSelectionSchema } from "../config/schema.ts";
+import { RuntimeCapabilitiesSchema } from "../runtime/capabilities.ts";
 import { OwnedCodexTurnSchema } from "../agent/codex/ownedSchema.ts";
 import { OwnedCodexNativeItemSchema, OwnedCodexPendingRequestSchema } from "../agent/codex/ownedSchema.ts";
 import { SESSION_NAME_RE } from "../config/schema.ts";
@@ -9,7 +10,9 @@ export const CONTROL_MAX_READERS = 32;
 export const ControlTargetSchema = z.object({ target: ManagedPeerSchema }).strict();
 export const ControlRowSchema = z.object({
   identity: ManagedPeerSchema,
-  runtime: z.enum(["cli", "app-server"]),
+  runtime: z.enum(["cli", "app-server", "native"]),
+  nativeSession: NativeSessionSchema.optional(),
+  driverCapabilities: RuntimeCapabilitiesSchema.optional(),
   state: z.enum(["working", "idle", "waiting-approval", "waiting-input", "prompt", "stopped", "blocked", "unknown"]),
   availability: z.enum(["live", "stale", "unavailable"]),
   reason: z.string().max(512).nullable(),
@@ -50,6 +53,7 @@ export const ControlMessageReceiptSchema = z.object({
 export const ControlInterruptSchema = ControlTargetSchema.extend({ turnId: z.string().min(1).max(256) }).strict();
 export const ControlActionReceiptSchema = z.object({ target: ManagedPeerSchema, accepted: z.literal(true) }).strict();
 export const ControlCreateSchema = z.object({
+  runtime: AgentKindSchema.optional(),
   requestId: z.uuid(), name: z.string().min(1).max(256).regex(SESSION_NAME_RE),
   workspace: z.string().startsWith("/").max(4_096), flags: z.array(z.string().max(4_096)).max(32).default([]),
   launchRecipe: LaunchRecipeReferenceSchema.optional(),
@@ -60,6 +64,8 @@ export const ControlCreateReceiptSchema = z.object({
   requestId: z.uuid(), target: ManagedPeerSchema, workspace: z.string().startsWith("/").max(4_096),
   duplicate: z.boolean(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  nativeSession: NativeSessionSchema.optional(),
+  driverCapabilities: RuntimeCapabilitiesSchema.optional(),
 }).strict();
 export type ControlCreateReceipt = z.infer<typeof ControlCreateReceiptSchema>;
 export const ControlArchiveReceiptSchema = z.object({
@@ -74,6 +80,8 @@ export const ControlNativeSnapshotSchema = z.object({
   items: z.array(OwnedCodexNativeItemSchema).max(128), pending: z.array(OwnedCodexPendingRequestSchema.omit({ rpcId: true })).max(16),
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  nativeSession: NativeSessionSchema.optional(),
+  driverCapabilities: RuntimeCapabilitiesSchema.optional(),
 }).strict();
 export type ControlNativeSnapshot = z.infer<typeof ControlNativeSnapshotSchema>;
 export const ControlNativeResponseSchema = ControlTargetSchema.extend({
@@ -88,6 +96,7 @@ export const ControlNativeResponseReceiptSchema = z.object({
 export type ControlNativeResponseReceipt = z.infer<typeof ControlNativeResponseReceiptSchema>;
 export const CONTROL_MODELS_MAX_PAGE = 64;
 export const ControlModelsReadSchema = z.object({
+  runtime: AgentKindSchema.optional(),
   target: ManagedPeerSchema.optional(),
   launchRecipe: LaunchRecipeReferenceSchema.optional(),
   cursor: z.string().min(1).max(4_096).nullable().default(null),
@@ -97,6 +106,7 @@ export const ControlModelsReadSchema = z.object({
   "Choose a host recipe or an exact managed runtime, not both");
 export type ControlModelsRead = z.input<typeof ControlModelsReadSchema>;
 export const ControlModelSchema = z.object({
+  provider: z.string().min(1).max(128).optional(),
   id: z.string().min(1).max(256),
   model: z.string().min(1).max(256).optional(),
   displayName: z.string().min(1).max(256),
@@ -117,7 +127,7 @@ export const ControlModelCatalogSchema = z.object({
   target: ManagedPeerSchema.optional(),
   source: z.object({
     kind: z.enum(["host", "session"]), machine: z.string().min(1),
-    provider: z.string().min(1).max(128), launchRecipe: LaunchRecipeMetadataSchema.optional(),
+    provider: z.string().min(1).max(128).nullable(), runtime: AgentKindSchema.optional(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
   }).strict(),
   data: z.array(ControlModelSchema).max(CONTROL_MODELS_MAX_PAGE),
   nextCursor: z.string().max(4_096).nullable(),

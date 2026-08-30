@@ -1,5 +1,6 @@
 import { AppError } from "stitchkit";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
+import { requestRuntimeInterrupt } from "../runtime/interrupt.ts";
 import { connectOwnedCodex } from "../agent/codex/ownedRpc.ts";
 import { readOwnedCodexStatus } from "../agent/codex/ownedStatus.ts";
 import { readCodexAppThread } from "../agent/codex/appServer.ts";
@@ -16,7 +17,11 @@ export async function interruptControlTurn(m: MachineConfig, target: ManagedPeer
   return withSessionRegistryLock(m, async () => {
     signal.throwIfAborted();
     const session = controlTarget(m, target);
-    if (!isOwnedCodex(session)) throw new AppError("UNSUPPORTED", "Native interruption is unavailable for this runtime", 409);
+    if (!hasNativeRuntime(session)) throw new AppError("UNSUPPORTED", "Native interruption is unavailable for this runtime", 409);
+    if (session.runtime === "native") {
+      await requestRuntimeInterrupt(m, session, turnId, signal);
+      return { target, accepted: true } satisfies { target: ManagedPeer; accepted: true };
+    }
     const read = readOwnedCodexStatus(m, session);
     if (read.status !== "live" || read.snapshot?.state !== "working" || read.snapshot.turn?.id !== turnId
       || read.snapshot.turn.status !== "inProgress") {
@@ -39,7 +44,7 @@ export async function interruptControlTurn(m: MachineConfig, target: ManagedPeer
 export async function waitControlSession(m: MachineConfig, publisher: ControlPublisher, target: ManagedPeer,
   timeoutMs: number, signal: AbortSignal) {
   const session = controlTarget(m, target);
-  if (!isOwnedCodex(session)) throw new AppError("UNSUPPORTED", "Resident wait requires a native runtime", 409);
+  if (!hasNativeRuntime(session)) throw new AppError("UNSUPPORTED", "Resident wait requires a native runtime", 409);
   const timeout = AbortSignal.timeout(timeoutMs);
   const startedAt = Date.now();
   const combined = AbortSignal.any([signal, timeout]);

@@ -1,4 +1,5 @@
 import { AppError } from "stitchkit";
+import { readRuntimeCatalog } from "../runtime/catalog.ts";
 import {
   BoundedAdmissionRefusalError,
   BoundedOperationWaitError,
@@ -75,6 +76,7 @@ export function createControlOperations(
     policy: { global: { maxConcurrent: 4 } },
   });
   const operations = {
+    runtimes: () => readRuntimeCatalog(m),
     list: () => publisher.read(),
     external: () => external.read(),
     get: (input: TargetInput) => {

@@ -230,7 +230,7 @@ export async function takeoverCodexExternal(
 export async function cmdAdopt(args: string[]): Promise<number> {
   const providerResult = AgentKindSchema.safeParse(args[0]);
   const uuid = args[1];
-  if (!providerResult.success || !uuid) {
+  if (!providerResult.success || !uuid || (providerResult.data !== "claude" && providerResult.data !== "codex")) {
     console.log("usage: ccmux adopt <claude|codex> <uuid> [name] [--fork | --takeover --confirm-writer <pid>]");
     return 1;
   }

@@ -1,6 +1,6 @@
 import { AppError } from "stitchkit";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
-import { readOwnedCodexStatus } from "../agent/codex/ownedStatus.ts";
+import { hasNativeRuntime, runtimeCapabilities } from "../runtime/capabilities.ts";
+import { readManagedRuntimeStatus } from "../runtime/status.ts";
 import { nativeResponseFingerprint, readNativeCommand, readNativeReceipt, writeNativeCommand } from "../agent/codex/ownedControl.ts";
 import type { MachineConfig } from "../types.ts";
 import { ManagedPeerSchema } from "../config/schema.ts";
@@ -14,8 +14,8 @@ type Cursor = { generation: string; sequence: number } | null;
 
 export function readControlNative(m: MachineConfig, target: Target, cursor: Cursor): ControlNativeSnapshot {
   const session = controlTarget(m, target);
-  if (!isOwnedCodex(session)) throw new AppError("UNSUPPORTED", "Native feed requires an owned App Server session", 409);
-  const read = readOwnedCodexStatus(m, session);
+  if (!hasNativeRuntime(session)) throw new AppError("UNSUPPORTED", "Native feed requires an owned structured runtime", 409);
+  const read = readManagedRuntimeStatus(m, session);
   if (read.status !== "live" || read.snapshot === null) throw new AppError("UNAVAILABLE", `Native projection is ${read.reason ?? read.status}`, 503);
   const snapshot = read.snapshot;
   let reset: ControlNativeSnapshot["reset"] = null;
@@ -31,7 +31,8 @@ export function readControlNative(m: MachineConfig, target: Target, cursor: Curs
     observedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt, items,
     pending: snapshot.pendingRequests.map(({ rpcId: _rpcId, ...pending }) => pending),
     ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
-    ...(session.modelSelection === undefined ? {} : { modelSelection: session.modelSelection }) };
+    ...(session.modelSelection === undefined ? {} : { modelSelection: session.modelSelection }),
+    ...(snapshot.nativeSession === undefined ? {} : { nativeSession: snapshot.nativeSession, driverCapabilities: runtimeCapabilities(session) }) };
 }
 
 export async function* subscribeControlNative(m: MachineConfig, publisher: ControlPublisher, target: Target,
@@ -53,12 +54,12 @@ export async function respondControlNative(m: MachineConfig, input: {
   decision: "accept" | "acceptForSession" | "decline" | "cancel" | null; answers: Record<string, string[]> | null;
 }, signal: AbortSignal) {
   const session = controlTarget(m, input.target);
-  if (!isOwnedCodex(session)) throw new AppError("UNSUPPORTED", "Native responses require an owned App Server session", 409);
+  if (!hasNativeRuntime(session)) throw new AppError("UNSUPPORTED", "Native responses require an owned structured runtime", 409);
   const fingerprint = nativeResponseFingerprint(input);
   const prior = readNativeReceipt(m, input.target.session);
   if (prior?.operationId === input.operationId) {
     if (prior.fingerprint !== fingerprint) throw new AppError("IDEMPOTENCY_CONFLICT", "Native response payload changed", 409);
-    if (prior.outcome === "submitted") return { operationId: input.operationId, requestId: input.requestId, outcome: "submitted" as const };
+    if (prior.outcome !== "rejected") return { operationId: input.operationId, requestId: input.requestId, outcome: prior.outcome };
     throw new AppError("STALE_REQUEST", prior.reason ?? "Native response was rejected", 409);
   }
   const snapshot = readControlNative(m, input.target, null);
@@ -76,7 +77,7 @@ export async function respondControlNative(m: MachineConfig, input: {
     signal.throwIfAborted();
     const receipt = readNativeReceipt(m, input.target.session);
     if (receipt?.operationId === input.operationId) {
-      if (receipt.outcome === "submitted") return { operationId: input.operationId, requestId: input.requestId, outcome: "submitted" as const };
+      if (receipt.outcome !== "rejected") return { operationId: input.operationId, requestId: input.requestId, outcome: receipt.outcome };
       throw new AppError("STALE_REQUEST", receipt.reason ?? "Native response was rejected", 409);
     }
     await Bun.sleep(25);

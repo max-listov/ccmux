@@ -59,7 +59,8 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | --- | --- | --- |
 | `list` / `sessions` | GET `/control/sessions` | Prepared complete bounded snapshot |
 | `get` / `session` | POST `/control/session` | One exact registered identity |
-| `create` / `create-session` | POST `/control/create` | Idempotent workspace-scoped owned Codex creation |
+| `create` / `create-session` | POST `/control/create` | Idempotent workspace-scoped runtime selection; omitted runtime is Codex |
+| `runtimes` | POST `/control/runtimes` | Host runtime availability and explicit capabilities |
 | `archive` / `archive-session` | POST `/control/archive` | Exact archive/stop receipt; history retained |
 | `message` | POST `/control/message` | Durable acceptance and duplicate flag |
 | `start` | POST `/control/start` | Start existing non-archived identity; no duplicate writer |
@@ -81,6 +82,13 @@ reconciles the stable registration generation and cannot mint a second writer. R
 UUID for another name, workspace or flag set is `IDEMPOTENCY_CONFLICT`. `archive` marks the exact
 identity before stopping its process group, so healing and routing stop while registry and provider
 history remain available for deliberate resume.
+
+An optional `runtime` selects Claude, Codex or native OpenCode independently of inference selection.
+Custom is discoverable but unavailable until the published optional harness is integrated and
+verified. Native OpenCode stores its native continuation separately from the managed UUID; all
+existing exact target fields remain required. Runtime/selection changes conflict with the original
+request ID. See [managed runtime drivers](managed-runtime-drivers.md) for capabilities, native
+protocol budgets and the supported host configuration boundary.
 
 An optional `launchRecipe: { id, revision }` selects an execution-host definition. In that form
 caller flags must be empty: native flags, an optional existing session `envFile`, required
@@ -159,6 +167,11 @@ default and hidden markers, input modalities, service tiers and supported/defaul
 efforts when present. Provider errors, deadline and malformed or oversized pages fail closed as
 `UNAVAILABLE`/`TIMEOUT` — no static or local catalog is ever substituted, and a model from a
 different runtime is never reported.
+
+`models({ runtime: "opencode" })` instead uses OpenCode's configured-provider catalog, never the
+universal model database or an OpenAI picker. Its source identifies the runtime and has nullable
+provider because one native catalog can contain several configured providers. Each model row names
+its provider. Source/runtime and exact session target must agree; no fallback switches runtimes.
 
 `directories({ path?, cursor?, limit?, includeHidden? })` is a read-only folder-picker operation.
 Omitted path means the service user's home; explicit paths must be absolute. Results contain the

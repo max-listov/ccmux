@@ -1,5 +1,5 @@
 import { AppError } from "stitchkit";
-import { providerFor } from "../agent/index.ts";
+import { supportsManagedInput } from "../agent/index.ts";
 import { buildEnvelope } from "../chat/compose.ts";
 import { samePrincipal, sameTarget } from "../chat/identity.ts";
 import { appendMessageOnce, loadLedger } from "../chat/store.ts";
@@ -13,7 +13,7 @@ export async function acceptControlMessage(m: MachineConfig, from: ChatPrincipal
   return withSessionRegistryLock(m, async () => {
     signal.throwIfAborted();
     const session = controlTarget(m, input.target);
-    if (!chatEnabledFor(session, m) || providerFor(session).inspectChatPane === undefined) {
+    if (!chatEnabledFor(session, m) || !supportsManagedInput(session)) {
       throw new AppError("CHAT_DISABLED", "Target cannot receive managed messages", 409);
     }
     const prior = loadLedger(m).find((item) => item?.id === input.messageId);

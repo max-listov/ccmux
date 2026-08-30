@@ -1,7 +1,7 @@
 import { AppError } from "stitchkit";
 import { createBoundedChannel, type BoundedChannel } from "stitchkit/application";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
-import { readOwnedCodexStatus } from "../agent/codex/ownedStatus.ts";
+import { hasNativeRuntime, runtimeCapabilities } from "../runtime/capabilities.ts";
+import { readManagedRuntimeStatus } from "../runtime/status.ts";
 import { managedPeer } from "../chat/identity.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 import { loadSessions } from "../config/sessions.ts";
@@ -33,16 +33,18 @@ export class ControlPublisher {
     for (const item of source.sessions) {
       const session = sessions.get(item.name);
       if (!session || session.uuid !== item.uuid || session.agent !== item.agent) { omitted++; continue; }
-      const owned = isOwnedCodex(session);
-      const native = owned ? readOwnedCodexStatus(m, session) : null;
+      const owned = hasNativeRuntime(session);
+      const native = owned ? readManagedRuntimeStatus(m, session) : null;
       const expiry = new Date(Date.parse(item.observedAt) + source.maxAgeMs).toISOString();
       const row: ControlRow = {
-        identity: managedPeer(m.rcPrefix, session), runtime: owned ? "app-server" : "cli",
+        identity: managedPeer(m.rcPrefix, session), runtime: session.runtime === "native" ? "native" : owned ? "app-server" : "cli",
         state: native === null ? item.state : native.status === "live" && native.snapshot ? native.snapshot.state : "unknown",
         availability: native?.status ?? "live", reason: native?.reason ?? null,
         observedAt: native?.snapshot?.observedAt ?? item.observedAt,
         expiresAt: native?.snapshot?.expiresAt ?? expiry,
-        turn: native?.snapshot?.turn ?? null, model: item.model,
+        turn: native?.snapshot?.turn ?? null, model: native?.snapshot?.modelSelection?.model ?? item.model,
+        driverCapabilities: runtimeCapabilities(session),
+        ...(session.nativeSession === undefined ? {} : { nativeSession: native?.snapshot?.nativeSession ?? session.nativeSession }),
         ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
         ...(session.modelSelection === undefined ? {} : { modelSelection: session.modelSelection }),
         capabilities: { message: chatEnabledFor(session, m), start: !session.archived, interrupt: owned, wait: owned },

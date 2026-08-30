@@ -20,8 +20,8 @@ import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionSt
 import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
 import { lastSignOfLife } from "../events/observe.ts";
 import { paneWorkingSince } from "../events/paneActivity.ts";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
-import { ownedCodexView } from "../agent/codex/ownedView.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
+import { managedRuntimeView } from "../runtime/view.ts";
 
 // Last pane scan per session — lets the TUI skip the `tmux capture-pane` FORK for cards that
 // aren't visible (off-screen state is invisible anyway; it refreshes the moment it scrolls in).
@@ -65,7 +65,7 @@ async function buildRow(
 ): Promise<ListRow> {
   const lastMessage = lastTranscriptMessage(s, m); // works running or stopped
   const activity = lastActivityMs(s, m);
-  const native = isOwnedCodex(s) ? ownedCodexView(m, s) : null;
+  const native = hasNativeRuntime(s) ? managedRuntimeView(m, s) : null;
   if (startedAt === undefined && native?.read.status !== "live") {
     scanCache.delete(s.name); // stopped → drop stale scan so a restart re-captures
     const block = readLifecycleBlockForSession(m, s);
@@ -140,7 +140,7 @@ async function buildRow(
     lifecycleError: native?.state === "blocked" ? `native status unavailable: ${native.read.reason ?? native.read.snapshot?.reason ?? "unknown"}` : null,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
-    model: prettyModel(sessionModel(s, m)),
+    model: prettyModel(native?.read.snapshot?.modelSelection?.model ?? sessionModel(s, m)),
     contextLabel,
     context,
     uptimeText: uptimeSeconds === null ? "—" : humanizeDuration(uptimeSeconds),

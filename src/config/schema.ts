@@ -27,7 +27,14 @@ export const PermissionModeSchema = z.enum([
 export const SESSION_NAME_RE = /^[^|\s#:]+$/;
 
 /** Agent CLI backing a managed session. Persisted explicitly on every registry row. */
-export const AgentKindSchema = z.enum(["claude", "codex"]);
+export const AgentKindSchema = z.enum(["claude", "codex", "opencode", "custom"]);
+
+/** Provider continuation is not the managed registration UUID. */
+export const NativeSessionSchema = z.object({
+  runtime: z.enum(["opencode", "custom"]),
+  id: z.string().min(1).max(256),
+  version: z.string().min(1).max(64),
+}).strict();
 
 /** Public-safe identity of an execution-host launch recipe. The reference contains no path,
  * command, environment value or provider credential. */
@@ -43,7 +50,7 @@ export const LaunchRecipeReferenceSchema = z.object({
 }).strict();
 export const ModelSelectionSchema = z.object({
   provider: z.string().min(1).max(128).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
-  model: z.string().min(1).max(256).regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/+-]*$/),
+  model: z.string().min(1).max(256).regex(/^[a-zA-Z0-9~][a-zA-Z0-9._:/+~-]*$/),
 }).strict();
 export const LaunchRecipeMetadataSchema = LaunchRecipeReferenceSchema.extend({
   digest: z.string().regex(/^[0-9a-f]{64}$/),
@@ -104,7 +111,8 @@ export const SessionSchema = z.object({
   agent: AgentKindSchema,
   // Opt-in native Codex App Server; the terminal is a client of the same provider writer.
   // Absent keeps the ordinary interactive provider launch.
-  runtime: z.enum(["tui", "app-server"]).optional(),
+  runtime: z.enum(["tui", "app-server", "native"]).optional(),
+  nativeSession: NativeSessionSchema.optional(),
   // Per-session permission-mode OVERRIDE. Undefined → inherit the machine default
   // (MachineConfig.permissionMode). Set it to gate ONE session differently from the box
   // default — e.g. the box is bypassPermissions but a client-prod session stays "auto".
@@ -218,6 +226,7 @@ export const MachineConfigSchema = z.object({
   claudeBin: z.string().startsWith("/"),
   // Codex CLI binary — optional; only required for agent="codex" sessions.
   codexBin: z.string().startsWith("/").optional(),
+  opencodeBin: z.string().startsWith("/").optional(),
   tmuxBin: z.string().startsWith("/"),
   // Optional dedicated tmux SOCKET (`tmux -L <socket>`). Unset → the default socket (prod). Set →
   // every tmux call is scoped to this socket, so an ISOLATED instance gets its OWN tmux server:

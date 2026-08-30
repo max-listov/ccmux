@@ -12,6 +12,7 @@ import { isAbsolute } from "node:path";
 import { log } from "../util/log.ts";
 import { ControlModelCatalogSchema, ControlModelsReadSchema, type ControlModelCatalog } from "./schema.ts";
 import { controlTarget } from "./target.ts";
+import { readOpenCodeModels } from "../agent/opencode/catalog.ts";
 
 export type ControlModelsConnector = (machine: MachineConfig, options: CodexRpcOptions, session: Session) => Promise<CodexAppRpc>;
 type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
@@ -80,6 +81,12 @@ async function readProviderModels(rpc: CodexAppRpc, input: ModelsReadInput,
 export async function readControlModels(m: MachineConfig, input: ModelsReadInput, signal: AbortSignal,
   connect: ControlModelsConnector = (machine, options, session) => connectOwnedCodex(machine, session, options)): Promise<ControlModelCatalog> {
   try {
+    const target = input.target === undefined ? undefined : controlTarget(m, input.target);
+    if (input.runtime !== undefined && target !== undefined && input.runtime !== target.agent)
+      throw new AppError("IDENTITY_MISMATCH", "Model runtime does not match the managed identity", 409);
+    const runtime = target?.agent ?? input.runtime ?? "codex";
+    if (runtime === "opencode") return await readOpenCodeModels(m, input, target, signal);
+    if (runtime !== "codex") throw new AppError("UNSUPPORTED", "This runtime does not expose a model catalog", 409);
     if (input.target !== undefined) {
       const session = controlTarget(m, input.target);
       if (!isOwnedCodex(session)) throw new AppError("UNSUPPORTED", "Model catalog requires an owned App Server session", 409);

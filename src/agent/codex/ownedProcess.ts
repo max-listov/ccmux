@@ -15,10 +15,9 @@ import { log } from "../../util/log.ts";
 import { loadSessions } from "../../config/sessions.ts";
 import { ownedChildAlive, stopOwnedChildGroup } from "./ownedChild.ts";
 import { verifyManagedLaunchRecipe } from "../../config/launchRecipes.ts";
+import { ManagedRuntimeExit } from "../../runtime/exit.ts";
 
 type Process = ReturnType<typeof Bun.spawn>;
-/** Admission failures block; a crashed, already admitted provider can resume its exact identity. */
-export class OwnedCodexRuntimeExit extends Error {}
 
 async function stopProcess(proc: Process): Promise<void> {
   if (proc.exitCode !== null) return;
@@ -96,7 +95,7 @@ async function run(m: MachineConfig, initial: Session, promote?: (uuid: string) 
     while (!abort.signal.aborted) {
       // Some launchers leave a native grandchild holding stderr after their own death, so the
       // process exit promise alone is not a sufficient crash detector.
-      if (!ownedChildAlive(child.pid)) throw new OwnedCodexRuntimeExit("Native provider launcher exited");
+      if (!ownedChildAlive(child.pid)) throw new ManagedRuntimeExit("Native provider launcher exited");
       if ((client === null || client.exitCode !== null) && Date.now() >= clientAt) {
         client = Bun.spawn(ownedCodexClientArgv(session, m), { cwd: session.dir, env, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
         clientAt = Date.now() + 5_000;
@@ -128,11 +127,11 @@ async function run(m: MachineConfig, initial: Session, promote?: (uuid: string) 
       }
       await Bun.sleep(500);
     }
-    if (!stopping) throw new OwnedCodexRuntimeExit("Native App Server exited after admission");
+    if (!stopping) throw new ManagedRuntimeExit("Native App Server exited after admission");
   } catch (error) {
     if (stopping) return;
     log.error({ msg: "owned Codex runtime failure", name: initial.name, error: String(error), stderr: stderrTail });
-    if (admitted && server?.exitCode !== null) throw new OwnedCodexRuntimeExit(String(error));
+    if (admitted && server?.exitCode !== null) throw new ManagedRuntimeExit(String(error));
     throw error;
   } finally {
     abort.abort();

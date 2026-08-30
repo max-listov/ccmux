@@ -22,6 +22,10 @@ export async function cmdSend(name: string | undefined, keys: string[], opts: { 
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
+  if (findSession(loadSessions(m), name)?.runtime === "native") {
+    console.error("send: this runtime has no terminal composer; use msg or the typed control service");
+    return 1;
+  }
   const text = keys.join(" ");
   const ok = await sendKeysLiteral(m, name, text);
   if (!ok) {

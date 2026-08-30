@@ -2,6 +2,8 @@ import { existsSync, statSync } from "node:fs";
 import type { AgentKind, ContextInfo, MachineConfig, Session, TranscriptMessage, TranscriptStats } from "../types.ts";
 import { claudeProvider } from "./claude/index.ts";
 import { codexProvider } from "./codex/index.ts";
+import { nativeProvider } from "../runtime/provider.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
 import { rcName } from "../config/machine.ts";
 import { MtimeCache } from "../util/mtimeCache.ts";
 import { readLines, readTailLines, readTailUntil } from "../util/readLines.ts";
@@ -106,6 +108,8 @@ export interface AgentProvider {
 const REGISTRY: Record<AgentKind, AgentProvider> = {
   claude: claudeProvider,
   codex: codexProvider,
+  opencode: nativeProvider("opencode"),
+  custom: nativeProvider("custom"),
 };
 
 export function getProvider(agent: AgentKind): AgentProvider {
@@ -114,6 +118,10 @@ export function getProvider(agent: AgentKind): AgentProvider {
 
 export function providerFor(session: Session): AgentProvider {
   return REGISTRY[session.agent];
+}
+
+export function supportsManagedInput(session: Session): boolean {
+  return hasNativeRuntime(session) || providerFor(session).inspectChatPane !== undefined;
 }
 
 // ── IO + windowing (shared; adapters stay pure transforms) ───────────────────

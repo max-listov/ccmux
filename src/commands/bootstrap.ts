@@ -17,8 +17,8 @@ import { promptInvocation } from "../env.ts";
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from "../chat/auth.ts";
 import { setStderrLogging } from "../util/log.ts";
 import { superviseReady } from "./run.ts";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
-import { OwnedCodexRuntimeExit, runOwnedCodexProcess } from "../agent/codex/ownedProcess.ts";
+import { nativeDriver } from "../runtime/driver.ts";
+import { ManagedRuntimeExit } from "../runtime/exit.ts";
 
 const POLL_MS = 50;
 
@@ -52,7 +52,7 @@ async function block(generation: string, error: string): Promise<number> {
   return 1;
 }
 
-/** Own one Codex bootstrap child, prove its provider identity/admission, then become the ready
+/** Own one native bootstrap child, prove its provider identity/admission, then become the ready
  * supervisor. create/fork correlate persisted metadata; adopt proves this process tree owns the
  * provider's OS writer lock. */
 export async function cmdBootstrap(rawGeneration: string | undefined): Promise<number> {
@@ -60,20 +60,21 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
   const m = loadMachineConfig();
   const pending = loadPendingSessions(m).find((item) => item.generation === generation);
   if (!pending || pending.status !== "pending") return 1;
-  if (pending.session.agent !== "codex") return block(generation, "bootstrap only supports agent=codex");
   setStderrLogging(false);
-  const provider = getProvider("codex");
-  const provisional = SessionSchema.parse({ ...pending.session, uuid: pending.generation });
-  if (isOwnedCodex(provisional)) {
-    if (pending.operation.kind !== "create") return block(generation, "App Server bootstrap requires a new conversation");
+  const provider = getProvider(pending.session.agent);
+  const provisional = SessionSchema.parse({ ...pending.session, uuid: pending.generation, registrationGeneration: generation });
+  const driver = nativeDriver(provisional);
+  if (driver !== null) {
+    if (pending.operation.kind !== "create") return block(generation, "Native bootstrap requires a new conversation");
     try {
-      await runOwnedCodexProcess(m, provisional, (uuid) => promotePendingSession(m, generation, uuid));
+      await driver.run(m, provisional, (session) => promotePendingSession(m, generation, session.uuid, session.nativeSession));
       return 0;
     } catch (error) {
-      if (error instanceof OwnedCodexRuntimeExit) return superviseReady(m, provisional.name, "codex");
-      return block(generation, `Native Codex bootstrap failed: ${String(error)}`);
+      if (error instanceof ManagedRuntimeExit) return superviseReady(m, provisional.name, provisional.agent);
+      return block(generation, `Native bootstrap failed: ${String(error)}`);
     }
   }
+  if (pending.session.agent !== "codex") return block(generation, "Interactive bootstrap requires Codex");
   const env = provider.launchEnv(m, provisional);
   env[CODEX_LAUNCH_MARKER_ENV] = pending.marker;
   env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, provisional);

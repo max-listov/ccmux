@@ -1,4 +1,5 @@
 import { defineContract } from "stitchkit";
+import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from "../runtime/capabilities.ts";
 import { ControlDirectoryReadSchema, ControlDirectoryResultSchema } from "./directorySchema.ts";
 import { ExternalStatusSnapshotSchema, EXTERNAL_MAX_BYTES } from "../external/resident-schema.ts";
 import {
@@ -10,6 +11,9 @@ import {
 } from "./schema.ts";
 
 export const controlContract = defineContract({ prefix: "control", scope: "local" }, {
+  runtimes: { method: "POST", path: "/runtimes", desc: "Discover configured execution runtimes and explicit capabilities",
+    toolName: "runtimes", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
+    input: RuntimeCatalogInputSchema, output: RuntimeCatalogSchema },
   directories: { method: "POST", path: "/directories", desc: "List directory names without following symlinks",
     toolName: "directories", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
     input: ControlDirectoryReadSchema, output: ControlDirectoryResultSchema },
@@ -20,7 +24,7 @@ export const controlContract = defineContract({ prefix: "control", scope: "local
   get: { method: "POST", path: "/session", desc: "Read one exact managed session",
     toolName: "session", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
     input: ControlTargetSchema, output: ControlRowSchema },
-  create: { method: "POST", path: "/create", desc: "Idempotently create one workspace-scoped owned Codex session",
+  create: { method: "POST", path: "/create", desc: "Idempotently create one workspace-scoped managed runtime session",
     toolName: "create_session", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
     input: ControlCreateSchema, output: ControlCreateReceiptSchema, timeout: 65_000 },
   archive: { method: "POST", path: "/archive", desc: "Archive and stop one exact managed identity without deleting provider history",

@@ -15,7 +15,7 @@ export const NativeResponseCommandSchema = z.object({
 export type NativeResponseCommand = z.infer<typeof NativeResponseCommandSchema>;
 export const NativeResponseReceiptSchema = z.object({
   operationId: z.uuid(), requestId: z.string().min(1).max(256), fingerprint: z.string().length(64),
-  outcome: z.enum(["submitted", "rejected"]), reason: z.string().max(512).nullable(),
+  outcome: z.enum(["submitted", "rejected", "uncertain"]), reason: z.string().max(512).nullable(),
 }).strict();
 export type NativeResponseReceipt = z.infer<typeof NativeResponseReceiptSchema>;
 

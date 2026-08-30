@@ -37,6 +37,7 @@ const OwnedCodexQuestionSchema = z.object({
   isOther: z.boolean(), isSecret: z.boolean(), options: z.array(z.object({
     label: z.string().max(256), description: z.string().max(1_024),
   }).strict()).max(32).nullable(),
+  multiple: z.boolean().optional(),
 }).strict();
 export const OwnedCodexPendingRequestSchema = z.object({
   requestId: z.string().min(1).max(256), rpcId: z.union([z.number(), z.string()]),

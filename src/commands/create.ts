@@ -14,7 +14,7 @@ import { clearLifecycleBlockIfGeneration, readLifecycleBlock } from "../config/l
 import { getProvider } from "../agent/index.ts";
 import { killSessionIfGeneration } from "../tmux/tmux.ts";
 import { startBootstrapSession, startSession } from "./lifecycle.ts";
-import { preflightOwnedCodex } from "../agent/codex/ownedLaunch.ts";
+import { nativeDriver } from "../runtime/driver.ts";
 import type { ModelSelection } from "../config/modelSelectionFlags.ts";
 
 export type CreateManagedInput = {
@@ -33,7 +33,7 @@ export type CreateManagedInput = {
   modelSelection?: ModelSelection;
 };
 
-export type CodexBootstrapOperation =
+export type NativeBootstrapOperation =
   | { kind: "create" }
   | { kind: "adopt"; sourceThreadId: string }
   | { kind: "fork"; sourceThreadId: string };
@@ -44,7 +44,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
     dir: input.dir,
     agent: input.agent,
     flags: input.flags,
-    ...(input.runtime === undefined ? {} : { runtime: input.runtime }),
+    runtime: input.runtime ?? (input.agent === "opencode" || input.agent === "custom" ? "native" : undefined),
     ...(input.router ? { promptModules: ["router"], chatEnabled: true } : {}),
     ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
@@ -54,7 +54,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
 }
 
 async function createClaude(m: MachineConfig, input: CreateManagedInput): Promise<Session> {
-  const session = SessionSchema.parse({ ...sessionFields(input), uuid: randomUUID() });
+  const session = SessionSchema.parse({ ...sessionFields(input), uuid: randomUUID(), registrationGeneration: input.registrationGeneration });
   await appendSession(m, session);
   try {
     await startSession(m, session.name, session.dir);
@@ -73,12 +73,12 @@ async function rollbackPending(m: MachineConfig, pending: PendingSession, error:
   throw new Error(error);
 }
 
-export async function createCodexBootstrap(
+export async function createNativeBootstrap(
   m: MachineConfig,
   input: CreateManagedInput,
-  operation: CodexBootstrapOperation,
+  operation: NativeBootstrapOperation,
 ): Promise<Session> {
-  getProvider("codex").preflight(m);
+  getProvider(input.agent).preflight(m);
   if (findSession(loadSessions(m), input.name) || loadPendingSessions(m).some((item) => item.session.name === input.name)) {
     throw new Error(`'${input.name}' already exists`);
   }
@@ -95,28 +95,28 @@ export async function createCodexBootstrap(
   try {
     await startBootstrapSession(m, pending.session.name, pending.session.dir, pending.generation);
   } catch (error) {
-    return rollbackPending(m, pending, `Codex ${operation.kind} bootstrap could not start: ${String(error)}`);
+    return rollbackPending(m, pending, `Native ${operation.kind} bootstrap could not start: ${String(error)}`);
   }
   const deadline = Date.now() + m.codexCorrelationTimeoutMs + 1_000;
   while (Date.now() < deadline) {
     const ready = findSession(loadSessions(m), pending.session.name);
     if (ready?.registrationGeneration === generation) return ready;
-    if (ready) return rollbackPending(m, pending, "Codex session name was claimed by another create transaction");
+    if (ready) return rollbackPending(m, pending, "Session name was claimed by another create transaction");
     const current = loadPendingSessions(m).find((item) => item.generation === generation);
     if (!current) {
       const rebound = findSession(loadSessions(m), pending.session.name);
       if (rebound?.registrationGeneration === generation) return rebound;
-      if (rebound) return rollbackPending(m, pending, "Codex session name was claimed by another create transaction");
+      if (rebound) return rollbackPending(m, pending, "Session name was claimed by another create transaction");
       const block = readLifecycleBlock(m, pending.session.name);
       const error = block?.generation === generation
         ? block.error
-        : `Codex ${operation.kind} bootstrap disappeared before promotion`;
+        : `Native ${operation.kind} bootstrap disappeared before promotion`;
       return rollbackPending(m, pending, error);
     }
-    if (current.status === "blocked") return rollbackPending(m, pending, current.error ?? "Codex bootstrap blocked");
+    if (current.status === "blocked") return rollbackPending(m, pending, current.error ?? "Native bootstrap blocked");
     await Bun.sleep(50);
   }
-  return rollbackPending(m, pending, `Codex ${operation.kind} correlation timed out`);
+  return rollbackPending(m, pending, `Native ${operation.kind} correlation timed out`);
 }
 
 function externalCodexName(m: MachineConfig, dir: string, threadId: string, wantName?: string): string {
@@ -132,7 +132,7 @@ export async function adoptCodexThread(
   threadId: string,
   wantName?: string,
 ): Promise<Session> {
-  return createCodexBootstrap(m, {
+  return createNativeBootstrap(m, {
     name: externalCodexName(m, dir, threadId, wantName),
     dir,
     agent: "codex",
@@ -147,7 +147,7 @@ export async function forkCodexThread(
   sourceThreadId: string,
   wantName?: string,
 ): Promise<Session> {
-  return createCodexBootstrap(m, {
+  return createNativeBootstrap(m, {
     name: externalCodexName(m, dir, sourceThreadId, wantName),
     dir,
     agent: "codex",
@@ -160,10 +160,12 @@ export async function forkCodexThread(
 export async function createManagedSession(m: MachineConfig, input: CreateManagedInput): Promise<Session> {
   const fields = sessionFields(input);
   if (fields.runtime === "app-server" && fields.agent !== "codex") throw new Error("app-server runtime requires --agent codex");
-  if (fields.runtime === "app-server") preflightOwnedCodex(m, input.flags);
+  if (fields.runtime === "native" && fields.agent !== "opencode" && fields.agent !== "custom") throw new Error("This provider does not use the native HTTP runtime");
+  if ((fields.agent === "opencode" || fields.agent === "custom") && fields.runtime !== "native") throw new Error("This provider requires a native runtime");
+  nativeDriver(fields)?.preflight(m, input.flags);
   getProvider(input.agent).preflight(m);
   if (findSession(loadSessions(m), input.name) || loadPendingSessions(m).some((item) => item.session.name === input.name)) {
     throw new Error(`'${input.name}' already exists`);
   }
-  return input.agent === "codex" ? createCodexBootstrap(m, input, { kind: "create" }) : createClaude(m, input);
+  return input.agent === "codex" || fields.runtime === "native" ? createNativeBootstrap(m, input, { kind: "create" }) : createClaude(m, input);
 }

@@ -16,7 +16,7 @@ export async function cmdNew(
   opts: { router?: boolean; agent?: string; envFile?: string; runtime?: string } = {},
 ): Promise<number> {
   if (!name || !dir) {
-    console.log("usage: ccmux new <name> <dir> [--agent claude|codex] [--runtime tui|app-server] [--router] [--env-file <path>] [-- provider flags...]");
+    console.log("usage: ccmux new <name> <dir> [--agent claude|codex|opencode] [--runtime tui|app-server|native] [--router] [--env-file <path>] [-- provider flags...]");
     return 1;
   }
   if (name.includes("|")) {

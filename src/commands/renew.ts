@@ -9,6 +9,7 @@ import { startSession } from "./lifecycle.ts";
 import { killSession } from "../tmux/tmux.ts";
 import { log } from "../util/log.ts";
 import type { Session } from "../types.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
 
 /**
  * Why this refuses by default. A session's conversation is the work in it; renewing pins a fresh
@@ -64,8 +65,8 @@ export async function cmdRenew(name: string | undefined, args: string[] = []): P
     console.log(`unknown session: ${name}`);
     return 1;
   }
-  if (s.agent === "codex" && s.runtime === "app-server") {
-    console.error("Codex assigns conversation identities itself; use new for a fresh managed session or restart to resume this identity.");
+  if (hasNativeRuntime(s) || s.runtime === "native") {
+    console.error("Native runtimes assign continuation identities; use new for a fresh managed session or restart to resume this identity.");
     return 1;
   }
   const historyFile = providerFor(s).historyFile(s, m);

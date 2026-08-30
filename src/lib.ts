@@ -25,7 +25,7 @@ export { readLines } from "./util/readLines.ts";
  *  isn't known up front. Returns "claude" | "codex" | null. */
 export { detect } from "./agent/detect.ts";
 
-const PARSERS: Record<AgentKind, typeof parseClaude> = { claude: parseClaude, codex: parseCodex };
+const PARSERS: Partial<Record<AgentKind, typeof parseClaude>> = { claude: parseClaude, codex: parseCodex };
 
 /**
  * Block-parse already-read JSONL lines into normalized messages (text/thinking/tool_call/
@@ -33,7 +33,9 @@ const PARSERS: Record<AgentKind, typeof parseClaude> = { claude: parseClaude, co
  * text (default 6000 via the parser); pass a larger value (e.g. 10000) for full-text indexing.
  */
 export function parseSession(lines: string[], agent: AgentKind, textLimit?: number): TranscriptMessage[] {
-  return PARSERS[agent](lines, 1, textLimit);
+  const parser = PARSERS[agent];
+  if (parser === undefined) throw new Error("This runtime uses the structured native feed, not JSONL history");
+  return parser(lines, 1, textLimit);
 }
 
 /**

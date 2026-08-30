@@ -48,6 +48,7 @@ try {
       ApiError, ControlServiceDescriptorSchema, ControlNativeStreamFrameSchema, ControlTargetSchema,
       LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ModelSelectionSchema,
       ControlDirectoryResultSchema,
+      RuntimeCatalogSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -89,6 +90,19 @@ try {
     if (created.launchRecipe?.digest !== recipeMetadata.digest || created.launchRecipe.collaborationMode !== 'plan' ||
       createPayload.includes('fixture-secret') || createPayload.includes('collaborationMode'))
       throw new Error('safe recipe contract failed');
+    const nativeTarget = {...target,agent:'opencode'};
+    const capabilities = {runtime:'opencode',structured:true,modelCatalog:true,modelSelection:true,approval:true,input:true,nativeStream:true,interrupt:true,resume:true};
+    const runtimeClient = createCcmuxControlServiceClient(async (url, init) => {
+      if (String(url).endsWith('/runtime.list')) return Response.json({v:1,revision:'1',result:{runtimes:[{runtime:'opencode',availability:'configured',reason:null,capabilities}]}});
+      const payload = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+      if (payload.runtime !== 'opencode' || payload.modelSelection.provider !== 'external') throw new Error('runtime selection lost');
+      return Response.json({v:1,revision:'1',result:{requestId:payload.requestId,target:nativeTarget,workspace:'/work',duplicate:false,
+        nativeSession:{runtime:'opencode',id:'ses_native',version:'1.18.20'},driverCapabilities:capabilities,modelSelection:payload.modelSelection}});
+    });
+    const runtimeCatalog = RuntimeCatalogSchema.parse(await runtimeClient.runtimes({}));
+    if (runtimeCatalog.runtimes[0]?.capabilities.structured !== true) throw new Error('runtime capabilities failed');
+    const nativeCreated = await runtimeClient.create({requestId:crypto.randomUUID(),runtime:'opencode',name:'agent-a',workspace:'/work',modelSelection:{provider:'external',model:'model-a'}});
+    if (nativeCreated.nativeSession?.id !== 'ses_native' || nativeCreated.target.agent !== 'opencode') throw new Error('native identity lost');
     const reader = createCcmuxControlServiceClient(async (url) => {
       const directory = String(url).endsWith('/directory.list');
       return Response.json({v:1,revision:'1',result:directory

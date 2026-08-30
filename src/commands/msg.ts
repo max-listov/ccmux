@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { lastTranscriptMessage, providerFor } from "../agent/index.ts";
+import { lastTranscriptMessage, supportsManagedInput } from "../agent/index.ts";
 import { cliPrincipal, codexAppThreadId, externalTarget, isCodexAppToken, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
 import { appendAck, appendMessage, appendMessageOnce, loadAckedIds, loadLedger, pendingConditional, OWNER } from "../chat/store.ts";
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, hasSshdAncestor, remoteTransportAncestor } from "../chat/auth.ts";
 import { buildEnvelope } from "../chat/compose.ts";
 import { loadMachineConfig } from "../config/machine.ts";
-import { ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
+import { AgentKindSchema, ChatMessageSchema, ListJsonSchema } from "../config/schema.ts";
 import { findSession, loadSessions } from "../config/sessions.ts";
 import { routeFor } from "../fleet/address.ts";
 import { isRoleToken, resolveRole, type RoleCandidate } from "../chat/roleAddress.ts";
@@ -181,7 +181,7 @@ export async function cmdReceiveChat(transportAuthenticated = hasSshdAncestor(),
       console.error(`chat receive: ${mismatch}`);
       return 1;
     }
-    if (!chatEnabledFor(session, machine) || providerFor(session).inspectChatPane === undefined) {
+    if (!chatEnabledFor(session, machine) || !supportsManagedInput(session)) {
       console.error(`chat receive: target '${session.name}' cannot receive chat`);
       return 1;
     }
@@ -217,8 +217,8 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     else if (value === "--defer") defer = true;
     else if (value === "--on-behalf-of") onBehalfOf = args[++index] ?? null;
     else if (value === "--to-agent") {
-      const parsed = z.enum(["claude", "codex"]).safeParse(args[++index]);
-      if (!parsed.success) return console.error("msg: --to-agent needs claude|codex"), 1;
+      const parsed = AgentKindSchema.safeParse(args[++index]);
+      if (!parsed.success) return console.error("msg: --to-agent needs a supported runtime"), 1;
       expectedAgent = parsed.data;
     } else if (value === "--to-thread") {
       const parsed = z.uuid().safeParse(args[++index]);
@@ -348,7 +348,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   const target = managedPeer(machine.rcPrefix, session);
   const mismatch = assertExpected(target, expectedAgent, expectedThread);
   if (mismatch !== null) return console.error(`msg: ${mismatch}`), 1;
-  if (!chatEnabledFor(session, machine) || providerFor(session).inspectChatPane === undefined) {
+  if (!chatEnabledFor(session, machine) || !supportsManagedInput(session)) {
     return console.error(`msg: recipient '${targetToken}' cannot receive chat`), 1;
   }
   if ((defer || notBefore !== null) && task !== null) {
