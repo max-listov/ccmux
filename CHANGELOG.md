@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.23] — 2026-08-30
+
+discover models before first chat and preserve native selection
+
 ### Added
 
 - Read the native Codex model catalog before creating a conversation, with explicit host or exact
@@ -21,7 +25,6 @@ the GitHub Release with that section as the notes.
 - Preserve the loaded thread model when applying Plan and other native collaboration presets.
 - Do not request historical turn pagination for a freshly created thread; observe its bootstrap
   on the existing native subscription instead of racing thread-store materialization.
-
 ## [0.39.22] — 2026-08-29
 
 expose the provider-owned Codex model catalog as a bounded control read
