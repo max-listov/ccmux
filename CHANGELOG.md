@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Keep owned native process-group cleanup active when a zero-signal probe reports permission
+  denial. Only an absent group completes the liveness check; real termination errors still fail.
+
 ## [0.39.30] — 2026-08-30
 
 retain exact native message correlation

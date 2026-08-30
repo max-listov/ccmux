@@ -2,10 +2,11 @@
 title: Durable public message-to-native-turn correlation
 description: Expose exact admitted message identity alongside native execution evidence for reconnecting control clients.
 type: task
-status: in-progress
+status: done
 priority: P1
 created: 2026-08-30
 updated: 2026-08-30
+completed: 2026-08-30T08:18:29Z
 ---
 
 ## Problem
@@ -65,9 +66,9 @@ operations are never evicted to make capacity. Public reads perform no provider/
 - [x] Retry and lost native ACK preserve the same binding and do not duplicate execution.
 - [x] Both Codex and OpenCode retain correlation through daemon/provider restart; expired or
   unavailable evidence is explicit, not silently reassigned.
-- [ ] A client using only the published service/stream surface associates terminal completion with
+- [x] A client using only the published service/stream surface associates terminal completion with
   its exact submission; no SSH, private state-file access or native direct-writer shortcut.
-- [ ] Publish the verified patch/client artifact and report exact version, source SHA and real
+- [x] Publish the verified patch/client artifact and report exact version, source SHA and real
   acceptance evidence. This task does not depend on the optional custom harness.
 
 ## Что сделано
@@ -91,3 +92,40 @@ operations are never evicted to make capacity. Public reads perform no provider/
 - Earlier probe failures were fixture readiness errors (launch selector constraints and explicit
   unavailable snapshots during startup/restart); their logs are retained, not relabelled as success.
   Published-artifact acceptance and rollout remain pending below until actual publication.
+
+## Post-publication acceptance finding
+
+The published `v0.39.30` artifact reached all three installations with exact bundle parity and
+preserved all 33 pre-existing running sessions. Packed consumers passed. Its isolated live probe
+stopped before message submission: temporary native catalog cleanup raised `EPERM` from the
+zero-signal process-group probe in `ownedChildAlive`, after SIGTERM was already sent. The native
+server exited, but that observation error incorrectly turned a successful catalog read into an
+unavailable result. The platform's `kill(2)` contract distinguishes permission refusal (`EPERM`)
+from absent process/group (`ESRCH`). Keep checking a permission-denied group until it disappears or
+the existing bounded cleanup deadline expires; do not suppress real SIGTERM/SIGKILL failures.
+This owner correction stays in the same release conveyor, with a deterministic regression.
+
+## Published evidence and correction
+
+- Published `v0.39.30`: implementation `5e8b6869fcbb47e5fad973f1bc38d7d0cceffa98`, release/tag
+  `7e314d7c1c20a4c351551b2f11116eb87a398022`. Exact-SHA CI and smoke passed:
+  [33300868453](https://github.com/max-listov/ccmux/actions/runs/33300868453).
+- Runtime SHA-256 `bb6773becb944ceeff5b0af113812eddff762a32449ec479d51c9a8e6844262a`;
+  published client SHA-256 `dc7563629e37d4d60296d7f6f74d20310ba9a02f2f40986449136557d22a1786`.
+  Actual downloaded client passed Bun/Node and both TypeScript resolution gates. The same client
+  read the new operation from all three updated owners; all 33 running identities/start times stayed.
+- Rechecking the same published bundle/client completed all real correlation cases on both native
+  runtimes, including both provider restarts and new resumed turns. No private state files or direct
+  native writer were used to correlate outcomes. Probe evidence SHA-256:
+  `e09288d001cc9644711f5e67828e9807fa848cddcd2149a24edfaf0f67d6288a`.
+  Two isolated registrations archived, five tracked processes exited. The earlier cleanup failure
+  remains recorded separately; a successful rerun does not remove the owner correction.
+- [Public verification artifact](https://github.com/max-listov/ccmux/releases/download/v0.39.30/post-rollout-verification.json),
+  SHA-256 `12940ae0c0b5d256bb4bba9eb211ddbcdc8d2054baed596a7d3825e10cc1fa94`.
+- `src/agent/codex/ownedChild.ts` now preserves the bounded cleanup loop on a denied zero-signal
+  probe. Actual signal failures still propagate. The real-child regression fails on the previous
+  implementation (`8c399fa3c8cb4494b69ec5eedb29ef47d7421cf65e985912abbbcaf286caded5`) and passes
+  after correction (`6dec50debff50abb3e7c8d68936494dfae18cd6932c9641e5556268db3e7fff0`). The full
+  corrective gate passed 945 tests plus packed clients. This meaningful cleanup correction and task
+  closure travel together in the corrective patch; final installed evidence belongs to its release
+  verification artifact, without a separate bookkeeping commit.

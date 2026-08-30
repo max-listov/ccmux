@@ -6,6 +6,9 @@ export function ownedChildAlive(pid: number): boolean {
     return true;
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return false;
+    // A denied zero-signal probe is not absence. Keep bounded cleanup active; actual
+    // SIGTERM/SIGKILL permission failures must still propagate through signalGroup.
+    if (error instanceof Error && 'code' in error && error.code === 'EPERM') return true;
     throw error;
   }
 }

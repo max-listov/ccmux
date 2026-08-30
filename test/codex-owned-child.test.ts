@@ -1,5 +1,42 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { ownedChildAlive, stopOwnedChildGroup } from '../src/agent/codex/ownedChild.ts';
+
+test('a denied zero-signal group probe does not abort owned child cleanup or claim absence', async () => {
+  const child = Bun.spawn(
+    [process.execPath, '--eval', 'console.log("ready");setInterval(()=>{},1000)'],
+    {
+      detached: true,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    },
+  );
+  const reader = child.stdout.getReader();
+  const ready = await reader.read();
+  expect(
+    Buffer.from(ready.value ?? [])
+      .toString()
+      .trim(),
+  ).toBe('ready');
+  const original = process.kill.bind(process);
+  let denied = false;
+  const kill = spyOn(process, 'kill').mockImplementation((pid, signal) => {
+    if (pid === -child.pid && signal === 0 && !denied) {
+      denied = true;
+      throw Object.assign(new Error('group probe denied'), { code: 'EPERM' });
+    }
+    return original(pid, signal);
+  });
+  try {
+    await stopOwnedChildGroup(child);
+    expect(denied).toBe(true);
+    expect(ownedChildAlive(child.pid)).toBe(false);
+  } finally {
+    kill.mockRestore();
+    child.kill('SIGKILL');
+    await child.exited;
+    await reader.cancel();
+  }
+});
 
 test('provider group disposal reaps the real writer after its launcher dies with inherited pipes open', async () => {
   const script = `const child = Bun.spawn([process.execPath,"--eval","setInterval(()=>{},1000)"],{stdout:"inherit",stderr:"inherit"});console.log(child.pid);setInterval(()=>{},1000)`;
