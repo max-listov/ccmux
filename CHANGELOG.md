@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.32] — 2026-08-30
+
+preserve native tool outcomes and suspended cancellation
+
 - Preserve bounded typed native tool identity, name, lifecycle, outcome and observed exit code in
   content, replay and history. Distinguish nonzero shell exits and native failures/interruption from
   lifecycle completion; missing result evidence remains explicitly unknown.
@@ -16,7 +20,6 @@ the GitHub Release with that section as the notes.
 - Require native generation on exact turn interruption; allow cancellation while awaiting approval
   or input. Retire pending requests on native terminal evidence without accepting permission or
   archiving the conversation, and refuse stale turns/generations without a second abort.
-
 ## [0.39.31] — 2026-08-30
 
 complete native process-group cleanup
