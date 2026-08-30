@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.25] — 2026-08-30
+
+add native images, replay, selection and context controls
+
 ### Added
 
 - Send validated PNG/JPEG attachments through authenticated upload, immutable references and native
@@ -34,7 +38,6 @@ the GitHub Release with that section as the notes.
   provider diagnostics outside public metadata. Retain exact failure causes in private owner evidence.
 - Verify real image, selection, policy, history, steering and streaming flows on both native runtimes;
   operation-specific unsupported capabilities remain explicit rather than advertised as full IDE parity.
-
 ## [0.39.24] — 2026-08-30
 
 add managed OpenCode and capability-aware runtime control
