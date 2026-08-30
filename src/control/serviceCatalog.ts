@@ -9,6 +9,10 @@ import {
   AttachmentUploadReceiptSchema,
   AttachmentUploadSelectorSchema,
 } from '../attachments/schema.ts';
+import {
+  MessageOperationReadSchema,
+  MessageOperationResultSchema,
+} from '../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../context/schema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../runtime/capabilities.ts';
 import {
@@ -60,6 +64,7 @@ export const CCMUX_CONTROL_SERVICE_MAX_REQUEST_BYTES = 64 * 1024;
 export const CCMUX_CONTROL_SERVICE_MAX_RESPONSE_BYTES = CONTROL_MAX_BYTES + 4096;
 
 export const ControlServiceOperationSchema = z.enum([
+  'message.operation',
   'history.read',
   'context.compact',
   'context.operation',
@@ -90,6 +95,7 @@ export type ControlServiceOperation = z.infer<typeof ControlServiceOperationSche
 
 export const ControlServiceEffectSchema = z
   .enum([
+    'message.read',
     'history.read',
     'context.write',
     'context.read',
@@ -117,6 +123,7 @@ export const ControlServiceEffectSchema = z
 export type ControlServiceEffect = z.infer<typeof ControlServiceEffectSchema>;
 
 export const controlServiceEffects = {
+  'message.operation': 'message.read',
   'history.read': 'history.read',
   'context.compact': 'context.write',
   'context.operation': 'context.read',
@@ -157,6 +164,7 @@ export const ControlServiceWaitSchema = ControlWaitSchema.extend({
 }).strict();
 
 export const controlServiceInputs = {
+  'message.operation': MessageOperationReadSchema,
   'history.read': ControlHistoryReadSchema,
   'context.compact': ControlCompactSchema,
   'context.operation': ControlContextOperationReadSchema,
@@ -185,6 +193,7 @@ export const controlServiceInputs = {
 };
 
 export const controlServiceOutputs = {
+  'message.operation': MessageOperationResultSchema,
   'history.read': ControlHistoryResultSchema,
   'context.compact': ControlContextOperationResultSchema,
   'context.operation': ControlContextOperationResultSchema,

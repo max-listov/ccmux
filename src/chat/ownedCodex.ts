@@ -20,6 +20,7 @@ import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { formatChatInjection } from './format.ts';
 import { managedPeer, managedPeerKey } from './identity.ts';
+import { advanceMessageOperation } from './messageOperationStore.ts';
 import { findOwnedCodexReceipt } from './ownedCodexReceipt.ts';
 import { conditionalMessage, pickPendingDelivery } from './pendingDelivery.ts';
 import { replyRouteToSender } from './replyRoute.ts';
@@ -79,6 +80,14 @@ async function deliverLocked(
     return 0;
   }
   if (pickup?.native?.phase === 'accepted' && observed.snapshot.turn?.id === pickup.native.turnId) {
+    advanceMessageOperation(
+      m,
+      s,
+      pickup.messageId,
+      observed.snapshot.turn.status === 'inProgress' ? 'admitted' : observed.snapshot.turn.status,
+      observed.snapshot.turn.id,
+      now,
+    );
     if (observed.snapshot.turn.status === 'inProgress' || observed.snapshot.state !== 'idle')
       return 0;
     if (pickup.conditional) deps.ack(m, pickup.messageId, 'daemon', recipient);
@@ -96,6 +105,14 @@ async function deliverLocked(
         return 0;
       }
       pickup.native = { phase: 'accepted', turnId: receipt.id };
+      advanceMessageOperation(
+        m,
+        s,
+        pickup.messageId,
+        receipt.status === 'inProgress' ? 'admitted' : receipt.status,
+        receipt.id,
+        now,
+      );
       if (receipt.status !== 'inProgress' && observed.snapshot.state === 'idle') {
         if (pickup.conditional) deps.ack(m, pickup.messageId, 'daemon', recipient);
         delete cursors.pickups[key];
@@ -174,6 +191,7 @@ async function deliverLocked(
         )
       : [];
     const conditional = conditionalMessage(pick.msg);
+    advanceMessageOperation(m, s, pick.msg.id, 'uncertain', null, now);
     cursors.pickups[key] = {
       messageId: pick.msg.id,
       ledgerIndex: pick.idx,
@@ -196,6 +214,7 @@ async function deliverLocked(
     const current = cursors.pickups[key];
     if (current === undefined) throw new Error('Native pickup intent disappeared');
     current.native = { phase: 'accepted', turnId };
+    advanceMessageOperation(m, s, pick.msg.id, 'admitted', turnId, now);
     await deps.save(m, cursors);
     deps.clearHold(s.name);
     log.info({ msg: 'native managed chat accepted', name: s.name, messageId: pick.msg.id, turnId });

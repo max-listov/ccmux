@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync } from 'node:fs';
 import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
 import type { OwnedCodexRead } from '../src/agent/codex/ownedSchema.ts';
 import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
+import { prepareMessageOperation, readMessageJournal } from '../src/chat/messageOperationStore.ts';
 import {
   deliverOwnedCodexPending,
   type nativeDeliveryDependencies,
@@ -13,13 +15,14 @@ import frames from './fixtures/codex-pane/v0.147.0.json';
 import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 
 function fixture() {
-  const m = makeMachine({ rcPrefix: 'host-a' });
+  const m = makeMachine({ rcPrefix: 'host-a', stateDir: mkdtempSync('/tmp/ccmux-owned-receipt-') });
   const s = makeSession({
     agent: 'codex',
     runtime: 'app-server',
     registrationGeneration: randomUUID(),
   });
   const msg = makeChatMessage({ id: randomUUID(), to: managedPeer(m.rcPrefix, s) });
+  prepareMessageOperation(m, s, msg.from, msg.id, 'a'.repeat(64));
   const key = managedPeerKey(managedPeer(m.rcPrefix, s));
   const cursors = ChatCursorsSchema.parse({});
   const projection = new OwnedCodexProjection(m, s, process.pid);
@@ -306,6 +309,10 @@ test('lost response persists indeterminate intent; retries never send or acknowl
   expect(f.calls.filter((call) => call === 'turn/start')).toHaveLength(1);
   expect(f.calls).not.toContain('ack');
   expect(f.hold()).toContain('indeterminate');
+  expect(readMessageJournal(f.m, f.s)?.records[0]).toMatchObject({
+    phase: 'uncertain',
+    turnId: null,
+  });
   f.receipts([
     {
       id: 'native-turn',
@@ -316,6 +323,11 @@ test('lost response persists indeterminate intent; retries never send or acknowl
   expect(await f.run()).toBe(0);
   expect(f.cursors.pickups[f.key]).toBeUndefined();
   expect(f.calls.filter((call) => call === 'turn/start')).toHaveLength(1);
+  expect(readMessageJournal(f.m, f.s)?.records[0]).toMatchObject({
+    messageId: f.msg.id,
+    phase: 'interrupted',
+    turnId: 'native-turn',
+  });
 });
 
 test('conditional acknowledgement follows terminal native turn, not acceptance or idle before completion', async () => {

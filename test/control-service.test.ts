@@ -8,6 +8,11 @@ import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
 import { ATTACHMENT_LIMITS } from '../src/attachments/reference.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
+import { MESSAGE_OPERATION_LIMITS } from '../src/chat/messageOperationSchema.ts';
+import {
+  advanceMessageOperation,
+  prepareMessageOperation,
+} from '../src/chat/messageOperationStore.ts';
 import { loadLedger } from '../src/chat/store.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { ContentBuffer } from '../src/content/buffer.ts';
@@ -34,7 +39,7 @@ import { UNSEEN } from '../src/events/observe.ts';
 import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { digest, imageBytes } from './attachments-fixture.test.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeCli, makeMachine, makeSession } from './helpers.ts';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -259,6 +264,46 @@ test('declared service activates a host-owned recipe without carrying its enviro
   expect(JSON.stringify(receipt)).not.toContain(f.recipeSecret);
   expect(JSON.stringify(receipt)).not.toContain(f.recipeEnvFile);
   expect(f.createCalls()).toBe(1);
+});
+
+test('declared message operation is caller-scoped and correlates identical-text submissions exactly', async () => {
+  const f = await fixture();
+  const registrationGeneration = f.session.registrationGeneration;
+  if (!registrationGeneration) throw new Error('missing registration');
+  const first = { target: f.target, messageId: crypto.randomUUID(), body: 'same text' };
+  const second = { ...first, messageId: crypto.randomUUID(), defer: true };
+  await f.remote.message(first);
+  await f.remote.message(second);
+  const read = { ...first, registrationGeneration };
+  const selector = { target: read.target, messageId: read.messageId, registrationGeneration };
+  expect((await f.remote.messageOperation(selector)).evidence?.state).toBe('queued');
+  expect((await f.local.messageOperation(selector)).outcome).toBe('unavailable');
+  advanceMessageOperation(f.machine, f.session, first.messageId, 'completed', 'turn-exact');
+  const result = await f.remote.messageOperation(selector);
+  expect(result.evidence).toMatchObject({ state: 'completed', turnId: 'turn-exact' });
+  expect(
+    (await f.remote.messageOperation({ ...selector, messageId: second.messageId })).evidence,
+  ).toMatchObject({ state: 'queued', turnId: null });
+  expect((await f.remote.message(first)).duplicate).toBe(true);
+  expect(await f.remote.messageOperation(selector)).toEqual(result);
+  expect(loadLedger(f.machine).filter((row) => row?.id === first.messageId)).toHaveLength(1);
+});
+
+test('full pending receipt capacity refuses before durable queue admission', async () => {
+  const f = await fixture();
+  for (let i = 0; i < MESSAGE_OPERATION_LIMITS.records; i++)
+    prepareMessageOperation(
+      f.machine,
+      f.session,
+      makeCli('host-b'),
+      crypto.randomUUID(),
+      'a'.repeat(64),
+    );
+  const messageId = crypto.randomUUID();
+  await expect(
+    f.remote.message({ target: f.target, messageId, body: 'capacity probe' }),
+  ).rejects.toMatchObject({ code: 'CAPACITY' });
+  expect(loadLedger(f.machine).some((row) => row?.id === messageId)).toBe(false);
 });
 
 test('current declared service exposes revisioned selection and image upload without a second ingress', async () => {

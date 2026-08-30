@@ -9,6 +9,10 @@ import {
   AttachmentUploadReceiptSchema,
   AttachmentUploadSelectorSchema,
 } from '../attachments/schema.ts';
+import {
+  MessageOperationReadSchema,
+  MessageOperationResultSchema,
+} from '../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../context/schema.ts';
 import { EXTERNAL_MAX_BYTES, ExternalStatusSnapshotSchema } from '../external/resident-schema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../runtime/capabilities.ts';
@@ -56,6 +60,14 @@ import {
 export const controlContract = defineContract(
   { prefix: 'control', scope: 'local' },
   {
+    messageOperation: {
+      method: 'POST',
+      path: '/message/operation',
+      desc: 'Read retained exact message-to-native-turn evidence without resubmission',
+      input: MessageOperationReadSchema,
+      output: MessageOperationResultSchema,
+      idempotent: true,
+    },
     history: {
       method: 'POST',
       path: '/history',

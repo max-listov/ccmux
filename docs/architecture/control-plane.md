@@ -77,6 +77,7 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `selection` / `select` | POST `/control/selection` / `/control/selection/update` | Revisioned defaults, compare-and-swap between turns |
 | `attachmentBegin/Chunk/Finalize/Cancel/Read` | POST `/control/attachment/<operation>` | Bounded authenticated PNG/JPEG transfer and preview |
 | `steer` / `steeringOperation` | POST `/control/turn/steer` / `/control/turn/steering-operation` | Exact active-turn input and durable receipt |
+| `messageOperation` | POST `/control/message/operation` | Caller-scoped retained message UUID → exact native turn/outcome |
 | `history` | POST `/control/history` | Bounded provider-owned history page |
 | `compact` / `contextOperation` | POST `/control/context/compact` / `/control/context/operation` | Native compaction admission and completion evidence |
 | `fork` | POST `/control/fork` | Same-workspace native fork with a new managed identity |
@@ -418,6 +419,35 @@ closes admission and streams, drains up to 5 seconds, then spends at most 2 seco
 cleanup. SIGINT/SIGTERM retain exit codes 130/143 for boot-unit restart policy. `_run`, native
 provider writers and tmux sessions are not application resources and survive daemon shutdown.
 Operation audit records contain action/outcome/duration, never payloads or capability headers.
+
+### Exact message correlation
+
+The declared service operation `message.operation` (effect `message.read`) and both typed clients'
+`messageOperation({target, registrationGeneration, messageId})` expose retained native receipts.
+Request/response are capped at 8 KiB each; the descriptor deadline is five seconds. `message.send`
+still means durable queue acceptance only. Persist the create receipt's target/generation and your
+message UUID, then read the operation without replaying a mutation:
+
+```ts
+const operation = await client.messageOperation({ target, registrationGeneration, messageId });
+if (operation.outcome === 'available' && operation.evidence?.state === 'completed') {
+  // Join native content/history by this exact turnId, never by text or sequence order.
+  const turnId = operation.evidence.turnId;
+}
+```
+
+`outcome` is `available`, `expired` or `unavailable`; only available results carry `evidence`.
+Evidence contains `state`, `nativeSession: {runtime,id}`, `turnId`, `observedAt` and `expiresAt`.
+Queued/uncertain states have no proven turn ID; admitted/completed/interrupted/failed do. Preparing
+acceptance is publicly uncertain. Native bootstrap/other-caller turns need not have an accessible
+binding. An unauthorized caller, wrong generation, missing/corrupt/evicted record gets unavailable.
+
+These are durable last-observed receipts, not provider-liveness claims. Reads are bounded metadata
+only and never call a provider, scan history or repair/replay. Retention is 256 records per managed
+registration, at most 512 KiB, and up to seven days after terminal completion (capacity may evict
+terminal rows sooner). Pending rows are not evicted. Pre-retention messages and CLI/peer submissions
+return unavailable; no retrospective heuristic or duplicate execution is introduced. See the
+[decision](../decisions/2026-08-30-public-message-native-turn-correlation.md) for crash ordering.
 
 Automatic updates return a verified-installation outcome to the healing schedule. A subsequent
 event-loop turn requests the normal SIGTERM/exit-143 path, allowing that schedule to settle before

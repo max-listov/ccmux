@@ -99,12 +99,14 @@ export function nearLimitImage(): Buffer {
   return bytes;
 }
 
-export async function nativeImageProbe() {
+export async function nativeImageProbe(
+  options: { cli?: string; makeClient?: typeof createCcmuxControlServiceClient } = {},
+) {
   const root = realpathSync(mkdtempSync('/tmp/ccmux-image-steering-'));
   chmodSync(root, 0o700);
   evidencePath = join(root, 'evidence.ndjson');
   const config = join(root, 'machine.json'),
-    cli = resolve('src/cli.ts');
+    cli = resolve(options.cli ?? 'src/cli.ts');
   const machine = MachineConfigSchema.parse({
     ...loadMachineConfig(),
     stateDir: join(root, 'state'),
@@ -161,26 +163,28 @@ export async function nativeImageProbe() {
       stderr: Bun.file(join(root, 'daemon-error.log')),
     });
   let daemon = spawn();
-  const service = createCcmuxControlServiceClient(async (url, init) => {
-    const operation = ControlServiceOperationSchema.parse(
-      new URL(String(url)).pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-    );
-    return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-      unix: controlSocket(machine),
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      ...(init?.signal ? { signal: init.signal } : {}),
-      body: JSON.stringify({
-        v: 1,
-        id: crypto.randomUUID(),
-        caller: 'probe-client',
-        service: 'ccmux.control',
-        revision: CCMUX_CONTROL_SERVICE_REVISION,
-        operation,
-        payload: typeof init?.body === 'string' ? init.body : '{}',
-      }),
+  const client = (caller: string) =>
+    (options.makeClient ?? createCcmuxControlServiceClient)(async (url, init) => {
+      const operation = ControlServiceOperationSchema.parse(
+        new URL(String(url)).pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
+      );
+      return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
+        unix: controlSocket(machine),
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        ...(init?.signal ? { signal: init.signal } : {}),
+        body: JSON.stringify({
+          v: 1,
+          id: crypto.randomUUID(),
+          caller,
+          service: 'ccmux.control',
+          revision: CCMUX_CONTROL_SERVICE_REVISION,
+          operation,
+          payload: typeof init?.body === 'string' ? init.body : '{}',
+        }),
+      });
     });
-  });
+  const service = client('probe-client');
   const ready = () =>
     until(
       'isolated service',
@@ -202,6 +206,7 @@ export async function nativeImageProbe() {
     env,
     machine,
     service,
+    client,
     async restartDaemon() {
       daemon.kill('SIGTERM');
       await daemon.exited;

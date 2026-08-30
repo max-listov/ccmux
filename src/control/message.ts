@@ -5,6 +5,7 @@ import { stableJson } from '../agent/launchInputs.ts';
 import { withPinnedAttachments } from '../attachments/pins.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
+import { advanceMessageOperation, prepareMessageOperation } from '../chat/messageOperationStore.ts';
 import { appendMessageOnce, loadLedger } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { withSessionRegistryLock } from '../config/registryLock.ts';
@@ -52,6 +53,7 @@ export async function acceptControlMessage(
             409,
           );
         }
+        if (hasNativeRuntime(session)) advanceMessageOperation(m, session, prior.id, 'queued');
         return {
           messageId: prior.id,
           accepted: true as const,
@@ -83,7 +85,14 @@ export async function acceptControlMessage(
         ...(input.images.length === 0 ? {} : { images: input.images }),
       };
       signal.throwIfAborted();
-      const append = () => appendMessageOnce(m, envelope, signal);
+      const append = async () => {
+        if (hasNativeRuntime(session))
+          prepareMessageOperation(m, session, from, input.messageId, fingerprint);
+        const appended = await appendMessageOnce(m, envelope, signal);
+        if (appended && hasNativeRuntime(session))
+          advanceMessageOperation(m, session, input.messageId, 'queued');
+        return appended;
+      };
       const appended =
         input.images.length === 0
           ? await append()

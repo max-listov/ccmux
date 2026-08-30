@@ -19,6 +19,7 @@ import {
   finalizeAttachmentUpload,
   readAttachmentChunk,
 } from '../attachments/service.ts';
+import type { MessageOperationReadSchema } from '../chat/messageOperationSchema.ts';
 import type { CreateManagedInput } from '../commands/create.ts';
 import { startSession } from '../commands/lifecycle.ts';
 import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
@@ -44,6 +45,7 @@ import { readControlDirectory } from './directories.ts';
 import type { ControlDirectoryReadSchema } from './directorySchema.ts';
 import { archiveControlSession, createControlSession, forkControlSession } from './lifecycle.ts';
 import { acceptControlMessage } from './message.ts';
+import { readMessageOperation } from './messageOperation.ts';
 import { readControlModels } from './models.ts';
 import { interruptControlTurn, waitControlSession } from './native.ts';
 import { readControlNative, respondControlNative } from './nativeFeed.ts';
@@ -104,6 +106,10 @@ export function createControlOperations(
     policy: { global: { maxConcurrent: 4 } },
   });
   const operations = {
+    messageOperation: (
+      input: z.output<typeof MessageOperationReadSchema>,
+      principal: ChatPrincipal,
+    ) => readMessageOperation(m, ChatPrincipalSchema.parse(principal), input),
     history: (input: z.output<typeof ControlHistoryReadSchema>, signal?: AbortSignal) =>
       reads
         .run(undefined, ({ signal: admitted }) => readControlHistory(m, input, admitted), {

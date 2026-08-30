@@ -62,6 +62,12 @@ export async function dispatchControlService(
   let result: unknown;
   try {
     switch (invocation.operation) {
+      case 'message.operation':
+        result = operations.messageOperation(
+          controlServiceInputs['message.operation'].parse(decoded),
+          cliPrincipal(invocation.caller),
+        );
+        break;
       case 'history.read':
         result = await operations.history(
           controlServiceInputs['history.read'].parse(decoded),

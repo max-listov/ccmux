@@ -22,6 +22,16 @@ export {
   type AttachmentUploadSelector,
   AttachmentUploadSelectorSchema,
 } from './attachments/schema.ts';
+export {
+  MESSAGE_OPERATION_LIMITS,
+  type MessageOperationEvidence,
+  MessageOperationEvidenceSchema,
+  type MessageOperationRead,
+  MessageOperationReadSchema,
+  type MessageOperationResult,
+  MessageOperationResultSchema,
+  MessageOperationStateSchema,
+} from './chat/messageOperationSchema.ts';
 export type { ModelSelection } from './config/modelSelectionFlags.ts';
 export {
   LaunchRecipeMetadataSchema,

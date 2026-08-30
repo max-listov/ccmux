@@ -8,6 +8,7 @@ import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { formatChatInjection } from './format.ts';
 import { managedPeer, managedPeerKey } from './identity.ts';
+import { advanceMessageOperation } from './messageOperationStore.ts';
 import { conditionalMessage, pickPendingDelivery } from './pendingDelivery.ts';
 import { replyRouteToSender } from './replyRoute.ts';
 import { appendAck, type LedgerSlot, type loadCursors, saveCursors } from './store.ts';
@@ -98,9 +99,13 @@ async function deliverLocked(
       return 0;
     }
     pickup.native = { phase: 'accepted', turnId: input.nativeId };
+    advanceMessageOperation(m, s, pickup.messageId, 'admitted', input.nativeId, now);
     const terminal =
       read.snapshot.turn?.id === input.nativeId && read.snapshot.turn.status !== 'inProgress';
     if (terminal && read.snapshot.state === 'idle') {
+      const turn = read.snapshot.turn;
+      if (turn !== null && turn.status !== 'inProgress')
+        advanceMessageOperation(m, s, pickup.messageId, turn.status, input.nativeId, now);
       if (pickup.conditional) appendAck(m, pickup.messageId, 'daemon', recipient);
       delete cursors.pickups[key];
       clearChatHold(s.name);
@@ -120,6 +125,7 @@ async function deliverLocked(
     return 0;
   }
   const conditional = conditionalMessage(pick.msg);
+  advanceMessageOperation(m, s, pick.msg.id, 'uncertain', null, now);
   cursors.pickups[key] = {
     messageId: pick.msg.id,
     ledgerIndex: pick.idx,

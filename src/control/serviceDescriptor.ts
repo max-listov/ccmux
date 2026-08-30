@@ -73,6 +73,11 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
   maxInflight: 8,
   operations: [
     {
+      id: 'message.operation',
+      effect: controlServiceEffects['message.operation'],
+      limits: { requestBytes: 8192, responseBytes: 8192, timeoutMs: 5000 },
+    },
+    {
       id: 'history.read',
       effect: controlServiceEffects['history.read'],
       limits: { requestBytes: 16 * 1024, responseBytes: 384 * 1024, timeoutMs: 7000 },

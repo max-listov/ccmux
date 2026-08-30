@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 
 import { join } from 'node:path';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
+import { prepareMessageOperation, readMessageJournal } from '../src/chat/messageOperationStore.ts';
 import { deliverNativeRuntimePending } from '../src/chat/nativeRuntime.ts';
 import { ChatCursorsSchema } from '../src/config/schema.ts';
 import { writeSessionsUnlocked } from '../src/config/sessions.ts';
@@ -31,6 +32,7 @@ async function fixture() {
   const peer = managedPeer(m.rcPrefix, s),
     key = managedPeerKey(peer);
   const msg = makeChatMessage({ to: peer });
+  prepareMessageOperation(m, s, msg.from, msg.id, 'a'.repeat(64));
   const cursors = ChatCursorsSchema.parse({});
   cursors.delivered[key] = 1;
   cursors.pickups[key] = {
@@ -50,6 +52,36 @@ test('native cursor intent recovers the mailbox crash gap exactly once', async (
   expect(queued).toMatchObject({ messageId: msg.id, phase: 'queued' });
   expect(await deliverNativeRuntimePending(m, s, [msg], cursors, new Set(), false)).toBe(0);
   expect(readRuntimeInput(m, s)).toEqual(queued);
+});
+
+test('native accepted mailbox retains exact terminal correlation after pickup deletion', async () => {
+  const { m, s, msg, cursors, projection, writer, key } = await fixture();
+  await deliverNativeRuntimePending(m, s, [msg], cursors, new Set(), false);
+  const input = readRuntimeInput(m, s);
+  if (input === null) throw new Error('fixture mailbox missing');
+  await writeRuntimeInput(m, s, { ...input, phase: 'uncertain' });
+  await deliverNativeRuntimePending(m, s, [msg], cursors, new Set(), false);
+  expect(readMessageJournal(m, s)?.records[0]?.turnId).toBeNull();
+  await writeRuntimeInput(m, s, { ...input, phase: 'accepted' });
+  projection.start(input.nativeId);
+  projection.message({
+    id: 'msg_answer',
+    sessionID: 'ses_native',
+    role: 'assistant',
+    parentID: input.nativeId,
+    time: { created: 1, completed: 2 },
+    finish: 'stop',
+  });
+  await writer.write(projection.snapshot());
+  await deliverNativeRuntimePending(m, s, [msg], cursors, new Set(), false);
+  expect(cursors.pickups[key]).toBeUndefined();
+  expect(readMessageJournal(m, s)?.records[0]).toMatchObject({
+    messageId: msg.id,
+    phase: 'completed',
+    turnId: input.nativeId,
+  });
+  await deliverNativeRuntimePending(m, s, [msg], cursors, new Set(), false);
+  expect(readRuntimeInput(m, s)?.nativeId).toBe(input.nativeId);
 });
 
 test('a corrupt or uncertain native receipt cannot be repaired into a second dispatch', async () => {

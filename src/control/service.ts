@@ -24,6 +24,8 @@ export function controlServices(
     dependencies,
   );
   const service = implement(controlContract, {
+    messageOperation: ({ input, principal }) =>
+      operations.messageOperation(input, ChatPrincipalSchema.parse(principal)),
     history: ({ input, signal }) => operations.history(input, signal),
     compact: ({ input, signal }) => operations.compact(input, signal),
     contextOperation: ({ input }) => operations.contextOperation(input),

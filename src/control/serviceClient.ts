@@ -11,6 +11,10 @@ import {
   AttachmentUploadReceiptSchema,
   AttachmentUploadSelectorSchema,
 } from '../attachments/schema.ts';
+import {
+  MessageOperationReadSchema,
+  MessageOperationResultSchema,
+} from '../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../context/schema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../runtime/capabilities.ts';
 import {
@@ -75,6 +79,15 @@ function serviceReply<T>(result: z.ZodType<T>) {
 export const ccmuxControlServiceContract = defineContract(
   { prefix: CCMUX_CONTROL_SERVICE_PREFIX },
   {
+    messageOperation: {
+      method: 'POST',
+      path: '/message.operation',
+      desc: 'Read retained exact message-to-native-turn evidence without resubmission',
+      input: MessageOperationReadSchema,
+      output: serviceReply(MessageOperationResultSchema),
+      idempotent: true,
+      meta: { effect: controlServiceEffects['message.operation'] },
+    },
     history: {
       method: 'POST',
       path: '/history.read',

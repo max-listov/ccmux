@@ -63,7 +63,7 @@ try {
       ControlDirectoryResultSchema,
       RuntimeCatalogSchema, CCMUX_CONTROL_SERVICE_REVISION, AttachmentReferenceSchema, SelectionResultSchema,
       NativeSelectionEvidenceSchema, ControlHistoryResultSchema, ControlContextOperationResultSchema,
-      SteeringReceiptSchema, NativeForkRequestSchema,
+      SteeringReceiptSchema, NativeForkRequestSchema, MessageOperationResultSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -80,6 +80,13 @@ try {
     }).strict();
     const {target} = ControlTargetSchema.parse({target:{kind:'managed',source:'ccmux',machine:'host-a',agent:'codex',session:'agent-a',threadId:crypto.randomUUID()}});
     const registrationGeneration = crypto.randomUUID();
+    const operationInput = {target,registrationGeneration,messageId:crypto.randomUUID()};
+    const operationResult = MessageOperationResultSchema.parse({...operationInput,outcome:'available',evidence:{state:'completed',nativeSession:{runtime:'codex',id:target.threadId},turnId:'turn-exact',observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+10000).toISOString()}});
+    const operations = createCcmuxControlServiceClient(async (url) => {
+      if (!String(url).endsWith('/message.operation')) throw new Error('message operation route lost');
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:operationResult});
+    });
+    if ((await operations.messageOperation(operationInput)).evidence?.turnId !== 'turn-exact') throw new Error('exact message correlation lost');
     let calls = 0;
     const client = createCcmuxControlServiceClient(async () => {
       calls++;
