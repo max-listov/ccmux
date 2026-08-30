@@ -6,13 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.30] — 2026-08-30
+
+retain exact native message correlation
+
 - Add caller-scoped `message.operation` to both typed control clients and the declared service.
   Retained receipts bind exact message UUIDs to managed registration, native session, turn and
   terminal outcome across reconnect and daemon/provider restart. Queued, uncertain, expired and
   unavailable evidence stay explicit; reads never resubmit or infer bindings from text/order.
 - Bound receipt storage and expose its retention limits. Preserve pending operations and reject
   capacity exhaustion before queue admission. Cover both native runtimes and packed Bun/Node clients.
-
 ## [0.39.29] — 2026-08-30
 
 verify late approvals through native terminal pickup
