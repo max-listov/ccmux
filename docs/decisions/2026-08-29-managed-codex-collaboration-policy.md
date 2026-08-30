@@ -4,13 +4,13 @@ description: Enable native input requests without caller-authored provider setti
 type: decision
 status: active
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # Decision
 
 A managed Codex launch recipe may declare a typed `collaborationMode`. The public create request
-still contains only `{ id, revision }`; callers cannot send a mode, model, effort, developer
+contains `{ id, revision }` plus an optional separate typed `modelSelection`; callers cannot send a mode, effort, developer
 instructions or arbitrary native flags. The mode is part of the recipe's canonical digest and safe
 metadata, so create idempotency, the durable session identity and restart verification all bind to
 the same policy revision.
@@ -22,7 +22,8 @@ provider-default behavior is unchanged.
 
 Before every managed turn it starts, CCMux calls the installed App Server's `collaborationMode/list`. It must
 find the configured mode, and the loaded thread must report a model. CCMux uses the provider preset's
-model and reasoning effort and sends `developer_instructions: null`, preserving the provider's own
+reasoning effort, preserves the loaded thread model regardless of the preset's model, and sends
+`developer_instructions: null`, preserving the provider's own
 built-in instructions. It does not copy, synthesize or persist prompt text.
 
 This check covers the bootstrap turn and native message delivery, including deferred pickup after

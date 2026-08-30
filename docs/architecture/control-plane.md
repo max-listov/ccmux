@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # Ownership
@@ -66,6 +66,7 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `interrupt` | POST `/control/interrupt` | Interrupt the exact working native turn |
 | `native` / `native-items` | POST `/control/native` | Bounded native-item snapshot after an optional cursor |
 | `models` | POST `/control/models` | Bounded provider-owned model catalog after an optional cursor |
+| `directories` | POST `/control/directories` | Bounded names-only workspace directory page |
 | `respond` / `respond-native` | POST `/control/native/respond` | Exact current approval/input response receipt |
 | `wait` | POST `/control/wait` | Between-turn outcome, timeout or unavailable |
 | `watch` | GET `/control-events/` | Absolute snapshots over typed NDJSON |
@@ -98,6 +99,18 @@ values never cross the control boundary. Recipe-less create omits the field and 
 behavior. The rationale and failure model are recorded in
 [server-owned control launch recipes](../decisions/2026-08-29-server-owned-control-launch-recipes.md).
 
+`modelSelection: { provider, model }` is separate from the launch recipe. One authenticated host
+profile can launch different catalog models without one recipe per model. Typed selection refuses
+caller flags; the selected provider must match effective native host configuration. OpenAI model
+selection is checked against the native catalog before a create receipt or registry mutation.
+Validation is a bounded metadata read, not a conversation. The selection is included in the create
+fingerprint, durable session, launch stamp and safe receipt/status/native projection. A same-ID retry
+with another selection is `IDEMPOTENCY_CONFLICT`; an accepted identical retry reconciles without
+depending on catalog availability. Native start/resume passes the exact selection and checks the
+provider's response. Selection survives daemon/provider restart. Calls without selection retain
+the native default and existing known-model recipe behavior. Custom-provider configuration remains
+host-owned; this interface does not aggregate or proxy external inference services.
+
 An optional recipe `collaborationMode` selects only an installed App Server preset. Before each
 managed `turn/start`—bootstrap, immediate or deferred delivery, and delivery after restart—CCMux
 reads `collaborationMode/list`, verifies the requested mode and combines the preset with the loaded
@@ -106,6 +119,9 @@ provider's built-in preset. Missing support returns generic `COLLABORATION_MODE_
 pickup intent or turn acceptance; the owner log keeps the exact probe failure. The existing native
 pending request and exact response contract remains the sole input path. See the
 [managed collaboration policy decision](../decisions/2026-08-29-managed-codex-collaboration-policy.md).
+The loaded thread model always wins over `preset.model`: a Plan preset may supply mode and effort,
+but cannot replace the selected model. A loaded thread that differs from a pinned selection fails
+closed before turn submission.
 
 `message` requires a caller-generated immutable UUID. Retrying
 the same sender/target/body/defer/notBefore/task with that UUID returns `duplicate: true`.
@@ -121,17 +137,42 @@ working directories, diffs, arbitrary tool payloads and credentials are not copi
 generation plus sequence is the cursor. A first read, runtime generation change or retained-window
 gap returns `reset=initial|generation|gap`; the included bounded snapshot is authoritative.
 
-`models` forwards the provider-owned App Server `model/list` contract for one exact owned
-App Server session target. The daemon dials the connected runtime itself; the caller supplies no
-model registry, credentials, paths, argv or executable configuration, and each read opens one
-deadline-bounded read-only provider connection under a global read admission. Inputs are
+`models({})` reads the native App Server catalog before the first conversation, with no managed
+target or registry row. An optional `launchRecipe: { id, revision }` selects host-owned configuration;
+a host-catalog env source must be absolute or home-relative, not workspace-relative. CCMux starts
+one short-lived metadata App Server with the existing native flags/session-environment mechanism,
+initializes it, reads `config/read` and `model/list`, then closes the socket and reaps its entire
+process group. It never calls `thread/start` or `thread/resume`. Failure retains only the last
+bounded diagnostic in owner-only `control/catalog-diagnostic.json` (0600), never in the response.
+
+An optional exact `target` instead connects to that session's own socket; target and launch recipe
+are mutually exclusive. There is no fallback to a machine socket or another session. The returned
+`source: { kind: "host" | "session", machine, provider, launchRecipe? }` names the actual scope;
+`target` is echoed only for a session read. Unsupported custom-provider catalogs are refused, never
+relabeled from OpenAI picker metadata. The caller supplies no credentials, paths, argv or executable.
+Every read uses the existing global read admission and deadline. Other inputs are
 `cursor` (opaque, ≤ 4 KiB), `limit` (1–64, default 64) and `includeHidden`; one call returns one
 page plus the provider's `nextCursor`, so pagination is deterministic and never loops the
-provider internally. Only selector metadata crosses the boundary: id, display name, description,
+provider internally. Only selector metadata crosses the boundary: preset `id`, native `model` when
+reported (use `model ?? id` for create selection), display name, description,
 default and hidden markers, input modalities, service tiers and supported/default reasoning
 efforts when present. Provider errors, deadline and malformed or oversized pages fail closed as
 `UNAVAILABLE`/`TIMEOUT` — no static or local catalog is ever substituted, and a model from a
 different runtime is never reported.
+
+`directories({ path?, cursor?, limit?, includeHidden? })` is a read-only folder-picker operation.
+Omitted path means the service user's home; explicit paths must be absolute. Results contain the
+resolved `path`, nullable `parent`, and names/paths/kinds (`dir`, `file`, `symlink`, `other`), never
+contents, sizes or timestamps. Dotfiles require `includeHidden: true`. Symlink entries are reported
+but a symlink in the requested path is refused (`SYMLINK_REFUSED`). This is same-user convenience,
+not a filesystem sandbox or an adversarial path-swap security boundary.
+
+The listing scans at most 20,000 entries, returns at most 512 (default 128) within 240 KiB of entry
+data, and shares the four-reader, five-second budget. The opaque cursor binds path, hidden selector,
+directory inode/version and last name. Changed directories yield `STALE_CURSOR`, requiring a fresh
+listing instead of silently skipping entries. Errors include `NOT_FOUND`, `NOT_A_DIRECTORY`,
+`PERMISSION_DENIED`, `DIRECTORY_TOO_LARGE` and `INVALID_CURSOR`; messages do not leak another path.
+Listing is advisory: create still accepts any accessible absolute workspace, not a listing whitelist.
 
 `respond` addresses the exact target, projection generation and current request ID. Approval
 decisions are restricted to the provider-advertised simple choices: `accept`, `acceptForSession`,
@@ -174,8 +215,12 @@ try {
 Create and follow an owned workspace without polling provider history:
 
 ```ts
+const catalog = await client.models({}); // no conversation required
+const choice = catalog.data.find((model) => model.isDefault);
+if (!choice) throw new Error("No model available");
 const created = await client.create({
   requestId: crypto.randomUUID(), name: "worker", workspace: "/absolute/workspace", flags: [],
+  modelSelection: { provider: catalog.source.provider, model: choice.model ?? choice.id },
 });
 const native = await client.native({ target: created.target, cursor: null });
 const feed = await client.watchNative.withOptions({
@@ -267,7 +312,7 @@ virtual routing metadata and the descriptor. It grants nothing and opens no conn
 operator owns the private ingress socket path, node binding, credentials and exact
 service/revision/operation/effect grants.
 
-The descriptor declares ten operations and their byte/deadline budgets. A remote wait is capped
+The descriptor declares eleven operations and their byte/deadline budgets. A remote wait is capped
 at 25 seconds inside a 30-second service deadline. Service delivery is never retried by the owner
 client. If transport delivery is unknown, the caller retains that uncertainty. An idempotent
 `session.create` may deliberately retry the same immutable `requestId`: the durable create receipt
@@ -276,13 +321,13 @@ idempotency identity or an authoritative read before any caller-selected retry.
 
 Revision 1 effects are stable dot-delimited authorization identifiers: `session.read`,
 `session.create`, `session.archive`, `message.send`, `session.start`, `turn.interrupt`,
-`native.read`, `native.respond`, `session.wait` and `model.read`. Operation metadata, the typed
+`native.read`, `native.respond`, `session.wait`, `model.read` and `directory.read`. Operation metadata, the typed
 client contract and `descriptor.json` all read them from one owner mapping. Every service,
 operation and effect identifier satisfies `^[a-z0-9][a-z0-9._-]*$`; an operator must feed the
 descriptor unchanged into its declared-service policy parser. A valid activated revision pins its
-effects and requires a new revision for any later authorization-identity change. `model.read` is
-additive: the nine original effect identifiers are unchanged, and an operator grants the tenth
-operation when it adopts it. A descriptor that cannot pass the policy parser cannot have a valid
+effects and requires a new revision for any later authorization-identity change. The `model.read`
+and `directory.read` additions preserve earlier effect identifiers. Operators explicitly grant new
+operations when adopting the updated descriptor. A descriptor that cannot pass the policy parser cannot have a valid
 activation or grant migration; correcting that descriptor retains its unactivated revision.
 
 Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
@@ -366,3 +411,10 @@ safety/recovery probes. These spend
 provider usage and only target isolated test sessions; the model-catalog probe is read-only. Rollback to the preceding
 native-runtime-capable release removes the new control API
 without changing conversation UUIDs, chat storage or ordinary CLI behavior.
+
+`scripts/control-model-selection-acceptance.ts [ccmux-entrypoint]` uses isolated state and an isolated
+tmux socket with native authentication. It proves empty-inventory service discovery, directory reads,
+two catalog models under one profile, native shell execution in Plan, same-ID refusal/retry, and
+provider/daemon restart. Its differing-preset test explicitly substitutes just that capability field
+before sending the resulting policy into a real native turn; the installed preset itself may report
+`model: null`. The probe records this distinction rather than claiming a provider-advertised mismatch.

@@ -1,4 +1,8 @@
 export { createControlClient, createControlProxy, ControlClientOptionsSchema, type ControlClientOptions } from "./control/client.ts";
+export { ControlDirectoryReadSchema, ControlDirectoryResultSchema,
+  type ControlDirectoryRead, type ControlDirectoryResult } from "./control/directorySchema.ts";
+export { ModelSelectionSchema } from "./config/schema.ts";
+export type { ModelSelection } from "./config/modelSelectionFlags.ts";
 export { controlContract, controlEventsContract } from "./control/contract.ts";
 export { ControlSnapshotSchema, ControlRowSchema, ControlNativeSnapshotSchema, ControlNativeCursorSchema,
   ControlNativeReadSchema, ControlNativeResponseSchema, ControlNativeResponseReceiptSchema,

@@ -24,6 +24,10 @@ export {
   type ControlServiceInvocation,
   type ControlServiceOperation,
 } from "./control/serviceDescriptor.ts";
+export { ControlDirectoryReadSchema, ControlDirectoryResultSchema,
+  type ControlDirectoryRead, type ControlDirectoryResult } from "./control/directorySchema.ts";
+export { ModelSelectionSchema } from "./config/schema.ts";
+export type { ModelSelection } from "./config/modelSelectionFlags.ts";
 export {
   ControlActionReceiptSchema,
   ControlArchiveReceiptSchema,

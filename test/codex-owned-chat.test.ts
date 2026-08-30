@@ -94,6 +94,14 @@ test("unsupported collaboration preset fails closed before pickup intent or turn
   expect(f.hold()).toBe("managed collaboration policy is unavailable");
 });
 
+test("a different Plan preset model cannot replace the loaded thread model", async () => {
+  const f = fixture();
+  f.s.launchRecipe = { id: "input-policy", revision: "r1", digest: "a".repeat(64),
+    capabilities: ["input-requests"], collaborationMode: "plan" };
+  f.setCollaborationModes([{ name: "Plan", mode: "plan", model: "preset-other-model", reasoning_effort: "medium" }]);
+  expect(await f.run()).toBe(1); // fixture asserts turn/start still carries model-current
+});
+
 test("native working/approval/input/unknown and unavailable snapshots never open a send connection", async () => {
   for (const state of ["working", "waiting-approval", "waiting-input", "unknown"] satisfies Array<NonNullable<OwnedCodexRead["snapshot"]>["state"]>) {
     const f = fixture();

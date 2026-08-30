@@ -46,7 +46,8 @@ try {
     import descriptorFile from '@ccmux/control-service-client/descriptor.json' with {type:'json'};
     import {
       ApiError, ControlServiceDescriptorSchema, ControlNativeStreamFrameSchema, ControlTargetSchema,
-      LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema,
+      LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ModelSelectionSchema,
+      ControlDirectoryResultSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -78,13 +79,26 @@ try {
       createPayload = typeof init?.body === 'string' ? init.body : '';
       return Response.json({v:1,revision:'1',result:{
         requestId:'11111111-1111-4111-8111-111111111111',target,workspace:'/work',duplicate:false,
-        launchRecipe:recipeMetadata,
+        launchRecipe:recipeMetadata,modelSelection:{provider:'openai',model:'model-a'},
       }});
     });
-    const created = await creator.create({requestId:'11111111-1111-4111-8111-111111111111',name:'agent-a',workspace:'/work',flags:[],launchRecipe});
+    const modelSelection = ModelSelectionSchema.parse({provider:'openai',model:'model-a'});
+    const created = await creator.create({requestId:'11111111-1111-4111-8111-111111111111',name:'agent-a',workspace:'/work',flags:[],launchRecipe,modelSelection});
+    if (created.modelSelection?.model !== modelSelection.model || !createPayload.includes('modelSelection'))
+      throw new Error('typed model selection failed');
     if (created.launchRecipe?.digest !== recipeMetadata.digest || created.launchRecipe.collaborationMode !== 'plan' ||
       createPayload.includes('fixture-secret') || createPayload.includes('collaborationMode'))
       throw new Error('safe recipe contract failed');
+    const reader = createCcmuxControlServiceClient(async (url) => {
+      const directory = String(url).endsWith('/directory.list');
+      return Response.json({v:1,revision:'1',result:directory
+        ? {path:'/work',parent:'/',entries:[{name:'repo',kind:'dir',path:'/work/repo'}],nextCursor:null}
+        : {source:{kind:'host',machine:'host-a',provider:'openai'},data:[],nextCursor:null}});
+    });
+    const catalog = await reader.models({});
+    if (catalog.target !== undefined || catalog.source.kind !== 'host') throw new Error('host discovery failed');
+    const directory = ControlDirectoryResultSchema.parse(await reader.directories({path:'/work'}));
+    if (directory.entries[0]?.kind !== 'dir') throw new Error('directory listing failed');
     if (ccmuxControlServiceComposition.descriptor !== ccmuxControlServiceDescriptor ||
         !ControlServiceDescriptorSchema.safeParse(ccmuxControlServiceDescriptor).success) throw new Error('descriptor failed');
     if (JSON.stringify(transportDescriptor.parse(descriptorFile)) !== JSON.stringify(ccmuxControlServiceDescriptor))

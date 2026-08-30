@@ -70,6 +70,9 @@ export class OwnedCodexConnection {
       ...(fresh ? {} : { threadId: this.initial.uuid, excludeTurns: true }),
     }));
     if (!fresh && response.thread.id !== this.initial.uuid) throw new Error("Native resume returned a different thread identity");
+    if (this.initial.modelSelection !== undefined && (response.model !== this.initial.modelSelection.model ||
+        response.modelProvider !== this.initial.modelSelection.provider))
+      throw new Error("Native admission changed the selected provider or model");
     const session = SessionSchema.parse({ ...this.initial, uuid: response.thread.id });
     const projection = new OwnedCodexProjection(this.m, session, this.providerPid);
     this.projection = projection;
@@ -112,7 +115,10 @@ export class OwnedCodexConnection {
         }
       }
     }
-    await restoreOwnedTurn(rpc, projection, session.uuid);
+    // A newly created thread has no historical turn to restore. Its bootstrap is already observed
+    // on this connection. Asking the experimental history reader here can race native thread-store
+    // materialization (some installed stores refuse list_turns before it is available).
+    if (!fresh) await restoreOwnedTurn(rpc, projection, session.uuid);
     await this.refresh(session);
     return session;
   }

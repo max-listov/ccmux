@@ -5,7 +5,7 @@ import { providerFor } from "./index.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 import { envInput, type LaunchInput } from "./launchInputs.ts";
-import { LaunchRecipeMetadataSchema } from "../config/schema.ts";
+import { LaunchRecipeMetadataSchema, ModelSelectionSchema } from "../config/schema.ts";
 
 /**
  * What a session was LAUNCHED with — so "does this one still need a restart?" is a fact you can
@@ -42,6 +42,7 @@ export const LaunchStampSchema = z.object({
   /** Safe immutable host recipe identity. Older stamps omit it and therefore remain unknown rather
    * than stale; recipe definitions and environment values never enter the stamp. */
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
+  modelSelection: ModelSelectionSchema.optional(),
   ts: z.number(),
 });
 export type LaunchStamp = z.infer<typeof LaunchStampSchema>;
@@ -92,6 +93,7 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
     chatEnabled: chatEnabledFor(s, m),
     promptModules: [...s.promptModules].sort(),
     ...(s.launchRecipe === undefined ? {} : { launchRecipe: s.launchRecipe }),
+    ...(s.modelSelection === undefined ? {} : { modelSelection: s.modelSelection }),
   };
 }
 

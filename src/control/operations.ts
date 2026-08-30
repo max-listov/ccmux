@@ -16,6 +16,8 @@ import { interruptControlTurn, waitControlSession } from "./native.ts";
 import { archiveControlSession, createControlSession } from "./lifecycle.ts";
 import { readControlNative, respondControlNative } from "./nativeFeed.ts";
 import { readControlModels } from "./models.ts";
+import { ControlDirectoryReadSchema } from "./directorySchema.ts";
+import { readControlDirectory } from "./directories.ts";
 import { controlTarget } from "./target.ts";
 import type { ControlPublisher } from "./publisher.ts";
 import type { ExternalStatusPublisher } from "../external/resident-publisher.ts";
@@ -143,6 +145,9 @@ export function createControlOperations(
         )
         .catch(controlRefusal),
     native: (input: NativeReadInput) => readControlNative(m, input.target, input.cursor),
+    directories: (input: z.output<typeof ControlDirectoryReadSchema>, signal?: AbortSignal) =>
+      reads.run(undefined, ({ signal: admitted }) => readControlDirectory(input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 5_000 }).catch(controlRefusal),
     models: (input: ModelsReadInput, signal?: AbortSignal) =>
       reads
         .run(

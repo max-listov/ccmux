@@ -52,6 +52,9 @@ export async function dispatchControlService(
   let result: unknown;
   try {
     switch (invocation.operation) {
+      case "directory.list":
+        result = await operations.directories(controlServiceInputs["directory.list"].parse(decoded), signal);
+        break;
       case "session.get":
         result = operations.get(controlServiceInputs["session.get"].parse(decoded));
         break;

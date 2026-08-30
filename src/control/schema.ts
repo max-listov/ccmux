@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ManagedPeerSchema } from "../config/schema.ts";
+import { LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ManagedPeerSchema, ModelSelectionSchema } from "../config/schema.ts";
 import { OwnedCodexTurnSchema } from "../agent/codex/ownedSchema.ts";
 import { OwnedCodexNativeItemSchema, OwnedCodexPendingRequestSchema } from "../agent/codex/ownedSchema.ts";
 import { SESSION_NAME_RE } from "../config/schema.ts";
@@ -18,6 +18,7 @@ export const ControlRowSchema = z.object({
   turn: OwnedCodexTurnSchema.nullable(),
   model: z.string().max(512).nullable(),
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
+  modelSelection: ModelSelectionSchema.optional(),
   capabilities: z.object({ message: z.boolean(), start: z.boolean(), interrupt: z.boolean(), wait: z.boolean() }).strict(),
 }).strict();
 export type ControlRow = z.infer<typeof ControlRowSchema>;
@@ -52,11 +53,13 @@ export const ControlCreateSchema = z.object({
   requestId: z.uuid(), name: z.string().min(1).max(256).regex(SESSION_NAME_RE),
   workspace: z.string().startsWith("/").max(4_096), flags: z.array(z.string().max(4_096)).max(32).default([]),
   launchRecipe: LaunchRecipeReferenceSchema.optional(),
+  modelSelection: ModelSelectionSchema.optional(),
 }).strict();
 export type ControlCreate = z.input<typeof ControlCreateSchema>;
 export const ControlCreateReceiptSchema = z.object({
   requestId: z.uuid(), target: ManagedPeerSchema, workspace: z.string().startsWith("/").max(4_096),
   duplicate: z.boolean(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
+  modelSelection: ModelSelectionSchema.optional(),
 }).strict();
 export type ControlCreateReceipt = z.infer<typeof ControlCreateReceiptSchema>;
 export const ControlArchiveReceiptSchema = z.object({
@@ -70,6 +73,7 @@ export const ControlNativeSnapshotSchema = z.object({
   reset: z.enum(["initial", "generation", "gap"]).nullable(), observedAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
   items: z.array(OwnedCodexNativeItemSchema).max(128), pending: z.array(OwnedCodexPendingRequestSchema.omit({ rpcId: true })).max(16),
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
+  modelSelection: ModelSelectionSchema.optional(),
 }).strict();
 export type ControlNativeSnapshot = z.infer<typeof ControlNativeSnapshotSchema>;
 export const ControlNativeResponseSchema = ControlTargetSchema.extend({
@@ -83,14 +87,18 @@ export const ControlNativeResponseReceiptSchema = z.object({
 }).strict();
 export type ControlNativeResponseReceipt = z.infer<typeof ControlNativeResponseReceiptSchema>;
 export const CONTROL_MODELS_MAX_PAGE = 64;
-export const ControlModelsReadSchema = ControlTargetSchema.extend({
+export const ControlModelsReadSchema = z.object({
+  target: ManagedPeerSchema.optional(),
+  launchRecipe: LaunchRecipeReferenceSchema.optional(),
   cursor: z.string().min(1).max(4_096).nullable().default(null),
   limit: z.number().int().min(1).max(CONTROL_MODELS_MAX_PAGE).default(CONTROL_MODELS_MAX_PAGE),
   includeHidden: z.boolean().default(false),
-}).strict();
+}).strict().refine((input) => input.target === undefined || input.launchRecipe === undefined,
+  "Choose a host recipe or an exact managed runtime, not both");
 export type ControlModelsRead = z.input<typeof ControlModelsReadSchema>;
 export const ControlModelSchema = z.object({
   id: z.string().min(1).max(256),
+  model: z.string().min(1).max(256).optional(),
   displayName: z.string().min(1).max(256),
   description: z.string().max(2_048),
   hidden: z.boolean(),
@@ -106,7 +114,11 @@ export const ControlModelSchema = z.object({
 }).strict();
 export type ControlModel = z.infer<typeof ControlModelSchema>;
 export const ControlModelCatalogSchema = z.object({
-  target: ManagedPeerSchema,
+  target: ManagedPeerSchema.optional(),
+  source: z.object({
+    kind: z.enum(["host", "session"]), machine: z.string().min(1),
+    provider: z.string().min(1).max(128), launchRecipe: LaunchRecipeMetadataSchema.optional(),
+  }).strict(),
   data: z.array(ControlModelSchema).max(CONTROL_MODELS_MAX_PAGE),
   nextCursor: z.string().max(4_096).nullable(),
 }).strict();

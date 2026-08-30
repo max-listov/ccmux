@@ -4,6 +4,7 @@ import { buildPrompt } from "../managePrompt.ts";
 import { chatEnabledFor } from "../../config/chat.ts";
 import { promptInvocation, UID } from "../../env.ts";
 import { compareSemver } from "../../util/version.ts";
+import { modelSelectionFlags } from "../../config/modelSelectionFlags.ts";
 
 /** Only explicit native configuration flags; routing and identity cannot be overridden by flags. */
 export function ownedCodexFlags(flags: readonly string[]): { server: string[]; client: string[] } {
@@ -41,7 +42,7 @@ export function ownedCodexFlags(flags: readonly string[]): { server: string[]; c
 export function ownedCodexArgv(s: Session, m: MachineConfig, cli = promptInvocation()): string[] {
   if (!m.codexBin) throw new Error("codexBin is not configured");
   return [m.codexBin, "app-server", "--listen", `unix://${ownedCodexSocket(m, s.name)}`,
-    ...ownedCodexFlags([...s.flags, ...m.extraFlags]).server,
+    ...ownedCodexFlags([...s.flags, ...m.extraFlags]).server, ...modelSelectionFlags(s.modelSelection),
     "-c", `developer_instructions=${JSON.stringify(buildPrompt(s.name, cli, "codex", "ccmux",
       chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix))}`];
 }
@@ -53,7 +54,9 @@ export function ownedCodexClientArgv(s: Session, m: MachineConfig): string[] {
 }
 
 export function ownedCodexThreadParams(s: Session, m: MachineConfig): Record<string, unknown> {
-  return { cwd: s.dir, developerInstructions: buildPrompt(s.name, promptInvocation(), "codex", "ccmux",
+  return { cwd: s.dir, ...(s.modelSelection === undefined ? {} : {
+    model: s.modelSelection.model, modelProvider: s.modelSelection.provider,
+  }), developerInstructions: buildPrompt(s.name, promptInvocation(), "codex", "ccmux",
     chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix) };
 }
 

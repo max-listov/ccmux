@@ -1,4 +1,5 @@
 import { defineContract } from "stitchkit";
+import { ControlDirectoryReadSchema, ControlDirectoryResultSchema } from "./directorySchema.ts";
 import { ExternalStatusSnapshotSchema, EXTERNAL_MAX_BYTES } from "../external/resident-schema.ts";
 import {
   CONTROL_MAX_BYTES, ControlActionReceiptSchema, ControlArchiveReceiptSchema, ControlCreateReceiptSchema, ControlCreateSchema,
@@ -9,6 +10,9 @@ import {
 } from "./schema.ts";
 
 export const controlContract = defineContract({ prefix: "control", scope: "local" }, {
+  directories: { method: "POST", path: "/directories", desc: "List directory names without following symlinks",
+    toolName: "directories", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
+    input: ControlDirectoryReadSchema, output: ControlDirectoryResultSchema },
   list: { method: "GET", path: "/sessions", desc: "Read the prepared managed-session snapshot",
     toolName: "sessions", expose: ["HTTP", "CLI", "MCP"], output: ControlSnapshotSchema },
   external: { method: "GET", path: "/external", desc: "Read prepared external native thread states; does not adopt or start threads",

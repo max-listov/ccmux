@@ -30,7 +30,8 @@ export function readControlNative(m: MachineConfig, target: Target, cursor: Curs
   return { target, generation: snapshot.generation, sequence: snapshot.nativeSequence, reset,
     observedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt, items,
     pending: snapshot.pendingRequests.map(({ rpcId: _rpcId, ...pending }) => pending),
-    ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }) };
+    ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
+    ...(session.modelSelection === undefined ? {} : { modelSelection: session.modelSelection }) };
 }
 
 export async function* subscribeControlNative(m: MachineConfig, publisher: ControlPublisher, target: Target,

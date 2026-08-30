@@ -4,7 +4,7 @@ description: The launch recipe — argv plus the external inputs an agent reads 
 type: architecture
 status: active
 created: 2026-08-25
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # What shapes a session
@@ -44,7 +44,8 @@ reserved CCMux names, refused native flags and revision/digest drift fail before
 A recipe may additionally pin `collaborationMode: "plan"` (or the explicit provider default). This
 is turn policy, not caller-authored prompt text: before every managed turn it starts, CCMux asks the installed
 App Server for its collaboration-mode catalog, selects the named preset and uses the provider's
-model, effort and built-in instructions. The check happens before a delivery pickup is persisted.
+effort and built-in instructions while preserving the loaded thread's model, even if the preset
+names another model. The check happens before a delivery pickup is persisted.
 An absent method/preset or missing loaded-thread model fails closed; recipe-less sessions send no
 mode override and retain the provider default. A human turn submitted directly by an attached TUI
 uses that TUI's explicit interactive selector; it does not pass through the control turn boundary.
@@ -52,6 +53,12 @@ uses that TUI's explicit interactive selector; it does not pass through the cont
 The control projections show only `{ id, revision, digest, capabilities, collaborationMode? }`. They do not show recipe
 flags, paths, required environment names, file contents or values. See the
 [control launch recipe decision](../decisions/2026-08-29-server-owned-control-launch-recipes.md).
+
+An optional typed `modelSelection: { provider, model }` is independently fingerprinted and persisted
+with the session. It composes with the resolved flags using the existing native configuration path,
+is included in the launch stamp, and is checked against native start/resume responses. One profile
+therefore serves multiple native catalog models. Safe selection metadata accompanies the recipe in
+control receipts and projections; authentication, endpoints and permissions remain host-owned.
 
 ## Why the digests are narrow
 

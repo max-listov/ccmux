@@ -13,6 +13,7 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
   upstream?: ApplicationAdmission, dependencies: ControlOperationDependencies = {}) {
   const { operations, mutations, waits, reads } = createControlOperations(m, publisher, external, upstream, dependencies);
   const service = implement(controlContract, {
+    directories: ({ input, signal }) => operations.directories(input, signal),
     list: operations.list,
     external: operations.external,
     get: ({ input }) => operations.get(input),

@@ -32,6 +32,7 @@ export type CodexAppThread = z.infer<typeof ThreadSchema>;
 export const CodexAppThreadContextSchema = z.object({
   thread: ThreadSchema,
   model: z.string().min(1).optional(),
+  modelProvider: z.string().min(1).optional(),
   reasoningEffort: z.string().nullable().optional(),
 }).passthrough();
 export type CodexAppThreadContext = z.infer<typeof CodexAppThreadContextSchema>;
@@ -63,6 +64,9 @@ export async function prepareManagedCodexTurn(
   session: Session,
   context: CodexAppThreadContext,
 ): Promise<CodexAppTurnPolicy | undefined> {
+  if (session.modelSelection !== undefined && (context.model !== session.modelSelection.model ||
+      (context.modelProvider !== undefined && context.modelProvider !== session.modelSelection.provider)))
+    collaborationUnavailable(session, "Loaded thread differs from its pinned model selection");
   const mode = session.launchRecipe?.collaborationMode;
   if (mode === undefined) return undefined;
   let presets: z.infer<typeof CollaborationModePresetSchema>[];
@@ -76,7 +80,7 @@ export async function prepareManagedCodexTurn(
   }
   const preset = presets.find((candidate) => candidate.mode === mode);
   if (preset === undefined) collaborationUnavailable(session, `installed provider does not advertise ${mode}`);
-  const model = preset.model ?? context.model;
+  const model = context.model;
   if (model === undefined) collaborationUnavailable(session, "loaded thread did not report a model");
   return { collaborationMode: { mode, settings: {
     model,

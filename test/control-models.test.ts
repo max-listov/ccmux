@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { ownedCodexSocket } from "../src/agent/codex/ownedPaths.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
 import { writeSessionsUnlocked } from "../src/config/sessions.ts";
 import { managedPeer } from "../src/chat/identity.ts";
@@ -42,21 +43,21 @@ const catalog = [
 
 type Behavior = "ok" | "error" | "hang" | "malformed" | "oversize" | "oversize-page";
 
-function fakeAppServer(codexHome: string) {
-  mkdirSync(join(codexHome, "app-server-control"), { recursive: true, mode: 0o700 });
+function fakeAppServer(socket: string, providerId = "openai", models = catalog) {
+  mkdirSync(dirname(socket), { recursive: true, mode: 0o700 });
   let client: ServerWebSocket<unknown> | null = null;
   let behavior: Behavior = "ok";
   const requests: { method: string; params: unknown }[] = [];
   const page = (params: unknown) => {
     const includeHidden = (params as { includeHidden?: boolean })?.includeHidden === true;
     const limit = typeof (params as { limit?: number })?.limit === "number" ? (params as { limit: number }).limit : catalog.length;
-    const visible = catalog.filter((model) => includeHidden || !model.hidden);
+    const visible = models.filter((model) => includeHidden || !model.hidden);
     const raw = (params as { cursor?: string })?.cursor;
     const start = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : 0;
     const data = visible.slice(start, start + limit);
     return { data, nextCursor: start + data.length < visible.length ? String(start + data.length) : null };
   };
-  const server = Bun.serve<unknown>({ unix: join(codexHome, "app-server-control", "app-server-control.sock"),
+  const server = Bun.serve<unknown>({ unix: socket,
     fetch(request, target) { if (target.upgrade(request, { data: undefined })) return; return new Response(null, { status: 400 }); },
     websocket: {
       open(ws) { client = ws; },
@@ -64,6 +65,7 @@ function fakeAppServer(codexHome: string) {
         const decoded = JSON.parse(String(raw));
         if (decoded.method === undefined) return;
         if (decoded.method === "initialize") { ws.send(JSON.stringify({ id: decoded.id, result: { userAgent: "codex/0.147.0" } })); return; }
+        if (decoded.method === "config/read") { ws.send(JSON.stringify({ id: decoded.id, result: { config: { model_provider: providerId } } })); return; }
         if (decoded.method !== "model/list") return;
         requests.push({ method: decoded.method, params: decoded.params });
         if (behavior === "hang") return;
@@ -105,7 +107,7 @@ async function fixture(options: { extraClaudeSession?: boolean } = {}) {
     p.publish(m, await monitoring.publish(m));
   };
   await publish();
-  const provider = fakeAppServer(codexHome);
+  const provider = fakeAppServer(ownedCodexSocket(m, s.name));
   const owned = createControlServer(m, p);
   const socket = controlSocket(m);
   const client = createControlClient({ socket });
@@ -138,7 +140,7 @@ test("model catalog is a bounded provider-owned read that forwards only safe met
   expect(read.data[0]).toMatchObject({ displayName: "MODEL-A", isDefault: true, hidden: false,
     defaultReasoningEffort: "medium", inputModalities: ["text", "image"] });
   expect(Object.keys(read.data[0]!).sort()).toEqual([
-    "defaultReasoningEffort", "description", "displayName", "hidden", "id", "inputModalities",
+    "defaultReasoningEffort", "description", "displayName", "hidden", "id", "model", "inputModalities",
     "isDefault", "serviceTiers", "supportedReasoningEfforts",
   ].sort());
   expect(JSON.stringify(read)).not.toContain("never-forwarded");
@@ -167,6 +169,28 @@ test("includeHidden is forwarded and hidden models stay marked", async () => {
   const read = await f.client.models({ target: f.target, includeHidden: true });
   expect(read.data.map((model) => [model.id, model.hidden])).toEqual([["model-a", false], ["model-b", false], ["model-hidden", true]]);
   expect(f.provider.requests[0]?.params).toEqual({ limit: 64, includeHidden: true });
+});
+
+test("exact session runtime cannot borrow another socket or relabel a custom provider catalog", async () => {
+  const f = await fixture();
+  const other = makeSession({ name: "agent-other", dir: f.root, agent: "codex", runtime: "app-server" });
+  const custom = makeSession({ name: "agent-custom", dir: f.root, agent: "codex", runtime: "app-server" });
+  await writeSessionsUnlocked(f.m, [f.s, other, custom]);
+  const otherProvider = fakeAppServer(ownedCodexSocket(f.m, other.name), "openai", [providerModel("unique-model")]);
+  const customProvider = fakeAppServer(ownedCodexSocket(f.m, custom.name), "custom");
+  try {
+    const page = await f.remote.models({ target: managedPeer(f.m.rcPrefix, other) });
+    expect(page.data.map((row) => row.id)).toEqual(["unique-model"]);
+    expect(f.provider.requests).toEqual([]);
+    expect(page.source.kind).toBe("session");
+    await expect(f.remote.models({ target: managedPeer(f.m.rcPrefix, custom) }))
+      .rejects.toMatchObject({ code: "UNSUPPORTED" });
+    expect(customProvider.requests).toEqual([]);
+    otherProvider.close();
+    await expect(f.remote.models({ target: managedPeer(f.m.rcPrefix, other) }))
+      .rejects.toMatchObject({ code: "UNAVAILABLE" });
+    expect(f.provider.requests).toEqual([]);
+  } finally { otherProvider.close(); customProvider.close(); }
 });
 
 test("unknown identities fail closed before any provider contact", async () => {
@@ -221,7 +245,7 @@ test("handler bounds drop provider extras, honor optional efforts and reject ove
   await writeSessionsUnlocked(m, [s]);
   const target = managedPeer(m.rcPrefix, s);
   const connect = (respond: () => unknown): ControlModelsConnector =>
-    async () => ({ request: () => Promise.resolve(respond()), close: () => undefined });
+    async () => ({ request: (method) => Promise.resolve(method === "config/read" ? { config: { model_provider: "openai" } } : respond()), close: () => undefined });
   const minimal = await readControlModels(m, { target, cursor: null, limit: 64, includeHidden: true },
     new AbortController().signal, connect(() => ({ data: [providerModel("model-a", {
       supportedReasoningEfforts: undefined, defaultReasoningEffort: undefined })], nextCursor: null })));
@@ -287,13 +311,14 @@ test("reads admission bounds provider connections; cancellation and deadline rel
 test("zod model schemas accept canonical safe shapes only", () => {
   const peer = { kind: "managed" as const, source: "ccmux" as const, machine: "host-a", agent: "codex" as const,
     session: "agent-a", threadId: "11111111-1111-4111-8111-111111111111" };
-  expect(ControlModelCatalogSchema.safeParse({ target: peer, data: [], nextCursor: null }).success).toBe(true);
-  expect(ControlModelCatalogSchema.safeParse({ target: peer, data: [{
+  const source = { kind: "session", machine: "host-a", provider: "openai" };
+  expect(ControlModelCatalogSchema.safeParse({ target: peer, source, data: [], nextCursor: null }).success).toBe(true);
+  expect(ControlModelCatalogSchema.safeParse({ target: peer, source, data: [{
     id: "model-a", displayName: "A", description: "", hidden: false, isDefault: true,
     inputModalities: ["text"], serviceTiers: [{ id: "t", name: "T", description: "" }],
     supportedReasoningEfforts: [effort("low")], defaultReasoningEffort: "low",
   }], nextCursor: "cursor" }).success).toBe(true);
-  expect(ControlModelCatalogSchema.safeParse({ target: peer, data: [{
+  expect(ControlModelCatalogSchema.safeParse({ target: peer, source, data: [{
     id: "model-a", displayName: "A", description: "", hidden: false, isDefault: true,
     inputModalities: ["text"], serviceTiers: [], extra: 1,
   }], nextCursor: null }).success).toBe(false);

@@ -56,6 +56,11 @@ support проверяется до каждого turn, который начи
 contract. Решения: [server-owned control launch recipes](decisions/2026-08-29-server-owned-control-launch-recipes.md)
 и [managed collaboration policy](decisions/2026-08-29-managed-codex-collaboration-policy.md).
 
+Native model catalog читается до создания первого thread. Typed `modelSelection` живёт отдельно
+от host profile, сохраняется при retry/restart и не подменяется Plan-пресетом. Это управление
+native Codex/GPT, не универсальный inference runtime. Workspace picker использует bounded
+`directory.list`, а не shell-команду. Решение: [catalog and selection](decisions/2026-08-30-native-catalog-and-model-selection.md).
+
 1. **Сейчас**: Bun-версия боевая локально (паритет с прежней реализацией подтверждён аудитом),
    раскатка на серверы — по команде владельца.
 2. **Флот без рук**: CI + GitHub Releases → демоны сами подтягивают апдейты

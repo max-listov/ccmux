@@ -13,6 +13,7 @@ import type {
   Session,
 } from "../types.ts";
 import { log } from "../util/log.ts";
+import { modelSelectionFlags } from "./modelSelectionFlags.ts";
 
 const MAX_RECIPE_ENV_FILE_BYTES = 1024 * 1024;
 
@@ -110,7 +111,7 @@ export function resolveControlLaunchRecipe(
 
 /** Every managed App Server spawn revalidates the immutable host definition. A removed or edited
  * recipe blocks before Bun.spawn, while an unchanged recipe keeps the persisted UUID/generation. */
-export function verifyManagedLaunchRecipe(m: MachineConfig, session: Pick<Session, "dir" | "envFile" | "flags" | "launchRecipe">): void {
+export function verifyManagedLaunchRecipe(m: MachineConfig, session: Pick<Session, "dir" | "envFile" | "flags" | "launchRecipe" | "modelSelection">): void {
   if (session.launchRecipe === undefined) return;
   const resolved = resolveControlLaunchRecipe(
     m,
@@ -121,7 +122,7 @@ export function verifyManagedLaunchRecipe(m: MachineConfig, session: Pick<Sessio
   if (
     resolved.launchRecipe?.digest !== session.launchRecipe.digest ||
     stableJson(resolved.launchRecipe?.capabilities ?? []) !== stableJson(session.launchRecipe.capabilities) ||
-    stableJson(resolved.flags) !== stableJson(session.flags) ||
+    stableJson([...resolved.flags, ...modelSelectionFlags(session.modelSelection)]) !== stableJson(session.flags) ||
     resolved.envFile !== session.envFile
   ) unavailable(session.launchRecipe.id, "persisted managed launch no longer matches its configured recipe");
 }

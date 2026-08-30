@@ -12,17 +12,20 @@ import { killSession } from "../tmux/tmux.ts";
 import type { MachineConfig, Session } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import type { ControlCreateSchema } from "./schema.ts";
-import { LaunchRecipeMetadataSchema, ManagedPeerSchema } from "../config/schema.ts";
+import { LaunchRecipeMetadataSchema, ManagedPeerSchema, ModelSelectionSchema } from "../config/schema.ts";
 import { privateRuntimeDirectory } from "../agent/codex/ownedPaths.ts";
 import { resolveControlLaunchRecipe } from "../config/launchRecipes.ts";
 import { stableJson } from "../agent/launchInputs.ts";
 import { log } from "../util/log.ts";
+import { validateModelSelection } from "../config/modelSelection.ts";
+import { modelSelectionFlags } from "../config/modelSelectionFlags.ts";
 
 type CreateInput = z.input<typeof ControlCreateSchema>;
 const CreateRowSchema = z.object({
   requestId: z.uuid(), fingerprint: z.string().length(64), generation: z.uuid(),
   name: z.string(), workspace: z.string(), flags: z.array(z.string()),
   envFile: z.string().min(1).optional(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
+  modelSelection: ModelSelectionSchema.optional(),
   status: z.enum(["pending", "complete", "failed"]), threadId: z.uuid().nullable(),
   error: z.string().max(512).nullable(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
 }).strict();
@@ -62,17 +65,26 @@ function matchingSession(m: MachineConfig, row: CreateRow): Session | null {
 }
 
 export async function createControlSession(m: MachineConfig, input: CreateInput, signal: AbortSignal,
-  create: typeof createManagedSession = createManagedSession) {
+  create: typeof createManagedSession = createManagedSession,
+  validateSelection: typeof validateModelSelection = validateModelSelection) {
   const workspace = normalizeWorkspace(input.workspace);
+  if (input.modelSelection !== undefined && (input.flags?.length ?? 0) > 0)
+    throw new AppError("INVALID_INPUT", "Typed model selection cannot carry caller flags", 400);
   const resolved = resolveControlLaunchRecipe(m, workspace, input.launchRecipe, input.flags ?? []);
   const canonical = {
     name: input.name,
     workspace,
-    flags: resolved.flags,
+    flags: [...resolved.flags, ...modelSelectionFlags(input.modelSelection)],
     ...(resolved.envFile === undefined ? {} : { envFile: resolved.envFile }),
     ...(resolved.launchRecipe === undefined ? {} : { launchRecipe: resolved.launchRecipe }),
+    ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
   };
   const digest = fingerprint(canonical);
+  const accepted = load(m).find((row) => row.requestId === input.requestId);
+  if (accepted !== undefined && accepted.fingerprint !== digest)
+    throw new AppError("IDEMPOTENCY_CONFLICT", "Create request payload changed", 409);
+  if (accepted === undefined && input.modelSelection !== undefined)
+    await validateSelection(m, resolved, workspace, input.modelSelection, signal);
   privateRuntimeDirectory(dirname(storeLockPath(m)));
   return withDirectoryLock(requestLockPath(m, input.requestId), async () => {
     let row!: CreateRow;
@@ -101,7 +113,8 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
           session = await create(m, { name: row.name, dir: row.workspace, agent: "codex", flags: row.flags,
             router: false, runtime: "app-server", registrationGeneration: row.generation, chatEnabled: true,
             ...(row.envFile === undefined ? {} : { envFile: row.envFile }),
-            ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }) });
+            ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
+            ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }) });
         } catch (error) {
           session = matchingSession(m, row);
           if (session === null) {
@@ -123,13 +136,15 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
     if (session === null) throw new AppError("CREATE_PENDING", "Create is still reconciling; retry the same request", 503);
     if (
       stableJson(session.flags) !== stableJson(row.flags) || session.envFile !== row.envFile ||
-      stableJson(session.launchRecipe ?? null) !== stableJson(row.launchRecipe ?? null)
+      stableJson(session.launchRecipe ?? null) !== stableJson(row.launchRecipe ?? null) ||
+      stableJson(session.modelSelection ?? null) !== stableJson(row.modelSelection ?? null)
     ) throw new AppError("CORRUPT_STATE", "Managed create identity does not match its receipt", 503);
     const ready = session;
     await withDirectoryLock(storeLockPath(m), async () => save(m, load(m).map((item) => item.requestId === row.requestId
       ? { ...item, status: "complete" as const, threadId: ready.uuid, updatedAt: new Date().toISOString() } : item)), "control create receipt");
     return { requestId: row.requestId, target: managedPeer(m.rcPrefix, session), workspace: row.workspace, duplicate,
-      ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }) };
+      ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
+      ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }) };
   }, "control create request");
 }
 

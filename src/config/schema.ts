@@ -41,6 +41,10 @@ export const LaunchRecipeReferenceSchema = z.object({
   id: LaunchRecipeIdSchema,
   revision: LaunchRecipeRevisionSchema,
 }).strict();
+export const ModelSelectionSchema = z.object({
+  provider: z.string().min(1).max(128).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
+  model: z.string().min(1).max(256).regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/+-]*$/),
+}).strict();
 export const LaunchRecipeMetadataSchema = LaunchRecipeReferenceSchema.extend({
   digest: z.string().regex(/^[0-9a-f]{64}$/),
   capabilities: z.array(LaunchRecipeCapabilitySchema).max(32),
@@ -139,6 +143,7 @@ export const SessionSchema = z.object({
   /** Safe immutable identity of the host recipe that produced `flags` and `envFile`. The resolved
    * definition is deliberately not stored here: the existing session fields remain launch truth. */
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
+  modelSelection: ModelSelectionSchema.optional(),
   /** Per-session opt-out from the event feed. Undefined → follow the machine. Same two-level shape
    *  as `chatEnabled`, for the session nobody wants announced. */
   eventsEnabled: z.boolean().optional(),

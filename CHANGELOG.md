@@ -6,6 +6,22 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Read the native Codex model catalog before creating a conversation, with explicit host or exact
+  session source identity and bounded metadata-runtime cleanup.
+- Select a typed provider/model independently of a host launch recipe; retain it in create
+  idempotency, native admission, restart and safe control projections.
+- Add bounded, read-only `directory.list` and typed `directories` clients for workspace pickers,
+  with hidden-file opt-in, symlink refusal and directory-versioned pagination.
+
+### Fixed
+
+- Connect session catalog reads to their exact owned runtime instead of an unrelated machine socket.
+- Preserve the loaded thread model when applying Plan and other native collaboration presets.
+- Do not request historical turn pagination for a freshly created thread; observe its bootstrap
+  on the existing native subscription instead of racing thread-store materialization.
+
 ## [0.39.22] — 2026-08-29
 
 expose the provider-owned Codex model catalog as a bounded control read

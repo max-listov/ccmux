@@ -1,6 +1,7 @@
 import { ApiError, createClient, type ClientFetch } from "stitchkit";
 import { defineContract } from "stitchkit/contract";
 import { z } from "zod";
+import { ControlDirectoryReadSchema, ControlDirectoryResultSchema } from "./directorySchema.ts";
 import { RC_PREFIX_RE } from "../config/schema.ts";
 import {
   CONTROL_MAX_BYTES,
@@ -42,6 +43,7 @@ export const ControlServiceOperationSchema = z.enum([
   "native.respond",
   "session.wait",
   "model.list",
+  "directory.list",
 ]);
 export type ControlServiceOperation = z.infer<typeof ControlServiceOperationSchema>;
 
@@ -56,6 +58,7 @@ export const ControlServiceEffectSchema = z.enum([
   "native.respond",
   "session.wait",
   "model.read",
+  "directory.read",
 ]).refine((effect) => /^[a-z0-9][a-z0-9._-]*$/.test(effect), "invalid service effect identifier");
 export type ControlServiceEffect = z.infer<typeof ControlServiceEffectSchema>;
 
@@ -70,6 +73,7 @@ export const controlServiceEffects = {
   "native.respond": "native.respond",
   "session.wait": "session.wait",
   "model.list": "model.read",
+  "directory.list": "directory.read",
 } satisfies Record<ControlServiceOperation, ControlServiceEffect>;
 
 const ControlServiceLimitsSchema = z
@@ -124,6 +128,7 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
     { id: "native.respond", effect: controlServiceEffects["native.respond"], limits: { requestBytes: 64 * 1024, responseBytes: 8192, timeoutMs: 10_000 } },
     { id: "session.wait", effect: controlServiceEffects["session.wait"], limits: { requestBytes: 8192, responseBytes: 64 * 1024, timeoutMs: 30_000 } },
     { id: "model.list", effect: controlServiceEffects["model.list"], limits: { requestBytes: 4096, responseBytes: 256 * 1024, timeoutMs: 10_000 } },
+    { id: "directory.list", effect: controlServiceEffects["directory.list"], limits: { requestBytes: 16 * 1024, responseBytes: 256 * 1024, timeoutMs: 10_000 } },
   ],
 });
 
@@ -175,6 +180,7 @@ export const controlServiceInputs = {
   "native.respond": ControlNativeResponseSchema,
   "session.wait": ControlServiceWaitSchema,
   "model.list": ControlModelsReadSchema,
+  "directory.list": ControlDirectoryReadSchema,
 };
 
 export const controlServiceOutputs = {
@@ -188,6 +194,7 @@ export const controlServiceOutputs = {
   "native.respond": ControlNativeResponseReceiptSchema,
   "session.wait": ControlWaitResultSchema,
   "model.list": ControlModelCatalogSchema,
+  "directory.list": ControlDirectoryResultSchema,
 };
 
 function serviceReply<T>(result: z.ZodType<T>) {
@@ -205,6 +212,7 @@ export const ccmuxControlServiceContract = defineContract(
   { prefix: CCMUX_CONTROL_SERVICE_PREFIX },
   {
     get: { method: "POST", path: "/session.get", desc: "Read one exact managed session", input: ControlTargetSchema, output: serviceReply(ControlRowSchema), idempotent: true, meta: { effect: controlServiceEffects["session.get"] } },
+    directories: { method: "POST", path: "/directory.list", desc: "Read a bounded directory page", input: ControlDirectoryReadSchema, output: serviceReply(ControlDirectoryResultSchema), idempotent: true, meta: { effect: controlServiceEffects["directory.list"] } },
     create: { method: "POST", path: "/session.create", desc: "Idempotently create one managed Codex session", input: ControlCreateSchema, output: serviceReply(ControlCreateReceiptSchema), idempotent: true, timeout: 30_000, meta: { effect: controlServiceEffects["session.create"] } },
     archive: { method: "POST", path: "/session.archive", desc: "Archive one exact managed identity", input: ControlTargetSchema, output: serviceReply(ControlArchiveReceiptSchema), idempotent: true, meta: { effect: controlServiceEffects["session.archive"] } },
     message: { method: "POST", path: "/message.send", desc: "Accept one identity-pinned durable message", input: ControlMessageSchema, output: serviceReply(ControlMessageReceiptSchema), idempotent: true, meta: { effect: controlServiceEffects["message.send"] } },

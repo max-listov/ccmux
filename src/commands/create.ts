@@ -15,6 +15,7 @@ import { getProvider } from "../agent/index.ts";
 import { killSessionIfGeneration } from "../tmux/tmux.ts";
 import { startBootstrapSession, startSession } from "./lifecycle.ts";
 import { preflightOwnedCodex } from "../agent/codex/ownedLaunch.ts";
+import type { ModelSelection } from "../config/modelSelectionFlags.ts";
 
 export type CreateManagedInput = {
   name: string;
@@ -29,6 +30,7 @@ export type CreateManagedInput = {
    *  otherwise a session is born inheriting and has to be migrated the day it is made. */
   envFile?: string;
   launchRecipe?: LaunchRecipeMetadata;
+  modelSelection?: ModelSelection;
 };
 
 export type CodexBootstrapOperation =
@@ -47,6 +49,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
     ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
     ...(input.launchRecipe === undefined ? {} : { launchRecipe: input.launchRecipe }),
+    ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
   });
 }
 

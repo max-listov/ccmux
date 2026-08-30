@@ -103,6 +103,7 @@ test("fresh admission retries the named empty-rollout failure only after committ
     expect(f.requests.indexOf("thread/start")).toBeLessThan(f.requests.indexOf("turn/start"));
     expect(f.requests.filter((method) => method === "turn/start")).toHaveLength(2);
     expect(f.turnMessageIds).toEqual([f.s.uuid, f.s.uuid]);
+    expect(f.requests).not.toContain("thread/turns/list");
   } finally { await connection.close("stopped"); f.close(); }
 });
 
