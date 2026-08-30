@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.24] — 2026-08-30
+
+add managed OpenCode and capability-aware runtime control
+
 ### Added
 
 - Discover execution runtimes and explicit capabilities through `runtime.list` and typed clients;
@@ -23,7 +27,6 @@ the GitHub Release with that section as the notes.
   tool payloads out of the public feed; retain bounded private diagnostics for the execution host.
 - Preserve existing Claude/Codex behavior. The optional custom harness remains explicitly unavailable
   pending its published dependency and real acceptance; no substitute agent loop is shipped.
-
 ## [0.39.23] — 2026-08-30
 
 discover models before first chat and preserve native selection
