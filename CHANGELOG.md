@@ -6,10 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.33] — 2026-08-30
+
+qualify native approval acceptance
+
 - Qualify native approval acceptance with a narrow host-owner fixture mandate and fail immediately
   if the native turn settles without requesting permission. Verify cancellation against the published
   runtime/client and record completed tool-outcome and suspended-request acceptance.
-
 ## [0.39.32] — 2026-08-30
 
 preserve native tool outcomes and suspended cancellation
