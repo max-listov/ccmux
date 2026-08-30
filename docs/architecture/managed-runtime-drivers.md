@@ -80,9 +80,13 @@ published dependency and acceptance are available.
 
 Existing Claude/Codex rows need no migration. Runtime selection defaults to Codex at the public
 create boundary, and old create fingerprints remain unchanged. Rollout restarts only the daemon;
-existing session writers remain alive. Newly created OpenCode rows require this release or newer:
-before rolling back to a version that cannot parse their runtime, stop/archive those isolated rows
-and retain a registry backup. Never delete native history or silently relabel a row as Codex.
+existing session writers remain alive. Newly created OpenCode rows require this release or newer,
+including archived rows: archive retains their runtime and continuation fields. A bundle-only
+rollback cannot make an older parser understand them. Before native admission, retain a registry
+backup. If rollback is necessary, stop native writers and the daemon, preserve the current registry
+and journals, and restore a verified compatible registry snapshot before starting the older daemon.
+Do not roll back if that snapshot would discard later registrations or identity changes; use a
+forward fix instead. Never delete native history or silently relabel a row as Codex.
 
 ## Reference implementations
 

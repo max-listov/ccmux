@@ -129,7 +129,9 @@ try {
   await until("resumed native turn", async () => (await service.wait({ target, timeoutMs: 1_000 })).outcome === "completed");
   report("restart-resume", { managedId: target.threadId, nativeId: receipt.nativeSession?.id });
   await service.archive({ target });
-  check(loadSessions(m)[0]?.archived, "Archive did not preserve the registration");
+  const archived = loadSessions(m).find(row => row.uuid === target.threadId);
+  check(archived?.archived && archived.nativeSession?.id === receipt.nativeSession?.id,
+    "Archive did not preserve the exact native registration");
   report("completed", { publicService: true, duplicateCreate: true, duplicateMessage: true, toolTurn: true, restartResume: true, archive: true });
 } finally {
   for (const session of loadSessions(m)) await killSession(m, session.name);
