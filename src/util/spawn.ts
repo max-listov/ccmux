@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn } from "node:child_process";
+import { spawn as nodeSpawn } from 'node:child_process';
 
 // The ONLY place external processes are launched (except the foreground claude in
 // commands/run.ts). Everything is an argv ARRAY → no shell, no quoting, no globbing.
@@ -8,22 +8,29 @@ export type RunResult = { code: number; stdout: string; stderr: string; timedOut
 /** Kill the child once `timeoutMs` elapses; returns a canceller so the happy path clears the timer.
  *  Needed for anything that talks to the network (ssh): a blackholed route never refuses and never
  *  returns, so without a deadline the caller hangs forever instead of failing honestly. */
-function armTimeout(proc: { kill: (sig?: number | NodeJS.Signals) => void }, timeoutMs: number | undefined, onFire: () => void): () => void {
+function armTimeout(
+  proc: { kill: (sig?: number | NodeJS.Signals) => void },
+  timeoutMs: number | undefined,
+  onFire: () => void,
+): () => void {
   if (timeoutMs === undefined) return () => {};
   const t = setTimeout(() => {
     onFire();
-    proc.kill("SIGKILL");
+    proc.kill('SIGKILL');
   }, timeoutMs);
   return () => clearTimeout(t);
 }
 
-export async function run(argv: string[], opts?: { cwd?: string; timeoutMs?: number }): Promise<RunResult> {
+export async function run(
+  argv: string[],
+  opts?: { cwd?: string; timeoutMs?: number },
+): Promise<RunResult> {
   const cwd = opts?.cwd;
   const proc = Bun.spawn(argv, {
     ...(cwd !== undefined ? { cwd } : {}),
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
   let timedOut = false;
   const disarm = armTimeout(proc, opts?.timeoutMs, () => {
@@ -40,11 +47,15 @@ export async function run(argv: string[], opts?: { cwd?: string; timeoutMs?: num
 
 /** Like `run`, but pipes `input` to the child's stdin — for `tmux load-buffer -` (payload via
  *  stdin avoids argv length limits and any escaping). */
-export async function runWithInput(argv: string[], input: string, opts?: { timeoutMs?: number }): Promise<RunResult> {
+export async function runWithInput(
+  argv: string[],
+  input: string,
+  opts?: { timeoutMs?: number },
+): Promise<RunResult> {
   const proc = Bun.spawn(argv, {
     stdin: new TextEncoder().encode(input),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
   let timedOut = false;
   const disarm = armTimeout(proc, opts?.timeoutMs, () => {
@@ -71,5 +82,5 @@ export async function runWithInput(argv: string[], input: string, opts?: { timeo
 export function runDetached(argv: string[]): void {
   const [cmd, ...args] = argv;
   if (cmd === undefined) return;
-  nodeSpawn(cmd, args, { detached: true, stdio: "ignore" }).unref();
+  nodeSpawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
 }

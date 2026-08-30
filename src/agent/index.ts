@@ -1,17 +1,24 @@
-import { existsSync, statSync } from "node:fs";
-import type { AgentKind, ContextInfo, MachineConfig, Session, TranscriptMessage, TranscriptStats } from "../types.ts";
-import { claudeProvider } from "./claude/index.ts";
-import { codexProvider } from "./codex/index.ts";
-import { nativeProvider } from "../runtime/provider.ts";
-import { hasNativeRuntime } from "../runtime/capabilities.ts";
-import { rcName } from "../config/machine.ts";
-import { MtimeCache } from "../util/mtimeCache.ts";
-import { readLines, readTailLines, readTailUntil } from "../util/readLines.ts";
-import type { LaunchInput } from "./launchInputs.ts";
+import { existsSync, statSync } from 'node:fs';
+import { rcName } from '../config/machine.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { nativeProvider } from '../runtime/provider.ts';
+import type {
+  AgentKind,
+  ContextInfo,
+  MachineConfig,
+  Session,
+  TranscriptMessage,
+  TranscriptStats,
+} from '../types.ts';
+import { MtimeCache } from '../util/mtimeCache.ts';
+import { readLines, readTailLines, readTailUntil } from '../util/readLines.ts';
+import { claudeProvider } from './claude/index.ts';
+import { codexProvider } from './codex/index.ts';
+import type { LaunchInput } from './launchInputs.ts';
 
 // Format sniff lives in its own light module (normalize-only deps) so the public library seam can
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
-export { detect } from "./detect.ts";
+export { detect } from './detect.ts';
 
 /** Live status scraped from a rendered pane (pure: text → status). The MODEL is NOT here — it's
  *  conversation metadata read from jsonl (source of truth), not a live pane signal. */
@@ -19,7 +26,7 @@ export interface PaneScan {
   ready: boolean; // the agent's interactive UI is drawn (booted) — restart waitReady gates on this
   /** What this ONE rendered frame proves. `indeterminate` is a drawn frame with no positive work
    *  marker, but also no structural proof of an idle turn boundary. */
-  state: "working" | "idle" | "indeterminate";
+  state: 'working' | 'idle' | 'indeterminate';
   /** Short title of the blocking menu the pane is sitting at, else null. A session at a menu is not
    *  idle: it cannot act until a human (or the machine's policy) answers, and calling that state
    *  "idle" is how six sessions once came back from a restart dead while the fleet read healthy. */
@@ -28,7 +35,14 @@ export interface PaneScan {
   context: ContextInfo; // structured
 }
 
-export type ChatPaneState = "deliverable" | "working" | "queued-input" | "menu" | "input-busy" | "not-drawn" | "unknown";
+export type ChatPaneState =
+  | 'deliverable'
+  | 'working'
+  | 'queued-input'
+  | 'menu'
+  | 'input-busy'
+  | 'not-drawn'
+  | 'unknown';
 
 export interface ChatPaneInspection {
   state: ChatPaneState;
@@ -78,10 +92,20 @@ export interface AgentProvider {
   // Some agents (Claude) silently FORK a conversation to a new uuid (e.g. out-of-context
   // continuation) — this reports where the conversation lives NOW, or null if unmoved.
   // Optional: agents whose session ids are actually stable don't implement it.
-  detectFork?(s: Session, m: MachineConfig, rcTitle: string, takenUuids: ReadonlySet<string>): string | null;
+  detectFork?(
+    s: Session,
+    m: MachineConfig,
+    rcTitle: string,
+    takenUuids: ReadonlySet<string>,
+  ): string | null;
   // transcript (raw JSONL → shared contract). endLine bounds the upper edge of the window
   // for backward pagination; omit to parse through the end of the file.
-  parse(lines: string[], startLine: number, textLimit?: number, endLine?: number): TranscriptMessage[];
+  parse(
+    lines: string[],
+    startLine: number,
+    textLimit?: number,
+    endLine?: number,
+  ): TranscriptMessage[];
   usedTokens(lines: string[]): number | null;
   // The conversation's CURRENT model, read from history (source of truth), or null if not yet
   // written / undetectable. Raw id (e.g. "claude-fable-5"); display formatting is prettyModel's job.
@@ -102,14 +126,14 @@ export interface AgentProvider {
   inspectChatPane?(styledPaneText: string): ChatPaneInspection;
   /** Codex has no lifecycle hook at turn start, so wait must observe the exact injected user record
    * before an older assistant record can count as this turn's completion. */
-  chatPickup?: "transcript";
+  chatPickup?: 'transcript';
 }
 
 const REGISTRY: Record<AgentKind, AgentProvider> = {
   claude: claudeProvider,
   codex: codexProvider,
-  opencode: nativeProvider("opencode"),
-  custom: nativeProvider("custom"),
+  opencode: nativeProvider('opencode'),
+  custom: nativeProvider('custom'),
 };
 
 export function getProvider(agent: AgentKind): AgentProvider {
@@ -129,7 +153,13 @@ export function supportsManagedInput(session: Session): boolean {
 const LAST_MESSAGE_WINDOW = 120;
 const LAST_MESSAGE_TEXT_LIMIT = 280;
 
-const EMPTY_STATS: TranscriptStats = { messages: 0, user: 0, assistant: 0, toolCalls: 0, thinking: 0 };
+const EMPTY_STATS: TranscriptStats = {
+  messages: 0,
+  user: 0,
+  assistant: 0,
+  toolCalls: 0,
+  thinking: 0,
+};
 const statsCache = new MtimeCache<TranscriptStats>();
 
 /** Whole-session composition, counted by re-parsing the full JSONL. Cached by mtime, so an idle
@@ -140,11 +170,11 @@ function computeStats(provider: AgentProvider, lines: string[]): TranscriptStats
   let toolCalls = 0;
   let thinking = 0;
   for (const msg of provider.parse(lines, 1)) {
-    if (msg.kind === "tool_call") toolCalls++;
-    else if (msg.kind === "thinking") thinking++;
-    else if (msg.kind === "message") {
-      if (msg.role === "user") user++;
-      else if (msg.role === "assistant") assistant++;
+    if (msg.kind === 'tool_call') toolCalls++;
+    else if (msg.kind === 'thinking') thinking++;
+    else if (msg.kind === 'message') {
+      if (msg.role === 'user') user++;
+      else if (msg.role === 'assistant') assistant++;
     }
   }
   return { messages: user + assistant, user, assistant, toolCalls, thinking };
@@ -182,7 +212,18 @@ export function readTranscript(
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path || !existsSync(path)) {
-    return { agent: provider.id, available: false, error: "transcript file not found", path: path ?? "", totalLines: 0, messages: [], mtimeMs: null, firstLine: 1, reachedStart: true, stats: EMPTY_STATS };
+    return {
+      agent: provider.id,
+      available: false,
+      error: 'transcript file not found',
+      path: path ?? '',
+      totalLines: 0,
+      messages: [],
+      mtimeMs: null,
+      firstLine: 1,
+      reachedStart: true,
+      stats: EMPTY_STATS,
+    };
   }
   const lines = readLines(path);
   const total = lines.length;
@@ -206,7 +247,18 @@ export function readTranscript(
   } catch {
     mtimeMs = null;
   }
-  return { agent: provider.id, available: true, error: null, path, totalLines: total, messages, mtimeMs, firstLine: start, reachedStart: start <= 1, stats };
+  return {
+    agent: provider.id,
+    available: true,
+    error: null,
+    path,
+    totalLines: total,
+    messages,
+    mtimeMs,
+    firstLine: start,
+    reachedStart: start <= 1,
+    stats,
+  };
 }
 
 // mtime-keyed caches: skip the tail-read + JSON parse when the transcript hasn't moved, and (just
@@ -217,7 +269,10 @@ const usedTokensCache = new MtimeCache<number | null>();
 
 /** The single most-recent message — for `list --json` lastMessage ("where it stopped").
  *  Tail-read: seq is window-relative here (display value, not a cursor). */
-export function lastTranscriptMessage(session: Session, m: MachineConfig): TranscriptMessage | null {
+export function lastTranscriptMessage(
+  session: Session,
+  m: MachineConfig,
+): TranscriptMessage | null {
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path) return null;
@@ -231,7 +286,11 @@ export function lastTranscriptMessage(session: Session, m: MachineConfig): Trans
 
 /** Tail window for live rendering (TUI transcript pane) — no absolute line numbers,
  *  cheap on big files. The exact/cursor contract stays on readTranscript. */
-export function tailTranscript(session: Session, m: MachineConfig, tail: number): TranscriptMessage[] {
+export function tailTranscript(
+  session: Session,
+  m: MachineConfig,
+  tail: number,
+): TranscriptMessage[] {
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path || !existsSync(path)) return [];
@@ -266,7 +325,9 @@ export function sessionUsedTokens(session: Session, m: MachineConfig): number | 
   const path = provider.historyFile(session, m);
   if (!path) return null;
   return usedTokensCache.get(path, () =>
-    provider.usedTokens(readTailUntil(path, USED_TOKENS_WINDOW, (lines) => provider.usedTokens(lines) !== null)),
+    provider.usedTokens(
+      readTailUntil(path, USED_TOKENS_WINDOW, (lines) => provider.usedTokens(lines) !== null),
+    ),
   );
 }
 
@@ -281,7 +342,9 @@ export function sessionModel(session: Session, m: MachineConfig): string | null 
   const path = provider.historyFile(session, m);
   if (!path) return null;
   return modelCache.get(path, () =>
-    provider.lastModel(readTailUntil(path, USED_TOKENS_WINDOW, (lines) => provider.lastModel(lines) !== null)),
+    provider.lastModel(
+      readTailUntil(path, USED_TOKENS_WINDOW, (lines) => provider.lastModel(lines) !== null),
+    ),
   );
 }
 

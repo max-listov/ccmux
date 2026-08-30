@@ -1,10 +1,10 @@
-import type { MachineConfig, PendingSession, Session } from "../types.ts";
-import { PendingSessionSchema, SessionSchema } from "./schema.ts";
-import { loadPendingRows, writePendingRows } from "./pendingStore.ts";
-import { loadReadyRows, writeReadyRows } from "./sessionStore.ts";
+import type { MachineConfig, PendingSession, Session } from '../types.ts';
+import { loadPendingRows, writePendingRows } from './pendingStore.ts';
+import { PendingSessionSchema, SessionSchema } from './schema.ts';
+import { loadReadyRows, writeReadyRows } from './sessionStore.ts';
 
 function promotedSession(pending: PendingSession): Session | null {
-  if (pending.status !== "promoted" || pending.uuid === undefined) return null;
+  if (pending.status !== 'promoted' || pending.uuid === undefined) return null;
   return SessionSchema.parse({
     ...pending.session,
     uuid: pending.uuid,
@@ -23,7 +23,10 @@ export function loadRegistrySessions(m: MachineConfig): Session[] {
     if (!promoted) continue;
     const byName = ready.find((session) => session.name === promoted.name);
     if (byName) {
-      if (byName.uuid !== promoted.uuid || byName.registrationGeneration !== promoted.registrationGeneration) {
+      if (
+        byName.uuid !== promoted.uuid ||
+        byName.registrationGeneration !== promoted.registrationGeneration
+      ) {
         throw new Error(`promoted session '${promoted.name}' conflicts with the ready registry`);
       }
       continue;
@@ -39,14 +42,19 @@ export function loadRegistrySessions(m: MachineConfig): Session[] {
 /** Complete or clean any promoted journal rows. Caller owns the session-registry lock. */
 export async function recoverPromotionsUnlocked(m: MachineConfig): Promise<void> {
   const pending = loadPendingRows(m);
-  const promoted = pending.map(promotedSession).filter((session): session is Session => session !== null);
+  const promoted = pending
+    .map(promotedSession)
+    .filter((session): session is Session => session !== null);
   if (promoted.length === 0) return;
   const ready = loadReadyRows(m);
   let changed = false;
   for (const session of promoted) {
     const byName = ready.find((item) => item.name === session.name);
     if (byName) {
-      if (byName.uuid !== session.uuid || byName.registrationGeneration !== session.registrationGeneration) {
+      if (
+        byName.uuid !== session.uuid ||
+        byName.registrationGeneration !== session.registrationGeneration
+      ) {
         throw new Error(`promoted session '${session.name}' conflicts with the ready registry`);
       }
       continue;
@@ -58,9 +66,12 @@ export async function recoverPromotionsUnlocked(m: MachineConfig): Promise<void>
     changed = true;
   }
   if (changed) await writeReadyRows(m, ready);
-  await writePendingRows(m, pending.filter((item) => item.status !== "promoted"));
+  await writePendingRows(
+    m,
+    pending.filter((item) => item.status !== 'promoted'),
+  );
 }
 
 export function promotedPending(pending: PendingSession, uuid: string): PendingSession {
-  return PendingSessionSchema.parse({ ...pending, status: "promoted", uuid });
+  return PendingSessionSchema.parse({ ...pending, status: 'promoted', uuid });
 }

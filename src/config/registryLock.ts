@@ -1,10 +1,17 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { join } from "node:path";
-import { z } from "zod";
-import type { MachineConfig } from "../types.ts";
-import { sessionRegistryLockPath } from "./paths.ts";
+import { randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
+import { z } from 'zod';
+import type { MachineConfig } from '../types.ts';
+import { sessionRegistryLockPath } from './paths.ts';
 
 const WAIT_MS = 20;
 /** How long a caller waits for the lock before giving up. */
@@ -28,7 +35,7 @@ const LockOwnerSchema = z.object({ pid: z.number().int().positive(), token: z.uu
 type LockOwner = z.infer<typeof LockOwnerSchema>;
 
 function ownerPath(lock: string): string {
-  return join(lock, "owner.json");
+  return join(lock, 'owner.json');
 }
 
 function processAlive(pid: number): boolean {
@@ -36,15 +43,15 @@ function processAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return error instanceof Error && "code" in error && error.code === "EPERM";
+    return error instanceof Error && 'code' in error && error.code === 'EPERM';
   }
 }
 
 /** What a waiter should do about the lock it just found. */
 export type LockVerdict =
-  | { kind: "held"; pid: number }
-  | { kind: "reap"; why: string }
-  | { kind: "wait"; why: string };
+  | { kind: 'held'; pid: number }
+  | { kind: 'reap'; why: string }
+  | { kind: 'wait'; why: string };
 
 /**
  * Pure: facts about the lock → what to do about it.
@@ -66,21 +73,21 @@ export function lockVerdict(
 ): LockVerdict {
   if (owner !== null) {
     return alive(owner.pid)
-      ? { kind: "held", pid: owner.pid }
-      : { kind: "reap", why: `owner pid ${owner.pid} is gone` };
+      ? { kind: 'held', pid: owner.pid }
+      : { kind: 'reap', why: `owner pid ${owner.pid} is gone` };
   }
   // No owner, or one we cannot read. Unreadable is not evidence of anything, so it is treated the
   // same as absent rather than as permission to take the lock.
   return nowMs - mtimeMs <= UNCLAIMED_GRACE_MS
-    ? { kind: "wait", why: "a claim may be in flight" }
-    : { kind: "reap", why: "no owner was ever recorded" };
+    ? { kind: 'wait', why: 'a claim may be in flight' }
+    : { kind: 'reap', why: 'no owner was ever recorded' };
 }
 
 function readOwner(lock: string): LockOwner | null {
   try {
     const path = ownerPath(lock);
     if (!existsSync(path)) return null;
-    return LockOwnerSchema.safeParse(JSON.parse(readFileSync(path, "utf8"))).data ?? null;
+    return LockOwnerSchema.safeParse(JSON.parse(readFileSync(path, 'utf8'))).data ?? null;
   } catch {
     return null;
   }
@@ -93,9 +100,9 @@ function inspectAndReap(lock: string): LockVerdict {
   try {
     verdict = lockVerdict(Date.now(), statSync(lock).mtimeMs, readOwner(lock));
   } catch {
-    return { kind: "wait", why: "the lock vanished while being examined" };
+    return { kind: 'wait', why: 'the lock vanished while being examined' };
   }
-  if (verdict.kind !== "reap") return verdict;
+  if (verdict.kind !== 'reap') return verdict;
   try {
     unlinkSync(ownerPath(lock));
   } catch {
@@ -110,22 +117,31 @@ function inspectAndReap(lock: string): LockVerdict {
 }
 
 /** Serialize every sessions/pending read-modify-write transaction across ccmux processes. */
-export async function withSessionRegistryLock<T>(m: MachineConfig, run: () => Promise<T>): Promise<T> {
-  return withDirectoryLock(sessionRegistryLockPath(m), run, "session registry");
+export async function withSessionRegistryLock<T>(
+  m: MachineConfig,
+  run: () => Promise<T>,
+): Promise<T> {
+  return withDirectoryLock(sessionRegistryLockPath(m), run, 'session registry');
 }
 
 /** The same owner-aware exclusion for a fixed, caller-owned filesystem resource. */
-export async function withDirectoryLock<T>(lock: string, run: () => Promise<T>, label = "directory"): Promise<T> {
+export async function withDirectoryLock<T>(
+  lock: string,
+  run: () => Promise<T>,
+  label = 'directory',
+): Promise<T> {
   const token = randomUUID();
   mkdirSync(dirname(lock), { recursive: true });
   const deadline = Date.now() + TIMEOUT_MS;
-  let last: LockVerdict = { kind: "wait", why: "not yet examined" };
+  let last: LockVerdict = { kind: 'wait', why: 'not yet examined' };
   for (;;) {
     let created = false;
     try {
       mkdirSync(lock, { mode: 0o700 });
       created = true;
-      writeFileSync(ownerPath(lock), `${JSON.stringify({ pid: process.pid, token })}\n`, { mode: 0o600 });
+      writeFileSync(ownerPath(lock), `${JSON.stringify({ pid: process.pid, token })}\n`, {
+        mode: 0o600,
+      });
       break;
     } catch {
       // A directory this process created but could not claim is its own wreck, and it is cleared
@@ -143,8 +159,8 @@ export async function withDirectoryLock<T>(lock: string, run: () => Promise<T>, 
       if (Date.now() >= deadline) {
         // Say what was in the way. A bare "timed out" sent a reader looking for contention that did
         // not exist; the pid of a live holder, or the absence of one, is the first thing to know.
-        const detail = last.kind === "held" ? `held by pid ${last.pid}` : last.why;
-        throw new Error(label + " lock timed out after " + TIMEOUT_MS + "ms (" + detail + ")");
+        const detail = last.kind === 'held' ? `held by pid ${last.pid}` : last.why;
+        throw new Error(`${label} lock timed out after ${TIMEOUT_MS}ms (${detail})`);
       }
       await Bun.sleep(WAIT_MS);
     }

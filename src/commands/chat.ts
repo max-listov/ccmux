@@ -1,24 +1,39 @@
-import { loadMachineConfig } from "../config/machine.ts";
-import { setSessionChatEnabled } from "../config/sessions.ts";
-import { loadLedger } from "../chat/store.ts";
-import { loadOutbox } from "../fleet/outbox.ts";
-import { loadOutboxAcked } from "../fleet/flush.ts";
-import { localRows, mergeFleetLog, fmtRow, machineColumnWidth, LogRowSchema, LogPayloadSchema, type LogMachine, type LogRow } from "../chat/fleetLog.ts";
-import { ZERO_CURSOR, followRows, machineFrame, parseCursor, type LogFrame } from "../chat/logFeed.ts";
-import { z } from "zod";
-import { peersOf, runPeer } from "../fleet/transport.ts";
-import { forwardIfRemote } from "../fleet/forward.ts";
-import { log } from "../util/log.ts";
-import { archiveDir } from "../config/paths.ts";
-import { existsSync, readdirSync } from "node:fs";
-import type { MachineConfig } from "../types.ts";
+import { existsSync, readdirSync } from 'node:fs';
+import { z } from 'zod';
+import {
+  fmtRow,
+  type LogMachine,
+  LogPayloadSchema,
+  type LogRow,
+  LogRowSchema,
+  localRows,
+  machineColumnWidth,
+  mergeFleetLog,
+} from '../chat/fleetLog.ts';
+import {
+  followRows,
+  type LogFrame,
+  machineFrame,
+  parseCursor,
+  ZERO_CURSOR,
+} from '../chat/logFeed.ts';
+import { loadLedger } from '../chat/store.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { archiveDir } from '../config/paths.ts';
+import { setSessionChatEnabled } from '../config/sessions.ts';
+import { loadOutboxAcked } from '../fleet/flush.ts';
+import { forwardIfRemote } from '../fleet/forward.ts';
+import { loadOutbox } from '../fleet/outbox.ts';
+import { peersOf, runPeer } from '../fleet/transport.ts';
+import type { MachineConfig } from '../types.ts';
+import { log } from '../util/log.ts';
 
 const USAGE =
-  "usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--json|--framed]\n             | on <name> | off <name> | default <name>>";
+  'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
 
 /** Where the transport hands back a resume point when it reopens a capped stream. The same variable
  *  the session feed reads, because it is the transport's mechanism and not this feed's. */
-const RESUME_CURSOR_ENV = "STITCHWIRE_STREAM_CURSOR";
+const RESUME_CURSOR_ENV = 'STITCHWIRE_STREAM_CURSOR';
 
 interface Source {
   machine: LogMachine;
@@ -27,10 +42,12 @@ interface Source {
 
 /** What we require of a peer's answer before looking at individual rows: just "it has a rows list".
  *  Everything stricter is applied per row, so one bad line is not a lost machine. */
-const RemoteEnvelopeSchema = z.object({ rows: z.array(z.record(z.string(), z.unknown())).default([]) });
+const RemoteEnvelopeSchema = z.object({
+  rows: z.array(z.record(z.string(), z.unknown())).default([]),
+});
 
 /** The marker the wire puts on an answer it had to cut at its stream cap. */
-const TRUNCATION_MARKER = "output truncated";
+const TRUNCATION_MARKER = 'output truncated';
 
 /**
  * Why a peer's answer could not be read.
@@ -45,11 +62,11 @@ export function unreadableReason(stdout: string, stderr: string): string {
     return `answer was cut at the transport's cap (${stdout.length} bytes arrived) — ask for fewer rows with -n, or follow the feed instead: ccmux chat log --follow`;
   }
   // A cut answer that carried no marker still betrays itself: it is large AND it does not close.
-  const looksCut = stdout.length > 64 * 1024 && !stdout.trimEnd().endsWith("}");
+  const looksCut = stdout.length > 64 * 1024 && !stdout.trimEnd().endsWith('}');
   if (looksCut) {
     return `answer arrived incomplete (${stdout.length} bytes, no closing brace) — ask for fewer rows with -n, or follow the feed instead: ccmux chat log --follow`;
   }
-  return "unreadable log output (older ccmux?)";
+  return 'unreadable log output (older ccmux?)';
 }
 
 /** Ask every OTHER machine for its own log. The remote call deliberately omits `--fleet`, so the
@@ -63,9 +80,18 @@ async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
   const others = peersOf(m).filter((p) => p.machine !== m.rcPrefix);
   return Promise.all(
     others.map(async ({ machine, alias }): Promise<Source> => {
-      const fail = (error: string): Source => ({ machine: { machine, ok: false, error }, rows: [] });
-      const r = await runPeer(m, machine, alias, ["ccmux", "chat", "log", "-n", String(limit), "--json"], { timeoutMs: 20_000 });
-      if (r.transportFailed) return fail(r.failureDetail ?? "unreachable (no transit right now)");
+      const fail = (error: string): Source => ({
+        machine: { machine, ok: false, error },
+        rows: [],
+      });
+      const r = await runPeer(
+        m,
+        machine,
+        alias,
+        ['ccmux', 'chat', 'log', '-n', String(limit), '--json'],
+        { timeoutMs: 20_000 },
+      );
+      if (r.transportFailed) return fail(r.failureDetail ?? 'unreachable (no transit right now)');
       if (r.code !== 0) return fail(`remote ccmux failed (exit ${r.code})`);
       try {
         const envelope = RemoteEnvelopeSchema.safeParse(JSON.parse(r.stdout)).data;
@@ -104,25 +130,32 @@ async function cmdChatFeed(m: MachineConfig, args: string[]): Promise<number> {
   let since: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === "--follow" || a === "-f") continue;
-    else if (a === "--json") json = true;
-    else if (a === "--framed") framed = true;
-    else if (a === "--since") since = args[++i];
-    else if (a?.startsWith("-")) return console.error(`chat log: unknown flag '${a}'\n${USAGE}`), 1;
+    if (a === '--follow' || a === '-f') continue;
+    else if (a === '--json') json = true;
+    else if (a === '--framed') framed = true;
+    else if (a === '--since') since = args[++i];
+    else if (a?.startsWith('-')) {
+      console.error(`chat log: unknown flag '${a}'\n${USAGE}`);
+      return 1;
+    }
   }
   const explicit = since;
   const fromEnv = process.env[RESUME_CURSOR_ENV];
-  if (since === undefined && fromEnv !== undefined && fromEnv !== "") since = fromEnv;
+  if (since === undefined && fromEnv !== undefined && fromEnv !== '') since = fromEnv;
 
   let cursor = ZERO_CURSOR;
   if (since !== undefined) {
     const parsed = parseCursor(since);
-    if ("error" in parsed) {
+    if ('error' in parsed) {
       // Loud, including when it came from the environment: a cursor is only ever handed back by this
       // same producer, so a bad one is a defect. Ignoring it and starting from "now" is the failure
       // with no symptom — the stream opens, rows flow, and the gap simply does not exist.
-      const source = explicit === undefined ? `${RESUME_CURSOR_ENV} carried an unusable cursor` : "--since needs a cursor";
-      return console.error(`chat log: ${source} — ${parsed.error}`), 1;
+      const source =
+        explicit === undefined
+          ? `${RESUME_CURSOR_ENV} carried an unusable cursor`
+          : '--since needs a cursor';
+      console.error(`chat log: ${source} — ${parsed.error}`);
+      return 1;
     }
     cursor = parsed.cursor;
   }
@@ -133,7 +166,9 @@ async function cmdChatFeed(m: MachineConfig, args: string[]): Promise<number> {
     if (framed) {
       // The envelope the transport resumes on: `data` is the payload, `cursor` is where the reader
       // got to. Fixed and strict on the other side, so this builds exactly it and nothing more.
-      process.stdout.write(`${JSON.stringify({ data: `${JSON.stringify(frame)}\n`, cursor: frame.cursor })}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ data: `${JSON.stringify(frame)}\n`, cursor: frame.cursor })}\n`,
+      );
       return;
     }
     process.stdout.write(`${json || framed ? JSON.stringify(frame) : fmtFrame(frame)}\n`);
@@ -149,27 +184,27 @@ async function cmdChatFeed(m: MachineConfig, args: string[]): Promise<number> {
       stop();
       resolve();
     };
-    process.on("SIGINT", end);
-    process.on("SIGTERM", end);
-    process.stdout.on("error", end);
+    process.on('SIGINT', end);
+    process.on('SIGTERM', end);
+    process.stdout.on('error', end);
   });
   return 0;
 }
 
 /** One frame as a line a person can read. */
 function fmtFrame(frame: LogFrame): string {
-  if (frame.kind === "machine") {
+  if (frame.kind === 'machine') {
     return frame.machine.ok
       ? `[${frame.cursor}] ${frame.machine.machine}: watching`
-      : `[${frame.cursor}] ${frame.machine.machine}: ${frame.machine.error ?? "unavailable"}`;
+      : `[${frame.cursor}] ${frame.machine.machine}: ${frame.machine.error ?? 'unavailable'}`;
   }
   return `[${frame.cursor}] ${fmtRow(frame.row)}`;
 }
 
 async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
-  if (args.includes("--follow") || args.includes("-f")) return cmdChatFeed(m, args);
-  const nIdx = args.indexOf("-n");
-  const parsed = nIdx >= 0 ? Number.parseInt(args[nIdx + 1] ?? "", 10) : 30;
+  if (args.includes('--follow') || args.includes('-f')) return cmdChatFeed(m, args);
+  const nIdx = args.indexOf('-n');
+  const parsed = nIdx >= 0 ? Number.parseInt(args[nIdx + 1] ?? '', 10) : 30;
   const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
   // Both halves of the exchange: what arrived (ledger) AND what we sent elsewhere (outbox) — the
   // initiator's side is exactly what was missing when a hand-off went to the wrong machine.
@@ -179,11 +214,11 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
   };
   // A peer is always asked WITHOUT `--fleet` (see remoteLogs), so answering about ourselves here is
   // what makes the wire format the same shape as the human-facing one.
-  const sources = args.includes("--fleet") ? [self, ...(await remoteLogs(m, limit))] : [self];
+  const sources = args.includes('--fleet') ? [self, ...(await remoteLogs(m, limit))] : [self];
   const machines = sources.map((s) => s.machine);
   const rows = mergeFleetLog(sources, limit);
 
-  if (args.includes("--json")) {
+  if (args.includes('--json')) {
     // Emitted THROUGH the schema, so the shape a peer parses and the shape we print are one
     // definition rather than two that can drift.
     console.log(JSON.stringify(LogPayloadSchema.parse({ machines, rows })));
@@ -216,30 +251,39 @@ export async function cmdChat(args: string[]): Promise<number> {
   const sub = args[0];
   const m = loadMachineConfig();
 
-  if (sub === "log") return cmdChatLog(m, args.slice(1));
+  if (sub === 'log') return cmdChatLog(m, args.slice(1));
 
-  if (sub === "on" || sub === "off" || sub === "default") {
+  if (sub === 'on' || sub === 'off' || sub === 'default') {
     const target = args[1];
     if (target === undefined) {
-      console.log(`usage: ccmux chat ${sub} <name>   ·   <machine>:<name> for another fleet machine`);
+      console.log(
+        `usage: ccmux chat ${sub} <name>   ·   <machine>:<name> for another fleet machine`,
+      );
       return 1;
     }
-    const fwd = await forwardIfRemote(target, "chat", [], { m, verbArgs: [sub] });
+    const fwd = await forwardIfRemote(target, 'chat', [], { m, verbArgs: [sub] });
     if (fwd.done) return fwd.code;
     const name = fwd.session;
-    const ok = await setSessionChatEnabled(m, name, sub === "default" ? undefined : sub === "on");
+    const ok = await setSessionChatEnabled(m, name, sub === 'default' ? undefined : sub === 'on');
     if (!ok) {
       console.log(`no such session: ${name}`);
       return 1;
     }
-    log.info({ msg: "chat toggled", name, enabled: sub === "default" ? null : sub === "on" });
+    log.info({ msg: 'chat toggled', name, enabled: sub === 'default' ? null : sub === 'on' });
     // Chat framing + the Stop hook are LAUNCH-time (see claude/launch.ts settingsArg) — so, like
     // `ccmux mode` and `ccmux router`, this only takes effect on the next restart. Saying so here is
     // the difference between "it works" and "I toggled it and nothing happened".
-    const state = sub === "default" ? `default (${m.chatEnabled ? "enabled" : "disabled"})` : sub === "on" ? "enabled" : "disabled";
+    const state =
+      sub === 'default'
+        ? `default (${m.chatEnabled ? 'enabled' : 'disabled'})`
+        : sub === 'on'
+          ? 'enabled'
+          : 'disabled';
     console.log(`${name}: chat ${state} — applies on: ccmux restart ${name}`);
-    if (sub === "on" || (sub === "default" && m.chatEnabled)) {
-      console.log(`  then: ccmux msg ${name} "…" --task <name>   ·   --defer waits for its turn to end`);
+    if (sub === 'on' || (sub === 'default' && m.chatEnabled)) {
+      console.log(
+        `  then: ccmux msg ${name} "…" --task <name>   ·   --defer waits for its turn to end`,
+      );
       console.log(`  restarting the whole fleet at once: ccmux restart --all`);
     }
     return 0;
@@ -254,10 +298,12 @@ export async function cmdChat(args: string[]): Promise<number> {
 function archivedNote(m: MachineConfig): string {
   try {
     const dir = archiveDir(m);
-    if (!existsSync(dir)) return "";
+    if (!existsSync(dir)) return '';
     const count = readdirSync(dir).length;
-    return count === 0 ? "" : ` — ${count} superseded file(s) from an earlier record generation are kept in ${dir}`;
+    return count === 0
+      ? ''
+      : ` — ${count} superseded file(s) from an earlier record generation are kept in ${dir}`;
   } catch {
-    return "";
+    return '';
   }
 }

@@ -67,7 +67,7 @@ an opaque ID is not itself authorization. Native history remains the conversatio
   something to expose in receipts, monitoring metadata, argv or diagnostic logs.
 - [x] Add granular image capabilities and model-modality checks using the provider's documented
   version-specific behavior; missing modality metadata must not be guessed into universal support.
-- [ ] Publish the typed local/service clients, descriptor, attachment retrieval contract for
+- [x] Publish the typed local/service clients, descriptor, attachment retrieval contract for
   authorized previews, architecture and minimal runnable consumer example. Keep bytes out of cheap
   status snapshots; expose safe reference metadata there only when needed.
 
@@ -87,7 +87,7 @@ an opaque ID is not itself authorization. Native history remains the conversatio
   Cancellation, disk exhaustion, chunk duplication/reordering and cleanup races are covered.
 - [x] Secret-like fixture data and storage paths are absent from outward diagnostics, public metadata
   and argv. Image bytes appear only in the authorized attachment/native-content paths that need them.
-- [ ] Current text input and interactive sessions pass regressions, without legacy client paths. Packed Bun/Node clients,
+- [x] Current text input and interactive sessions pass regressions, without legacy client paths. Packed Bun/Node clients,
   complete local gates and exact-SHA CI pass; release/artifact hashes and owned rollout parity are
   recorded against real image E2E, not merely an accepted upload receipt.
 
@@ -120,3 +120,27 @@ is not relabelled as cross-machine transport acceptance.
   `test/history-image-order.test.ts` covers reversed/repeated pointers and registration isolation.
 - [ ] Cross-machine image proof waits for the external transport's current descriptor/profile
   activation described in the umbrella task. Local service E2E is not labelled remote acceptance.
+
+## Published acceptance
+
+- [x] Corrective release `v0.39.26`, release/tag `24cdb31e2997e4deea9e0e36ee992bc1da71d782`;
+  native-package implementation `3c7235454e657cefa5ec570d6fb4c927293b07e4` and metadata privacy fix
+  `5b1692f9e3e5ceb7879a0bf99f801316072cab56`. Complete gate: 929 tests, 4,556 assertions;
+  both independent implementation re-reviews passed. Exact-SHA CI
+  [33296143751](https://github.com/max-listov/ccmux/actions/runs/33296143751) passed.
+- [x] Downloaded runtime SHA-256: `6d2685bc49c517ba4abd812f5ed16714d763189328aa8c84fa8356a96c49ed42`;
+  downloaded client archive SHA-256: `15475d4f55670be57f803802c78a7d009f0280f0dcdbb88f686ef71100f6b3d8`.
+  Actual published bytes passed packed installation, Bun/Node and both TypeScript resolution checks.
+  All three owned installations match the runtime version/hash and report live owner projections.
+  The 33 pre-existing running sessions retained identity and remained running.
+- [x] Repeated installed-bundle/public-client acceptance passed on real Codex and OpenCode: actual
+  image recognition, exact preview, native content/history, idempotent create/message/fork, distinct
+  fork identity, source preservation, retained image access, native compaction with one revision/reset,
+  and retained unfinished checkpoint plus prior image facts. Internal attachment paths are absent
+  from public history/content. Evidence SHA-256:
+  `17edd555128d5e156b5e1397246ef193fee29258e7c84a716e7b7cdce3f68d9a`.
+  Cleanup archived/stopped all four fixture sessions and preserved unrelated registrations/daemon.
+- [x] `scripts/opencode-runtime-e2e.ts` passed again against the installed bundle: real tool effect,
+  exact input/approval, busy/defer, interruption, two-runtime chat/reply identity, daemon/provider
+  restart and continuation, then archive. Evidence SHA-256:
+  `429f099cd94a0f8035755acdf50f05dcba8bfabb6c073192341c07299bbfa30d`.

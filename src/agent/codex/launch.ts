@@ -1,23 +1,28 @@
-import { dirname } from "node:path";
-import { accessSync, constants } from "node:fs";
-import type { MachineConfig, Session } from "../../types.ts";
-import { buildPrompt } from "../managePrompt.ts";
-import { UID } from "../../env.ts";
-import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
-import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
-import { chatEnabledFor } from "../../config/chat.ts";
-import { fileSetDigest, ruleSetFiles, tomlTableDigest, type LaunchInput } from "../launchInputs.ts";
-import { sessionEnvRecipe } from "../sessionEnv.ts";
-import { log } from "../../util/log.ts";
-import { isOwnedCodex } from "./ownedPaths.ts";
-import { ownedCodexArgv } from "./ownedLaunch.ts";
+import { accessSync, constants } from 'node:fs';
+import { dirname } from 'node:path';
+import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
+import { chatEnabledFor } from '../../config/chat.ts';
+import { UID } from '../../env.ts';
+import type { MachineConfig, Session } from '../../types.ts';
+import { ensurePath, ensureUtf8Locale, loginShellPath } from '../../util/envPath.ts';
+import { log } from '../../util/log.ts';
+import { fileSetDigest, type LaunchInput, ruleSetFiles, tomlTableDigest } from '../launchInputs.ts';
+import { buildPrompt } from '../managePrompt.ts';
+import { sessionEnvRecipe } from '../sessionEnv.ts';
+import { ownedCodexArgv } from './ownedLaunch.ts';
+import { isOwnedCodex } from './ownedPaths.ts';
 
-export const CODEX_LAUNCH_MARKER_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
+export const CODEX_LAUNCH_MARKER_ENV = 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE';
 
 export function preflight(m: MachineConfig): void {
-  if (!m.codexBin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
-  if (!m.codexHome) throw new Error("codexHome not configured — set it in machine.json for agent=codex sessions");
-  if (!m.codexSessionsDir) throw new Error("codexSessionsDir not configured — set it in machine.json for agent=codex sessions");
+  if (!m.codexBin)
+    throw new Error('codexBin not configured — set it in machine.json for agent=codex sessions');
+  if (!m.codexHome)
+    throw new Error('codexHome not configured — set it in machine.json for agent=codex sessions');
+  if (!m.codexSessionsDir)
+    throw new Error(
+      'codexSessionsDir not configured — set it in machine.json for agent=codex sessions',
+    );
   accessSync(m.codexBin, constants.X_OK);
   accessSync(m.codexSessionsDir, constants.R_OK | constants.W_OK);
 }
@@ -34,15 +39,30 @@ export function preflight(m: MachineConfig): void {
  *
  * There is no `-n`/RC equivalent for Codex (no claude.ai Remote Control), so RC naming is Claude-only.
  */
-export function buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[] {
+export function buildArgv(
+  s: Session,
+  m: MachineConfig,
+  cli: string,
+  historyPresent: boolean,
+): string[] {
   if (isOwnedCodex(s)) return ownedCodexArgv(s, m, cli);
   const bin = m.codexBin;
-  if (!bin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
+  if (!bin)
+    throw new Error('codexBin not configured — set it in machine.json for agent=codex sessions');
   const flags = UID === 0 ? stripDangerous(s.flags) : s.flags; // root guard (servers)
   if (historyPresent) {
-    return [bin, "resume", s.uuid, ...flags, ...m.extraFlags];
+    return [bin, 'resume', s.uuid, ...flags, ...m.extraFlags];
   }
-  const prompt = buildPrompt(s.name, cli, s.agent, "ccmux", chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix);
+  const prompt = buildPrompt(
+    s.name,
+    cli,
+    s.agent,
+    'ccmux',
+    chatEnabledFor(s, m),
+    s.promptModules,
+    m.ownerLang,
+    m.rcPrefix,
+  );
   return [bin, ...flags, ...m.extraFlags, prompt];
 }
 
@@ -54,8 +74,9 @@ function managedFlags(s: Session, m: MachineConfig): string[] {
  * lifecycle only and must not manufacture a hidden user turn in the source conversation. */
 export function buildAdoptArgv(s: Session, m: MachineConfig, sourceThreadId: string): string[] {
   const bin = m.codexBin;
-  if (!bin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
-  return [bin, "resume", sourceThreadId, ...managedFlags(s, m)];
+  if (!bin)
+    throw new Error('codexBin not configured — set it in machine.json for agent=codex sessions');
+  return [bin, 'resume', sourceThreadId, ...managedFlags(s, m)];
 }
 
 /** Provider-native fork. The management prompt is an explicit first turn of the NEW identity; the
@@ -68,33 +89,42 @@ export function buildForkArgv(
   launchMarker: string,
 ): string[] {
   const bin = m.codexBin;
-  if (!bin) throw new Error("codexBin not configured — set it in machine.json for agent=codex sessions");
-  const prompt = `${buildPrompt(s.name, cli, s.agent, "ccmux", false, [], m.ownerLang, m.rcPrefix)}\n\nccmux launch correlation: ${launchMarker}`;
-  return [bin, "fork", sourceThreadId, ...managedFlags(s, m), prompt];
+  if (!bin)
+    throw new Error('codexBin not configured — set it in machine.json for agent=codex sessions');
+  const prompt = `${buildPrompt(s.name, cli, s.agent, 'ccmux', false, [], m.ownerLang, m.rcPrefix)}\n\nccmux launch correlation: ${launchMarker}`;
+  return [bin, 'fork', sourceThreadId, ...managedFlags(s, m), prompt];
 }
 
 // Codex's own "skip every guardrail" switches — refused for the root daemon (servers) so a config
 // edit can't hand a server session host-wide power. Mirrors the Claude root guard.
 function stripDangerous(flags: string[]): string[] {
   return flags.filter(
-    (f) => f !== "--dangerously-bypass-approvals-and-sandbox" && f !== "--dangerously-bypass-hook-trust",
+    (f) =>
+      f !== '--dangerously-bypass-approvals-and-sandbox' && f !== '--dangerously-bypass-hook-trust',
   );
 }
 
 /** Environment for the spawned codex: usable PATH + the self-guard marker. */
 /** Same two keys as every managed provider: the identity pin and the chat capability. */
 export function launchEnvKeys(_m: MachineConfig): readonly string[] {
-  return [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
+  return [CHAT_CREDENTIAL_ENV, 'CCMUX_SESSION'];
 }
 
 export function launchEnv(m: MachineConfig, session: Session): Record<string, string> {
   // Same recipe as every other provider — the env layer is core-owned precisely so two agents cannot
   // end up with two different answers to "what is this session's environment".
   const { env, refused } = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
-  if (refused.length > 0) log.warn({ msg: "env file tried to set ccmux-controlled names — ignored", name: session.name, keys: refused });
-  const extra = [m.codexBin ? dirname(m.codexBin) : "", dirname(m.tmuxBin)].filter((p) => p !== "");
+  if (refused.length > 0)
+    log.warn({
+      msg: 'env file tried to set ccmux-controlled names — ignored',
+      name: session.name,
+      keys: refused,
+    });
+  const extra = [m.codexBin ? dirname(m.codexBin) : '', dirname(m.tmuxBin)].filter((p) => p !== '');
   const login = loginShellPath(); // re-derive the real login PATH (fish-aware) under a thin boot PATH
-  const base = [login, env.PATH].filter((p): p is string => p !== null && p !== undefined).join(":");
+  const base = [login, env.PATH]
+    .filter((p): p is string => p !== null && p !== undefined)
+    .join(':');
   env.PATH = ensurePath(base, extra);
   ensureUtf8Locale(env); // force UTF-8 so the agent draws Unicode box-rules, not ASCII '_'
   if (m.codexHome) env.CODEX_HOME = m.codexHome;
@@ -120,7 +150,17 @@ export function launchInputs(_s: Session, m: MachineConfig): LaunchInput[] {
   const rules = ruleSetFiles(`${home}/AGENTS.md`);
   const config = `${home}/config.toml`;
   return [
-    { reason: "rules", label: `global rule set: ${rules.join(", ")}`, digest: fileSetDigest(rules), paths: rules },
-    { reason: "mcp", label: `MCP servers: ${config} (mcp_servers)`, digest: tomlTableDigest(config, "mcp_servers"), paths: [config] },
+    {
+      reason: 'rules',
+      label: `global rule set: ${rules.join(', ')}`,
+      digest: fileSetDigest(rules),
+      paths: rules,
+    },
+    {
+      reason: 'mcp',
+      label: `MCP servers: ${config} (mcp_servers)`,
+      digest: tomlTableDigest(config, 'mcp_servers'),
+      paths: [config],
+    },
   ];
 }

@@ -1,26 +1,26 @@
-import { expect, test } from "bun:test";
-import { armTranscriptPickup, chatTurnProgressFromMessages } from "../src/chat/deliver.ts";
-import { ChatCursorsSchema } from "../src/config/schema.ts";
-import { unreadFor } from "../src/chat/store.ts";
-import { makeChatMessage, makePeer } from "./helpers.ts";
-import { managedPeerKey } from "../src/chat/identity.ts";
-import type { TranscriptMessage } from "../src/types.ts";
+import { expect, test } from 'bun:test';
+import { armTranscriptPickup, chatTurnProgressFromMessages } from '../src/chat/deliver.ts';
+import { managedPeerKey } from '../src/chat/identity.ts';
+import { unreadFor } from '../src/chat/store.ts';
+import { ChatCursorsSchema } from '../src/config/schema.ts';
+import type { TranscriptMessage } from '../src/types.ts';
+import { makeChatMessage, makePeer } from './helpers.ts';
 
-const ID = "11111111-1111-4111-8111-111111111111";
+const ID = '11111111-1111-4111-8111-111111111111';
 
-function message(role: "user" | "assistant" | "system", text: string): TranscriptMessage {
+function message(role: 'user' | 'assistant' | 'system', text: string): TranscriptMessage {
   return {
     id: crypto.randomUUID(),
     seq: 1,
     createdAt: null,
     role,
-    kind: "message",
+    kind: 'message',
     text,
     title: null,
     toolName: null,
     toolCallId: null,
     status: null,
-    rawType: "response_item",
+    rawType: 'response_item',
     done: false,
     result: null,
     input: null,
@@ -29,38 +29,58 @@ function message(role: "user" | "assistant" | "system", text: string): Transcrip
 }
 
 function tool(): TranscriptMessage {
-  return { ...message("assistant", ""), role: "tool", kind: "tool_call", text: null, toolName: "shell" };
+  return {
+    ...message('assistant', ''),
+    role: 'tool',
+    kind: 'tool_call',
+    text: null,
+    toolName: 'shell',
+  };
 }
 
-test("pickup waits for the exact immutable chat id", () => {
-  expect(chatTurnProgressFromMessages([message("assistant", "old answer")], ID)).toBe("awaiting-pickup");
-  expect(chatTurnProgressFromMessages([message("user", `[chat from peer · id: ${ID}] hi`)], ID)).toBe("running");
+test('pickup waits for the exact immutable chat id', () => {
+  expect(chatTurnProgressFromMessages([message('assistant', 'old answer')], ID)).toBe(
+    'awaiting-pickup',
+  );
+  expect(
+    chatTurnProgressFromMessages([message('user', `[chat from peer · id: ${ID}] hi`)], ID),
+  ).toBe('running');
 });
 
-test("intermediate assistant commentary before a tool is not a completed reply", () => {
+test('intermediate assistant commentary before a tool is not a completed reply', () => {
   const turn = [
-    message("user", `[chat from peer · id: ${ID}] hi`),
-    message("assistant", "I will inspect it."),
+    message('user', `[chat from peer · id: ${ID}] hi`),
+    message('assistant', 'I will inspect it.'),
     tool(),
   ];
-  expect(chatTurnProgressFromMessages(turn, ID)).toBe("running");
-  expect(chatTurnProgressFromMessages([...turn, message("assistant", "done")], ID)).toBe("answered");
+  expect(chatTurnProgressFromMessages(turn, ID)).toBe('running');
+  expect(chatTurnProgressFromMessages([...turn, message('assistant', 'done')], ID)).toBe(
+    'answered',
+  );
 });
 
-test("an interrupted Codex turn releases its durable pickup without retrying the message", () => {
+test('an interrupted Codex turn releases its durable pickup without retrying the message', () => {
   const turn = [
-    message("user", `[chat from peer · id: ${ID}] hi`),
-    message("system", "<turn_aborted>\nThe previous turn was interrupted on purpose.\n</turn_aborted>"),
+    message('user', `[chat from peer · id: ${ID}] hi`),
+    message(
+      'system',
+      '<turn_aborted>\nThe previous turn was interrupted on purpose.\n</turn_aborted>',
+    ),
   ];
-  expect(chatTurnProgressFromMessages(turn, ID)).toBe("interrupted");
+  expect(chatTurnProgressFromMessages(turn, ID)).toBe('interrupted');
 });
 
-test("crash after durable arm keeps one pickup barrier and hides the same ledger row from retry", () => {
-  const recipient = makePeer({ machine: "host-a", session: "agent-b", threadId: "22222222-2222-4222-8222-222222222222", agent: "codex" });
+test('crash after durable arm keeps one pickup barrier and hides the same ledger row from retry', () => {
+  const recipient = makePeer({
+    machine: 'host-a',
+    session: 'agent-b',
+    threadId: '22222222-2222-4222-8222-222222222222',
+    agent: 'codex',
+  });
   const msg = makeChatMessage({ id: ID, to: recipient });
   const cursors = ChatCursorsSchema.parse({});
   const key = managedPeerKey(recipient);
-  armTranscriptPickup(cursors, key, { msg, idx: 0 }, "2026-08-26T00:00:00.000Z");
+  armTranscriptPickup(cursors, key, { msg, idx: 0 }, '2026-08-26T00:00:00.000Z');
 
   // JSON round-trip models a daemon crash/restart between the atomic cursor write and Enter.
   const restarted = ChatCursorsSchema.parse(JSON.parse(JSON.stringify(cursors)));

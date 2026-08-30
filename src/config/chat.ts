@@ -1,4 +1,4 @@
-import type { MachineConfig, Session } from "../types.ts";
+import type { MachineConfig, Session } from '../types.ts';
 
 /**
  * Is inter-agent chat on for this session?
@@ -23,5 +23,5 @@ export function chatEnabledFor(s: Session, m: MachineConfig): boolean {
  * merely inheriting. Lives here so no caller has to touch the raw field to ask.
  */
 export function chatOverrideLabel(s: Session): string | null {
-  return s.chatEnabled === undefined ? null : `chat override ${s.chatEnabled ? "on" : "off"}`;
+  return s.chatEnabled === undefined ? null : `chat override ${s.chatEnabled ? 'on' : 'off'}`;
 }

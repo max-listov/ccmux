@@ -1,8 +1,8 @@
-import { run, runWithInput } from "../util/spawn.ts";
-import { z } from "zod";
-import { shellJoin } from "../util/shellQuote.ts";
-import type { MachineConfig } from "../types.ts";
-import { isWirePeer, runWire, wirePeers } from "./wire.ts";
+import { z } from 'zod';
+import type { MachineConfig } from '../types.ts';
+import { shellJoin } from '../util/shellQuote.ts';
+import { run, runWithInput } from '../util/spawn.ts';
+import { isWirePeer, runWire, wirePeers } from './wire.ts';
 
 /**
  * Run a ccmux command on another fleet machine over ssh.
@@ -26,12 +26,18 @@ import { isWirePeer, runWire, wirePeers } from "./wire.ts";
 //    and the pipe would never see EOF: every cold connection would hang until the kill deadline. `no`
 //    still REUSES an existing master (fast path kept), it just never becomes one.
 const SSH_OPTS = [
-  "-o", "BatchMode=yes",
-  "-o", "ConnectTimeout=10",
-  "-o", "ControlMaster=no",
-  "-o", "StrictHostKeyChecking=accept-new",
-  "-o", "ServerAliveInterval=15",
-  "-o", "ServerAliveCountMax=3",
+  '-o',
+  'BatchMode=yes',
+  '-o',
+  'ConnectTimeout=10',
+  '-o',
+  'ControlMaster=no',
+  '-o',
+  'StrictHostKeyChecking=accept-new',
+  '-o',
+  'ServerAliveInterval=15',
+  '-o',
+  'ServerAliveCountMax=3',
 ];
 const SSH_EXIT_TRANSPORT = 255;
 
@@ -70,9 +76,12 @@ export async function runRemote(
   opts?: { stdin?: string; timeoutMs?: number },
 ): Promise<RemoteResult> {
   const cmd = shellJoin(argv);
-  const full = ["ssh", ...SSH_OPTS, alias, cmd];
+  const full = ['ssh', ...SSH_OPTS, alias, cmd];
   const timeoutMs = opts?.timeoutMs ?? 30_000;
-  const r = opts?.stdin !== undefined ? await runWithInput(full, opts.stdin, { timeoutMs }) : await run(full, { timeoutMs });
+  const r =
+    opts?.stdin !== undefined
+      ? await runWithInput(full, opts.stdin, { timeoutMs })
+      : await run(full, { timeoutMs });
   const transportFailed = r.timedOut === true || r.code === SSH_EXIT_TRANSPORT;
   return { code: r.code, stdout: r.stdout, stderr: r.stderr, transportFailed };
 }
@@ -94,8 +103,13 @@ export async function runRemote(
  * So: state what is true (queued, automatic retry, bounded window) and never name a cause that was
  * not reported.
  */
-export function queuedForRetryNotice(what: string, detail: string | null, windowMinutes: number, permanent = false): string {
-  const cause = detail ?? "the transport reported no reason";
+export function queuedForRetryNotice(
+  what: string,
+  detail: string | null,
+  windowMinutes: number,
+  permanent = false,
+): string {
+  const cause = detail ?? 'the transport reported no reason';
   // A PERMANENT refusal makes the sentence above a lie in the one direction that costs: it promises
   // an automatic recovery that will never come, so nobody looks at the thing that actually needs
   // fixing. The envelope is still recorded — the record is what it is for — but the wording must not
@@ -114,14 +128,14 @@ export function queuedForRetryNotice(what: string, detail: string | null, window
 
 export function relay(r: RemoteResult, what: string, writes = true): number {
   if (r.transportFailed) {
-    const tail = writes ? " — nothing was sent" : "";
-    const cause = r.failureDetail ?? "no reason reported";
+    const tail = writes ? ' — nothing was sent' : '';
+    const cause = r.failureDetail ?? 'no reason reported';
     console.error(`${what}: transport failed (${cause})${tail}`);
-    if (r.stderr.trim() !== "") console.error(r.stderr.trimEnd());
+    if (r.stderr.trim() !== '') console.error(r.stderr.trimEnd());
     return 1;
   }
-  if (r.stdout !== "") process.stdout.write(r.stdout);
-  if (r.stderr !== "") process.stderr.write(r.stderr);
+  if (r.stdout !== '') process.stdout.write(r.stdout);
+  if (r.stderr !== '') process.stderr.write(r.stderr);
   return r.code;
 }
 
@@ -153,8 +167,8 @@ export function runPeer(
   if (alias === null) {
     return Promise.resolve({
       code: 1,
-      stdout: "",
-      stderr: "",
+      stdout: '',
+      stderr: '',
       transportFailed: true,
       failureDetail: `no route to '${machine}': it is in neither the ssh fleet map nor wire.peers`,
     });
@@ -165,7 +179,7 @@ export function runPeer(
 /** Every machine this box can address, and how it would get there. */
 export interface Peer {
   machine: string;
-  via: "ssh" | "wire";
+  via: 'ssh' | 'wire';
   /** ssh alias, or null for a wire-only peer — a laptop has no alias anywhere. */
   alias: string | null;
 }
@@ -173,19 +187,19 @@ export interface Peer {
 export function peersOf(m: MachineConfig): Peer[] {
   const out = new Map<string, Peer>();
   for (const [machine, alias] of Object.entries(m.fleet ?? {})) {
-    if (machine !== m.rcPrefix) out.set(machine, { machine, via: "ssh", alias });
+    if (machine !== m.rcPrefix) out.set(machine, { machine, via: 'ssh', alias });
   }
   // The wire wins where both are configured: that is what makes listing one machine a per-direction
   // switch rather than a fleet-wide migration.
   for (const machine of wirePeers(m)) {
-    out.set(machine, { machine, via: "wire", alias: out.get(machine)?.alias ?? null });
+    out.set(machine, { machine, via: 'wire', alias: out.get(machine)?.alias ?? null });
   }
   return [...out.values()].sort((a, b) => a.machine.localeCompare(b.machine));
 }
 
 export interface FleetCheck {
   machine: string;
-  via: "ssh" | "wire";
+  via: 'ssh' | 'wire';
   alias: string | null;
   ok: boolean;
   reachable: boolean;
@@ -196,12 +210,32 @@ export interface FleetCheck {
 export async function checkFleet(m: MachineConfig): Promise<FleetCheck[]> {
   return Promise.all(
     peersOf(m).map(async ({ machine, alias, via }): Promise<FleetCheck> => {
-      const r = await runPeer(m, machine, alias, ["ccmux", "list", "--json"], { timeoutMs: 15_000 });
+      const r = await runPeer(m, machine, alias, ['ccmux', 'list', '--json'], {
+        timeoutMs: 15_000,
+      });
       if (r.transportFailed) {
-        return { machine, via, alias, ok: false, reachable: false, reported: null, detail: r.failureDetail ?? "unreachable (no transit right now — normal unless the owner is connected)" };
+        return {
+          machine,
+          via,
+          alias,
+          ok: false,
+          reachable: false,
+          reported: null,
+          detail:
+            r.failureDetail ??
+            'unreachable (no transit right now — normal unless the owner is connected)',
+        };
       }
       if (r.code !== 0) {
-        return { machine, via, alias, ok: false, reachable: true, reported: null, detail: `remote ccmux failed (exit ${r.code}) — is ccmux on the non-interactive PATH there?` };
+        return {
+          machine,
+          via,
+          alias,
+          ok: false,
+          reachable: true,
+          reported: null,
+          detail: `remote ccmux failed (exit ${r.code}) — is ccmux on the non-interactive PATH there?`,
+        };
       }
       // Lenient on purpose: the far side may run an older ccmux whose `list --json` has a different
       // shape. We only need one field, so parse for exactly that instead of the strict full schema.
@@ -211,11 +245,28 @@ export async function checkFleet(m: MachineConfig): Promise<FleetCheck[]> {
       } catch {
         reported = null;
       }
-      if (reported === null) return { machine, via, alias, ok: false, reachable: true, reported, detail: "remote did not report an rcPrefix (older ccmux?)" };
+      if (reported === null)
+        return {
+          machine,
+          via,
+          alias,
+          ok: false,
+          reachable: true,
+          reported,
+          detail: 'remote did not report an rcPrefix (older ccmux?)',
+        };
       if (reported !== machine) {
-        return { machine, via, alias, ok: false, reachable: true, reported, detail: `MISMATCH — this route really reaches '${reported}', so mail addressed to '${machine}:' would land on the wrong machine` };
+        return {
+          machine,
+          via,
+          alias,
+          ok: false,
+          reachable: true,
+          reported,
+          detail: `MISMATCH — this route really reaches '${reported}', so mail addressed to '${machine}:' would land on the wrong machine`,
+        };
       }
-      return { machine, via, alias, ok: true, reachable: true, reported, detail: "ok" };
+      return { machine, via, alias, ok: true, reachable: true, reported, detail: 'ok' };
     }),
   );
 }

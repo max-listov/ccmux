@@ -1,13 +1,19 @@
-import { Box, Text } from "ink";
-import { Txt } from "./Txt.tsx";
-import { Scrollbar } from "./Scrollbar.tsx";
-import { ChatMessage, chatMessageHeight } from "./ChatMessage.tsx";
-import type { TranscriptMessage } from "../../types.ts";
+import { Box, Text } from 'ink';
+import type { TranscriptMessage } from '../../types.ts';
+import { ChatMessage, chatMessageHeight } from './ChatMessage.tsx';
+import { Scrollbar } from './Scrollbar.tsx';
+import { Txt } from './Txt.tsx';
 
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 // Render the chat as a bottom-anchored window. Ink can NOT scroll/clip the TOP of an
@@ -17,7 +23,21 @@ function fmtDate(iso: string): string {
 // always pinned to the bottom and fully visible; older history is revealed by scrolling
 // (offset). Because every taken message fits, no border or text is ever half-clipped.
 
-export function TranscriptPane({ messages, offset, width, height, spin, color }: { messages: TranscriptMessage[]; offset: number; width: number; height: number; spin: string; color: string }) {
+export function TranscriptPane({
+  messages,
+  offset,
+  width,
+  height,
+  spin,
+  color,
+}: {
+  messages: TranscriptMessage[];
+  offset: number;
+  width: number;
+  height: number;
+  spin: string;
+  color: string;
+}) {
   if (messages.length === 0) {
     return (
       <Box flexGrow={1}>
@@ -64,7 +84,13 @@ export function TranscriptPane({ messages, offset, width, height, spin, color }:
           <ChatMessage key={msg.id} msg={msg} width={width} spin={spin} />
         ))}
       </Box>
-      <Scrollbar total={messages.length} visible={taken.length} offset={topIndex} height={avail} color={color} />
+      <Scrollbar
+        total={messages.length}
+        visible={taken.length}
+        offset={topIndex}
+        height={avail}
+        color={color}
+      />
     </Box>
   );
 }

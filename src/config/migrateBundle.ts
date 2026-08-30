@@ -1,13 +1,13 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { APP_BUNDLE, DATA_DIR, DEFAULT_DATA_DIR, LEGACY_APP_BUNDLE, bootArgv } from "./paths.ts";
-import { IS_DEV, SHIM_PATH } from "../env.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import { log } from "../util/log.ts";
-import { writeBootUnitOnly } from "../boot/install.ts";
-import type { MachineConfig } from "../types.ts";
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { writeBootUnitOnly } from '../boot/install.ts';
+import { IS_DEV, SHIM_PATH } from '../env.ts';
+import type { MachineConfig } from '../types.ts';
+import { atomicWrite } from '../util/atomic.ts';
+import { log } from '../util/log.ts';
+import { APP_BUNDLE, bootArgv, DATA_DIR, DEFAULT_DATA_DIR, LEGACY_APP_BUNDLE } from './paths.ts';
 
-export type BundleMigration = "already" | "moved" | "absent";
+export type BundleMigration = 'already' | 'moved' | 'absent';
 
 /**
  * Copy the running bundle into the durable root, out of the cache where a legitimate `rm -rf
@@ -21,9 +21,12 @@ export type BundleMigration = "already" | "moved" | "absent";
  * that died could not come back. The stale copy costs a couple of megabytes in a directory that is
  * safe to wipe, and `install.sh` removes it once the machine is fully converged.
  */
-export function migrateBundleToDurableRoot(appBundle: string = APP_BUNDLE, legacy: string = LEGACY_APP_BUNDLE): BundleMigration {
-  if (existsSync(appBundle)) return "already";
-  if (!existsSync(legacy)) return "absent";
+export function migrateBundleToDurableRoot(
+  appBundle: string = APP_BUNDLE,
+  legacy: string = LEGACY_APP_BUNDLE,
+): BundleMigration {
+  if (existsSync(appBundle)) return 'already';
+  if (!existsSync(legacy)) return 'absent';
   mkdirSync(dirname(appBundle), { recursive: true });
   copyFileSync(legacy, appBundle);
   // The rollback copy is the boot guard's only way out of a crash loop; leaving it in the
@@ -35,7 +38,7 @@ export function migrateBundleToDurableRoot(appBundle: string = APP_BUNDLE, legac
       /* best-effort: a missing rollback copy is not worth failing the move over */
     }
   }
-  return "moved";
+  return 'moved';
 }
 
 /** The two-line PATH shim, as it should read for the current bundle location. */
@@ -58,7 +61,7 @@ export async function ensureShim(): Promise<boolean> {
   }
   mkdirSync(dirname(SHIM_PATH), { recursive: true });
   await atomicWrite(SHIM_PATH, want, 0o755);
-  log.info({ msg: "shim rewritten for the durable bundle path", path: SHIM_PATH });
+  log.info({ msg: 'shim rewritten for the durable bundle path', path: SHIM_PATH });
   return true;
 }
 
@@ -76,22 +79,29 @@ export function ownsInstalledShim(dataDir: string = DATA_DIR, isDev: boolean = I
  */
 export async function convergeBundleLocation(m: MachineConfig): Promise<BundleMigration> {
   const moved = migrateBundleToDurableRoot();
-  if (moved === "moved") {
-    log.info({ msg: "bundle moved out of the cache root", from: LEGACY_APP_BUNDLE, to: APP_BUNDLE });
+  if (moved === 'moved') {
+    log.info({
+      msg: 'bundle moved out of the cache root',
+      from: LEGACY_APP_BUNDLE,
+      to: APP_BUNDLE,
+    });
     try {
       await writeBootUnitOnly(m);
     } catch (e) {
-      log.warn({ msg: "bundle moved but the boot unit still points at the old path", err: String(e) });
+      log.warn({
+        msg: 'bundle moved but the boot unit still points at the old path',
+        err: String(e),
+      });
     }
   }
   // Every installed daemon start converges the executable contract too. This upgrades an existing
   // env-based shim after an ordinary bundle rollout; source/dev daemons must never rewrite the
   // operator's installed command to point into a checkout.
-  if (ownsInstalledShim() && moved !== "absent") {
+  if (ownsInstalledShim() && moved !== 'absent') {
     try {
       await ensureShim();
     } catch (e) {
-      log.warn({ msg: "installed PATH shim could not be converged", err: String(e) });
+      log.warn({ msg: 'installed PATH shim could not be converged', err: String(e) });
     }
   }
   return moved;

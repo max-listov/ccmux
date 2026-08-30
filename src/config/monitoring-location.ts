@@ -1,6 +1,6 @@
-import { HOME } from "../env.ts";
-import { STATE_DIR } from "./paths.ts";
-import { MachineConfigSchema } from "./schema.ts";
+import { HOME } from '../env.ts';
+import { STATE_DIR } from './paths.ts';
+import { MachineConfigSchema } from './schema.ts';
 
 const LocationSchema = MachineConfigSchema.pick({ stateDir: true, rcPrefix: true }).partial();
 
@@ -13,6 +13,6 @@ export function resolveMonitoringLocation(raw: unknown): { stateDir: string; rcP
   const file = LocationSchema.parse(raw);
   return {
     stateDir: file.stateDir ?? STATE_DIR,
-    rcPrefix: process.env.CCMUX_RC_PREFIX || file.rcPrefix || "local",
+    rcPrefix: process.env.CCMUX_RC_PREFIX || file.rcPrefix || 'local',
   };
 }

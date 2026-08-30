@@ -9,7 +9,9 @@
 export function refusesSelf(verb: string, name: string, force: boolean): boolean {
   const self = process.env.CCMUX_SESSION;
   if (!force && self !== undefined && name === self) {
-    console.log(`refusing to ${verb} '${name}': you are calling from inside it. pass --force to override.`);
+    console.log(
+      `refusing to ${verb} '${name}': you are calling from inside it. pass --force to override.`,
+    );
     return true;
   }
   return false;

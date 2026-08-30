@@ -1,6 +1,6 @@
-import { basename, join } from "node:path";
-import { HOME, IS_DEV, SELF_ARGV } from "../env.ts";
-import type { MachineConfig } from "../types.ts";
+import { basename, join } from 'node:path';
+import { HOME, IS_DEV, SELF_ARGV } from '../env.ts';
+import type { MachineConfig } from '../types.ts';
 
 /**
  * Where ccmux keeps everything — ONE module that knows the whole layout.
@@ -25,13 +25,14 @@ import type { MachineConfig } from "../types.ts";
 
 /** An XDG root, or the platform default when the variable is unset or not absolute. */
 function xdgRoot(envValue: string | undefined, fallback: string): string {
-  return envValue !== undefined && envValue.startsWith("/") ? envValue : fallback;
+  return envValue?.startsWith('/') ? envValue : fallback;
 }
 
 /** Durable: the registry, the chat ledger and its cursors, the outbox, per-session status, the log.
  *  `CCMUX_STATE_DIR` is the single knob an isolated instance flips to get its own. */
 export const STATE_DIR: string =
-  process.env.CCMUX_STATE_DIR ?? join(xdgRoot(process.env.XDG_STATE_HOME, join(HOME, ".local", "state")), "ccmux");
+  process.env.CCMUX_STATE_DIR ??
+  join(xdgRoot(process.env.XDG_STATE_HOME, join(HOME, '.local', 'state')), 'ccmux');
 
 /** Durable: the code itself. The bundle used to live in the cache root under the reasoning that
  *  losing it "costs exactly one `ccmux update`". That reasoning was wrong in a way only an incident
@@ -40,8 +41,8 @@ export const STATE_DIR: string =
  *  alive only as an already-loaded process. A directory whose contract invites deletion must not hold
  *  the one artifact that deletion makes unrecoverable. */
 export const DEFAULT_DATA_DIR = join(
-  xdgRoot(process.env.XDG_DATA_HOME, join(HOME, ".local", "share")),
-  "ccmux",
+  xdgRoot(process.env.XDG_DATA_HOME, join(HOME, '.local', 'share')),
+  'ccmux',
 );
 export const DATA_DIR: string = process.env.CCMUX_DATA_DIR ?? DEFAULT_DATA_DIR;
 
@@ -49,31 +50,32 @@ export const DATA_DIR: string = process.env.CCMUX_DATA_DIR ?? DEFAULT_DATA_DIR;
  *  tool being intact — a stage command or a fresh download — so deleting them really does cost
  *  nothing but time. */
 export const CACHE_DIR: string =
-  process.env.CCMUX_CACHE_DIR ?? join(xdgRoot(process.env.XDG_CACHE_HOME, join(HOME, ".cache")), "ccmux");
+  process.env.CCMUX_CACHE_DIR ??
+  join(xdgRoot(process.env.XDG_CACHE_HOME, join(HOME, '.cache')), 'ccmux');
 
 // ── data: the artifact ───────────────────────────────────────────────────────────────────────────
 
 /** The bundle the boot daemon and the `ccmux` command run; `ccmux update` swaps it atomically. */
-export const APP_BUNDLE = join(DATA_DIR, "app", "ccmux.js");
+export const APP_BUNDLE = join(DATA_DIR, 'app', 'ccmux.js');
 /** Where installs before the durable-root move put the bundle. Read only by the migration. */
-export const LEGACY_APP_BUNDLE = join(CACHE_DIR, "app", "ccmux.js");
+export const LEGACY_APP_BUNDLE = join(CACHE_DIR, 'app', 'ccmux.js');
 
 // ── cache: what a download or a build can rebuild ────────────────────────────────────────────────
 /** A local dev build; `ccmux update` prefers it over a remote release ("test before publishing"). */
-export const STAGED_BUNDLE = join(CACHE_DIR, "staged", "ccmux.js");
+export const STAGED_BUNDLE = join(CACHE_DIR, 'staged', 'ccmux.js');
 /** A published release (bundle + manifest) the daemon pulls from the configured release URL. */
-export const RELEASES_DIR = join(CACHE_DIR, "releases");
-export const RELEASE_BUNDLE = join(RELEASES_DIR, "ccmux.js");
-export const RELEASE_MANIFEST = join(RELEASES_DIR, "release.json");
+export const RELEASES_DIR = join(CACHE_DIR, 'releases');
+export const RELEASE_BUNDLE = join(RELEASES_DIR, 'ccmux.js');
+export const RELEASE_MANIFEST = join(RELEASES_DIR, 'release.json');
 
 // ── state: what must survive ─────────────────────────────────────────────────────────────────────
 
 /** Boot-loop guard counter (see util/bootGuard.ts) — daemon start attempts since the last good pass. */
-export const BOOT_ATTEMPTS = join(STATE_DIR, "boot-attempts");
+export const BOOT_ATTEMPTS = join(STATE_DIR, 'boot-attempts');
 /** Per-session structured status (agent hooks + statusLine tee): lifecycle, metrics, chat holds and
  *  launch stamps — so `list`/TUI read authoritative state instead of scraping the pane. */
-export const STATUS_DIR = join(STATE_DIR, "status");
-export const LOG_FILE = join(STATE_DIR, "ccmux.log");
+export const STATUS_DIR = join(STATE_DIR, 'status');
+export const LOG_FILE = join(STATE_DIR, 'ccmux.log');
 
 /**
  * The state files a given MachineConfig points at.
@@ -91,21 +93,25 @@ export const LOG_FILE = join(STATE_DIR, "ccmux.log");
 // where the PATH says it is not live.
 // The registry keeps its canonical path too: strict parsing now requires every row to carry
 // agent+UUID, so an implicit older row fails loudly instead of making the fleet disappear on upgrade.
-export const sessionsPath = (m: MachineConfig): string => join(m.stateDir, "sessions.jsonl");
-export const pendingSessionsPath = (m: MachineConfig): string => join(m.stateDir, "pending-sessions.json");
-export const sessionRegistryLockPath = (m: MachineConfig): string => join(m.stateDir, "sessions.lock");
-export const lifecycleBlockPath = (m: MachineConfig, name: string): string => join(m.stateDir, "lifecycle-blocks", `${name}.json`);
-export const chatLedgerPath = (m: MachineConfig): string => join(m.stateDir, "chat.jsonl");
-export const chatCursorsPath = (m: MachineConfig): string => join(m.stateDir, "chat-cursors.json");
-export const chatAckPath = (m: MachineConfig): string => join(m.stateDir, "chat-ack.jsonl");
-export const outboxPath = (m: MachineConfig): string => join(m.stateDir, "outbox.jsonl");
-export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, "outbox-ack.jsonl");
+export const sessionsPath = (m: MachineConfig): string => join(m.stateDir, 'sessions.jsonl');
+export const pendingSessionsPath = (m: MachineConfig): string =>
+  join(m.stateDir, 'pending-sessions.json');
+export const sessionRegistryLockPath = (m: MachineConfig): string =>
+  join(m.stateDir, 'sessions.lock');
+export const lifecycleBlockPath = (m: MachineConfig, name: string): string =>
+  join(m.stateDir, 'lifecycle-blocks', `${name}.json`);
+export const chatLedgerPath = (m: MachineConfig): string => join(m.stateDir, 'chat.jsonl');
+export const chatCursorsPath = (m: MachineConfig): string => join(m.stateDir, 'chat-cursors.json');
+export const chatAckPath = (m: MachineConfig): string => join(m.stateDir, 'chat-ack.jsonl');
+export const outboxPath = (m: MachineConfig): string => join(m.stateDir, 'outbox.jsonl');
+export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, 'outbox-ack.jsonl');
 /** The session event feed — what HAPPENED, as opposed to what IS. Rotated like the log, because it
  *  is a stream with no natural end, and read by outside surfaces that must not have to know the
  *  file layout (that is what `ccmux events` is for). */
-export const eventsPath = (m: MachineConfig): string => join(m.stateDir, "events.jsonl");
+export const eventsPath = (m: MachineConfig): string => join(m.stateDir, 'events.jsonl');
 /** Bounded read-only monitoring projection published by the existing observation loop. */
-export const monitoringStatusPath = (m: Pick<MachineConfig, "stateDir">): string => join(m.stateDir, "monitoring-status.json");
+export const monitoringStatusPath = (m: Pick<MachineConfig, 'stateDir'>): string =>
+  join(m.stateDir, 'monitoring-status.json');
 /**
  * When each session's pane was last seen doing work.
  *
@@ -118,7 +124,8 @@ export const monitoringStatusPath = (m: Pick<MachineConfig, "stateDir">): string
  * fresh process every time and its FIRST look is the dangerous one — no memory of its own can help
  * there, which is what makes this a written fact rather than a variable.
  */
-export const paneActivityPath = (m: MachineConfig): string => join(m.stateDir, "pane-activity.json");
+export const paneActivityPath = (m: MachineConfig): string =>
+  join(m.stateDir, 'pane-activity.json');
 
 /**
  * What this machine last learned about the newest published release.
@@ -128,13 +135,15 @@ export const paneActivityPath = (m: MachineConfig): string => join(m.stateDir, "
  * machine can answer both halves itself — including "nobody has been able to check", which is a
  * different state from "up to date" and must never be drawn as one.
  */
-export const releaseCheckPath = (m: MachineConfig): string => join(m.stateDir, "release-check.json");
+export const releaseCheckPath = (m: MachineConfig): string =>
+  join(m.stateDir, 'release-check.json');
 
 /** Superseded state, kept readable but out of the way. One directory, so "what here is dead?" is
  *  answered by the path instead of by remembering which name came first. */
-export const archiveDir = (m: MachineConfig): string => join(m.stateDir, "archive");
+export const archiveDir = (m: MachineConfig): string => join(m.stateDir, 'archive');
 
-export const chatAuthPath = (m: MachineConfig, sessionName: string): string => join(m.stateDir, "chat-auth", sessionName);
+export const chatAuthPath = (m: MachineConfig, sessionName: string): string =>
+  join(m.stateDir, 'chat-auth', sessionName);
 
 // ── how this tool re-execs itself ────────────────────────────────────────────────────────────────
 
@@ -149,5 +158,5 @@ export function bootArgv(): readonly string[] {
   if (IS_DEV) return SELF_ARGV;
   const exec = process.execPath;
   // A compiled single-file binary IS the thing to launch; under bun, the bundle is.
-  return basename(exec).toLowerCase() === "bun" ? [exec, APP_BUNDLE] : [exec];
+  return basename(exec).toLowerCase() === 'bun' ? [exec, APP_BUNDLE] : [exec];
 }

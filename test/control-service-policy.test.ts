@@ -1,18 +1,27 @@
-import { expect, test } from "bun:test";
-import { z } from "zod";
+import { expect, test } from 'bun:test';
+import { z } from 'zod';
 import {
   ControlServiceDescriptorSchema,
   ControlServiceOperationSchema,
   ccmuxControlServiceContract,
   ccmuxControlServiceDescriptor,
   controlServiceEffects,
-} from "../src/control/serviceDescriptor.ts";
+} from '../src/control/serviceDescriptor.ts';
 
-const TransportIdentifierSchema = z.string().max(64).regex(/^[a-z0-9][a-z0-9._-]*$/);
+const TransportIdentifierSchema = z
+  .string()
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9._-]*$/);
 const TransportDescriptorSchema = z
   .object({
-    service: z.string().max(128).regex(/^[a-z0-9][a-z0-9._-]*$/),
-    revision: z.string().max(64).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
+    service: z
+      .string()
+      .max(128)
+      .regex(/^[a-z0-9][a-z0-9._-]*$/),
+    revision: z
+      .string()
+      .max(64)
+      .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
     maxInflight: z.number().int().min(1).max(32),
     operations: z
       .array(
@@ -38,15 +47,25 @@ const TransportDescriptorSchema = z
     const ids = new Set<string>();
     for (const [index, operation] of descriptor.operations.entries()) {
       if (ids.has(operation.id))
-        ctx.addIssue({ code: "custom", path: ["operations", index, "id"], message: "duplicate operation" });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['operations', index, 'id'],
+          message: 'duplicate operation',
+        });
       ids.add(operation.id);
     }
   });
 
-test("published control descriptor satisfies the independent transport policy contract", () => {
-  expect(TransportDescriptorSchema.parse(ccmuxControlServiceDescriptor)).toEqual(ccmuxControlServiceDescriptor);
-  expect(ccmuxControlServiceDescriptor.operations).toHaveLength(ControlServiceOperationSchema.options.length);
-  expect(ccmuxControlServiceDescriptor.operations).toContainEqual(expect.objectContaining({ id: "runtime.list", effect: "runtime.read" }));
+test('published control descriptor satisfies the independent transport policy contract', () => {
+  expect(TransportDescriptorSchema.parse(ccmuxControlServiceDescriptor)).toEqual(
+    ccmuxControlServiceDescriptor,
+  );
+  expect(ccmuxControlServiceDescriptor.operations).toHaveLength(
+    ControlServiceOperationSchema.options.length,
+  );
+  expect(ccmuxControlServiceDescriptor.operations).toContainEqual(
+    expect.objectContaining({ id: 'runtime.list', effect: 'runtime.read' }),
+  );
   for (const operation of ccmuxControlServiceDescriptor.operations) {
     expect(operation.effect).toBe(controlServiceEffects[operation.id]);
   }
@@ -56,18 +75,20 @@ test("published control descriptor satisfies the independent transport policy co
   }
 });
 
-test("owner and transport schemas reject operation/effect disagreement", () => {
+test('owner and transport schemas reject operation/effect disagreement', () => {
   const mismatched = {
     ...ccmuxControlServiceDescriptor,
     operations: ccmuxControlServiceDescriptor.operations.map((operation) =>
-      operation.id === "session.get" ? { ...operation, effect: "session.create" } : operation,
+      operation.id === 'session.get' ? { ...operation, effect: 'session.create' } : operation,
     ),
   };
-  expect(() => ControlServiceDescriptorSchema.parse(mismatched)).toThrow("wrong effect");
-  expect(() => TransportDescriptorSchema.parse({
-    ...mismatched,
-    operations: mismatched.operations.map((operation) =>
-      operation.id === "session.get" ? { ...operation, effect: "session:read" } : operation,
-    ),
-  })).toThrow("Invalid string");
+  expect(() => ControlServiceDescriptorSchema.parse(mismatched)).toThrow('wrong effect');
+  expect(() =>
+    TransportDescriptorSchema.parse({
+      ...mismatched,
+      operations: mismatched.operations.map((operation) =>
+        operation.id === 'session.get' ? { ...operation, effect: 'session:read' } : operation,
+      ),
+    }),
+  ).toThrow('Invalid string');
 });

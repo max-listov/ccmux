@@ -1,7 +1,7 @@
-import { loadMachineConfig } from "../config/machine.ts";
-import { routeFor } from "./address.ts";
-import { runPeer, relay } from "./transport.ts";
-import type { MachineConfig } from "../types.ts";
+import { loadMachineConfig } from '../config/machine.ts';
+import type { MachineConfig } from '../types.ts';
+import { routeFor } from './address.ts';
+import { relay, runPeer } from './transport.ts';
 
 /**
  * The one place a command decides "is this target on another machine?".
@@ -12,7 +12,9 @@ import type { MachineConfig } from "../types.ts";
  * machine, and a dispatch-level hook could not know that. It also can't be a blind "does any arg
  * contain a colon" scan: `--task api:build` is legal free text, and `msg`'s recipient isn't argv[0].
  */
-export type Forwarded = { done: true; code: number } | { done: false; session: string; m: MachineConfig };
+export type Forwarded =
+  | { done: true; code: number }
+  | { done: false; session: string; m: MachineConfig };
 
 export interface ForwardOpts {
   m?: MachineConfig;
@@ -25,24 +27,46 @@ export interface ForwardOpts {
   verbArgs?: string[];
 }
 
-export async function forwardIfRemote(target: string, verb: string, remoteArgs: string[], opts: ForwardOpts = {}): Promise<Forwarded> {
+export async function forwardIfRemote(
+  target: string,
+  verb: string,
+  remoteArgs: string[],
+  opts: ForwardOpts = {},
+): Promise<Forwarded> {
   const cfg = opts.m ?? loadMachineConfig();
   const route = routeFor(target, cfg);
-  if (route.kind === "error") {
+  if (route.kind === 'error') {
     console.error(route.message);
     return { done: true, code: 1 };
   }
-  if (route.kind === "local") return { done: false, session: route.session, m: cfg };
+  if (route.kind === 'local') return { done: false, session: route.session, m: cfg };
 
   const args = remoteArgs;
 
-  const argv = ["ccmux", verb, ...(opts.verbArgs ?? []), route.session, ...args];
-  const r = await runPeer(cfg, route.machine, route.alias, argv, opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs });
+  const argv = ['ccmux', verb, ...(opts.verbArgs ?? []), route.session, ...args];
+  const r = await runPeer(
+    cfg,
+    route.machine,
+    route.alias,
+    argv,
+    opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs },
+  );
   const code = relay(r, `${verb} ${target}`, remoteWrites(verb));
   return { done: true, code };
 }
 
 /** Does this verb CHANGE anything on the far side? Only then may a transport failure claim that
  *  "nothing was sent" — for a read (`wait`, `transcript`, `logs`) that phrasing is simply false. */
-const WRITES = new Set(["msg", "restart", "start", "stop", "rm", "send", "mode", "chat", "router", "adopt"]);
+const WRITES = new Set([
+  'msg',
+  'restart',
+  'start',
+  'stop',
+  'rm',
+  'send',
+  'mode',
+  'chat',
+  'router',
+  'adopt',
+]);
 const remoteWrites = (verb: string): boolean => WRITES.has(verb);

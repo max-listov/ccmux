@@ -34,6 +34,9 @@ this repository, so the check is the mechanism and the rule is only its explanat
 Follow the current maintainer mandate and global Git/index rules. An authorized owned-project
 release includes gates, publication, rollout to owned runtimes and post-rollout verification;
 do not ask for the same approval again. It does not authorize another project's deployment.
+Local implementation, tests and release readiness do not themselves authorize publication or
+rollout. Do not carry an earlier release mandate into a new local-only request: stop at the
+verified working-tree result when the current instruction excludes release or production updates.
 Close task checkboxes only against actual evidence. Implementation documentation travels with its
 meaningful code commit, not an unsolicited separate bookkeeping commit. Documentation-only work
 does not require a runtime version bump or rollout.
@@ -45,7 +48,7 @@ does not require a runtime version bump or rollout.
    when verified; never mark an unperformed check as complete.
 3. Once the task's acceptance is satisfied, set `status: done`, add the actual `completed`
    timestamp and move it to `docs/backlog/done/` before committing the completed work.
-4. Commit under the current mandate, then release and verify the owned runtimes. If acceptance
+4. Only when the current mandate includes publication, commit, release and verify the owned runtimes. If acceptance
    requires post-release evidence, keep those items and the task open until that evidence exists.
 
 This documentation obligation is independent of the checkout rule below: fixing the release
@@ -68,9 +71,10 @@ the working checkout still presents already-published implementation as uncommit
 Control APIs may make breaking changes: there is no required installed-client compatibility
 population. Keep one current contract, descriptor, client path and native-content stream. Replace
 superseded interfaces in the same change; do not retain legacy endpoints, aliases, version-parallel
-clients, compatibility wrappers or fallback dispatch "for existing clients". A protocol revision
-identifies the current contract; it is not a reason to keep an older implementation alive. Update
-owned callers, examples, tests and release artifacts together. Provider-specific adapters and
+clients, compatibility wrappers or fallback dispatch "for existing clients". While pre-release,
+public route, client and profile names are unversioned: do not introduce V1/V2/V3 name families.
+Required envelope/format validation and upstream protocol versions are not compatibility branches.
+Update owned callers, examples, tests and release artifacts together. Provider-specific adapters and
 local/remote transports share the same domain operations; they are not compatibility alternatives.
 
 This does not authorize losing session identities, native history, credentials or accepted work.
@@ -114,7 +118,11 @@ Default to using Bun instead of Node.js.
 
 ## Testing
 
-Use `bun test` to run tests.
+Use `bun run check` for the complete local gate: Biome, TypeScript, tests and packed clients.
+`bun run lint` checks without editing; `bun run format` formats; `bun run lint:fix` applies safe
+Biome fixes. The shared style is two spaces, 100 columns, single quotes and semicolons. Use the
+checked-in `biome.json`; do not introduce a parallel formatter or suppress whole rule groups to
+hide findings. A passing local gate does not override the release-authority boundary above.
 
 ```ts#index.test.ts
 import { test, expect } from "bun:test";

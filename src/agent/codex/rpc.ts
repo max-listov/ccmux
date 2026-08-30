@@ -6,8 +6,13 @@ export interface CodexAppRpc {
 }
 
 export type CodexRpcId = number | string;
-export interface CodexRpcEvent { method: string; params: unknown }
-export interface CodexRpcRequest extends CodexRpcEvent { id: CodexRpcId }
+export interface CodexRpcEvent {
+  method: string;
+  params: unknown;
+}
+export interface CodexRpcRequest extends CodexRpcEvent {
+  id: CodexRpcId;
+}
 export interface CodexRpcOptions {
   signal?: AbortSignal;
   maxMessageBytes?: number;

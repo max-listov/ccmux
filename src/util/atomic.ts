@@ -1,4 +1,4 @@
-import { renameSync, chmodSync } from "node:fs";
+import { chmodSync, renameSync } from 'node:fs';
 
 /**
  * Write a file atomically: write to a unique temp sibling, then rename over the

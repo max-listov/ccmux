@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { z } from "zod";
-import { LaunchStampSchema, type LaunchStamp } from "./launchStamp.ts";
-import { STATUS_DIR } from "../config/paths.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import type { PaneScan } from "./index.ts";
-import type { TurnState } from "../chat/turnState.ts";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { z } from 'zod';
+import type { TurnState } from '../chat/turnState.ts';
+import { STATUS_DIR } from '../config/paths.ts';
+import { atomicWrite } from '../util/atomic.ts';
+import type { PaneScan } from './index.ts';
+import { type LaunchStamp, LaunchStampSchema } from './launchStamp.ts';
 
 // Per-session structured status, written by the Claude hooks (`ccmux hook-status`) and the statusLine
 // tee (`ccmux status-line`), read by `list`/TUI. TWO files per session, one topic each, so a write
@@ -23,10 +23,10 @@ import type { TurnState } from "../chat/turnState.ts";
 /** The `event` the supervisor stamps when it closes a turn the hook abandoned. Not a Claude hook
  *  name, and deliberately shaped so it cannot collide with one: a late `Stop` reads it and stays
  *  quiet rather than announcing the same turn's end a second time. */
-export const SUPERVISOR_CLOSED_EVENT = "ccmux:turn-closed";
+export const SUPERVISOR_CLOSED_EVENT = 'ccmux:turn-closed';
 
 export const LifecycleStatusSchema = z.object({
-  state: z.enum(["working", "idle"]),
+  state: z.enum(['working', 'idle']),
   ts: z.number(),
   /** What set it: a Claude hook (UserPromptSubmit/Stop/SessionStart), or `ccmux:turn-closed` when
    *  the supervisor closed a turn no hook ever ended. */
@@ -67,24 +67,28 @@ export type MetricsStatus = z.infer<typeof MetricsStatusSchema>;
  * the supervisor previously closed it: otherwise a blank spinner frame erases a live anonymous turn.
  */
 export function resolveLiveState(
-  paneState: PaneScan["state"],
+  paneState: PaneScan['state'],
   lifecycle: LifecycleStatus | null,
   evidence: TurnState | null,
-): LifecycleStatus["state"] {
-  if (paneState === "working") return "working";
-  if (paneState === "idle") return "idle";
-  if (lifecycle?.state === "working") return evidence?.settled === true ? "idle" : "working";
+): LifecycleStatus['state'] {
+  if (paneState === 'working') return 'working';
+  if (paneState === 'idle') return 'idle';
+  if (lifecycle?.state === 'working') return evidence?.settled === true ? 'idle' : 'working';
   // Stop is the one idle lifecycle record that is itself a real turn boundary. SessionStart says
   // nothing about a later anonymous turn, and a supervisor close can be invalidated by new pane
   // activity after it was written.
-  if (lifecycle?.state === "idle" && lifecycle.event === "Stop") return "idle";
-  if (evidence?.why === "working" || evidence?.why === "settling" || evidence?.why === "quiet-unproven") {
-    return "working";
+  if (lifecycle?.state === 'idle' && lifecycle.event === 'Stop') return 'idle';
+  if (
+    evidence?.why === 'working' ||
+    evidence?.why === 'settling' ||
+    evidence?.why === 'quiet-unproven'
+  ) {
+    return 'working';
   }
-  return "idle";
+  return 'idle';
 }
 
-const safe = (name: string): string => name.replace(/[^\w.-]/g, "_");
+const safe = (name: string): string => name.replace(/[^\w.-]/g, '_');
 const lifecyclePath = (name: string): string => `${STATUS_DIR}/${safe(name)}.lifecycle.json`;
 const chatHoldPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.chathold.json`;
 const metricsPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.metrics.json`;
@@ -93,7 +97,7 @@ const launchPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.launch
 function readRaw(path: string): unknown {
   try {
     if (!existsSync(path)) return null;
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch {
     return null;
   }
@@ -120,10 +124,14 @@ export async function writeLifecycle(name: string, data: LifecycleStatus): Promi
  * reader's view of a session merely because its last turn was interrupted.
  */
 export function closedTurnRecord(previous: LifecycleStatus, endedMs: number): LifecycleStatus {
-  return { ...previous, state: "idle", ts: endedMs, event: SUPERVISOR_CLOSED_EVENT };
+  return { ...previous, state: 'idle', ts: endedMs, event: SUPERVISOR_CLOSED_EVENT };
 }
 
-export async function closeLifecycleTurn(name: string, previous: LifecycleStatus, endedMs: number): Promise<void> {
+export async function closeLifecycleTurn(
+  name: string,
+  previous: LifecycleStatus,
+  endedMs: number,
+): Promise<void> {
   await writeLifecycle(name, closedTurnRecord(previous, endedMs));
 }
 
@@ -149,18 +157,24 @@ export async function writeChatHold(name: string, msgId: string, reason: string)
     // fact rather than an inference. A different message starts its own clock: a reason recorded
     // about another letter is not evidence about this one.
     const previous = ChatHoldSchema.safeParse(readRaw(chatHoldPath(name))).data;
-    const since = previous !== undefined && previous.msgId === msgId ? previous.since ?? previous.ts : now;
+    const since =
+      previous !== undefined && previous.msgId === msgId ? (previous.since ?? previous.ts) : now;
     await atomicWrite(chatHoldPath(name), JSON.stringify({ reason, ts: now, since, msgId }));
   } catch {
     // best-effort diagnostics
   }
 }
 
-export function readChatHold(name: string, maxAgeMs = 15_000): { reason: string; msgId: string | null; heldForMs: number } | null {
+export function readChatHold(
+  name: string,
+  maxAgeMs = 15_000,
+): { reason: string; msgId: string | null; heldForMs: number } | null {
   const h = ChatHoldSchema.safeParse(readRaw(chatHoldPath(name))).data;
   if (h === undefined) return null;
   const now = Date.now();
-  return now - h.ts <= maxAgeMs ? { reason: h.reason, msgId: h.msgId, heldForMs: Math.max(0, now - (h.since ?? h.ts)) } : null;
+  return now - h.ts <= maxAgeMs
+    ? { reason: h.reason, msgId: h.msgId, heldForMs: Math.max(0, now - (h.since ?? h.ts)) }
+    : null;
 }
 
 export function clearChatHold(name: string): void {
@@ -183,7 +197,7 @@ export function clearStatus(name: string): void {
 
 /** Record what this launch is using, so `list` can later answer "would a restart change anything?".
  *  Best-effort: a session must start even if we cannot write a note about it. */
-export function writeLaunchStamp(name: string, stamp: Omit<LaunchStamp, "ts">): void {
+export function writeLaunchStamp(name: string, stamp: Omit<LaunchStamp, 'ts'>): void {
   try {
     mkdirSync(STATUS_DIR, { recursive: true });
     writeFileSync(launchPath(name), JSON.stringify({ ...stamp, ts: Date.now() }));

@@ -1,12 +1,12 @@
-import type { AgentProvider } from "../index.ts";
-import { buildArgv, launchEnv, launchEnvKeys, launchInputs, preflight } from "./launch.ts";
-import { historyFile } from "./resume.ts";
-import { parse, usedTokens, lastModel } from "./transcript.ts";
-import { inspectChatPane, scanPane } from "./pane.ts";
+import type { AgentProvider } from '../index.ts';
+import { buildArgv, launchEnv, launchEnvKeys, launchInputs, preflight } from './launch.ts';
+import { inspectChatPane, scanPane } from './pane.ts';
+import { historyFile } from './resume.ts';
+import { lastModel, parse, usedTokens } from './transcript.ts';
 
 /** Codex provider — fresh identity is promoted by the pending bootstrap transaction. */
 export const codexProvider: AgentProvider = {
-  id: "codex",
+  id: 'codex',
   preflight,
   buildArgv,
   launchEnv,
@@ -18,5 +18,5 @@ export const codexProvider: AgentProvider = {
   lastModel,
   scanPane,
   inspectChatPane,
-  chatPickup: "transcript",
+  chatPickup: 'transcript',
 };

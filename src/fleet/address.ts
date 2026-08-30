@@ -1,5 +1,5 @@
-import type { MachineConfig } from "../types.ts";
-import { wirePeers } from "./wire.ts";
+import type { MachineConfig } from '../types.ts';
+import { wirePeers } from './wire.ts';
 
 /**
  * A fleet address — `<machine>:<session>` — is the missing piece that made cross-machine work
@@ -19,51 +19,55 @@ export interface FleetAddress {
 
 /** Pure parse. `dev:api` → remote; `api` → local. Never throws — malformed input is reported. */
 export function parseAddress(token: string): FleetAddress | { error: string } {
-  const i = token.indexOf(":");
+  const i = token.indexOf(':');
   if (i === -1) return { machine: null, session: token };
   const machine = token.slice(0, i);
   const session = token.slice(i + 1);
-  if (machine === "") return { error: `bad address '${token}': missing machine before ':'` };
-  if (session === "") return { error: `bad address '${token}': missing session after ':'` };
-  if (session.includes(":")) return { error: `bad address '${token}': only one ':' allowed` };
+  if (machine === '') return { error: `bad address '${token}': missing machine before ':'` };
+  if (session === '') return { error: `bad address '${token}': missing session after ':'` };
+  if (session.includes(':')) return { error: `bad address '${token}': only one ':' allowed` };
   return { machine, session };
 }
 
-export const isAddressError = (a: FleetAddress | { error: string }): a is { error: string } => "error" in a;
+export const isAddressError = (a: FleetAddress | { error: string }): a is { error: string } =>
+  'error' in a;
 
 /** Where an address should execute: locally, or over ssh to some host. Resolving the machine label
  *  against THIS machine's own `rcPrefix` first is a correctness requirement, not an optimisation —
  *  ssh to our own host would land in the PROD instance, not in an isolated dev one (its config,
  *  registry and tmux socket come from env that ssh does not carry). */
 export type Route =
-  | { kind: "local"; session: string }
+  | { kind: 'local'; session: string }
   // `alias` is null for a machine reachable only over the wire — a roaming laptop has no ssh alias
   // anywhere, which is the entire reason that transport exists.
-  | { kind: "remote"; alias: string | null; machine: string; session: string }
-  | { kind: "error"; message: string };
+  | { kind: 'remote'; alias: string | null; machine: string; session: string }
+  | { kind: 'error'; message: string };
 
 export function routeFor(token: string, m: MachineConfig): Route {
   const addr = parseAddress(token);
-  if (isAddressError(addr)) return { kind: "error", message: addr.error };
-  if (addr.machine === null || addr.machine === m.rcPrefix) return { kind: "local", session: addr.session };
+  if (isAddressError(addr)) return { kind: 'error', message: addr.error };
+  if (addr.machine === null || addr.machine === m.rcPrefix)
+    return { kind: 'local', session: addr.session };
   const fleet = m.fleet;
   const wire = wirePeers(m);
   if ((fleet === undefined || Object.keys(fleet).length === 0) && wire.length === 0) {
     return {
-      kind: "error",
+      kind: 'error',
       message: `fleet addressing is not configured on this machine — add a "fleet" map (ssh) or a "wire.peers" list (stitchwire) to machine.json`,
     };
   }
   // `Object.hasOwn`, not a plain lookup: `toString:api` would otherwise resolve to a prototype
   // METHOD, get stringified into argv, and fail as "transport failed" instead of "unknown machine".
-  const alias = fleet !== undefined && Object.hasOwn(fleet, addr.machine) ? fleet[addr.machine] : undefined;
+  const alias =
+    fleet !== undefined && Object.hasOwn(fleet, addr.machine) ? fleet[addr.machine] : undefined;
   const onWire = wire.includes(addr.machine);
   if (alias === undefined && !onWire) {
-    const known = [...new Set([...Object.keys(fleet ?? {}), ...wire])].sort().join(", ");
-    return { kind: "error", message: `unknown machine '${addr.machine}' — known: ${known}` };
+    const known = [...new Set([...Object.keys(fleet ?? {}), ...wire])].sort().join(', ');
+    return { kind: 'error', message: `unknown machine '${addr.machine}' — known: ${known}` };
   }
-  return { kind: "remote", alias: alias ?? null, machine: addr.machine, session: addr.session };
+  return { kind: 'remote', alias: alias ?? null, machine: addr.machine, session: addr.session };
 }
 
 /** This machine's own fleet address for a session — what a peer must use to reply to us. */
-export const selfAddress = (m: MachineConfig, session: string): string => `${m.rcPrefix}:${session}`;
+export const selfAddress = (m: MachineConfig, session: string): string =>
+  `${m.rcPrefix}:${session}`;

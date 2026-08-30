@@ -1,7 +1,7 @@
-import type { ChatPaneInspection, PaneScan } from "../index.ts";
-import { stripAnsi } from "../../tmux/tmux.ts";
-import { atInteractiveMenu as atMenu, detectPrompt as detectPromptImpl } from "./prompts.ts";
-import { parseContext } from "../context.ts";
+import { stripAnsi } from '../../tmux/tmux.ts';
+import { parseContext } from '../context.ts';
+import type { ChatPaneInspection, PaneScan } from '../index.ts';
+import { atInteractiveMenu as atMenu, detectPrompt as detectPromptImpl } from './prompts.ts';
 
 // Scrape model / context-fill / working-idle from what claude renders in the pane (the
 // model banner + statusline + the working spinner). Pure: rendered text → status. The
@@ -44,7 +44,7 @@ const READY_MARKERS = [
 ];
 
 export function scanPane(paneText: string): PaneScan {
-  const tail = paneText.split("\n").slice(-30).join("\n");
+  const tail = paneText.split('\n').slice(-30).join('\n');
   const contextLabel = tail.match(CONTEXT_RE)?.[0] ?? null;
   // A menu blocks the pane, so the session is not idle no matter how still it looks. Reporting the
   // prompt here is what stops `list` from calling a session waiting on a human "idle".
@@ -53,9 +53,9 @@ export function scanPane(paneText: string): PaneScan {
     ready: READY_MARKERS.some((re) => re.test(tail)),
     // The star spinner has blank animation frames, so its absence in one capture proves nothing
     // about a turn boundary. Stop/lifecycle and bounded turn evidence decide idle outside the pane.
-    state: WORKING_RE.test(tail) ? "working" : "indeterminate",
+    state: WORKING_RE.test(tail) ? 'working' : 'indeterminate',
     atPrompt: prompt === null ? null : prompt.title,
-    contextLabel: contextLabel ?? "-",
+    contextLabel: contextLabel ?? '-',
     context: parseContext(contextLabel),
   };
 }
@@ -63,7 +63,7 @@ export function scanPane(paneText: string): PaneScan {
 // Blocking selection menus — WHICH one is up, and the keystroke that answers it — now live in a
 // table (./prompts.ts) rather than as one hard-coded case here. Re-exported so the provider contract
 // and the chat-delivery guard keep their existing names.
-export { atInteractiveMenu, detectPrompt, promptAnswer } from "./prompts.ts";
+export { atInteractiveMenu, detectPrompt, promptAnswer } from './prompts.ts';
 
 /** Safe to inject an inter-agent chat message into this pane right now? The only unsafe state is
  *  a selection menu (would pick an option). WORKING is safe — Claude QUEUES typed input and runs
@@ -101,17 +101,19 @@ const COMPOSER_TAIL_LINES = 12;
  * shell-style case right too: type a few characters and Claude dim-completes the rest — the typed
  * part survives the filter and correctly counts as occupied.
  */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI dim runs require the literal ESC byte.
 const DIM_RUN_RE = /\u001b\[2m[\s\S]*?(?:\u001b\[(?:0|22)m|$)/g;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Strip native terminal SGR sequences, including ESC.
 const ANSI_RE = /\u001b\[[0-9;]*m/g;
 
 export function inputBusy(styledPaneText: string): boolean {
-  const tail = styledPaneText.split("\n").slice(-COMPOSER_TAIL_LINES);
+  const tail = styledPaneText.split('\n').slice(-COMPOSER_TAIL_LINES);
   for (let i = tail.length - 1; i >= 0; i--) {
     const line = tail[i];
-    if (line === undefined || !line.includes("❯")) continue;
-    const after = line.slice(line.indexOf("❯") + 1);
-    const typed = after.replace(DIM_RUN_RE, "").replace(ANSI_RE, "").trim();
-    return typed !== "";
+    if (line === undefined || !line.includes('❯')) continue;
+    const after = line.slice(line.indexOf('❯') + 1);
+    const typed = after.replace(DIM_RUN_RE, '').replace(ANSI_RE, '').trim();
+    return typed !== '';
   }
   return false; // no composer in view (booting / alt-screen) → nothing typed to clobber
 }
@@ -119,12 +121,23 @@ export function inputBusy(styledPaneText: string): boolean {
 export function inspectChatPane(styledPaneText: string): ChatPaneInspection {
   const paneText = stripAnsi(styledPaneText);
   if (atMenu(paneText)) {
-    return { state: "menu", reason: "recipient is at a selection menu — injecting would pick an option it never chose" };
+    return {
+      state: 'menu',
+      reason: 'recipient is at a selection menu — injecting would pick an option it never chose',
+    };
   }
   if (inputBusy(styledPaneText)) {
-    return { state: "input-busy", reason: "that pane has unsent text in its composer — delivery waits rather than appending to it" };
+    return {
+      state: 'input-busy',
+      reason:
+        'that pane has unsent text in its composer — delivery waits rather than appending to it',
+    };
   }
   const scan = scanPane(paneText);
-  if (!scan.ready) return { state: "not-drawn", reason: "the recipient's UI has not painted yet (starting or resuming)" };
-  return { state: "deliverable", reason: "ready" };
+  if (!scan.ready)
+    return {
+      state: 'not-drawn',
+      reason: "the recipient's UI has not painted yet (starting or resuming)",
+    };
+  return { state: 'deliverable', reason: 'ready' };
 }

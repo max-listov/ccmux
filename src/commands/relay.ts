@@ -1,13 +1,25 @@
-import { loadMachineConfig } from "../config/machine.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { appendMessage, loadLedger } from "../chat/store.ts";
-import { buildEnvelope } from "../chat/compose.ts";
-import { cliPrincipal, externalAddress, managedPeer, ownerTarget, principalLabel, targetLabel } from "../chat/identity.ts";
-import { externalNameOf, isExternalToken, lookupExternal, outstandingExternal } from "../chat/external.ts";
-import { usageLine } from "./help.ts";
-import { preview } from "../util/preview.ts";
-import { log } from "../util/log.ts";
-import type { ChatTarget } from "../types.ts";
+import { buildEnvelope } from '../chat/compose.ts';
+import {
+  externalNameOf,
+  isExternalToken,
+  lookupExternal,
+  outstandingExternal,
+} from '../chat/external.ts';
+import {
+  cliPrincipal,
+  externalAddress,
+  managedPeer,
+  ownerTarget,
+  principalLabel,
+  targetLabel,
+} from '../chat/identity.ts';
+import { appendMessage, loadLedger } from '../chat/store.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import type { ChatTarget } from '../types.ts';
+import { log } from '../util/log.ts';
+import { preview } from '../util/preview.ts';
+import { usageLine } from './help.ts';
 
 /**
  * `ccmux relay owner/<name> "<their answer>"` — bring an answer back from outside the fleet.
@@ -27,55 +39,86 @@ export async function cmdRelay(args: string[]): Promise<number> {
   const positionals: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const value = args[i];
-    if (value === "--task") task = args[++i] ?? null;
-    else if (value?.startsWith("--")) return console.error(`relay: unknown flag '${value}'\n${usageLine("relay")}`), 1;
-    else if (value !== undefined) positionals.push(value);
+    if (value === '--task') task = args[++i] ?? null;
+    else if (value?.startsWith('--')) {
+      console.error(`relay: unknown flag '${value}'\n${usageLine('relay')}`);
+      return 1;
+    } else if (value !== undefined) positionals.push(value);
   }
 
   const token = positionals[0];
-  let body = positionals.slice(1).join(" ").trim();
-  if (body === "" && token !== undefined && !process.stdin.isTTY) body = (await Bun.stdin.text()).trim();
-  if (token === undefined || body === "") return console.error(usageLine("relay")), 1;
+  let body = positionals.slice(1).join(' ').trim();
+  if (body === '' && token !== undefined && !process.stdin.isTTY)
+    body = (await Bun.stdin.text()).trim();
+  if (token === undefined || body === '') {
+    console.error(usageLine('relay'));
+    return 1;
+  }
   if (!isExternalToken(token)) {
-    return console.error(`relay: '${token}' is not an owner outside the fleet — those are addressed as owner/<name>. A managed session answers for itself with: ccmux msg <machine>:<session>`), 1;
+    console.error(
+      `relay: '${token}' is not an owner outside the fleet — those are addressed as owner/<name>. A managed session answers for itself with: ccmux msg <machine>:<session>`,
+    );
+    return 1;
   }
 
   const m = loadMachineConfig();
   const external = lookupExternal(m, token);
-  if ("error" in external) return console.error(`relay: ${external.error}`), 1;
+  if ('error' in external) {
+    console.error(`relay: ${external.error}`);
+    return 1;
+  }
 
   const ledger = loadLedger(m);
   // The letter this answers, oldest first — an answer belongs to the one that has waited longest.
-  const waiting = outstandingExternal(ledger).filter((l) => l.name === external.name && (task === null || l.msg.task === task));
+  const waiting = outstandingExternal(ledger).filter(
+    (l) => l.name === external.name && (task === null || l.msg.task === task),
+  );
   const letter = waiting[0];
   if (letter === undefined) {
     // Refused rather than recorded loose. An answer with no letter has nobody to be delivered to,
     // and filing it anyway would make the outstanding list disagree with itself.
     const others = outstandingExternal(ledger).filter((l) => l.name === external.name);
-    const hint = others.length === 0
-      ? `nothing is waiting on ${externalAddress(external.name)}`
-      : `waiting on ${externalAddress(external.name)}: ${others.map((l) => l.msg.task ?? "(no task)").join(", ")} — name one with --task`;
-    return console.error(`relay: no letter to answer — ${hint}`), 1;
+    const hint =
+      others.length === 0
+        ? `nothing is waiting on ${externalAddress(external.name)}`
+        : `waiting on ${externalAddress(external.name)}: ${others.map((l) => l.msg.task ?? '(no task)').join(', ')} — name one with --task`;
+    console.error(`relay: no letter to answer — ${hint}`);
+    return 1;
   }
 
   // Back to whoever wrote. A shell has no pane to deliver into, so that answer goes to the owner,
   // who is the one person guaranteed to see it — the letter still closes either way.
   const origin = letter.msg.from;
-  const target: ChatTarget = origin.kind === "managed"
-    ? (() => {
-        const session = findSession(loadSessions(m), origin.session);
-        return session === undefined ? ownerTarget() : managedPeer(m.rcPrefix, session);
-      })()
-    : ownerTarget();
+  const target: ChatTarget =
+    origin.kind === 'managed'
+      ? (() => {
+          const session = findSession(loadSessions(m), origin.session);
+          return session === undefined ? ownerTarget() : managedPeer(m.rcPrefix, session);
+        })()
+      : ownerTarget();
 
   const from = cliPrincipal(m.rcPrefix);
   appendMessage(
     m,
-    buildEnvelope(from, target, body, { task: letter.msg.task, defer: false, onBehalfOf: externalAddress(external.name), notBefore: null }),
+    buildEnvelope(from, target, body, {
+      task: letter.msg.task,
+      defer: false,
+      onBehalfOf: externalAddress(external.name),
+      notBefore: null,
+    }),
   );
-  log.info({ msg: "external answer relayed", external: external.name, to: targetLabel(target), task: letter.msg.task });
-  console.log(`relayed ${externalAddress(external.name)} → ${targetLabel(target)}: ${preview(body)}`);
-  console.log(`closes the letter ${principalLabel(letter.msg.from)} sent ${letter.msg.ts}${letter.msg.task === null ? "" : ` (task ${letter.msg.task})`}`);
+  log.info({
+    msg: 'external answer relayed',
+    external: external.name,
+    to: targetLabel(target),
+    task: letter.msg.task,
+  });
+  console.log(
+    `relayed ${externalAddress(external.name)} → ${targetLabel(target)}: ${preview(body)}`,
+  );
+  console.log(
+    `closes the letter ${principalLabel(letter.msg.from)} sent ${letter.msg.ts}${letter.msg.task === null ? '' : ` (task ${letter.msg.task})`}`,
+  );
   return 0;
 }
 
@@ -89,7 +132,7 @@ export function outstandingLines(m: ReturnType<typeof loadMachineConfig>): strin
     `waiting on ${waiting.length} answer(s) from outside the fleet:`,
     ...waiting.map((l) => {
       const age = Math.max(0, Math.round((now - Date.parse(l.msg.ts)) / 60_000));
-      const task = l.msg.task === null ? "" : ` (task ${l.msg.task})`;
+      const task = l.msg.task === null ? '' : ` (task ${l.msg.task})`;
       return `  ${externalAddress(l.name)}${task} — ${age}m, from ${principalLabel(l.msg.from)}: ${preview(l.msg.body, 60)}`;
     }),
     `  record an answer: ccmux relay owner/<name> "<what they said>"`,

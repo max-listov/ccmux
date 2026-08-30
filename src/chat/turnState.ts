@@ -1,4 +1,4 @@
-import type { TranscriptMessage } from "../types.ts";
+import type { TranscriptMessage } from '../types.ts';
 
 /**
  * Is this session between turns right now?
@@ -36,23 +36,23 @@ export const SETTLE_MS = 6_000;
 export const INTERRUPTED_MS = 60_000;
 
 export type TurnWhy =
-  | "working" // the agent is mid-work right now
-  | "not-drawn" // the UI has not painted yet (starting/resuming) — typing here is swallowed
-  | "at-menu" // sitting on a selection prompt — typing here picks an option it never chose
-  | "input-occupied" // the composer contains unsent human/follow-up text
-  | "unknown-pane" // a drawn provider frame is not structurally calibrated
-  | "awaiting-pickup" // injected chat has not appeared in the recipient transcript yet
-  | "settling" // ended on text, but too recently to be sure the turn is over
-  | "quiet-unproven" // last record is not text and the silence is not yet long enough to mean anything
-  | "turn-ended" // finished on its own words
-  | "idle-after-interrupt" // quiet far too long to be mid-turn — the turn was killed
-  | "never-spoke"; // no transcript at all — this session has not taken a turn yet
+  | 'working' // the agent is mid-work right now
+  | 'not-drawn' // the UI has not painted yet (starting/resuming) — typing here is swallowed
+  | 'at-menu' // sitting on a selection prompt — typing here picks an option it never chose
+  | 'input-occupied' // the composer contains unsent human/follow-up text
+  | 'unknown-pane' // a drawn provider frame is not structurally calibrated
+  | 'awaiting-pickup' // injected chat has not appeared in the recipient transcript yet
+  | 'settling' // ended on text, but too recently to be sure the turn is over
+  | 'quiet-unproven' // last record is not text and the silence is not yet long enough to mean anything
+  | 'turn-ended' // finished on its own words
+  | 'idle-after-interrupt' // quiet far too long to be mid-turn — the turn was killed
+  | 'never-spoke'; // no transcript at all — this session has not taken a turn yet
 
 export interface TurnFacts {
   paneWorking: boolean;
   paneReady: boolean;
   atMenu: boolean;
-  paneBlock?: "input-occupied" | "unknown-pane" | null;
+  paneBlock?: 'input-occupied' | 'unknown-pane' | null;
   /** true when the transcript's last record is an assistant MESSAGE (not a tool call / thinking). */
   endedOnAssistantText: boolean;
   /** ms since the transcript last moved; null = no transcript at all (a session that never had a
@@ -74,8 +74,8 @@ export function assistantEndedCurrentTurn(
 ): boolean {
   return (
     message !== null &&
-    message.role === "assistant" &&
-    message.kind === "message" &&
+    message.role === 'assistant' &&
+    message.kind === 'message' &&
     (turnStartedMs === null || (transcriptMs !== null && transcriptMs >= turnStartedMs))
   );
 }
@@ -85,36 +85,42 @@ export function turnState(f: TurnFacts): TurnState {
   // for its own sake: delivery ACKS what it types, so a keystroke swallowed by a half-painted UI is
   // a letter marked delivered and never seen again — the worst outcome available here, and the one
   // a bare quiet-threshold walks straight into after a restart.
-  if (f.paneWorking) return { settled: false, why: "working" };
-  if (!f.paneReady) return { settled: false, why: "not-drawn" };
-  if (f.atMenu) return { settled: false, why: "at-menu" };
-  if (f.paneBlock !== null && f.paneBlock !== undefined) return { settled: false, why: f.paneBlock };
+  if (f.paneWorking) return { settled: false, why: 'working' };
+  if (!f.paneReady) return { settled: false, why: 'not-drawn' };
+  if (f.atMenu) return { settled: false, why: 'at-menu' };
+  if (f.paneBlock !== null && f.paneBlock !== undefined)
+    return { settled: false, why: f.paneBlock };
 
   // "Never had a turn" is its own answer, not an interrupted one. Both are settled — the session is
   // genuinely between turns — but only one of them may be described as a turn that was cut short,
   // and `wait` needs to tell a caller which of the two it is looking at.
-  if (f.msSinceActivity === null) return { settled: true, why: "never-spoke" };
+  if (f.msSinceActivity === null) return { settled: true, why: 'never-spoke' };
   if (f.endedOnAssistantText) {
-    return f.msSinceActivity >= SETTLE_MS ? { settled: true, why: "turn-ended" } : { settled: false, why: "settling" };
+    return f.msSinceActivity >= SETTLE_MS
+      ? { settled: true, why: 'turn-ended' }
+      : { settled: false, why: 'settling' };
   }
   // Distinct from `settling`: nothing was said here, so saying "it just spoke" would be false about
   // exactly the population this whole change is for.
-  return f.msSinceActivity >= INTERRUPTED_MS ? { settled: true, why: "idle-after-interrupt" } : { settled: false, why: "quiet-unproven" };
+  return f.msSinceActivity >= INTERRUPTED_MS
+    ? { settled: true, why: 'idle-after-interrupt' }
+    : { settled: false, why: 'quiet-unproven' };
 }
 
 /** One sentence per cause, so the daemon's hold note, `inbox` and `wait` cannot drift into telling
  *  three different stories about the same gate — which is exactly how the old wording ended up
  *  claiming "has not finished its turn" for a session whose turn was over. */
 export const WHY_TEXT: Record<TurnWhy, string> = {
-  working: "the recipient is working right now — deferred mail waits for a turn boundary",
-  "not-drawn": "the recipient's UI has not painted yet (starting or resuming)",
-  "at-menu": "the recipient is at a selection prompt — typing there would pick an option for it",
-  "input-occupied": "the recipient has unsent text in its composer",
-  "unknown-pane": "the recipient's UI is drawn in an unknown shape",
-  "awaiting-pickup": "the injected message has not appeared in the recipient transcript yet",
-  settling: "the recipient just spoke; holding a moment to be sure the turn really ended",
-  "quiet-unproven": "the recipient's last record is not speech and it has not been quiet long enough to tell a dead turn from a pause",
-  "turn-ended": "the recipient finished its turn",
-  "idle-after-interrupt": "the recipient's turn was interrupted and will not resume on its own",
-  "never-spoke": "the recipient has not taken a turn yet",
+  working: 'the recipient is working right now — deferred mail waits for a turn boundary',
+  'not-drawn': "the recipient's UI has not painted yet (starting or resuming)",
+  'at-menu': 'the recipient is at a selection prompt — typing there would pick an option for it',
+  'input-occupied': 'the recipient has unsent text in its composer',
+  'unknown-pane': "the recipient's UI is drawn in an unknown shape",
+  'awaiting-pickup': 'the injected message has not appeared in the recipient transcript yet',
+  settling: 'the recipient just spoke; holding a moment to be sure the turn really ended',
+  'quiet-unproven':
+    "the recipient's last record is not speech and it has not been quiet long enough to tell a dead turn from a pause",
+  'turn-ended': 'the recipient finished its turn',
+  'idle-after-interrupt': "the recipient's turn was interrupted and will not resume on its own",
+  'never-spoke': 'the recipient has not taken a turn yet',
 };

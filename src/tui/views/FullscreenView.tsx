@@ -1,16 +1,16 @@
-import { Box, Text, useStdout } from "ink";
-import { VERSION } from "../../util/version.ts";
-import { wrapText } from "../format.ts";
-import { IS_DEV } from "../../env.ts";
-import { SessionCard } from "../components/SessionCard.tsx";
-import { TranscriptPane } from "../components/TranscriptPane.tsx";
-import { Scrollbar } from "../components/Scrollbar.tsx";
-import { Txt } from "../components/Txt.tsx";
-import type { FleetItem, FleetLoad } from "../fleet.ts";
-import { emptyListText, externalActionHint, inventoryLabel, writerSummary } from "../fleet.ts";
-import type { TranscriptMessage } from "../../types.ts";
+import { Box, Text, useStdout } from 'ink';
+import { IS_DEV } from '../../env.ts';
+import type { TranscriptMessage } from '../../types.ts';
+import { VERSION } from '../../util/version.ts';
+import { Scrollbar } from '../components/Scrollbar.tsx';
+import { SessionCard } from '../components/SessionCard.tsx';
+import { TranscriptPane } from '../components/TranscriptPane.tsx';
+import { Txt } from '../components/Txt.tsx';
+import type { FleetItem, FleetLoad } from '../fleet.ts';
+import { emptyListText, externalActionHint, inventoryLabel, writerSummary } from '../fleet.ts';
+import { wrapText } from '../format.ts';
 
-type Focus = "list" | "transcript";
+type Focus = 'list' | 'transcript';
 
 /** Fullscreen view — alt-screen app: fleet on the left, scrollable transcript on the
  *  right. The focused pane is outlined cyan (← / → switch); listWidth is resizable. */
@@ -65,7 +65,8 @@ export function FullscreenView({
   // reserve width for the scrollbar (1 bar + 1 gap) only when the list actually overflows
   const sbReserve = items.length > visibleCards ? 2 : 0;
   // focused → cyan · hovered (not focused) → white · idle → gray
-  const paneColor = (pane: Focus): string => (focus === pane ? "cyan" : hoverPane === pane ? "white" : "gray");
+  const paneColor = (pane: Focus): string =>
+    focus === pane ? 'cyan' : hoverPane === pane ? 'white' : 'gray';
   // compose input is ALWAYS visible at the bottom and WRAPS (long text shows whole lines,
   // grows up to 5 rows; beyond that the earliest rows scroll away). The transcript shrinks
   // to make room — its height accounts for the input's current row count.
@@ -75,94 +76,171 @@ export function FullscreenView({
 
   return (
     <Box flexDirection="column" width={cols} height={termRows} overflow="hidden">
-      <Box height={1} backgroundColor="cyan" paddingX={1} justifyContent="space-between" flexShrink={0}>
+      <Box
+        height={1}
+        backgroundColor="cyan"
+        paddingX={1}
+        justifyContent="space-between"
+        flexShrink={0}
+      >
         <Box>
           <Text color="black" bold>{` ccmux v${VERSION} `}</Text>
-          {IS_DEV ? <Text color="red" bold>{"DEV "}</Text> : null}
-          <Text color="black" bold>{"· fleet "}</Text>
+          {IS_DEV ? (
+            <Text color="red" bold>
+              {'DEV '}
+            </Text>
+          ) : null}
+          <Text color="black" bold>
+            {'· fleet '}
+          </Text>
         </Box>
         <Text color="black">{`${rcPrefix} · ${externalStart} managed · ${inventoryLabel(load, externalCount)} `}</Text>
       </Box>
 
       <Box height={bodyHeight} flexShrink={0} overflow="hidden">
-        <Box width={listWidth} height={bodyHeight} borderStyle="round" borderColor={paneColor("list")} overflow="hidden">
+        <Box
+          width={listWidth}
+          height={bodyHeight}
+          borderStyle="round"
+          borderColor={paneColor('list')}
+          overflow="hidden"
+        >
           <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
             {items.length === 0 ? (
-              <Text dimColor>{`${load.loaded ? "" : spin + " "}${emptyListText(load, "n to create")}`}</Text>
+              <Text
+                dimColor
+              >{`${load.loaded ? '' : `${spin} `}${emptyListText(load, 'n to create')}`}</Text>
             ) : (
               items.slice(winStart, winStart + visibleCards).map((it, k, arr) => {
                 const i = winStart + k; // global index (slice is the scroll window)
                 const isLast = k === arr.length - 1;
                 return (
-                  <Box key={it.key} flexDirection="column" flexShrink={0} marginBottom={isLast ? 0 : 1}>
+                  <Box
+                    key={it.key}
+                    flexDirection="column"
+                    flexShrink={0}
+                    marginBottom={isLast ? 0 : 1}
+                  >
                     {i === externalStart ? (
-                      <Text color="magenta" dimColor>── external · local inventory outside ccmux ──</Text>
+                      <Text color="magenta" dimColor>
+                        ── external · local inventory outside ccmux ──
+                      </Text>
                     ) : null}
-                    <SessionCard item={it} selected={i === cursor} hovered={i === hoverCard} spin={spin} showDir framed cardWidth={Math.max(20, listWidth - 4 - sbReserve)} lastWidth={Math.max(14, listWidth - 12 - sbReserve)} />
+                    <SessionCard
+                      item={it}
+                      selected={i === cursor}
+                      hovered={i === hoverCard}
+                      spin={spin}
+                      showDir
+                      framed
+                      cardWidth={Math.max(20, listWidth - 4 - sbReserve)}
+                      lastWidth={Math.max(14, listWidth - 12 - sbReserve)}
+                    />
                   </Box>
                 );
               })
             )}
           </Box>
-          <Scrollbar total={items.length} visible={visibleCards} offset={winStart} height={Math.max(1, bodyHeight - 2)} color={paneColor("list")} />
+          <Scrollbar
+            total={items.length}
+            visible={visibleCards}
+            offset={winStart}
+            height={Math.max(1, bodyHeight - 2)}
+            color={paneColor('list')}
+          />
         </Box>
         {/* divider between two separate blocks — INVISIBLE by default, appears as a thin
             muted line only on hover/drag. Spans the CONTENT height (inset past the block
             borders), not the full frame. This is the resize handle. */}
         <Box flexDirection="column" marginTop={1}>
           {Array.from({ length: Math.max(1, bodyHeight - 2) }).map((_, i) => (
-            <Txt key={i} color={handleActive ? "cyan" : undefined} dim={handleActive}>
-              {handleActive ? "│" : " "}
+            // biome-ignore lint/suspicious/noArrayIndexKey: Identical stateless divider glyphs are indexed by screen row.
+            <Txt key={i} color={handleActive ? 'cyan' : undefined} dim={handleActive}>
+              {handleActive ? '│' : ' '}
             </Txt>
           ))}
         </Box>
-        <Box flexDirection="column" flexGrow={1} height={bodyHeight} borderStyle="round" borderColor={paneColor("transcript")} paddingX={1} overflow="hidden">
+        <Box
+          flexDirection="column"
+          flexGrow={1}
+          height={bodyHeight}
+          borderStyle="round"
+          borderColor={paneColor('transcript')}
+          paddingX={1}
+          overflow="hidden"
+        >
           <Text>
-            <Text bold color={sel?.external ? "magenta" : "cyan"}>{sel?.row.session.name ?? "—"}</Text>
-            <Text dimColor> · {sel?.external ? "external" : "transcript"}{transcriptOffset > 0 ? ` (↑${transcriptOffset})` : ""}</Text>
+            <Text bold color={sel?.external ? 'magenta' : 'cyan'}>
+              {sel?.row.session.name ?? '—'}
+            </Text>
+            <Text dimColor>
+              {' '}
+              · {sel?.external ? 'external' : 'transcript'}
+              {transcriptOffset > 0 ? ` (↑${transcriptOffset})` : ''}
+            </Text>
           </Text>
           {sel?.ext ? (
             <>
               <Text dimColor>{`${sel.ext.provider}@${sel.ext.host} · ${sel.ext.threadId}`}</Text>
-              <Text dimColor>{`cwd ${sel.ext.dir ?? "unknown"} · origin ${sel.ext.origin} · storage ${sel.ext.storage} · writer ${writerSummary(sel.ext)}`}</Text>
+              <Text
+                dimColor
+              >{`cwd ${sel.ext.dir ?? 'unknown'} · origin ${sel.ext.origin} · storage ${sel.ext.storage} · writer ${writerSummary(sel.ext)}`}</Text>
             </>
-          ) : <Box height={1} flexShrink={0} />}
-          <TranscriptPane messages={messages} offset={transcriptOffset} width={Math.max(8, paneWidth - 2)} height={Math.max(1, bodyHeight - (sel?.ext ? 5 : 4) - inputRows)} spin={spin} color={paneColor("transcript")} />
+          ) : (
+            <Box height={1} flexShrink={0} />
+          )}
+          <TranscriptPane
+            messages={messages}
+            offset={transcriptOffset}
+            width={Math.max(8, paneWidth - 2)}
+            height={Math.max(1, bodyHeight - (sel?.ext ? 5 : 4) - inputRows)}
+            spin={spin}
+            color={paneColor('transcript')}
+          />
           {/* compose input — pinned at the bottom, ALWAYS visible; wraps whole lines while
               composing (no mid-word truncation), growing up to 5 rows */}
           <Box height={inputRows} flexShrink={0} flexDirection="column" overflow="hidden">
             {composing ? (
               draftLines.length === 0 ? (
                 <Box>
-                  <Txt color="green" bold>{"› "}</Txt>
-                  <Txt dim italic>{"type a message — Enter to send · Esc to cancel"}</Txt>
+                  <Txt color="green" bold>
+                    {'› '}
+                  </Txt>
+                  <Txt dim italic>
+                    {'type a message — Enter to send · Esc to cancel'}
+                  </Txt>
                 </Box>
               ) : (
                 draftLines.slice(-5).map((ln, i, arr) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Stateless preview lines have position identity; there is no per-row editor state.
                   <Box key={i}>
-                    <Txt color="green" bold>{i === 0 ? "› " : "  "}</Txt>
+                    <Txt color="green" bold>
+                      {i === 0 ? '› ' : '  '}
+                    </Txt>
                     <Text>{ln}</Text>
-                    {i === arr.length - 1 ? <Txt color="green">{"▏"}</Txt> : null}
+                    {i === arr.length - 1 ? <Txt color="green">{'▏'}</Txt> : null}
                   </Box>
                 ))
               )
             ) : sending ? (
-              <Txt color="green">{"  sending…"}</Txt>
+              <Txt color="green">{'  sending…'}</Txt>
             ) : canCompose ? (
-              <Txt dim>{"› press i to send a message"}</Txt>
+              <Txt dim>{'› press i to send a message'}</Txt>
             ) : (
-              <Txt dim>{"  read-only · external session"}</Txt>
+              <Txt dim>{'  read-only · external session'}</Txt>
             )}
           </Box>
         </Box>
       </Box>
 
       <Box height={1} backgroundColor="gray" paddingX={1} flexShrink={0}>
-        <Text color="black">{composing
-          ? ` compose — ↵ send   esc cancel `
-          : sel?.ext
-            ? ` ←→ pane   ↑↓ session   ${externalActionHint(sel.ext)}   [ ] resize   x external off   f inline   q quit `
-            : ` ←→ pane   ↑↓ ${focus === "transcript" ? "scroll" : "session"}   i message   [ ] resize   ↵ attach   x external ${load.externalOn ? "off" : "on"}   f inline   q quit `}</Text>
+        <Text color="black">
+          {composing
+            ? ` compose — ↵ send   esc cancel `
+            : sel?.ext
+              ? ` ←→ pane   ↑↓ session   ${externalActionHint(sel.ext)}   [ ] resize   x external off   f inline   q quit `
+              : ` ←→ pane   ↑↓ ${focus === 'transcript' ? 'scroll' : 'session'}   i message   [ ] resize   ↵ attach   x external ${load.externalOn ? 'off' : 'on'}   f inline   q quit `}
+        </Text>
       </Box>
     </Box>
   );

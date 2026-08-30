@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { tailTranscript, lastActivityMs } from "../../agent/index.ts";
-import type { MachineConfig, Session, TranscriptMessage } from "../../types.ts";
+import { useEffect, useState } from 'react';
+import { lastActivityMs, tailTranscript } from '../../agent/index.ts';
+import type { MachineConfig, Session, TranscriptMessage } from '../../types.ts';
 
 /** Live transcript of the selected session (fullscreen pane). Re-reads on an interval
  *  and when the selection changes; disabled (empty) when the pane isn't shown.
@@ -9,9 +9,12 @@ import type { MachineConfig, Session, TranscriptMessage } from "../../types.ts";
  *  so we skip re-reading/re-parsing 300 messages and the full re-render every 1.5s (that poll
  *  was the source of the periodic jank on big transcripts). Selection change resets the gate
  *  (the effect re-runs), so switching sessions always loads fresh. */
-export function useTranscript(m: MachineConfig, session: Session | null, enabled: boolean): TranscriptMessage[] {
+export function useTranscript(
+  m: MachineConfig,
+  session: Session | null,
+  enabled: boolean,
+): TranscriptMessage[] {
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const name = session?.name;
   useEffect(() => {
     if (!enabled || !session) {
       setMessages([]);
@@ -32,6 +35,6 @@ export function useTranscript(m: MachineConfig, session: Session | null, enabled
       alive = false;
       clearInterval(id);
     };
-  }, [m, name, enabled, session]);
+  }, [m, enabled, session]);
   return messages;
 }

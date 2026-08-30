@@ -1,11 +1,11 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { z } from "zod";
-import { ChatMessageSchema } from "../config/schema.ts";
-import { log } from "../util/log.ts";
-import { targetLabel } from "../chat/identity.ts";
-import type { MachineConfig } from "../types.ts";
-import { outboxPath } from "../config/paths.ts";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { z } from 'zod';
+import { targetLabel } from '../chat/identity.ts';
+import { outboxPath } from '../config/paths.ts';
+import { ChatMessageSchema } from '../config/schema.ts';
+import type { MachineConfig } from '../types.ts';
+import { log } from '../util/log.ts';
 
 /**
  * What THIS machine sent to other machines.
@@ -27,13 +27,15 @@ const OutboundResultSchema = z.object({
   detail: z.string(), // transport/remote error when !ok
 });
 
-export const OutboundSchema = z.object({
-  kind: z.literal("msg"),
-  // The exact wire envelope is retained unchanged for retries. In particular, a retry never
-  // resolves a session name again after that name has been reused by another provider/thread.
-  envelope: ChatMessageSchema,
-  result: OutboundResultSchema,
-}).strict();
+export const OutboundSchema = z
+  .object({
+    kind: z.literal('msg'),
+    // The exact wire envelope is retained unchanged for retries. In particular, a retry never
+    // resolves a session name again after that name has been reused by another provider/thread.
+    envelope: ChatMessageSchema,
+    result: OutboundResultSchema,
+  })
+  .strict();
 export type Outbound = z.infer<typeof OutboundSchema>;
 
 export function outboundId(record: Outbound): string {
@@ -56,8 +58,9 @@ export function appendOutbound(m: MachineConfig, rec: Outbound): void {
     // an error. But it must not vanish quietly either: this record's entire purpose is to be proof
     // that we asked, so a lost one is exactly the blindness the outbox exists to end.
     const target = rec.envelope.to;
-    const to = target.kind === "managed" ? `${target.machine}:${target.session}` : targetLabel(target);
-    log.warn({ msg: "outbox: failed to record an outgoing message", to, err: String(e) });
+    const to =
+      target.kind === 'managed' ? `${target.machine}:${target.session}` : targetLabel(target);
+    log.warn({ msg: 'outbox: failed to record an outgoing message', to, err: String(e) });
   }
 }
 
@@ -65,8 +68,8 @@ export function loadOutbox(m: MachineConfig): Outbound[] {
   const p = outboxPath(m);
   if (!existsSync(p)) return [];
   const out: Outbound[] = [];
-  for (const line of readFileSync(p, "utf8").split("\n")) {
-    if (line.trim() === "") continue;
+  for (const line of readFileSync(p, 'utf8').split('\n')) {
+    if (line.trim() === '') continue;
     try {
       const rec = OutboundSchema.safeParse(JSON.parse(line)).data;
       if (rec !== undefined) out.push(rec);

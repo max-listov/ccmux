@@ -1,4 +1,4 @@
-import type { MachineConfig } from "../../types.ts";
+import type { MachineConfig } from '../../types.ts';
 
 /**
  * Claude's blocking selection menus, as a table rather than one hard-coded case.
@@ -14,7 +14,7 @@ import type { MachineConfig } from "../../types.ts";
  * nobody has made yet, and answering it automatically would hand any checked-in
  * `.claude/settings.local.json` its permissions unread.
  */
-export type PromptKind = "resume-picker" | "folder-trust" | "declared-permissions" | "unrecognised";
+export type PromptKind = 'resume-picker' | 'folder-trust' | 'declared-permissions' | 'unrecognised';
 
 export type PanePrompt = {
   kind: PromptKind;
@@ -22,10 +22,10 @@ export type PanePrompt = {
   title: string;
 };
 
-const PICKER_SUMMARY = "Resume from summary";
-const PICKER_FULL = "Resume full session as-is";
-const TRUST_LINE = "trust this folder";
-const DECLARED_LINE = "pre-approves";
+const PICKER_SUMMARY = 'Resume from summary';
+const PICKER_FULL = 'Resume full session as-is';
+const TRUST_LINE = 'trust this folder';
+const DECLARED_LINE = 'pre-approves';
 
 /** EVERY Claude selection menu renders the highlighted option as `❯ N.` (a cursor on a NUMBERED
  *  option). The normal input prompt is `❯ ` followed by the user's text, NEVER `❯ <digit>.`, so this
@@ -34,7 +34,7 @@ const DECLARED_LINE = "pre-approves";
 const MENU_CURSOR_RE = /❯\s*\d+\.\s/;
 
 export function paneTail(paneText: string, lines = 20): string {
-  return paneText.split("\n").slice(-lines).join("\n");
+  return paneText.split('\n').slice(-lines).join('\n');
 }
 
 export function atInteractiveMenu(paneText: string): boolean {
@@ -47,22 +47,22 @@ export function detectPrompt(paneText: string): PanePrompt | null {
   if (!atInteractiveMenu(paneText)) return null;
   const tail = paneTail(paneText, 40);
   if (tail.includes(PICKER_SUMMARY) && tail.includes(PICKER_FULL)) {
-    return { kind: "resume-picker", title: "resume: summary or full" };
+    return { kind: 'resume-picker', title: 'resume: summary or full' };
   }
   if (tail.includes(TRUST_LINE)) {
     return tail.includes(DECLARED_LINE)
-      ? { kind: "declared-permissions", title: "trust folder + permissions it declares" }
-      : { kind: "folder-trust", title: "trust this folder" };
+      ? { kind: 'declared-permissions', title: 'trust folder + permissions it declares' }
+      : { kind: 'folder-trust', title: 'trust this folder' };
   }
-  return { kind: "unrecognised", title: "a choice we don't recognise" };
+  return { kind: 'unrecognised', title: "a choice we don't recognise" };
 }
 
 /** Whether the machine's policy covers this prompt. The levels escalate, so a machine that accepts
  *  declared permissions necessarily also trusts the directory. */
 export function policyAnswers(kind: PromptKind, m: MachineConfig): boolean {
-  if (kind === "resume-picker") return m.resumePicker !== "off";
-  if (kind === "folder-trust") return m.trustPrompt !== "off";
-  if (kind === "declared-permissions") return m.trustPrompt === "declared";
+  if (kind === 'resume-picker') return m.resumePicker !== 'off';
+  if (kind === 'folder-trust') return m.trustPrompt !== 'off';
+  if (kind === 'declared-permissions') return m.trustPrompt === 'declared';
   return false; // never guess at a menu we cannot read
 }
 
@@ -79,9 +79,9 @@ export function promptAnswer(paneText: string, m: MachineConfig): string | null 
   const prompt = detectPrompt(paneText);
   if (prompt === null || !policyAnswers(prompt.kind, m)) return null;
   const tail = paneTail(paneText, 40);
-  if (prompt.kind === "resume-picker") {
-    return optionNumber(tail, m.resumePicker === "summary" ? PICKER_SUMMARY : PICKER_FULL);
+  if (prompt.kind === 'resume-picker') {
+    return optionNumber(tail, m.resumePicker === 'summary' ? PICKER_SUMMARY : PICKER_FULL);
   }
   // Both trust variants offer the same affirmative option; read its number rather than assume "1".
-  return optionNumber(tail, "Yes, I trust this folder");
+  return optionNumber(tail, 'Yes, I trust this folder');
 }

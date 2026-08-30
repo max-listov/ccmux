@@ -1,8 +1,11 @@
-import { z } from "zod";
-import { ExternalTurnStateSchema } from "../external/turnSchema.ts";
-import { NativeModelSelectionSchema, AcceptedTurnOptionsSchema } from "../runtime/selectionSchema.ts";
-import { AttachmentReferencesSchema } from "../attachments/reference.ts";
-import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from "../policy/schema.ts";
+import { z } from 'zod';
+import { AttachmentReferencesSchema } from '../attachments/reference.ts';
+import { ExternalTurnStateSchema } from '../external/turnSchema.ts';
+import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from '../policy/schema.ts';
+import {
+  AcceptedTurnOptionsSchema,
+  NativeModelSelectionSchema,
+} from '../runtime/selectionSchema.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single source of truth for every persisted/remote shape. No bare interfaces,
@@ -12,12 +15,12 @@ import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from "../policy/
 /** Any Claude Code permission mode (matches `claude --permission-mode` choices).
  *  Shared by the machine default and the per-session override so the two can't drift. */
 export const PermissionModeSchema = z.enum([
-  "auto",
-  "manual",
-  "plan",
-  "acceptEdits",
-  "dontAsk",
-  "bypassPermissions",
+  'auto',
+  'manual',
+  'plan',
+  'acceptEdits',
+  'dontAsk',
+  'bypassPermissions',
 ]);
 
 /**
@@ -30,27 +33,43 @@ export const PermissionModeSchema = z.enum([
 export const SESSION_NAME_RE = /^[^|\s#:]+$/;
 
 /** Agent CLI backing a managed session. Persisted explicitly on every registry row. */
-export const AgentKindSchema = z.enum(["claude", "codex", "opencode", "custom"]);
+export const AgentKindSchema = z.enum(['claude', 'codex', 'opencode', 'custom']);
 
 /** Provider continuation is not the managed registration UUID. */
-export const NativeSessionSchema = z.object({
-  runtime: z.enum(["opencode", "custom"]),
-  id: z.string().min(1).max(256),
-  version: z.string().min(1).max(64),
-}).strict();
+export const NativeSessionSchema = z
+  .object({
+    runtime: z.enum(['opencode', 'custom']),
+    id: z.string().min(1).max(256),
+    version: z.string().min(1).max(64),
+  })
+  .strict();
 
 /** Public-safe identity of an execution-host launch recipe. The reference contains no path,
  * command, environment value or provider credential. */
-export const LaunchRecipeIdSchema = z.string().min(1).max(128).regex(/^[a-z][a-z0-9._-]*$/);
-export const LaunchRecipeRevisionSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-export const LaunchRecipeCapabilitySchema = z.string().min(1).max(128).regex(/^[a-z][a-z0-9._-]*$/);
+export const LaunchRecipeIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z][a-z0-9._-]*$/);
+export const LaunchRecipeRevisionSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+export const LaunchRecipeCapabilitySchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z][a-z0-9._-]*$/);
 /** Native provider collaboration modes that a host recipe may pin. The public caller never sends
  * the mode or its settings; it selects only the immutable recipe reference. */
-export const CodexCollaborationModeSchema = z.enum(["default", "plan"]);
-export const LaunchRecipeReferenceSchema = z.object({
-  id: LaunchRecipeIdSchema,
-  revision: LaunchRecipeRevisionSchema,
-}).strict();
+export const CodexCollaborationModeSchema = z.enum(['default', 'plan']);
+export const LaunchRecipeReferenceSchema = z
+  .object({
+    id: LaunchRecipeIdSchema,
+    revision: LaunchRecipeRevisionSchema,
+  })
+  .strict();
 export const ModelSelectionSchema = NativeModelSelectionSchema;
 export const LaunchRecipeMetadataSchema = LaunchRecipeReferenceSchema.extend({
   digest: z.string().regex(/^[0-9a-f]{64}$/),
@@ -61,16 +80,21 @@ export const LaunchRecipeMetadataSchema = LaunchRecipeReferenceSchema.extend({
 /** Private host configuration. Values stay on the execution host; only LaunchRecipeMetadata is
  * projected through control APIs. `environment` names capabilities the recipe requires without
  * carrying their values, and `flags` goes through the existing owned App Server allowlist. */
-export const MachineLaunchRecipeSchema = z.object({
-  revision: LaunchRecipeRevisionSchema,
-  envFile: z.string().min(1).optional(),
-  flags: z.array(z.string().min(1).max(4_096)).max(32).default([]),
-  environment: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)).max(32).default([]),
-  capabilities: z.array(LaunchRecipeCapabilitySchema).max(32).default([]),
-  /** Select the provider's installed preset on every turn. Model, effort and built-in instructions
-   * are resolved from the provider; the recipe stores no caller-authored prompt. */
-  collaborationMode: CodexCollaborationModeSchema.optional(),
-}).strict();
+export const MachineLaunchRecipeSchema = z
+  .object({
+    revision: LaunchRecipeRevisionSchema,
+    envFile: z.string().min(1).optional(),
+    flags: z.array(z.string().min(1).max(4_096)).max(32).default([]),
+    environment: z
+      .array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/))
+      .max(32)
+      .default([]),
+    capabilities: z.array(LaunchRecipeCapabilitySchema).max(32).default([]),
+    /** Select the provider's installed preset on every turn. Model, effort and built-in instructions
+     * are resolved from the provider; the recipe stores no caller-authored prompt. */
+    collaborationMode: CodexCollaborationModeSchema.optional(),
+  })
+  .strict();
 
 /**
  * One ccmux-managed agent conversation.
@@ -91,7 +115,7 @@ export const SessionSchema = z.object({
     ),
   // Absolute working dir. Basis for both `cwd` and the history-jsonl path. MUST be
   // absolute or Claude's project-dir encoding won't match (see claude/resume.ts).
-  dir: z.string().startsWith("/", "dir must be absolute"),
+  dir: z.string().startsWith('/', 'dir must be absolute'),
   // Pinned conversation uuid — the single source of identity for resume.
   uuid: z.uuid(),
   // The exact create transaction that promoted this ready row. Present for managed Codex
@@ -105,13 +129,13 @@ export const SessionSchema = z.object({
   // Lets you stop healing a session without removing it.
   archived: z.boolean().default(false),
   // Rate-limit auto-resume: the text steered to a parked session at reset.
-  resumeText: z.string().default("continue"),
+  resumeText: z.string().default('continue'),
   // Which agent CLI backs this session. It is authoritative routing identity, so it is
   // required on every row and can never be inferred from history, cwd, or a default.
   agent: AgentKindSchema,
   // Opt-in native Codex App Server; the terminal is a client of the same provider writer.
   // Absent keeps the ordinary interactive provider launch.
-  runtime: z.enum(["tui", "app-server", "native"]).optional(),
+  runtime: z.enum(['tui', 'app-server', 'native']).optional(),
   nativeSession: NativeSessionSchema.optional(),
   // Per-session permission-mode OVERRIDE. Undefined → inherit the machine default
   // (MachineConfig.permissionMode). Set it to gate ONE session differently from the box
@@ -171,28 +195,38 @@ export const SessionSchema = z.object({
    * It must stay CHEAP to change (`ccmux role`, no restart). A second name that is expensive to
    * update is worse than no second name: within a week it lies, and by then people trust it.
    */
-  role: z.string().min(1).regex(SESSION_NAME_RE, "role: no '|', whitespace, '#' or ':' — a role is an address token").optional(),
+  role: z
+    .string()
+    .min(1)
+    .regex(SESSION_NAME_RE, "role: no '|', whitespace, '#' or ':' — a role is an address token")
+    .optional(),
 });
 
 /** A fresh managed launch that has not yet produced an authoritative provider thread id. */
-export const PendingSessionSchema = z.object({
-  generation: z.uuid(),
-  marker: z.string().regex(/^ccmux_[0-9a-f-]{36}$/),
-  operation: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("create") }),
-    z.object({ kind: z.literal("adopt"), sourceThreadId: z.uuid() }),
-    z.object({ kind: z.literal("fork"), sourceThreadId: z.uuid() }),
-  ]),
-  session: SessionSchema.omit({ uuid: true }),
-  createdAt: z.iso.datetime(),
-  status: z.enum(["pending", "blocked", "promoted"]),
-  error: z.string().min(1).optional(),
-  uuid: z.uuid().optional(),
-}).superRefine((value, ctx) => {
-  if (value.status === "promoted" && value.uuid === undefined) {
-    ctx.addIssue({ code: "custom", path: ["uuid"], message: "promoted pending session requires uuid" });
-  }
-});
+export const PendingSessionSchema = z
+  .object({
+    generation: z.uuid(),
+    marker: z.string().regex(/^ccmux_[0-9a-f-]{36}$/),
+    operation: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('create') }),
+      z.object({ kind: z.literal('adopt'), sourceThreadId: z.uuid() }),
+      z.object({ kind: z.literal('fork'), sourceThreadId: z.uuid() }),
+    ]),
+    session: SessionSchema.omit({ uuid: true }),
+    createdAt: z.iso.datetime(),
+    status: z.enum(['pending', 'blocked', 'promoted']),
+    error: z.string().min(1).optional(),
+    uuid: z.uuid().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.status === 'promoted' && value.uuid === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['uuid'],
+        message: 'promoted pending session requires uuid',
+      });
+    }
+  });
 
 /** Durable terminal lifecycle failure. The daemon will not heal a blocked ready session. */
 export const LifecycleBlockSchema = z.object({
@@ -224,11 +258,11 @@ export const RC_PREFIX_RE = /^[a-z][a-z0-9-]*$/;
  */
 export const MachineConfigSchema = z.object({
   // Absolute binaries — differ per machine (ordered-fallback-detected, overridable).
-  claudeBin: z.string().startsWith("/"),
+  claudeBin: z.string().startsWith('/'),
   // Codex CLI binary — optional; only required for agent="codex" sessions.
-  codexBin: z.string().startsWith("/").optional(),
-  opencodeBin: z.string().startsWith("/").optional(),
-  tmuxBin: z.string().startsWith("/"),
+  codexBin: z.string().startsWith('/').optional(),
+  opencodeBin: z.string().startsWith('/').optional(),
+  tmuxBin: z.string().startsWith('/'),
   // Optional dedicated tmux SOCKET (`tmux -L <socket>`). Unset → the default socket (prod). Set →
   // every tmux call is scoped to this socket, so an ISOLATED instance gets its OWN tmux server:
   // own panes, no name collisions, and — key — that server inherits the launching env, so `_run`
@@ -239,14 +273,14 @@ export const MachineConfigSchema = z.object({
   // confused with prod ones (turns RC off via claude's `disableRemoteControl` setting at launch).
   remoteControl: z.boolean().default(true),
   // Claude's project-history root; basis for the resume existence check.
-  // local: /Users/user/.claude/projects, servers: /root/.claude/projects.
-  projectsDir: z.string().startsWith("/"),
+  // local: /Users/u/.claude/projects, servers: /root/.claude/projects.
+  projectsDir: z.string().startsWith('/'),
   // Codex's rollout-session root — basis for the Codex transcript locator.
   // default: ~/.codex/sessions. Optional; only needed for agent="codex" sessions.
-  codexSessionsDir: z.string().startsWith("/").optional(),
+  codexSessionsDir: z.string().startsWith('/').optional(),
   // Codex state root. Writer locks are sibling state, not derivable from an arbitrary sessions
   // override; ownership admission therefore requires this first-class path.
-  codexHome: z.string().startsWith("/").optional(),
+  codexHome: z.string().startsWith('/').optional(),
   // Bound for a fresh Codex TUI to persist its launch marker before the create transaction fails.
   codexCorrelationTimeoutMs: z.number().int().min(100).default(30_000),
   /** Named launch policies selected by the public control API. Callers can name and pin one, but
@@ -256,7 +290,9 @@ export const MachineConfigSchema = z.object({
   // RC display-name prefix so the phone/Telegram client knows which box a session is on. A
   // free-form lowercase slug (local, dev, prod, staging, …) — see RC_PREFIX_RE. The regex
   // loud-fails on garbage (the real intent), and `install` refuses if it can't be set.
-  rcPrefix: z.string().regex(RC_PREFIX_RE, "rcPrefix must be a lowercase slug (e.g. local, dev, prod, staging)"),
+  rcPrefix: z
+    .string()
+    .regex(RC_PREFIX_RE, 'rcPrefix must be a lowercase slug (e.g. local, dev, prod, staging)'),
   // Fleet directory: machine label (another box's rcPrefix) → ssh alias. This is what makes
   // `ccmux msg dev:api` possible; absent/empty = fleet addressing simply isn't available here and
   // everything behaves exactly as before. Keys are validated as rcPrefix slugs, so a machine label
@@ -268,7 +304,12 @@ export const MachineConfigSchema = z.object({
   fleet: z
     .record(
       z.string().regex(RC_PREFIX_RE),
-      z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._@-]*$/, "fleet alias must be an ssh host alias (no leading '-', no spaces)"),
+      z
+        .string()
+        .regex(
+          /^[A-Za-z0-9][A-Za-z0-9._@-]*$/,
+          "fleet alias must be an ssh host alias (no leading '-', no spaces)",
+        ),
     )
     .optional(),
   /**
@@ -309,7 +350,7 @@ export const MachineConfigSchema = z.object({
     .object({
       peers: z.array(z.string().regex(RC_PREFIX_RE)).default([]),
       // Absent = the agent's default path under this user's home. Set only by an isolated instance.
-      socket: z.string().startsWith("/").optional(),
+      socket: z.string().startsWith('/').optional(),
     })
     .optional(),
   // Optional command run once before a batch of outbox retries, for fleets where transit can be
@@ -322,7 +363,7 @@ export const MachineConfigSchema = z.object({
   // knob an isolated instance (or a test) flips to get its own state. The predecessor was a
   // REQUIRED path to one FILE whose directory implied where five other files went — which made
   // machines drift by construction and let one careless value relocate the whole set.
-  stateDir: z.string().startsWith("/"),
+  stateDir: z.string().startsWith('/'),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.
   ensureInterval: z.number().int().positive().default(30),
   // Machine-wide DEFAULT permission mode (matches `claude --permission-mode` choices).
@@ -330,7 +371,7 @@ export const MachineConfigSchema = z.object({
   // (bypassPermissions/dontAsk) are honored for non-root daemons. Under root they require the
   // machine to declare allowEscalatedUnderRoot (see below); without it they are refused where they
   // are SET, rather than accepted as a setting that cannot be honoured.
-  permissionMode: PermissionModeSchema.default("auto"),
+  permissionMode: PermissionModeSchema.default('auto'),
   /**
    * This machine accepts agents running unrestricted under its root daemon.
    *
@@ -374,14 +415,14 @@ export const MachineConfigSchema = z.object({
   extraFlags: z.array(z.string()).default([]),
   // System-log threshold (the state root's ccmux.log). Re-read live by the daemon each tick —
   // flip to "debug" on a misbehaving box without restarting anything.
-  logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   // Claude 2.1.x shows a BLOCKING "Resume from summary?" picker on `--resume` of a large/old
   // session; an unattended (daemon-healed) resume would strand at that menu — typed input lands
   // on the MENU, not the conversation, so after a reboot every big session sits dead until a
   // human answers it. The supervisor auto-answers per this policy: "full" = resume full, keep
   // ALL context (default — never lose work); "summary" = resume compacted; "off" = never
   // auto-answer (a human will). Claude-only; other agents have no such picker.
-  resumePicker: z.enum(["full", "summary", "off"]).default("full"),
+  resumePicker: z.enum(['full', 'summary', 'off']).default('full'),
   /**
    * Claude asks, on first use of a directory, whether the folder is trusted — and a supervised
    * session has nobody to answer, so it sits at that menu unable to do anything. The levels escalate
@@ -398,7 +439,7 @@ export const MachineConfigSchema = z.object({
    * Whatever the policy, an unanswered menu is reported rather than hidden: `list`, the TUI and
    * `doctor` all show a session waiting at a prompt as waiting, never as idle.
    */
-  trustPrompt: z.enum(["off", "folder", "declared"]).default("folder"),
+  trustPrompt: z.enum(['off', 'folder', 'declared']).default('folder'),
   // Optional Telegram mirror of the inter-agent chat (see TelegramConfigSchema). Absent → off.
   telegram: TelegramConfigSchema.optional(),
   // Optional owner language OVERRIDE for messages a session sends to `owner`. Unset (default) →
@@ -414,7 +455,7 @@ export const MachineConfigSchema = z.object({
  */
 export const ReleaseSchema = z.object({
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
-  notes: z.string().default(""),
+  notes: z.string().default(''),
   // verify the artifact bytes BEFORE swapping it in (supply-chain safety).
   sha256: z.string().length(64),
   url: z.url(),
@@ -435,8 +476,8 @@ export const ReleaseSchema = z.object({
  * immutable message pins the provider and thread too, so reuse can never redirect queued mail. */
 export const ManagedPeerSchema = z
   .object({
-    kind: z.literal("managed"),
-    source: z.literal("ccmux"),
+    kind: z.literal('managed'),
+    source: z.literal('ccmux'),
     machine: z.string().regex(RC_PREFIX_RE),
     agent: AgentKindSchema,
     session: z.string().min(1).regex(SESSION_NAME_RE),
@@ -447,8 +488,8 @@ export const ManagedPeerSchema = z
 /** A human/tool invoking ccmux outside a managed session. It has no provider or thread identity. */
 export const CliPrincipalSchema = z
   .object({
-    kind: z.literal("cli"),
-    source: z.literal("ccmux"),
+    kind: z.literal('cli'),
+    source: z.literal('ccmux'),
     machine: z.string().regex(RC_PREFIX_RE),
   })
   .strict();
@@ -457,20 +498,24 @@ export const CliPrincipalSchema = z
  * human-readable snapshot only; routing and equality use the immutable thread UUID. */
 export const CodexAppPeerSchema = z
   .object({
-    kind: z.literal("codex-app"),
-    source: z.literal("codex-app"),
+    kind: z.literal('codex-app'),
+    source: z.literal('codex-app'),
     machine: z.string().regex(RC_PREFIX_RE),
-    agent: z.literal("codex"),
+    agent: z.literal('codex'),
     threadId: z.uuid(),
     name: z.string().min(1).max(240).nullable(),
   })
   .strict();
 
 /** Valid senders. Owner authority is provenance, not a spoofable sender route. */
-export const ChatPrincipalSchema = z.union([ManagedPeerSchema, CodexAppPeerSchema, CliPrincipalSchema]);
+export const ChatPrincipalSchema = z.union([
+  ManagedPeerSchema,
+  CodexAppPeerSchema,
+  CliPrincipalSchema,
+]);
 
 /** The owner is an out-of-band sink, never a fake managed peer. */
-export const OwnerTargetSchema = z.object({ kind: z.literal("owner") }).strict();
+export const OwnerTargetSchema = z.object({ kind: z.literal('owner') }).strict();
 
 /**
  * A component owner who works OUTSIDE this fleet — an agent in another product, under another
@@ -489,10 +534,19 @@ export const OwnerTargetSchema = z.object({ kind: z.literal("owner") }).strict()
  * `name` is an address token, under the same rules as a session name and a role.
  */
 export const ExternalTargetSchema = z
-  .object({ kind: z.literal("external"), source: z.literal("ccmux"), name: z.string().min(1).regex(SESSION_NAME_RE) })
+  .object({
+    kind: z.literal('external'),
+    source: z.literal('ccmux'),
+    name: z.string().min(1).regex(SESSION_NAME_RE),
+  })
   .strict();
 
-export const ChatTargetSchema = z.union([ManagedPeerSchema, CodexAppPeerSchema, OwnerTargetSchema, ExternalTargetSchema]);
+export const ChatTargetSchema = z.union([
+  ManagedPeerSchema,
+  CodexAppPeerSchema,
+  OwnerTargetSchema,
+  ExternalTargetSchema,
+]);
 
 /** One immutable v2 chat envelope. `task` is an optional pointer so the channel stays a phone call
  * (details live in the task). There are deliberately no defaults: mixed/old wire shapes fail. */
@@ -505,37 +559,42 @@ export const ChatTargetSchema = z.union([ManagedPeerSchema, CodexAppPeerSchema, 
  */
 export const CHAT_GENERATION = 2;
 
-export const ChatMessageSchema = z.object({
-  // First field on the wire and on disk, so a foreign record is identified before anything else is
-  // interpreted. `.strict()` below would already reject an older record — but on the shape of
-  // `from`, which reads as a bug rather than as "this is from another generation".
-  v: z.literal(CHAT_GENERATION),
-  id: z.uuid(), // unique per message
-  ts: z.string(), // ISO-8601 send time
-  from: ChatPrincipalSchema,
-  to: ChatTargetSchema,
-  body: z.string(),
-  task: z.string().nullable(),
-  // Deferred delivery: hold until the recipient VOLUNTARILY finishes its turn — delivered by the
-  // Stop hook at end-of-turn, or by the daemon once the target is STABLY idle. Never pasted while
-  // the target is working (Claude's steering queue would flush it mid-turn — the whole bug this
-  // fixes). False means normal peer-chat behavior.
-  defer: z.boolean(),
-  // Honest provenance for a RELAYED message: who the instruction truly came from (e.g. "owner")
-  // when `from` is only the courier (the router). Null → `from` is the real origin. Rendered as
-  // "on behalf of <x>" so the recipient sees the true authority WITHOUT `from` ever being spoofed.
-  onBehalfOf: z.string().nullable(),
-  // Time-delayed delivery: an ISO-8601 instant before which the daemon must NOT deliver this message
-  // (skipped while now < notBefore). Powers a router's self-`watchdog` (`msg <self> --after N`) so it
-  // wakes on a TIMER, not only on an inbound reply — the backbone of "the router finishes the job on
-  // its own". Null → deliver as soon as eligible. A defer message can also carry notBefore (both must
-  // hold). `defer || notBefore !== null` makes a message CONDITIONAL — delivered by id, off the
-  // in-order cursor, so it never head-of-line-blocks immediate mail.
-  notBefore: z.string().nullable(),
-  turnOptions: AcceptedTurnOptionsSchema.optional(),
-  images: AttachmentReferencesSchema.optional(),
-  controlFingerprint: z.string().regex(/^[0-9a-f]{64}$/).optional(),
-}).strict();
+export const ChatMessageSchema = z
+  .object({
+    // First field on the wire and on disk, so a foreign record is identified before anything else is
+    // interpreted. `.strict()` below would already reject an older record — but on the shape of
+    // `from`, which reads as a bug rather than as "this is from another generation".
+    v: z.literal(CHAT_GENERATION),
+    id: z.uuid(), // unique per message
+    ts: z.string(), // ISO-8601 send time
+    from: ChatPrincipalSchema,
+    to: ChatTargetSchema,
+    body: z.string(),
+    task: z.string().nullable(),
+    // Deferred delivery: hold until the recipient VOLUNTARILY finishes its turn — delivered by the
+    // Stop hook at end-of-turn, or by the daemon once the target is STABLY idle. Never pasted while
+    // the target is working (Claude's steering queue would flush it mid-turn — the whole bug this
+    // fixes). False means normal peer-chat behavior.
+    defer: z.boolean(),
+    // Honest provenance for a RELAYED message: who the instruction truly came from (e.g. "owner")
+    // when `from` is only the courier (the router). Null → `from` is the real origin. Rendered as
+    // "on behalf of <x>" so the recipient sees the true authority WITHOUT `from` ever being spoofed.
+    onBehalfOf: z.string().nullable(),
+    // Time-delayed delivery: an ISO-8601 instant before which the daemon must NOT deliver this message
+    // (skipped while now < notBefore). Powers a router's self-`watchdog` (`msg <self> --after N`) so it
+    // wakes on a TIMER, not only on an inbound reply — the backbone of "the router finishes the job on
+    // its own". Null → deliver as soon as eligible. A defer message can also carry notBefore (both must
+    // hold). `defer || notBefore !== null` makes a message CONDITIONAL — delivered by id, off the
+    // in-order cursor, so it never head-of-line-blocks immediate mail.
+    notBefore: z.string().nullable(),
+    turnOptions: AcceptedTurnOptionsSchema.optional(),
+    images: AttachmentReferencesSchema.optional(),
+    controlFingerprint: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+  })
+  .strict();
 
 /** Delivery/read bookkeeping, kept OUT of the append-only ledger. `read[managedPeerKey]` = the ledger
  *  LENGTH a recipient has read its inbox up to (unread = TO-me messages at/after that index).
@@ -548,18 +607,28 @@ export const ChatCursorsSchema = z.object({
   delivered: z.record(z.string(), z.number()).default({}),
   // A pane injection is not yet a turn. Hookless providers keep the exact message here until its
   // immutable id appears as a user record in the transcript; `wait` cannot reuse an older answer.
-  pickups: z.record(z.string(), z.object({
-    messageId: z.uuid(),
-    injectedAt: z.iso.datetime(),
-    // Stored in the same atomic cursor write as the pickup intent. An immediate cursor therefore
-    // cannot hide a submitted turn without leaving the exact transcript barrier behind.
-    ledgerIndex: z.number().int().nonnegative().nullable().default(null),
-    conditional: z.boolean().default(false),
-    native: z.object({
-      phase: z.enum(["intent", "accepted"]),
-      turnId: z.string().min(1).max(256).nullable(),
-    }).strict().optional(),
-  }).strict()).default({}),
+  pickups: z
+    .record(
+      z.string(),
+      z
+        .object({
+          messageId: z.uuid(),
+          injectedAt: z.iso.datetime(),
+          // Stored in the same atomic cursor write as the pickup intent. An immediate cursor therefore
+          // cannot hide a submitted turn without leaving the exact transcript barrier behind.
+          ledgerIndex: z.number().int().nonnegative().nullable().default(null),
+          conditional: z.boolean().default(false),
+          native: z
+            .object({
+              phase: z.enum(['intent', 'accepted']),
+              turnId: z.string().min(1).max(256).nullable(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict(),
+    )
+    .default({}),
   // Telegram mirror progress: ledger LENGTH mirrored to the bot (a BROADCAST sink — every message,
   // in order). Persisted so a restart resends only the un-mirrored backlog, never the whole history.
   // `null` = the mirror has never run on this machine. Distinct from 0 on purpose: turning the
@@ -576,8 +645,15 @@ export const ChatCursorsSchema = z.object({
 // Reused as `lastMessage` in `list --json` ("where the session stopped").
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const TranscriptRoleSchema = z.enum(["user", "assistant", "tool", "system", "unknown"]);
-export const TranscriptKindSchema = z.enum(["message", "tool_call", "tool_result", "thinking", "event", "unknown"]);
+export const TranscriptRoleSchema = z.enum(['user', 'assistant', 'tool', 'system', 'unknown']);
+export const TranscriptKindSchema = z.enum([
+  'message',
+  'tool_call',
+  'tool_result',
+  'thinking',
+  'event',
+  'unknown',
+]);
 
 export const TranscriptMessageSchema = z.object({
   id: z.string(),
@@ -589,7 +665,7 @@ export const TranscriptMessageSchema = z.object({
   title: z.string().nullable(),
   toolName: z.string().nullable(),
   toolCallId: z.string().nullable(),
-  status: z.enum(["error"]).nullable(),
+  status: z.enum(['error']).nullable(),
   rawType: z.string().nullable(),
   // Tool-card fields: a tool_call's paired tool_result is FOLDED in here so the UI shows one
   // card (request on top, outcome below) instead of two stray lines. `done` = a result arrived
@@ -606,18 +682,26 @@ export const TranscriptMessageSchema = z.object({
 // Provider-neutral inventory row for a conversation that exists outside ccmux's registry.
 // Discovery reports evidence and capabilities separately: a stored rollout is not proof that a
 // writer is live, and a writer lock is not proof that a transcript has been persisted yet.
-export const ExternalOriginSchema = z.enum(["cli", "desktop", "vscode", "exec", "app-server", "subagent", "unknown"]);
-export const ExternalStorageSchema = z.enum(["stored", "missing", "unknown"]);
-export const WriterEvidenceSchema = z.enum(["observed", "none-observed", "unknown"]);
+export const ExternalOriginSchema = z.enum([
+  'cli',
+  'desktop',
+  'vscode',
+  'exec',
+  'app-server',
+  'subagent',
+  'unknown',
+]);
+export const ExternalStorageSchema = z.enum(['stored', 'missing', 'unknown']);
+export const WriterEvidenceSchema = z.enum(['observed', 'none-observed', 'unknown']);
 export const WriterRuntimeKindSchema = z.enum([
-  "managed",
-  "dedicated-cli",
-  "desktop",
-  "vscode",
-  "app-server",
-  "shared",
-  "self",
-  "unknown",
+  'managed',
+  'dedicated-cli',
+  'desktop',
+  'vscode',
+  'app-server',
+  'shared',
+  'self',
+  'unknown',
 ]);
 
 export const WriterRuntimeSchema = z
@@ -641,17 +725,17 @@ export const ExternalCapabilitiesSchema = z
   })
   .strict();
 
-export { ExternalTurnStateSchema } from "../external/turnSchema.ts";
+export { ExternalTurnStateSchema } from '../external/turnSchema.ts';
 
 export const ExternalSessionSchema = z
   .object({
     key: z.string().min(1),
-    plane: z.literal("external"),
+    plane: z.literal('external'),
     provider: AgentKindSchema,
     host: z.string().regex(RC_PREFIX_RE),
     threadId: z.uuid(),
-    dir: z.string().startsWith("/").nullable(),
-    path: z.string().startsWith("/").nullable(),
+    dir: z.string().startsWith('/').nullable(),
+    path: z.string().startsWith('/').nullable(),
     origin: ExternalOriginSchema,
     storage: ExternalStorageSchema,
     writerEvidence: WriterEvidenceSchema,
@@ -665,11 +749,19 @@ export const ExternalSessionSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.storage === "stored" && value.path === null) {
-      ctx.addIssue({ code: "custom", path: ["path"], message: "stored external session requires transcript path" });
+    if (value.storage === 'stored' && value.path === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['path'],
+        message: 'stored external session requires transcript path',
+      });
     }
-    if (value.storage === "missing" && (value.path !== null || value.dir !== null)) {
-      ctx.addIssue({ code: "custom", path: ["storage"], message: "missing storage cannot claim transcript path or cwd" });
+    if (value.storage === 'missing' && (value.path !== null || value.dir !== null)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['storage'],
+        message: 'missing storage cannot claim transcript path or cwd',
+      });
     }
   });
 
@@ -742,18 +834,18 @@ export const TranscriptJsonSchema = z.object({
  * must be able to recognise one it has already handled.
  */
 export const SessionEventKindSchema = z.enum([
-  "turn-start",
-  "turn-end",
+  'turn-start',
+  'turn-end',
   // A session sitting at a blocking menu, and the moment it leaves one. `resumed` exists because the
   // pair is not otherwise closable: answering a permission prompt puts the agent straight back to
   // work WITHOUT a new user turn, so nothing else would ever follow the `waiting`. A reader tracking
   // state would leave that session marked "waiting for you" until its next turn — which can be
   // hours, and reads as a session that needs attention when it needs none.
-  "waiting",
-  "resumed",
-  "session-start",
-  "session-stop",
-  "session-blocked",
+  'waiting',
+  'resumed',
+  'session-start',
+  'session-stop',
+  'session-blocked',
 ]);
 
 export const SESSION_EVENT_VERSION = 1;
@@ -797,7 +889,7 @@ export const SessionEventSchema = z
 /** Live state of a session. working/idle resolve pane, lifecycle and bounded turn evidence;
  *  stopped = not running;
  *  external = a live Claude session running OUTSIDE ccmux (discovered, read-only). */
-export const SessionStateSchema = z.enum(["working", "idle", "stopped", "blocked", "external"]);
+export const SessionStateSchema = z.enum(['working', 'idle', 'stopped', 'blocked', 'external']);
 
 /** Context-window fill. Tokens are null when claude surfaces no statusline AND no
  *  transcript usage exists yet — we never invent a window. */

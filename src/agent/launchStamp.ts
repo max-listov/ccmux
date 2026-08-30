@@ -1,12 +1,12 @@
-import { createHash } from "node:crypto";
-import { z } from "zod";
-import { VERSION } from "../util/version.ts";
-import { providerFor } from "./index.ts";
-import type { MachineConfig, Session } from "../types.ts";
-import { chatEnabledFor } from "../config/chat.ts";
-import { envInput, type LaunchInput } from "./launchInputs.ts";
-import { LaunchRecipeMetadataSchema, ModelSelectionSchema } from "../config/schema.ts";
-import { ApplicationPolicyMetadataSchema } from "../policy/reference.ts";
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { chatEnabledFor } from '../config/chat.ts';
+import { LaunchRecipeMetadataSchema, ModelSelectionSchema } from '../config/schema.ts';
+import { ApplicationPolicyMetadataSchema } from '../policy/reference.ts';
+import type { MachineConfig, Session } from '../types.ts';
+import { VERSION } from '../util/version.ts';
+import { providerFor } from './index.ts';
+import { envInput, type LaunchInput } from './launchInputs.ts';
 
 /**
  * What a session was LAUNCHED with — so "does this one still need a restart?" is a fact you can
@@ -49,7 +49,7 @@ export const LaunchStampSchema = z.object({
 });
 export type LaunchStamp = z.infer<typeof LaunchStampSchema>;
 
-const sha = (s: string): string => createHash("sha256").update(s).digest("hex").slice(0, 16);
+const sha = (s: string): string => createHash('sha256').update(s).digest('hex').slice(0, 16);
 
 /**
  * Everything a launch reads that argv does not carry: the provider's own external files, plus the
@@ -77,9 +77,9 @@ const digestMap = (inputs: readonly LaunchInput[]): Record<string, string | null
  * to compare, which is why the hash is taken over the very argv the session is spawned with rather
  * than over a hand-picked list that could drift from it.
  */
-export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<LaunchStamp, "ts"> {
+export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<LaunchStamp, 'ts'> {
   const argv = providerFor(s).buildArgv(s, m, cli, true);
-  const normalized = argv.map((a) => a.split(s.uuid).join("<uuid>"));
+  const normalized = argv.map((a) => a.split(s.uuid).join('<uuid>'));
   return {
     version: VERSION,
     hash: sha(JSON.stringify(normalized)),
@@ -105,7 +105,7 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
  * A MISSING stamp yields empty too: "we don't know" must never be displayed as "stale", or the
  * first upgrade of ccmux itself would paint the whole fleet red for no reason.
  */
-export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, "ts">): string[] {
+export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, 'ts'>): string[] {
   if (stamp === null) return [];
   const out: string[] = [];
   // NOTE what is NOT compared: `version`. It was, and it did exactly what the paragraph above warns
@@ -122,9 +122,10 @@ export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, "
   // before a capability existed keeps working and silently cannot use it; naming it here is what turns
   // that into something readable instead of something discovered by hitting a refusal.
   // `null` is unknown, never stale: a stamp written before this field existed says nothing about it.
-  const envKeys = (xs: readonly string[] | null): string | null => (xs === null ? null : JSON.stringify([...xs].sort()));
+  const envKeys = (xs: readonly string[] | null): string | null =>
+    xs === null ? null : JSON.stringify([...xs].sort());
   const before = envKeys(stamp.envKeys);
-  if (before !== null && before !== envKeys(now.envKeys)) out.push("env");
+  if (before !== null && before !== envKeys(now.envKeys)) out.push('env');
   // The layers outside argv: the global rule set, the MCP configuration, the env files mixed in by
   // the supervisor's runtime. Each carries its own word, because "restart to pick up the new rules"
   // and "restart to pick up the new MCP server" are different sentences to a person deciding whether
@@ -134,24 +135,33 @@ export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, "
   // A single entry that is null is different and load-bearing — it says the input is genuinely
   // absent here, and "absent then, present now" is exactly the change worth reporting.
   if (stamp.inputs !== null) {
-    for (const reason of [...new Set([...Object.keys(stamp.inputs), ...Object.keys(now.inputs ?? {})])].sort()) {
-      if (stamp.inputs[reason] !== (now.inputs ?? {})[reason] && !out.includes(reason)) out.push(reason);
+    for (const reason of [
+      ...new Set([...Object.keys(stamp.inputs), ...Object.keys(now.inputs ?? {})]),
+    ].sort()) {
+      if (stamp.inputs[reason] !== now.inputs?.[reason] && !out.includes(reason)) out.push(reason);
     }
   }
-  if (stamp.chatEnabled !== now.chatEnabled) out.push("chat");
-  if (stamp.permissionMode !== now.permissionMode) out.push("mode");
+  if (stamp.chatEnabled !== now.chatEnabled) out.push('chat');
+  if (stamp.permissionMode !== now.permissionMode) out.push('mode');
   // Sorted on BOTH sides, not just when written: a stamp on disk may predate the sorting, and
   // "the same modules in a different order" is not a change anyone should be asked to act on.
   const mods = (xs: readonly string[]): string => JSON.stringify([...xs].sort());
-  if (mods(stamp.promptModules) !== mods(now.promptModules)) out.push("modules");
-  if (stamp.launchRecipe !== undefined && stableRecipe(stamp.launchRecipe) !== stableRecipe(now.launchRecipe))
-    out.push("recipe");
-  if (JSON.stringify(stamp.applicationPolicy ?? null) !== JSON.stringify(now.applicationPolicy ?? null))
-    out.push("policy");
+  if (mods(stamp.promptModules) !== mods(now.promptModules)) out.push('modules');
+  if (
+    stamp.launchRecipe !== undefined &&
+    stableRecipe(stamp.launchRecipe) !== stableRecipe(now.launchRecipe)
+  )
+    out.push('recipe');
+  if (
+    JSON.stringify(stamp.applicationPolicy ?? null) !==
+    JSON.stringify(now.applicationPolicy ?? null)
+  )
+    out.push('policy');
   // Anything else the launch recipe covers — a reworded prompt, ownerLang, extraFlags. Reported only
   // when nothing more specific explains it, so the message stays as precise as the evidence allows.
-  if (out.length === 0 && stamp.hash !== now.hash) out.push("config");
+  if (out.length === 0 && stamp.hash !== now.hash) out.push('config');
   return out;
 }
 
-const stableRecipe = (recipe: LaunchStamp["launchRecipe"]): string => JSON.stringify(recipe ?? null);
+const stableRecipe = (recipe: LaunchStamp['launchRecipe']): string =>
+  JSON.stringify(recipe ?? null);

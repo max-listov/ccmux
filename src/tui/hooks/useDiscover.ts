@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { discoverActive } from "../discover.ts";
-import type { DiscoveredSession } from "../discover.ts";
-import type { MachineConfig } from "../../types.ts";
+import { useEffect, useState } from 'react';
+import type { MachineConfig } from '../../types.ts';
+import type { DiscoveredSession } from '../discover.ts';
+import { discoverActive } from '../discover.ts';
 
 /** Discovery reads transcripts and shells out to lsof/ps — it is synchronous and it BLOCKS.
  *  Running it straight from the effect froze the very first frame: the fleet's own load is a

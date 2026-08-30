@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
-import { HOME } from "../env.ts";
+import { createHash } from 'node:crypto';
+import { readFileSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, resolve } from 'node:path';
+import { HOME } from '../env.ts';
 
 /**
  * What shapes a session at startup but is NOT in argv.
@@ -37,7 +37,8 @@ export interface LaunchInput {
   keys?: readonly string[];
 }
 
-export const digestOf = (s: string): string => createHash("sha256").update(s).digest("hex").slice(0, 16);
+export const digestOf = (s: string): string =>
+  createHash('sha256').update(s).digest('hex').slice(0, 16);
 
 /**
  * Digest of one file's content, cached by mtime.
@@ -52,7 +53,11 @@ export const digestOf = (s: string): string => createHash("sha256").update(s).di
  */
 const cache = new Map<string, { mtimeMs: number; value: string }>();
 
-function cachedDigest(key: string, path: string, compute: (text: string) => string | null): string | null {
+function cachedDigest(
+  key: string,
+  path: string,
+  compute: (text: string) => string | null,
+): string | null {
   let mtimeMs: number;
   try {
     mtimeMs = statSync(path).mtimeMs; // follows symlinks on purpose: a rule set is commonly a link
@@ -64,7 +69,7 @@ function cachedDigest(key: string, path: string, compute: (text: string) => stri
   if (hit !== undefined && hit.mtimeMs === mtimeMs) return hit.value;
   let value: string | null;
   try {
-    value = compute(readFileSync(path, "utf8"));
+    value = compute(readFileSync(path, 'utf8'));
   } catch {
     return null; // unreadable right now (a half-written config) — say nothing rather than guess
   }
@@ -91,8 +96,11 @@ export function jsonFieldDigest(path: string, field: string): string | null {
   return cachedDigest(`${path}#${field}`, path, (text) => {
     try {
       const parsed: unknown = JSON.parse(text);
-      const value = typeof parsed === "object" && parsed !== null && field in parsed ? (parsed as Record<string, unknown>)[field] : undefined;
-      return value === undefined ? digestOf("<absent>") : digestOf(stableJson(value));
+      const value =
+        typeof parsed === 'object' && parsed !== null && field in parsed
+          ? (parsed as Record<string, unknown>)[field]
+          : undefined;
+      return value === undefined ? digestOf('<absent>') : digestOf(stableJson(value));
     } catch {
       return null;
     }
@@ -104,8 +112,11 @@ export function tomlTableDigest(path: string, table: string): string | null {
   return cachedDigest(`${path}#${table}`, path, (text) => {
     try {
       const parsed: unknown = Bun.TOML.parse(text);
-      const value = typeof parsed === "object" && parsed !== null && table in parsed ? (parsed as Record<string, unknown>)[table] : undefined;
-      return value === undefined ? digestOf("<absent>") : digestOf(stableJson(value));
+      const value =
+        typeof parsed === 'object' && parsed !== null && table in parsed
+          ? (parsed as Record<string, unknown>)[table]
+          : undefined;
+      return value === undefined ? digestOf('<absent>') : digestOf(stableJson(value));
     } catch {
       return null;
     }
@@ -117,7 +128,7 @@ export function tomlTableDigest(path: string, table: string): string | null {
 export function stableJson(value: unknown): string {
   const walk = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(walk);
-    if (typeof v === "object" && v !== null) {
+    if (typeof v === 'object' && v !== null) {
       return Object.fromEntries(
         Object.keys(v as Record<string, unknown>)
           .sort()
@@ -131,7 +142,7 @@ export function stableJson(value: unknown): string {
 
 /** Expand `~` against this user's home. A rule set commonly refers to one. */
 export function expandHome(path: string): string {
-  return path === "~" || path.startsWith("~/") ? `${HOME}${path.slice(1)}` : path;
+  return path === '~' || path.startsWith('~/') ? `${HOME}${path.slice(1)}` : path;
 }
 
 /**
@@ -149,13 +160,17 @@ export function expandHome(path: string): string {
 const IMPORT_RE = /(?:^|\s)@([^\s`'")\]]+)/g;
 const MAX_IMPORT_DEPTH = 5;
 
-export function ruleSetFiles(entry: string, depth = MAX_IMPORT_DEPTH, seen = new Set<string>()): string[] {
+export function ruleSetFiles(
+  entry: string,
+  depth = MAX_IMPORT_DEPTH,
+  seen = new Set<string>(),
+): string[] {
   const path = resolve(expandHome(entry));
   if (seen.has(path) || depth < 0) return [];
   seen.add(path);
   let text: string;
   try {
-    text = readFileSync(path, "utf8");
+    text = readFileSync(path, 'utf8');
   } catch {
     return [path]; // absent, but still part of the set: "the import is missing here" is a difference
   }
@@ -165,7 +180,8 @@ export function ruleSetFiles(entry: string, depth = MAX_IMPORT_DEPTH, seen = new
     if (raw === undefined) continue;
     // Only things that LOOK like a path are followed. A rule file legitimately writes `@anthropic-ai/sdk`
     // or an email address, and chasing those would add noise to the digest and stat calls to the tick.
-    const looksLikePath = raw.startsWith("~") || raw.startsWith("/") || raw.startsWith("./") || raw.startsWith("../");
+    const looksLikePath =
+      raw.startsWith('~') || raw.startsWith('/') || raw.startsWith('./') || raw.startsWith('../');
     if (!looksLikePath) continue;
     const resolved = isAbsolute(expandHome(raw)) ? expandHome(raw) : resolve(dirname(path), raw);
     out.push(...ruleSetFiles(resolved, depth - 1, seen));
@@ -199,7 +215,8 @@ export function fileSetDigest(paths: readonly string[]): string | null {
  */
 export function envFiles(dir: string, nodeEnv: string | undefined): string[] {
   const files = [`${dir}/.env`, `${dir}/.env.local`];
-  if (nodeEnv !== undefined && nodeEnv !== "") files.push(`${dir}/.env.${nodeEnv}`, `${dir}/.env.${nodeEnv}.local`);
+  if (nodeEnv !== undefined && nodeEnv !== '')
+    files.push(`${dir}/.env.${nodeEnv}`, `${dir}/.env.${nodeEnv}.local`);
   return files;
 }
 
@@ -208,14 +225,14 @@ export function envFiles(dir: string, nodeEnv: string | undefined): string[] {
 export function envFileKeys(path: string): string[] {
   let text: string;
   try {
-    text = readFileSync(path, "utf8");
+    text = readFileSync(path, 'utf8');
   } catch {
     return [];
   }
   const keys: string[] = [];
-  for (const raw of text.split("\n")) {
+  for (const raw of text.split('\n')) {
     const line = raw.trim();
-    if (line === "" || line.startsWith("#")) continue;
+    if (line === '' || line.startsWith('#')) continue;
     const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
     if (match?.[1] !== undefined) keys.push(match[1]);
   }
@@ -245,9 +262,10 @@ export function envFilePath(s: { dir: string; envFile?: string | undefined }): s
  */
 export function envInput(s: { dir: string; envFile?: string | undefined }): LaunchInput {
   const path = envFilePath(s);
-  if (path === null) return { reason: "env", label: "no env file declared", digest: null, paths: [], keys: [] };
+  if (path === null)
+    return { reason: 'env', label: 'no env file declared', digest: null, paths: [], keys: [] };
   return {
-    reason: "env",
+    reason: 'env',
     label: `declared env file: ${path}`,
     digest: fileDigest(path),
     paths: [path],
@@ -268,8 +286,11 @@ export function inheritedEnvInput(dir: string, nodeEnv: string | undefined): Lau
   const paths = envFiles(dir, nodeEnv).filter((p) => fileDigest(p) !== null);
   const keys = [...new Set(paths.flatMap((p) => envFileKeys(p)))].sort();
   return {
-    reason: "env",
-    label: paths.length === 0 ? "no env file in the session directory" : `env file(s) in the session directory: ${paths.join(", ")}`,
+    reason: 'env',
+    label:
+      paths.length === 0
+        ? 'no env file in the session directory'
+        : `env file(s) in the session directory: ${paths.join(', ')}`,
     digest: fileSetDigest(paths),
     paths,
     keys,

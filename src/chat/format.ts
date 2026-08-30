@@ -1,6 +1,6 @@
-import type { ChatMessage } from "../types.ts";
-import { codexAppAddress, principalLabel } from "./identity.ts";
-import type { ReplyRoute } from "./replyRoute.ts";
+import type { ChatMessage } from '../types.ts';
+import { codexAppAddress, principalLabel } from './identity.ts';
+import type { ReplyRoute } from './replyRoute.ts';
 
 /**
  * The SINGLE source of truth for how an injected chat message is framed to the recipient agent —
@@ -12,10 +12,13 @@ import type { ReplyRoute } from "./replyRoute.ts";
  * (the router) relays an owner instruction, the recipient sees "on behalf of owner" — the true
  * authority — while `from` still names the real (unspoofable) sender. Pure: message → framed line.
  */
-export function formatChatInjection(msg: ChatMessage, opts?: { cli?: string; reply?: ReplyRoute | undefined }): string {
-  const task = msg.task ? ` · task: ${msg.task}` : "";
+export function formatChatInjection(
+  msg: ChatMessage,
+  opts?: { cli?: string; reply?: ReplyRoute | undefined },
+): string {
+  const task = msg.task ? ` · task: ${msg.task}` : '';
   const id = ` · id: ${msg.id}`;
-  const behalf = msg.onBehalfOf ? ` on behalf of ${msg.onBehalfOf}` : "";
+  const behalf = msg.onBehalfOf ? ` on behalf of ${msg.onBehalfOf}` : '';
   // A cross-machine sender is named by its FULL address, and the reply command is spelled out. The
   // incident this fixes: an agent was asked to report back, saw only a bare name, resolved it against
   // its OWN machine, and reported to a same-named stranger. Nothing to infer now — the address is
@@ -36,13 +39,13 @@ export function formatChatInjection(msg: ChatMessage, opts?: { cli?: string; rep
   // the pinned instruction, and answered the human instead — while the peer-to-peer hop was working
   // that same minute. A stated cause is checkable; "no route" is only believable.
   const reply =
-    msg.from.kind === "cli" || opts?.reply === undefined
-      ? ""
+    msg.from.kind === 'cli' || opts?.reply === undefined
+      ? ''
       : opts.reply.replyable
         ? // The body placeholder matters: the prompt says to use this command verbatim, and a command
           // without one runs as an empty send — usage error, exit 1 — right when the agent is trying
           // to answer.
-          ` · reply: ${opts.cli ?? "ccmux"} msg ${msg.from.machine}:${msg.from.kind === "managed" ? msg.from.session : codexAppAddress(msg.from.threadId)} --to-agent ${msg.from.agent} --to-thread ${msg.from.threadId}${msg.task ? ` --task ${msg.task}` : ""} "<your reply>"`
-        : ` · cannot reach ${msg.from.machine} from here (${opts.reply.reason}) — answer with ${opts.cli ?? "ccmux"} msg owner "<your reply>"`;
+          ` · reply: ${opts.cli ?? 'ccmux'} msg ${msg.from.machine}:${msg.from.kind === 'managed' ? msg.from.session : codexAppAddress(msg.from.threadId)} --to-agent ${msg.from.agent} --to-thread ${msg.from.threadId}${msg.task ? ` --task ${msg.task}` : ''} "<your reply>"`
+        : ` · cannot reach ${msg.from.machine} from here (${opts.reply.reason}) — answer with ${opts.cli ?? 'ccmux'} msg owner "<your reply>"`;
   return `[chat from ${sender}${behalf}${task}${id}${reply}] ${msg.body}`;
 }

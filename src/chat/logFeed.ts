@@ -1,12 +1,17 @@
-import { existsSync, readFileSync, statSync, watch } from "node:fs";
-import { z } from "zod";
-import { CHAT_GENERATION } from "../config/schema.ts";
-import { chatLedgerPath, outboxPath } from "../config/paths.ts";
-import { LogMachineSchema, LogRowSchema, rowFromLedgerRecord, rowFromOutbound } from "./fleetLog.ts";
-import { parseRecord } from "./store.ts";
-import { OutboundSchema } from "../fleet/outbox.ts";
-import type { LogRow } from "./fleetLog.ts";
-import type { MachineConfig } from "../types.ts";
+import { existsSync, readFileSync, statSync, watch } from 'node:fs';
+import { z } from 'zod';
+import { chatLedgerPath, outboxPath } from '../config/paths.ts';
+import { CHAT_GENERATION } from '../config/schema.ts';
+import { OutboundSchema } from '../fleet/outbox.ts';
+import type { MachineConfig } from '../types.ts';
+import type { LogRow } from './fleetLog.ts';
+import {
+  LogMachineSchema,
+  LogRowSchema,
+  rowFromLedgerRecord,
+  rowFromOutbound,
+} from './fleetLog.ts';
+import { parseRecord } from './store.ts';
 
 /**
  * The chat log as a resumable feed instead of a snapshot you take again and again.
@@ -60,10 +65,18 @@ export type CursorParse = { cursor: LogCursor } | { error: string };
  * that consumer.
  */
 export function parseCursor(raw: string): CursorParse {
-  const parts = raw.split(".");
+  const parts = raw.split('.');
   if (parts.length !== 3) return { error: `expected <generation>.<ledger>.<outbox>, got '${raw}'` };
-  const [gen = Number.NaN, ledger = Number.NaN, outbox = Number.NaN] = parts.map((p) => Number.parseInt(p, 10));
-  if (!Number.isInteger(gen) || !Number.isInteger(ledger) || !Number.isInteger(outbox) || ledger < 0 || outbox < 0) {
+  const [gen = Number.NaN, ledger = Number.NaN, outbox = Number.NaN] = parts.map((p) =>
+    Number.parseInt(p, 10),
+  );
+  if (
+    !Number.isInteger(gen) ||
+    !Number.isInteger(ledger) ||
+    !Number.isInteger(outbox) ||
+    ledger < 0 ||
+    outbox < 0
+  ) {
     return { error: `expected three non-negative integers, got '${raw}'` };
   }
   if (gen !== CHAT_GENERATION) {
@@ -85,9 +98,9 @@ export function parseCursor(raw: string): CursorParse {
  * distinction the snapshot already makes, kept in the streaming shape so both can be read by one
  * parser.
  */
-export const LogFrameSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("row"), cursor: z.string(), row: LogRowSchema }).strict(),
-  z.object({ kind: z.literal("machine"), cursor: z.string(), machine: LogMachineSchema }).strict(),
+export const LogFrameSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('row'), cursor: z.string(), row: LogRowSchema }).strict(),
+  z.object({ kind: z.literal('machine'), cursor: z.string(), machine: LogMachineSchema }).strict(),
 ]);
 export type LogFrame = z.infer<typeof LogFrameSchema>;
 
@@ -113,22 +126,28 @@ export const MAX_FRAME_BYTES = 32 * 1024;
  */
 export function boundFrame(frame: LogFrame): LogFrame {
   const size = Buffer.byteLength(JSON.stringify(frame));
-  if (size <= MAX_FRAME_BYTES || frame.kind !== "row") return frame;
+  if (size <= MAX_FRAME_BYTES || frame.kind !== 'row') return frame;
   const bytes = Buffer.byteLength(frame.row.body);
   return {
     ...frame,
     row: {
       ...frame.row,
       body: `(body omitted: ${bytes} bytes exceeds this feed's ${MAX_FRAME_BYTES}-byte record limit — read it with: ccmux chat log -n 1 --json)`,
-      note: frame.row.note === "" ? "oversized" : `${frame.row.note}; oversized`,
+      note: frame.row.note === '' ? 'oversized' : `${frame.row.note}; oversized`,
     },
   };
 }
 
-const rowFrame = (row: LogRow, cursor: LogCursor): LogFrame => boundFrame({ kind: "row", cursor: formatCursor(cursor), row });
+const rowFrame = (row: LogRow, cursor: LogCursor): LogFrame =>
+  boundFrame({ kind: 'row', cursor: formatCursor(cursor), row });
 
-export const machineFrame = (machine: string, cursor: LogCursor, ok = true, error: string | null = null): LogFrame => ({
-  kind: "machine",
+export const machineFrame = (
+  machine: string,
+  cursor: LogCursor,
+  ok = true,
+  error: string | null = null,
+): LogFrame => ({
+  kind: 'machine',
   cursor: formatCursor(cursor),
   machine: { machine, ok, error },
 });
@@ -139,7 +158,7 @@ function linesAfter(path: string, from: number): { lines: string[]; next: number
   if (!existsSync(path)) return { lines: [], next: from };
   let all: string[];
   try {
-    all = readFileSync(path, "utf8").split("\n");
+    all = readFileSync(path, 'utf8').split('\n');
   } catch {
     return { lines: [], next: from };
   }
@@ -159,16 +178,20 @@ function linesAfter(path: string, from: number): { lines: string[]; next: number
  * needs to mean anything. A consumer that wants chronology sorts what it has; it cannot recover a
  * position it was never told.
  */
-export function rowsAfter(m: MachineConfig, cursor: LogCursor, settled: ReadonlySet<string> = new Set()): { frames: LogFrame[]; cursor: LogCursor } {
+export function rowsAfter(
+  m: MachineConfig,
+  cursor: LogCursor,
+  settled: ReadonlySet<string> = new Set(),
+): { frames: LogFrame[]; cursor: LogCursor } {
   const frames: LogFrame[] = [];
   const ledger = linesAfter(chatLedgerPath(m), cursor.ledger);
   let at: LogCursor = { ...cursor };
   for (const [i, line] of ledger.lines.entries()) {
     at = { ...at, ledger: cursor.ledger + i + 1 };
-    if (line.trim() === "") continue;
+    if (line.trim() === '') continue;
     let record: ReturnType<typeof parseRecord>;
     try {
-      record = parseRecord(JSON.parse(line), "chat feed");
+      record = parseRecord(JSON.parse(line), 'chat feed');
     } catch {
       record = null; // unreadable here; the row says so rather than the position disappearing
     }
@@ -179,7 +202,7 @@ export function rowsAfter(m: MachineConfig, cursor: LogCursor, settled: Readonly
   const outbox = linesAfter(outboxPath(m), cursor.outbox);
   for (const [i, line] of outbox.lines.entries()) {
     at = { ...at, outbox: cursor.outbox + i + 1 };
-    if (line.trim() === "") continue;
+    if (line.trim() === '') continue;
     let parsed: z.infer<typeof OutboundSchema> | undefined;
     try {
       parsed = OutboundSchema.safeParse(JSON.parse(line)).data;
@@ -217,7 +240,7 @@ export function followRows(
   drain();
   const watchers = [chatLedgerPath(m), outboxPath(m)].map((p) => {
     try {
-      return watch(p.slice(0, p.lastIndexOf("/")), () => drain());
+      return watch(p.slice(0, p.lastIndexOf('/')), () => drain());
     } catch {
       return null;
     }

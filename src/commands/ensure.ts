@@ -1,11 +1,11 @@
-import type { Session } from "../types.ts";
-import { loadMachineConfig } from "../config/machine.ts";
-import { findSession, loadSessions, updateSessionUuid } from "../config/sessions.ts";
-import { forkedUuid } from "../agent/index.ts";
-import { listSessionNames } from "../tmux/tmux.ts";
-import { log } from "../util/log.ts";
-import { startSession } from "./lifecycle.ts";
-import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
+import { forkedUuid } from '../agent/index.ts';
+import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { findSession, loadSessions, updateSessionUuid } from '../config/sessions.ts';
+import { listSessionNames } from '../tmux/tmux.ts';
+import type { Session } from '../types.ts';
+import { log } from '../util/log.ts';
+import { startSession } from './lifecycle.ts';
 
 type EnsureDeps = {
   sessions: () => Session[];
@@ -38,14 +38,19 @@ export async function cmdEnsure(): Promise<number> {
     followFork: async (s) => {
       const next = forkedUuid(s, m, loadSessions(m));
       if (next === null) return s;
-      log.info({ msg: "follow fork: conversation moved — re-pinning", name: s.name, from: s.uuid, to: next });
+      log.info({
+        msg: 'follow fork: conversation moved — re-pinning',
+        name: s.name,
+        from: s.uuid,
+        to: next,
+      });
       await updateSessionUuid(m, s.name, next);
       return { ...s, uuid: next };
     },
     start: (name, dir) => {
       const session = findSession(loadSessions(m), name);
       if (!session || readLifecycleBlockForSession(m, session)) return Promise.resolve();
-      log.info({ msg: "heal: session down — restarting", name });
+      log.info({ msg: 'heal: session down — restarting', name });
       return startSession(m, name, dir);
     },
   });

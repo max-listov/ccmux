@@ -1,9 +1,9 @@
-import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC_CLI = join(ROOT, "src", "cli.ts");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const SRC_CLI = join(ROOT, 'src', 'cli.ts');
 
 /**
  * ink pulls an optional DEV-only React DevTools client (`react-devtools-core`) via a HOISTED static
@@ -21,7 +21,7 @@ const SRC_CLI = join(ROOT, "src", "cli.ts");
  * ink calls on the default export (`initialize` + `connectToDevTools`), so even a DEV-mode run
  * wouldn't throw.
  */
-export const STUB_REACT_DEVTOOLS = "export default { initialize() {}, connectToDevTools() {} };";
+export const STUB_REACT_DEVTOOLS = 'export default { initialize() {}, connectToDevTools() {} };';
 
 /** Build the single-file prod bundle. The ONE build path — the release ceremony, stage, CI assets,
  *  and the self-contained guard test all go through here, so what the test checks is exactly what
@@ -30,13 +30,19 @@ export async function buildBundle(outfile: string): Promise<boolean> {
   mkdirSync(dirname(outfile), { recursive: true });
   const result = await Bun.build({
     entrypoints: [SRC_CLI],
-    target: "bun",
+    target: 'bun',
     plugins: [
       {
-        name: "stub-react-devtools",
+        name: 'stub-react-devtools',
         setup(build) {
-          build.onResolve({ filter: /^react-devtools-core$/ }, () => ({ path: "react-devtools-core", namespace: "stub-rdt" }));
-          build.onLoad({ filter: /.*/, namespace: "stub-rdt" }, () => ({ contents: STUB_REACT_DEVTOOLS, loader: "js" }));
+          build.onResolve({ filter: /^react-devtools-core$/ }, () => ({
+            path: 'react-devtools-core',
+            namespace: 'stub-rdt',
+          }));
+          build.onLoad({ filter: /.*/, namespace: 'stub-rdt' }, () => ({
+            contents: STUB_REACT_DEVTOOLS,
+            loader: 'js',
+          }));
         },
       },
     ],
@@ -47,7 +53,7 @@ export async function buildBundle(outfile: string): Promise<boolean> {
   }
   const [artifact] = result.outputs;
   if (artifact === undefined) {
-    console.error("bundle: build produced no output artifact");
+    console.error('bundle: build produced no output artifact');
     return false;
   }
   await Bun.write(outfile, artifact);

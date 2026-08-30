@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { z } from "zod";
-import { paneActivityPath } from "../config/paths.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import type { MachineConfig } from "../types.ts";
+import { existsSync, readFileSync } from 'node:fs';
+import { z } from 'zod';
+import { paneActivityPath } from '../config/paths.ts';
+import type { MachineConfig } from '../types.ts';
+import { atomicWrite } from '../util/atomic.ts';
 
 /**
  * When each session's pane was last seen doing work — the machine's shared answer to "is this
@@ -42,7 +42,7 @@ export function readPaneActivity(m: MachineConfig): Record<string, number> {
   try {
     const path = paneActivityPath(m);
     if (!existsSync(path)) return {};
-    return PaneActivitySchema.safeParse(JSON.parse(readFileSync(path, "utf8"))).data ?? {};
+    return PaneActivitySchema.safeParse(JSON.parse(readFileSync(path, 'utf8'))).data ?? {};
   } catch {
     return {};
   }
@@ -55,7 +55,10 @@ export function paneWorkingSince(m: MachineConfig, name: string): number | null 
 
 /** Rewrite the whole map. Written once per observation pass, so sessions that have gone are dropped
  *  rather than left behind as a growing record of machines that no longer exist. */
-export async function writePaneActivity(m: MachineConfig, seen: Map<string, number>): Promise<void> {
+export async function writePaneActivity(
+  m: MachineConfig,
+  seen: Map<string, number>,
+): Promise<void> {
   try {
     await atomicWrite(paneActivityPath(m), JSON.stringify(Object.fromEntries(seen)));
   } catch {

@@ -1,5 +1,5 @@
-import { toolCategory } from "./toolMeta.ts";
-import { rec, str } from "./normalize.ts";
+import { rec, str } from './normalize.ts';
+import { toolCategory } from './toolMeta.ts';
 
 // Build the ONE-LINE "what came out of it" string shown on the bottom row of a tool card.
 // Always computed from the RAW input/result (never the display-clipped message text), so the
@@ -8,11 +8,11 @@ import { rec, str } from "./normalize.ts";
 /** Non-empty trimmed line count of a blob. "" → 0. */
 export function countLines(s: string): number {
   const t = s.trim();
-  return t === "" ? 0 : t.split("\n").length;
+  return t === '' ? 0 : t.split('\n').length;
 }
 
 function plural(n: number, one: string): string {
-  return `${n} ${one}${n === 1 ? "" : "s"}`;
+  return `${n} ${one}${n === 1 ? '' : 's'}`;
 }
 
 /** Lines added/removed for an Edit-family call, read from its INPUT (old/new string). For a
@@ -37,8 +37,12 @@ function editDiff(input: Record<string, unknown> | null): { added: number; remov
 /** First meaningful line of a result, clipped — the fallback summary for tools we don't model.
  *  Structured (JSON-looking) output has no readable first line, so it degrades to a line count. */
 function firstLine(s: string, max = 48): string {
-  const line = s.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "";
-  if (line.startsWith("{") || line.startsWith("[")) return plural(countLines(s), "line");
+  const line =
+    s
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l !== '') ?? '';
+  if (line.startsWith('{') || line.startsWith('[')) return plural(countLines(s), 'line');
   return line.length > max ? `${line.slice(0, max)}…` : line;
 }
 
@@ -49,27 +53,32 @@ function firstLine(s: string, max = 48): string {
  *   grep  → "3 matches"   else  → first line of output / "done"
  * `isError` short-circuits to the error's first line.
  */
-export function resultSummary(name: string, input: Record<string, unknown> | null, resultText: string, isError: boolean): string {
-  if (isError) return firstLine(resultText) || "error";
+export function resultSummary(
+  name: string,
+  input: Record<string, unknown> | null,
+  resultText: string,
+  isError: boolean,
+): string {
+  if (isError) return firstLine(resultText) || 'error';
   const cat = toolCategory(name);
   switch (cat) {
-    case "edit": {
+    case 'edit': {
       const { added, removed } = editDiff(input);
       return `+${added} −${removed}`;
     }
-    case "write": {
-      const n = countLines(str(input?.content) ?? "");
-      return `wrote ${plural(n, "line")}`;
+    case 'write': {
+      const n = countLines(str(input?.content) ?? '');
+      return `wrote ${plural(n, 'line')}`;
     }
-    case "read":
-      return plural(countLines(resultText), "line");
-    case "run": {
+    case 'read':
+      return plural(countLines(resultText), 'line');
+    case 'run': {
       const n = countLines(resultText);
-      return n === 0 ? "ok" : plural(n, "line");
+      return n === 0 ? 'ok' : plural(n, 'line');
     }
-    case "search":
-      return plural(countLines(resultText), "result");
+    case 'search':
+      return plural(countLines(resultText), 'result');
     default:
-      return firstLine(resultText) || "done";
+      return firstLine(resultText) || 'done';
   }
 }

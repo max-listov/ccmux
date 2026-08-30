@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { z } from "zod";
-import { writeMetrics, type MetricsStatus } from "../agent/sessionStatus.ts";
+import { existsSync, readFileSync } from 'node:fs';
+import { z } from 'zod';
+import { type MetricsStatus, writeMetrics } from '../agent/sessionStatus.ts';
 
 /**
  * `ccmux status-line` — the injected Claude Code statusLine command for a managed session. Claude
@@ -48,15 +48,20 @@ export function extractMetrics(raw: string, now: number): MetricsStatus | null {
  *  user). Skips our own injected command so the wrapper can never recurse into itself. */
 export function originalCommand(cwd: string, home: string): string | null {
   // Claude's real precedence: project local overrides project, which overrides user.
-  const files = [`${cwd}/.claude/settings.local.json`, `${cwd}/.claude/settings.json`, `${home}/.claude/settings.json`];
+  const files = [
+    `${cwd}/.claude/settings.local.json`,
+    `${cwd}/.claude/settings.json`,
+    `${home}/.claude/settings.json`,
+  ];
   for (const f of files) {
     try {
       if (!existsSync(f)) continue;
-      const cmd = SettingsSchema.safeParse(JSON.parse(readFileSync(f, "utf8"))).data?.statusLine?.command;
+      const cmd = SettingsSchema.safeParse(JSON.parse(readFileSync(f, 'utf8'))).data?.statusLine
+        ?.command;
       // Skip our OWN injected command (`… status-line` as a standalone subcommand) so the tee can
       // never recurse — but a user script merely CONTAINING "status-line" (e.g. status-line-pretty.sh)
       // is a real statusline and must be run.
-      if (cmd !== undefined && cmd !== "" && !/(^|\s)status-line(\s|$)/.test(cmd)) return cmd;
+      if (cmd !== undefined && cmd !== '' && !/(^|\s)status-line(\s|$)/.test(cmd)) return cmd;
     } catch {
       // skip unreadable/invalid settings file
     }
@@ -64,7 +69,8 @@ export function originalCommand(cwd: string, home: string): string | null {
   return null;
 }
 
-const fmtTok = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+const fmtTok = (n: number): string =>
+  n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
 
 /** A minimal default statusline built from the captured metrics — shown ONLY when the user has no
  *  statusline of their own, so injecting the tee never leaves them with a blank bar; instead they get
@@ -76,14 +82,14 @@ export function minimalStatusline(m: MetricsStatus): string {
     const used = Math.round((m.contextSizeTokens * m.pct) / 100);
     parts.push(`${fmtTok(used)}/${fmtTok(m.contextSizeTokens)} ${m.pct}%`);
   }
-  return parts.join(" · ");
+  return parts.join(' · ');
 }
 
 export async function cmdStatusLine(): Promise<number> {
   try {
-    const raw = await Bun.stdin.text().catch(() => "");
+    const raw = await Bun.stdin.text().catch(() => '');
     const self = process.env.CCMUX_SESSION;
-    let cwd = ".";
+    let cwd = '.';
     try {
       cwd = process.cwd(); // can throw if the session's cwd was deleted — degrade, never break render
     } catch {
@@ -92,7 +98,7 @@ export async function cmdStatusLine(): Promise<number> {
 
     const metrics = extractMetrics(raw, Date.now());
     // Capture metrics (best-effort — never let a write failure suppress the visual statusline).
-    if (self !== undefined && self !== "" && metrics !== null) {
+    if (self !== undefined && self !== '' && metrics !== null) {
       try {
         await writeMetrics(self, metrics);
       } catch {
@@ -102,9 +108,14 @@ export async function cmdStatusLine(): Promise<number> {
 
     // Render the user's ORIGINAL statusline (visual unchanged); if they have none, render a minimal
     // default from the metrics rather than a blank bar.
-    const cmd = originalCommand(cwd, process.env.HOME ?? "");
+    const cmd = originalCommand(cwd, process.env.HOME ?? '');
     if (cmd !== null) {
-      const proc = Bun.spawn(["sh", "-c", cmd], { cwd, stdin: new TextEncoder().encode(raw), stdout: "inherit", stderr: "ignore" });
+      const proc = Bun.spawn(['sh', '-c', cmd], {
+        cwd,
+        stdin: new TextEncoder().encode(raw),
+        stdout: 'inherit',
+        stderr: 'ignore',
+      });
       await proc.exited;
     } else if (metrics !== null) {
       process.stdout.write(minimalStatusline(metrics));

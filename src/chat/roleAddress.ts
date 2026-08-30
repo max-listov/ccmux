@@ -21,9 +21,9 @@
  * from the same information that misled them the first time.
  */
 
-import { preview } from "../util/preview.ts";
+import { preview } from '../util/preview.ts';
 
-export const ROLE_SIGIL = "@";
+export const ROLE_SIGIL = '@';
 
 /** Is this token asking for a role rather than naming a session? */
 export function isRoleToken(token: string): boolean {
@@ -50,9 +50,10 @@ export type RoleResolution = { name: string } | { error: string };
 function describe(c: RoleCandidate): string {
   // Flattened: a transcript line carries newlines, and a refusal whose candidates sprawl over the
   // screen is one nobody reads to the end — which would put us back at guessing.
-  const said = c.lastText === null || c.lastText.trim() === ""
-    ? "nothing said yet"
-    : preview(c.lastText.replace(/\s+/g, " ").trim(), 80);
+  const said =
+    c.lastText === null || c.lastText.trim() === ''
+      ? 'nothing said yet'
+      : preview(c.lastText.replace(/\s+/g, ' ').trim(), 80);
   return `  ${c.name}  (${c.dir})\n    last: ${said}`;
 }
 
@@ -62,22 +63,29 @@ function describe(c: RoleCandidate): string {
  * `label` is how the machine should be named back to the reader (`host-a:` or empty for local), so
  * the addresses in a refusal are the exact strings to retry with rather than something to assemble.
  */
-export function resolveRole(token: string, candidates: readonly RoleCandidate[], label = ""): RoleResolution {
+export function resolveRole(
+  token: string,
+  candidates: readonly RoleCandidate[],
+  label = '',
+): RoleResolution {
   const want = roleOf(token);
   const matches = candidates.filter((c) => c.role === want);
   if (matches.length === 1) return { name: (matches[0] as RoleCandidate).name };
-  const where = label === "" ? "this machine" : label.replace(/:$/, "");
+  const where = label === '' ? 'this machine' : label.replace(/:$/, '');
   if (matches.length === 0) {
-    const declared = [...new Set(candidates.map((c) => c.role).filter((r): r is string => r !== null))].sort();
+    const declared = [
+      ...new Set(candidates.map((c) => c.role).filter((r): r is string => r !== null)),
+    ].sort();
     // Either name what IS there, or say how to put it there. A bare "not found" would send the
     // reader back to guessing from the same names that misled them.
-    const known = declared.length === 0
-      ? `nothing there declares a role yet; declare one with: ccmux role ${label}<session> ${want}`
-      : `roles declared there: ${declared.map((r) => `${ROLE_SIGIL}${r}`).join(", ")}`;
+    const known =
+      declared.length === 0
+        ? `nothing there declares a role yet; declare one with: ccmux role ${label}<session> ${want}`
+        : `roles declared there: ${declared.map((r) => `${ROLE_SIGIL}${r}`).join(', ')}`;
     return { error: `no session matches role '${ROLE_SIGIL}${want}' on ${where} — ${known}` };
   }
   // Never pick one. The whole point is that choosing silently is the failure being removed.
-  const lines = matches.map((c) => `${describe(c)}\n    address: ${label}${c.name}`).join("\n");
+  const lines = matches.map((c) => `${describe(c)}\n    address: ${label}${c.name}`).join('\n');
   return {
     error:
       `role '${ROLE_SIGIL}${want}' matches ${matches.length} sessions — refusing to choose one.\n${lines}\n` +

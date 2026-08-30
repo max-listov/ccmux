@@ -1,9 +1,18 @@
-import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch } from "node:fs";
-import { dirname } from "node:path";
-import { SESSION_EVENT_VERSION, SessionEventSchema } from "../config/schema.ts";
-import { eventsPath } from "../config/paths.ts";
-import type { MachineConfig, Session, SessionEvent, SessionEventKind } from "../types.ts";
+import { randomUUID } from 'node:crypto';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  watch,
+} from 'node:fs';
+import { dirname } from 'node:path';
+import { eventsPath } from '../config/paths.ts';
+import { SESSION_EVENT_VERSION, SessionEventSchema } from '../config/schema.ts';
+import type { MachineConfig, Session, SessionEvent, SessionEventKind } from '../types.ts';
 
 /**
  * The session event feed: an append-only record of what HAPPENED to the sessions on this machine.
@@ -26,7 +35,7 @@ import type { MachineConfig, Session, SessionEvent, SessionEventKind } from "../
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const KEEP = 2; // rotated generations: .1, .2
-const FEED_NAME = "events.jsonl";
+const FEED_NAME = 'events.jsonl';
 
 /** Shift events.jsonl → .1 → .2 past the size cap. Best-effort: rotation must never cost an event,
  *  and must never throw inside a hook the agent is waiting on. */
@@ -60,7 +69,13 @@ export interface EmitInput {
 
 /** Build one event from a session. The clock and the RNG are parameters, so the record shape is
  *  testable without stubbing either. */
-export function buildEvent(m: MachineConfig, s: Session, input: EmitInput, id: string, nowIso: string): SessionEvent {
+export function buildEvent(
+  m: MachineConfig,
+  s: Session,
+  input: EmitInput,
+  id: string,
+  nowIso: string,
+): SessionEvent {
   return SessionEventSchema.parse({
     v: SESSION_EVENT_VERSION,
     id,
@@ -98,7 +113,7 @@ export function appendEvent(m: MachineConfig, s: Session, input: EmitInput): Ses
  *  build carrying a field this one does not know, costs that line and never the whole read. */
 export function parseEvent(line: string): SessionEvent | null {
   const trimmed = line.trim();
-  if (trimmed === "") return null;
+  if (trimmed === '') return null;
   try {
     return SessionEventSchema.safeParse(JSON.parse(trimmed)).data ?? null;
   } catch {
@@ -130,11 +145,11 @@ export function readEvents(m: MachineConfig, opts: ReadOptions = {}): SessionEve
   for (const file of feedFiles(m)) {
     let text: string;
     try {
-      text = readFileSync(file, "utf8");
+      text = readFileSync(file, 'utf8');
     } catch {
       continue; // rotated out from under us mid-read — later generations still carry what matters
     }
-    for (const line of text.split("\n")) {
+    for (const line of text.split('\n')) {
       const event = parseEvent(line);
       if (event === null) continue;
       if (opts.session !== undefined && event.session !== opts.session) continue;
@@ -160,7 +175,7 @@ export function followEvents(
 ): () => void {
   const path = eventsPath(m);
   let offset = 0;
-  let carry = "";
+  let carry = '';
 
   // Everything already in the feed at or after the cursor, before watching begins — so a consumer
   // that reconnects does not have to choose between missing the gap and replaying all of history.
@@ -180,23 +195,23 @@ export function followEvents(
       size = statSync(path).size;
     } catch {
       offset = 0;
-      carry = "";
+      carry = '';
       return; // gone for a moment (rotation) — pick it up when it is back
     }
     if (size < offset) {
       offset = 0; // rotated or truncated: the bytes we had live in a previous generation now
-      carry = "";
+      carry = '';
     }
     if (size === offset) return;
     let chunk: string;
     try {
-      chunk = readFileSync(path, "utf8").slice(offset);
+      chunk = readFileSync(path, 'utf8').slice(offset);
     } catch {
       return;
     }
     offset = size;
-    const lines = (carry + chunk).split("\n");
-    carry = lines.pop() ?? ""; // a line may still be mid-write; hold it until its newline arrives
+    const lines = (carry + chunk).split('\n');
+    carry = lines.pop() ?? ''; // a line may still be mid-write; hold it until its newline arrives
     for (const line of lines) {
       const event = parseEvent(line);
       if (event === null) continue;
@@ -225,6 +240,6 @@ export function followEvents(
     clearInterval(timer);
     watcher?.close();
   };
-  opts.signal?.addEventListener("abort", stop, { once: true });
+  opts.signal?.addEventListener('abort', stop, { once: true });
   return stop;
 }

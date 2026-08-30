@@ -1,9 +1,9 @@
 // In a consuming package: import { readMonitoringStatus } from "ccmux/monitoring-reader";
-import { readMonitoringStatus } from "../src/monitoring-reader.ts";
+import { readMonitoringStatus } from '../src/monitoring-reader.ts';
 
 const stop = new AbortController();
-process.once("SIGINT", () => stop.abort());
-process.once("SIGTERM", () => stop.abort());
+process.once('SIGINT', () => stop.abort());
+process.once('SIGTERM', () => stop.abort());
 
 while (!stop.signal.aborted) {
   const result = await readMonitoringStatus({ signal: stop.signal, timeoutMs: 250 });

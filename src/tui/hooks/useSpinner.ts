@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { SPIN } from "../format.ts";
+import { useEffect, useState } from 'react';
+import { SPIN } from '../format.ts';
 
 /** Rotating braille spinner frame. Ticks ONLY while `active` — i.e. at least one visible session
  *  is actually working. An idle fleet must NOT re-render the whole Ink tree 8×/s forever: that

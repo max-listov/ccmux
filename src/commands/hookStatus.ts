@@ -1,10 +1,15 @@
-import { z } from "zod";
-import { SUPERVISOR_CLOSED_EVENT, readLifecycle, writeLifecycle, type LifecycleStatus } from "../agent/sessionStatus.ts";
-import { appendEvent } from "../events/feed.ts";
-import { eventsEnabledFor } from "../config/events.ts";
-import { loadMachineConfig } from "../config/machine.ts";
-import { findSession, loadSessions } from "../config/sessions.ts";
-import type { EmitInput } from "../events/feed.ts";
+import { z } from 'zod';
+import {
+  type LifecycleStatus,
+  readLifecycle,
+  SUPERVISOR_CLOSED_EVENT,
+  writeLifecycle,
+} from '../agent/sessionStatus.ts';
+import { eventsEnabledFor } from '../config/events.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import type { EmitInput } from '../events/feed.ts';
+import { appendEvent } from '../events/feed.ts';
 
 /**
  * `ccmux hook-status` — Claude Code lifecycle hooks (UserPromptSubmit / Stop / SessionStart) for a
@@ -32,10 +37,10 @@ const PayloadSchema = z.object({
   transcript_path: z.string().optional(),
 });
 
-const EVENT_STATE: Record<string, LifecycleStatus["state"]> = {
-  UserPromptSubmit: "working",
-  Stop: "idle",
-  SessionStart: "idle",
+const EVENT_STATE: Record<string, LifecycleStatus['state']> = {
+  UserPromptSubmit: 'working',
+  Stop: 'idle',
+  SessionStart: 'idle',
 };
 
 /** Pure: hook stdin payload → the lifecycle status to persist, or null (unmapped event / bad JSON,
@@ -73,24 +78,28 @@ export function parseLifecycle(raw: string, now: number): LifecycleStatus | null
  * Pure: the previous status and the clock come in as arguments. `null` means this event says nothing
  * a reader would want (an unmapped event, or a `SessionStart` that is merely clearing a stale flag).
  */
-export function eventForLifecycle(status: LifecycleStatus, previous: LifecycleStatus | null): EmitInput | null {
+export function eventForLifecycle(
+  status: LifecycleStatus,
+  previous: LifecycleStatus | null,
+): EmitInput | null {
   // A turn begins with a TRANSITION, not with a message. A prompt that lands while a turn is already
   // running joins that turn instead of starting one — a delivered chat message, a background
   // watcher's notification, a second question typed after the first. Measured before this check
   // existed: three starts 50ms apart with no end between them, which for a reader tracking state is
   // three turns that never finished.
-  if (status.event === "UserPromptSubmit") return previous?.state === "working" ? null : { event: "turn-start" };
-  if (status.event === "SessionStart") return { event: "session-start" };
-  if (status.event !== "Stop") return null;
+  if (status.event === 'UserPromptSubmit')
+    return previous?.state === 'working' ? null : { event: 'turn-start' };
+  if (status.event === 'SessionStart') return { event: 'session-start' };
+  if (status.event !== 'Stop') return null;
   // The supervisor already closed this turn and said so. It is the same ending, and announcing it
   // twice is two announcements of one thing to anyone who speaks or blinks on the event — so the
   // late hook stays quiet rather than adding a second, duration-less end.
   if (previous?.event === SUPERVISOR_CLOSED_EVENT) return null;
   // A turn we never saw start (the hook was added mid-conversation) still ended — report it without
   // inventing a duration.
-  if (previous === null || previous.state !== "working") return { event: "turn-end" };
+  if (previous === null || previous.state !== 'working') return { event: 'turn-end' };
   const durationMs = status.ts - previous.ts;
-  return durationMs >= 0 ? { event: "turn-end", durationMs } : { event: "turn-end" };
+  return durationMs >= 0 ? { event: 'turn-end', durationMs } : { event: 'turn-end' };
 }
 
 /**
@@ -102,16 +111,20 @@ export function eventForLifecycle(status: LifecycleStatus, previous: LifecycleSt
  * lie about the one number this feed exists to report, and a convincing one: it is plausible on its
  * face, and the busier the session the more it under-reports.
  */
-export function lifecycleToWrite(status: LifecycleStatus, previous: LifecycleStatus | null): LifecycleStatus {
-  if (status.state === "working" && previous?.state === "working") return { ...status, ts: previous.ts };
+export function lifecycleToWrite(
+  status: LifecycleStatus,
+  previous: LifecycleStatus | null,
+): LifecycleStatus {
+  if (status.state === 'working' && previous?.state === 'working')
+    return { ...status, ts: previous.ts };
   return status;
 }
 
 export async function cmdHookStatus(): Promise<number> {
   try {
-    const raw = await Bun.stdin.text().catch(() => "");
+    const raw = await Bun.stdin.text().catch(() => '');
     const self = process.env.CCMUX_SESSION;
-    if (self === undefined || self === "") return 0;
+    if (self === undefined || self === '') return 0;
     const status = parseLifecycle(raw, Date.now());
     if (status === null) return 0;
     // Read BEFORE the write: the previous status is what carries the turn's start instant, and this

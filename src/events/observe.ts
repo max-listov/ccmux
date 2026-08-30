@@ -1,15 +1,15 @@
-import { providerFor, lastActivityMs, lastTranscriptMessage } from "../agent/index.ts";
-import { closeLifecycleTurn, readLifecycle } from "../agent/sessionStatus.ts";
-import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
-import { eventsEnabledFor } from "../config/events.ts";
-import { loadSessions } from "../config/sessions.ts";
-import { observedPane, observedSessionInventory } from "../monitoring/tmux.ts";
-import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
-import type { MachineConfig, Session } from "../types.ts";
-import { appendEvent, type EmitInput } from "./feed.ts";
-import { readPaneActivity, writePaneActivity } from "./paneActivity.ts";
-import { hasNativeRuntime } from "../runtime/capabilities.ts";
-import { managedRuntimeView } from "../runtime/view.ts";
+import { lastActivityMs, lastTranscriptMessage, providerFor } from '../agent/index.ts';
+import { closeLifecycleTurn, readLifecycle } from '../agent/sessionStatus.ts';
+import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
+import { eventsEnabledFor } from '../config/events.ts';
+import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
+import { loadSessions } from '../config/sessions.ts';
+import { observedPane, observedSessionInventory } from '../monitoring/tmux.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { managedRuntimeView } from '../runtime/view.ts';
+import type { MachineConfig, Session } from '../types.ts';
+import { appendEvent, type EmitInput } from './feed.ts';
+import { readPaneActivity, writePaneActivity } from './paneActivity.ts';
 
 /**
  * The half of the feed the turn hook cannot write.
@@ -86,7 +86,16 @@ export interface Observed {
   turnClosedFor: number | null;
 }
 
-export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null, turnStartedMs: null, turnOverMs: null, turnInterrupted: false, paneWorkingMs: null, turnClosedFor: null };
+export const UNSEEN: Observed = {
+  running: false,
+  waitingAt: null,
+  blocked: null,
+  turnStartedMs: null,
+  turnOverMs: null,
+  turnInterrupted: false,
+  paneWorkingMs: null,
+  turnClosedFor: null,
+};
 
 /**
  * Transitions between two observations. Pure, and the reason the daemon side stays testable without
@@ -100,13 +109,15 @@ export const UNSEEN: Observed = { running: false, waitingAt: null, blocked: null
 export function transitions(prev: Observed, next: Observed): EmitInput[] {
   const out: EmitInput[] = [];
   if (prev.running && !next.running) {
-    out.push({ event: "session-stop" });
+    out.push({ event: 'session-stop' });
     return out; // a stopped session has no menu and no turn; anything else would be about a ghost
   }
   if (!next.running) return out;
-  if (next.blocked !== null && prev.blocked !== next.blocked) out.push({ event: "session-blocked", detail: next.blocked });
-  if (next.waitingAt !== null && prev.waitingAt !== next.waitingAt) out.push({ event: "waiting", detail: next.waitingAt });
-  if (prev.waitingAt !== null && next.waitingAt === null) out.push({ event: "resumed" });
+  if (next.blocked !== null && prev.blocked !== next.blocked)
+    out.push({ event: 'session-blocked', detail: next.blocked });
+  if (next.waitingAt !== null && prev.waitingAt !== next.waitingAt)
+    out.push({ event: 'waiting', detail: next.waitingAt });
+  if (prev.waitingAt !== null && next.waitingAt === null) out.push({ event: 'resumed' });
   // A turn the hook never ended. Once per TURN, not once per rise of a flickering signal — see
   // `turnClosedFor`.
   //
@@ -114,12 +125,17 @@ export function transitions(prev: Observed, next: Observed): EmitInput[] {
   // was already over the first time we looked did not end while we were watching: its ending is
   // state we inherited, not a moment we saw, and announcing it would date a two-day-old event to the
   // instant a daemon happened to start. The stamp still gets closed either way — see `observeOnce`.
-  if (next.turnOverMs !== null && next.turnStartedMs !== null && prev.running && prev.turnClosedFor !== next.turnStartedMs) {
+  if (
+    next.turnOverMs !== null &&
+    next.turnStartedMs !== null &&
+    prev.running &&
+    prev.turnClosedFor !== next.turnStartedMs
+  ) {
     // An ordinary end, flagged only when it was cut short — a consumer that just wants "it finished"
     // should not have to know how, and one that cares can see it. A hook that never fired is not
     // interruption: the turn ended in the agent's own words and only the announcement went missing.
     out.push({
-      event: "turn-end",
+      event: 'turn-end',
       durationMs: Math.max(0, next.turnOverMs - next.turnStartedMs),
       ...(next.turnInterrupted ? { interrupted: true } : {}),
     });
@@ -184,9 +200,14 @@ export function observe(
   if (!running) return { ...UNSEEN, running: false };
   if (hasNativeRuntime(s)) {
     const native = managedRuntimeView(m, s, nowMs);
-    return { ...UNSEEN, running: true, waitingAt: native.atPrompt,
-      blocked: native.read.status === "live" ? null : `native status unavailable: ${native.read.reason}`,
-      turnStartedMs: native.turnStartedAt === null ? null : Date.parse(native.turnStartedAt) };
+    return {
+      ...UNSEEN,
+      running: true,
+      waitingAt: native.atPrompt,
+      blocked:
+        native.read.status === 'live' ? null : `native status unavailable: ${native.read.reason}`,
+      turnStartedMs: native.turnStartedAt === null ? null : Date.parse(native.turnStartedAt),
+    };
   }
   const provider = providerFor(s);
   const block = readLifecycleBlockForSession(m, s);
@@ -194,9 +215,9 @@ export function observe(
   const scan = pane === null ? null : provider.scanPane(pane);
   const lm = lastTranscriptMessage(s, m);
   const activity = lastActivityMs(s, m);
-  const paneWorking = scan?.state === "working";
+  const paneWorking = scan?.state === 'working';
   const paneWorkingMs = paneWorking ? nowMs : lastPaneWorkingMs;
-  const claimed = lifecycle?.state === "working" ? lifecycle.ts : null;
+  const claimed = lifecycle?.state === 'working' ? lifecycle.ts : null;
   const aliveMs = lastSignOfLife(activity, paneWorkingMs, claimed);
   const state =
     pane === null
@@ -226,7 +247,7 @@ export function observe(
     // future; a session that never spoke has no transcript instant to use, so the pass's own clock
     // stands in.
     turnOverMs: over ? Math.round(Math.min(nowMs, Math.max(claimed, activity ?? nowMs))) : null,
-    turnInterrupted: over && state?.why === "idle-after-interrupt",
+    turnInterrupted: over && state?.why === 'idle-after-interrupt',
   };
 }
 
@@ -244,8 +265,17 @@ export function observe(
  * with events switched off would otherwise keep a `working` stamp from a turn that ended days ago,
  * and hand that stale instant to its next turn as a start time.
  */
-export async function observeOnce(m: MachineConfig, previous: Map<string, Observed>, nowMs = Date.now(),
-  sample?: (m: MachineConfig, s: Session, startedAt: number | undefined, pane: string | null, seen: Observed) => void,
+export async function observeOnce(
+  m: MachineConfig,
+  previous: Map<string, Observed>,
+  nowMs = Date.now(),
+  sample?: (
+    m: MachineConfig,
+    s: Session,
+    startedAt: number | undefined,
+    pane: string | null,
+    seen: Observed,
+  ) => void,
 ): Promise<number> {
   const sessions = loadSessions(m);
   const running = await observedSessionInventory(m);
@@ -260,9 +290,17 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
     const isRunning = running.has(s.name);
     // Capture only what is running: a stopped session has no pane, and asking for one is a fork per
     // session per pass spent to be told so.
-    const pane = isRunning && !hasNativeRuntime(s) ? await observedPane(m, s.name).catch(() => null) : null;
+    const pane =
+      isRunning && !hasNativeRuntime(s) ? await observedPane(m, s.name).catch(() => null) : null;
     const prev = previous.get(s.name) ?? UNSEEN;
-    const next = observe(m, s, isRunning, pane, nowMs, prev.paneWorkingMs ?? onDisk[s.name] ?? null);
+    const next = observe(
+      m,
+      s,
+      isRunning,
+      pane,
+      nowMs,
+      prev.paneWorkingMs ?? onDisk[s.name] ?? null,
+    );
     sample?.(m, s, running.get(s.name), pane, next);
     if (s.archived) continue;
     if (next.paneWorkingMs !== null) paneWorking.set(s.name, next.paneWorkingMs);
@@ -297,7 +335,7 @@ export async function observeOnce(m: MachineConfig, previous: Map<string, Observ
 async function closeTurn(name: string, endedMs: number): Promise<void> {
   try {
     const current = readLifecycle(name);
-    if (current === null || current.state !== "working") return;
+    if (current === null || current.state !== 'working') return;
     await closeLifecycleTurn(name, current, endedMs);
   } catch {
     // the next pass tries again

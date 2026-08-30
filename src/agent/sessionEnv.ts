@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
-import type { Session } from "../types.ts";
-import { CHAT_CREDENTIAL_ENV } from "../chat/auth.ts";
-import { envFilePath, envFiles, fileDigest } from "./launchInputs.ts";
-import type { LaunchStamp } from "./launchStamp.ts";
+import { readFileSync } from 'node:fs';
+import { CHAT_CREDENTIAL_ENV } from '../chat/auth.ts';
+import type { Session } from '../types.ts';
+import { envFilePath, envFiles, fileDigest } from './launchInputs.ts';
+import type { LaunchStamp } from './launchStamp.ts';
 
 /**
  * The environment a session gets is a RECIPE, not an inheritance.
@@ -47,30 +47,39 @@ import type { LaunchStamp } from "./launchStamp.ts";
  * being built plus values defined earlier in the same file. Single quotes do not expand, as in every
  * shell. Values are returned only to be handed to a child process — never to a log or a diagnostic.
  */
-export function parseEnvFile(text: string, base: Readonly<Record<string, string>> = {}): Record<string, string> {
+export function parseEnvFile(
+  text: string,
+  base: Readonly<Record<string, string>> = {},
+): Record<string, string> {
   const out: Record<string, string> = {};
-  const lines = text.split("\n");
+  const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     if (raw === undefined) continue;
     const line = raw.trim();
-    if (line === "" || line.startsWith("#")) continue;
+    if (line === '' || line.startsWith('#')) continue;
     const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/s.exec(line);
     if (match === null) continue;
     const key = match[1];
-    let rest = match[2] ?? "";
+    let rest = match[2] ?? '';
     if (key === undefined) continue;
-    const quote = rest.startsWith('"') ? '"' : rest.startsWith("'") ? "'" : rest.startsWith("`") ? "`" : null;
+    const quote = rest.startsWith('"')
+      ? '"'
+      : rest.startsWith("'")
+        ? "'"
+        : rest.startsWith('`')
+          ? '`'
+          : null;
     let value: string;
     if (quote === null) {
-      value = rest.split(" #")[0]?.trimEnd() ?? ""; // an unquoted trailing comment is not part of the value
+      value = rest.split(' #')[0]?.trimEnd() ?? ''; // an unquoted trailing comment is not part of the value
     } else {
       rest = rest.slice(1);
       let closed = rest.indexOf(quote);
       // A quoted value may run over several lines — a PEM key in an env file is the common case.
       while (closed === -1 && i + 1 < lines.length) {
         i += 1;
-        rest += `\n${lines[i] ?? ""}`;
+        rest += `\n${lines[i] ?? ''}`;
         closed = rest.indexOf(quote);
       }
       value = closed === -1 ? rest : rest.slice(0, closed);
@@ -81,17 +90,23 @@ export function parseEnvFile(text: string, base: Readonly<Record<string, string>
 }
 
 const expand = (value: string, scope: Readonly<Record<string, string>>): string =>
-  value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_all, braced: string | undefined, bare: string | undefined) => {
-    const name = braced ?? bare ?? "";
-    return scope[name] ?? "";
-  });
+  value.replace(
+    /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g,
+    (_all, braced: string | undefined, bare: string | undefined) => {
+      const name = braced ?? bare ?? '';
+      return scope[name] ?? '';
+    },
+  );
 
 /** Read + parse a declared env file. A file that is named but missing yields nothing: the session
  *  still starts (a supervisor whose sessions refuse to boot is worse than one variable short), and
  *  `list`/`doctor` are what say so. */
-export function readEnvFile(path: string, base: Readonly<Record<string, string>>): Record<string, string> {
+export function readEnvFile(
+  path: string,
+  base: Readonly<Record<string, string>>,
+): Record<string, string> {
   try {
-    return parseEnvFile(readFileSync(path, "utf8"), base);
+    return parseEnvFile(readFileSync(path, 'utf8'), base);
   } catch {
     return {};
   }
@@ -105,8 +120,9 @@ export function readEnvFile(path: string, base: Readonly<Record<string, string>>
  * from a file that is often not even in version control. The recipe grants a session variables; it
  * does not let a project reconfigure its supervisor.
  */
-export const RESERVED_ENV_PREFIX = "CCMUX_";
-export const isReservedEnvKey = (key: string): boolean => key.startsWith(RESERVED_ENV_PREFIX) || key === CHAT_CREDENTIAL_ENV;
+export const RESERVED_ENV_PREFIX = 'CCMUX_';
+export const isReservedEnvKey = (key: string): boolean =>
+  key.startsWith(RESERVED_ENV_PREFIX) || key === CHAT_CREDENTIAL_ENV;
 
 export interface SessionEnvRecipe {
   env: Record<string, string>;
@@ -125,7 +141,7 @@ export interface SessionEnvRecipe {
  * is already set).
  */
 export function sessionEnvRecipe(
-  s: Pick<Session, "dir" | "envFile">,
+  s: Pick<Session, 'dir' | 'envFile'>,
   inherited: Readonly<Record<string, string | undefined>>,
   nodeEnv: string | undefined,
 ): SessionEnvRecipe {
@@ -156,7 +172,6 @@ export function sessionEnvRecipe(
   return { env, refused: refused.sort(), removed: [...new Set(removed)].sort() };
 }
 
-
 /**
  * Is this RUNNING session still carrying variables nobody declared?
  *
@@ -177,13 +192,14 @@ export function sessionEnvRecipe(
  * disagree about who is on the list.
  */
 export function inheritsUndeclaredEnv(
-  s: Pick<Session, "dir" | "envFile" | "archived">,
+  s: Pick<Session, 'dir' | 'envFile' | 'archived'>,
   stamp: LaunchStamp | null,
   nodeEnv: string | undefined,
 ): boolean {
   if (s.archived || s.envFile !== undefined || stamp === null) return false;
   const launchedBeforeTheRecipe = stamp.inputs === null;
-  const stampedADirectoryFile = stamp.inputs !== null && stamp.inputs.env !== null && stamp.inputs.env !== undefined;
+  const stampedADirectoryFile =
+    stamp.inputs !== null && stamp.inputs.env !== null && stamp.inputs.env !== undefined;
   if (!launchedBeforeTheRecipe && !stampedADirectoryFile) return false;
   return envFiles(s.dir, nodeEnv).some((p) => fileDigest(p) !== null);
 }

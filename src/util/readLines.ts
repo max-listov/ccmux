@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 
 // Byte-level jsonl line readers, shared by every layer that touches transcript files
 // (agent adapters, TUI discover, fork detection). Transcripts grow to tens of MB, so the
@@ -7,8 +7,8 @@ import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 /** Exact full read (line numbers preserved). Only for paths that NEED absolute numbers
  *  (the `transcript --cursor` contract); everything hot goes through the windows below. */
 export function readLines(path: string): string[] {
-  const lines = readFileSync(path, "utf8").split("\n");
-  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const lines = readFileSync(path, 'utf8').split('\n');
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
   return lines;
 }
 
@@ -31,7 +31,11 @@ export const TAIL_BUDGETS: readonly number[] = [512 * 1024, 4 * 1024 * 1024];
  *  (0x0A never occurs inside a UTF-8 multi-byte char) and decoding happens once over the joined
  *  buffer, so slice borders can't split chars. Absolute line NUMBERS are lost — the
  *  `transcript --cursor` contract keeps going through readLines (exact, full read). */
-export function readTailLines(path: string, maxLines: number, maxBytes: number = DEFAULT_TAIL_BYTES): string[] {
+export function readTailLines(
+  path: string,
+  maxLines: number,
+  maxBytes: number = DEFAULT_TAIL_BYTES,
+): string[] {
   let size: number;
   try {
     size = statSync(path).size;
@@ -45,7 +49,7 @@ export function readTailLines(path: string, maxLines: number, maxBytes: number =
     return lines.length > maxLines ? lines.slice(-maxLines) : lines;
   }
   const floor = Math.max(0, size - budget);
-  const fd = openSync(path, "r");
+  const fd = openSync(path, 'r');
   const slices: Buffer[] = [];
   try {
     let start = size;
@@ -59,11 +63,11 @@ export function readTailLines(path: string, maxLines: number, maxBytes: number =
       start = from;
       for (const byte of buf) if (byte === 10) newlines++;
     }
-    const lines = Buffer.concat(slices).toString("utf8").split("\n");
+    const lines = Buffer.concat(slices).toString('utf8').split('\n');
     // A window that starts mid-file opens on a partial record — drop it. This is also why a
     // budget-truncated window can come back empty: one record larger than the whole budget.
     if (start > 0) lines.shift();
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
     return lines.length > maxLines ? lines.slice(-maxLines) : lines;
   } finally {
     closeSync(fd);
@@ -101,14 +105,14 @@ export function readTailUntil(
 export function readHeadLines(path: string, bytes: number): string[] {
   let fd: number;
   try {
-    fd = openSync(path, "r");
+    fd = openSync(path, 'r');
   } catch {
     return [];
   }
   try {
     const buf = Buffer.alloc(bytes);
     const n = readSync(fd, buf, 0, bytes, 0);
-    return buf.toString("utf8", 0, n).split("\n");
+    return buf.toString('utf8', 0, n).split('\n');
   } catch {
     return [];
   } finally {
@@ -120,7 +124,7 @@ export function readHeadLines(path: string, bytes: number): string[] {
 export function readFirstLine(path: string, maxBytes = 2 * 1024 * 1024): string | null {
   let fd: number;
   try {
-    fd = openSync(path, "r");
+    fd = openSync(path, 'r');
   } catch {
     return null;
   }
@@ -135,7 +139,7 @@ export function readFirstLine(path: string, maxBytes = 2 * 1024 * 1024): string 
       const slice = buf.subarray(0, n);
       const newline = slice.indexOf(10);
       chunks.push(newline === -1 ? slice : slice.subarray(0, newline));
-      if (newline !== -1) return Buffer.concat(chunks).toString("utf8");
+      if (newline !== -1) return Buffer.concat(chunks).toString('utf8');
       offset += n;
     }
     return null;

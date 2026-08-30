@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { packageControlServiceClient } from "./package-control-service.ts";
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { packageControlServiceClient } from './package-control-service.ts';
 
-const directory = mkdtempSync("/tmp/ccmux-packed-service-");
-const packageDir = join(directory, "package");
-const consumer = join(directory, "consumer");
+const directory = mkdtempSync('/tmp/ccmux-packed-service-');
+const packageDir = join(directory, 'package');
+const consumer = join(directory, 'consumer');
 const results: Array<{ gate: string; exitCode: number | null; diagnostics: string[] }> = [];
 
 function run(gate: string, command: string, args: string[]) {
   const result = Bun.spawnSync([command, ...args], {
     cwd: consumer,
-    stdout: "pipe",
-    stderr: "pipe",
+    stdout: 'pipe',
+    stderr: 'pipe',
     env: process.env,
   });
   const output = `${result.stdout.toString()}\n${result.stderr.toString()}`;
@@ -20,7 +20,7 @@ function run(gate: string, command: string, args: string[]) {
     gate,
     exitCode: result.exitCode,
     diagnostics: output
-      .split("\n")
+      .split('\n')
       .filter((line) => /error TS\d+|Error:/.test(line))
       .slice(0, 50),
   });
@@ -30,26 +30,31 @@ function run(gate: string, command: string, args: string[]) {
 try {
   // Post-publication verification must consume the downloaded artifact, not rebuild its substitute.
   const suppliedArtifact = process.env.CCMUX_PACKED_CLIENT_ARTIFACT;
-  const packed = suppliedArtifact === undefined
-    ? await packageControlServiceClient(packageDir)
-    : await (async () => {
-      const artifact = resolve(suppliedArtifact);
-      const bytes = new Uint8Array(await Bun.file(artifact).arrayBuffer());
-      return { artifact, bytes: bytes.byteLength, sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex") };
-    })();
+  const packed =
+    suppliedArtifact === undefined
+      ? await packageControlServiceClient(packageDir)
+      : await (async () => {
+          const artifact = resolve(suppliedArtifact);
+          const bytes = new Uint8Array(await Bun.file(artifact).arrayBuffer());
+          return {
+            artifact,
+            bytes: bytes.byteLength,
+            sha256: new Bun.CryptoHasher('sha256').update(bytes).digest('hex'),
+          };
+        })();
   mkdirSync(consumer, { recursive: true });
   await Bun.write(
-    join(consumer, "package.json"),
+    join(consumer, 'package.json'),
     `${JSON.stringify({
-      name: "ccmux-packed-client-gate",
+      name: 'ccmux-packed-client-gate',
       private: true,
-      type: "module",
-      dependencies: { "@ccmux/control-service-client": `file:${resolve(packed.artifact)}` },
-      devDependencies: { typescript: "7.0.2" },
+      type: 'module',
+      dependencies: { '@ccmux/control-service-client': `file:${resolve(packed.artifact)}` },
+      devDependencies: { typescript: '7.0.2' },
     })}\n`,
   );
   await Bun.write(
-    join(consumer, "check.ts"),
+    join(consumer, 'check.ts'),
     `import {z} from 'zod';
     import descriptorFile from '@ccmux/control-service-client/descriptor.json' with {type:'json'};
     import {
@@ -189,26 +194,26 @@ try {
     }
     `,
   );
-  if (run("install", process.execPath, ["install", "--ignore-scripts"])) {
-    run("bun-runtime", process.execPath, ["check.ts"]);
-    run("node-runtime", "node", ["--experimental-strip-types", "check.ts"]);
-    for (const resolution of ["nodenext", "bundler"]) {
+  if (run('install', process.execPath, ['install', '--ignore-scripts'])) {
+    run('bun-runtime', process.execPath, ['check.ts']);
+    run('node-runtime', 'node', ['--experimental-strip-types', 'check.ts']);
+    for (const resolution of ['nodenext', 'bundler']) {
       run(`types-${resolution}`, process.execPath, [
-        "./node_modules/typescript/bin/tsc",
-        "--noEmit",
-        "--skipLibCheck",
-        "false",
-        "--module",
-        resolution === "nodenext" ? "nodenext" : "esnext",
-        "--moduleResolution",
+        './node_modules/typescript/bin/tsc',
+        '--noEmit',
+        '--skipLibCheck',
+        'false',
+        '--module',
+        resolution === 'nodenext' ? 'nodenext' : 'esnext',
+        '--moduleResolution',
         resolution,
-        "--target",
-        "es2022",
-        "--resolveJsonModule",
-        "true",
-        "--lib",
-        "es2022,dom",
-        "check.ts",
+        '--target',
+        'es2022',
+        '--resolveJsonModule',
+        'true',
+        '--lib',
+        'es2022,dom',
+        'check.ts',
       ]);
     }
   }

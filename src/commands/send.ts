@@ -1,8 +1,8 @@
-import { forwardIfRemote } from "../fleet/forward.ts";
-import { sendKeysLiteral, sendKeysNamed } from "../tmux/tmux.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { preview } from "../util/preview.ts";
-import { chatEnabledFor } from "../config/chat.ts";
+import { chatEnabledFor } from '../config/chat.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import { forwardIfRemote } from '../fleet/forward.ts';
+import { sendKeysLiteral, sendKeysNamed } from '../tmux/tmux.ts';
+import { preview } from '../util/preview.ts';
 
 /** Long, prose-looking text aimed at a session that could have received it as CHAT. `send` types
  *  keystrokes: no sender, no record, no reply address, and none of the delivery gates (it will type
@@ -10,23 +10,31 @@ import { chatEnabledFor } from "../config/chat.ts";
  *  wrong for a letter — and the difference is invisible from the command name, which is exactly how
  *  a careful agent ends up using it for a multi-paragraph review request. */
 export function looksLikeMessage(text: string, recipientChatEnabled: boolean): boolean {
-  return recipientChatEnabled && text.length > 200 && !text.trimStart().startsWith("/");
+  return recipientChatEnabled && text.length > 200 && !text.trimStart().startsWith('/');
 }
 
-export async function cmdSend(name: string | undefined, keys: string[], opts: { internal?: boolean } = {}): Promise<number> {
+export async function cmdSend(
+  name: string | undefined,
+  keys: string[],
+  opts: { internal?: boolean } = {},
+): Promise<number> {
   if (!name || keys.length === 0) {
-    console.log("usage: ccmux send <name> <keys...>   ·   <machine>:<name> for another fleet machine");
+    console.log(
+      'usage: ccmux send <name> <keys...>   ·   <machine>:<name> for another fleet machine',
+    );
     return 1;
   }
-  const fwd = await forwardIfRemote(name, "send", keys);
+  const fwd = await forwardIfRemote(name, 'send', keys);
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
-  if (findSession(loadSessions(m), name)?.runtime === "native") {
-    console.error("send: this runtime has no terminal composer; use msg or the typed control service");
+  if (findSession(loadSessions(m), name)?.runtime === 'native') {
+    console.error(
+      'send: this runtime has no terminal composer; use msg or the typed control service',
+    );
     return 1;
   }
-  const text = keys.join(" ");
+  const text = keys.join(' ');
   const ok = await sendKeysLiteral(m, name, text);
   if (!ok) {
     console.log(`send failed: ${name} not running?`);
@@ -34,15 +42,28 @@ export async function cmdSend(name: string | undefined, keys: string[], opts: { 
   }
   // let readline drain the literal text before the separate Enter (avoids a race)
   await Bun.sleep(150);
-  await sendKeysNamed(m, name, "Enter");
+  await sendKeysNamed(m, name, 'Enter');
   // Preview, not an echo: repeating the whole text back charges twice for the same words, which is
   // nothing for a slash command and a lot for a long message.
   console.log(`sent to ${name}: ${preview(text)}`);
   // Not a refusal — pasting long text on purpose is legitimate. But say it once, here, where the
   // choice was made; `internal` keeps ccmux-owned key injection from lecturing.
-  if (opts.internal !== true && looksLikeMessage(text, (() => { const t = findSession(loadSessions(m), name); return t !== undefined && chatEnabledFor(t, m); })())) {
-    console.log(`  note: that reads like a message, not keystrokes — \`ccmux msg ${name} "…"\` tags you as the sender,`);
-    console.log("        gives them a reply address, records it, and waits for a safe moment to deliver.");
+  if (
+    opts.internal !== true &&
+    looksLikeMessage(
+      text,
+      (() => {
+        const t = findSession(loadSessions(m), name);
+        return t !== undefined && chatEnabledFor(t, m);
+      })(),
+    )
+  ) {
+    console.log(
+      `  note: that reads like a message, not keystrokes — \`ccmux msg ${name} "…"\` tags you as the sender,`,
+    );
+    console.log(
+      '        gives them a reply address, records it, and waits for a safe moment to deliver.',
+    );
   }
   return 0;
 }

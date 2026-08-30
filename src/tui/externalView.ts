@@ -1,8 +1,8 @@
-import type { DiscoveredSession } from "./discover.ts";
-import { capabilityReasons, capabilitySummary, writerSummary } from "./fleet.ts";
+import type { DiscoveredSession } from './discover.ts';
+import { capabilityReasons, capabilitySummary, writerSummary } from './fleet.ts';
 
 function mark(enabled: boolean): string {
-  return enabled ? "+" : "-";
+  return enabled ? '+' : '-';
 }
 
 export function compactCapabilitySummary(ext: DiscoveredSession): string {
@@ -15,7 +15,7 @@ export function externalDetailLines(ext: DiscoveredSession): string[] {
   return [
     `${ext.provider}@${ext.host}`,
     `id ${ext.threadId}`,
-    `cwd ${ext.dir ?? "unknown"}`,
+    `cwd ${ext.dir ?? 'unknown'}`,
     `origin ${ext.origin} · storage ${ext.storage} · writer ${writerSummary(ext)}`,
     `${compactCapabilitySummary(ext)} · ${capabilityReasons(ext)}`,
   ];

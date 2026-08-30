@@ -1,6 +1,6 @@
 /** Compact human duration from seconds: `45s`, `3m`, `2h10m`, `5d3h`, `—` for ≤0. */
 export function humanizeDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "—";
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
   const s = Math.floor(seconds);
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);

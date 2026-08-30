@@ -1,9 +1,9 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { loadMachineConfig } from "../config/machine.ts";
-import { AgentKindSchema } from "../config/schema.ts";
-import { log } from "../util/log.ts";
-import { createManagedSession } from "./create.ts";
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { loadMachineConfig } from '../config/machine.ts';
+import { AgentKindSchema } from '../config/schema.ts';
+import { log } from '../util/log.ts';
+import { createManagedSession } from './create.ts';
 
 /**
  * Register a new managed session and start it. Flags after `--` are stored verbatim
@@ -16,10 +16,12 @@ export async function cmdNew(
   opts: { router?: boolean; agent?: string; envFile?: string; runtime?: string } = {},
 ): Promise<number> {
   if (!name || !dir) {
-    console.log("usage: ccmux new <name> <dir> [--agent claude|codex|opencode] [--runtime tui|app-server|native] [--router] [--env-file <path>] [-- provider flags...]");
+    console.log(
+      'usage: ccmux new <name> <dir> [--agent claude|codex|opencode] [--runtime tui|app-server|native] [--router] [--env-file <path>] [-- provider flags...]',
+    );
     return 1;
   }
-  if (name.includes("|")) {
+  if (name.includes('|')) {
     console.log("name cannot contain '|'");
     return 1;
   }
@@ -33,11 +35,17 @@ export async function cmdNew(
     // --router: this session carries the router protocol module and, since it drives ccmux chat,
     // has chat enabled. Just DATA (a module key + a bool), resolved to live code at launch.
     const router = opts.router === true;
-    const agent = AgentKindSchema.parse(opts.agent ?? "claude");
-    const session = await createManagedSession(m, { name, dir: abs, agent, flags, router,
+    const agent = AgentKindSchema.parse(opts.agent ?? 'claude');
+    const session = await createManagedSession(m, {
+      name,
+      dir: abs,
+      agent,
+      flags,
+      router,
       ...(opts.runtime === undefined ? {} : { runtime: opts.runtime }),
-      ...(opts.envFile === undefined ? {} : { envFile: opts.envFile }) });
-    log.info({ msg: "session registered", name, dir: abs, uuid: session.uuid });
+      ...(opts.envFile === undefined ? {} : { envFile: opts.envFile }),
+    });
+    log.info({ msg: 'session registered', name, dir: abs, uuid: session.uuid });
     console.log(`added: ${JSON.stringify(session)}`);
   } catch (e) {
     console.log(e instanceof Error ? e.message : String(e));

@@ -1,40 +1,40 @@
-import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
-import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { parseNDJSON } from "stitchkit";
-import { z } from "zod";
-import { ContentBuffer } from "../src/content/buffer.ts";
-import { ContentWriter } from "../src/content/store.ts";
-import { ownedCodexSocket, privateRuntimeDirectory } from "../src/agent/codex/ownedPaths.ts";
-import { dirname } from "node:path";
-import { imageBytes, digest } from "./attachments-fixture.test.ts";
-import { ATTACHMENT_LIMITS } from "../src/attachments/reference.ts";
-import { loadSessions, writeSessionsUnlocked } from "../src/config/sessions.ts";
-import { managedPeer, managedPeerKey } from "../src/chat/identity.ts";
-import { loadLedger } from "../src/chat/store.ts";
-import { MonitoringPublisher } from "../src/monitoring/publish.ts";
-import { UNSEEN } from "../src/events/observe.ts";
-import { OwnedCodexProjection } from "../src/agent/codex/ownedProjection.ts";
-import { OwnedCodexStatusWriter } from "../src/agent/codex/ownedStatus.ts";
-import { ControlPublisher } from "../src/control/publisher.ts";
-import { createControlServer } from "../src/control/server.ts";
-import { createControlClient } from "../src/control/client.ts";
-import { controlSocket } from "../src/control/path.ts";
-import {
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  ControlServiceDescriptorSchema,
-  ControlServiceOperationSchema,
-  ccmuxControlServiceDescriptor,
-  createCcmuxControlServiceClient,
-} from "../src/control/serviceDescriptor.ts";
+import { afterEach, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { parseNDJSON } from 'stitchkit';
+import { z } from 'zod';
+import { ownedCodexSocket, privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
+import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { ATTACHMENT_LIMITS } from '../src/attachments/reference.ts';
+import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
+import { loadLedger } from '../src/chat/store.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
+import { ContentBuffer } from '../src/content/buffer.ts';
+import { ContentWriter } from '../src/content/store.ts';
+import { createControlClient } from '../src/control/client.ts';
 import {
   ControlNativeStreamFrameSchema,
   encodeControlNativeStreamCursor,
   readControlNativeStreamCursor,
-} from "../src/control/nativeStreamContract.ts";
-import { makeMachine, makeSession } from "./helpers.ts";
-import { ExternalStatusPublisher } from "../src/external/resident-publisher.ts";
+} from '../src/control/nativeStreamContract.ts';
+import { controlSocket } from '../src/control/path.ts';
+import { ControlPublisher } from '../src/control/publisher.ts';
+import { createControlServer } from '../src/control/server.ts';
+import {
+  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
+  CCMUX_CONTROL_SERVICE_PREFIX,
+  CCMUX_CONTROL_SERVICE_REVISION,
+  ControlServiceDescriptorSchema,
+  ControlServiceOperationSchema,
+  ccmuxControlServiceDescriptor,
+  createCcmuxControlServiceClient,
+} from '../src/control/serviceDescriptor.ts';
+import { UNSEEN } from '../src/events/observe.ts';
+import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
+import { MonitoringPublisher } from '../src/monitoring/publish.ts';
+import { digest, imageBytes } from './attachments-fixture.test.ts';
+import { makeMachine, makeSession } from './helpers.ts';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -43,67 +43,106 @@ afterEach(async () => {
 
 function catalogFixture(socket: string) {
   privateRuntimeDirectory(dirname(socket));
-  const RequestSchema = z.object({ id: z.union([z.string(), z.number()]).optional(), method: z.string() }).passthrough();
-  return Bun.serve({ unix: socket, fetch(request, server) {
-    if (server.upgrade(request)) return;
-    return new Response(null, { status: 400 });
-  }, websocket: { message(ws, value) {
-    const request = RequestSchema.parse(JSON.parse(String(value)));
-    if (request.id === undefined) return;
-    const result = request.method === "initialize" ? { userAgent: "codex/0.147.0" }
-      : request.method === "config/read" ? { config: { model_provider: "openai" } }
-        : { data: ["model-a", "model-b"].map((id) => ({ id, model: id, displayName: id, description: "fixture",
-          hidden: false, isDefault: id === "model-a", inputModalities: ["text", "image"], serviceTiers: [],
-          supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "fixture" }], defaultReasoningEffort: "medium" })), nextCursor: null };
-    ws.send(JSON.stringify({ id: request.id, result }));
-  } } });
+  const RequestSchema = z
+    .object({ id: z.union([z.string(), z.number()]).optional(), method: z.string() })
+    .passthrough();
+  return Bun.serve({
+    unix: socket,
+    fetch(request, server) {
+      if (server.upgrade(request)) return;
+      return new Response(null, { status: 400 });
+    },
+    websocket: {
+      message(ws, value) {
+        const request = RequestSchema.parse(JSON.parse(String(value)));
+        if (request.id === undefined) return;
+        const result =
+          request.method === 'initialize'
+            ? { userAgent: 'codex/0.147.0' }
+            : request.method === 'config/read'
+              ? { config: { model_provider: 'openai' } }
+              : {
+                  data: ['model-a', 'model-b'].map((id) => ({
+                    id,
+                    model: id,
+                    displayName: id,
+                    description: 'fixture',
+                    hidden: false,
+                    isDefault: id === 'model-a',
+                    inputModalities: ['text', 'image'],
+                    serviceTiers: [],
+                    supportedReasoningEfforts: [
+                      { reasoningEffort: 'medium', description: 'fixture' },
+                    ],
+                    defaultReasoningEffort: 'medium',
+                  })),
+                  nextCursor: null,
+                };
+        ws.send(JSON.stringify({ id: request.id, result }));
+      },
+    },
+  });
 }
 
 async function fixture(options: { launchRecipe?: boolean } = {}) {
-  const root = mkdtempSync("/tmp/ccmux-service-test-");
-  const recipeEnvFile = join(root, "provider.env");
-  const recipeSecret = "fixture-service-secret-never-public";
+  const root = mkdtempSync('/tmp/ccmux-service-test-');
+  const recipeEnvFile = join(root, 'provider.env');
+  const recipeSecret = 'fixture-service-secret-never-public';
   if (options.launchRecipe) writeFileSync(recipeEnvFile, `MODEL_SERVICE_TOKEN=${recipeSecret}\n`);
   const machine = makeMachine({
     stateDir: root,
-    rcPrefix: "host-a",
-    projectsDir: join(root, "history"),
+    rcPrefix: 'host-a',
+    projectsDir: join(root, 'history'),
     chatEnabled: true,
-    codexHome: join(root, "codex"),
-    codexSessionsDir: join(root, "codex", "sessions"),
-    ...(options.launchRecipe ? { launchRecipes: { "provider-a": {
-      revision: "r1", envFile: recipeEnvFile,
-      flags: ["-c", 'model_provider="provider-a"',
-        "-c", 'model_providers.provider-a.name="Provider A"',
-        "-c", 'model_providers.provider-a.base_url="https://api.example.invalid/v1"',
-        "-c", 'model_providers.provider-a.env_key="MODEL_SERVICE_TOKEN"'],
-      environment: ["MODEL_SERVICE_TOKEN"], capabilities: ["external-provider"],
-    } } } : {}),
+    codexHome: join(root, 'codex'),
+    codexSessionsDir: join(root, 'codex', 'sessions'),
+    ...(options.launchRecipe
+      ? {
+          launchRecipes: {
+            'provider-a': {
+              revision: 'r1',
+              envFile: recipeEnvFile,
+              flags: [
+                '-c',
+                'model_provider="provider-a"',
+                '-c',
+                'model_providers.provider-a.name="Provider A"',
+                '-c',
+                'model_providers.provider-a.base_url="https://api.example.invalid/v1"',
+                '-c',
+                'model_providers.provider-a.env_key="MODEL_SERVICE_TOKEN"',
+              ],
+              environment: ['MODEL_SERVICE_TOKEN'],
+              capabilities: ['external-provider'],
+            },
+          },
+        }
+      : {}),
   });
   const session = makeSession({
-    name: "agent-a",
+    name: 'agent-a',
     dir: root,
-    agent: "codex",
-    runtime: "app-server",
+    agent: 'codex',
+    runtime: 'app-server',
     registrationGeneration: crypto.randomUUID(),
-    modelSelection: { provider: "openai", model: "model-a" },
+    modelSelection: { provider: 'openai', model: 'model-a' },
     chatEnabled: true,
   });
   await writeSessionsUnlocked(machine, [session]);
   const native = new OwnedCodexProjection(machine, session, process.pid);
-  native.reconcile({ type: "idle" }, 0);
+  native.reconcile({ type: 'idle' }, 0);
   native.event({
-    method: "item/completed",
+    method: 'item/completed',
     params: {
       threadId: session.uuid,
-      turnId: "turn-a",
-      item: { id: "assistant-a", type: "agentMessage", text: "ready" },
+      turnId: 'turn-a',
+      item: { id: 'assistant-a', type: 'agentMessage', text: 'ready' },
     },
   });
   const writer = new OwnedCodexStatusWriter(machine, session.name);
   await writer.write(native.snapshot());
   const content = new ContentBuffer(machine, session, native.snapshot().generation);
-  content.text("assistant", "turn-a", "assistant-a", "ready", "replace", true);
+  content.text('assistant', 'turn-a', 'assistant-a', 'ready', 'replace', true);
   const contentWriter = new ContentWriter(machine, session);
   contentWriter.offer(() => content.snapshot());
   await contentWriter.flush();
@@ -112,7 +151,7 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
   const monitoring = new MonitoringPublisher();
   const publish = async () => {
     monitoring.begin(machine);
-    monitoring.sample(machine, session, 1, "❯\n? for shortcuts", UNSEEN);
+    monitoring.sample(machine, session, 1, '❯\n? for shortcuts', UNSEEN);
     publisher.publish(machine, await monitoring.publish(machine));
   };
   await publish();
@@ -131,8 +170,8 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
           name: input.name,
           dir: input.dir,
           uuid: crypto.randomUUID(),
-          agent: "codex",
-          runtime: "app-server",
+          agent: 'codex',
+          runtime: 'app-server',
           registrationGeneration: input.registrationGeneration,
           chatEnabled: true,
           flags: input.flags,
@@ -152,17 +191,17 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
     const operation = ControlServiceOperationSchema.parse(
       route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
     );
-    const payload = typeof init?.body === "string" ? init.body : "{}";
+    const payload = typeof init?.body === 'string' ? init.body : '{}';
     servicePayloads.push(payload);
     return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
       unix: socket,
-      method: "POST",
-      headers: { "content-type": "application/json" },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         v: 1,
         id: crypto.randomUUID(),
-        caller: "host-b",
-        service: "ccmux.control",
+        caller: 'host-b',
+        service: 'ccmux.control',
         revision: CCMUX_CONTROL_SERVICE_REVISION,
         operation,
         payload,
@@ -180,18 +219,41 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
     await owned.observability.close();
     rmSync(root, { recursive: true, force: true });
   });
-  return { root, machine, session, native, writer, publisher, publish, owned, socket, local, remote, target,
-    recipeEnvFile, recipeSecret, servicePayloads, createCalls: () => createCalls };
+  return {
+    root,
+    machine,
+    session,
+    native,
+    writer,
+    publisher,
+    publish,
+    owned,
+    socket,
+    local,
+    remote,
+    target,
+    recipeEnvFile,
+    recipeSecret,
+    servicePayloads,
+    createCalls: () => createCalls,
+  };
 }
 
-test("declared service activates a host-owned recipe without carrying its environment source or value", async () => {
+test('declared service activates a host-owned recipe without carrying its environment source or value', async () => {
   const f = await fixture({ launchRecipe: true });
   const receipt = await f.remote.create({
-    requestId: crypto.randomUUID(), name: "recipe-a", workspace: f.root, flags: [],
-    launchRecipe: { id: "provider-a", revision: "r1" },
+    requestId: crypto.randomUUID(),
+    name: 'recipe-a',
+    workspace: f.root,
+    flags: [],
+    launchRecipe: { id: 'provider-a', revision: 'r1' },
   });
-  expect(receipt.launchRecipe).toMatchObject({ id: "provider-a", revision: "r1", capabilities: ["external-provider"] });
-  const wire = f.servicePayloads.at(-1) ?? "";
+  expect(receipt.launchRecipe).toMatchObject({
+    id: 'provider-a',
+    revision: 'r1',
+    capabilities: ['external-provider'],
+  });
+  const wire = f.servicePayloads.at(-1) ?? '';
   expect(wire).not.toContain(f.recipeSecret);
   expect(wire).not.toContain(f.recipeEnvFile);
   expect(JSON.stringify(receipt)).not.toContain(f.recipeSecret);
@@ -199,123 +261,238 @@ test("declared service activates a host-owned recipe without carrying its enviro
   expect(f.createCalls()).toBe(1);
 });
 
-test("current declared service exposes revisioned selection and image upload without a second ingress", async () => {
+test('current declared service exposes revisioned selection and image upload without a second ingress', async () => {
   const f = await fixture();
   const registrationGeneration = f.session.registrationGeneration;
-  if (registrationGeneration === undefined) throw new Error("fixture registration missing");
+  if (registrationGeneration === undefined) throw new Error('fixture registration missing');
   const selection = await f.remote.selection({ target: f.target, registrationGeneration });
-  expect(selection.current).toMatchObject({ revision: 0, options: { model: { model: "model-a" }, mode: "default" } });
-  const change = { target: f.target, registrationGeneration, operationId: crypto.randomUUID(), expectedRevision: 0,
-    options: { runtime: "codex", model: { provider: "openai", model: "model-b" }, mode: "plan", effort: "medium" } };
-  const changed = await f.remote.select({ ...change, options: { ...change.options, runtime: "codex", mode: "plan", effort: "medium" } });
-  expect(changed.current).toMatchObject({ revision: 1, options: { model: { model: "model-b" }, mode: "plan" } });
-  expect(await f.remote.select({ ...change, options: { ...change.options, runtime: "codex", mode: "plan", effort: "medium" } })).toEqual(changed);
+  expect(selection.current).toMatchObject({
+    revision: 0,
+    options: { model: { model: 'model-a' }, mode: 'default' },
+  });
+  const change = {
+    target: f.target,
+    registrationGeneration,
+    operationId: crypto.randomUUID(),
+    expectedRevision: 0,
+    options: {
+      runtime: 'codex',
+      model: { provider: 'openai', model: 'model-b' },
+      mode: 'plan',
+      effort: 'medium',
+    },
+  };
+  const changed = await f.remote.select({
+    ...change,
+    options: { ...change.options, runtime: 'codex', mode: 'plan', effort: 'medium' },
+  });
+  expect(changed.current).toMatchObject({
+    revision: 1,
+    options: { model: { model: 'model-b' }, mode: 'plan' },
+  });
+  expect(
+    await f.remote.select({
+      ...change,
+      options: { ...change.options, runtime: 'codex', mode: 'plan', effort: 'medium' },
+    }),
+  ).toEqual(changed);
 
-  const bytes = imageBytes("png", 320, 240, true), uploadId = crypto.randomUUID();
-  const begin = await f.remote.attachmentBegin({ target: f.target, uploadId, mediaType: "image/png", totalBytes: bytes.length, digest: digest(bytes) });
+  const bytes = imageBytes('png', 320, 240, true),
+    uploadId = crypto.randomUUID();
+  const begin = await f.remote.attachmentBegin({
+    target: f.target,
+    uploadId,
+    mediaType: 'image/png',
+    totalBytes: bytes.length,
+    digest: digest(bytes),
+  });
   expect(begin.receivedBytes).toBe(0);
   for (let offset = 0; offset < bytes.length; offset += ATTACHMENT_LIMITS.chunkBytes) {
-    const receipt = await f.remote.attachmentChunk({ target: f.target, uploadId, offset,
-      data: bytes.subarray(offset, offset + ATTACHMENT_LIMITS.chunkBytes).toString("base64") });
-    expect(receipt.receivedBytes).toBe(Math.min(bytes.length, offset + ATTACHMENT_LIMITS.chunkBytes));
+    const receipt = await f.remote.attachmentChunk({
+      target: f.target,
+      uploadId,
+      offset,
+      data: bytes.subarray(offset, offset + ATTACHMENT_LIMITS.chunkBytes).toString('base64'),
+    });
+    expect(receipt.receivedBytes).toBe(
+      Math.min(bytes.length, offset + ATTACHMENT_LIMITS.chunkBytes),
+    );
   }
   const reference = await f.remote.attachmentFinalize({ target: f.target, uploadId });
   expect(reference).toMatchObject({ id: uploadId, digest: digest(bytes), width: 320, height: 240 });
   const preview = await f.remote.attachmentRead({ target: f.target, reference, offset: 0 });
-  expect(Buffer.from(preview.data, "base64")).toEqual(bytes.subarray(0, ATTACHMENT_LIMITS.chunkBytes));
-  await expect(f.local.attachmentRead({ target: f.target, reference, offset: 0 })).rejects.toMatchObject({ code: "ATTACHMENT_UNAVAILABLE" });
+  expect(Buffer.from(preview.data, 'base64')).toEqual(
+    bytes.subarray(0, ATTACHMENT_LIMITS.chunkBytes),
+  );
+  await expect(
+    f.local.attachmentRead({ target: f.target, reference, offset: 0 }),
+  ).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE' });
   const messageId = crypto.randomUUID();
-  expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({ messageId, accepted: true, duplicate: false, turnOptions: changed.current });
-  expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({ messageId, accepted: true, duplicate: true, turnOptions: changed.current });
-  expect(loadLedger(f.machine)[0]).toMatchObject({ body: "", images: [reference], turnOptions: changed.current });
-  await expect(f.remote.attachmentCancel({ target: f.target, uploadId })).rejects.toMatchObject({ code: "ATTACHMENT_UNAVAILABLE" });
-  expect(f.servicePayloads.filter((payload) => payload.includes('"images"')).every((payload) => Buffer.byteLength(payload) < 32 * 1024)).toBe(true);
-  expect((await fetch("http://ccmux.local/ccmux-control/v1/invoke", { unix: f.socket, method: "POST",
-    headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(404);
+  expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({
+    messageId,
+    accepted: true,
+    duplicate: false,
+    turnOptions: changed.current,
+  });
+  expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({
+    messageId,
+    accepted: true,
+    duplicate: true,
+    turnOptions: changed.current,
+  });
+  expect(loadLedger(f.machine)[0]).toMatchObject({
+    body: '',
+    images: [reference],
+    turnOptions: changed.current,
+  });
+  await expect(f.remote.attachmentCancel({ target: f.target, uploadId })).rejects.toMatchObject({
+    code: 'ATTACHMENT_UNAVAILABLE',
+  });
+  expect(
+    f.servicePayloads
+      .filter((payload) => payload.includes('"images"'))
+      .every((payload) => Buffer.byteLength(payload) < 32 * 1024),
+  ).toBe(true);
+  expect(
+    (
+      await fetch('http://ccmux.local/ccmux-control/v1/invoke', {
+        unix: f.socket,
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      })
+    ).status,
+  ).toBe(404);
 });
 
-test("declared service reuses exact control operations, identity and admission", async () => {
+test('declared service reuses exact control operations, identity and admission', async () => {
   const f = await fixture();
   expect(await f.remote.get({ target: f.target })).toEqual(await f.local.get({ target: f.target }));
   expect(await f.remote.native({ target: f.target, cursor: null })).toEqual(
     await f.local.native({ target: f.target, cursor: null }),
   );
   const messageId = crypto.randomUUID();
-  expect(await f.remote.message({ target: f.target, messageId, body: "service message" })).toEqual({
+  expect(await f.remote.message({ target: f.target, messageId, body: 'service message' })).toEqual({
     messageId,
     accepted: true,
     duplicate: false,
-    turnOptions: (await f.remote.selection({ target: f.target, registrationGeneration: f.session.registrationGeneration! })).current,
+    turnOptions: (
+      await f.remote.selection({
+        target: f.target,
+        registrationGeneration: z.uuid().parse(f.session.registrationGeneration),
+      })
+    ).current,
   });
-  expect(await f.remote.message({ target: f.target, messageId, body: "service message" })).toEqual({
+  expect(await f.remote.message({ target: f.target, messageId, body: 'service message' })).toEqual({
     messageId,
     accepted: true,
     duplicate: true,
-    turnOptions: (await f.remote.selection({ target: f.target, registrationGeneration: f.session.registrationGeneration! })).current,
+    turnOptions: (
+      await f.remote.selection({
+        target: f.target,
+        registrationGeneration: z.uuid().parse(f.session.registrationGeneration),
+      })
+    ).current,
   });
   expect(loadLedger(f.machine)).toHaveLength(1);
-  expect(loadLedger(f.machine)[0]?.from).toEqual({ kind: "cli", source: "ccmux", machine: "host-b" });
+  expect(loadLedger(f.machine)[0]?.from).toEqual({
+    kind: 'cli',
+    source: 'ccmux',
+    machine: 'host-b',
+  });
   const requestId = crypto.randomUUID();
-  const firstCreate = f.remote.create({ requestId, name: "created-a", workspace: f.root, flags: [] });
-  for (let attempt = 0; attempt < 50 && f.owned.controls.mutations.getSnapshot().active === 0; attempt++)
+  const firstCreate = f.remote.create({
+    requestId,
+    name: 'created-a',
+    workspace: f.root,
+    flags: [],
+  });
+  for (
+    let attempt = 0;
+    attempt < 50 && f.owned.controls.mutations.getSnapshot().active === 0;
+    attempt++
+  )
     await Bun.sleep(1);
   await expect(
-    f.remote.create({ requestId, name: "created-a", workspace: f.root, flags: [] }),
-  ).rejects.toMatchObject({ code: "BUSY", status: 429 });
+    f.remote.create({ requestId, name: 'created-a', workspace: f.root, flags: [] }),
+  ).rejects.toMatchObject({ code: 'BUSY', status: 429 });
   const created = await firstCreate;
-  const duplicate = await f.remote.create({ requestId, name: "created-a", workspace: f.root, flags: [] });
+  const duplicate = await f.remote.create({
+    requestId,
+    name: 'created-a',
+    workspace: f.root,
+    flags: [],
+  });
   expect(f.createCalls()).toBe(1);
   expect(created.target).toEqual(duplicate.target);
   expect([created.duplicate, duplicate.duplicate].sort()).toEqual([false, true]);
   f.owned.controls.mutations.stopAdmission();
   await expect(
-    f.remote.message({ target: f.target, messageId: crypto.randomUUID(), body: "after drain" }),
-  ).rejects.toMatchObject({ code: "UNAVAILABLE", status: 503 });
+    f.remote.message({ target: f.target, messageId: crypto.randomUUID(), body: 'after drain' }),
+  ).rejects.toMatchObject({ code: 'UNAVAILABLE', status: 503 });
 });
 
-test("service envelope, effect, nested selector, size and stale identity fail closed", async () => {
+test('service envelope, effect, nested selector, size and stale identity fail closed', async () => {
   const f = await fixture();
   const invoke = (body: unknown) =>
     fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
       unix: f.socket,
-      method: "POST",
-      headers: { "content-type": "application/json" },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
   const base = {
     v: 1,
     id: crypto.randomUUID(),
-    caller: "host-b",
-    service: "ccmux.control",
+    caller: 'host-b',
+    service: 'ccmux.control',
     revision: CCMUX_CONTROL_SERVICE_REVISION,
-    operation: "session.get",
+    operation: 'session.get',
     payload: JSON.stringify({ target: f.target }),
   };
-  expect((await invoke({ ...base, revision: "1" })).status).toBe(400);
-  expect((await invoke({ ...base, operation: "unknown" })).status).toBe(400);
+  expect((await invoke({ ...base, revision: '1' })).status).toBe(400);
+  expect((await invoke({ ...base, revision: '2' })).status).toBe(400);
+  for (const version of ['1', '2', '3']) {
+    expect(
+      (
+        await fetch(`http://ccmux.local/ccmux-control/v${version}/invoke`, {
+          unix: f.socket,
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(base),
+        })
+      ).status,
+    ).toBe(404);
+  }
+  expect((await invoke({ ...base, operation: 'unknown' })).status).toBe(400);
   expect(
-    (await invoke({ ...base, payload: JSON.stringify({ target: f.target, operation: "session.archive" }) })).status,
+    (
+      await invoke({
+        ...base,
+        payload: JSON.stringify({ target: f.target, operation: 'session.archive' }),
+      })
+    ).status,
   ).toBe(400);
-  expect((await invoke({ ...base, payload: "x".repeat(70_000) })).status).toBe(400);
+  expect((await invoke({ ...base, payload: 'x'.repeat(70_000) })).status).toBe(400);
   expect(() =>
     ControlServiceDescriptorSchema.parse({
       ...ccmuxControlServiceDescriptor,
       operations: ccmuxControlServiceDescriptor.operations.map((operation) =>
-        operation.id === "session.get" ? { ...operation, effect: "session.create" } : operation,
+        operation.id === 'session.get' ? { ...operation, effect: 'session.create' } : operation,
       ),
     }),
-  ).toThrow("wrong effect");
+  ).toThrow('wrong effect');
 
   f.native.request({
-    id: "approval-a",
-    method: "item/fileChange/requestApproval",
+    id: 'approval-a',
+    method: 'item/fileChange/requestApproval',
     params: {
       threadId: f.session.uuid,
-      turnId: "turn-a",
-      itemId: "tool-a",
+      turnId: 'turn-a',
+      itemId: 'tool-a',
       startedAtMs: Date.now(),
-      reason: "confirm",
-      availableDecisions: ["accept", "decline"],
+      reason: 'confirm',
+      availableDecisions: ['accept', 'decline'],
     },
   });
   await f.writer.write(f.native.snapshot());
@@ -325,30 +502,33 @@ test("service envelope, effect, nested selector, size and stale identity fail cl
       target: f.target,
       operationId: crypto.randomUUID(),
       generation: crypto.randomUUID(),
-      requestId: "s:approval-a",
-      kind: "approval",
-      decision: "decline",
+      requestId: 's:approval-a',
+      kind: 'approval',
+      decision: 'decline',
       answers: null,
     }),
-  ).rejects.toMatchObject({ code: "STALE_REQUEST", status: 409 });
+  ).rejects.toMatchObject({ code: 'STALE_REQUEST', status: 409 });
 });
 
-test("native stream cursor binds target and source adapter resumes, heartbeats and cancels", async () => {
+test('native stream cursor binds target and source adapter resumes, heartbeats and cancels', async () => {
   const f = await fixture();
-  const config = join(f.root, "machine.json");
+  const config = join(f.root, 'machine.json');
   writeFileSync(config, JSON.stringify(f.machine));
 
   const run = (cursor: string | null) => {
-    const child = Bun.spawn([process.execPath, "--no-env-file", "src/cli.ts", "control-native-stream"], {
-      cwd: import.meta.dir + "/..",
-      env: {
-        ...process.env,
-        CCMUX_CONFIG: config,
+    const child = Bun.spawn(
+      [process.execPath, '--no-env-file', 'src/cli.ts', 'control-native-stream'],
+      {
+        cwd: `${import.meta.dir}/..`,
+        env: {
+          ...process.env,
+          CCMUX_CONFIG: config,
+        },
+        stdin: new TextEncoder().encode(JSON.stringify({ target: f.target, cursor })),
+        stdout: 'pipe',
+        stderr: 'pipe',
       },
-      stdin: new TextEncoder().encode(JSON.stringify({ target: f.target, cursor })),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    );
     return child;
   };
   const nextFrame = async (
@@ -359,39 +539,43 @@ test("native stream cursor binds target and source adapter resumes, heartbeats a
     const next = await iterator.next();
     if (!next.done && next.value !== undefined)
       return ControlNativeStreamFrameSchema.parse(next.value);
-    child.kill("SIGTERM");
+    child.kill('SIGTERM');
     const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     throw new Error(`${label} stream ended ${code}: ${error}`);
   };
 
   const first = run(null);
-  const firstFrames = parseNDJSON<unknown>(new Response(first.stdout), { maxLineBytes: 2 * 1024 * 1024 })[
-    Symbol.asyncIterator
-  ]();
-  const initial = await nextFrame(first, firstFrames, "initial");
+  const firstFrames = parseNDJSON<unknown>(new Response(first.stdout), {
+    maxLineBytes: 2 * 1024 * 1024,
+  })[Symbol.asyncIterator]();
+  const initial = await nextFrame(first, firstFrames, 'initial');
   const initialSnapshot = JSON.parse(initial.data);
-  expect(initialSnapshot).toMatchObject({ target: f.target, reset: "initial" });
+  expect(initialSnapshot).toMatchObject({ target: f.target, reset: 'initial' });
   expect(readControlNativeStreamCursor(initial.cursor, f.target)).toEqual({
     generation: initialSnapshot.generation,
     sequence: initialSnapshot.sequence,
   });
   await Bun.sleep(2100);
-  const heartbeat = await nextFrame(first, firstFrames, "heartbeat");
+  const heartbeat = await nextFrame(first, firstFrames, 'heartbeat');
   expect(heartbeat).toEqual(initial);
-  first.kill("SIGTERM");
+  first.kill('SIGTERM');
   expect(await first.exited).toBe(0);
-  expect(await new Response(first.stderr).text()).toBe("");
+  expect(await new Response(first.stderr).text()).toBe('');
 
   const resumed = run(initial.cursor);
-  const resumedFrames = parseNDJSON<unknown>(new Response(resumed.stdout), { maxLineBytes: 2 * 1024 * 1024 })[
-    Symbol.asyncIterator
-  ]();
-  const resumedFrame = await nextFrame(resumed, resumedFrames, "resume");
-  expect(JSON.parse(resumedFrame.data)).toMatchObject({ target: f.target, reset: null, records: [] });
-  resumed.kill("SIGTERM");
+  const resumedFrames = parseNDJSON<unknown>(new Response(resumed.stdout), {
+    maxLineBytes: 2 * 1024 * 1024,
+  })[Symbol.asyncIterator]();
+  const resumedFrame = await nextFrame(resumed, resumedFrames, 'resume');
+  expect(JSON.parse(resumedFrame.data)).toMatchObject({
+    target: f.target,
+    reset: null,
+    records: [],
+  });
+  resumed.kill('SIGTERM');
   expect(await resumed.exited).toBe(0);
 
-  f.native.reconcile({ type: "idle" }, f.native.revision);
+  f.native.reconcile({ type: 'idle' }, f.native.revision);
   await f.writer.write(f.native.snapshot());
   await f.publish();
   const gapCursor = encodeControlNativeStreamCursor(f.target, {
@@ -399,16 +583,16 @@ test("native stream cursor binds target and source adapter resumes, heartbeats a
     sequence: initialSnapshot.sequence + 10_000,
   });
   const gap = run(gapCursor);
-  const gapFrames = parseNDJSON<unknown>(new Response(gap.stdout), { maxLineBytes: 2 * 1024 * 1024 })[
-    Symbol.asyncIterator
-  ]();
-  const gapFrame = await nextFrame(gap, gapFrames, "gap");
-  expect(JSON.parse(gapFrame.data).reset).toBe("gap");
-  gap.kill("SIGTERM");
+  const gapFrames = parseNDJSON<unknown>(new Response(gap.stdout), {
+    maxLineBytes: 2 * 1024 * 1024,
+  })[Symbol.asyncIterator]();
+  const gapFrame = await nextFrame(gap, gapFrames, 'gap');
+  expect(JSON.parse(gapFrame.data).reset).toBe('gap');
+  gap.kill('SIGTERM');
   expect(await gap.exited).toBe(0);
 
-  expect(() => readControlNativeStreamCursor(initial.cursor, { ...f.target, session: "other" })).toThrow(
-    "another target",
-  );
+  expect(() =>
+    readControlNativeStreamCursor(initial.cursor, { ...f.target, session: 'other' }),
+  ).toThrow('another target');
   expect(managedPeerKey(initialSnapshot.target)).toBe(managedPeerKey(f.target));
 }, 15_000);

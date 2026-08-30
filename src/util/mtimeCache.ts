@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { statSync } from 'node:fs';
 
 /** A per-path cache keyed by the file's mtime. The hot read paths (list rows, transcript pane,
  *  external discovery) re-derive the same value from an UNCHANGED jsonl every poll tick — that
@@ -8,9 +8,14 @@ import { statSync } from "node:fs";
 export class MtimeCache<T> {
   private map = new Map<string, { signature: string; value: T; bytes: number }>();
   private bytes = 0;
-  constructor(readonly maxBytes = 1024 * 1024, readonly maxEntries = 512) {}
+  constructor(
+    readonly maxBytes = 1024 * 1024,
+    readonly maxEntries = 512,
+  ) {}
 
-  get retainedBytes(): number { return this.bytes; }
+  get retainedBytes(): number {
+    return this.bytes;
+  }
 
   private drop(path: string): void {
     this.bytes -= this.map.get(path)?.bytes ?? 0;

@@ -1,25 +1,37 @@
-import { basename } from "node:path";
-import { Box, Text, useApp, useInput, useStdin, useStdout } from "ink";
-import { useEffect, useRef, useState } from "react";
-import type { AgentKind, MachineConfig } from "../types.ts";
-import { useFleet } from "./hooks/useFleet.ts";
-import { useSpinner } from "./hooks/useSpinner.ts";
-import { useTranscript } from "./hooks/useTranscript.ts";
-import { useDiscover } from "./hooks/useDiscover.ts";
-import { buildItems, capabilityReasons, resolveFleetItem, writerSummary } from "./fleet.ts";
-import type { FleetLoad } from "./fleet.ts";
-import { discoverActive } from "./discover.ts";
-import type { DiscoveredSession } from "./discover.ts";
-import { InlineView } from "./views/InlineView.tsx";
-import { FullscreenView } from "./views/FullscreenView.tsx";
-import { stopSession, restartSession, restartAllSessions, removeSessionFully, sendMessage, adoptExternal, forkAdoptExternal, takeoverExternal } from "./actions.ts";
-import { log } from "../util/log.ts";
-import { mouseDebugOn, logMouse, describeSgr } from "./mouseProbe.ts";
+import { basename } from 'node:path';
+import { Box, Text, useApp, useInput, useStdin, useStdout } from 'ink';
+import { useEffect, useRef, useState } from 'react';
+import type { AgentKind, MachineConfig } from '../types.ts';
+import { log } from '../util/log.ts';
+import {
+  adoptExternal,
+  forkAdoptExternal,
+  removeSessionFully,
+  restartAllSessions,
+  restartSession,
+  sendMessage,
+  stopSession,
+  takeoverExternal,
+} from './actions.ts';
+import type { DiscoveredSession } from './discover.ts';
+import { discoverActive } from './discover.ts';
+import type { FleetLoad } from './fleet.ts';
+import { buildItems, capabilityReasons, resolveFleetItem, writerSummary } from './fleet.ts';
+import { useDiscover } from './hooks/useDiscover.ts';
+import { useFleet } from './hooks/useFleet.ts';
+import { useSpinner } from './hooks/useSpinner.ts';
+import { useTranscript } from './hooks/useTranscript.ts';
+import { describeSgr, logMouse, mouseDebugOn } from './mouseProbe.ts';
+import { FullscreenView } from './views/FullscreenView.tsx';
+import { InlineView } from './views/InlineView.tsx';
 
-export type Intent = { type: "quit" } | { type: "attach"; name: string } | { type: "new"; name: string; dir: string; agent: AgentKind };
+export type Intent =
+  | { type: 'quit' }
+  | { type: 'attach'; name: string }
+  | { type: 'new'; name: string; dir: string; agent: AgentKind };
 
-type Mode = "list" | "new" | "confirm" | "confirm-restart-all" | "compose" | "adopt";
-type Focus = "list" | "transcript";
+type Mode = 'list' | 'new' | 'confirm' | 'confirm-restart-all' | 'compose' | 'adopt';
+type Focus = 'list' | 'transcript';
 
 const DEFAULT_LIST_WIDTH = 72;
 const MIN_LIST_WIDTH = 44;
@@ -38,7 +50,13 @@ function visibleCardCount(termRows: number): number {
 }
 /** Map a terminal Y to a GLOBAL card index, accounting for the scroll window + the one-row
  *  external separator. Mirrors FullscreenView's windowed layout exactly. */
-function cardIndexAtY(y: number, winStart: number, visible: number, count: number, externalStart: number): number | null {
+function cardIndexAtY(
+  y: number,
+  winStart: number,
+  visible: number,
+  count: number,
+  externalStart: number,
+): number | null {
   let rowY = CARD_TOP;
   for (let k = 0; k < visible; k++) {
     const gi = winStart + k;
@@ -50,7 +68,15 @@ function cardIndexAtY(y: number, winStart: number, visible: number, count: numbe
   return null;
 }
 
-export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; initialFullscreen: boolean; onIntent: (i: Intent) => void }) {
+export function App({
+  m,
+  initialFullscreen,
+  onIntent,
+}: {
+  m: MachineConfig;
+  initialFullscreen: boolean;
+  onIntent: (i: Intent) => void;
+}) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const { stdin } = useStdin();
@@ -62,12 +88,12 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   // last activity, so an index would silently slide onto a different card mid-navigation.
   const [selKey, setSelKey] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(initialFullscreen);
-  const [focus, setFocus] = useState<Focus>("list");
+  const [focus, setFocus] = useState<Focus>('list');
   const [listWidth, setListWidth] = useState(DEFAULT_LIST_WIDTH);
-  const [mode, setMode] = useState<Mode>("list");
-  const [draft, setDraft] = useState("");
-  const [newAgent, setNewAgent] = useState<AgentKind>("claude");
-  const [composeDraft, setComposeDraft] = useState("");
+  const [mode, setMode] = useState<Mode>('list');
+  const [draft, setDraft] = useState('');
+  const [newAgent, setNewAgent] = useState<AgentKind>('claude');
+  const [composeDraft, setComposeDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [offset, setOffset] = useState(0);
   // listScroll = index of the top visible card in the fullscreen list window. Single source of
@@ -83,7 +109,7 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   const [externalOn, setExternalOn] = useState(m.externalInventory);
   // Gated on `loaded`: the managed fleet is what the view is FOR, and discovery blocks the thread
   // for as long as the box's accumulated history takes to scan. Sessions paint first, always.
-  const { list: discovered, scanning } = useDiscover(m, mode === "list" && externalOn && loaded);
+  const { list: discovered, scanning } = useDiscover(m, mode === 'list' && externalOn && loaded);
   const { items, externalStart } = buildItems(rows, discovered, m.rcPrefix);
   // animate the spinner only when something is actually working — otherwise the whole tree would
   // re-render 5×/s for nothing (idle fleet = static frame, zero churn). See useSpinner.
@@ -158,7 +184,8 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
   // offset = how many messages scrolled back from the latest (TranscriptPane takes whole
   // messages that fit from the bottom up). Max useful offset = the first message at the bottom.
   const maxScroll = Math.max(0, messages.length - 1);
-  const scroll = (delta: number): void => setOffset((o) => Math.min(Math.max(0, o + delta), maxScroll));
+  const scroll = (delta: number): void =>
+    setOffset((o) => Math.min(Math.max(0, o + delta), maxScroll));
 
   // Mirror volatile values into refs so the long-lived mouse listener never goes stale
   // and a live drag (listWidth changing every motion) doesn't re-attach mid-gesture.
@@ -185,43 +212,45 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
 
   // Alt-screen is App's concern (driven by the fullscreen toggle), so `f` switches
   // cleanly and exit/attach always restores the terminal.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Only a fullscreen transition may reset the terminal; cursor movement must not re-enter alt-screen.
   useEffect(() => {
     if (!fullscreen) return;
-    stdout?.write("\x1b[?1049h\x1b[H");
+    stdout?.write('\x1b[?1049h\x1b[H');
     revealCursor(cur); // entering fullscreen → make sure the selected card is in the window
     return () => {
-      stdout?.write("\x1b[?1049l");
+      stdout?.write('\x1b[?1049l');
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullscreen, stdout]);
 
   // When the activity re-sort MOVES the selected card (cur changed without navigation),
   // follow it — the selection must never sit outside the scroll window.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reveal only on selection changes, not on every render or manual scroll.
   useEffect(() => {
     revealCursor(cur);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur]);
 
   // ── mouse: wheel scrolls the pane under the cursor (zone by x, independent of focus);
   //    the divider is a hover/drag handle for live resize. ?1003h (any-motion) gives
   //    hover+drag — events are processed IN MEMORY ONLY (never logged → no disk flood).
   //    Refs keep the listener stable so a drag never re-attaches mid-gesture.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The mouse listener reads selection through refs and must remain attached during a drag.
   useEffect(() => {
     if (!fullscreen) return;
-    stdout?.write("\x1b[?1003h\x1b[?1006h");
+    stdout?.write('\x1b[?1003h\x1b[?1006h');
     const onData = (d: Buffer): void => {
       const s = d.toString();
-      if (!s.includes("\x1b[<")) return;
-      if (mouseDebugOn) logMouse("STDIN", describeSgr(s));
+      if (!s.includes('\x1b[<')) return;
+      if (mouseDebugOn) logMouse('STDIN', describeSgr(s));
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR mouse reports start with a literal ESC byte.
       const re = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
       for (let mm = re.exec(s); mm !== null; mm = re.exec(s)) {
         const btn = Number(mm[1]);
         const x = Number(mm[2]);
         const y = Number(mm[3]);
-        const release = mm[4] === "m";
+        const release = mm[4] === 'm';
         const lw = listWidthRef.current;
         const nearHandle = Math.abs(x - (lw + 1)) <= 1;
-        const zone: Focus = x <= lw ? "list" : "transcript";
+        const zone: Focus = x <= lw ? 'list' : 'transcript';
         if (btn === 64 || btn === 65) {
           const up = btn === 64;
           if (x <= lw) {
@@ -234,241 +263,404 @@ export function App({ m, initialFullscreen, onIntent }: { m: MachineConfig; init
         }
         if (btn === 0 && !release) {
           // press: on the divider → start a resize drag; on a list card → select it; else focus the pane
-          if (nearHandle) { draggingRef.current = true; setHoverHandle(true); }
-          else if (zone === "list") {
-            const idx = cardIndexAtY(y, winStartRef.current, visibleRef.current, countRef.current, externalStartRef.current);
-            if (idx !== null) { selectAt(idx); setOffset(0); }
-            setFocus("list");
+          if (nearHandle) {
+            draggingRef.current = true;
+            setHoverHandle(true);
+          } else if (zone === 'list') {
+            const idx = cardIndexAtY(
+              y,
+              winStartRef.current,
+              visibleRef.current,
+              countRef.current,
+              externalStartRef.current,
+            );
+            if (idx !== null) {
+              selectAt(idx);
+              setOffset(0);
+            }
+            setFocus('list');
           } else setFocus(zone);
           continue;
         }
-        if (release) { draggingRef.current = false; setHoverHandle(nearHandle); continue; }
-        if ((btn & 32) !== 0) { // motion: drag-resize · else hover-highlight (handle + pane + card)
+        if (release) {
+          draggingRef.current = false;
+          setHoverHandle(nearHandle);
+          continue;
+        }
+        if ((btn & 32) !== 0) {
+          // motion: drag-resize · else hover-highlight (handle + pane + card)
           if (draggingRef.current) {
             const cols = stdout?.columns ?? 100;
             setListWidth(Math.max(MIN_LIST_WIDTH, Math.min(cols - 30, x - 1)));
           } else {
             setHoverHandle(nearHandle);
             setHoverPane(zone);
-            setHoverCard(zone === "list" ? cardIndexAtY(y, winStartRef.current, visibleRef.current, countRef.current, externalStartRef.current) : null);
+            setHoverCard(
+              zone === 'list'
+                ? cardIndexAtY(
+                    y,
+                    winStartRef.current,
+                    visibleRef.current,
+                    countRef.current,
+                    externalStartRef.current,
+                  )
+                : null,
+            );
           }
         }
       }
     };
-    stdin?.on("data", onData);
+    stdin?.on('data', onData);
     return () => {
-      stdin?.off("data", onData);
-      stdout?.write("\x1b[?1003l\x1b[?1006l");
+      stdin?.off('data', onData);
+      stdout?.write('\x1b[?1003l\x1b[?1006l');
     };
   }, [fullscreen, stdout, stdin]);
 
   useInput((input, key) => {
-    if (input.includes("[<")) return; // mouse SGR — handled by the wheel effect above
-    if (mode === "new") {
-      if (key.return) onIntent({ type: "new", name: draft.trim() || defaultName, dir: process.cwd(), agent: newAgent });
-      else if (key.tab) setNewAgent((agent) => agent === "claude" ? "codex" : "claude");
-      else if (key.escape) { setMode("list"); setDraft(""); }
-      else if (key.backspace || key.delete) setDraft((d) => d.slice(0, -1));
+    if (input.includes('[<')) return; // mouse SGR — handled by the wheel effect above
+    if (mode === 'new') {
+      if (key.return)
+        onIntent({
+          type: 'new',
+          name: draft.trim() || defaultName,
+          dir: process.cwd(),
+          agent: newAgent,
+        });
+      else if (key.tab) setNewAgent((agent) => (agent === 'claude' ? 'codex' : 'claude'));
+      else if (key.escape) {
+        setMode('list');
+        setDraft('');
+      } else if (key.backspace || key.delete) setDraft((d) => d.slice(0, -1));
       else if (input && !key.ctrl && !key.meta) setDraft((d) => d + input);
       return;
     }
-    if (mode === "confirm") {
+    if (mode === 'confirm') {
       // confirm delete: y / Enter / the same delete key again (d/D) → remove; n / Esc → cancel
-      if (selected && (input === "y" || input === "d" || input === "D" || key.return)) {
-        log.info({ msg: "delete confirmed", name: selected.session.name });
+      if (selected && (input === 'y' || input === 'd' || input === 'D' || key.return)) {
+        log.info({ msg: 'delete confirmed', name: selected.session.name });
         void removeSessionFully(m, selected.session.name).then(reload);
-        setMode("list");
-      } else if (key.escape || input === "n") {
-        log.info({ msg: "delete cancelled" });
-        setMode("list");
+        setMode('list');
+      } else if (key.escape || input === 'n') {
+        log.info({ msg: 'delete cancelled' });
+        setMode('list');
       }
       return;
     }
-    if (mode === "confirm-restart-all") {
+    if (mode === 'confirm-restart-all') {
       // confirm fleet sweep: y / Enter / R again → restart every session; n / Esc → cancel
-      if (input === "y" || input === "R" || key.return) {
-        log.info({ msg: "restart all confirmed" });
+      if (input === 'y' || input === 'R' || key.return) {
+        log.info({ msg: 'restart all confirmed' });
         restartAllSessions();
-        setMode("list");
-      } else if (key.escape || input === "n") {
-        log.info({ msg: "restart all cancelled" });
-        setMode("list");
+        setMode('list');
+      } else if (key.escape || input === 'n') {
+        log.info({ msg: 'restart all cancelled' });
+        setMode('list');
       }
       return;
     }
-    if (mode === "adopt") {
+    if (mode === 'adopt') {
       // a cold adopt was blocked by live writers — choose: f fork (safe) · t takeover · esc
       const target = resolveFreshExternal(adoptTarget.current);
       const ext = target?.ext;
-      if (ext && ext.capabilities.fork && input === "f") {
-        log.info({ msg: "adopt → fork", uuid: ext.threadId });
+      if (target && ext?.capabilities.fork && input === 'f') {
+        log.info({ msg: 'adopt → fork', uuid: ext.threadId });
         setOwnershipError(null);
         void forkAdoptExternal(m, ext).then((result) => {
-          if (result.ok) { reload(); setMode("list"); return; }
+          if (result.ok) {
+            reload();
+            setMode('list');
+            return;
+          }
           setOwnershipError(result.error);
           setAdoptSnapshot(resolveFreshExternal(target.key)?.ext ?? ext);
         });
-      } else if (ext && ext.capabilities.terminateAndAdopt && input === "t") {
-        log.info({ msg: "adopt → takeover", uuid: ext.threadId });
+      } else if (target && ext?.capabilities.terminateAndAdopt && input === 't') {
+        log.info({ msg: 'adopt → takeover', uuid: ext.threadId });
         setOwnershipError(null);
         void takeoverExternal(m, ext).then((result) => {
-          if (result.ok) { reload(); setMode("list"); return; }
+          if (result.ok) {
+            reload();
+            setMode('list');
+            return;
+          }
           setOwnershipError(result.error);
           setAdoptSnapshot(resolveFreshExternal(target.key)?.ext ?? ext);
         });
-      } else if (key.escape || input === "n" || input === "q") {
-        log.info({ msg: "adopt cancelled" });
+      } else if (key.escape || input === 'n' || input === 'q') {
+        log.info({ msg: 'adopt cancelled' });
         setOwnershipError(null);
-        setMode("list");
+        setMode('list');
       }
       return;
     }
-    if (mode === "compose") {
+    if (mode === 'compose') {
       if (key.return) {
         const body = composeDraft.trim();
         if (body && selected && !isExternal) {
-          setComposeDraft("");
+          setComposeDraft('');
           setSending(true);
           void sendMessage(m, selected.session.name, body);
           setTimeout(() => setSending(false), 1500);
         }
-      } else if (key.escape) { setMode("list"); setComposeDraft(""); }
-      else if (key.backspace || key.delete) setComposeDraft((d) => d.slice(0, -1));
+      } else if (key.escape) {
+        setMode('list');
+        setComposeDraft('');
+      } else if (key.backspace || key.delete) setComposeDraft((d) => d.slice(0, -1));
       else if (input && !key.ctrl && !key.meta) setComposeDraft((d) => d + input);
       return;
     }
 
     // ── list mode ──
     // focus switch (fullscreen only): ← list pane · → transcript pane
-    if (fullscreen && key.rightArrow) { setFocus("transcript"); return; }
-    if (fullscreen && key.leftArrow) { setFocus("list"); return; }
+    if (fullscreen && key.rightArrow) {
+      setFocus('transcript');
+      return;
+    }
+    if (fullscreen && key.leftArrow) {
+      setFocus('list');
+      return;
+    }
     // up/down: context-sensitive — move session (list focus) or scroll transcript (transcript focus)
-    const inTranscript = fullscreen && focus === "transcript";
-    if (key.upArrow) { inTranscript ? scroll(1) : moveCursor(-1); return; }
-    if (key.downArrow) { inTranscript ? scroll(-1) : moveCursor(1); return; }
-    if (fullscreen && key.pageUp) { scroll(5); return; }
-    if (fullscreen && key.pageDown) { scroll(-5); return; }
+    const inTranscript = fullscreen && focus === 'transcript';
+    if (key.upArrow) {
+      inTranscript ? scroll(1) : moveCursor(-1);
+      return;
+    }
+    if (key.downArrow) {
+      inTranscript ? scroll(-1) : moveCursor(1);
+      return;
+    }
+    if (fullscreen && key.pageUp) {
+      scroll(5);
+      return;
+    }
+    if (fullscreen && key.pageDown) {
+      scroll(-5);
+      return;
+    }
     // resize panes (fullscreen): [ narrower list · ] wider list
-    if (fullscreen && input === "[") { setListWidth((w) => Math.max(MIN_LIST_WIDTH, w - 4)); return; }
-    if (fullscreen && input === "]") { setListWidth((w) => w + 4); return; }
+    if (fullscreen && input === '[') {
+      setListWidth((w) => Math.max(MIN_LIST_WIDTH, w - 4));
+      return;
+    }
+    if (fullscreen && input === ']') {
+      setListWidth((w) => w + 4);
+      return;
+    }
 
     // attach only managed sessions; external are read-only (peek transcript only)
-    if (key.return && selected && !isExternal) { onIntent({ type: "attach", name: selected.session.name }); return; }
-    if (input === "q") { exit(); return; }
-    if (input === "f") { setFullscreen((v) => !v); return; }
+    if (key.return && selected && !isExternal) {
+      onIntent({ type: 'attach', name: selected.session.name });
+      return;
+    }
+    if (input === 'q') {
+      exit();
+      return;
+    }
+    if (input === 'f') {
+      setFullscreen((v) => !v);
+      return;
+    }
     // Turning the inventory off drops the external rows immediately; the selection is keyed by
     // route identity, so a cursor parked on one falls back to the same position among managed.
-    if (input === "x") { setExternalOn((v) => !v); return; }
+    if (input === 'x') {
+      setExternalOn((v) => !v);
+      return;
+    }
     // compose a chat message (fullscreen, managed session only — external is read-only)
-    if (fullscreen && input === "i" && selected && !isExternal) { setMode("compose"); setComposeDraft(""); setFocus("transcript"); return; }
-    if (input === "n") { setMode("new"); setDraft(""); setNewAgent("claude"); return; }
+    if (fullscreen && input === 'i' && selected && !isExternal) {
+      setMode('compose');
+      setComposeDraft('');
+      setFocus('transcript');
+      return;
+    }
+    if (input === 'n') {
+      setMode('new');
+      setDraft('');
+      setNewAgent('claude');
+      return;
+    }
     // adopt an EXTERNAL session into ccmux. Cold adopt only when nobody is driving the uuid;
     // a live writer would mean a SECOND resume = forked conversation, so the blocked case
     // opens the explicit fork/takeover choice instead.
-    if (input === "a" && isExternal) {
+    if (input === 'a' && isExternal) {
       const target = resolveFreshExternal(selKey);
       const ext = target?.ext;
       if (!target || !ext) return;
       if (!ext.capabilities.attemptAdopt) {
-        if (ext.capabilities.fork || ext.capabilities.terminateAndAdopt || ext.capabilities.releaseAtSource) {
+        if (
+          ext.capabilities.fork ||
+          ext.capabilities.terminateAndAdopt ||
+          ext.capabilities.releaseAtSource
+        ) {
           adoptTarget.current = target.key;
           setAdoptSnapshot(ext);
           setOwnershipError(null);
-          setMode("adopt");
+          setMode('adopt');
         }
         return;
       }
-      log.info({ msg: "action adopt", uuid: ext.threadId });
+      log.info({ msg: 'action adopt', uuid: ext.threadId });
       setOwnershipError(null);
       void adoptExternal(m, ext).then((r) => {
-        if (r.ok) { reload(); return; }
+        if (r.ok) {
+          reload();
+          return;
+        }
         if (r.writers) {
           adoptTarget.current = target.key;
           setAdoptSnapshot(resolveFreshExternal(target.key)?.ext ?? ext);
           setOwnershipError(r.error);
-          setMode("adopt");
-        } else if (ext.capabilities.fork || ext.capabilities.terminateAndAdopt || ext.capabilities.releaseAtSource) {
+          setMode('adopt');
+        } else if (
+          ext.capabilities.fork ||
+          ext.capabilities.terminateAndAdopt ||
+          ext.capabilities.releaseAtSource
+        ) {
           adoptTarget.current = target.key;
           setAdoptSnapshot(ext);
           setOwnershipError(r.error);
-          setMode("adopt");
+          setMode('adopt');
         }
       });
       return;
     }
-    if (input === "s" && selected && !isExternal) { log.info({ msg: "action stop", name: selected.session.name }); void stopSession(m, selected.session.name).then(reload); return; }
-    if (input === "r" && selected && !isExternal) { log.info({ msg: "action restart", name: selected.session.name }); void restartSession(m, selected.session.name).then(reload); return; }
+    if (input === 's' && selected && !isExternal) {
+      log.info({ msg: 'action stop', name: selected.session.name });
+      void stopSession(m, selected.session.name).then(reload);
+      return;
+    }
+    if (input === 'r' && selected && !isExternal) {
+      log.info({ msg: 'action restart', name: selected.session.name });
+      void restartSession(m, selected.session.name).then(reload);
+      return;
+    }
     // R = restart the WHOLE fleet — always behind a confirm (one keystroke bouncing every session
     // must never be unguarded). Managed sessions only; the sweep itself skips archived ones.
-    if (input === "R" && externalStart > 0) { log.info({ msg: "action restart all → confirm", count: externalStart }); setMode("confirm-restart-all"); return; }
+    if (input === 'R' && externalStart > 0) {
+      log.info({ msg: 'action restart all → confirm', count: externalStart });
+      setMode('confirm-restart-all');
+      return;
+    }
     // delete: accept lowercase d too (footer shows "D"); opens the confirm step
-    if ((input === "D" || input === "d") && selected && !isExternal) { log.info({ msg: "action delete → confirm", name: selected.session.name }); setMode("confirm"); }
+    if ((input === 'D' || input === 'd') && selected && !isExternal) {
+      log.info({ msg: 'action delete → confirm', name: selected.session.name });
+      setMode('confirm');
+    }
   });
 
   const load: FleetLoad = { loaded, externalOn, externalScanning: scanning };
   const view = fullscreen ? (
-    <FullscreenView items={items} externalStart={externalStart} cursor={cur} winStart={winStart} visibleCards={visibleCards} spin={spin} rcPrefix={m.rcPrefix} messages={messages} transcriptOffset={offset} focus={focus} listWidth={listWidth} handleActive={hoverHandle} hoverPane={hoverPane} hoverCard={hoverCard} composing={mode === "compose"} composeDraft={composeDraft} sending={sending} canCompose={!!selected && !isExternal} load={load} />
+    <FullscreenView
+      items={items}
+      externalStart={externalStart}
+      cursor={cur}
+      winStart={winStart}
+      visibleCards={visibleCards}
+      spin={spin}
+      rcPrefix={m.rcPrefix}
+      messages={messages}
+      transcriptOffset={offset}
+      focus={focus}
+      listWidth={listWidth}
+      handleActive={hoverHandle}
+      hoverPane={hoverPane}
+      hoverCard={hoverCard}
+      composing={mode === 'compose'}
+      composeDraft={composeDraft}
+      sending={sending}
+      canCompose={!!selected && !isExternal}
+      load={load}
+    />
   ) : (
-    <InlineView items={items} externalStart={externalStart} cursor={cur} spin={spin} rcPrefix={m.rcPrefix} load={load} />
+    <InlineView
+      items={items}
+      externalStart={externalStart}
+      cursor={cur}
+      spin={spin}
+      rcPrefix={m.rcPrefix}
+      load={load}
+    />
   );
 
   return (
     <Box flexDirection="column">
       {view}
-      {mode === "new" ? (
+      {mode === 'new' ? (
         <Box paddingX={2}>
           <Text>new session in </Text>
           <Text dimColor>{process.cwd()}</Text>
           <Text> → </Text>
           <Text color="cyan">{draft || defaultName}</Text>
-          <Text>  provider: </Text>
-          <Text color="yellow" bold>{newAgent}</Text>
+          <Text> provider: </Text>
+          <Text color="yellow" bold>
+            {newAgent}
+          </Text>
           <Text dimColor> (tab)</Text>
           <Text>▏</Text>
         </Box>
       ) : null}
-      {mode === "confirm" && selected ? (
+      {mode === 'confirm' && selected ? (
         <Box paddingX={2}>
-          <Text color="red" bold>delete {selected.session.name}? </Text>
-          <Text dimColor>(history kept)  </Text>
+          <Text color="red" bold>
+            delete {selected.session.name}?{' '}
+          </Text>
+          <Text dimColor>(history kept) </Text>
           <Text color="red">y / d</Text>
           <Text dimColor> delete · </Text>
           <Text>n / esc</Text>
           <Text dimColor> cancel</Text>
         </Box>
       ) : null}
-      {mode === "confirm-restart-all" ? (
+      {mode === 'confirm-restart-all' ? (
         <Box paddingX={2}>
-          <Text color="yellow" bold>restart ALL {externalStart} session{externalStart === 1 ? "" : "s"}? </Text>
-          <Text dimColor>(one at a time, conversations kept)  </Text>
+          <Text color="yellow" bold>
+            restart ALL {externalStart} session{externalStart === 1 ? '' : 's'}?{' '}
+          </Text>
+          <Text dimColor>(one at a time, conversations kept) </Text>
           <Text color="yellow">y / R</Text>
           <Text dimColor> restart · </Text>
           <Text>n / esc</Text>
           <Text dimColor> cancel</Text>
         </Box>
       ) : null}
-      {mode === "adopt" ? (
+      {mode === 'adopt' ? (
         <Box paddingX={2} flexDirection="column">
           <Text>
-            <Text color="yellow" bold>external ownership</Text>
-            <Text dimColor>{adoptSnapshot ? ` — ${adoptSnapshot.provider}@${adoptSnapshot.host} · ${adoptSnapshot.threadId}` : " — route disappeared"}</Text>
+            <Text color="yellow" bold>
+              external ownership
+            </Text>
+            <Text dimColor>
+              {adoptSnapshot
+                ? ` — ${adoptSnapshot.provider}@${adoptSnapshot.host} · ${adoptSnapshot.threadId}`
+                : ' — route disappeared'}
+            </Text>
           </Text>
           <Text>
-            <Text dimColor>{adoptSnapshot ? `writer ${writerSummary(adoptSnapshot)} · ` : ""}</Text>
+            <Text dimColor>{adoptSnapshot ? `writer ${writerSummary(adoptSnapshot)} · ` : ''}</Text>
             {adoptSnapshot?.capabilities.fork ? (
               <>
-                <Text color="green" bold>f</Text>
+                <Text color="green" bold>
+                  f
+                </Text>
                 <Text dimColor> fork (provider-native, original untouched) · </Text>
               </>
             ) : null}
             {adoptSnapshot?.capabilities.terminateAndAdopt ? (
               <>
-                <Text color="red" bold>t</Text>
+                <Text color="red" bold>
+                  t
+                </Text>
                 <Text dimColor> takeover (confirmed dedicated CLI only) · </Text>
               </>
             ) : null}
-            {adoptSnapshot?.capabilities.releaseAtSource ? <Text dimColor>release at source before adopting · </Text> : null}
-            {adoptSnapshot ? <Text dimColor>{`${capabilityReasons(adoptSnapshot)} · `}</Text> : null}
+            {adoptSnapshot?.capabilities.releaseAtSource ? (
+              <Text dimColor>release at source before adopting · </Text>
+            ) : null}
+            {adoptSnapshot ? (
+              <Text dimColor>{`${capabilityReasons(adoptSnapshot)} · `}</Text>
+            ) : null}
             <Text>esc</Text>
             <Text dimColor> cancel</Text>
           </Text>

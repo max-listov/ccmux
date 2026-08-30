@@ -17,5 +17,5 @@ export function shellQuote(s: string): string {
 
 /** Quote a whole argv into one remote command string. */
 export function shellJoin(argv: string[]): string {
-  return argv.map(shellQuote).join(" ");
+  return argv.map(shellQuote).join(' ');
 }

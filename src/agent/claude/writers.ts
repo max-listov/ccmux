@@ -17,7 +17,7 @@ export interface PsProc {
   command: string;
 }
 
-export type WriterKind = "desktop" | "cli" | "self";
+export type WriterKind = 'desktop' | 'cli' | 'self';
 
 export interface Writer {
   pid: number;
@@ -28,18 +28,19 @@ export interface Writer {
 /** Parse `ps -ax -o pid=,ppid=,command=` output lines. */
 export function parsePs(out: string): PsProc[] {
   const procs: PsProc[] = [];
-  for (const line of out.split("\n")) {
+  for (const line of out.split('\n')) {
     const mm = line.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/);
     if (!mm) continue;
     const pid = Number(mm[1]);
     const ppid = Number(mm[2]);
-    const command = mm[3] ?? "";
+    const command = mm[3] ?? '';
     if (Number.isFinite(pid) && Number.isFinite(ppid)) procs.push({ pid, ppid, command });
   }
   return procs;
 }
 
-const RESUME_UUID_RE = /--(?:resume|session-id)[= ]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
+const RESUME_UUID_RE =
+  /--(?:resume|session-id)[= ]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
 
 /** Every conversation uuid that a live process is currently resuming, from a ps snapshot.
  *  This is the AUTHORITATIVE "is a session running right now" signal — far more reliable than a
@@ -111,13 +112,14 @@ export function classifyWriters(procs: PsProc[], uuid: string, selfPid: number):
   const ancestors = ancestorsOf(procs, selfPid);
   const out: Writer[] = [];
   for (const p of procs) {
-    if (!p.command.includes(`--resume ${uuid}`) && !p.command.includes(`--session-id ${uuid}`)) continue;
-    if (p.command.includes("Helpers/disclaimer")) continue; // launcher = dup of the app process
+    if (!p.command.includes(`--resume ${uuid}`) && !p.command.includes(`--session-id ${uuid}`))
+      continue;
+    if (p.command.includes('Helpers/disclaimer')) continue; // launcher = dup of the app process
     const kind: WriterKind = ancestors.has(p.pid)
-      ? "self"
-      : p.command.includes("claude.app/Contents/MacOS")
-        ? "desktop"
-        : "cli";
+      ? 'self'
+      : p.command.includes('claude.app/Contents/MacOS')
+        ? 'desktop'
+        : 'cli';
     out.push({ pid: p.pid, kind, command: p.command });
   }
   return out;
@@ -128,14 +130,29 @@ export function classifyWriters(procs: PsProc[], uuid: string, selfPid: number):
  *  when the TARGET uuid is the very conversation we're running in, add a synthetic "self"
  *  writer. One addition covers every guard: cold adopt refuses, the TUI hides takeover,
  *  takeoverAdopt refuses. */
-export function addEnvSelf(writers: Writer[], uuid: string, envUuid: string | undefined, selfPid: number): Writer[] {
-  if (envUuid !== uuid || writers.some((w) => w.kind === "self")) return writers;
-  return [...writers, { pid: selfPid, kind: "self", command: "(this very conversation — via CLAUDE_CODE_SESSION_ID)" }];
+export function addEnvSelf(
+  writers: Writer[],
+  uuid: string,
+  envUuid: string | undefined,
+  selfPid: number,
+): Writer[] {
+  if (envUuid !== uuid || writers.some((w) => w.kind === 'self')) return writers;
+  return [
+    ...writers,
+    {
+      pid: selfPid,
+      kind: 'self',
+      command: '(this very conversation — via CLAUDE_CODE_SESSION_ID)',
+    },
+  ];
 }
 
 /** Live writers of `uuid` right now (empty array = the jsonl is dormant, safe to adopt). */
 export async function liveWriters(uuid: string): Promise<Writer[]> {
-  const proc = Bun.spawn(["ps", "-ax", "-o", "pid=,ppid=,command="], { stdout: "pipe", stderr: "ignore" });
+  const proc = Bun.spawn(['ps', '-ax', '-o', 'pid=,ppid=,command='], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
   const out = await new Response(proc.stdout).text();
   await proc.exited;
   const writers = classifyWriters(parsePs(out), uuid, process.pid);
@@ -144,7 +161,7 @@ export async function liveWriters(uuid: string): Promise<Writer[]> {
 
 /** One-line human description for a confirm prompt: "desktop app (pid 13457)" etc. */
 export function describeWriter(w: Writer): string {
-  if (w.kind === "desktop") return `desktop app (pid ${w.pid})`;
-  if (w.kind === "self") return `THIS session's own process (pid ${w.pid})`;
+  if (w.kind === 'desktop') return `desktop app (pid ${w.pid})`;
+  if (w.kind === 'self') return `THIS session's own process (pid ${w.pid})`;
   return `cli instance (pid ${w.pid})`;
 }

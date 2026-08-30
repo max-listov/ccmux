@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from 'bun:test';
 import {
   chmodSync,
   copyFileSync,
@@ -7,30 +7,36 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { replaceBundle } from "../src/commands/update.ts";
-import { shimContents } from "../src/config/migrateBundle.ts";
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { replaceBundle } from '../src/commands/update.ts';
+import { shimContents } from '../src/config/migrateBundle.ts';
 import {
   ControlNativeStreamFrameSchema,
   controlNativeStreamFrame,
   createCcmuxNativeStreamProfile,
-} from "../src/control/nativeStreamContract.ts";
-import { makePeer } from "./helpers.ts";
+} from '../src/control/nativeStreamContract.ts';
+import { makePeer } from './helpers.ts';
 
 function bundle(path: string, sequence: number): void {
   const snapshot = {
-    protocol: 1, selection: null, nativeSelection: null, registrationGeneration: "33333333-3333-4333-8333-333333333333",
-    nativeId: "11111111-1111-4111-8111-111111111111", omittedRecords: 0, status: "live",
-    target: makePeer({ agent: "codex", session: "agent-a" }),
-    generation: "22222222-2222-4222-8222-222222222222",
+    protocol: 1,
+    selection: null,
+    nativeSelection: null,
+    registrationGeneration: '33333333-3333-4333-8333-333333333333',
+    nativeId: '11111111-1111-4111-8111-111111111111',
+    omittedRecords: 0,
+    status: 'live',
+    target: makePeer({ agent: 'codex', session: 'agent-a' }),
+    generation: '22222222-2222-4222-8222-222222222222',
     sequence,
-    reset: "initial",
-    observedAt: "2026-08-29T00:00:00.000Z",
-    expiresAt: "2026-08-29T00:01:00.000Z",
+    reset: 'initial',
+    observedAt: '2026-08-29T00:00:00.000Z',
+    expiresAt: '2026-08-29T00:01:00.000Z',
     pending: [],
-    records: [], baseline: [],
+    records: [],
+    baseline: [],
   };
   const line = JSON.stringify(controlNativeStreamFrame(snapshot));
   writeFileSync(path, `#!/bin/sh\nread request\nprintf '%s\\n' '${line}'\n`);
@@ -41,9 +47,11 @@ async function firstFrame(executable: string) {
   const profile = createCcmuxNativeStreamProfile(executable);
   const child = Bun.spawn([profile.bin, ...profile.argv], {
     env: profile.env.set,
-    stdin: new TextEncoder().encode(JSON.stringify({ target: makePeer({ agent: "codex", session: "agent-a" }), cursor: null })),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin: new TextEncoder().encode(
+      JSON.stringify({ target: makePeer({ agent: 'codex', session: 'agent-a' }), cursor: null }),
+    ),
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
   const stdout = await new Response(child.stdout).text();
   const stderr = await new Response(child.stderr).text();
@@ -51,14 +59,14 @@ async function firstFrame(executable: string) {
   return ControlNativeStreamFrameSchema.parse(JSON.parse(stdout.trim()));
 }
 
-test("standard installed executable runs the native profile with an empty environment across upgrade and rollback", async () => {
-  const root = mkdtempSync(join(tmpdir(), "ccmux-installed-profile-"));
-  const app = join(root, "app", "ccmux.js");
-  const runtime = join(root, "bun");
-  const executable = join(root, "bin", "ccmux");
-  mkdirSync(join(root, "app"), { recursive: true });
-  mkdirSync(join(root, "bin"), { recursive: true });
-  writeFileSync(runtime, "#!/bin/sh\nexec /bin/sh \"$@\"\n");
+test('standard installed executable runs the native profile with an empty environment across upgrade and rollback', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-installed-profile-'));
+  const app = join(root, 'app', 'ccmux.js');
+  const runtime = join(root, 'bun');
+  const executable = join(root, 'bin', 'ccmux');
+  mkdirSync(join(root, 'app'), { recursive: true });
+  mkdirSync(join(root, 'bin'), { recursive: true });
+  writeFileSync(runtime, '#!/bin/sh\nexec /bin/sh "$@"\n');
   chmodSync(runtime, 0o700);
   bundle(app, 1);
   writeFileSync(executable, `#!/bin/sh\nexec "${runtime}" "${app}" "$@"\n`);
@@ -67,15 +75,15 @@ test("standard installed executable runs the native profile with an empty enviro
     const installed = await firstFrame(executable);
     expect(JSON.parse(installed.data).sequence).toBe(1);
 
-    const candidate = join(root, "candidate");
+    const candidate = join(root, 'candidate');
     bundle(candidate, 2);
     await replaceBundle(candidate, app, true);
     expect(JSON.parse((await firstFrame(executable)).data).sequence).toBe(2);
 
     copyFileSync(`${app}.bak`, app);
     expect(JSON.parse((await firstFrame(executable)).data).sequence).toBe(1);
-    expect(readFileSync(executable, "utf8")).toStartWith("#!/bin/sh\n");
-    expect(shimContents()).toStartWith("#!/bin/sh\n");
+    expect(readFileSync(executable, 'utf8')).toStartWith('#!/bin/sh\n');
+    expect(shimContents()).toStartWith('#!/bin/sh\n');
     expect(createCcmuxNativeStreamProfile(executable).env).toEqual({ inherit: [], set: {} });
   } finally {
     rmSync(root, { recursive: true, force: true });

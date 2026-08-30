@@ -81,8 +81,9 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `compact` / `contextOperation` | POST `/control/context/compact` / `/control/context/operation` | Native compaction admission and completion evidence |
 | `fork` | POST `/control/fork` | Same-workspace native fork with a new managed identity |
 
-The current service revision is **2** and the sole native stream profile is **ccmux-native-v2**.
-There is no version-1 dispatcher, compatibility client or text-only alias. See
+The service uses the unversioned prefix `/ccmux/control`, envelope revision **current** and sole
+native stream profile **ccmux-native**. There is no numbered dispatcher, compatibility client or
+text-only alias. Envelope and cursor format guards remain strict; they do not select a legacy path. See
 [native content and turn controls](native-content-and-turn-controls.md) for the current model,
 attachment, content-replay, steering and context contracts.
 
@@ -312,13 +313,13 @@ install an MCP server into existing provider sessions or change Desktop configur
 
 The local control routes remain a same-user API and are never exposed directly as a remote
 service. A transport that already authenticates nodes and grants declared operations binds the
-separate fixed owner ingress at `/ccmux-control/v2/invoke`. The transport constructs this strict
+separate fixed owner ingress at `/ccmux-control/invoke`. The transport constructs this strict
 envelope:
 
 ```ts
 {
   v: 1, id, caller,
-  service: "ccmux.control", revision: "2",
+  service: "ccmux.control", revision: "current",
   operation, payload: JSON.stringify(input),
 }
 ```
@@ -326,7 +327,7 @@ envelope:
 `operation` is trusted outer metadata. The ingress selects one handler from it and only then parses
 `payload` with the existing control input schema; a nested selector cannot change the handler.
 The result is validated with the matching existing output schema and wrapped as
-`{ v: 1, revision: "2", result }`. The ingress and local routes share one in-process operation
+`{ v: 1, revision: "current", result }`. The ingress and local routes share one in-process operation
 surface, mutation admission, wait admission, registry, chat ledger and native provider adapter.
 It is not an HTTP-to-CLI proxy and cannot create another provider writer.
 

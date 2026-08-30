@@ -1,4 +1,4 @@
-import type { ContextInfo } from "../types.ts";
+import type { ContextInfo } from '../types.ts';
 
 // Context-fill label parsing, shared by provider pane-scrapers. The "<used>/<limit> <pct>%"
 // shape is common to the agent statuslines we read; a provider that renders differently
@@ -21,13 +21,13 @@ export function tokNum(label: string): number | null {
 /** Parse a context label ("120k/1.0M 12%" | "40k" | null) into structured tokens. */
 export function parseContext(ctx: string | null): ContextInfo {
   if (!ctx) return { text: null, usedTokens: null, limitTokens: null, percent: null };
-  const [pair, pct] = ctx.split(" ");
-  if (pair?.includes("/")) {
-    const [used, limit] = pair.split("/");
+  const [pair, pct] = ctx.split(' ');
+  if (pair?.includes('/')) {
+    const [used, limit] = pair.split('/');
     return {
       text: ctx,
-      usedTokens: tokNum(used ?? ""),
-      limitTokens: tokNum(limit ?? ""),
+      usedTokens: tokNum(used ?? ''),
+      limitTokens: tokNum(limit ?? ''),
       percent: pct ? Number.parseInt(pct, 10) : null,
     };
   }

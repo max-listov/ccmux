@@ -1,27 +1,45 @@
-import { loadMachineConfig, rcName } from "../config/machine.ts";
-import { loadSessions } from "../config/sessions.ts";
-import { listSessionsCreated } from "../tmux/tmux.ts";
-import { humanizeDuration } from "../util/duration.ts";
-import { capturePane } from "../tmux/tmux.ts";
-import { providerFor, sessionUsedTokens, sessionModel, lastTranscriptMessage, lastActivityMs } from "../agent/index.ts";
-import type { PaneScan } from "../agent/index.ts";
-import { prettyModel } from "../agent/format.ts";
-import { readLaunchStamp } from "../agent/sessionStatus.ts";
-import { computeStamp, staleReasons } from "../agent/launchStamp.ts";
-import { envFilePath } from "../agent/launchInputs.ts";
-import { existsSync } from "node:fs";
-import { promptInvocation } from "../env.ts";
-import { readLifecycle, readMetrics, resolveLiveState, type LifecycleStatus } from "../agent/sessionStatus.ts";
-import { VERSION } from "../util/version.ts";
-import { releaseStanding } from "../config/releaseCheck.ts";
-import { readLifecycleBlockForSession } from "../config/lifecycleBlocks.ts";
-import { fmtTokens } from "../tui/format.ts";
-import type { ContextInfo, ListItem, ListJson, MachineConfig, Session, SessionState, TranscriptMessage } from "../types.ts";
-import { assistantEndedCurrentTurn, turnState } from "../chat/turnState.ts";
-import { lastSignOfLife } from "../events/observe.ts";
-import { paneWorkingSince } from "../events/paneActivity.ts";
-import { hasNativeRuntime } from "../runtime/capabilities.ts";
-import { managedRuntimeView } from "../runtime/view.ts";
+import { existsSync } from 'node:fs';
+import { prettyModel } from '../agent/format.ts';
+import type { PaneScan } from '../agent/index.ts';
+import {
+  lastActivityMs,
+  lastTranscriptMessage,
+  providerFor,
+  sessionModel,
+  sessionUsedTokens,
+} from '../agent/index.ts';
+import { envFilePath } from '../agent/launchInputs.ts';
+import { computeStamp, staleReasons } from '../agent/launchStamp.ts';
+import {
+  type LifecycleStatus,
+  readLaunchStamp,
+  readLifecycle,
+  readMetrics,
+  resolveLiveState,
+} from '../agent/sessionStatus.ts';
+import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
+import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
+import { loadMachineConfig, rcName } from '../config/machine.ts';
+import { releaseStanding } from '../config/releaseCheck.ts';
+import { loadSessions } from '../config/sessions.ts';
+import { promptInvocation } from '../env.ts';
+import { lastSignOfLife } from '../events/observe.ts';
+import { paneWorkingSince } from '../events/paneActivity.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { managedRuntimeView } from '../runtime/view.ts';
+import { capturePane, listSessionsCreated } from '../tmux/tmux.ts';
+import { fmtTokens } from '../tui/format.ts';
+import type {
+  ContextInfo,
+  ListItem,
+  ListJson,
+  MachineConfig,
+  Session,
+  SessionState,
+  TranscriptMessage,
+} from '../types.ts';
+import { humanizeDuration } from '../util/duration.ts';
+import { VERSION } from '../util/version.ts';
 
 // Last pane scan per session — lets the TUI skip the `tmux capture-pane` FORK for cards that
 // aren't visible (off-screen state is invisible anyway; it refreshes the moment it scrolls in).
@@ -66,19 +84,19 @@ async function buildRow(
   const lastMessage = lastTranscriptMessage(s, m); // works running or stopped
   const activity = lastActivityMs(s, m);
   const native = hasNativeRuntime(s) ? managedRuntimeView(m, s) : null;
-  if (startedAt === undefined && native?.read.status !== "live") {
+  if (startedAt === undefined && native?.read.status !== 'live') {
     scanCache.delete(s.name); // stopped → drop stale scan so a restart re-captures
     const block = readLifecycleBlockForSession(m, s);
     return {
       session: s,
       running: false,
       atPrompt: null, // a stopped session is not sitting at anything
-      state: block ? "blocked" : "stopped",
+      state: block ? 'blocked' : 'stopped',
       lifecycleError: block?.error ?? null,
       model: null,
-      contextLabel: "-",
+      contextLabel: '-',
       context: { text: null, usedTokens: null, limitTokens: null, percent: null },
-      uptimeText: "—",
+      uptimeText: '—',
       stale: [],
       turnStartedAt: null, // a stopped session is not in a turn
       uptimeSeconds: null,
@@ -106,9 +124,13 @@ async function buildRow(
   // else the pane. Context: prefer the statusLine-tee metrics (Claude's own %, no regex, no statusline-
   // format dependency), else the pane label, else the used-tokens count from the transcript.
   const lifecycle = readLifecycle(s.name);
-  const turnStartedMs = lifecycle?.state === "working" ? lifecycle.ts : null;
-  const paneWorking = scan.state === "working";
-  const aliveMs = lastSignOfLife(activity, paneWorking ? nowSec * 1000 : paneWorkingSince(m, s.name), turnStartedMs);
+  const turnStartedMs = lifecycle?.state === 'working' ? lifecycle.ts : null;
+  const paneWorking = scan.state === 'working';
+  const aliveMs = lastSignOfLife(
+    activity,
+    paneWorking ? nowSec * 1000 : paneWorkingSince(m, s.name),
+    turnStartedMs,
+  );
   const evidence = turnState({
     paneWorking,
     paneReady: provider.inspectChatPane === undefined ? true : scan.ready,
@@ -123,7 +145,12 @@ async function buildRow(
   if (metrics !== null && metrics.pct !== null && metrics.contextSizeTokens !== null) {
     const used = Math.round((metrics.contextSizeTokens * metrics.pct) / 100);
     contextLabel = `${fmtTokens(used)}/${fmtTokens(metrics.contextSizeTokens)} ${metrics.pct}%`;
-    context = { text: contextLabel, usedTokens: used, limitTokens: metrics.contextSizeTokens, percent: metrics.pct };
+    context = {
+      text: contextLabel,
+      usedTokens: used,
+      limitTokens: metrics.contextSizeTokens,
+      percent: metrics.pct,
+    };
   } else if (context.text === null) {
     const used = sessionUsedTokens(s, m);
     if (used !== null && used > 0) {
@@ -137,13 +164,16 @@ async function buildRow(
     running: true,
     state,
     atPrompt: scan.atPrompt,
-    lifecycleError: native?.state === "blocked" ? `native status unavailable: ${native.read.reason ?? native.read.snapshot?.reason ?? "unknown"}` : null,
+    lifecycleError:
+      native?.state === 'blocked'
+        ? `native status unavailable: ${native.read.reason ?? native.read.snapshot?.reason ?? 'unknown'}`
+        : null,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
     model: prettyModel(native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m)),
     contextLabel,
     context,
-    uptimeText: uptimeSeconds === null ? "—" : humanizeDuration(uptimeSeconds),
+    uptimeText: uptimeSeconds === null ? '—' : humanizeDuration(uptimeSeconds),
     // A stopped session is never "stale": it will pick everything up whenever it next starts.
     stale: staleReasons(readLaunchStamp(s.name), computeStamp(s, m, promptInvocation())),
     turnStartedAt: native === null ? turnStartedAt(state, lifecycle) : native.turnStartedAt,
@@ -166,31 +196,36 @@ async function buildRow(
  * hooks, or a turn already under way when ccmux started. `state` still says `working`, so "in a
  * turn, start unknown" stays distinguishable from "not in a turn".
  */
-export function turnStartedAt(state: SessionState, lifecycle: LifecycleStatus | null): string | null {
-  return state === "working" && lifecycle?.state === "working" ? new Date(lifecycle.ts).toISOString() : null;
+export function turnStartedAt(
+  state: SessionState,
+  lifecycle: LifecycleStatus | null,
+): string | null {
+  return state === 'working' && lifecycle?.state === 'working'
+    ? new Date(lifecycle.ts).toISOString()
+    : null;
 }
 
 function pad(s: string, n: number): string {
-  return s.length >= n ? s : s + " ".repeat(n - s.length);
+  return s.length >= n ? s : s + ' '.repeat(n - s.length);
 }
 
 /** Archived (parked) sessions show "archived" in the human STATE column unless they're
  *  actually running — the run-state (working/idle) is the more truthful signal then. */
 function stateLabel(r: ListRow): string {
-  if (r.session.archived && !r.running) return "archived";
+  if (r.session.archived && !r.running) return 'archived';
   // A session at a menu reads as `idle` to every other signal — the pane is still, no tool is
   // running, the agent is simply not there. It is the opposite of idle: it cannot proceed at all.
-  if (r.atPrompt !== null) return "prompt";
+  if (r.atPrompt !== null) return 'prompt';
   return r.state;
 }
 
 function printTable(m: MachineConfig, rows: ListRow[]): void {
   console.log(
-    `${pad("SESSION", 14)} ${pad("AGENT", 7)} ${pad("MODEL", 9)} ${pad("CTX", 16)} ${pad("STATE", 8)} ${pad("UPTIME", 7)} ${pad("RESTART", 9)} ${pad("RC", 14)} DIR`,
+    `${pad('SESSION', 14)} ${pad('AGENT', 7)} ${pad('MODEL', 9)} ${pad('CTX', 16)} ${pad('STATE', 8)} ${pad('UPTIME', 7)} ${pad('RESTART', 9)} ${pad('RC', 14)} DIR`,
   );
   for (const r of rows) {
     console.log(
-      `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(r.model ?? "-", 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(",") : "-", 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
+      `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(r.model ?? '-', 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(',') : '-', 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
     );
     if (r.lifecycleError !== null) console.log(`  blocked: ${r.lifecycleError}`);
     // A declared env file that is not on disk. The session still starts — that was the deliberate
@@ -248,20 +283,25 @@ function printJson(m: MachineConfig, rows: ListRow[]): void {
 /** The single data source for both the CLI table/JSON and the live TUI. `liveNames` (TUI only) =
  *  the session names whose pane should be freshly captured this tick (visible + selected); others
  *  reuse their cached scan. Omit it (CLI `list`) to capture every running session, as before. */
-export async function collectRows(m: MachineConfig, opts?: { liveNames?: Set<string> }): Promise<ListRow[]> {
+export async function collectRows(
+  m: MachineConfig,
+  opts?: { liveNames?: Set<string> },
+): Promise<ListRow[]> {
   const created = await listSessionsCreated(m);
   const nowSec = Date.now() / 1000;
   const sessions = loadSessions(m);
   const liveNames = opts?.liveNames;
   return Promise.all(
-    sessions.map((s) => buildRow(m, s, created.get(s.name), nowSec, liveNames === undefined || liveNames.has(s.name))),
+    sessions.map((s) =>
+      buildRow(m, s, created.get(s.name), nowSec, liveNames === undefined || liveNames.has(s.name)),
+    ),
   );
 }
 
 export async function cmdList(args: string[] = []): Promise<number> {
   const m = loadMachineConfig();
   const rows = await collectRows(m);
-  if (args.includes("--json")) printJson(m, rows);
+  if (args.includes('--json')) printJson(m, rows);
   else printTable(m, rows);
   return 0;
 }

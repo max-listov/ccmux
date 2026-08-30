@@ -1,11 +1,11 @@
-import { memo } from "react";
-import { Box } from "ink";
-import { Txt } from "./Txt.tsx";
-import { Markdown } from "./Markdown.tsx";
-import { sanitize, dispWidth, clipWidth, wrapText } from "../format.ts";
-import { toolCardView } from "../toolCard.ts";
-import { DiffStat, isDiffStat } from "./DiffStat.tsx";
-import type { TranscriptMessage } from "../../types.ts";
+import { Box } from 'ink';
+import { memo } from 'react';
+import type { TranscriptMessage } from '../../types.ts';
+import { clipWidth, dispWidth, sanitize, wrapText } from '../format.ts';
+import { toolCardView } from '../toolCard.ts';
+import { DiffStat, isDiffStat } from './DiffStat.tsx';
+import { Markdown } from './Markdown.tsx';
+import { Txt } from './Txt.tsx';
 
 // One chat block — the reusable unit of the transcript render. Text turns (user/assistant)
 // are shown in FULL (wrapped, never truncated); a tool call is a compact TWO-ROW card (request
@@ -13,7 +13,7 @@ import type { TranscriptMessage } from "../../types.ts";
 
 /** Collapse to one line, clamped by DISPLAY width (so wide glyphs don't overflow). */
 function oneLine(s: string, w: number): string {
-  return clipWidth(s.replace(/\s+/g, " ").trim(), Math.max(4, w));
+  return clipWidth(s.replace(/\s+/g, ' ').trim(), Math.max(4, w));
 }
 
 /** Cap length but KEEP newlines — so code/lists/tables in a text turn stay structured. */
@@ -30,10 +30,10 @@ function textWrapped(text: string, width: number, isUser: boolean): string[] {
 }
 
 function computeHeight(msg: TranscriptMessage, width: number): number {
-  if (msg.kind === "tool_call") return 2; // request row + outcome row
-  if (msg.kind === "tool_result" || msg.kind === "thinking") return 1;
-  const text = sanitize((msg.text ?? "").trim());
-  const isUser = msg.role === "user";
+  if (msg.kind === 'tool_call') return 2; // request row + outcome row
+  if (msg.kind === 'tool_result' || msg.kind === 'thinking') return 1;
+  const text = sanitize((msg.text ?? '').trim());
+  const isUser = msg.role === 'user';
   const lines = Math.max(1, textWrapped(text, width, isUser).length);
   return isUser ? lines + 4 : lines + 1; // user: marginTop + 2 borders + label; assistant: marginTop
 }
@@ -59,31 +59,45 @@ export function chatMessageHeight(msg: TranscriptMessage, width: number): number
   return h;
 }
 
-function ChatMessageImpl({ msg, width, spin }: { msg: TranscriptMessage; width: number; spin: string }) {
-  const text = sanitize((msg.text ?? "").trim());
+function ChatMessageImpl({
+  msg,
+  width,
+  spin,
+}: {
+  msg: TranscriptMessage;
+  width: number;
+  spin: string;
+}) {
+  const text = sanitize((msg.text ?? '').trim());
 
-  if (msg.kind === "tool_call") {
+  if (msg.kind === 'tool_call') {
     const v = toolCardView(msg, spin);
     const label = `${v.glyph} ${v.label}`;
     const reqW = width - dispWidth(label) - 2;
     return (
       <Box flexDirection="column">
         <Box>
-          <Txt color={v.topColor} bold>{label}</Txt>
+          <Txt color={v.topColor} bold>
+            {label}
+          </Txt>
           <Txt dim>{`  ${oneLine(sanitize(v.request), reqW)}`}</Txt>
         </Box>
         <Box>
-          <Txt dim={!v.resultColor} color={v.resultColor}>{"  ↳ "}</Txt>
+          <Txt dim={!v.resultColor} color={v.resultColor}>
+            {'  ↳ '}
+          </Txt>
           {isDiffStat(v.result) ? (
             <DiffStat result={v.result} />
           ) : (
-            <Txt dim={!v.resultColor} color={v.resultColor}>{oneLine(sanitize(v.result), width - 5)}</Txt>
+            <Txt dim={!v.resultColor} color={v.resultColor}>
+              {oneLine(sanitize(v.result), width - 5)}
+            </Txt>
           )}
         </Box>
       </Box>
     );
   }
-  if (msg.kind === "tool_result") {
+  if (msg.kind === 'tool_result') {
     // A result whose call fell outside the window (unfolded) — keep the faint one-liner.
     return (
       <Box>
@@ -91,10 +105,12 @@ function ChatMessageImpl({ msg, width, spin }: { msg: TranscriptMessage; width: 
       </Box>
     );
   }
-  if (msg.kind === "thinking") {
+  if (msg.kind === 'thinking') {
     return (
       <Box>
-        <Txt dim italic>· thinking</Txt>
+        <Txt dim italic>
+          · thinking
+        </Txt>
       </Box>
     );
   }
@@ -102,15 +118,24 @@ function ChatMessageImpl({ msg, width, spin }: { msg: TranscriptMessage; width: 
   // text turn — full, hard-wrapped to the pane width (long paths/URLs can't spill past the
   // border). USER turns are FRAMED in a green box (the conversation's anchors); ASSISTANT
   // turns flow with a thin cyan quote-bar. Each wrapped line is its own row.
-  const isUser = msg.role === "user";
+  const isUser = msg.role === 'user';
 
   if (isUser) {
     const wrapped = textWrapped(text, width, true);
     return (
       <Box flexDirection="column" marginTop={1}>
-        <Box width={width} flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
-          <Txt color="green" bold>you</Txt>
+        <Box
+          width={width}
+          flexDirection="column"
+          borderStyle="round"
+          borderColor="green"
+          paddingX={1}
+        >
+          <Txt color="green" bold>
+            you
+          </Txt>
           {wrapped.map((ln, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: These stateless wrapped text rows are identified by their visual line position.
             <Box key={i}>
               <Markdown text={ln} baseDim={false} />
             </Box>
@@ -125,11 +150,15 @@ function ChatMessageImpl({ msg, width, spin }: { msg: TranscriptMessage; width: 
     <Box marginTop={1}>
       <Box flexDirection="column" flexShrink={0} marginRight={1}>
         {wrapped.map((_, i) => (
-          <Txt key={i} color="cyan">{"▌"}</Txt>
+          // biome-ignore lint/suspicious/noArrayIndexKey: Each identical stateless gutter glyph occupies one visual line.
+          <Txt key={i} color="cyan">
+            {'▌'}
+          </Txt>
         ))}
       </Box>
       <Box flexDirection="column">
         {wrapped.map((ln, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: These stateless wrapped text rows are identified by their visual line position.
           <Box key={i}>
             <Markdown text={ln} baseDim={false} />
           </Box>
@@ -143,6 +172,10 @@ function ChatMessageImpl({ msg, width, spin }: { msg: TranscriptMessage; width: 
  *  messages array, so every historical message skips re-render (and its markdown re-parse). `spin`
  *  is compared ONLY for tool_call rows (the one with the animated glyph); text/thinking/result rows
  *  ignore it. This keeps the transcript out of the hot render path even while an agent is working. */
-export const ChatMessage = memo(ChatMessageImpl, (a, b) =>
-  a.msg === b.msg && a.width === b.width && (a.msg.kind === "tool_call" ? a.spin === b.spin : true),
+export const ChatMessage = memo(
+  ChatMessageImpl,
+  (a, b) =>
+    a.msg === b.msg &&
+    a.width === b.width &&
+    (a.msg.kind === 'tool_call' ? a.spin === b.spin : true),
 );

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { collectRows } from "../../commands/list.ts";
-import type { ListRow } from "../../commands/list.ts";
-import type { MachineConfig } from "../../types.ts";
+import { useEffect, useState } from 'react';
+import type { ListRow } from '../../commands/list.ts';
+import { collectRows } from '../../commands/list.ts';
+import type { MachineConfig } from '../../types.ts';
 
 /** Poll the live fleet on an interval. `reload()` forces an immediate refresh (after an action like
  *  stop/restart). Single data source — same `collectRows` the CLI uses. `liveNamesRef` (optional) is
@@ -18,10 +18,14 @@ export function useFleet(
   const [rows, setRows] = useState<ListRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [nonce, setNonce] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nonce is the explicit reload trigger; removing it disables reload().
   useEffect(() => {
     let alive = true;
     const load = (): void => {
-      void collectRows(m, liveNamesRef?.current ? { liveNames: liveNamesRef.current } : undefined).then((r) => {
+      void collectRows(
+        m,
+        liveNamesRef?.current ? { liveNames: liveNamesRef.current } : undefined,
+      ).then((r) => {
         if (!alive) return;
         setRows(r);
         setLoaded(true);

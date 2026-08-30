@@ -46,13 +46,13 @@ this comparison does not claim that T3's common adapter exposes both.
 
 1. **P1 — [Images](2026-08-30-managed-image-attachments.md).** Mandatory first usable slice:
    upload, immutable reference, native delivery, visual recognition and restart-safe retention.
-2. **P1 — [Live content](2026-08-30-native-content-stream-and-replay.md).** Incremental text,
+2. **P1 — [Live content](../done/2026-08-30-native-content-stream-and-replay.md).** Incremental text,
    correlated lifecycle, reconnect and explicit truncation/gaps without amplifying status reads.
 3. **P1 — [Model and mode selection](../done/2026-08-30-in-session-model-and-mode-selection.md).**
    Native per-turn options and persistent session defaults, independent of credentials/launch profile.
 4. **P2 — [Explicit steer](../done/2026-08-30-explicit-native-turn-steering.md).** Deliberate active-turn
    input, never implicit steering by the existing message/defer path.
-5. **P2 — [History and context](2026-08-30-native-history-and-context-controls.md).** Bounded native
+5. **P2 — [History and context](../done/2026-08-30-native-history-and-context-controls.md).** Bounded native
    history and deliberate fork/compact with exact continuation and safe mutation semantics.
 
 `order` is the preferred integration order. `depends-on` in each task names actual prerequisites,
@@ -103,11 +103,15 @@ each child task separately. Validators are read-only; the implementation owner r
 - [x] Implementation validator 1: audit all package code for protocol/state/contract correctness.
 - [x] Implementation validator 2: audit all package code and evidence for safety and regressions.
 - [x] Resolve both implementation reviews and rerun affected plus complete gates.
-- [ ] Publish one integrated release and verify exact artifact parity on all owned runtimes.
+- [x] Publish one integrated release and verify exact artifact parity on all owned runtimes.
 
-Current phase: integrated release verification. Both independent implementation reviews are PASS;
-the final native image/steering run and individual native content/context/selection/policy programs
-passed. Cross-machine image acceptance is still held by the transport activation boundary below.
+Current phase: the native package and its corrective privacy patch are published and verified on
+all owned runtimes. Both independent implementation reviews and installed-artifact E2E are PASS.
+The authorized follow-up release carries the unversioned control surface and Biome gate recorded
+in `../done/2026-08-30-unversioned-control-and-biome-gate.md`. Release verification uses an isolated
+daemon/configuration without notification destinations for mutating native probes; production
+checks read the installed contract and session continuity without sending fixture messages.
+Cross-machine image acceptance is held only by the transport activation boundary below.
 The existing native runtime integration task retains its
 separate optional published-dependency boundary; these five tasks do not claim that dependency ready.
 
@@ -140,20 +144,21 @@ TypeScript resolution modes passed. This is baseline evidence only, not new-feat
 
 ## Acceptance
 
-- [ ] Both native runtimes receive real image input through the published control service; image-only
+- [x] Both native runtimes receive real image input through the published control service; image-only
   and text-plus-image turns pass without a local-path or terminal workaround.
-- [ ] Content, selection, steering and context acceptance are resolved individually in their tasks;
+- [x] Content, selection, steering and context acceptance are resolved individually in their tasks;
   an unavailable placeholder or a passed transport test is not reported as complete functionality.
-- [ ] Integrated E2E combines image delivery, streamed response, a model/mode change, exact native
+- [x] Integrated E2E combines image delivery, streamed response, a model/mode change, exact native
   requests, interruption and restart/resume while preserving one writer and durable accepted work.
-- [ ] Each shipped slice records local gates, packed Bun/Node consumer checks, exact-SHA CI,
+- [x] Each shipped slice records local gates, packed Bun/Node consumer checks, exact-SHA CI,
   release/tag and artifact hashes, plus owned-runtime rollout parity. Do not invent a future version.
 
-No new feature implementation, runtime test or release is claimed until its evidence is recorded.
+The image task's real cross-machine transport acceptance remains unverified and keeps this roadmap
+open. Local service probes are not substituted for that external acceptance.
 
 ## Что сделано
 
-- One current service revision 2, native profile `ccmux-native-v2` and operation-level capabilities
+- One current service revision `current`, native profile `ccmux-native` and operation-level capabilities
   replace the old control shapes/routes. No legacy endpoint, alias or parallel compatibility client
   is retained. Durable managed identities, native history and accepted-operation semantics remain.
 - The package includes image input/preview, bounded native streaming/replay, persistent and per-turn
@@ -166,7 +171,7 @@ No new feature implementation, runtime test or release is claimed until its evid
 - Current image/steering program exited 0 on both native runtimes. Ordered PNG/JPEG pairs passed
   in both directions, with same-ID retry and reversed-order conflict refusal. Evidence SHA-256:
   `72ecc84bc713bbe2bcad6f52e1c3252c1a642f2bbae12e92e92dc619a8b6f9ea`.
-- Publication and owned-runtime parity are not marked complete before their actual gates.
+- Publication and owned-runtime parity passed against the downloaded artifacts; details follow below.
 - Final pre-publication `bun run check` exited 0: 926 tests, 4,536 assertions across 146 files;
   packed installation, Bun/Node runtime, TypeScript NodeNext and bundler-resolution consumers passed.
   The targeted private-catalog-diagnostic regression also passed; exact causes are retained only in
@@ -189,12 +194,43 @@ an internal attachment-store path. A native compaction summary can repeat the sa
 These are runtime-generated context, not user-authored conversation text. The owner fix excludes
 synthetic and compaction-summary text by native metadata across history/content projection, retains
 explicit history omission counts, and never heuristically rewrites ordinary user/assistant text.
-The final package remains open pending the corrective patch and repeated installed-artifact check.
+The corrective installed-artifact check passed on both real runtimes. An initial post-patch fixture
+rejected a semantically correct image description because its wording matcher was too narrow;
+the equivalent shape/color wording was accepted in the corrected fixture, without weakening identity,
+privacy or compaction requirements. Failed evidence is retained separately from the passing run.
 
 The corrective source passed the complete local gate: 929 tests, 4,556 assertions across 147 files,
 plus packed installation, Bun/Node and both TypeScript resolution modes. Both independent global
 implementation validators returned PASS after re-reviewing the metadata-based fix; focused reviews
 also confirmed terminal outcomes and native selection are retained. Selection, explicit steering
-and applied-policy tasks are closed against their actual published `v0.39.25` evidence. Image,
-content, context and integrated acceptance remain open for the corrective installed-artifact check
-and, where required, the external transport activation.
+and applied-policy tasks are closed against their actual published `v0.39.25` evidence. Content
+and context tasks are closed against the corrective installed-artifact check. Images and
+this roadmap remain open only for the external transport activation.
+
+## Published acceptance
+
+The public [post-rollout verification artifact](https://github.com/max-listov/ccmux/releases/download/v0.39.26/post-rollout-verification.json)
+records the exact release, bundle/client integrity, live acceptance and remaining boundaries.
+Its SHA-256 is `6a5a9a1af7d31e6184736d61b41ce62a8b91a1391361f13edccea8c4c16882e6`.
+
+- [x] Corrective release `v0.39.26`, release/tag `24cdb31e2997e4deea9e0e36ee992bc1da71d782`;
+  native-package implementation `3c7235454e657cefa5ec570d6fb4c927293b07e4` and metadata privacy fix
+  `5b1692f9e3e5ceb7879a0bf99f801316072cab56`. Complete gate: 929 tests, 4,556 assertions;
+  both independent implementation re-reviews passed. Exact-SHA CI
+  [33296143751](https://github.com/max-listov/ccmux/actions/runs/33296143751) passed.
+- [x] Downloaded runtime SHA-256: `6d2685bc49c517ba4abd812f5ed16714d763189328aa8c84fa8356a96c49ed42`;
+  downloaded client archive SHA-256: `15475d4f55670be57f803802c78a7d009f0280f0dcdbb88f686ef71100f6b3d8`.
+  Actual published bytes passed packed installation, Bun/Node and both TypeScript resolution checks.
+  All three owned installations match the runtime version/hash and report live owner projections.
+  The 33 pre-existing running sessions retained identity and remained running.
+- [x] Repeated installed-bundle/public-client acceptance passed on real Codex and OpenCode: actual
+  image recognition, exact preview, native content/history, idempotent create/message/fork, distinct
+  fork identity, source preservation, retained image access, native compaction with one revision/reset,
+  and retained unfinished checkpoint plus prior image facts. Internal attachment paths are absent
+  from public history/content. Evidence SHA-256:
+  `17edd555128d5e156b5e1397246ef193fee29258e7c84a716e7b7cdce3f68d9a`.
+  Cleanup archived/stopped all four fixture sessions and preserved unrelated registrations/daemon.
+- [x] `scripts/opencode-runtime-e2e.ts` passed again against the installed bundle: real tool effect,
+  exact input/approval, busy/defer, interruption, two-runtime chat/reply identity, daemon/provider
+  restart and continuation, then archive. Evidence SHA-256:
+  `429f099cd94a0f8035755acdf50f05dcba8bfabb6c073192341c07299bbfa30d`.

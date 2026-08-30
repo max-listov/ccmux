@@ -1,24 +1,27 @@
-import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { makeMachine, makeSession } from "./helpers.ts";
-import { OwnedCodexProjection } from "../src/agent/codex/ownedProjection.ts";
-import { OwnedCodexStatusWriter } from "../src/agent/codex/ownedStatus.ts";
-import { buildCodexRuntimeReader } from "../scripts/build-codex-runtime-reader.ts";
-import { VERSION } from "../src/util/version.ts";
+import { expect, test } from 'bun:test';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildCodexRuntimeReader } from '../scripts/build-codex-runtime-reader.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
+import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { VERSION } from '../src/util/version.ts';
+import { makeMachine, makeSession } from './helpers.ts';
 
-test("released ESM reader works offline, coalesces 100 callers and never starts CLI/RPC processes", async () => {
-  const root = mkdtempSync("/tmp/ccmux-codex-reader-test-");
-  const m = makeMachine({ stateDir: root, rcPrefix: "host-a" });
-  const s = makeSession({ agent: "codex", runtime: "app-server" });
-  const config = join(root, "machine.json");
+test('released ESM reader works offline, coalesces 100 callers and never starts CLI/RPC processes', async () => {
+  const root = mkdtempSync('/tmp/ccmux-codex-reader-test-');
+  const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
+  const s = makeSession({ agent: 'codex', runtime: 'app-server' });
+  const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify({ stateDir: root, rcPrefix: m.rcPrefix }), { mode: 0o600 });
-  const p = new OwnedCodexProjection(m, s, process.pid); p.reconcile({ type: "idle" }, 0);
+  const p = new OwnedCodexProjection(m, s, process.pid);
+  p.reconcile({ type: 'idle' }, 0);
   await new OwnedCodexStatusWriter(m, s.name).write(p.snapshot());
   await buildCodexRuntimeReader(root);
-  const asset = join(root, "codex-runtime-reader.js");
-  const hash = new Bun.CryptoHasher("sha256").update(readFileSync(asset)).digest("hex");
-  expect(readFileSync(join(root, "codex-runtime-reader.sha256"), "utf8")).toBe(`${hash}  codex-runtime-reader.js\n`);
+  const asset = join(root, 'codex-runtime-reader.js');
+  const hash = new Bun.CryptoHasher('sha256').update(readFileSync(asset)).digest('hex');
+  expect(readFileSync(join(root, 'codex-runtime-reader.sha256'), 'utf8')).toBe(
+    `${hash}  codex-runtime-reader.js\n`,
+  );
   const source = `
     import { spyOn, mock } from "bun:test";
     import * as fs from "node:fs/promises";
@@ -54,7 +57,7 @@ test("released ESM reader works offline, coalesces 100 callers and never starts 
     beforeOpen = async(path)=>{
       if(!migrated && String(path).endsWith(".json") && String(path)!==process.env.CCMUX_CONFIG){
         migrated = true;
-        await fs.writeFile(process.env.CCMUX_CONFIG,JSON.stringify({stateDir:${JSON.stringify(join(root, "missing"))},rcPrefix:${JSON.stringify(m.rcPrefix)}}));
+        await fs.writeFile(process.env.CCMUX_CONFIG,JSON.stringify({stateDir:${JSON.stringify(join(root, 'missing'))},rcPrefix:${JSON.stringify(m.rcPrefix)}}));
       }
     };
     if((await api.readCodexRuntime(options)).reason !== "config-changed") throw Error("root migration raced into live");
@@ -62,9 +65,16 @@ test("released ESM reader works offline, coalesces 100 callers and never starts 
     if((await api.readCodexRuntime(options)).reason !== "missing") throw Error("fell back to old root");
     console.log("native reader OK");
   `;
-  const child = Bun.spawn([process.execPath, "--no-env-file", "--no-install", "--eval", source], {
-    cwd: root, env: { ...process.env, CCMUX_CONFIG: config, CCMUX_RC_PREFIX: m.rcPrefix }, stdout: "pipe", stderr: "pipe",
+  const child = Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--eval', source], {
+    cwd: root,
+    env: { ...process.env, CCMUX_CONFIG: config, CCMUX_RC_PREFIX: m.rcPrefix },
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
-  const [out, err, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
-  expect({ out, err, code }).toEqual({ out: "native reader OK\n", err: "", code: 0 });
+  const [out, err, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  expect({ out, err, code }).toEqual({ out: 'native reader OK\n', err: '', code: 0 });
 });

@@ -1,23 +1,23 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { HOME, PLATFORM } from "../env.ts";
-import { loadMachineConfig, scaffoldMachineConfig } from "../config/machine.ts";
-import { RC_PREFIX_RE } from "../config/schema.ts";
-import { installBoot, uninstallBoot } from "../boot/install.ts";
-import { atomicWrite } from "../util/atomic.ts";
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { installBoot, uninstallBoot } from '../boot/install.ts';
+import { loadMachineConfig, scaffoldMachineConfig } from '../config/machine.ts';
+import { RC_PREFIX_RE } from '../config/schema.ts';
+import { HOME, PLATFORM } from '../env.ts';
+import { atomicWrite } from '../util/atomic.ts';
 
 function configPath(): string {
   return process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`;
 }
 
 function parseRcPrefix(args: string[]): string | undefined {
-  const i = args.indexOf("--rc-prefix");
+  const i = args.indexOf('--rc-prefix');
   if (i !== -1) return args[i + 1];
-  return args.find((a) => !a.startsWith("-"));
+  return args.find((a) => !a.startsWith('-'));
 }
 
 function parseReleaseUrl(args: string[]): string | undefined {
-  const i = args.indexOf("--release-url");
+  const i = args.indexOf('--release-url');
   return i !== -1 ? args[i + 1] : undefined;
 }
 
@@ -32,12 +32,16 @@ function isRcPrefix(v: string | undefined): v is string {
  * patient is not a repair — which is exactly why the installer could not be pointed at a broken
  * machine before. Pure so the rule is testable without touching a boot manager.
  */
-export function renameRefusal(current: string, requested: string | undefined, force: boolean): string | null {
+export function renameRefusal(
+  current: string,
+  requested: string | undefined,
+  force: boolean,
+): string | null {
   if (requested === undefined || requested === current || force) return null;
   return (
     `this machine is already '${current}' — refusing to rename it to '${requested}'. ` +
     "rcPrefix is the machine's fleet identity; renaming it changes every session's Remote Control name. " +
-    "Pass --force if that is genuinely what you want."
+    'Pass --force if that is genuinely what you want.'
   );
 }
 
@@ -48,7 +52,9 @@ export async function cmdInstall(args: string[]): Promise<number> {
   try {
     if (!existsSync(cfg)) {
       if (!isRcPrefix(rc)) {
-        console.log("no machine.json yet — run: ccmux install --rc-prefix <name> (lowercase slug, e.g. local, dev, prod)");
+        console.log(
+          'no machine.json yet — run: ccmux install --rc-prefix <name> (lowercase slug, e.g. local, dev, prod)',
+        );
         return 1;
       }
       const scaffolded = scaffoldMachineConfig(rc);
@@ -56,11 +62,15 @@ export async function cmdInstall(args: string[]): Promise<number> {
       // autoUpdate on, so a client tracks the published fleet version from the start.
       const withUpdate = releaseUrl ? { ...scaffolded, releaseUrl, autoUpdate: true } : scaffolded;
       mkdirSync(dirname(cfg), { recursive: true });
-      await atomicWrite(cfg, JSON.stringify(withUpdate, null, 2) + "\n");
-      console.log(`wrote ${cfg} (rcPrefix=${rc}${releaseUrl ? `, autoUpdate→${releaseUrl}` : ""})`);
+      await atomicWrite(cfg, `${JSON.stringify(withUpdate, null, 2)}\n`);
+      console.log(`wrote ${cfg} (rcPrefix=${rc}${releaseUrl ? `, autoUpdate→${releaseUrl}` : ''})`);
     } else if (isRcPrefix(rc) || releaseUrl !== undefined) {
       const current = loadMachineConfig();
-      const refusal = renameRefusal(current.rcPrefix, isRcPrefix(rc) ? rc : undefined, args.includes("--force"));
+      const refusal = renameRefusal(
+        current.rcPrefix,
+        isRcPrefix(rc) ? rc : undefined,
+        args.includes('--force'),
+      );
       if (refusal !== null) {
         console.log(refusal);
         return 1;
@@ -72,8 +82,10 @@ export async function cmdInstall(args: string[]): Promise<number> {
         ...(isRcPrefix(rc) ? { rcPrefix: rc } : {}),
         ...(releaseUrl !== undefined ? { releaseUrl, autoUpdate: true } : {}),
       };
-      await atomicWrite(cfg, JSON.stringify(updated, null, 2) + "\n");
-      console.log(`updated ${cfg}${isRcPrefix(rc) ? ` (rcPrefix=${rc})` : ""}${releaseUrl !== undefined ? `, autoUpdate→${releaseUrl}` : ""}`);
+      await atomicWrite(cfg, `${JSON.stringify(updated, null, 2)}\n`);
+      console.log(
+        `updated ${cfg}${isRcPrefix(rc) ? ` (rcPrefix=${rc})` : ''}${releaseUrl !== undefined ? `, autoUpdate→${releaseUrl}` : ''}`,
+      );
     }
   } catch (e) {
     console.log(e instanceof Error ? e.message : String(e));
@@ -82,13 +94,15 @@ export async function cmdInstall(args: string[]): Promise<number> {
   const m = loadMachineConfig();
   console.log(`detected: claude=${m.claudeBin} tmux=${m.tmuxBin} projects=${m.projectsDir}`);
   await installBoot(m);
-  console.log(`install complete (${PLATFORM === "darwin" ? "launchd" : "systemd"}). daemon running.`);
+  console.log(
+    `install complete (${PLATFORM === 'darwin' ? 'launchd' : 'systemd'}). daemon running.`,
+  );
   return 0;
 }
 
 export async function cmdUninstall(): Promise<number> {
   const m = loadMachineConfig();
   await uninstallBoot(m);
-  console.log("uninstalled. sessions file + jsonl history kept on disk.");
+  console.log('uninstalled. sessions file + jsonl history kept on disk.');
   return 0;
 }

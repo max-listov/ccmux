@@ -1,25 +1,25 @@
-import { existsSync, readFileSync } from "node:fs";
-import { MachineConfigSchema } from "./schema.ts";
-import type { MachineConfig } from "../types.ts";
-import { HOME, PLATFORM } from "../env.ts";
-import { STATE_DIR } from "./paths.ts";
-import { machineConfigPath, resolveMonitoringLocation } from "./monitoring-location.ts";
+import { existsSync, readFileSync } from 'node:fs';
+import { HOME, PLATFORM } from '../env.ts';
+import type { MachineConfig } from '../types.ts';
+import { machineConfigPath, resolveMonitoringLocation } from './monitoring-location.ts';
+import { STATE_DIR } from './paths.ts';
+import { MachineConfigSchema } from './schema.ts';
 
 /** Per-platform defaults; everything here is overridable by machine.json. */
 function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {
-  const mac = platform === "darwin";
+  const mac = platform === 'darwin';
   return {
-    tmuxBin: mac ? "/opt/homebrew/bin/tmux" : "/usr/bin/tmux",
+    tmuxBin: mac ? '/opt/homebrew/bin/tmux' : '/usr/bin/tmux',
     projectsDir: `${HOME}/.claude/projects`,
     codexHome: `${HOME}/.codex`,
     codexSessionsDir: `${HOME}/.codex/sessions`,
     stateDir: STATE_DIR,
     // Default so a fresh box (no machine.json yet) just runs — `install` pins the real
     // local|dev|prod into machine.json; until then every command works as "local".
-    rcPrefix: "local",
+    rcPrefix: 'local',
     ensureInterval: 30,
-    permissionMode: "auto",
-    bootLabel: mac ? "com.ccmux.daemon" : "ccmux.service",
+    permissionMode: 'auto',
+    bootLabel: mac ? 'com.ccmux.daemon' : 'ccmux.service',
     extraFlags: [],
   };
 }
@@ -31,18 +31,18 @@ function firstExisting(candidates: Array<string | null | undefined>): string | u
 
 function detectClaudeBin(): string {
   const found = firstExisting([
-    Bun.which("claude"),
+    Bun.which('claude'),
     `${HOME}/.local/bin/claude`,
-    "/root/.bun/bin/claude",
-    "/root/.local/bin/claude",
+    '/root/.bun/bin/claude',
+    '/root/.local/bin/claude',
   ]);
-  if (!found) throw new Error("claude binary not found — set claudeBin in machine.json");
+  if (!found) throw new Error('claude binary not found — set claudeBin in machine.json');
   return found;
 }
 
 function detectTmuxBin(): string {
-  const found = firstExisting([Bun.which("tmux"), "/opt/homebrew/bin/tmux", "/usr/bin/tmux"]);
-  if (!found) throw new Error("tmux binary not found — set tmuxBin in machine.json");
+  const found = firstExisting([Bun.which('tmux'), '/opt/homebrew/bin/tmux', '/usr/bin/tmux']);
+  if (!found) throw new Error('tmux binary not found — set tmuxBin in machine.json');
   return found;
 }
 
@@ -54,16 +54,20 @@ function detectTmuxBin(): string {
  */
 export function loadMachineConfig(): MachineConfig {
   const path = machineConfigPath();
-  const fileRaw: unknown = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
+  const fileRaw: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
   const file = MachineConfigSchema.partial().parse(fileRaw); // validates file, all-optional
-  const merged: Record<string, unknown> = { ...resolveDefaults(PLATFORM), ...file, ...resolveMonitoringLocation(fileRaw) };
+  const merged: Record<string, unknown> = {
+    ...resolveDefaults(PLATFORM),
+    ...file,
+    ...resolveMonitoringLocation(fileRaw),
+  };
   if (merged.claudeBin === undefined) merged.claudeBin = detectClaudeBin();
   if (merged.codexBin === undefined) {
-    const codex = Bun.which("codex");
+    const codex = Bun.which('codex');
     if (codex) merged.codexBin = codex;
   }
   if (merged.opencodeBin === undefined) {
-    const opencode = Bun.which("opencode");
+    const opencode = Bun.which('opencode');
     if (opencode) merged.opencodeBin = opencode;
   }
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();
@@ -72,7 +76,7 @@ export function loadMachineConfig(): MachineConfig {
 
 /** Remote-Control display name: `<prefix>-<name without cc->`. */
 export function rcName(m: MachineConfig, name: string): string {
-  return `${m.rcPrefix}-${name.replace(/^cc-/, "")}`;
+  return `${m.rcPrefix}-${name.replace(/^cc-/, '')}`;
 }
 
 /** Build a full, validated machine config from detection + defaults (for `install`).

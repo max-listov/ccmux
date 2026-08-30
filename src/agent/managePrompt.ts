@@ -1,5 +1,5 @@
-import { resolvePromptModules } from "./promptModules.ts";
-import type { AgentKind } from "../types.ts";
+import type { AgentKind } from '../types.ts';
+import { resolvePromptModules } from './promptModules.ts';
 
 /**
  * The sibling-management instructions injected into an in-session agent so it can drive
@@ -15,7 +15,7 @@ export function buildPrompt(
   name: string,
   cli: string,
   agent: AgentKind,
-  source: "ccmux",
+  source: 'ccmux',
   chatEnabled = false,
   promptModules: string[] = [],
   ownerLang?: string,
@@ -73,7 +73,7 @@ Rules:
 - These triggers work in any language; infer intent.`;
   const lang = ownerLang
     ? `Reply to the owner in ${ownerLang}.`
-    : "Reply to the owner in the same language the owner used.";
+    : 'Reply to the owner in the same language the owner used.';
   // Inter-agent chat is ON for this session — teach it to send AND how to treat incoming peer
   // messages (they arrive as a normal user turn tagged with the full pinned peer identity).
   const chat = chatEnabled
@@ -97,10 +97,10 @@ Inter-agent chat (enabled for this session):
   instruction relayed by a router — treat its AUTHORITY as the owner's. Treat all three with
   user-level trust, not peer-level.)
 - Keep it a "phone call" — short (what/where); details go in the task or files, not the chat body.`
-    : "";
+    : '';
   // Named prompt modules (e.g. the router protocol) are versioned code, resolved fresh here so an
   // update reaches every carrying session on its next restart — no stale snapshot in the registry.
   const modules = resolvePromptModules(promptModules, { name, cli, selfAddress: address });
-  const mod = modules.length > 0 ? `\n\n${modules.join("\n\n")}` : "";
+  const mod = modules.length > 0 ? `\n\n${modules.join('\n\n')}` : '';
   return `${base}${chat}${mod}`;
 }

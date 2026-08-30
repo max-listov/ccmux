@@ -9,7 +9,7 @@ export type ProcessSnapshot = {
 /** Parse the portable fields emitted by `ps -axww -o pid=,ppid=,pgid=,lstart=,command=`. */
 export function parseProcessSnapshot(output: string): ProcessSnapshot[] {
   const rows: ProcessSnapshot[] = [];
-  for (const line of output.split("\n")) {
+  for (const line of output.split('\n')) {
     const match = line.match(
       /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(.*)$/,
     );
@@ -25,7 +25,8 @@ export function parseProcessSnapshot(output: string): ProcessSnapshot[] {
       !Number.isInteger(processGroup) ||
       startTime === undefined ||
       command === undefined
-    ) continue;
+    )
+      continue;
     rows.push({ pid, ppid, processGroup, startTime, command });
   }
   return rows;
@@ -33,8 +34,8 @@ export function parseProcessSnapshot(output: string): ProcessSnapshot[] {
 
 export function processSnapshot(): ProcessSnapshot[] | null {
   try {
-    const result = Bun.spawnSync(["ps", "-axww", "-o", "pid=,ppid=,pgid=,lstart=,command="], {
-      stderr: "ignore",
+    const result = Bun.spawnSync(['ps', '-axww', '-o', 'pid=,ppid=,pgid=,lstart=,command='], {
+      stderr: 'ignore',
     });
     if (!result.success) return null;
     return parseProcessSnapshot(result.stdout.toString());
@@ -44,7 +45,11 @@ export function processSnapshot(): ProcessSnapshot[] | null {
 }
 
 /** Strict descendant check: a process is not its own descendant. */
-export function isDescendantProcess(rows: ProcessSnapshot[], pid: number, ancestorPid: number): boolean {
+export function isDescendantProcess(
+  rows: ProcessSnapshot[],
+  pid: number,
+  ancestorPid: number,
+): boolean {
   const byPid = new Map(rows.map((row) => [row.pid, row]));
   const seen = new Set<number>();
   let current = byPid.get(pid);

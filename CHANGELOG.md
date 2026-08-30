@@ -6,6 +6,17 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Changed
+
+- Use one unversioned public control surface: `/ccmux/control`, owner ingress
+  `/ccmux-control/invoke`, descriptor revision `current`, native profile `ccmux-native` and `ccn_`
+  cursors. Replace numbered bindings and reconnect with a fresh cursor; no legacy aliases are kept.
+  Durable managed identities, accepted operations and native history are preserved.
+- Enforce Biome 2.5.11 formatting and recommended lint rules in the complete local/CI gate.
+  Align source, tests and tooling on two-space indentation, single quotes and a 100-column width.
+- Keep cleanup failures explicit without throwing from `finally`, and replace unchecked probe
+  assertions and ambiguous return expressions with typed guards and direct control flow.
+
 ## [0.39.26] — 2026-08-30
 
 exclude native internal context from public history

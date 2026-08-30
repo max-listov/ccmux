@@ -1,15 +1,22 @@
-import { accessSync, constants, readFileSync } from "node:fs";
-import { dirname } from "node:path";
-import type { Session, MachineConfig } from "../../types.ts";
-import { rcName } from "../../config/machine.ts";
-import { buildPrompt } from "../managePrompt.ts";
-import { UID, HOME } from "../../env.ts";
-import { ensurePath, loginShellPath, ensureUtf8Locale } from "../../util/envPath.ts";
-import { CHAT_CREDENTIAL_ENV } from "../../chat/auth.ts";
-import { chatEnabledFor } from "../../config/chat.ts";
-import { digestOf, fileDigest, fileSetDigest, jsonFieldDigest, ruleSetFiles, type LaunchInput } from "../launchInputs.ts";
-import { sessionEnvRecipe } from "../sessionEnv.ts";
-import { log } from "../../util/log.ts";
+import { accessSync, constants, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
+import { chatEnabledFor } from '../../config/chat.ts';
+import { rcName } from '../../config/machine.ts';
+import { HOME, UID } from '../../env.ts';
+import type { MachineConfig, Session } from '../../types.ts';
+import { ensurePath, ensureUtf8Locale, loginShellPath } from '../../util/envPath.ts';
+import { log } from '../../util/log.ts';
+import {
+  digestOf,
+  fileDigest,
+  fileSetDigest,
+  jsonFieldDigest,
+  type LaunchInput,
+  ruleSetFiles,
+} from '../launchInputs.ts';
+import { buildPrompt } from '../managePrompt.ts';
+import { sessionEnvRecipe } from '../sessionEnv.ts';
 
 export function preflight(m: MachineConfig): void {
   accessSync(m.claudeBin, constants.X_OK);
@@ -26,18 +33,31 @@ export function buildArgv(
   cli: string,
   historyPresent: boolean,
 ): string[] {
-  const resume = historyPresent ? ["--resume", s.uuid] : ["--session-id", s.uuid];
+  const resume = historyPresent ? ['--resume', s.uuid] : ['--session-id', s.uuid];
   const flags = UID === 0 && !m.allowEscalatedUnderRoot ? stripDangerous(s.flags) : s.flags; // same rule, other route
   return [
     m.claudeBin,
     ...resume,
-    "-n",
+    '-n',
     rcName(m, s.name),
-    "--permission-mode",
+    '--permission-mode',
     // per-session override wins over the machine default; undefined → machine default.
-    resolvePermissionMode(s.permissionMode ?? m.permissionMode, UID === 0, m.allowEscalatedUnderRoot),
-    "--append-system-prompt",
-    buildPrompt(s.name, cli, s.agent, "ccmux", chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix),
+    resolvePermissionMode(
+      s.permissionMode ?? m.permissionMode,
+      UID === 0,
+      m.allowEscalatedUnderRoot,
+    ),
+    '--append-system-prompt',
+    buildPrompt(
+      s.name,
+      cli,
+      s.agent,
+      'ccmux',
+      chatEnabledFor(s, m),
+      s.promptModules,
+      m.ownerLang,
+      m.rcPrefix,
+    ),
     ...settingsArg(m, s, cli),
     ...flags,
     ...m.extraFlags,
@@ -67,21 +87,21 @@ function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
   // scraping the pane. `hook-status` is SILENT (writes a file, no stdout) so it coexists on the Stop
   // event with the chat `stop-hook`, which owns the `{decision:block}` stdout channel — both run.
   const stopHooks: Array<{ type: string; command: string }> = [];
-  if (chatEnabledFor(s, m)) stopHooks.push({ type: "command", command: `${cli} stop-hook` });
-  stopHooks.push({ type: "command", command: `${cli} hook-status` });
+  if (chatEnabledFor(s, m)) stopHooks.push({ type: 'command', command: `${cli} stop-hook` });
+  stopHooks.push({ type: 'command', command: `${cli} hook-status` });
   settings.hooks = {
-    UserPromptSubmit: [{ hooks: [{ type: "command", command: `${cli} hook-status` }] }],
-    SessionStart: [{ hooks: [{ type: "command", command: `${cli} hook-status` }] }],
+    UserPromptSubmit: [{ hooks: [{ type: 'command', command: `${cli} hook-status` }] }],
+    SessionStart: [{ hooks: [{ type: 'command', command: `${cli} hook-status` }] }],
     Stop: [{ hooks: stopHooks }],
   };
-  settings.statusLine = { type: "command", command: `${cli} status-line` };
+  settings.statusLine = { type: 'command', command: `${cli} status-line` };
 
-  return Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : [];
+  return Object.keys(settings).length > 0 ? ['--settings', JSON.stringify(settings)] : [];
 }
 
 // Escalated modes that bypass permission gating entirely — a compromised session under
 // root could touch the whole host, so we refuse them for the root daemon (servers).
-const ESCALATED_MODES = new Set(["bypassPermissions", "dontAsk"]);
+const ESCALATED_MODES = new Set(['bypassPermissions', 'dontAsk']);
 
 /**
  * Why this mode cannot be used here — or null when it can.
@@ -112,18 +132,18 @@ export function escalationRefusal(mode: string, isRoot: boolean, allowed = false
  * surface, for a config edited by hand.
  */
 export function resolvePermissionMode(mode: string, isRoot: boolean, allowed = false): string {
-  if (isRoot && !allowed && ESCALATED_MODES.has(mode)) return "auto";
+  if (isRoot && !allowed && ESCALATED_MODES.has(mode)) return 'auto';
   return mode;
 }
 
 /** The agent's own root check reads this. ccmux sets it ONLY where the machine declared it: on a
  *  non-root daemon nothing needs asserting, and an unnecessary claim is still a false one. */
-export const SANDBOX_ENV = "IS_SANDBOX";
+export const SANDBOX_ENV = 'IS_SANDBOX';
 
 /** Same decision, same gate: the flag is escalation by another route, so it lives or dies with it. */
 function stripDangerous(flags: string[]): string[] {
   return flags.filter(
-    (f) => f !== "--dangerously-skip-permissions" && f !== "--allow-dangerously-skip-permissions",
+    (f) => f !== '--dangerously-skip-permissions' && f !== '--allow-dangerously-skip-permissions',
   );
 }
 
@@ -138,7 +158,7 @@ function stripDangerous(flags: string[]): string[] {
  *  Everything else `launchEnv` touches (PATH, locale) is normalisation, not policy, so it is not
  *  part of the recipe a restart would change. */
 export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): readonly string[] {
-  const keys = [CHAT_CREDENTIAL_ENV, "CCMUX_SESSION"];
+  const keys = [CHAT_CREDENTIAL_ENV, 'CCMUX_SESSION'];
   if (isRoot && m.allowEscalatedUnderRoot) keys.push(SANDBOX_ENV);
   return keys;
 }
@@ -147,25 +167,32 @@ export function launchEnv(m: MachineConfig, session: Session): Record<string, st
   // The environment is BUILT, not inherited: the recipe drops what the working directory's env files
   // leak in and applies the file this session actually declared. See agent/sessionEnv.ts.
   const { env, refused } = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
-  if (refused.length > 0) log.warn({ msg: "env file tried to set ccmux-controlled names — ignored", name: session.name, keys: refused });
+  if (refused.length > 0)
+    log.warn({
+      msg: 'env file tried to set ccmux-controlled names — ignored',
+      name: session.name,
+      keys: refused,
+    });
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
   if (hasOauthAccount()) delete env.ANTHROPIC_API_KEY;
   const login = loginShellPath(); // re-derive the real login PATH (fish-aware) under a thin boot PATH
-  const base = [login, env.PATH].filter((p): p is string => p !== null && p !== undefined).join(":");
+  const base = [login, env.PATH]
+    .filter((p): p is string => p !== null && p !== undefined)
+    .join(':');
   env.PATH = ensurePath(base, [dirname(m.claudeBin), dirname(m.tmuxBin)]);
   ensureUtf8Locale(env); // no LANG under launchd → claude draws box-rules as ASCII ('_'); force UTF-8
   // so a ccmux run from inside this session can recognize "self" (block rm/stop self)
   env.CCMUX_SESSION = session.name;
   // The declared machines, and only those: this is what the agent's root check reads.
-  if (UID === 0 && m.allowEscalatedUnderRoot) env[SANDBOX_ENV] = "1";
+  if (UID === 0 && m.allowEscalatedUnderRoot) env[SANDBOX_ENV] = '1';
   return env;
 }
 
 function hasOauthAccount(): boolean {
   try {
-    const obj: unknown = JSON.parse(readFileSync(`${HOME}/.claude.json`, "utf8"));
-    return typeof obj === "object" && obj !== null && "oauthAccount" in obj;
+    const obj: unknown = JSON.parse(readFileSync(`${HOME}/.claude.json`, 'utf8'));
+    return typeof obj === 'object' && obj !== null && 'oauthAccount' in obj;
   } catch {
     return false;
   }
@@ -193,16 +220,21 @@ export function launchInputs(s: Session, _m: MachineConfig): LaunchInput[] {
   const userConfig = `${HOME}/.claude.json`;
   const projectMcp = `${s.dir}/.mcp.json`;
   const mcpParts = [
-    [`${userConfig}#mcpServers`, jsonFieldDigest(userConfig, "mcpServers")] as const,
+    [`${userConfig}#mcpServers`, jsonFieldDigest(userConfig, 'mcpServers')] as const,
     [projectMcp, fileDigest(projectMcp)] as const,
   ];
   return [
-    { reason: "rules", label: `global rule set: ${rules.join(", ")}`, digest: fileSetDigest(rules), paths: rules },
     {
-      reason: "mcp",
+      reason: 'rules',
+      label: `global rule set: ${rules.join(', ')}`,
+      digest: fileSetDigest(rules),
+      paths: rules,
+    },
+    {
+      reason: 'mcp',
       label: `MCP servers: ${userConfig} (mcpServers) + ${projectMcp}`,
       digest: mcpParts.every(([, d]) => d === null) ? null : digestOf(JSON.stringify(mcpParts)),
-      paths: mcpParts.filter(([, d]) => d !== null).map(([p]) => p.split("#")[0] as string),
+      paths: mcpParts.filter(([, d]) => d !== null).map(([p]) => p.split('#')[0] as string),
     },
   ];
 }

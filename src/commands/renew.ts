@@ -1,15 +1,15 @@
-import { existsSync } from "node:fs";
-import { randomUUID } from "node:crypto";
-import { forwardIfRemote } from "../fleet/forward.ts";
-import { findSession, loadSessions, updateSessionUuid } from "../config/sessions.ts";
-import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
-import { providerFor } from "../agent/index.ts";
-import { chatOverrideLabel } from "../config/chat.ts";
-import { startSession } from "./lifecycle.ts";
-import { killSession } from "../tmux/tmux.ts";
-import { log } from "../util/log.ts";
-import type { Session } from "../types.ts";
-import { hasNativeRuntime } from "../runtime/capabilities.ts";
+import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { providerFor } from '../agent/index.ts';
+import { chatOverrideLabel } from '../config/chat.ts';
+import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
+import { findSession, loadSessions, updateSessionUuid } from '../config/sessions.ts';
+import { forwardIfRemote } from '../fleet/forward.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { killSession } from '../tmux/tmux.ts';
+import type { Session } from '../types.ts';
+import { log } from '../util/log.ts';
+import { startSession } from './lifecycle.ts';
 
 /**
  * Why this refuses by default. A session's conversation is the work in it; renewing pins a fresh
@@ -18,11 +18,16 @@ import { hasNativeRuntime } from "../runtime/capabilities.ts";
  * abandons real history, so it says what it would drop and stops. Pure, so the rule is testable
  * without a registry or a tmux server.
  */
-export function renewRefusal(name: string, historyFile: string | null, present: boolean, force: boolean): string | null {
+export function renewRefusal(
+  name: string,
+  historyFile: string | null,
+  present: boolean,
+  force: boolean,
+): string | null {
   if (!present || force) return null;
   return (
-    `${name} still has its conversation at ${historyFile ?? "its expected path"}. ` +
-    "Renewing pins a NEW uuid, so that history stops being what this session resumes — it stays on disk, but nothing points at it. " +
+    `${name} still has its conversation at ${historyFile ?? 'its expected path'}. ` +
+    'Renewing pins a NEW uuid, so that history stops being what this session resumes — it stays on disk, but nothing points at it. ' +
     `Continue it instead with: ccmux restart ${name}   ·   or renew deliberately: ccmux renew ${name} --force`
   );
 }
@@ -34,9 +39,9 @@ export function renewSummary(s: Session, uuid: string): string {
     `agent ${s.agent}`,
     ...(s.permissionMode !== undefined ? [`mode ${s.permissionMode}`] : []),
     ...(chatOverrideLabel(s) !== null ? [chatOverrideLabel(s) as string] : []),
-    ...(s.promptModules.length > 0 ? [`modules ${s.promptModules.join("+")}`] : []),
+    ...(s.promptModules.length > 0 ? [`modules ${s.promptModules.join('+')}`] : []),
   ];
-  return `renewed ${s.name}: new conversation ${uuid}. Kept: ${kept.join(", ")}.`;
+  return `renewed ${s.name}: new conversation ${uuid}. Kept: ${kept.join(', ')}.`;
 }
 
 /**
@@ -51,11 +56,13 @@ export function renewSummary(s: Session, uuid: string): string {
  */
 export async function cmdRenew(name: string | undefined, args: string[] = []): Promise<number> {
   if (name === undefined) {
-    console.log("usage: ccmux renew <name> [--force]   ·   <machine>:<name> for another fleet machine");
+    console.log(
+      'usage: ccmux renew <name> [--force]   ·   <machine>:<name> for another fleet machine',
+    );
     return 1;
   }
-  const force = args.includes("--force");
-  const fwd = await forwardIfRemote(name, "renew", force ? ["--force"] : []);
+  const force = args.includes('--force');
+  const fwd = await forwardIfRemote(name, 'renew', force ? ['--force'] : []);
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
@@ -65,8 +72,10 @@ export async function cmdRenew(name: string | undefined, args: string[] = []): P
     console.log(`unknown session: ${name}`);
     return 1;
   }
-  if (hasNativeRuntime(s) || s.runtime === "native") {
-    console.error("Native runtimes assign continuation identities; use new for a fresh managed session or restart to resume this identity.");
+  if (hasNativeRuntime(s) || s.runtime === 'native') {
+    console.error(
+      'Native runtimes assign continuation identities; use new for a fresh managed session or restart to resume this identity.',
+    );
     return 1;
   }
   const historyFile = providerFor(s).historyFile(s, m);
@@ -86,7 +95,7 @@ export async function cmdRenew(name: string | undefined, args: string[] = []): P
   clearLifecycleBlock(m, name);
   await killSession(m, name); // a supervisor still holding the old uuid must not race the new one
   await startSession(m, name, s.dir);
-  log.info({ msg: "session renewed", name, uuid, abandoned: present });
+  log.info({ msg: 'session renewed', name, uuid, abandoned: present });
   console.log(renewSummary(s, uuid));
   return 0;
 }

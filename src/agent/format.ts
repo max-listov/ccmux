@@ -16,13 +16,13 @@ const SNAPSHOT = /^\d{8}$/; // a YYYYMMDD model-snapshot suffix — dropped from
 
 export function prettyModel(id: string | null): string | null {
   if (id === null) return null;
-  const bare = id.trim().replace(PROVIDER_PREFIX, "");
-  if (bare === "") return null;
-  const parts = bare.split("-");
+  const bare = id.trim().replace(PROVIDER_PREFIX, '');
+  if (bare === '') return null;
+  const parts = bare.split('-');
   const family = parts[0];
   const head = family?.[0];
   if (family === undefined || head === undefined || !/^[a-z]+$/.test(family)) return bare;
   const version = parts.slice(1).filter((p) => !SNAPSHOT.test(p));
   if (version.length === 0 || !version.every((p) => /^\d+$/.test(p))) return bare; // not <family>-<nums>
-  return `${head.toUpperCase()}${family.slice(1)} ${version.join(".")}`;
+  return `${head.toUpperCase()}${family.slice(1)} ${version.join('.')}`;
 }

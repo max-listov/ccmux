@@ -1,13 +1,13 @@
-import { existsSync, readFileSync } from "node:fs";
-import type { MachineConfig, PendingSession } from "../types.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import { pendingSessionsPath } from "./paths.ts";
-import { PendingSessionSchema } from "./schema.ts";
+import { existsSync, readFileSync } from 'node:fs';
+import type { MachineConfig, PendingSession } from '../types.ts';
+import { atomicWrite } from '../util/atomic.ts';
+import { pendingSessionsPath } from './paths.ts';
+import { PendingSessionSchema } from './schema.ts';
 
 export function loadPendingRows(m: MachineConfig): PendingSession[] {
   const path = pendingSessionsPath(m);
   if (!existsSync(path)) return [];
-  const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
   return PendingSessionSchema.array().parse(value);
 }
 

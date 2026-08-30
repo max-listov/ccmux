@@ -1,18 +1,20 @@
-import { existsSync } from "node:fs";
-import { Glob } from "bun";
-import { z } from "zod";
-import type { MachineConfig, Session } from "../../types.ts";
-import { readFirstLine } from "../../util/readLines.ts";
+import { existsSync } from 'node:fs';
+import { Glob } from 'bun';
+import { z } from 'zod';
+import type { MachineConfig, Session } from '../../types.ts';
+import { readFirstLine } from '../../util/readLines.ts';
 
-const RolloutSessionMetaSchema = z.object({
-  type: z.literal("session_meta"),
-  payload: z.object({ id: z.uuid() }).passthrough(),
-}).passthrough();
+const RolloutSessionMetaSchema = z
+  .object({
+    type: z.literal('session_meta'),
+    payload: z.object({ id: z.uuid() }).passthrough(),
+  })
+  .passthrough();
 
 export type RolloutReadiness =
-  | { status: "missing"; path: null; detail: "rollout-missing" }
-  | { status: "pending"; path: string; detail: "metadata-unpublished" | "metadata-invalid" }
-  | { status: "ready"; path: string; detail: null };
+  | { status: 'missing'; path: null; detail: 'rollout-missing' }
+  | { status: 'pending'; path: string; detail: 'metadata-unpublished' | 'metadata-invalid' }
+  | { status: 'ready'; path: string; detail: null };
 
 /**
  * Locate a Codex session's rollout transcript. Codex names rollout files
@@ -35,14 +37,15 @@ export function historyFile(s: Session, m: MachineConfig): string | null {
  */
 export function rolloutReadiness(s: Session, m: MachineConfig): RolloutReadiness {
   const path = historyFile(s, m);
-  if (path === null) return { status: "missing", path: null, detail: "rollout-missing" };
+  if (path === null) return { status: 'missing', path: null, detail: 'rollout-missing' };
   const first = readFirstLine(path);
-  if (first === null) return { status: "pending", path, detail: "metadata-unpublished" };
+  if (first === null) return { status: 'pending', path, detail: 'metadata-unpublished' };
   try {
     const metadata = RolloutSessionMetaSchema.parse(JSON.parse(first));
-    if (metadata.payload.id !== s.uuid) return { status: "pending", path, detail: "metadata-invalid" };
-    return { status: "ready", path, detail: null };
+    if (metadata.payload.id !== s.uuid)
+      return { status: 'pending', path, detail: 'metadata-invalid' };
+    return { status: 'ready', path, detail: null };
   } catch {
-    return { status: "pending", path, detail: "metadata-invalid" };
+    return { status: 'pending', path, detail: 'metadata-invalid' };
   }
 }

@@ -1,21 +1,20 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import type { MachineConfig, Session } from "../types.ts";
-import { loadMachineConfig } from "../config/machine.ts";
-import { findSession, loadSessions, updateSessionUuid } from "../config/sessions.ts";
-import { forkedUuid } from "../agent/index.ts";
-import { killSession, listSessionNames } from "../tmux/tmux.ts";
-import { STATE_DIR } from "../config/paths.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import { runDetached } from "../util/spawn.ts";
-import { SELF_ARGV } from "../env.ts";
-import { log } from "../util/log.ts";
-import { startSession } from "./lifecycle.ts";
-import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
-import { appendMessage } from "../chat/store.ts";
-import { buildEnvelope } from "../chat/compose.ts";
-import { cliPrincipal, managedPeer, ownerTarget, targetLabel } from "../chat/identity.ts";
-import { chatEnabledFor } from "../config/chat.ts";
-import { providerFor } from "../agent/index.ts";
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { forkedUuid, providerFor } from '../agent/index.ts';
+import { buildEnvelope } from '../chat/compose.ts';
+import { cliPrincipal, managedPeer, ownerTarget, targetLabel } from '../chat/identity.ts';
+import { appendMessage } from '../chat/store.ts';
+import { chatEnabledFor } from '../config/chat.ts';
+import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { STATE_DIR } from '../config/paths.ts';
+import { findSession, loadSessions, updateSessionUuid } from '../config/sessions.ts';
+import { SELF_ARGV } from '../env.ts';
+import { killSession, listSessionNames } from '../tmux/tmux.ts';
+import type { MachineConfig, Session } from '../types.ts';
+import { atomicWrite } from '../util/atomic.ts';
+import { log } from '../util/log.ts';
+import { runDetached } from '../util/spawn.ts';
+import { startSession } from './lifecycle.ts';
 
 /**
  * `ccmux restart --all` — bounce the WHOLE fleet on this machine with one command, so a changed
@@ -55,7 +54,10 @@ export interface RestartAllDeps {
 export async function restartAllOnce(deps: RestartAllDeps): Promise<string[]> {
   const targets = deps.sessions().filter((s) => !s.archived);
   // self last — everything else keeps registry order
-  const ordered = [...targets.filter((s) => s.name !== deps.self), ...targets.filter((s) => s.name === deps.self)];
+  const ordered = [
+    ...targets.filter((s) => s.name !== deps.self),
+    ...targets.filter((s) => s.name === deps.self),
+  ];
   const done: string[] = [];
   for (const s of ordered) {
     const cur = await deps.followFork(s); // resume where the conversation actually lives now
@@ -84,16 +86,23 @@ export async function restartAllOnce(deps: RestartAllDeps): Promise<string[]> {
  * chat path, including its wait for a pane that is actually drawn, so the report cannot land in a
  * half-painted interface.
  */
-export function sweepSummary(machine: string, done: readonly string[], failure: string | null, self: string | undefined): string {
-  const head = failure === null
-    ? `ccmux restart --all finished on ${machine}: ${done.length} session(s) restarted`
-    : `ccmux restart --all FAILED on ${machine} after ${done.length} session(s): ${failure}`;
-  const names = done.length === 0 ? "" : ` — ${done.join(", ")}`;
+export function sweepSummary(
+  machine: string,
+  done: readonly string[],
+  failure: string | null,
+  self: string | undefined,
+): string {
+  const head =
+    failure === null
+      ? `ccmux restart --all finished on ${machine}: ${done.length} session(s) restarted`
+      : `ccmux restart --all FAILED on ${machine} after ${done.length} session(s): ${failure}`;
+  const names = done.length === 0 ? '' : ` — ${done.join(', ')}`;
   // Named explicitly, because the alternative is an agent wondering why a report arrived for
   // something it does not remember starting: its own restart is why the answer came this way.
-  const why = self !== undefined && done.includes(self)
-    ? ` This session was restarted last by that sweep, which is why the result arrives as a message rather than as the command's output.`
-    : "";
+  const why =
+    self !== undefined && done.includes(self)
+      ? ` This session was restarted last by that sweep, which is why the result arrives as a message rather than as the command's output.`
+      : '';
   return `${head}${names}.${why}`;
 }
 
@@ -105,7 +114,7 @@ export function sweepSummary(machine: string, done: readonly string[], failure: 
  */
 export interface SweepReport {
   /** `caller` = the session that started the sweep; `owner` = the human, out of band. */
-  recipient: "caller" | "owner";
+  recipient: 'caller' | 'owner';
   body: string;
 }
 
@@ -121,39 +130,54 @@ export function sweepReport(
   const body = sweepSummary(machine, done, failure, self);
   // No calling session at all — a shell, or a scheduler. There is nobody to wake, so the owner is
   // the honest recipient rather than a dropped report.
-  if (self === undefined || caller === null) return { recipient: "owner", body };
-  if (caller.known && caller.running && caller.canChat) return { recipient: "caller", body };
+  if (self === undefined || caller === null) return { recipient: 'owner', body };
+  if (caller.known && caller.running && caller.canChat) return { recipient: 'caller', body };
   const why = !caller.known
-    ? "it is no longer in the registry"
+    ? 'it is no longer in the registry'
     : !caller.running
-      ? "it did NOT come back up after its restart"
-      : "it cannot receive chat";
+      ? 'it did NOT come back up after its restart'
+      : 'it cannot receive chat';
   // Said out loud rather than swallowed: a caller that never came back is the one outcome of a sweep
   // that nobody would otherwise notice, because the thing that would have noticed is what is missing.
-  return { recipient: "owner", body: `${body} The session that started it ('${self}') could not be told: ${why}.` };
+  return {
+    recipient: 'owner',
+    body: `${body} The session that started it ('${self}') could not be told: ${why}.`,
+  };
 }
 
-export async function reportSweep(m: MachineConfig, self: string | undefined, done: readonly string[], failure: string | null): Promise<void> {
+export async function reportSweep(
+  m: MachineConfig,
+  self: string | undefined,
+  done: readonly string[],
+  failure: string | null,
+): Promise<void> {
   const session = self === undefined ? undefined : findSession(loadSessions(m), self);
   const running = await listSessionNames(m);
-  const caller = self === undefined
-    ? null
-    : {
-        known: session !== undefined,
-        running: session !== undefined && running.has(session.name),
-        canChat: session !== undefined && chatEnabledFor(session, m) && providerFor(session).inspectChatPane !== undefined,
-      };
+  const caller =
+    self === undefined
+      ? null
+      : {
+          known: session !== undefined,
+          running: session !== undefined && running.has(session.name),
+          canChat:
+            session !== undefined &&
+            chatEnabledFor(session, m) &&
+            providerFor(session).inspectChatPane !== undefined,
+        };
   const report = sweepReport(m.rcPrefix, self, done, failure, caller);
-  const to = report.recipient === "caller" && session !== undefined ? managedPeer(m.rcPrefix, session) : ownerTarget();
+  const to =
+    report.recipient === 'caller' && session !== undefined
+      ? managedPeer(m.rcPrefix, session)
+      : ownerTarget();
   appendMessage(m, buildEnvelope(cliPrincipal(m.rcPrefix), to, report.body));
-  log.info({ msg: "restart --all: result reported", to: targetLabel(to) });
+  log.info({ msg: 'restart --all: result reported', to: targetLabel(to) });
 }
 
 /** Single-flight: a stale lock (dead pid) is ignored, a live one refuses the sweep. */
 function sweepRunning(): boolean {
   try {
     if (!existsSync(SWEEP_LOCK)) return false;
-    const pid = Number.parseInt(readFileSync(SWEEP_LOCK, "utf8").trim(), 10);
+    const pid = Number.parseInt(readFileSync(SWEEP_LOCK, 'utf8').trim(), 10);
     if (!Number.isFinite(pid)) return false;
     process.kill(pid, 0); // throws when the pid is gone
     return true;
@@ -164,24 +188,28 @@ function sweepRunning(): boolean {
 
 /** The public entry: validate, then hand the sweep to a DETACHED worker and return immediately. */
 export async function cmdRestartAll(args: string[]): Promise<number> {
-  if (args.some((a) => !a.startsWith("--"))) {
-    console.error("restart --all takes no session name — it restarts every session on this machine");
+  if (args.some((a) => !a.startsWith('--'))) {
+    console.error(
+      'restart --all takes no session name — it restarts every session on this machine',
+    );
     return 1;
   }
   if (sweepRunning()) {
-    console.error("restart --all: a sweep is already running");
+    console.error('restart --all: a sweep is already running');
     return 1;
   }
   const m = loadMachineConfig();
   const targets = loadSessions(m).filter((s) => !s.archived);
   if (targets.length === 0) {
-    console.log("no sessions to restart");
+    console.log('no sessions to restart');
     return 0;
   }
   // Detached: the sweep must survive killing the very session it was launched from (an agent can run
   // `ccmux restart --all` from inside a managed pane), and must not block the caller/TUI.
-  runDetached([...SELF_ARGV, "_restart-all-worker"]);
-  console.log(`restarting ${targets.length} session${targets.length === 1 ? "" : "s"}, one at a time — watch: ccmux list`);
+  runDetached([...SELF_ARGV, '_restart-all-worker']);
+  console.log(
+    `restarting ${targets.length} session${targets.length === 1 ? '' : 's'}, one at a time — watch: ccmux list`,
+  );
   return 0;
 }
 
@@ -191,7 +219,7 @@ export async function cmdRestartAllWorker(): Promise<number> {
   await atomicWrite(SWEEP_LOCK, `${process.pid}\n`);
   const m: MachineConfig = loadMachineConfig();
   const self = process.env.CCMUX_SESSION;
-  log.info({ msg: "restart --all: sweep started", self: self ?? null });
+  log.info({ msg: 'restart --all: sweep started', self: self ?? null });
   let done: string[] = [];
   let failure: string | null = null;
   try {
@@ -201,7 +229,12 @@ export async function cmdRestartAllWorker(): Promise<number> {
       followFork: async (s) => {
         const next = forkedUuid(s, m, loadSessions(m));
         if (next === null) return s;
-        log.info({ msg: "restart --all: conversation moved — re-pinning", name: s.name, from: s.uuid, to: next });
+        log.info({
+          msg: 'restart --all: conversation moved — re-pinning',
+          name: s.name,
+          from: s.uuid,
+          to: next,
+        });
         await updateSessionUuid(m, s.name, next);
         return { ...s, uuid: next };
       },
@@ -215,12 +248,13 @@ export async function cmdRestartAllWorker(): Promise<number> {
         clearLifecycleBlock(m, name);
         return startSession(m, name, dir);
       },
-      onProgress: (i, total, name) => log.info({ msg: "restart --all: session restarted", name, i, total }),
+      onProgress: (i, total, name) =>
+        log.info({ msg: 'restart --all: session restarted', name, i, total }),
     });
-    log.info({ msg: "restart --all: sweep finished", count: done.length });
+    log.info({ msg: 'restart --all: sweep finished', count: done.length });
   } catch (e) {
     failure = String(e);
-    log.error({ msg: "restart --all: sweep failed", err: failure });
+    log.error({ msg: 'restart --all: sweep failed', err: failure });
   } finally {
     try {
       rmSync(SWEEP_LOCK, { force: true });
@@ -234,7 +268,7 @@ export async function cmdRestartAllWorker(): Promise<number> {
     await reportSweep(m, self, done, failure);
   } catch (e) {
     // The sweep itself succeeded; failing to announce it must not turn into a failure exit.
-    log.error({ msg: "restart --all: could not record the report", err: String(e) });
+    log.error({ msg: 'restart --all: could not record the report', err: String(e) });
   }
   return 0;
 }

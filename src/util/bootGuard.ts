@@ -8,15 +8,15 @@
 // Load/syntax failures never reach this code — `update` preflights the candidate bundle
 // before swapping (see update.ts). This guard catches the rarer runtime crash loop.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { log } from "./log.ts";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { log } from './log.ts';
 
 export const MAX_ATTEMPTS = 3;
 
 function readAttempts(counterFile: string): number {
   try {
-    const n = Number.parseInt(readFileSync(counterFile, "utf8").trim(), 10);
+    const n = Number.parseInt(readFileSync(counterFile, 'utf8').trim(), 10);
     return Number.isFinite(n) && n > 0 ? n : 0;
   } catch {
     return 0;
@@ -25,29 +25,32 @@ function readAttempts(counterFile: string): number {
 
 /** Called at daemon startup. Returns "revert" when the boot loop tripped and the bundle
  *  was restored from .bak (caller must exit non-zero → boot unit relaunches old code). */
-export function bootGuardStart(counterFile: string, appBundle: string): "ok" | "revert" {
+export function bootGuardStart(counterFile: string, appBundle: string): 'ok' | 'revert' {
   const attempts = readAttempts(counterFile) + 1;
   try {
     mkdirSync(dirname(counterFile), { recursive: true });
     writeFileSync(counterFile, `${attempts}\n`);
   } catch {
-    return "ok"; // guard must never block a normal start
+    return 'ok'; // guard must never block a normal start
   }
-  if (attempts < MAX_ATTEMPTS) return "ok";
+  if (attempts < MAX_ATTEMPTS) return 'ok';
   const bak = `${appBundle}.bak`;
   if (!existsSync(bak)) {
-    log.error({ msg: "boot-guard tripped but no .bak to revert to — staying on current bundle", attempts });
+    log.error({
+      msg: 'boot-guard tripped but no .bak to revert to — staying on current bundle',
+      attempts,
+    });
     clearBootGuard(counterFile); // don't trip forever with no way out
-    return "ok";
+    return 'ok';
   }
   try {
     copyFileSync(bak, appBundle);
     clearBootGuard(counterFile);
-    log.error({ msg: "boot-guard: daemon crash-looped — reverted bundle from .bak", attempts });
-    return "revert";
+    log.error({ msg: 'boot-guard: daemon crash-looped — reverted bundle from .bak', attempts });
+    return 'revert';
   } catch (e) {
-    log.error({ msg: "boot-guard revert failed", err: String(e) });
-    return "ok";
+    log.error({ msg: 'boot-guard revert failed', err: String(e) });
+    return 'ok';
   }
 }
 

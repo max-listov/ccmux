@@ -9,7 +9,10 @@ updated: 2026-08-30
 
 ## Decision
 
-Use one current control service revision and one native stream profile. Local Unix control and
+Use one unversioned control surface and one native stream profile. The required service-envelope
+revision is the literal `current`; it does not negotiate multiple public API versions. Internal
+durable-format guards and native provider protocol versions retain their validation semantics.
+Local Unix control and
 authenticated remote service ingress call the same domain operations; transport differences are
 not parallel client semantics. Retire superseded endpoints and update owned callers together.
 

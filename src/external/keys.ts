@@ -1,4 +1,4 @@
-import type { AgentKind, Session } from "../types.ts";
+import type { AgentKind, Session } from '../types.ts';
 
 /** Stable selection identity. Source/origin is deliberately absent: it can change on resume. */
 export function externalSessionKey(provider: AgentKind, host: string, threadId: string): string {

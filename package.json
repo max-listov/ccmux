@@ -21,13 +21,17 @@
     "tui:hot": "bun --hot src/cli.ts",
     "daemon:watch": "bun --watch src/cli.ts daemon",
     "smoke": "bash scripts/tui-smoke.sh",
-    "check": "tsc --noEmit && bun test && bun scripts/verify-control-service-client.ts",
+    "check": "bun run lint && tsc --noEmit && bun test && bun scripts/verify-control-service-client.ts",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "stage": "bun scripts/release.ts --stage",
     "release": "bun scripts/release.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.11",
     "@types/bun": "^1.3.14",
     "@types/pngjs": "6.0.5",
     "@types/react": "^19.2.17",

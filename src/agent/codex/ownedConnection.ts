@@ -1,33 +1,53 @@
-import type { MachineConfig, Session } from "../../types.ts";
-import { SessionSchema } from "../../config/schema.ts";
-import { CodexAppThreadContextSchema, readCodexAppThread, prepareManagedCodexTurn,
-  startCodexAppTurn } from "./appServer.ts";
-import { connectOwnedCodex } from "./ownedRpc.ts";
-import type { CodexAppRpc, CodexRpcEvent, CodexRpcRequest } from "./rpc.ts";
-import { ownedCodexThreadParams } from "./ownedLaunch.ts";
-import { OwnedCodexProjection } from "./ownedProjection.ts";
-import { OwnedCodexStatusWriter } from "./ownedStatus.ts";
-import { restoreOwnedTurn } from "./ownedObserver.ts";
-import { rolloutReadiness } from "./resume.ts";
-import { log } from "../../util/log.ts";
-import { emitOwnedCodexBoundary } from "./ownedEvents.ts";
-import { clearNativeCommand, readNativeCommand, writeNativeReceipt } from "./ownedControl.ts";
-import { codexAppMessagePersisted } from "./appPickup.ts";
-import { ContentProducer } from "../../content/producer.ts";
-import { CODEX_CONTENT_METHODS, observeCodexContent, observeCodexRequest } from "../../content/codex.ts";
-import { readSelection, seedNativeSelection } from "../../runtime/selection.ts";
-import { NativeTurnOptionsSchema } from "../../runtime/selectionSchema.ts";
-import { codexTextInput } from "./turnInput.ts";
-import { applicationPolicyEvidence, verifyApplicationPolicy } from "../../policy/resolve.ts";
-import { nativePolicySkillsAcknowledged, policySkillInputs } from "../../policy/codex.ts";
-import type { MaterializedPolicy } from "../../policy/schema.ts";
-import { admitNativeFork, readNativeForkIntent } from "../../context/fork.ts";
-import { applyContextCommands, observeContextCompletion, NativeContextPump } from "../../context/pump.ts";
-import { codexContextApi, isCodexContextCompletion } from "../../context/codex.ts";
+import { SessionSchema } from '../../config/schema.ts';
+import {
+  CODEX_CONTENT_METHODS,
+  observeCodexContent,
+  observeCodexRequest,
+} from '../../content/codex.ts';
+import { ContentProducer } from '../../content/producer.ts';
+import { codexContextApi, isCodexContextCompletion } from '../../context/codex.ts';
+import { admitNativeFork, readNativeForkIntent } from '../../context/fork.ts';
+import {
+  applyContextCommands,
+  NativeContextPump,
+  observeContextCompletion,
+} from '../../context/pump.ts';
+import { nativePolicySkillsAcknowledged, policySkillInputs } from '../../policy/codex.ts';
+import { applicationPolicyEvidence, verifyApplicationPolicy } from '../../policy/resolve.ts';
+import type { MaterializedPolicy } from '../../policy/schema.ts';
+import { readSelection, seedNativeSelection } from '../../runtime/selection.ts';
+import { NativeTurnOptionsSchema } from '../../runtime/selectionSchema.ts';
+import type { MachineConfig, Session } from '../../types.ts';
+import { log } from '../../util/log.ts';
+import { codexAppMessagePersisted } from './appPickup.ts';
+import {
+  CodexAppThreadContextSchema,
+  prepareManagedCodexTurn,
+  readCodexAppThread,
+  startCodexAppTurn,
+} from './appServer.ts';
+import { clearNativeCommand, readNativeCommand, writeNativeReceipt } from './ownedControl.ts';
+import { emitOwnedCodexBoundary } from './ownedEvents.ts';
+import { ownedCodexThreadParams } from './ownedLaunch.ts';
+import { restoreOwnedTurn } from './ownedObserver.ts';
+import { OwnedCodexProjection } from './ownedProjection.ts';
+import { connectOwnedCodex } from './ownedRpc.ts';
+import { OwnedCodexStatusWriter } from './ownedStatus.ts';
+import { rolloutReadiness } from './resume.ts';
+import type { CodexAppRpc, CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
+import { codexTextInput } from './turnInput.ts';
 
-const OBSERVED_EVENTS = new Set(["thread/status/changed", "turn/started", "turn/completed",
-  "item/started", "item/completed", "thread/tokenUsage/updated", "serverRequest/resolved",
-  "thread/settings/updated", "model/rerouted"]);
+const OBSERVED_EVENTS = new Set([
+  'thread/status/changed',
+  'turn/started',
+  'turn/completed',
+  'item/started',
+  'item/completed',
+  'thread/tokenUsage/updated',
+  'serverRequest/resolved',
+  'thread/settings/updated',
+  'model/rerouted',
+]);
 
 /** A connection owns its projection and callbacks. A retired connection cannot change a new one. */
 export class OwnedCodexConnection {
@@ -48,43 +68,72 @@ export class OwnedCodexConnection {
   private contextPump: NativeContextPump;
   readonly writer: OwnedCodexStatusWriter;
 
-  constructor(private m: MachineConfig, private initial: Session, private providerPid: number) {
+  constructor(
+    private m: MachineConfig,
+    private initial: Session,
+    private providerPid: number,
+  ) {
     this.writer = new OwnedCodexStatusWriter(m, initial.name);
-    this.contextPump = new NativeContextPump(error => log.error({ msg: "native context observation failed", name: initial.name, error: String(error) }));
+    this.contextPump = new NativeContextPump((error) =>
+      log.error({
+        msg: 'native context observation failed',
+        name: initial.name,
+        error: String(error),
+      }),
+    );
   }
 
   async open(signal: AbortSignal): Promise<void> {
     this.rpc = await connectOwnedCodex(this.m, this.initial, {
       signal,
       onEvent: (event) => {
-        if (!this.active || (!OBSERVED_EVENTS.has(event.method) && !CODEX_CONTENT_METHODS.has(event.method))) return;
+        if (
+          !this.active ||
+          (!OBSERVED_EVENTS.has(event.method) && !CODEX_CONTENT_METHODS.has(event.method))
+        )
+          return;
         if (this.projection === null) {
           const size = Buffer.byteLength(JSON.stringify(event));
           while (this.buffered.length >= 128 || this.bufferedBytes + size > 448 * 1024) {
-            const index = this.buffered.findIndex(item => item.method.endsWith("/delta") || item.method.endsWith("/summaryTextDelta"));
+            const index = this.buffered.findIndex(
+              (item) => item.method.endsWith('/delta') || item.method.endsWith('/summaryTextDelta'),
+            );
             if (index < 0) break;
             const removed = this.buffered.splice(index, 1)[0];
-            if (removed) { this.bufferedBytes -= Buffer.byteLength(JSON.stringify(removed)); this.omittedContent++; }
+            if (removed) {
+              this.bufferedBytes -= Buffer.byteLength(JSON.stringify(removed));
+              this.omittedContent++;
+            }
           }
           if (this.buffered.length >= 128 || this.bufferedBytes + size > 448 * 1024) {
-            if (event.method.endsWith("/delta") || event.method.endsWith("/summaryTextDelta")) this.omittedContent++;
-            else this.failure = new Error("Native admission event window overflow");
-          } else { this.buffered.push(event); this.bufferedBytes += size; }
+            if (event.method.endsWith('/delta') || event.method.endsWith('/summaryTextDelta'))
+              this.omittedContent++;
+            else this.failure = new Error('Native admission event window overflow');
+          } else {
+            this.buffered.push(event);
+            this.bufferedBytes += size;
+          }
         } else {
           try {
             this.observePolicy(event);
-            if (this.content !== null && this.contentThreadId !== null) { observeCodexContent(this.content.buffer, this.contentThreadId, event); this.content.publish(); }
-            if (this.feedSession !== null && isCodexContextCompletion(event, this.feedSession.uuid)) {
+            if (this.content !== null && this.contentThreadId !== null) {
+              observeCodexContent(this.content.buffer, this.contentThreadId, event);
+              this.content.publish();
+            }
+            if (
+              this.feedSession !== null &&
+              isCodexContextCompletion(event, this.feedSession.uuid)
+            ) {
               this.contextCompletionSeen++;
             }
             if (OBSERVED_EVENTS.has(event.method) && this.projection.event(event)) {
               this.publish();
-              if (this.feedSession !== null && event.method !== "thread/status/changed") {
+              if (this.feedSession !== null && event.method !== 'thread/status/changed') {
                 emitOwnedCodexBoundary(this.m, this.feedSession, this.projection.snapshot());
               }
             }
           } catch (error) {
-            this.failure = new Error("Native content observation failed", { cause: error });
+            this.failure = new Error('Native content observation failed', { cause: error });
           }
         }
       },
@@ -92,17 +141,21 @@ export class OwnedCodexConnection {
         if (!this.active) return;
         if (this.projection === null) {
           this.bufferedBytes += Buffer.byteLength(JSON.stringify(request));
-          if (this.bufferedRequests.length >= 16 || this.bufferedBytes > 512 * 1024) this.failure = new Error("Native request admission window overflow");
+          if (this.bufferedRequests.length >= 16 || this.bufferedBytes > 512 * 1024)
+            this.failure = new Error('Native request admission window overflow');
           else this.bufferedRequests.push(request);
         } else if (this.projection.request(request)) {
-          if (this.content !== null && this.contentThreadId !== null) { observeCodexRequest(this.content.buffer, this.contentThreadId, request); this.content.publish(); }
+          if (this.content !== null && this.contentThreadId !== null) {
+            observeCodexRequest(this.content.buffer, this.contentThreadId, request);
+            this.content.publish();
+          }
           this.publish();
         }
       },
       onClose: (error) => {
         if (!this.active) return;
         this.failure = error;
-        this.projection?.unavailable("disconnected");
+        this.projection?.unavailable('disconnected');
         this.publish();
       },
     });
@@ -110,85 +163,148 @@ export class OwnedCodexConnection {
 
   async admit(fresh: boolean, signal: AbortSignal): Promise<Session> {
     const rpc = this.liveRpc();
-    const application = this.initial.applicationPolicy === undefined ? null
-      : verifyApplicationPolicy(this.m, "codex", this.initial.applicationPolicy);
-    if (application?.runtime === "codex" && application.skills.length > 0)
-      policySkillInputs(application, this.initial.dir, await rpc.request("skills/list", { cwds: [this.initial.dir], forceReload: true }));
+    const application =
+      this.initial.applicationPolicy === undefined
+        ? null
+        : verifyApplicationPolicy(this.m, 'codex', this.initial.applicationPolicy);
+    if (application?.runtime === 'codex' && application.skills.length > 0)
+      policySkillInputs(
+        application,
+        this.initial.dir,
+        await rpc.request('skills/list', { cwds: [this.initial.dir], forceReload: true }),
+      );
     const fork = fresh ? readNativeForkIntent(this.m, this.initial) : null;
-    const response = fork === null ? CodexAppThreadContextSchema.parse(await rpc.request(fresh ? "thread/start" : "thread/resume", {
-      ...ownedCodexThreadParams(this.initial, this.m),
-      ...(fresh ? {} : { threadId: this.initial.uuid, excludeTurns: true }),
-    })) : await admitNativeFork(this.m, this.initial, {
-      fork: async (source, nativeSignal) => {
-        nativeSignal.throwIfAborted();
-        return CodexAppThreadContextSchema.parse(await rpc.request("thread/fork", { ...ownedCodexThreadParams(this.initial, this.m),
-          threadId: source.nativeId, ...(source.turnId === null ? {} : { lastTurnId: source.turnId }),
-          excludeTurns: true, deferGoalContinuation: true }));
-      },
-      identity: result => result.thread.id,
-      resume: async (threadId, nativeSignal) => {
-        nativeSignal.throwIfAborted();
-        return CodexAppThreadContextSchema.parse(await rpc.request("thread/resume", { ...ownedCodexThreadParams(this.initial, this.m),
-          threadId, excludeTurns: true, deferGoalContinuation: true }));
-      },
-    }, signal);
-    if (!fresh && response.thread.id !== this.initial.uuid) throw new Error("Native resume returned a different thread identity");
+    const response =
+      fork === null
+        ? CodexAppThreadContextSchema.parse(
+            await rpc.request(fresh ? 'thread/start' : 'thread/resume', {
+              ...ownedCodexThreadParams(this.initial, this.m),
+              ...(fresh ? {} : { threadId: this.initial.uuid, excludeTurns: true }),
+            }),
+          )
+        : await admitNativeFork(
+            this.m,
+            this.initial,
+            {
+              fork: async (source, nativeSignal) => {
+                nativeSignal.throwIfAborted();
+                return CodexAppThreadContextSchema.parse(
+                  await rpc.request('thread/fork', {
+                    ...ownedCodexThreadParams(this.initial, this.m),
+                    threadId: source.nativeId,
+                    ...(source.turnId === null ? {} : { lastTurnId: source.turnId }),
+                    excludeTurns: true,
+                    deferGoalContinuation: true,
+                  }),
+                );
+              },
+              identity: (result) => result.thread.id,
+              resume: async (threadId, nativeSignal) => {
+                nativeSignal.throwIfAborted();
+                return CodexAppThreadContextSchema.parse(
+                  await rpc.request('thread/resume', {
+                    ...ownedCodexThreadParams(this.initial, this.m),
+                    threadId,
+                    excludeTurns: true,
+                    deferGoalContinuation: true,
+                  }),
+                );
+              },
+            },
+            signal,
+          );
+    if (!fresh && response.thread.id !== this.initial.uuid)
+      throw new Error('Native resume returned a different thread identity');
     const currentSelection = readSelection(this.m, this.initial);
     const desiredOptions = currentSelection?.options ?? fork?.source.selection;
     const expectedModel = currentSelection?.options.model ?? this.initial.modelSelection;
-    if (expectedModel !== undefined && (response.model !== expectedModel.model ||
-        response.modelProvider !== expectedModel.provider))
-      throw new Error("Native admission changed the selected provider or model");
+    if (
+      expectedModel !== undefined &&
+      (response.model !== expectedModel.model || response.modelProvider !== expectedModel.provider)
+    )
+      throw new Error('Native admission changed the selected provider or model');
     const session = SessionSchema.parse({ ...this.initial, uuid: response.thread.id });
     const projection = new OwnedCodexProjection(this.m, session, this.providerPid);
     if (response.model !== undefined && response.modelProvider !== undefined)
-      projection.selectionEvidence({ model: { model: response.model, provider: response.modelProvider },
-        options: null, source: "admission", turnId: null });
+      projection.selectionEvidence({
+        model: { model: response.model, provider: response.modelProvider },
+        options: null,
+        source: 'admission',
+        turnId: null,
+      });
     this.projection = projection;
     this.applicationPolicy = application;
-    if (application?.runtime === "codex" && application.skills.length === 0)
-      projection.policyEvidence(applicationPolicyEvidence(application, "applied"));
+    if (application?.runtime === 'codex' && application.skills.length === 0)
+      projection.policyEvidence(applicationPolicyEvidence(application, 'applied'));
     this.content = new ContentProducer(this.m, session, projection.snapshot().generation);
-    this.contentThreadId = session.uuid; this.content.buffer.noteOmitted(this.omittedContent);
+    this.contentThreadId = session.uuid;
+    this.content.buffer.noteOmitted(this.omittedContent);
     // Events were registered before thread/start or resume. Replay before applying the response;
     // a snapshot that raced a newer event must never overwrite that event.
-    for (const event of this.buffered) { projection.event(event); this.observePolicy(event); observeCodexContent(this.content.buffer, session.uuid, event); }
+    for (const event of this.buffered) {
+      projection.event(event);
+      this.observePolicy(event);
+      observeCodexContent(this.content.buffer, session.uuid, event);
+    }
     this.buffered = [];
-    for (const request of this.bufferedRequests) { projection.request(request); observeCodexRequest(this.content.buffer, session.uuid, request); }
+    for (const request of this.bufferedRequests) {
+      projection.request(request);
+      observeCodexRequest(this.content.buffer, session.uuid, request);
+    }
     this.bufferedRequests = [];
-    this.bufferedBytes = 0; this.content.publish();
+    this.bufferedBytes = 0;
+    this.content.publish();
     projection.reconcile(response.thread.status, 0);
     if (fresh && fork === null) {
       const policy = await prepareManagedCodexTurn(rpc, this.m, session, response);
       const deadline = Date.now() + this.m.codexCorrelationTimeoutMs;
       let turnError: unknown = null;
       try {
-        await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
-          codexTextInput("Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions."), policy);
-        if (application !== null) projection.policyEvidence(applicationPolicyEvidence(application, "applied"));
+        await startCodexAppTurn(
+          rpc,
+          session.uuid,
+          this.initial.uuid,
+          codexTextInput(
+            'Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.',
+          ),
+          policy,
+        );
+        if (application !== null)
+          projection.policyEvidence(applicationPolicyEvidence(application, 'applied'));
       } catch (error) {
         turnError = error;
       }
       let rollout = rolloutReadiness(session, this.m);
-      while (rollout.status !== "ready" && Date.now() < deadline) {
+      while (rollout.status !== 'ready' && Date.now() < deadline) {
         signal.throwIfAborted();
         this.liveRpc();
         await Bun.sleep(50);
         rollout = rolloutReadiness(session, this.m);
       }
-      if (rollout.status !== "ready") {
-        throw new Error(`Native session rollout metadata did not become readable before admission (${rollout.detail}; turn=${String(turnError)})`);
+      if (rollout.status !== 'ready') {
+        throw new Error(
+          `Native session rollout metadata did not become readable before admission (${rollout.detail}; turn=${String(turnError)})`,
+        );
       }
       if (turnError !== null) {
         // A provider can expose the rollout inode before committing session_meta, then reject the
         // first turn while its own thread store is between those two states. Retry only that named
         // pre-dispatch failure, with the same immutable client id, and first rule out a persisted
         // acceptance after a lost response.
-        if (!/thread-store.*(?:rollout is empty|session metadata)/i.test(String(turnError))) throw turnError;
+        if (!/thread-store.*(?:rollout is empty|session metadata)/i.test(String(turnError)))
+          throw turnError;
         if (!(await codexAppMessagePersisted(this.m, session.uuid, this.initial.uuid))) {
-          await startCodexAppTurn(rpc, session.uuid, this.initial.uuid,
-            codexTextInput("Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions."), policy);
-          if (application !== null) projection.policyEvidence(applicationPolicyEvidence(application, "applied"));
+          await startCodexAppTurn(
+            rpc,
+            session.uuid,
+            this.initial.uuid,
+            codexTextInput(
+              'Initialize this managed session. Reply READY briefly, without using tools or contacting other sessions.',
+            ),
+            policy,
+          );
+          if (application !== null)
+            projection.policyEvidence(applicationPolicyEvidence(application, 'applied'));
         }
       }
     }
@@ -197,18 +313,26 @@ export class OwnedCodexConnection {
     // materialization (some installed stores refuse list_turns before it is available).
     if (!fresh || fork !== null) await restoreOwnedTurn(rpc, projection, session.uuid);
     await this.refresh(session);
-    await seedNativeSelection(this.m, session, NativeTurnOptionsSchema.parse({ runtime: "codex",
-      model: { provider: response.modelProvider, model: response.model },
-      mode: desiredOptions?.runtime === "codex" ? desiredOptions.mode : session.launchRecipe?.collaborationMode ?? "default",
-      ...(response.reasoningEffort == null ? {} : { effort: response.reasoningEffort }),
-    }));
+    await seedNativeSelection(
+      this.m,
+      session,
+      NativeTurnOptionsSchema.parse({
+        runtime: 'codex',
+        model: { provider: response.modelProvider, model: response.model },
+        mode:
+          desiredOptions?.runtime === 'codex'
+            ? desiredOptions.mode
+            : (session.launchRecipe?.collaborationMode ?? 'default'),
+        ...(response.reasoningEffort == null ? {} : { effort: response.reasoningEffort }),
+      }),
+    );
     return session;
   }
 
   async refresh(session: Session): Promise<void> {
     const rpc = this.liveRpc();
     const projection = this.projection;
-    if (projection === null) throw new Error("Native connection has not been admitted");
+    if (projection === null) throw new Error('Native connection has not been admitted');
     const revision = projection.revision;
     const thread = await readCodexAppThread(rpc, session.uuid);
     this.liveRpc();
@@ -216,27 +340,34 @@ export class OwnedCodexConnection {
     await this.writer.write(projection.snapshot());
   }
 
-  activateEvents(session: Session): void { this.feedSession = session; }
+  activateEvents(session: Session): void {
+    this.feedSession = session;
+  }
 
   applyContext(session: Session, signal: AbortSignal): void {
-    if (this.projection === null) throw new Error("Native connection has not been admitted");
+    if (this.projection === null) throw new Error('Native connection has not been admitted');
     const generation = this.projection.snapshot().generation;
-    this.contextPump.start(signal, async contextSignal => {
+    this.contextPump.start(signal, async (contextSignal) => {
       const api = codexContextApi(this.m, session, this.liveRpc());
       const completion = this.contextCompletionSeen;
       if (completion !== this.contextCompletionApplied) {
         const marker = await api.compactionMarker(contextSignal);
-        if (marker === null) throw new Error("Completed native context marker is unavailable");
-        await observeContextCompletion(this.m, session, generation, marker, () => this.publishContextBoundary());
+        if (marker === null) throw new Error('Completed native context marker is unavailable');
+        await observeContextCompletion(this.m, session, generation, marker, () =>
+          this.publishContextBoundary(),
+        );
         this.contextCompletionApplied = completion;
       }
-      await applyContextCommands(this.m, session, generation, api, contextSignal, () => this.publishContextBoundary());
+      await applyContextCommands(this.m, session, generation, api, contextSignal, () =>
+        this.publishContextBoundary(),
+      );
     });
   }
 
   private async publishContextBoundary(): Promise<void> {
-    if (this.content === null) throw new Error("Native context content publication is unavailable");
-    this.content.buffer.resetContext(); this.content.publish();
+    if (this.content === null) throw new Error('Native context content publication is unavailable');
+    this.content.buffer.resetContext();
+    this.content.publish();
     await this.content.writer.flushPending();
   }
 
@@ -246,30 +377,47 @@ export class OwnedCodexConnection {
     const projection = this.projection;
     const rpc = this.liveRpc();
     const reject = async (reason: string) => {
-      await writeNativeReceipt(this.m, this.initial.name, { operationId: command.operationId,
-        requestId: command.requestId, fingerprint: command.fingerprint, outcome: "rejected", reason });
+      await writeNativeReceipt(this.m, this.initial.name, {
+        operationId: command.operationId,
+        requestId: command.requestId,
+        fingerprint: command.fingerprint,
+        outcome: 'rejected',
+        reason,
+      });
       clearNativeCommand(this.m, this.initial.name);
     };
-    if (projection === null || projection.snapshot().generation !== command.generation) return reject("projection-generation-mismatch");
+    if (projection === null || projection.snapshot().generation !== command.generation)
+      return reject('projection-generation-mismatch');
     const pending = projection.pendingRequest(command.requestId);
-    if (pending === null) return reject("request-is-not-pending");
-    if (pending.kind !== command.kind) return reject("request-kind-mismatch");
+    if (pending === null) return reject('request-is-not-pending');
+    if (pending.kind !== command.kind) return reject('request-kind-mismatch');
     let result: unknown;
-    if (pending.kind === "approval") {
-      if (command.decision === null || !pending.decisions.includes(command.decision)) return reject("decision-is-not-available");
+    if (pending.kind === 'approval') {
+      if (command.decision === null || !pending.decisions.includes(command.decision))
+        return reject('decision-is-not-available');
       result = { decision: command.decision };
     } else {
-      if (command.answers === null) return reject("answers-are-required");
+      if (command.answers === null) return reject('answers-are-required');
       const expected = pending.questions.map((question) => question.id).sort();
-      if (JSON.stringify(Object.keys(command.answers).sort()) !== JSON.stringify(expected)) return reject("question-id-mismatch");
-      result = { answers: Object.fromEntries(Object.entries(command.answers).map(([id, answers]) => [id, { answers }])) };
+      if (JSON.stringify(Object.keys(command.answers).sort()) !== JSON.stringify(expected))
+        return reject('question-id-mismatch');
+      result = {
+        answers: Object.fromEntries(
+          Object.entries(command.answers).map(([id, answers]) => [id, { answers }]),
+        ),
+      };
     }
-    if (rpc.respond === undefined) return reject("native-response-channel-unavailable");
+    if (rpc.respond === undefined) return reject('native-response-channel-unavailable');
     await rpc.respond(pending.rpcId, result);
     projection.submitRequest(command.requestId);
     this.publish();
-    await writeNativeReceipt(this.m, this.initial.name, { operationId: command.operationId,
-      requestId: command.requestId, fingerprint: command.fingerprint, outcome: "submitted", reason: null });
+    await writeNativeReceipt(this.m, this.initial.name, {
+      operationId: command.operationId,
+      requestId: command.requestId,
+      fingerprint: command.fingerprint,
+      outcome: 'submitted',
+      reason: null,
+    });
     clearNativeCommand(this.m, this.initial.name);
   }
 
@@ -288,15 +436,23 @@ export class OwnedCodexConnection {
 
   private liveRpc(): CodexAppRpc {
     if (this.failure !== null) throw this.failure;
-    if (!this.active || this.rpc === null) throw new Error("Native connection is closed");
+    if (!this.active || this.rpc === null) throw new Error('Native connection is closed');
     return this.rpc;
   }
 
   private observePolicy(event: CodexRpcEvent): void {
-    if ((event.method === "item/started" || event.method === "item/completed") && this.applicationPolicy !== null &&
-      this.projection !== null && nativePolicySkillsAcknowledged(this.applicationPolicy, this.projection.snapshot().threadId, event.params)) {
-      verifyApplicationPolicy(this.m, "codex", this.applicationPolicy.metadata);
-      this.projection.policyEvidence(applicationPolicyEvidence(this.applicationPolicy, "applied"));
+    if (
+      (event.method === 'item/started' || event.method === 'item/completed') &&
+      this.applicationPolicy !== null &&
+      this.projection !== null &&
+      nativePolicySkillsAcknowledged(
+        this.applicationPolicy,
+        this.projection.snapshot().threadId,
+        event.params,
+      )
+    ) {
+      verifyApplicationPolicy(this.m, 'codex', this.applicationPolicy.metadata);
+      this.projection.policyEvidence(applicationPolicyEvidence(this.applicationPolicy, 'applied'));
     }
   }
 
@@ -304,7 +460,11 @@ export class OwnedCodexConnection {
     if (this.projection === null) return;
     void this.writer.write(this.projection.snapshot()).catch((error: unknown) => {
       this.failure = error instanceof Error ? error : new Error(String(error));
-      log.error({ msg: "native state publication failed", name: this.initial.name, error: String(error) });
+      log.error({
+        msg: 'native state publication failed',
+        name: this.initial.name,
+        error: String(error),
+      });
     });
   }
 }

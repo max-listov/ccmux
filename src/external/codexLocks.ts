@@ -1,6 +1,6 @@
-import { existsSync, realpathSync } from "node:fs";
-import type { MachineConfig } from "../types.ts";
-import { isDescendantProcess, processSnapshot, type ProcessSnapshot } from "./processes.ts";
+import { existsSync, realpathSync } from 'node:fs';
+import type { MachineConfig } from '../types.ts';
+import { isDescendantProcess, type ProcessSnapshot, processSnapshot } from './processes.ts';
 
 export type CodexLockHolder = {
   pid: number;
@@ -8,16 +8,16 @@ export type CodexLockHolder = {
 };
 
 export type CodexLockInspection = {
-  evidence: "observed" | "none-observed" | "unknown";
+  evidence: 'observed' | 'none-observed' | 'unknown';
   path: string;
   holders: CodexLockHolder[];
 };
 
 function lsofBin(): string | null {
-  const detected = Bun.which("lsof");
+  const detected = Bun.which('lsof');
   if (detected) return detected;
-  if (existsSync("/usr/sbin/lsof")) return "/usr/sbin/lsof";
-  if (existsSync("/usr/bin/lsof")) return "/usr/bin/lsof";
+  if (existsSync('/usr/sbin/lsof')) return '/usr/sbin/lsof';
+  if (existsSync('/usr/bin/lsof')) return '/usr/bin/lsof';
   return null;
 }
 
@@ -41,14 +41,14 @@ export function parseLsofHolders(output: string, exactPath: string): CodexLockHo
     command = null;
     names = [];
   };
-  for (const field of output.split("\n")) {
-    if (field.startsWith("p")) {
+  for (const field of output.split('\n')) {
+    if (field.startsWith('p')) {
       flush();
       const value = Number(field.slice(1));
       pid = Number.isInteger(value) && value > 0 ? value : null;
-    } else if (field.startsWith("c")) {
+    } else if (field.startsWith('c')) {
       command = field.slice(1) || null;
-    } else if (field.startsWith("n")) {
+    } else if (field.startsWith('n')) {
       names.push(field.slice(1));
     }
   }
@@ -59,22 +59,26 @@ export function parseLsofHolders(output: string, exactPath: string): CodexLockHo
 /** Exact, read-only writer evidence for one Codex thread. An unheld stale lock file is not live. */
 export function inspectCodexThreadLock(m: MachineConfig, threadId: string): CodexLockInspection {
   const path = codexThreadLockPath(m, threadId);
-  if (!path) return { evidence: "unknown", path: "", holders: [] };
+  if (!path) return { evidence: 'unknown', path: '', holders: [] };
   const bin = lsofBin();
-  if (!bin) return { evidence: "unknown", path, holders: [] };
+  if (!bin) return { evidence: 'unknown', path, holders: [] };
   try {
-    const result = Bun.spawnSync([bin, "-Fpcn", "--", path], { stderr: "ignore" });
+    const result = Bun.spawnSync([bin, '-Fpcn', '--', path], { stderr: 'ignore' });
     // lsof uses exit 1 for a valid query with no matching open file.
-    if (result.exitCode !== 0 && result.exitCode !== 1) return { evidence: "unknown", path, holders: [] };
+    if (result.exitCode !== 0 && result.exitCode !== 1)
+      return { evidence: 'unknown', path, holders: [] };
     const holders = parseLsofHolders(result.stdout.toString(), path);
-    return { evidence: holders.length > 0 ? "observed" : "none-observed", path, holders };
+    return { evidence: holders.length > 0 ? 'observed' : 'none-observed', path, holders };
   } catch {
-    return { evidence: "unknown", path, holders: [] };
+    return { evidence: 'unknown', path, holders: [] };
   }
 }
 
 /** One lsof query for a discovery poll, rather than one subprocess per stored rollout. */
-export function inspectCodexThreadLocks(m: MachineConfig, threadIds: string[]): Map<string, CodexLockInspection> {
+export function inspectCodexThreadLocks(
+  m: MachineConfig,
+  threadIds: string[],
+): Map<string, CodexLockInspection> {
   const out = new Map<string, CodexLockInspection>();
   const bin = lsofBin();
   const entries = threadIds.flatMap((threadId) => {
@@ -82,25 +86,29 @@ export function inspectCodexThreadLocks(m: MachineConfig, threadIds: string[]): 
     return path ? [{ threadId, path }] : [];
   });
   if (!bin || entries.length !== threadIds.length) {
-    for (const entry of entries) out.set(entry.threadId, { evidence: "unknown", path: entry.path, holders: [] });
+    for (const entry of entries)
+      out.set(entry.threadId, { evidence: 'unknown', path: entry.path, holders: [] });
     return out;
   }
   for (let offset = 0; offset < entries.length; offset += 100) {
     const chunk = entries.slice(offset, offset + 100);
     try {
-      const result = Bun.spawnSync([bin, "-Fpcn", "--", ...chunk.map((entry) => entry.path)], { stderr: "ignore" });
+      const result = Bun.spawnSync([bin, '-Fpcn', '--', ...chunk.map((entry) => entry.path)], {
+        stderr: 'ignore',
+      });
       const reliable = result.exitCode === 0 || result.exitCode === 1;
       const output = result.stdout.toString();
       for (const entry of chunk) {
         const holders = reliable ? parseLsofHolders(output, entry.path) : [];
         out.set(entry.threadId, {
-          evidence: reliable ? (holders.length > 0 ? "observed" : "none-observed") : "unknown",
+          evidence: reliable ? (holders.length > 0 ? 'observed' : 'none-observed') : 'unknown',
           path: entry.path,
           holders,
         });
       }
     } catch {
-      for (const entry of chunk) out.set(entry.threadId, { evidence: "unknown", path: entry.path, holders: [] });
+      for (const entry of chunk)
+        out.set(entry.threadId, { evidence: 'unknown', path: entry.path, holders: [] });
     }
   }
   return out;
@@ -111,13 +119,19 @@ export function lockHeldByDescendant(
   rows: ProcessSnapshot[],
   ancestorPid: number,
 ): boolean {
-  return inspection.holders.some((holder) => holder.pid === ancestorPid || isDescendantProcess(rows, holder.pid, ancestorPid));
+  return inspection.holders.some(
+    (holder) => holder.pid === ancestorPid || isDescendantProcess(rows, holder.pid, ancestorPid),
+  );
 }
 
 /** Bootstrap admission: true only when this exact thread lock is held by our spawned subtree. */
-export function codexLockHeldByDescendant(m: MachineConfig, threadId: string, ancestorPid: number): boolean {
+export function codexLockHeldByDescendant(
+  m: MachineConfig,
+  threadId: string,
+  ancestorPid: number,
+): boolean {
   const inspection = inspectCodexThreadLock(m, threadId);
-  if (inspection.evidence !== "observed") return false;
+  if (inspection.evidence !== 'observed') return false;
   const rows = processSnapshot();
   return rows !== null && lockHeldByDescendant(inspection, rows, ancestorPid);
 }

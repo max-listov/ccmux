@@ -1,9 +1,14 @@
-import { readCodexRuntime, codexRuntimeUpdates, type CodexRuntimeCursor } from "../src/codex-runtime-reader.ts";
+import {
+  type CodexRuntimeCursor,
+  codexRuntimeUpdates,
+  readCodexRuntime,
+} from '../src/codex-runtime-reader.ts';
 
 const [session, threadId] = process.argv.slice(2);
-if (session === undefined || threadId === undefined) throw new Error("usage: bun examples/codex-runtime-reader.ts <managed-name> <thread-uuid>");
+if (session === undefined || threadId === undefined)
+  throw new Error('usage: bun examples/codex-runtime-reader.ts <managed-name> <thread-uuid>');
 const stop = new AbortController();
-for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => stop.abort());
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => stop.abort());
 let cursor: CodexRuntimeCursor | undefined;
 while (!stop.signal.aborted) {
   const result = await readCodexRuntime({ session, threadId, signal: stop.signal, timeoutMs: 250 });

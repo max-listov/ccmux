@@ -1,12 +1,17 @@
-import { z } from "zod";
-import { loadMachineConfig } from "../config/machine.ts";
-import { collectRows } from "./list.ts";
-import { peersOf, runPeer } from "../fleet/transport.ts";
-import { VERSION } from "../util/version.ts";
-import { behindBy, bestKnownRelease, releaseStanding, type BehindBy } from "../config/releaseCheck.ts";
-import { AgentKindSchema, ReleaseStandingSchema } from "../config/schema.ts";
-import { ROLE_SIGIL } from "../chat/roleAddress.ts";
-import type { MachineConfig, ReleaseStanding } from "../types.ts";
+import { z } from 'zod';
+import { ROLE_SIGIL } from '../chat/roleAddress.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import {
+  type BehindBy,
+  behindBy,
+  bestKnownRelease,
+  releaseStanding,
+} from '../config/releaseCheck.ts';
+import { AgentKindSchema, ReleaseStandingSchema } from '../config/schema.ts';
+import { peersOf, runPeer } from '../fleet/transport.ts';
+import type { MachineConfig, ReleaseStanding } from '../types.ts';
+import { VERSION } from '../util/version.ts';
+import { collectRows } from './list.ts';
 
 /**
  * `ccmux fleet` — every session on every machine of the fleet, in one view.
@@ -25,7 +30,7 @@ import type { MachineConfig, ReleaseStanding } from "../types.ts";
 const RemoteSessionSchema = z.object({
   name: z.string(),
   agent: AgentKindSchema.nullable().default(null),
-  state: z.string().default("?"),
+  state: z.string().default('?'),
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),
@@ -52,11 +57,14 @@ const RemoteSessionSchema = z.object({
   // session is idle" but "that build does not report it". `version` is on the machine row beside it,
   // so a consumer can tell the two apart without guessing.
   turnStartedAt: z.string().nullable().default(null),
-  uptime: z.object({ text: z.string().nullable().default(null) }).partial().optional(),
+  uptime: z
+    .object({ text: z.string().nullable().default(null) })
+    .partial()
+    .optional(),
 });
 const RemoteListSchema = z.object({
-  version: z.string().default("?"),
-  rcPrefix: z.string().default("?"),
+  version: z.string().default('?'),
+  rcPrefix: z.string().default('?'),
   // Absent from a peer too old to report it, which reads as "not known" rather than "up to date" —
   // exactly the distinction the block itself exists to keep.
   release: ReleaseStandingSchema.nullable().default(null),
@@ -120,18 +128,67 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
   };
   const remote = await Promise.all(
     peersOf(m).map(async ({ machine, alias, via }): Promise<FleetMachine> => {
-      const r = await runPeer(m, machine, alias, ["ccmux", "list", "--json"], { timeoutMs: 20_000 });
-      const label = via === "wire" ? "wire" : alias;
+      const r = await runPeer(m, machine, alias, ['ccmux', 'list', '--json'], {
+        timeoutMs: 20_000,
+      });
+      const label = via === 'wire' ? 'wire' : alias;
       if (r.transportFailed) {
-        return { machine, alias: label, ok: false, error: r.failureDetail ?? "unreachable (no transit right now)", version: "?", release: null, behind: null, sessions: [] };
+        return {
+          machine,
+          alias: label,
+          ok: false,
+          error: r.failureDetail ?? 'unreachable (no transit right now)',
+          version: '?',
+          release: null,
+          behind: null,
+          sessions: [],
+        };
       }
-      if (r.code !== 0) return { machine, alias: label, ok: false, error: `remote ccmux failed (exit ${r.code})`, version: "?", release: null, behind: null, sessions: [] };
+      if (r.code !== 0)
+        return {
+          machine,
+          alias: label,
+          ok: false,
+          error: `remote ccmux failed (exit ${r.code})`,
+          version: '?',
+          release: null,
+          behind: null,
+          sessions: [],
+        };
       try {
         const parsed = RemoteListSchema.safeParse(JSON.parse(r.stdout)).data;
-        if (parsed === undefined) return { machine, alias: label, ok: false, error: "unreadable list output (older ccmux?)", version: "?", release: null, behind: null, sessions: [] };
-        return { machine, alias: label, ok: true, error: null, version: parsed.version, release: parsed.release, behind: null, sessions: parsed.sessions };
+        if (parsed === undefined)
+          return {
+            machine,
+            alias: label,
+            ok: false,
+            error: 'unreadable list output (older ccmux?)',
+            version: '?',
+            release: null,
+            behind: null,
+            sessions: [],
+          };
+        return {
+          machine,
+          alias: label,
+          ok: true,
+          error: null,
+          version: parsed.version,
+          release: parsed.release,
+          behind: null,
+          sessions: parsed.sessions,
+        };
       } catch {
-        return { machine, alias: label, ok: false, error: "unreadable list output (older ccmux?)", version: "?", release: null, behind: null, sessions: [] };
+        return {
+          machine,
+          alias: label,
+          ok: false,
+          error: 'unreadable list output (older ccmux?)',
+          version: '?',
+          release: null,
+          behind: null,
+          sessions: [],
+        };
       }
     }),
   );
@@ -148,52 +205,73 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
  */
 export function fleetView(machines: FleetMachine[]): FleetView {
   const latest = bestKnownRelease(machines.map((x) => x.release?.latest ?? null));
-  const latestAt = machines.find((x) => x.release?.latest === latest && x.release?.latestAt != null)?.release?.latestAt ?? null;
+  const latestAt =
+    machines.find((x) => x.release?.latest === latest && x.release?.latestAt != null)?.release
+      ?.latestAt ?? null;
   return {
     latest,
     latestAt,
-    machines: machines.map((x) => ({ ...x, behind: x.release === null ? null : behindBy(x.release.current, latest) })),
+    machines: machines.map((x) => ({
+      ...x,
+      behind: x.release === null ? null : behindBy(x.release.current, latest),
+    })),
   };
 }
 
-const pad = (s: string, n: number): string => (s.length >= n ? s : s + " ".repeat(n - s.length));
+const pad = (s: string, n: number): string => (s.length >= n ? s : s + ' '.repeat(n - s.length));
 
-export function formatFleetSession(machine: string, session: z.infer<typeof RemoteSessionSchema>): string {
-  const restart = session.stale.length > 0 ? `  ⟳ ${session.stale.join(",")}` : "";
-  const agent = session.agent ?? "unknown";
+export function formatFleetSession(
+  machine: string,
+  session: z.infer<typeof RemoteSessionSchema>,
+): string {
+  const restart = session.stale.length > 0 ? `  ⟳ ${session.stale.join(',')}` : '';
+  const agent = session.agent ?? 'unknown';
   // The role rides on the ADDRESS line, not in a column of its own, because it is part of the answer
   // to "which of these do I write to" — and the line above is the one people copy from.
-  const role = session.role === null ? "" : `  ${ROLE_SIGIL}${session.role}`;
-  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(session.state, 9)} ${pad(session.model ?? "-", 11)} ${pad(session.uptime?.text ?? "", 7)}${role}${restart}`;
+  const role = session.role === null ? '' : `  ${ROLE_SIGIL}${session.role}`;
+  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(session.state, 9)} ${pad(session.model ?? '-', 11)} ${pad(session.uptime?.text ?? '', 7)}${role}${restart}`;
 }
 
 export async function cmdFleet(args: string[] = []): Promise<number> {
   const m = loadMachineConfig();
   const machines = await collectFleet(m);
   const view = fleetView(machines);
-  if (args.includes("--json")) {
-    console.log(JSON.stringify({ version: VERSION, generatedAt: new Date().toISOString(), ...view }));
+  if (args.includes('--json')) {
+    console.log(
+      JSON.stringify({ version: VERSION, generatedAt: new Date().toISOString(), ...view }),
+    );
     return 0;
   }
   if (machines.length === 1) {
-    console.log('(no peers configured in machine.json — add a "fleet" map or "wire.peers" — showing this machine only)');
+    console.log(
+      '(no peers configured in machine.json — add a "fleet" map or "wire.peers" — showing this machine only)',
+    );
   }
-  if (view.latest !== null) console.log(`latest release: ccmux ${view.latest}${view.latestAt === null ? "" : ` (${view.latestAt.slice(0, 10)})`}`);
+  if (view.latest !== null)
+    console.log(
+      `latest release: ccmux ${view.latest}${view.latestAt === null ? '' : ` (${view.latestAt.slice(0, 10)})`}`,
+    );
   for (const fm of view.machines) {
-    const label = fm.alias === null ? `${fm.machine} (this machine)` : fm.alias === "wire" ? `${fm.machine} via wire` : `${fm.machine} → ${fm.alias}`;
+    const label =
+      fm.alias === null
+        ? `${fm.machine} (this machine)`
+        : fm.alias === 'wire'
+          ? `${fm.machine} via wire`
+          : `${fm.machine} → ${fm.alias}`;
     if (!fm.ok) {
       console.log(`${label}: ${fm.error}`);
       continue;
     }
     // Three states, and the third is the one a bare version number hides: behind, current, or
     // nobody has been able to check — which must never be drawn as current.
-    const standing = fm.behind !== null
-      ? `  ⟵ ${fm.behind} behind`
-      : fm.release === null || fm.release.latest === null
-        ? "  (release unknown here)"
-        : fm.release.ok
-          ? ""
-          : "  (cannot reach the release feed — this is what it knew)";
+    const standing =
+      fm.behind !== null
+        ? `  ⟵ ${fm.behind} behind`
+        : fm.release === null || fm.release.latest === null
+          ? '  (release unknown here)'
+          : fm.release.ok
+            ? ''
+            : '  (cannot reach the release feed — this is what it knew)';
     console.log(`${label}  [ccmux ${fm.version}]${standing}`);
     for (const s of fm.sessions) {
       // Full address on every line — the thing you copy into `ccmux msg` without guessing.

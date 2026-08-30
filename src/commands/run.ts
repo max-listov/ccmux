@@ -1,19 +1,18 @@
-import { existsSync } from "node:fs";
-import { loadMachineConfig } from "../config/machine.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { providerFor, type AgentProvider } from "../agent/index.ts";
-import { capturePane, sendKeysNamed } from "../tmux/tmux.ts";
-import type { MachineConfig, Session } from "../types.ts";
-import { promptInvocation } from "../env.ts";
-import { droppedDeadAgentKeys, withoutDeadAgentEnv } from "../agent/sshEnv.ts";
-import { log, setStderrLogging } from "../util/log.ts";
-import { writeLaunchStamp } from "../agent/sessionStatus.ts";
-import { computeStamp } from "../agent/launchStamp.ts";
-import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from "../chat/auth.ts";
-import { readLifecycleBlockForSession, writeLifecycleBlock } from "../config/lifecycleBlocks.ts";
-import { readLaunchStamp } from "../agent/sessionStatus.ts";
-import { nativeDriver } from "../runtime/driver.ts";
-import { ManagedRuntimeExit } from "../runtime/exit.ts";
+import { existsSync } from 'node:fs';
+import { type AgentProvider, providerFor } from '../agent/index.ts';
+import { computeStamp } from '../agent/launchStamp.ts';
+import { readLaunchStamp, writeLaunchStamp } from '../agent/sessionStatus.ts';
+import { droppedDeadAgentKeys, withoutDeadAgentEnv } from '../agent/sshEnv.ts';
+import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../chat/auth.ts';
+import { readLifecycleBlockForSession, writeLifecycleBlock } from '../config/lifecycleBlocks.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import { promptInvocation } from '../env.ts';
+import { nativeDriver } from '../runtime/driver.ts';
+import { ManagedRuntimeExit } from '../runtime/exit.ts';
+import { capturePane, sendKeysNamed } from '../tmux/tmux.ts';
+import type { MachineConfig, Session } from '../types.ts';
+import { log, setStderrLogging } from '../util/log.ts';
 
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -54,8 +53,8 @@ async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvid
     } catch {
       stillUp = false;
     }
-    if (stillUp) await sendKeysNamed(m, s.name, "Enter"); // number only moved the cursor → confirm
-    log.info({ msg: "answered a blocking prompt", name: s.name, agent: provider.id, key });
+    if (stillUp) await sendKeysNamed(m, s.name, 'Enter'); // number only moved the cursor → confirm
+    log.info({ msg: 'answered a blocking prompt', name: s.name, agent: provider.id, key });
     // Deliberately NOT returning: startup can raise more than one menu in a row (folder trust, then
     // the resume picker). Answering the first and walking away is how a session still ends up
     // stranded — the loop keeps watching until its own deadline.
@@ -77,13 +76,13 @@ async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvid
  */
 export async function cmdRun(name: string | undefined): Promise<number> {
   if (!name) {
-    log.error({ msg: "_run requires a session name" });
+    log.error({ msg: '_run requires a session name' });
     return 1;
   }
   const m = loadMachineConfig();
   const initial = findSession(loadSessions(m), name);
   if (!initial) {
-    log.error({ msg: "unknown session", name });
+    log.error({ msg: 'unknown session', name });
     return 1;
   }
   // From here on this process shares a terminal with the agent it supervises: `_run` is the tmux
@@ -100,7 +99,11 @@ export async function cmdRun(name: string | undefined): Promise<number> {
 }
 
 /** Supervise only a READY registry Session. Every child launch reloads canonical identity. */
-export async function superviseReady(m: MachineConfig, name: string, expectedAgent: Session["agent"]): Promise<number> {
+export async function superviseReady(
+  m: MachineConfig,
+  name: string,
+  expectedAgent: Session['agent'],
+): Promise<number> {
   let backoff = MIN_BACKOFF_MS;
   let fastFails = 0;
   let forkNext = false;
@@ -123,23 +126,39 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
     const driver = nativeDriver(s);
     if (driver !== null) {
       const started = Date.now();
-      try { await driver.run(m, s); return 0; }
-      catch (error) {
+      try {
+        await driver.run(m, s);
+        return 0;
+      } catch (error) {
         if (error instanceof ManagedRuntimeExit) {
-          backoff = Date.now() - started < FAST_FAIL_MS ? Math.min(backoff * 2, MAX_BACKOFF_MS) : MIN_BACKOFF_MS;
-          log.warn({ msg: "native provider exited; resuming pinned identity", name, backoffMs: backoff });
+          backoff =
+            Date.now() - started < FAST_FAIL_MS
+              ? Math.min(backoff * 2, MAX_BACKOFF_MS)
+              : MIN_BACKOFF_MS;
+          log.warn({
+            msg: 'native provider exited; resuming pinned identity',
+            name,
+            backoffMs: backoff,
+          });
           await Bun.sleep(backoff);
           continue;
         }
-        await writeLifecycleBlock(m, { name, agent: s.agent, uuid: s.uuid,
-          ...(s.registrationGeneration === undefined ? {} : { generation: s.registrationGeneration }),
-          error: String(error), at: new Date().toISOString() });
+        await writeLifecycleBlock(m, {
+          name,
+          agent: s.agent,
+          uuid: s.uuid,
+          ...(s.registrationGeneration === undefined
+            ? {}
+            : { generation: s.registrationGeneration }),
+          error: String(error),
+          at: new Date().toISOString(),
+        });
         return 1;
       }
     }
     const hf = provider.historyFile(s, m);
     const present = hf !== null && existsSync(hf); // re-checked every loop
-    if (provider.id === "codex" && !present) {
+    if (provider.id === 'codex' && !present) {
       const error = `ready Codex session ${name} is missing rollout ${s.uuid}`;
       await writeLifecycleBlock(m, {
         name,
@@ -163,10 +182,11 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
     // when the session has genuinely never run.
     if (!present && readLaunchStamp(name) !== null) {
       const found = provider.findHistoryElsewhere?.(s, m) ?? null;
-      const where = found === null ? "and it is nowhere else under the projects root" : `— it is at ${found}`;
+      const where =
+        found === null ? 'and it is nowhere else under the projects root' : `— it is at ${found}`;
       const error =
-        `${name} has launched before, but its conversation ${s.uuid} is missing at ${hf ?? "its expected path"} ${where}. ` +
-        "Refusing to start a NEW conversation on top of it. " +
+        `${name} has launched before, but its conversation ${s.uuid} is missing at ${hf ?? 'its expected path'} ${where}. ` +
+        'Refusing to start a NEW conversation on top of it. ' +
         // Both exits, because the two cases need opposite actions and the reader knows which one
         // they are in — naming only the recoverable one leaves the other guessing.
         `If it can be recovered (the project directory moved?), put it where this session now points, then: ccmux start ${name}   ·   ` +
@@ -189,7 +209,7 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
     const dropped = droppedDeadAgentKeys(env);
     if (dropped.length > 0) {
       env = withoutDeadAgentEnv(env);
-      log.info({ msg: "dropped a dead agent socket from the session launch", name, dropped });
+      log.info({ msg: 'dropped a dead agent socket from the session launch', name, dropped });
     }
     env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, s);
     // The invocation TAUGHT to the agent (bare `ccmux` shim when installed) — NOT the
@@ -197,7 +217,7 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
     // loop so a shim installed after boot is picked up on the next relaunch.
     const argv = provider.buildArgv(s, m, promptInvocation(), present);
     if (forkNext) {
-      if (provider.id === "claude") argv.push("--fork-session"); // wedge recovery (Claude only)
+      if (provider.id === 'claude') argv.push('--fork-session'); // wedge recovery (Claude only)
       forkNext = false;
     }
     // Stamp BEFORE spawning, with the very argv about to be used: that is what makes "does this
@@ -208,9 +228,9 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
     try {
       const proc = Bun.spawn(argv, {
         cwd: s.dir,
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
+        stdin: 'inherit',
+        stdout: 'inherit',
+        stderr: 'inherit',
         env,
       });
       // Every launch, not just a resume. The resume picker is indeed resume-only, but the folder
@@ -221,7 +241,7 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
       await proc.exited;
     } catch (e) {
       crashed = true;
-      log.error({ msg: "agent spawn failed", name, agent: provider.id, err: String(e) });
+      log.error({ msg: 'agent spawn failed', name, agent: provider.id, err: String(e) });
       // The one case where the pane would otherwise be blank: no agent ever started, so nothing
       // else will explain the emptiness to whoever attaches. A plain sentence, never JSON.
       console.error(`ccmux: could not start ${provider.id} — ${String(e)}`);
@@ -231,11 +251,20 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
     if (crashed || elapsed < FAST_FAIL_MS) {
       fastFails += 1;
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
-      log.warn({ msg: "agent exited fast", name, agent: provider.id, elapsedMs: elapsed, fastFails, backoffMs: backoff });
-      if (provider.id === "codex") {
+      log.warn({
+        msg: 'agent exited fast',
+        name,
+        agent: provider.id,
+        elapsedMs: elapsed,
+        fastFails,
+        backoffMs: backoff,
+      });
+      if (provider.id === 'codex') {
         let writerConflict = false;
         try {
-          writerConflict = (await capturePane(m, name, 30)).includes("already has an active writer");
+          writerConflict = (await capturePane(m, name, 30)).includes(
+            'already has an active writer',
+          );
         } catch {
           writerConflict = false;
         }
@@ -246,7 +275,9 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
           name,
           agent: s.agent,
           uuid: s.uuid,
-          ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
+          ...(s.registrationGeneration !== undefined
+            ? { generation: s.registrationGeneration }
+            : {}),
           error,
           at: new Date().toISOString(),
         });
@@ -256,7 +287,7 @@ export async function superviseReady(m: MachineConfig, name: string, expectedAge
       if (fastFails >= FAST_FAILS_BEFORE_FORK) {
         forkNext = true;
         fastFails = 0;
-        log.warn({ msg: "attempting recovery relaunch", name, agent: provider.id });
+        log.warn({ msg: 'attempting recovery relaunch', name, agent: provider.id });
       }
     } else {
       backoff = MIN_BACKOFF_MS;

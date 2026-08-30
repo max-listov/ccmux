@@ -1,5 +1,5 @@
-import { Text } from "ink";
-import { Txt } from "./Txt.tsx";
+import { Text } from 'ink';
+import { Txt } from './Txt.tsx';
 
 // "+12 −3" rendered git-style: additions green, removals red. Any other result string
 // falls back to the caller's plain styling — so this is used as `diffParts(result)`

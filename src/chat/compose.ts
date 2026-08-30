@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { CHAT_GENERATION, ChatMessageSchema } from "../config/schema.ts";
-import type { ChatMessage, ChatPrincipal, ChatTarget } from "../types.ts";
+import { randomUUID } from 'node:crypto';
+import { CHAT_GENERATION, ChatMessageSchema } from '../config/schema.ts';
+import type { ChatMessage, ChatPrincipal, ChatTarget } from '../types.ts';
 
 /**
  * Build one immutable v2 envelope.
@@ -16,7 +16,12 @@ export function buildEnvelope(
   from: ChatPrincipal,
   to: ChatTarget,
   body: string,
-  opts?: { task?: string | null; defer?: boolean; onBehalfOf?: string | null; notBefore?: string | null },
+  opts?: {
+    task?: string | null;
+    defer?: boolean;
+    onBehalfOf?: string | null;
+    notBefore?: string | null;
+  },
 ): ChatMessage {
   return ChatMessageSchema.parse({
     v: CHAT_GENERATION,

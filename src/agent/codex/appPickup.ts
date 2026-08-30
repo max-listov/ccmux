@@ -1,6 +1,6 @@
-import { createReadStream } from "node:fs";
-import { Glob } from "bun";
-import type { MachineConfig } from "../../types.ts";
+import { createReadStream } from 'node:fs';
+import { Glob } from 'bun';
+import type { MachineConfig } from '../../types.ts';
 
 async function fileContains(path: string, needle: Buffer): Promise<boolean> {
   let carry = Buffer.alloc(0);
@@ -15,10 +15,14 @@ async function fileContains(path: string, needle: Buffer): Promise<boolean> {
 
 /** Exact persisted acceptance proof for a turn/start client id. Used only after a pre-submit pickup
  * barrier survives a restart, so ordinary first delivery never scans a long transcript. */
-export async function codexAppMessagePersisted(m: MachineConfig, threadId: string, messageId: string): Promise<boolean> {
+export async function codexAppMessagePersisted(
+  m: MachineConfig,
+  threadId: string,
+  messageId: string,
+): Promise<boolean> {
   if (!m.codexSessionsDir) return false;
   const glob = new Glob(`**/*-${threadId}.jsonl`);
-  const needle = Buffer.from(`\"client_id\":\"${messageId}\"`);
+  const needle = Buffer.from(`"client_id":"${messageId}"`);
   for (const path of glob.scanSync({ cwd: m.codexSessionsDir, absolute: true })) {
     if (await fileContains(path, needle)) return true;
   }

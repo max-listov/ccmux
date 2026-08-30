@@ -1,11 +1,11 @@
-import { basename } from "node:path";
-import { prettyModel } from "../agent/format.ts";
-import type { ListRow } from "../commands/list.ts";
-import { externalSessionKey, managedSessionKey } from "../external/keys.ts";
-import type { DiscoveredSession } from "./discover.ts";
-import { fmtAge, fmtTokens } from "./format.ts";
-import { deriveStatus } from "./status.ts";
-import type { AgentStatus } from "./status.ts";
+import { basename } from 'node:path';
+import { prettyModel } from '../agent/format.ts';
+import type { ListRow } from '../commands/list.ts';
+import { externalSessionKey, managedSessionKey } from '../external/keys.ts';
+import type { DiscoveredSession } from './discover.ts';
+import { fmtAge, fmtTokens } from './format.ts';
+import type { AgentStatus } from './status.ts';
+import { deriveStatus } from './status.ts';
 
 export interface FleetItem {
   /** Stable UI identity. Metadata such as cwd, path, origin and activity never participates. */
@@ -33,15 +33,15 @@ export type FleetLoad = {
 /** Header text for the external side: off, working, or a count. Never a bare "0" while a scan
  *  is still running — that reads as an answer and it is not one. */
 export function inventoryLabel(load: FleetLoad, externalCount: number): string {
-  if (!load.externalOn) return "external off";
-  if (load.externalScanning && externalCount === 0) return "external scanning…";
+  if (!load.externalOn) return 'external off';
+  if (load.externalScanning && externalCount === 0) return 'external scanning…';
   return `${externalCount} external`;
 }
 
 /** Text for an empty list. Before the first answer this says so — the view used to assert
  *  "no sessions" on a machine whose fleet simply had not been delivered yet. */
 export function emptyListText(load: FleetLoad, hint: string): string {
-  return load.loaded ? `no sessions — ${hint}` : "loading sessions…";
+  return load.loaded ? `no sessions — ${hint}` : 'loading sessions…';
 }
 
 const RECENT_ACTIVITY_MS = 30_000;
@@ -59,21 +59,28 @@ export function resolveFleetItem(items: FleetItem[], key: string | null): FleetI
 export function capabilitySummary(ext: DiscoveredSession): string {
   const cap = ext.capabilities;
   return [
-    `inspect ${cap.inspect ? "yes" : "no"}`,
-    `adopt ${cap.attemptAdopt ? "yes" : "no"}`,
-    `fork ${cap.fork ? "yes" : "no"}`,
-    `takeover ${cap.terminateAndAdopt ? "yes" : "no"}`,
-    `release ${cap.releaseAtSource ? "yes" : "no"}`,
-  ].join(" · ");
+    `inspect ${cap.inspect ? 'yes' : 'no'}`,
+    `adopt ${cap.attemptAdopt ? 'yes' : 'no'}`,
+    `fork ${cap.fork ? 'yes' : 'no'}`,
+    `takeover ${cap.terminateAndAdopt ? 'yes' : 'no'}`,
+    `release ${cap.releaseAtSource ? 'yes' : 'no'}`,
+  ].join(' · ');
 }
 
 export function capabilityReasons(ext: DiscoveredSession): string {
-  return ext.capabilities.reasons.length > 0 ? ext.capabilities.reasons.join(" · ") : "no capability blocks";
+  return ext.capabilities.reasons.length > 0
+    ? ext.capabilities.reasons.join(' · ')
+    : 'no capability blocks';
 }
 
 export function externalActionHint(ext: DiscoveredSession): string {
-  if (ext.capabilities.attemptAdopt) return "a attempt adopt";
-  if (ext.capabilities.fork || ext.capabilities.terminateAndAdopt || ext.capabilities.releaseAtSource) return "a ownership options";
+  if (ext.capabilities.attemptAdopt) return 'a attempt adopt';
+  if (
+    ext.capabilities.fork ||
+    ext.capabilities.terminateAndAdopt ||
+    ext.capabilities.releaseAtSource
+  )
+    return 'a ownership options';
   return `no ownership action: ${capabilityReasons(ext)}`;
 }
 
@@ -81,16 +88,16 @@ export function writerSummary(ext: DiscoveredSession): string {
   const runtime = ext.writerRuntime;
   const evidence = ext.writerEvidence;
   if (runtime === null) return `${evidence} · no runtime classified`;
-  const pid = runtime.pid === null ? "" : ` pid ${runtime.pid}`;
+  const pid = runtime.pid === null ? '' : ` pid ${runtime.pid}`;
   return `${evidence} · ${runtime.kind}${pid} · ${runtime.reason}`;
 }
 
 /** Present a discovered provider-neutral thread as a read-only ListRow for shared rendering. */
 export function externalToRow(ext: DiscoveredSession): ListRow {
-  const tokens = ext.usedTokens !== null && ext.usedTokens > 0 ? fmtTokens(ext.usedTokens) : "-";
-  const dirLabel = ext.dir ?? "cwd unknown";
-  const nameBase = basename(ext.dir ?? "") || ext.provider;
-  const running = ext.writerEvidence === "observed";
+  const tokens = ext.usedTokens !== null && ext.usedTokens > 0 ? fmtTokens(ext.usedTokens) : '-';
+  const dirLabel = ext.dir ?? 'cwd unknown';
+  const nameBase = basename(ext.dir ?? '') || ext.provider;
+  const running = ext.writerEvidence === 'observed';
   return {
     session: {
       name: `${nameBase}·${ext.threadId.slice(0, 6)}`,
@@ -98,19 +105,24 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
       uuid: ext.threadId,
       flags: [],
       archived: false,
-      resumeText: "continue",
+      resumeText: 'continue',
       agent: ext.provider,
       chatEnabled: false,
       promptModules: [],
     },
     running,
     atPrompt: null, // external sessions are observed, never driven — we do not read their menus
-    state: "external",
+    state: 'external',
     lifecycleError: null,
     model: prettyModel(ext.lastModel),
     contextLabel: tokens,
-    context: { text: tokens === "-" ? null : tokens, usedTokens: ext.usedTokens, limitTokens: null, percent: null },
-    uptimeText: "—",
+    context: {
+      text: tokens === '-' ? null : tokens,
+      usedTokens: ext.usedTokens,
+      limitTokens: null,
+      percent: null,
+    },
+    uptimeText: '—',
     uptimeSeconds: null,
     createdAt: null,
     lastMessage: ext.lastMessage,
@@ -123,7 +135,8 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
   };
 }
 
-const recentlyActive = (ms: number | null): boolean => ms !== null && Date.now() - ms < RECENT_ACTIVITY_MS;
+const recentlyActive = (ms: number | null): boolean =>
+  ms !== null && Date.now() - ms < RECENT_ACTIVITY_MS;
 
 function activityBucket(row: ListRow): number {
   const ms = row.lastActivityMs ?? (row.createdAt ? Date.parse(row.createdAt) : null);
@@ -139,32 +152,36 @@ export function buildItems(
   discovered: DiscoveredSession[],
   host: string,
 ): { items: FleetItem[]; externalStart: number } {
-  const managedItems = managed.map((row): FleetItem => ({
-    key: managedSessionKey(row.session, host),
-    row,
-    external: false,
-    ext: null,
-    status: deriveStatus({
-      running: row.running,
-      isWorking: row.state === "working" || recentlyActive(row.lastActivityMs),
-      lastMessage: row.lastMessage,
-      blocked: row.state === "blocked",
-      atPrompt: row.atPrompt,
+  const managedItems = managed.map(
+    (row): FleetItem => ({
+      key: managedSessionKey(row.session, host),
+      row,
+      external: false,
+      ext: null,
+      status: deriveStatus({
+        running: row.running,
+        isWorking: row.state === 'working' || recentlyActive(row.lastActivityMs),
+        lastMessage: row.lastMessage,
+        blocked: row.state === 'blocked',
+        atPrompt: row.atPrompt,
+      }),
+      activityText: row.lastActivityMs !== null ? fmtAge(row.lastActivityMs) : null,
     }),
-    activityText: row.lastActivityMs !== null ? fmtAge(row.lastActivityMs) : null,
-  }));
-  const externalItems = discovered.map((ext): FleetItem => ({
-    key: externalSelectionKey(ext),
-    row: externalToRow(ext),
-    external: true,
-    ext,
-    status: deriveStatus({
-      running: ext.writerEvidence === "observed",
-      isWorking: ext.writerEvidence === "observed" && recentlyActive(ext.lastActivityMs),
-      lastMessage: ext.lastMessage,
+  );
+  const externalItems = discovered.map(
+    (ext): FleetItem => ({
+      key: externalSelectionKey(ext),
+      row: externalToRow(ext),
+      external: true,
+      ext,
+      status: deriveStatus({
+        running: ext.writerEvidence === 'observed',
+        isWorking: ext.writerEvidence === 'observed' && recentlyActive(ext.lastActivityMs),
+        lastMessage: ext.lastMessage,
+      }),
+      activityText: ext.lastActivityMs === null ? null : fmtAge(ext.lastActivityMs),
     }),
-    activityText: ext.lastActivityMs === null ? null : fmtAge(ext.lastActivityMs),
-  }));
+  );
   managedItems.sort(byActivity);
   externalItems.sort(byActivity);
   return { items: [...managedItems, ...externalItems], externalStart: managedItems.length };

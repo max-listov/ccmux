@@ -1,33 +1,58 @@
-import { loadSessions } from "../config/sessions.ts";
-import { providerFor, lastTranscriptMessage, lastActivityMs, readTranscript, type AgentProvider } from "../agent/index.ts";
+import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
+import {
+  type AgentProvider,
+  lastActivityMs,
+  lastTranscriptMessage,
+  providerFor,
+  readTranscript,
+} from '../agent/index.ts';
+import { clearChatHold, readLifecycle, writeChatHold } from '../agent/sessionStatus.ts';
+import { chatEnabledFor } from '../config/chat.ts';
+import { loadSessions } from '../config/sessions.ts';
+import { promptInvocation } from '../env.ts';
+import { lastSignOfLife } from '../events/observe.ts';
+import { paneWorkingSince } from '../events/paneActivity.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
 import {
   capturePaneStyled,
-  stripAnsi,
   clientTypingRecently,
+  deletePasteBuffer,
   listSessionNames,
   loadPasteBuffer,
   setPaneInputEnabled,
+  stripAnsi,
   submitPasteBuffer,
   submittedChatId,
-  deletePasteBuffer,
-} from "../tmux/tmux.ts";
-import type { ChatMessage, ChatTarget, MachineConfig, Session, TranscriptMessage } from "../types.ts";
-import { log } from "../util/log.ts";
-import { assistantEndedCurrentTurn, turnState, WHY_TEXT, type TurnState } from "./turnState.ts";
-import { lastSignOfLife } from "../events/observe.ts";
-import { paneWorkingSince } from "../events/paneActivity.ts";
-import { promptInvocation } from "../env.ts";
-import { formatChatInjection } from "./format.ts";
-import { replyRouteToSender } from "./replyRoute.ts";
-import { appendAck, loadAckedIds, loadCursors, loadLedger, saveCursors, type LedgerSlot } from "./store.ts";
-import { writeChatHold, clearChatHold, readLifecycle } from "../agent/sessionStatus.ts";
-import { chatTargetKey, managedPeer, managedPeerKey, principalLabel, targetLabel } from "./identity.ts";
-import { chatEnabledFor } from "../config/chat.ts";
-import { deliverCodexAppMessage } from "./codexApp.ts";
-import { isOwnedCodex } from "../agent/codex/ownedPaths.ts";
-import { deliverOwnedCodexPending } from "./ownedCodex.ts";
-import { hasNativeRuntime } from "../runtime/capabilities.ts";
-import { deliverNativeRuntimePending } from "./nativeRuntime.ts";
+} from '../tmux/tmux.ts';
+import type {
+  ChatMessage,
+  ChatTarget,
+  MachineConfig,
+  Session,
+  TranscriptMessage,
+} from '../types.ts';
+import { log } from '../util/log.ts';
+import { deliverCodexAppMessage } from './codexApp.ts';
+import { formatChatInjection } from './format.ts';
+import {
+  chatTargetKey,
+  managedPeer,
+  managedPeerKey,
+  principalLabel,
+  targetLabel,
+} from './identity.ts';
+import { deliverNativeRuntimePending } from './nativeRuntime.ts';
+import { deliverOwnedCodexPending } from './ownedCodex.ts';
+import { replyRouteToSender } from './replyRoute.ts';
+import {
+  appendAck,
+  type LedgerSlot,
+  loadAckedIds,
+  loadCursors,
+  loadLedger,
+  saveCursors,
+} from './store.ts';
+import { assistantEndedCurrentTurn, type TurnState, turnState, WHY_TEXT } from './turnState.ts';
 
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
@@ -40,7 +65,11 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_INBOUND = 12;
 
 /** Messages addressed to `name` sent within the window (by ledger `ts`). Pure — `nowMs` passed in. */
-export function recentInboundCount(recipient: ChatTarget, ledger: readonly LedgerSlot[], nowMs: number): number {
+export function recentInboundCount(
+  recipient: ChatTarget,
+  ledger: readonly LedgerSlot[],
+  nowMs: number,
+): number {
   let n = 0;
   for (const msg of ledger) {
     if (msg === null || chatTargetKey(msg.to) !== chatTargetKey(recipient)) continue;
@@ -63,7 +92,10 @@ async function deliverToPane(
   // Whether a reply would actually reach the sender is asked of the SAME resolver `msg` delivers
   // with — never re-derived here from one transport's map, which is how a live wire route came to be
   // announced as "no route back" while it was carrying mail.
-  const text = formatChatInjection(msg, { cli: promptInvocation(), reply: replyRouteToSender(m, msg.from) });
+  const text = formatChatInjection(msg, {
+    cli: promptInvocation(),
+    reply: replyRouteToSender(m, msg.from),
+  });
   const buffer = await loadPasteBuffer(m, text);
   if (buffer === null) return { submitted: false, hold: null };
   let inputDisabled = false;
@@ -73,8 +105,11 @@ async function deliverToPane(
     // This is the authoritative sample: client input is already gated and cannot change the
     // composer between classification and the paste+Enter command queue.
     const inspection = provider.inspectChatPane?.(await capturePaneStyled(m, name, 40));
-    if (inspection === undefined || inspection.state !== "deliverable") {
-      return { submitted: false, hold: inspection?.reason ?? "this provider cannot receive managed chat" };
+    if (inspection === undefined || inspection.state !== 'deliverable') {
+      return {
+        submitted: false,
+        hold: inspection?.reason ?? 'this provider cannot receive managed chat',
+      };
     }
     await beforeSubmit();
     const submitted = await submitPasteBuffer(m, name, buffer, msg.id);
@@ -119,47 +154,72 @@ export function readTurnState(
   const lm = lastTranscriptMessage(s, m);
   const activity = lastActivityMs(s, m);
   const lifecycle = readLifecycle(s.name);
-  const turnStartedMs = injected?.turnStartedMs ?? (lifecycle?.state === "working" ? lifecycle.ts : null);
-  const mt = lastSignOfLife(activity, scan.state === "working" ? nowMs : paneWorkingSince(m, s.name), turnStartedMs);
+  const turnStartedMs =
+    injected?.turnStartedMs ?? (lifecycle?.state === 'working' ? lifecycle.ts : null);
+  const mt = lastSignOfLife(
+    activity,
+    scan.state === 'working' ? nowMs : paneWorkingSince(m, s.name),
+    turnStartedMs,
+  );
   return turnState({
-    paneWorking: scan.state === "working",
+    paneWorking: scan.state === 'working',
     // `ready` is a HARD gate here, so it may only be trusted from a provider whose pane detectors are
     // calibrated. `chatDeliverable` is that marker: an agent that can say "this pane is safe to type
     // into" has had its chrome mapped; one that cannot has not. Treating an unreliable "not drawn" as
     // a permanent block would recreate the very hang this change removes, on another agent.
     paneReady: provider.inspectChatPane === undefined ? true : scan.ready,
     atMenu: scan.atPrompt !== null,
-    paneBlock: inspection?.state === "input-busy"
-      ? "input-occupied"
-      : inspection?.state === "unknown"
-        ? "unknown-pane"
-        : null,
-    endedOnAssistantText: injected?.assistantAnswered ?? assistantEndedCurrentTurn(lm, activity, turnStartedMs),
+    paneBlock:
+      inspection?.state === 'input-busy'
+        ? 'input-occupied'
+        : inspection?.state === 'unknown'
+          ? 'unknown-pane'
+          : null,
+    endedOnAssistantText:
+      injected?.assistantAnswered ?? assistantEndedCurrentTurn(lm, activity, turnStartedMs),
     msSinceActivity: mt === null ? null : nowMs - mt,
   });
 }
 
-export type ChatTurnProgress = "awaiting-pickup" | "running" | "answered" | "interrupted";
+export type ChatTurnProgress = 'awaiting-pickup' | 'running' | 'answered' | 'interrupted';
 
-export function chatTurnProgressFromMessages(messages: readonly TranscriptMessage[], messageId: string): ChatTurnProgress {
+export function chatTurnProgressFromMessages(
+  messages: readonly TranscriptMessage[],
+  messageId: string,
+): ChatTurnProgress {
   const marker = `id: ${messageId}`;
   let pickedUp = false;
   let lastAfterPickup: TranscriptMessage | null = null;
   for (const message of messages) {
-    if (!pickedUp && message.role === "user" && message.kind === "message" && message.text?.includes(marker) === true) {
+    if (
+      !pickedUp &&
+      message.role === 'user' &&
+      message.kind === 'message' &&
+      message.text?.includes(marker) === true
+    ) {
       pickedUp = true;
       continue;
     }
     if (pickedUp) lastAfterPickup = message;
   }
-  if (!pickedUp) return "awaiting-pickup";
-  if (lastAfterPickup?.role === "system" && lastAfterPickup.text?.includes("<turn_aborted>") === true) return "interrupted";
-  return lastAfterPickup?.role === "assistant" && lastAfterPickup.kind === "message" ? "answered" : "running";
+  if (!pickedUp) return 'awaiting-pickup';
+  if (
+    lastAfterPickup?.role === 'system' &&
+    lastAfterPickup.text?.includes('<turn_aborted>') === true
+  )
+    return 'interrupted';
+  return lastAfterPickup?.role === 'assistant' && lastAfterPickup.kind === 'message'
+    ? 'answered'
+    : 'running';
 }
 
 /** Provider-neutral normalized transcript proof for a pane-injected turn. Full history is read
  * because a tool-heavy turn may put thousands of records between the exact user marker and answer. */
-export function chatTurnProgress(m: MachineConfig, s: Session, messageId: string): ChatTurnProgress {
+export function chatTurnProgress(
+  m: MachineConfig,
+  s: Session,
+  messageId: string,
+): ChatTurnProgress {
   const messages = readTranscript(s, m, { tail: Number.MAX_SAFE_INTEGER }).messages;
   return chatTurnProgressFromMessages(messages, messageId);
 }
@@ -172,14 +232,17 @@ export function armTranscriptPickup(
   injectedAt: string,
 ): void {
   const conditional = isConditional(pick.msg);
-  cursors.pickups[recipientKey] = { messageId: pick.msg.id, injectedAt, ledgerIndex: pick.idx, conditional };
+  cursors.pickups[recipientKey] = {
+    messageId: pick.msg.id,
+    injectedAt,
+    ledgerIndex: pick.idx,
+    conditional,
+  };
   if (!conditional) {
     cursors.delivered[recipientKey] = pick.idx + 1;
     cursors.read[recipientKey] = Math.max(cursors.read[recipientKey] ?? 0, pick.idx + 1);
   }
 }
-
-
 
 /** A message is CONDITIONAL — delivered off the in-order cursor, tracked by id — when it is deferred
  *  or carries a notBefore. Everything else is IMMEDIATE and flows through the monotonic cursor. This
@@ -231,23 +294,35 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     if (hasNativeRuntime(s)) {
       try {
         const deliver = isOwnedCodex(s) ? deliverOwnedCodexPending : deliverNativeRuntimePending;
-        deliveries += await deliver(m, s, ledger, cursors, acked,
-          recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND, now);
+        deliveries += await deliver(
+          m,
+          s,
+          ledger,
+          cursors,
+          acked,
+          recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND,
+          now,
+        );
       } catch (error) {
-        log.warn({ msg: "native managed chat held", name: s.name, error: String(error) });
+        log.warn({ msg: 'native managed chat held', name: s.name, error: String(error) });
       }
       continue;
     }
     if (!provider.inspectChatPane) continue; // agent has no readiness detector → never inject (safe)
 
     const activePickup = cursors.pickups[recipientKey];
-    if (provider.chatPickup === "transcript" && activePickup !== undefined) {
+    if (provider.chatPickup === 'transcript' && activePickup !== undefined) {
       const progress = chatTurnProgress(m, s, activePickup.messageId);
-      if (progress !== "answered" && progress !== "interrupted") {
+      if (progress !== 'answered' && progress !== 'interrupted') {
         // The intent is durable before Enter. A restart in that window must not select a second
         // ledger item or immediately paste this one twice. If Enter never happened, a structurally
         // idle pane may retry only after the transcript has had a bounded chance to expose pickup.
-        if (progress === "running" || await submittedChatId(m, s.name) === activePickup.messageId || now - Date.parse(activePickup.injectedAt) < 15_000) continue;
+        if (
+          progress === 'running' ||
+          (await submittedChatId(m, s.name)) === activePickup.messageId ||
+          now - Date.parse(activePickup.injectedAt) < 15_000
+        )
+          continue;
         const activeMessage = ledger.find((slot) => slot?.id === activePickup.messageId);
         if (activeMessage === null || activeMessage === undefined) continue;
         const retry = await deliverToPane(m, s.name, activeMessage, provider, async () => {});
@@ -265,10 +340,16 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         assistantAnswered: true,
       });
       if (!pickupTurn.settled) continue;
-      if (activePickup.conditional) appendAck(m, activePickup.messageId, "daemon", recipient);
+      if (activePickup.conditional) appendAck(m, activePickup.messageId, 'daemon', recipient);
       else if (activePickup.ledgerIndex !== null) {
-        cursors.delivered[recipientKey] = Math.max(cursors.delivered[recipientKey] ?? 0, activePickup.ledgerIndex + 1);
-        cursors.read[recipientKey] = Math.max(cursors.read[recipientKey] ?? 0, activePickup.ledgerIndex + 1);
+        cursors.delivered[recipientKey] = Math.max(
+          cursors.delivered[recipientKey] ?? 0,
+          activePickup.ledgerIndex + 1,
+        );
+        cursors.read[recipientKey] = Math.max(
+          cursors.read[recipientKey] ?? 0,
+          activePickup.ledgerIndex + 1,
+        );
       }
       const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
       cursors.pickups = remaining;
@@ -282,7 +363,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     let immediate: { msg: ChatMessage; idx: number } | null = null;
     for (let i = from; i < ledger.length; i++) {
       const msg = ledger[i];
-      if (!msg || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== recipientKey) continue;
+      if (msg?.to.kind !== 'managed' || managedPeerKey(msg.to) !== recipientKey) continue;
       if (isConditional(msg)) continue; // owned by Track B
       immediate = { msg, idx: i };
       break;
@@ -299,7 +380,12 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     if (!immediate) {
       for (let i = 0; i < ledger.length; i++) {
         const msg = ledger[i];
-        if (!msg || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== recipientKey || !isConditional(msg)) continue;
+        if (
+          msg?.to.kind !== 'managed' ||
+          managedPeerKey(msg.to) !== recipientKey ||
+          !isConditional(msg)
+        )
+          continue;
         if (acked.has(msg.id) || !notBeforeDue(msg, now)) continue;
         conditional = { msg, idx: i };
         break;
@@ -310,15 +396,19 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     if (pick === null) continue; // nothing to deliver to s
 
     if (recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND) {
-      log.warn({ msg: "chat rate limit — holding delivery (possible loop)", to: s.name });
-      await writeChatHold(s.name, pick.msg.id, `rate limit — this recipient got more than ${RATE_MAX_INBOUND} messages in the last minute, delivery resumes as the burst subsides`);
+      log.warn({ msg: 'chat rate limit — holding delivery (possible loop)', to: s.name });
+      await writeChatHold(
+        s.name,
+        pick.msg.id,
+        `rate limit — this recipient got more than ${RATE_MAX_INBOUND} messages in the last minute, delivery resumes as the burst subsides`,
+      );
       continue; // hold; retries once the burst subsides
     }
     // ONE capture, with attributes kept. `inputBusy` needs them to tell a human's typing from
     // Claude's dim autosuggestion; every other detector reads the stripped text.
     const styled = await capturePaneStyled(m, s.name, 40);
     const inspection = provider.inspectChatPane(styled);
-    if (inspection.state !== "deliverable") {
+    if (inspection.state !== 'deliverable') {
       await writeChatHold(s.name, pick.msg.id, inspection.reason);
       continue;
     }
@@ -328,15 +418,19 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // the channel look dead for as long as you kept the pane open): an occupied composer, or a
     // keystroke in the last few seconds (guards the gap between two keys).
     if (await clientTypingRecently(m, s.name, TYPING_WINDOW_SEC)) {
-      log.info({ msg: "chat delivery held — human typed a moment ago", to: s.name, from: principalLabel(pick.msg.from) });
-      await writeChatHold(s.name, pick.msg.id, "a human typed in that pane a moment ago");
+      log.info({
+        msg: 'chat delivery held — human typed a moment ago',
+        to: s.name,
+        from: principalLabel(pick.msg.from),
+      });
+      await writeChatHold(s.name, pick.msg.id, 'a human typed in that pane a moment ago');
       continue;
     }
     const ts = readTurnState(m, s, provider, styled, now);
     // "The UI has not painted yet" blocks EVERY track, not just deferred mail: delivery acks what it
     // types, so a keystroke swallowed by a half-drawn pane is a letter marked delivered and never
     // seen. Immediate and time-delayed mail were just as losable there.
-    if (ts.why === "not-drawn") {
+    if (ts.why === 'not-drawn') {
       await writeChatHold(s.name, pick.msg.id, WHY_TEXT[ts.why]);
       continue;
     }
@@ -354,7 +448,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // window is narrow but it is a double-injection, not a lost letter, so it is worth one cheap read.
     if (isConditional(pick.msg) && loadAckedIds(m).has(pick.msg.id)) continue;
 
-    const transcriptPickup = provider.chatPickup === "transcript";
+    const transcriptPickup = provider.chatPickup === 'transcript';
     const delivery = await deliverToPane(m, s.name, pick.msg, provider, async () => {
       if (!transcriptPickup) return;
       armTranscriptPickup(cursors, recipientKey, pick, new Date(now).toISOString());
@@ -367,7 +461,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     if (!delivery.submitted) {
       // Nothing was typed (the session died mid-write). Acking here would bury the letter forever;
       // leaving it alone lets the next pass try again.
-      log.warn({ msg: "chat delivery failed — target vanished mid-write, not acked", to: s.name });
+      log.warn({ msg: 'chat delivery failed — target vanished mid-write, not acked', to: s.name });
       continue;
     }
     clearChatHold(s.name);
@@ -375,7 +469,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       // Cursor + exact barrier were persisted together before the atomic pane submission. Completion
       // clears the barrier only after transcript answer + structural settle.
     } else if (isConditional(pick.msg)) {
-      appendAck(m, pick.msg.id, "daemon", recipient); // off-cursor; dedup vs the Stop hook
+      appendAck(m, pick.msg.id, 'daemon', recipient); // off-cursor; dedup vs the Stop hook
     } else {
       cursors.delivered[recipientKey] = pick.idx + 1;
       // mark read so `ccmux inbox` won't re-show a pushed message
@@ -383,14 +477,19 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     }
     changed = true;
     deliveries += 1;
-    log.info({ msg: "chat delivered", from: principalLabel(pick.msg.from), to: s.name, conditional: isConditional(pick.msg) });
+    log.info({
+      msg: 'chat delivered',
+      from: principalLabel(pick.msg.from),
+      to: s.name,
+      conditional: isConditional(pick.msg),
+    });
   }
 
   // App threads are ledger peers but not tmux sessions. The shared App Server is their only writer
   // boundary; delivery uses the immutable client message id as its crash-safe pickup proof.
-  const appRecipients = new Map<string, Extract<ChatTarget, { kind: "codex-app" }>>();
+  const appRecipients = new Map<string, Extract<ChatTarget, { kind: 'codex-app' }>>();
   for (const slot of ledger) {
-    if (slot?.to.kind !== "codex-app" || slot.to.machine !== m.rcPrefix) continue;
+    if (slot?.to.kind !== 'codex-app' || slot.to.machine !== m.rcPrefix) continue;
     appRecipients.set(chatTargetKey(slot.to), slot.to);
   }
   for (const [recipientKey, recipient] of appRecipients) {
@@ -400,20 +499,35 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       const activeMessage = ledger.find((slot) => slot?.id === activePickup.messageId);
       if (activeMessage === null || activeMessage === undefined) continue;
       try {
-        const text = formatChatInjection(activeMessage, { cli: promptInvocation(), reply: replyRouteToSender(m, activeMessage.from) });
+        const text = formatChatInjection(activeMessage, {
+          cli: promptInvocation(),
+          reply: replyRouteToSender(m, activeMessage.from),
+        });
         const result = await deliverCodexAppMessage(m, activeMessage, text);
         if (!result.delivered) {
-          log.info({ msg: "Codex App chat pickup held", to: targetLabel(recipient), reason: result.reason });
+          log.info({
+            msg: 'Codex App chat pickup held',
+            to: targetLabel(recipient),
+            reason: result.reason,
+          });
           continue;
         }
-        if (activePickup.conditional) appendAck(m, activePickup.messageId, "daemon", recipient);
+        if (activePickup.conditional) appendAck(m, activePickup.messageId, 'daemon', recipient);
         const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
         cursors.pickups = remaining;
         await saveCursors(m, cursors);
         deliveries += 1;
-        log.info({ msg: "Codex App chat pickup completed", to: targetLabel(recipient), duplicate: result.duplicate });
+        log.info({
+          msg: 'Codex App chat pickup completed',
+          to: targetLabel(recipient),
+          duplicate: result.duplicate,
+        });
       } catch (error) {
-        log.warn({ msg: "Codex App chat pickup unavailable — barrier retained", to: targetLabel(recipient), error: error instanceof Error ? error.message : String(error) });
+        log.warn({
+          msg: 'Codex App chat pickup unavailable — barrier retained',
+          to: targetLabel(recipient),
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
       continue;
     }
@@ -443,12 +557,18 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const pick = immediate ?? conditional;
     if (pick === null) continue;
     if (recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND) {
-      log.warn({ msg: "chat rate limit — holding App delivery (possible loop)", to: targetLabel(recipient) });
+      log.warn({
+        msg: 'chat rate limit — holding App delivery (possible loop)',
+        to: targetLabel(recipient),
+      });
       continue;
     }
     if (isConditional(pick.msg) && loadAckedIds(m).has(pick.msg.id)) continue;
     try {
-      const text = formatChatInjection(pick.msg, { cli: promptInvocation(), reply: replyRouteToSender(m, pick.msg.from) });
+      const text = formatChatInjection(pick.msg, {
+        cli: promptInvocation(),
+        reply: replyRouteToSender(m, pick.msg.from),
+      });
       armTranscriptPickup(cursors, recipientKey, pick, new Date(now).toISOString());
       await saveCursors(m, cursors);
       // This barrier was created in this process immediately before the first submission, so there
@@ -456,17 +576,31 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       // and performs the persisted client-id proof before it retries.
       const result = await deliverCodexAppMessage(m, pick.msg, text, undefined, async () => false);
       if (!result.delivered) {
-        log.info({ msg: "Codex App chat delivery held", to: targetLabel(recipient), from: principalLabel(pick.msg.from), reason: result.reason });
+        log.info({
+          msg: 'Codex App chat delivery held',
+          to: targetLabel(recipient),
+          from: principalLabel(pick.msg.from),
+          reason: result.reason,
+        });
         continue;
       }
-      if (isConditional(pick.msg)) appendAck(m, pick.msg.id, "daemon", recipient);
+      if (isConditional(pick.msg)) appendAck(m, pick.msg.id, 'daemon', recipient);
       const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
       cursors.pickups = remaining;
       changed = true;
       deliveries += 1;
-      log.info({ msg: "chat delivered to Codex App", from: principalLabel(pick.msg.from), to: targetLabel(recipient), duplicate: result.duplicate });
+      log.info({
+        msg: 'chat delivered to Codex App',
+        from: principalLabel(pick.msg.from),
+        to: targetLabel(recipient),
+        duplicate: result.duplicate,
+      });
     } catch (error) {
-      log.warn({ msg: "Codex App chat delivery unavailable — not acked", to: targetLabel(recipient), error: error instanceof Error ? error.message : String(error) });
+      log.warn({
+        msg: 'Codex App chat delivery unavailable — not acked',
+        to: targetLabel(recipient),
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

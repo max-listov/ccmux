@@ -1,14 +1,23 @@
-import { forwardIfRemote } from "../fleet/forward.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { loadMachineConfig } from "../config/machine.ts";
-import { loadLedger, loadCursors, loadAckedIds, unreadFor, markRead, fmtMessage, unreadableCount, OWNER } from "../chat/store.ts";
-import { outstandingLines } from "./relay.ts";
-import { providerFor } from "../agent/index.ts";
-import { holdReason } from "../chat/holdReason.ts";
-import { readChatHold } from "../agent/sessionStatus.ts";
-import { listSessionNames } from "../tmux/tmux.ts";
-import { managedPeer } from "../chat/identity.ts";
-import { chatEnabledFor } from "../config/chat.ts";
+import { providerFor } from '../agent/index.ts';
+import { readChatHold } from '../agent/sessionStatus.ts';
+import { holdReason } from '../chat/holdReason.ts';
+import { managedPeer } from '../chat/identity.ts';
+import {
+  fmtMessage,
+  loadAckedIds,
+  loadCursors,
+  loadLedger,
+  markRead,
+  OWNER,
+  unreadableCount,
+  unreadFor,
+} from '../chat/store.ts';
+import { chatEnabledFor } from '../config/chat.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import { forwardIfRemote } from '../fleet/forward.ts';
+import { listSessionNames } from '../tmux/tmux.ts';
+import { outstandingLines } from './relay.ts';
 
 /**
  * Show a session's still-undelivered chat and, for each message, WHY it hasn't landed yet.
@@ -23,19 +32,19 @@ import { chatEnabledFor } from "../config/chat.ts";
  */
 export async function cmdInbox(args: string[]): Promise<number> {
   const self = process.env.CCMUX_SESSION;
-  const peek = args.includes("--peek");
-  let name = args.find((a) => !a.startsWith("--")) ?? self;
-  if (name === undefined || name === "") {
+  const peek = args.includes('--peek');
+  let name = args.find((a) => !a.startsWith('--')) ?? self;
+  if (name === undefined || name === '') {
     // Asked from a shell rather than from inside a session. There is no per-session inbox to show,
     // but there IS a machine-wide question worth answering — what has been sent outside the fleet
     // and not come back — and answering it beats printing usage and nothing else.
     const outstanding = outstandingLines(loadMachineConfig());
     for (const line of outstanding) console.log(line);
-    if (outstanding.length > 0) console.log("");
-    console.log("usage: ccmux inbox <name> [--peek]   (name defaults to CCMUX_SESSION)");
+    if (outstanding.length > 0) console.log('');
+    console.log('usage: ccmux inbox <name> [--peek]   (name defaults to CCMUX_SESSION)');
     return outstanding.length > 0 ? 0 : 1;
   }
-  const fwd = await forwardIfRemote(name, "inbox", peek ? ["--peek"] : []);
+  const fwd = await forwardIfRemote(name, 'inbox', peek ? ['--peek'] : []);
   if (fwd.done) return fwd.code;
   const m = fwd.m;
   name = fwd.session;
@@ -55,7 +64,9 @@ export async function cmdInbox(args: string[]): Promise<number> {
   for (const line of outstandingLines(m)) console.log(line);
   const unreadable = unreadableCount(ledger);
   if (unreadable > 0) {
-    console.log(`(${unreadable} record(s) in the ledger were written by a newer ccmux and cannot be read here — upgrade this machine to see them)`);
+    console.log(
+      `(${unreadable} record(s) in the ledger were written by a newer ccmux and cannot be read here — upgrade this machine to see them)`,
+    );
   }
   if (unread.length === 0) {
     console.log(`(${name}: no unread messages)`);

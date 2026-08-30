@@ -8,11 +8,11 @@
 // Rotation: size-based at write time, ccmux.log → .1 → .2 (≈5MB × 3 ≈ 15MB cap) — fixed
 // sane bounds, intentionally NOT config (a runaway log should never eat a server disk).
 
-import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { STATE_DIR, LOG_FILE } from "../config/paths.ts";
-import { IS_DEV } from "../env.ts";
+import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { LOG_FILE, STATE_DIR } from '../config/paths.ts';
+import { IS_DEV } from '../env.ts';
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type Fields = { msg: string } & Record<string, unknown>;
 
 const SEVERITY: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
@@ -20,8 +20,9 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const KEEP = 2; // rotated generations: .1, .2
 
 export { LOG_FILE };
+
 let stderrOn = true; // daemon/CLI mirror to stderr; the TUI turns this off
-let threshold: LogLevel = "info";
+let threshold: LogLevel = 'info';
 let dirReady = false;
 
 /** TUI calls this before rendering Ink: file-only, no stderr (which would corrupt the UI). */
@@ -72,14 +73,14 @@ function writeFile(line: string): void {
 
 function emit(level: LogLevel, fields: Fields): void {
   if (SEVERITY[level] < SEVERITY[threshold]) return;
-  const line = `${JSON.stringify({ ts: new Date().toISOString(), pid: process.pid, src: IS_DEV ? "dev" : "prod", level, ...fields })}\n`;
+  const line = `${JSON.stringify({ ts: new Date().toISOString(), pid: process.pid, src: IS_DEV ? 'dev' : 'prod', level, ...fields })}\n`;
   writeFile(line);
   if (stderrOn) process.stderr.write(line);
 }
 
 export const log = {
-  debug: (fields: Fields) => emit("debug", fields),
-  info: (fields: Fields) => emit("info", fields),
-  warn: (fields: Fields) => emit("warn", fields),
-  error: (fields: Fields) => emit("error", fields),
+  debug: (fields: Fields) => emit('debug', fields),
+  info: (fields: Fields) => emit('info', fields),
+  warn: (fields: Fields) => emit('warn', fields),
+  error: (fields: Fields) => emit('error', fields),
 };

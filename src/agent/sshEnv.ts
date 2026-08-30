@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync } from 'node:fs';
 
 /**
  * A supervised session outlives the login that created it. `SSH_AUTH_SOCK` does not: it names the
@@ -18,12 +18,12 @@ import { existsSync } from "node:fs";
  * that is already dead is dropped, because a dead one cannot be anybody's credential, and leaving it
  * in place actively prevents ssh from trying the path the config maintains.
  */
-const CONNECTION_SCOPED = ["SSH_AUTH_SOCK", "SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"] as const;
+const CONNECTION_SCOPED = ['SSH_AUTH_SOCK', 'SSH_CONNECTION', 'SSH_CLIENT', 'SSH_TTY'] as const;
 
 /** Whether this environment's agent socket is already gone. */
 export function staleAgentSocket(env: Record<string, string>): boolean {
   const sock = env.SSH_AUTH_SOCK;
-  return sock !== undefined && sock !== "" && !existsSync(sock);
+  return sock !== undefined && sock !== '' && !existsSync(sock);
 }
 
 /**

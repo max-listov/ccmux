@@ -1,25 +1,30 @@
-import { existsSync } from "node:fs";
-import { loadMachineConfig } from "../config/machine.ts";
-import { run } from "../util/spawn.ts";
-import { APP_BUNDLE, CACHE_DIR, DATA_DIR, chatAuthPath } from "../config/paths.ts";
-import { loadSessions } from "../config/sessions.ts";
-import { providerFor } from "../agent/index.ts";
-import { collectRows } from "./list.ts";
-import type { MachineConfig } from "../types.ts";
-import { VERSION } from "../util/version.ts";
-import { checkFleet, peersOf } from "../fleet/transport.ts";
-import { wireSocketPath } from "../fleet/wire.ts";
-import { SELF_DISPLAY, promptInvocation, PLATFORM, HOME, UID } from "../env.ts";
-import { escalationRefusal } from "../agent/claude/launch.ts";
-import { chatEnabledFor } from "../config/chat.ts";
-import { loadAckedIds, loadCursors, loadLedger, unreadFor, unreadableCount } from "../chat/store.ts";
-import { STALLED_HOLD_MS, holdReason } from "../chat/holdReason.ts";
-import { managedPeer } from "../chat/identity.ts";
-import { readChatHold } from "../agent/sessionStatus.ts";
-import { launchInputsFor } from "../agent/launchStamp.ts";
-import { envFilePath, envInput, inheritedEnvInput } from "../agent/launchInputs.ts";
-import { inheritsUndeclaredEnv } from "../agent/sessionEnv.ts";
-import { readLaunchStamp } from "../agent/sessionStatus.ts";
+import { existsSync } from 'node:fs';
+import { escalationRefusal } from '../agent/claude/launch.ts';
+import { providerFor } from '../agent/index.ts';
+import { envFilePath, envInput, inheritedEnvInput } from '../agent/launchInputs.ts';
+import { launchInputsFor } from '../agent/launchStamp.ts';
+import { inheritsUndeclaredEnv } from '../agent/sessionEnv.ts';
+import { readChatHold, readLaunchStamp } from '../agent/sessionStatus.ts';
+import { holdReason, STALLED_HOLD_MS } from '../chat/holdReason.ts';
+import { managedPeer } from '../chat/identity.ts';
+import {
+  loadAckedIds,
+  loadCursors,
+  loadLedger,
+  unreadableCount,
+  unreadFor,
+} from '../chat/store.ts';
+import { chatEnabledFor } from '../config/chat.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { APP_BUNDLE, CACHE_DIR, chatAuthPath, DATA_DIR } from '../config/paths.ts';
+import { loadSessions } from '../config/sessions.ts';
+import { HOME, PLATFORM, promptInvocation, SELF_DISPLAY, UID } from '../env.ts';
+import { checkFleet, peersOf } from '../fleet/transport.ts';
+import { wireSocketPath } from '../fleet/wire.ts';
+import type { MachineConfig } from '../types.ts';
+import { run } from '../util/spawn.ts';
+import { VERSION } from '../util/version.ts';
+import { collectRows } from './list.ts';
 
 /** Sessions currently stranded at a blocking menu. Read through the same row builder `list` uses,
  *  so the two can never disagree about who is waiting. */
@@ -38,22 +43,25 @@ function bundlePresent(): boolean {
 }
 
 /** Is the boot daemon registered + running? launchd on macOS, systemd on Linux. */
-async function daemonState(os: NodeJS.Platform, bootLabel: string): Promise<{ manager: string | null; state: string }> {
-  if (os === "darwin") {
-    const { code, stdout } = await run(["launchctl", "list"]);
-    if (code !== 0) return { manager: "launchd", state: "unknown" };
-    const active = stdout.split("\n").some((l) => l.trim().endsWith(bootLabel));
-    return { manager: "launchd", state: active ? "active" : "inactive" };
+async function daemonState(
+  os: NodeJS.Platform,
+  bootLabel: string,
+): Promise<{ manager: string | null; state: string }> {
+  if (os === 'darwin') {
+    const { code, stdout } = await run(['launchctl', 'list']);
+    if (code !== 0) return { manager: 'launchd', state: 'unknown' };
+    const active = stdout.split('\n').some((l) => l.trim().endsWith(bootLabel));
+    return { manager: 'launchd', state: active ? 'active' : 'inactive' };
   }
-  if (os === "linux") {
-    const { stdout } = await run(["systemctl", "is-active", bootLabel]);
-    return { manager: "systemd", state: stdout.trim() || "unknown" };
+  if (os === 'linux') {
+    const { stdout } = await run(['systemctl', 'is-active', bootLabel]);
+    return { manager: 'systemd', state: stdout.trim() || 'unknown' };
   }
-  return { manager: null, state: "unknown" };
+  return { manager: null, state: 'unknown' };
 }
 
 export async function cmdDoctor(args: string[]): Promise<number> {
-  const json = args.includes("--json");
+  const json = args.includes('--json');
   const m = loadMachineConfig();
   const configFile = process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`;
   const claudeOk = existsSync(m.claudeBin);
@@ -75,7 +83,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // Without it every wire peer reads as "unreachable", which sends the reader looking at the far
   // machine for a fault that is on this one.
   const wireSocket = wireSocketPath(m);
-  const wireExpected = peers.some((p) => p.via === "wire");
+  const wireExpected = peers.some((p) => p.via === 'wire');
   const wireReady = wireSocket !== null && existsSync(wireSocket);
   // What shapes these sessions besides argv: the agents' external files, and the environment the
   // supervisor's own runtime mixes in from each session directory. Both were invisible until now,
@@ -108,7 +116,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         // Names, never values — an agent reading this is exactly the consumer that would otherwise
         // paste a secret somewhere.
         sessionEnv: inherited,
-        sessionEnvMigrationPending: inherited.filter((o) => o.kind === "inherited").length,
+        sessionEnvMigrationPending: inherited.filter((o) => o.kind === 'inherited').length,
         launchInputs: external,
         daemon,
       }),
@@ -127,34 +135,42 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   console.log(`cache:      ${CACHE_DIR}`);
   console.log(`rc prefix:  ${m.rcPrefix}`);
   console.log(`boot label: ${m.bootLabel}`);
-  console.log(`claude: ${m.claudeBin} (${claudeOk ? "ok" : "missing"})`);
-  console.log(`codex:  ${m.codexBin ?? "—"} (${m.codexBin ? (codexOk ? "ok" : "missing") : "not set"})`);
-  console.log(`tmux:   ${m.tmuxBin} (${tmuxOk ? "ok" : "missing"})`);
+  console.log(`claude: ${m.claudeBin} (${claudeOk ? 'ok' : 'missing'})`);
+  console.log(
+    `codex:  ${m.codexBin ?? '—'} (${m.codexBin ? (codexOk ? 'ok' : 'missing') : 'not set'})`,
+  );
+  console.log(`tmux:   ${m.tmuxBin} (${tmuxOk ? 'ok' : 'missing'})`);
   if (fleetChecks.length > 0) {
-    console.log("fleet:");
+    console.log('fleet:');
     for (const c of fleetChecks) {
-      const mark = c.ok ? "ok" : c.reachable ? "PROBLEM" : "unreachable";
-      const route = c.via === "wire" ? "via wire" : `→ ${c.alias}`;
-      console.log(`  ${c.machine} ${route} (${mark})${c.ok ? "" : ` — ${c.detail}`}`);
+      const mark = c.ok ? 'ok' : c.reachable ? 'PROBLEM' : 'unreachable';
+      const route = c.via === 'wire' ? 'via wire' : `→ ${c.alias}`;
+      console.log(`  ${c.machine} ${route} (${mark})${c.ok ? '' : ` — ${c.detail}`}`);
     }
     if (selfLabelled) {
-      console.log(`  PROBLEM — '${m.rcPrefix}' is this machine's own rcPrefix, so '${m.rcPrefix}:<session>' always resolves LOCALLY and that entry is dead. Give each machine a distinct rcPrefix.`);
+      console.log(
+        `  PROBLEM — '${m.rcPrefix}' is this machine's own rcPrefix, so '${m.rcPrefix}:<session>' always resolves LOCALLY and that entry is dead. Give each machine a distinct rcPrefix.`,
+      );
     }
   }
   if (wireExpected) {
-    console.log(`wire:   ${wireReady ? `agent socket ${wireSocket}` : `PROBLEM — no agent socket at ${wireSocket ?? "(unknown)"}; start 'stitchwire agent' on this machine`}`);
+    console.log(
+      `wire:   ${wireReady ? `agent socket ${wireSocket}` : `PROBLEM — no agent socket at ${wireSocket ?? '(unknown)'}; start 'stitchwire agent' on this machine`}`,
+    );
   }
   const unhonourable = unhonourableModes(m, UID === 0);
   if (unhonourable.length > 0) {
-    console.log(`perms:  PROBLEM — configured but impossible here: ${unhonourable.join(", ")}`);
-    console.log(`        ${escalationRefusal("bypassPermissions", true) ?? ""}`);
+    console.log(`perms:  PROBLEM — configured but impossible here: ${unhonourable.join(', ')}`);
+    console.log(`        ${escalationRefusal('bypassPermissions', true) ?? ''}`);
   }
   const muted = mutedChatSessions(m);
   if (muted.length > 0) {
     console.log(
-      `chat:   PROBLEM — ${muted.length} session(s) can receive but NOT send (started before the send capability existed): ${muted.join(", ")}`,
+      `chat:   PROBLEM — ${muted.length} session(s) can receive but NOT send (started before the send capability existed): ${muted.join(', ')}`,
     );
-    console.log(`        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`);
+    console.log(
+      `        fix: ccmux restart ${muted[0]}   (the capability is handed out at launch)`,
+    );
   }
   // Mail that is held rather than delivered is invisible from the sending side by construction: the
   // send succeeded, and everything after that happens on this machine. A stall therefore has to be
@@ -163,9 +179,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   try {
     const stuck = stalledMail(m);
     if (stuck.length > 0) {
-      console.log(`chat:   ${stuck.length} message(s) held longer than ${Math.round(STALLED_HOLD_MS / 60_000)} minutes and not delivered:`);
+      console.log(
+        `chat:   ${stuck.length} message(s) held longer than ${Math.round(STALLED_HOLD_MS / 60_000)} minutes and not delivered:`,
+      );
       for (const s of stuck) console.log(`        ${s.session} — ${s.reason}`);
-      console.log(`        the mail is not lost; nothing will move it until that condition clears. See: ccmux inbox <session>`);
+      console.log(
+        `        the mail is not lost; nothing will move it until that condition clears. See: ccmux inbox <session>`,
+      );
     }
   } catch {
     // diagnosis is a courtesy — never fail the check that reports it
@@ -176,54 +196,86 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   try {
     const unreadable = unreadableCount(loadLedger(m));
     if (unreadable > 0) {
-      console.log(`chat:   ${unreadable} ledger record(s) this ccmux cannot read — written by a newer build.`);
-      console.log(`        Not an error and nothing is lost: they are stepped over, their positions kept, and this machine reads them once it is upgraded.`);
+      console.log(
+        `chat:   ${unreadable} ledger record(s) this ccmux cannot read — written by a newer build.`,
+      );
+      console.log(
+        `        Not an error and nothing is lost: they are stepped over, their positions kept, and this machine reads them once it is upgraded.`,
+      );
     }
   } catch (e) {
     console.log(`chat:   PROBLEM — the ledger could not be read: ${String(e)}`);
   }
   if (external.length > 0) {
-    console.log("inputs: what shapes a session besides argv (hashed; a change here shows in RESTART)");
+    console.log(
+      'inputs: what shapes a session besides argv (hashed; a change here shows in RESTART)',
+    );
     for (const o of external) {
-      const spread = o.variants > 1 ? `, ${o.variants} distinct configurations, e.g.` : " —";
+      const spread = o.variants > 1 ? `, ${o.variants} distinct configurations, e.g.` : ' —';
       console.log(`        ${o.reason.padEnd(6)} ${o.sessions} session(s)${spread} ${o.example}`);
     }
   }
-  const stillInheriting = inherited.filter((o) => o.kind === "inherited");
-  const declaredEnv = inherited.filter((o) => o.kind === "declared");
+  const stillInheriting = inherited.filter((o) => o.kind === 'inherited');
+  const declaredEnv = inherited.filter((o) => o.kind === 'declared');
   if (declaredEnv.length > 0) {
     console.log(`env:    ${declaredEnv.length} session(s) declare an env file:`);
     for (const o of declaredEnv) {
-      const note = o.missing ? " — MISSING; the session starts without it" : o.drifted ? " — file changed since launch, restart to pick it up" : "";
-      console.log(`        ${o.name} — ${o.keys.length} name(s) from ${o.paths.join(", ")}${note}`);
+      const note = o.missing
+        ? ' — MISSING; the session starts without it'
+        : o.drifted
+          ? ' — file changed since launch, restart to pick it up'
+          : '';
+      console.log(`        ${o.name} — ${o.keys.length} name(s) from ${o.paths.join(', ')}${note}`);
     }
   }
   if (stillInheriting.length > 0) {
     // A PROBLEM because it is one, and a FINITE one: these are sessions started before the recipe
     // shipped. Naming the exact command to end it is the difference between a report and a chore.
-    console.log(`env:    PROBLEM — ${stillInheriting.length} session(s) still run on an UNDECLARED env file from their own directory:`);
+    console.log(
+      `env:    PROBLEM — ${stillInheriting.length} session(s) still run on an UNDECLARED env file from their own directory:`,
+    );
     for (const o of stillInheriting) {
-      console.log(`        ${o.name} — ${o.keys.length} name(s) from ${o.paths.join(", ")}${o.drifted ? " (file changed since launch — the session still has the old values)" : ""}`);
+      console.log(
+        `        ${o.name} — ${o.keys.length} name(s) from ${o.paths.join(', ')}${o.drifted ? ' (file changed since launch — the session still has the old values)' : ''}`,
+      );
       if (o.keys.length > 0) console.log(`          ${sampleNames(o.keys)}`);
     }
-    console.log("        These were started before the environment became a declared recipe: the runtime loaded those files");
-    console.log("        into the supervisor and the launcher passed them to the agent — and to every process it spawns.");
-    console.log("        A restart now would take them away, so declare them first if they are needed:");
-    console.log("        fix: ccmux env-file --adopt --dry-run   (then without --dry-run, then restart)");
-    console.log("        Names only are shown here; values are never read into any diagnostic.");
+    console.log(
+      '        These were started before the environment became a declared recipe: the runtime loaded those files',
+    );
+    console.log(
+      '        into the supervisor and the launcher passed them to the agent — and to every process it spawns.',
+    );
+    console.log(
+      '        A restart now would take them away, so declare them first if they are needed:',
+    );
+    console.log(
+      '        fix: ccmux env-file --adopt --dry-run   (then without --dry-run, then restart)',
+    );
+    console.log('        Names only are shown here; values are never read into any diagnostic.');
   }
   const waiting = await sessionsAtPrompt(m);
   if (waiting.length > 0) {
-    console.log(`prompt: PROBLEM — ${waiting.length} session(s) sitting at a menu, unable to act until it is answered:`);
+    console.log(
+      `prompt: PROBLEM — ${waiting.length} session(s) sitting at a menu, unable to act until it is answered:`,
+    );
     for (const w of waiting) console.log(`        ${w.name} — ${w.question}`);
-    console.log("        These read as 'idle' to every other signal. Answer in the pane, or set trustPrompt in machine.json so the supervisor answers the ones it is allowed to.");
+    console.log(
+      "        These read as 'idle' to every other signal. Answer in the pane, or set trustPrompt in machine.json so the supervisor answers the ones it is allowed to.",
+    );
   }
   if (!bundlePresent()) {
-    console.log(`bundle: PROBLEM — nothing at ${APP_BUNDLE}, which is what the boot unit and the 'ccmux' shim both launch.`);
-    console.log("        A running daemon serves from memory, so the fleet looks healthy until something restarts it.");
-    console.log("        fix: ccmux update   (restores it), or reinstall: curl -fsSL <releaseUrl>/../install.sh | bash");
+    console.log(
+      `bundle: PROBLEM — nothing at ${APP_BUNDLE}, which is what the boot unit and the 'ccmux' shim both launch.`,
+    );
+    console.log(
+      '        A running daemon serves from memory, so the fleet looks healthy until something restarts it.',
+    );
+    console.log(
+      '        fix: ccmux update   (restores it), or reinstall: curl -fsSL <releaseUrl>/../install.sh | bash',
+    );
   }
-  console.log(`daemon: ${daemon.state}${daemon.manager ? ` (${daemon.manager})` : ""}`);
+  console.log(`daemon: ${daemon.state}${daemon.manager ? ` (${daemon.manager})` : ''}`);
   return 0;
 }
 
@@ -279,9 +331,13 @@ export function mutedChatSessions(m: MachineConfig): string[] {
  */
 export function unhonourableModes(m: MachineConfig, isRoot: boolean): string[] {
   const out: string[] = [];
-  if (escalationRefusal(m.permissionMode, isRoot, m.allowEscalatedUnderRoot) !== null) out.push(`machine default '${m.permissionMode}'`);
+  if (escalationRefusal(m.permissionMode, isRoot, m.allowEscalatedUnderRoot) !== null)
+    out.push(`machine default '${m.permissionMode}'`);
   for (const s of loadSessions(m)) {
-    if (s.permissionMode !== undefined && escalationRefusal(s.permissionMode, isRoot, m.allowEscalatedUnderRoot) !== null) {
+    if (
+      s.permissionMode !== undefined &&
+      escalationRefusal(s.permissionMode, isRoot, m.allowEscalatedUnderRoot) !== null
+    ) {
       out.push(`${s.name} → '${s.permissionMode}'`);
     }
   }
@@ -310,7 +366,7 @@ export interface EnvOrigin {
   name: string;
   /** `declared` — the session names its own file. `inherited` — it is still running on an undeclared
    *  one and will lose those variables when it restarts. */
-  kind: "declared" | "inherited";
+  kind: 'declared' | 'inherited';
   paths: readonly string[];
   keys: readonly string[];
   /** The file changed after this session launched — it is running yesterday's values. */
@@ -329,7 +385,7 @@ export function envOrigins(m: MachineConfig): EnvOrigin[] {
       const input = envInput(s);
       out.push({
         name: s.name,
-        kind: "declared",
+        kind: 'declared',
         paths: [declared],
         keys: input.keys ?? [],
         drifted: stamped !== undefined && stamped !== null && stamped !== input.digest,
@@ -341,7 +397,14 @@ export function envOrigins(m: MachineConfig): EnvOrigin[] {
     // about the same set of sessions.
     if (!inheritsUndeclaredEnv(s, readLaunchStamp(s.name), process.env.NODE_ENV)) continue;
     const inherited = inheritedEnvInput(s.dir, process.env.NODE_ENV);
-    out.push({ name: s.name, kind: "inherited", paths: inherited.paths, keys: inherited.keys ?? [], drifted: stamped != null && stamped !== inherited.digest, missing: false });
+    out.push({
+      name: s.name,
+      kind: 'inherited',
+      paths: inherited.paths,
+      keys: inherited.keys ?? [],
+      drifted: stamped != null && stamped !== inherited.digest,
+      missing: false,
+    });
   }
   return out;
 }
@@ -368,9 +431,14 @@ export function externalInputOrigins(m: MachineConfig): InputOrigin[] {
   for (const s of loadSessions(m)) {
     if (s.archived) continue;
     for (const input of launchInputsFor(s, m)) {
-      if (input.reason === "env") continue; // reported in full by envOrigins, with its own warning
+      if (input.reason === 'env') continue; // reported in full by envOrigins, with its own warning
       const hit = byReason.get(input.reason);
-      if (hit === undefined) byReason.set(input.reason, { sessions: 1, labels: new Set([input.label]), example: input.label });
+      if (hit === undefined)
+        byReason.set(input.reason, {
+          sessions: 1,
+          labels: new Set([input.label]),
+          example: input.label,
+        });
       else {
         hit.sessions += 1;
         hit.labels.add(input.label);
@@ -378,7 +446,12 @@ export function externalInputOrigins(m: MachineConfig): InputOrigin[] {
     }
   }
   return [...byReason.entries()]
-    .map(([reason, v]) => ({ reason, sessions: v.sessions, variants: v.labels.size, example: v.example }))
+    .map(([reason, v]) => ({
+      reason,
+      sessions: v.sessions,
+      variants: v.labels.size,
+      example: v.example,
+    }))
     .sort((a, b) => a.reason.localeCompare(b.reason));
 }
 
@@ -386,6 +459,6 @@ const NAME_SAMPLE = 8;
 
 /** `FOO, BAR, … (+12 more)` — enough to recognise what is being carried without printing a wall. */
 export function sampleNames(keys: readonly string[]): string {
-  const shown = keys.slice(0, NAME_SAMPLE).join(", ");
+  const shown = keys.slice(0, NAME_SAMPLE).join(', ');
   return keys.length > NAME_SAMPLE ? `${shown} (+${keys.length - NAME_SAMPLE} more)` : shown;
 }

@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
-import { z } from "zod";
-import type { MachineConfig } from "../types.ts";
-import type { RemoteResult } from "./transport.ts";
-import { callWireDoor } from "./wireDoor.ts";
+import { existsSync } from 'node:fs';
+import { z } from 'zod';
+import type { MachineConfig } from '../types.ts';
+import type { RemoteResult } from './transport.ts';
+import { callWireDoor } from './wireDoor.ts';
 
 /**
  * The second transport: a call handed to the local stitchwire agent instead of to ssh.
@@ -41,23 +41,23 @@ const WireResultSchema = z.object({
   // because that door's shape is the one this schema was written against.
   v: z.number().int().optional(),
   code: z.number(),
-  stdout: z.string().default(""),
-  stderr: z.string().default(""),
-  failure: z.string().default("none"),
+  stdout: z.string().default(''),
+  stderr: z.string().default(''),
+  failure: z.string().default('none'),
   /** WHAT KIND of no: `policy` and `request` are permanent, `capacity` is temporary. Absent on an
    *  older door, in which case the kind is simply unknown and nothing is inferred. */
   refusal: z.string().optional(),
   retryAfterMs: z.number().nullable().optional(),
-  detail: z.string().default(""),
+  detail: z.string().default(''),
   truncated: z.boolean().default(false),
 });
 
 /** A refusal that will refuse identically forever, or `undefined` when this door cannot say.
  *  `capacity` is deliberately NOT permanent: it is the one the retry window exists for. */
 export function refusalIsPermanent(refusal: string | undefined): boolean | undefined {
-  if (refusal === undefined || refusal === "none") return undefined;
-  if (refusal === "capacity") return false;
-  if (refusal === "policy" || refusal === "request") return true;
+  if (refusal === undefined || refusal === 'none') return undefined;
+  if (refusal === 'capacity') return false;
+  if (refusal === 'policy' || refusal === 'request') return true;
   return undefined;
 }
 
@@ -89,10 +89,10 @@ export async function runWire(
   if (socket === null || !existsSync(socket)) {
     return {
       code: 1,
-      stdout: "",
-      stderr: "",
+      stdout: '',
+      stderr: '',
       transportFailed: true,
-      failureDetail: `no stitchwire agent socket at ${socket ?? "(unknown path)"} — is 'stitchwire agent' running here?`,
+      failureDetail: `no stitchwire agent socket at ${socket ?? '(unknown path)'} — is 'stitchwire agent' running here?`,
     };
   }
 
@@ -110,11 +110,23 @@ export async function runWire(
     response = result.response;
     body = result.body;
   } catch (e) {
-    return { code: 1, stdout: "", stderr: "", transportFailed: true, failureDetail: `stitchwire agent did not answer: ${String(e)}` };
+    return {
+      code: 1,
+      stdout: '',
+      stderr: '',
+      transportFailed: true,
+      failureDetail: `stitchwire agent did not answer: ${String(e)}`,
+    };
   }
 
   if (!response.ok) {
-    return { code: 1, stdout: "", stderr: "", transportFailed: true, failureDetail: `stitchwire agent returned HTTP ${response.status}: ${body.slice(0, 200)}` };
+    return {
+      code: 1,
+      stdout: '',
+      stderr: '',
+      transportFailed: true,
+      failureDetail: `stitchwire agent returned HTTP ${response.status}: ${body.slice(0, 200)}`,
+    };
   }
 
   let parsed: z.infer<typeof WireResultSchema> | undefined;
@@ -124,7 +136,13 @@ export async function runWire(
     parsed = undefined;
   }
   if (parsed === undefined) {
-    return { code: 1, stdout: "", stderr: "", transportFailed: true, failureDetail: "stitchwire agent returned an unreadable result" };
+    return {
+      code: 1,
+      stdout: '',
+      stderr: '',
+      transportFailed: true,
+      failureDetail: 'stitchwire agent returned an unreadable result',
+    };
   }
 
   if (parsed.v !== undefined && parsed.v !== DOOR_API_VERSION) {
@@ -132,8 +150,8 @@ export async function runWire(
     // fixable statement, while a parse error about a healthy agent is a wild goose chase.
     return {
       code: 1,
-      stdout: "",
-      stderr: "",
+      stdout: '',
+      stderr: '',
       transportFailed: true,
       failureDetail: `the local stitchwire agent speaks door API v${parsed.v}, this ccmux understands v${DOOR_API_VERSION} — upgrade whichever is older`,
       permanent: true,
@@ -142,7 +160,7 @@ export async function runWire(
   // A refusal is NOT the command's verdict, and must never be reported as one. `denied` in
   // particular is a policy answer: the command was never run, so an exit code from it would be
   // fiction — the same distinction ssh's exit 255 draws, made explicit instead of inferred.
-  if (parsed.failure !== "none") {
+  if (parsed.failure !== 'none') {
     const permanent = refusalIsPermanent(parsed.refusal);
     return {
       code: 1,
@@ -151,13 +169,25 @@ export async function runWire(
       transportFailed: true,
       // The kind is named beside the reason: "denied" alone reads as a network fault to anyone who
       // has not memorised the classification.
-      failureDetail: `${parsed.failure}${parsed.refusal === undefined || parsed.refusal === "none" ? "" : `/${parsed.refusal}`}: ${parsed.detail}`,
+      failureDetail: `${parsed.failure}${parsed.refusal === undefined || parsed.refusal === 'none' ? '' : `/${parsed.refusal}`}: ${parsed.detail}`,
       ...(permanent === undefined ? {} : { permanent }),
-      ...(parsed.retryAfterMs === undefined || parsed.retryAfterMs === null ? {} : { retryAfterMs: parsed.retryAfterMs }),
+      ...(parsed.retryAfterMs === undefined || parsed.retryAfterMs === null
+        ? {}
+        : { retryAfterMs: parsed.retryAfterMs }),
     };
   }
   if (parsed.truncated) {
-    return { code: parsed.code, stdout: parsed.stdout, stderr: `${parsed.stderr}\n[wire] output truncated at the stream cap\n`, transportFailed: false };
+    return {
+      code: parsed.code,
+      stdout: parsed.stdout,
+      stderr: `${parsed.stderr}\n[wire] output truncated at the stream cap\n`,
+      transportFailed: false,
+    };
   }
-  return { code: parsed.code, stdout: parsed.stdout, stderr: parsed.stderr, transportFailed: false };
+  return {
+    code: parsed.code,
+    stdout: parsed.stdout,
+    stderr: parsed.stderr,
+    transportFailed: false,
+  };
 }

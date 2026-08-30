@@ -1,12 +1,12 @@
-import { loadMachineConfig } from "../config/machine.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { loadLedger, loadAckedIds, appendAck } from "../chat/store.ts";
-import type { ChatMessage } from "../types.ts";
-import { formatChatInjection } from "../chat/format.ts";
-import { replyRouteToSender } from "../chat/replyRoute.ts";
-import { promptInvocation } from "../env.ts";
-import { managedPeer, managedPeerKey } from "../chat/identity.ts";
-import { chatEnabledFor } from "../config/chat.ts";
+import { formatChatInjection } from '../chat/format.ts';
+import { managedPeer, managedPeerKey } from '../chat/identity.ts';
+import { replyRouteToSender } from '../chat/replyRoute.ts';
+import { appendAck, loadAckedIds, loadLedger } from '../chat/store.ts';
+import { chatEnabledFor } from '../config/chat.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import { promptInvocation } from '../env.ts';
+import type { ChatMessage } from '../types.ts';
 
 /**
  * `ccmux stop-hook` — the Claude Code **Stop hook** for a managed session. It fires ONLY when the
@@ -37,10 +37,10 @@ export async function cmdStopHook(): Promise<number> {
   try {
     // Drain stdin (the Stop payload) so the hook never blocks on an unread pipe. We don't need its
     // fields: identity is CCMUX_SESSION, and there is no `stop_reason` in the payload to gate on.
-    await Bun.stdin.text().catch(() => "");
+    await Bun.stdin.text().catch(() => '');
 
     const self = process.env.CCMUX_SESSION;
-    if (self === undefined || self === "") return 0; // not a managed session → nothing to do
+    if (self === undefined || self === '') return 0; // not a managed session → nothing to do
 
     const m = loadMachineConfig();
     const me = findSession(loadSessions(m), self);
@@ -54,22 +54,33 @@ export async function cmdStopHook(): Promise<number> {
     // dispatch) — respect it here too, so end-of-turn never delivers a not-yet-due message.
     const acked = loadAckedIds(m);
     const now = Date.now();
-    const due = (iso: string | null) => iso === null || !Number.isFinite(Date.parse(iso)) || now >= Date.parse(iso);
+    const due = (iso: string | null) =>
+      iso === null || !Number.isFinite(Date.parse(iso)) || now >= Date.parse(iso);
     const pending = loadLedger(m).filter(
       (msg): msg is ChatMessage =>
-        msg !== null && msg.to.kind === "managed" && managedPeerKey(msg.to) === recipientKey && msg.defer && !acked.has(msg.id) && due(msg.notBefore),
+        msg !== null &&
+        msg.to.kind === 'managed' &&
+        managedPeerKey(msg.to) === recipientKey &&
+        msg.defer &&
+        !acked.has(msg.id) &&
+        due(msg.notBefore),
     );
     if (pending.length === 0) return 0; // no deferred mail → let the turn end cleanly
 
     // Record acks FIRST (durable, fail-closed) so neither this hook nor the daemon re-delivers.
-    for (const msg of pending) appendAck(m, msg.id, "hook", recipient);
+    for (const msg of pending) appendAck(m, msg.id, 'hook', recipient);
 
     // Same reply verdict as the daemon path — one resolver, so the two channels cannot disagree
     // about whether this machine can answer the sender.
     const reason = pending
-      .map((msg) => formatChatInjection(msg, { cli: promptInvocation(), reply: replyRouteToSender(m, msg.from) }))
-      .join("\n\n");
-    process.stdout.write(JSON.stringify({ decision: "block", reason }));
+      .map((msg) =>
+        formatChatInjection(msg, {
+          cli: promptInvocation(),
+          reply: replyRouteToSender(m, msg.from),
+        }),
+      )
+      .join('\n\n');
+    process.stdout.write(JSON.stringify({ decision: 'block', reason }));
     return 0;
   } catch {
     // Fail-open: never break the session's ability to stop over a chat problem.

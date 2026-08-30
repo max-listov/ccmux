@@ -1,13 +1,13 @@
-import type { MachineConfig } from "../types.ts";
-import { loadMachineConfig, rcName } from "../config/machine.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { hasSession, newSession, killSession, setOption, setPaneOption } from "../tmux/tmux.ts";
-import { runDetached } from "../util/spawn.ts";
-import { SELF_ARGV, SELF_ARGV_NO_ENV_FILE } from "../env.ts";
-import { log } from "../util/log.ts";
-import { refusesSelf } from "./guard.ts";
-import { forwardIfRemote } from "../fleet/forward.ts";
-import { clearLifecycleBlock } from "../config/lifecycleBlocks.ts";
+import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
+import { loadMachineConfig, rcName } from '../config/machine.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import { SELF_ARGV, SELF_ARGV_NO_ENV_FILE } from '../env.ts';
+import { forwardIfRemote } from '../fleet/forward.ts';
+import { hasSession, killSession, newSession, setOption, setPaneOption } from '../tmux/tmux.ts';
+import type { MachineConfig } from '../types.ts';
+import { log } from '../util/log.ts';
+import { runDetached } from '../util/spawn.ts';
+import { refusesSelf } from './guard.ts';
 
 /** Create the tmux session running ccmux's own `_run` loop. Idempotent. */
 export async function startSession(m: MachineConfig, name: string, dir: string): Promise<void> {
@@ -15,39 +15,46 @@ export async function startSession(m: MachineConfig, name: string, dir: string):
     console.log(`${name} already running`);
     return;
   }
-  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, "_run", name]);
+  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, '_run', name]);
   // lock the window/session name so claude's escape sequences can't rename it out
   // from under the =NAME exact-match invariant.
-  await setOption(m, name, "automatic-rename", "off");
-  await setOption(m, name, "allow-rename", "off");
-  await setOption(m, name, "mouse", "on");
-  await setOption(m, name, "history-limit", "50000");
+  await setOption(m, name, 'automatic-rename', 'off');
+  await setOption(m, name, 'allow-rename', 'off');
+  await setOption(m, name, 'mouse', 'on');
+  await setOption(m, name, 'history-limit', '50000');
   // Claude-Code-in-tmux nicety, kept PANE-local (never the shared tmux server's
   // globals): lets claude's notification/progress escape sequences pass through tmux
   // when you attach interactively. (focus-events / extended-keys / terminal-features
   // are server-global in tmux, so ccmux leaves them to your ~/.tmux.conf — see README.)
-  await setPaneOption(m, name, "allow-passthrough", "on");
-  log.info({ msg: "session started", name, rc: rcName(m, name), dir });
+  await setPaneOption(m, name, 'allow-passthrough', 'on');
+  log.info({ msg: 'session started', name, rc: rcName(m, name), dir });
   console.log(`started ${name} (${rcName(m, name)})`);
 }
 
 /** Start the pending Codex bootstrap transaction. It is not a registry Session yet. */
-export async function startBootstrapSession(m: MachineConfig, name: string, dir: string, generation: string): Promise<void> {
+export async function startBootstrapSession(
+  m: MachineConfig,
+  name: string,
+  dir: string,
+  generation: string,
+): Promise<void> {
   if (await hasSession(m, name)) throw new Error(`${name} already running`);
-  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, "_bootstrap", generation], { CCMUX_BOOTSTRAP_GENERATION: generation });
-  await setOption(m, name, "automatic-rename", "off");
-  await setOption(m, name, "allow-rename", "off");
-  await setOption(m, name, "mouse", "on");
-  await setOption(m, name, "history-limit", "50000");
-  await setPaneOption(m, name, "allow-passthrough", "on");
+  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, '_bootstrap', generation], {
+    CCMUX_BOOTSTRAP_GENERATION: generation,
+  });
+  await setOption(m, name, 'automatic-rename', 'off');
+  await setOption(m, name, 'allow-rename', 'off');
+  await setOption(m, name, 'mouse', 'on');
+  await setOption(m, name, 'history-limit', '50000');
+  await setPaneOption(m, name, 'allow-passthrough', 'on');
 }
 
 export async function cmdStart(name: string | undefined): Promise<number> {
   if (!name) {
-    console.log("usage: ccmux start <name>   ·   <machine>:<name> for another fleet machine");
+    console.log('usage: ccmux start <name>   ·   <machine>:<name> for another fleet machine');
     return 1;
   }
-  const fwd = await forwardIfRemote(name, "start", []);
+  const fwd = await forwardIfRemote(name, 'start', []);
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
@@ -63,16 +70,16 @@ export async function cmdStart(name: string | undefined): Promise<number> {
 
 export async function cmdStop(name: string | undefined, force = false): Promise<number> {
   if (!name) {
-    console.log("usage: ccmux stop <name>   ·   <machine>:<name> for another fleet machine");
+    console.log('usage: ccmux stop <name>   ·   <machine>:<name> for another fleet machine');
     return 1;
   }
-  const fwd = await forwardIfRemote(name, "stop", force ? ["--force"] : []);
+  const fwd = await forwardIfRemote(name, 'stop', force ? ['--force'] : []);
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
-  if (refusesSelf("stop", name, force)) return 1;
+  if (refusesSelf('stop', name, force)) return 1;
   const ok = await killSession(m, name);
-  if (ok) log.info({ msg: "session stopped", name });
+  if (ok) log.info({ msg: 'session stopped', name });
   console.log(ok ? `stopped ${name}` : `${name} not running`);
   return 0;
 }
@@ -80,10 +87,10 @@ export async function cmdStop(name: string | undefined, force = false): Promise<
 export async function cmdRestart(args: string[]): Promise<number> {
   const target = args[0];
   if (!target || args.length !== 1) {
-    console.log("usage: ccmux restart <name>   ·   <machine>:<name> for another fleet machine");
+    console.log('usage: ccmux restart <name>   ·   <machine>:<name> for another fleet machine');
     return 1;
   }
-  const fwd = await forwardIfRemote(target, "restart", [], { timeoutMs: 120_000 });
+  const fwd = await forwardIfRemote(target, 'restart', [], { timeoutMs: 120_000 });
   if (fwd.done) return fwd.code;
   const { session: name, m } = fwd;
   // Verify the session EXISTS before killing anything. Without this a typo killed nothing, spawned a
@@ -97,7 +104,7 @@ export async function cmdRestart(args: string[]): Promise<number> {
   await killSession(m, name);
   // Detached worker (own process group) survives killing the very session this runs in
   // — so a session can restart ITSELF and still get pinged back once it's ready.
-  runDetached([...SELF_ARGV, "_restart-worker", name]);
+  runDetached([...SELF_ARGV, '_restart-worker', name]);
   console.log(`restarting ${name}`);
   return 0;
 }

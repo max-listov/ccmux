@@ -1,4 +1,4 @@
-import type { MachineConfig, Session } from "../types.ts";
+import type { MachineConfig, Session } from '../types.ts';
 
 /**
  * Does this session emit events?

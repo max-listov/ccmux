@@ -747,10 +747,17 @@ bun run dev            # run the CLI/TUI from source (this is `ccmux-dev`)
 bun run smoke          # headless TUI e2e in a throwaway tmux pane
 bun test               # tests
 bun run typecheck      # tsc --noEmit
+bun run lint           # Biome: formatting, imports and recommended lint rules (read-only)
+bun run format         # format with the checked-in shared style
+bun run lint:fix       # apply safe Biome fixes
+bun run check          # Biome + TypeScript + full tests + packed Bun/Node client checks
 ```
 
 The dev source and the prod daemon are decoupled — editing source never touches the running prod
 bundle. See `docs/architecture/` for the TUI, IO/perf model, and dev flow.
+Biome is pinned in `devDependencies`; `biome.json` defines two-space indentation, a 100-column
+line width, single quotes and semicolons. Local checks and CI enforce the same configuration.
+Passing these checks does not publish or update an installed runtime.
 
 ### Build & release
 

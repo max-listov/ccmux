@@ -1,5 +1,5 @@
-import type { AgentKind } from "../types.ts";
-import { rec, str } from "./normalize.ts";
+import type { AgentKind } from '../types.ts';
+import { rec, str } from './normalize.ts';
 
 /**
  * Best-effort agent-format sniff from the first non-empty JSONL line — a fallback for a session
@@ -11,7 +11,7 @@ import { rec, str } from "./normalize.ts";
 export function detect(lines: string[]): AgentKind | null {
   for (const raw of lines) {
     const line = raw.trim();
-    if (line === "") continue;
+    if (line === '') continue;
     let entry: Record<string, unknown> | null = null;
     try {
       entry = rec(JSON.parse(line));
@@ -20,8 +20,8 @@ export function detect(lines: string[]): AgentKind | null {
     }
     if (!entry) continue;
     const type = str(entry.type);
-    if (type === "response_item" || type === "session_meta" || type === "event_msg") return "codex";
-    if (entry.message !== undefined || entry.sessionId !== undefined) return "claude";
+    if (type === 'response_item' || type === 'session_meta' || type === 'event_msg') return 'codex';
+    if (entry.message !== undefined || entry.sessionId !== undefined) return 'claude';
     return null;
   }
   return null;

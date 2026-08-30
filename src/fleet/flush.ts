@@ -1,13 +1,13 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { z } from "zod";
-import { loadOutbox, outboundId, outboundTimestamp, type Outbound } from "./outbox.ts";
-import { peersOf, runPeer } from "./transport.ts";
-import { routeFor } from "./address.ts";
-import { run } from "../util/spawn.ts";
-import { log } from "../util/log.ts";
-import { outboxAckPath } from "../config/paths.ts";
-import type { MachineConfig } from "../types.ts";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { z } from 'zod';
+import { outboxAckPath } from '../config/paths.ts';
+import type { MachineConfig } from '../types.ts';
+import { log } from '../util/log.ts';
+import { run } from '../util/spawn.ts';
+import { routeFor } from './address.ts';
+import { loadOutbox, type Outbound, outboundId, outboundTimestamp } from './outbox.ts';
+import { peersOf, runPeer } from './transport.ts';
 
 /**
  * Re-send what never left.
@@ -33,11 +33,12 @@ export function loadOutboxAcked(m: MachineConfig): Set<string> {
   const p = outboxAckPath(m);
   const ids = new Set<string>();
   if (!existsSync(p)) return ids;
-  for (const line of readFileSync(p, "utf8").split("\n")) {
-    if (line.trim() === "") continue;
+  for (const line of readFileSync(p, 'utf8').split('\n')) {
+    if (line.trim() === '') continue;
     try {
       const o: unknown = JSON.parse(line);
-      if (o !== null && typeof o === "object" && "id" in o && typeof o.id === "string") ids.add(o.id);
+      if (o !== null && typeof o === 'object' && 'id' in o && typeof o.id === 'string')
+        ids.add(o.id);
     } catch {
       // one bad line costs that line, never the file
     }
@@ -66,7 +67,12 @@ export const MAX_PER_TICK = 3;
  *
  * Every row is an immutable chat envelope; lifecycle actions are never queued here.
  */
-export function retryCandidates(rows: Outbound[], acked: ReadonlySet<string>, nowMs: number, windowMs = RETRY_WINDOW_MS): Outbound[] {
+export function retryCandidates(
+  rows: Outbound[],
+  acked: ReadonlySet<string>,
+  nowMs: number,
+  windowMs = RETRY_WINDOW_MS,
+): Outbound[] {
   const out: Outbound[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
@@ -116,24 +122,32 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
 
   await runPreflight(m);
   for (const rec of candidates.slice(0, MAX_PER_TICK)) {
-    if (rec.envelope.to.kind !== "managed") continue;
+    if (rec.envelope.to.kind !== 'managed') continue;
     const target = rec.envelope.to;
     const route = routeFor(`${target.machine}:${target.session}`, m);
-    if (route.kind !== "remote") {
+    if (route.kind !== 'remote') {
       // Genuinely unaddressable from here — the machine is in neither map, or the label now resolves
       // to this box. Settle it so we stop looking. NOT the same as "no ssh alias": a wire-only peer
       // has no alias and is perfectly reachable, and treating the two alike is what threw mail away.
       appendOutboxAck(m, rec.envelope.id);
-      log.warn({ msg: "outbox: target is not addressable from here — settling", id: rec.envelope.id, to: `${target.machine}:${target.session}` });
+      log.warn({
+        msg: 'outbox: target is not addressable from here — settling',
+        id: rec.envelope.id,
+        to: `${target.machine}:${target.session}`,
+      });
       continue;
     }
-    const r = await runPeer(m, route.machine, route.alias, ["ccmux", "_chat-receive-v2"], {
+    const r = await runPeer(m, route.machine, route.alias, ['ccmux', '_chat-receive-v2'], {
       stdin: JSON.stringify(rec.envelope),
       timeoutMs: 20_000,
     });
     if (!r.transportFailed && r.code === 0) {
       appendOutboxAck(m, rec.envelope.id);
-      log.info({ msg: "outbox: delivered on retry", id: rec.envelope.id, to: `${target.machine}:${target.session}` });
+      log.info({
+        msg: 'outbox: delivered on retry',
+        id: rec.envelope.id,
+        to: `${target.machine}:${target.session}`,
+      });
       continue;
     }
     // A PERMANENT refusal will refuse identically forever: the command is not on that node's
@@ -142,8 +156,12 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
     // that is exactly the case the retry window exists for.
     if (r.permanent === true) {
       appendOutboxAck(m, rec.envelope.id);
-      log.warn({ msg: "outbox: permanently refused — settling", id: rec.envelope.id, to: `${target.machine}:${target.session}`, detail: r.failureDetail ?? "" });
-      continue;
+      log.warn({
+        msg: 'outbox: permanently refused — settling',
+        id: rec.envelope.id,
+        to: `${target.machine}:${target.session}`,
+        detail: r.failureDetail ?? '',
+      });
     }
     // Still no route → leave it queued; the next tick tries again until the window closes.
   }

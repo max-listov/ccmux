@@ -1,19 +1,18 @@
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { providerFor } from "../agent/index.ts";
-import { capturePaneStyled, hasSession } from "../tmux/tmux.ts";
-import { chatTurnProgress, readTurnState } from "../chat/deliver.ts";
-import { WHY_TEXT, type TurnWhy } from "../chat/turnState.ts";
-import { holdReason } from "../chat/holdReason.ts";
-import { readChatHold } from "../agent/sessionStatus.ts";
-import { notBeforeDue } from "../chat/deliver.ts";
-import { forwardIfRemote } from "../fleet/forward.ts";
-import { loadLedger, loadCursors, loadAckedIds, unreadFor } from "../chat/store.ts";
-import type { MachineConfig, ChatMessage, Session } from "../types.ts";
-import { managedPeer, managedPeerKey } from "../chat/identity.ts";
-import { chatEnabledFor } from "../config/chat.ts";
-import { hasNativeRuntime } from "../runtime/capabilities.ts";
-import { readManagedRuntimeStatus } from "../runtime/status.ts";
-import { pickPendingDelivery } from "../chat/pendingDelivery.ts";
+import { providerFor } from '../agent/index.ts';
+import { readChatHold } from '../agent/sessionStatus.ts';
+import { chatTurnProgress, notBeforeDue, readTurnState } from '../chat/deliver.ts';
+import { holdReason } from '../chat/holdReason.ts';
+import { managedPeer, managedPeerKey } from '../chat/identity.ts';
+import { pickPendingDelivery } from '../chat/pendingDelivery.ts';
+import { loadAckedIds, loadCursors, loadLedger, unreadFor } from '../chat/store.ts';
+import { type TurnWhy, WHY_TEXT } from '../chat/turnState.ts';
+import { chatEnabledFor } from '../config/chat.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import { forwardIfRemote } from '../fleet/forward.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { readManagedRuntimeStatus } from '../runtime/status.ts';
+import { capturePaneStyled, hasSession } from '../tmux/tmux.ts';
+import type { ChatMessage, MachineConfig, Session } from '../types.ts';
 
 /**
  * `ccmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
@@ -42,9 +41,10 @@ const GONE_MS = 45_000;
  *  to "did it finish the work" — after an interrupted turn `transcript --last-message` hands back
  *  what was said BEFORE the tool calls that never completed. */
 const SETTLED_TEXT: Record<string, string> = {
-  "turn-ended": "turn finished",
-  "idle-after-interrupt": "idle — its last turn was interrupted, not completed (any report you read is from before that)",
-  "never-spoke": "idle — it has not taken a turn yet",
+  'turn-ended': 'turn finished',
+  'idle-after-interrupt':
+    'idle — its last turn was interrupted, not completed (any report you read is from before that)',
+  'never-spoke': 'idle — it has not taken a turn yet',
 };
 
 export interface WaitOpts {
@@ -58,10 +58,10 @@ export function parseWaitOpts(args: string[]): WaitOpts {
   let quiet = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === "--timeout") {
-      const n = Number.parseInt(args[++i] ?? "", 10);
+    if (a === '--timeout') {
+      const n = Number.parseInt(args[++i] ?? '', 10);
       if (Number.isFinite(n) && n > 0) timeoutSec = n;
-    } else if (a === "--quiet" || a === "-q") quiet = true;
+    } else if (a === '--quiet' || a === '-q') quiet = true;
   }
   return { timeoutSec, quiet };
 }
@@ -96,7 +96,12 @@ export function mailBlocksSettle(
  * behind a parked composer, three more sent on top of it, and a working session spent reporting a
  * wait that could never end.
  */
-function mailHold(m: MachineConfig, s: Session, blocking: ChatMessage[], nowMs: number): string | null {
+function mailHold(
+  m: MachineConfig,
+  s: Session,
+  blocking: ChatMessage[],
+  nowMs: number,
+): string | null {
   const first = blocking[0];
   if (first === undefined) return null;
   try {
@@ -120,12 +125,24 @@ export function blockingInbound(m: MachineConfig, s: Session, nowMs: number): Ch
       const key = managedPeerKey(managedPeer(m.rcPrefix, s));
       // Reading inbox does not cancel daemon delivery. The delivery cursor, not the
       // human/read cursor, decides whether another native turn is still due.
-      const pick = pickPendingDelivery(loadLedger(m), key, loadCursors(m).delivered[key] ?? 0, loadAckedIds(m), nowMs).pick;
+      const pick = pickPendingDelivery(
+        loadLedger(m),
+        key,
+        loadCursors(m).delivered[key] ?? 0,
+        loadAckedIds(m),
+        nowMs,
+      ).pick;
       return pick === null ? [] : [pick.msg];
     }
     return mailBlocksSettle(
-      unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map((u) => u.msg),
-      { chatEnabled: chatEnabledFor(s, m), canReceiveChat: providerFor(s).inspectChatPane !== undefined, nowMs },
+      unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map(
+        (u) => u.msg,
+      ),
+      {
+        chatEnabled: chatEnabledFor(s, m),
+        canReceiveChat: providerFor(s).inspectChatPane !== undefined,
+        nowMs,
+      },
     );
   } catch {
     // Chat is optional; a missing or unreadable ledger must never break a plain `wait`.
@@ -135,14 +152,18 @@ export function blockingInbound(m: MachineConfig, s: Session, nowMs: number): Ch
 
 export async function cmdWait(name: string | undefined, args: string[] = []): Promise<number> {
   if (!name) {
-    console.log("usage: ccmux wait <name> [--timeout N] [--quiet]   (exit 0 = between turns, 2 = timed out)");
+    console.log(
+      'usage: ccmux wait <name> [--timeout N] [--quiet]   (exit 0 = between turns, 2 = timed out)',
+    );
     return 1;
   }
   // The remote `wait` blocks for ITS OWN timeout, so the ssh deadline has to sit above it. With the
   // transport default (30s) a perfectly healthy link was killed mid-wait and reported as
   // "transport failed" for any worker that took longer — turning the primary cross-machine use case
   // into a false alarm. +30s covers connection setup and the remote's own exit.
-  const fwd = await forwardIfRemote(name, "wait", args, { timeoutMs: (parseWaitOpts(args).timeoutSec + 30) * 1000 });
+  const fwd = await forwardIfRemote(name, 'wait', args, {
+    timeoutMs: (parseWaitOpts(args).timeoutSec + 30) * 1000,
+  });
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
@@ -152,7 +173,10 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     console.error(`unknown session: ${name}`);
     return 1;
   }
-  if (!(hasNativeRuntime(s) && readManagedRuntimeStatus(m, s).status === "live") && !(await hasSession(m, name))) {
+  if (
+    !(hasNativeRuntime(s) && readManagedRuntimeStatus(m, s).status === 'live') &&
+    !(await hasSession(m, name))
+  ) {
     console.error(`${name} is not running — start it first: ccmux start ${name}`);
     return 1;
   }
@@ -165,7 +189,10 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     // Liveness is re-checked every pass, not once at the start: a session stopped mid-wait (a fleet
     // restart sweep, say) used to run to the deadline and then report "still working" about a
     // session that was not running at all.
-    if ((hasNativeRuntime(s) && readManagedRuntimeStatus(m, s).status === "live") || await hasSession(m, name)) {
+    if (
+      (hasNativeRuntime(s) && readManagedRuntimeStatus(m, s).status === 'live') ||
+      (await hasSession(m, name))
+    ) {
       missingSince = null;
     } else {
       // A restart makes the session absent for a few seconds (kill → relaunch), and `restart --all`
@@ -174,7 +201,10 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       // PERSIST before it counts — and even then it is a timeout, not "no such session".
       missingSince ??= Date.now();
       if (Date.now() - missingSince >= GONE_MS) {
-        if (!o.quiet) console.error(`${name}: gone for ${Math.round(GONE_MS / 1000)}s while waiting — not running`);
+        if (!o.quiet)
+          console.error(
+            `${name}: gone for ${Math.round(GONE_MS / 1000)}s while waiting — not running`,
+          );
         return 2;
       }
       await Bun.sleep(POLL_MS);
@@ -189,18 +219,32 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       }
       const native = readManagedRuntimeStatus(m, s, now);
       const pickup = loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))];
-      if (native.status === "live" && native.snapshot?.turn?.status === "failed") {
+      if (native.status === 'live' && native.snapshot?.turn?.status === 'failed') {
         if (!o.quiet) console.error(`${name}: native turn failed`);
         return 2;
       }
-      if (native.status === "live" && native.snapshot?.state === "idle" && native.snapshot.turn?.status !== "inProgress"
-        && pickup === undefined && blockingInbound(m, s, now).length === 0) {
+      if (
+        native.status === 'live' &&
+        native.snapshot?.state === 'idle' &&
+        native.snapshot.turn?.status !== 'inProgress' &&
+        pickup === undefined &&
+        blockingInbound(m, s, now).length === 0
+      ) {
         const status = native.snapshot.turn?.status;
-        if (status === "failed") { if (!o.quiet) console.error(`${name}: native turn failed`); return 2; }
-        if (!o.quiet) console.log(`${name}: ${status === "interrupted" ? SETTLED_TEXT["idle-after-interrupt"] : status === "completed" ? SETTLED_TEXT["turn-ended"] : SETTLED_TEXT["never-spoke"]}`);
+        if (status === 'failed') {
+          if (!o.quiet) console.error(`${name}: native turn failed`);
+          return 2;
+        }
+        if (!o.quiet)
+          console.log(
+            `${name}: ${status === 'interrupted' ? SETTLED_TEXT['idle-after-interrupt'] : status === 'completed' ? SETTLED_TEXT['turn-ended'] : SETTLED_TEXT['never-spoke']}`,
+          );
         return 0;
       }
-      mailWhy = native.status === "live" ? native.snapshot?.state ?? "unknown" : `native runtime unavailable: ${native.reason}`;
+      mailWhy =
+        native.status === 'live'
+          ? (native.snapshot?.state ?? 'unknown')
+          : `native runtime unavailable: ${native.reason}`;
       await Bun.sleep(POLL_MS);
       continue;
     }
@@ -210,19 +254,24 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     // later, and a `wait` fired immediately after reported a finished turn that had never begun.
     const blocking = blockingInbound(m, s, now);
     if (blocking.length === 0) {
-      const pickup = provider.chatPickup === "transcript"
-        ? loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))]
-        : undefined;
+      const pickup =
+        provider.chatPickup === 'transcript'
+          ? loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))]
+          : undefined;
       const progress = pickup === undefined ? null : chatTurnProgress(m, s, pickup.messageId);
-      if (progress === "awaiting-pickup") {
-        lastWhy = "awaiting-pickup";
+      if (progress === 'awaiting-pickup') {
+        lastWhy = 'awaiting-pickup';
         mailWhy = null;
         await Bun.sleep(POLL_MS);
         continue;
       }
-      const injected = pickup === undefined || progress === null
-        ? undefined
-        : { turnStartedMs: Date.parse(pickup.injectedAt), assistantAnswered: progress === "answered" };
+      const injected =
+        pickup === undefined || progress === null
+          ? undefined
+          : {
+              turnStartedMs: Date.parse(pickup.injectedAt),
+              assistantAnswered: progress === 'answered',
+            };
       const ts = readTurnState(m, s, provider, pane, now, injected);
       if (ts.settled) {
         // Both settle paths exit 0 — a third exit code would break every existing script — but the
@@ -242,11 +291,12 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
   // Say WHAT it was doing. "Still working" was a guess, and a false one for a session parked at a
   // permission prompt — which now blocks the full timeout and used to be described as busy.
   if (!o.quiet) {
-    const why = lastWhy !== null
-      ? WHY_TEXT[lastWhy]
-      : mailWhy === null
-        ? "waiting on undelivered mail"
-        : `waiting on undelivered mail — ${mailWhy}`;
+    const why =
+      lastWhy !== null
+        ? WHY_TEXT[lastWhy]
+        : mailWhy === null
+          ? 'waiting on undelivered mail'
+          : `waiting on undelivered mail — ${mailWhy}`;
     console.error(`${name}: timed out after ${o.timeoutSec}s — ${why}`);
   }
   return 2;

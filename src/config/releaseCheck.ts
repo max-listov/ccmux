@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
-import { z } from "zod";
-import { releaseCheckPath } from "./paths.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import { compareSemver } from "../util/version.ts";
-import type { MachineConfig, ReleaseStanding } from "../types.ts";
+import { existsSync, readFileSync } from 'node:fs';
+import { z } from 'zod';
+import type { MachineConfig, ReleaseStanding } from '../types.ts';
+import { atomicWrite } from '../util/atomic.ts';
+import { compareSemver } from '../util/version.ts';
+import { releaseCheckPath } from './paths.ts';
 
 /**
  * What this machine last learned about the newest published release.
@@ -41,7 +41,7 @@ export function readReleaseCheck(m: MachineConfig): ReleaseCheck | null {
   try {
     const path = releaseCheckPath(m);
     if (!existsSync(path)) return null;
-    return ReleaseCheckSchema.safeParse(JSON.parse(readFileSync(path, "utf8"))).data ?? null;
+    return ReleaseCheckSchema.safeParse(JSON.parse(readFileSync(path, 'utf8'))).data ?? null;
   } catch {
     return null;
   }
@@ -66,17 +66,17 @@ export async function recordReleaseCheck(
   const previous = readReleaseCheck(m);
   await writeReleaseCheck(m, {
     version: release?.version ?? previous?.version ?? null,
-    releasedAt: release === null ? previous?.releasedAt ?? null : release.releasedAt ?? null,
+    releasedAt: release === null ? (previous?.releasedAt ?? null) : (release.releasedAt ?? null),
     checkedAt: nowIso,
     ok: release !== null,
   });
 }
 
 /** How far a version is behind another. Null = level with it, ahead of it, or nothing to compare. */
-export type BehindBy = "patch" | "minor" | "major" | null;
+export type BehindBy = 'patch' | 'minor' | 'major' | null;
 
 const parts = (v: string): [number, number, number] => {
-  const [a = 0, b = 0, c = 0] = v.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const [a = 0, b = 0, c = 0] = v.split('.').map((n) => Number.parseInt(n, 10) || 0);
   return [a, b, c];
 };
 
@@ -102,10 +102,10 @@ export function behindBy(current: string, latest: string | null): BehindBy {
   const l = parts(latest);
   const axis = l[0] > 0 ? 0 : l[1] > 0 ? 1 : 2;
   const firstDiff = c[0] !== l[0] ? 0 : c[1] !== l[1] ? 1 : 2;
-  if (firstDiff <= axis) return "major"; // a difference at or above the breaking axis IS breaking
+  if (firstDiff <= axis) return 'major'; // a difference at or above the breaking axis IS breaking
   // Only a scheme with a real major has a middle class; below 1.0.0 there is breaking and there is
   // compatible, and calling a compatible bump "minor" would overstate it in the other direction.
-  return firstDiff === 1 && axis === 0 ? "minor" : "patch";
+  return firstDiff === 1 && axis === 0 ? 'minor' : 'patch';
 }
 
 /** The best release any of these machines has managed to read. Null when none of them knows. */

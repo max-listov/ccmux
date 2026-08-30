@@ -1,8 +1,8 @@
-import { existsSync } from "node:fs";
-import { routeFor } from "../fleet/address.ts";
-import { isWirePeer, wireSocketPath } from "../fleet/wire.ts";
-import { codexAppAddress } from "./identity.ts";
-import type { ChatPrincipal, MachineConfig } from "../types.ts";
+import { existsSync } from 'node:fs';
+import { routeFor } from '../fleet/address.ts';
+import { isWirePeer, wireSocketPath } from '../fleet/wire.ts';
+import type { ChatPrincipal, MachineConfig } from '../types.ts';
+import { codexAppAddress } from './identity.ts';
 
 /**
  * Whether a reply typed on THIS machine would actually reach the sender — and, when it would not,
@@ -35,12 +35,20 @@ export type ReplyRoute = { replyable: true } | { replyable: false; reason: strin
  */
 export function replyRouteFor(m: MachineConfig, machine: string, session: string): ReplyRoute {
   const route = routeFor(`${machine}:${session}`, m);
-  if (route.kind === "error") return { replyable: false, reason: route.message };
-  if (route.kind === "local") return { replyable: true };
+  if (route.kind === 'error') return { replyable: false, reason: route.message };
+  if (route.kind === 'local') return { replyable: true };
   if (isWirePeer(m, route.machine)) {
     const socket = wireSocketPath(m);
-    if (socket === null) return { replyable: false, reason: "no stitchwire agent socket path is known here (HOME is unset)" };
-    if (!existsSync(socket)) return { replyable: false, reason: `the stitchwire agent is not running here — no socket at ${socket}` };
+    if (socket === null)
+      return {
+        replyable: false,
+        reason: 'no stitchwire agent socket path is known here (HOME is unset)',
+      };
+    if (!existsSync(socket))
+      return {
+        replyable: false,
+        reason: `the stitchwire agent is not running here — no socket at ${socket}`,
+      };
   }
   return { replyable: true };
 }
@@ -48,7 +56,8 @@ export function replyRouteFor(m: MachineConfig, machine: string, session: string
 /** The verdict for a message's sender. `undefined` for a non-managed (`cli`) sender: there is no
  *  agent behind it to reply to, so the tag says nothing about routing rather than inventing a fact. */
 export function replyRouteToSender(m: MachineConfig, from: ChatPrincipal): ReplyRoute | undefined {
-  if (from.kind === "managed") return replyRouteFor(m, from.machine, from.session);
-  if (from.kind === "codex-app") return replyRouteFor(m, from.machine, codexAppAddress(from.threadId));
+  if (from.kind === 'managed') return replyRouteFor(m, from.machine, from.session);
+  if (from.kind === 'codex-app')
+    return replyRouteFor(m, from.machine, codexAppAddress(from.threadId));
   return undefined;
 }

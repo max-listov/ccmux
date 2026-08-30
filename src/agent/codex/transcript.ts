@@ -1,6 +1,6 @@
-import type { TranscriptMessage, TranscriptRole } from "../../types.ts";
-import { DEFAULT_TEXT_LIMIT, asText, clip, num, rec, str } from "../normalize.ts";
-import { resultSummary } from "../toolSummary.ts";
+import type { TranscriptMessage, TranscriptRole } from '../../types.ts';
+import { asText, clip, DEFAULT_TEXT_LIMIT, num, rec, str } from '../normalize.ts';
+import { resultSummary } from '../toolSummary.ts';
 
 // Codex transcript parser. Rollout JSONL (OpenAI Responses items). Entry shape:
 //   { type:"response_item"|"event_msg"|"session_meta"|…, payload:{…}, timestamp }
@@ -10,9 +10,9 @@ import { resultSummary } from "../toolSummary.ts";
 // Token usage lives in a SEPARATE event_msg of type "token_count".
 
 function mapRole(role: string | null): TranscriptRole {
-  if (role === "user" || role === "assistant" || role === "system") return role;
-  if (role === "developer") return "system"; // Codex's system-prompt channel
-  return "unknown";
+  if (role === 'user' || role === 'assistant' || role === 'system') return role;
+  if (role === 'developer') return 'system'; // Codex's system-prompt channel
+  return 'unknown';
 }
 
 /** function_call args is a JSON string — pull the human-meaningful field, else raw. */
@@ -29,74 +29,105 @@ function toolText(payload: Record<string, unknown>): string {
     }
     return argsRaw;
   }
-  return str(payload.name) ?? "";
+  return str(payload.name) ?? '';
 }
 
 interface Pushed {
   role: TranscriptRole;
-  kind: TranscriptMessage["kind"];
+  kind: TranscriptMessage['kind'];
   text: string | null;
   title: string | null;
   toolName: string | null;
   toolCallId: string | null;
-  status: "error" | null;
+  status: 'error' | null;
   rawType: string | null;
 }
 
 /** One response_item payload → 0..N messages (message → per content item; else single). */
 function fromPayload(payload: Record<string, unknown>, textLimit: number): Pushed[] {
-  const ptype = str(payload.type) ?? "";
-  const cut = (s: string): string | null => (s === "" ? null : clip(s, textLimit));
+  const ptype = str(payload.type) ?? '';
+  const cut = (s: string): string | null => (s === '' ? null : clip(s, textLimit));
   switch (ptype) {
-    case "message": {
+    case 'message': {
       const role = mapRole(str(payload.role));
       const content = Array.isArray(payload.content) ? payload.content : [];
       return content.flatMap((itemRaw): Pushed[] => {
         const item = rec(itemRaw);
-        const text = cut(str(item?.text) ?? "");
+        const text = cut(str(item?.text) ?? '');
         if (text === null) return [];
-        return [{ role, kind: "message", text, title: null, toolName: null, toolCallId: null, status: null, rawType: str(item?.type) }];
+        return [
+          {
+            role,
+            kind: 'message',
+            text,
+            title: null,
+            toolName: null,
+            toolCallId: null,
+            status: null,
+            rawType: str(item?.type),
+          },
+        ];
       });
     }
-    case "function_call":
-    case "local_shell_call":
-    case "web_search_call": {
-      const name = str(payload.name) ?? (ptype === "web_search_call" ? "web_search" : "tool");
-      return [{
-        role: "assistant",
-        kind: "tool_call",
-        text: cut(ptype === "web_search_call" ? (str(payload.query) ?? name) : toolText(payload)),
-        title: name,
-        toolName: name,
-        toolCallId: str(payload.call_id) ?? str(payload.id),
-        status: null,
-        rawType: ptype,
-      }];
+    case 'function_call':
+    case 'local_shell_call':
+    case 'web_search_call': {
+      const name = str(payload.name) ?? (ptype === 'web_search_call' ? 'web_search' : 'tool');
+      return [
+        {
+          role: 'assistant',
+          kind: 'tool_call',
+          text: cut(ptype === 'web_search_call' ? (str(payload.query) ?? name) : toolText(payload)),
+          title: name,
+          toolName: name,
+          toolCallId: str(payload.call_id) ?? str(payload.id),
+          status: null,
+          rawType: ptype,
+        },
+      ];
     }
-    case "function_call_output":
-    case "local_shell_call_output": {
+    case 'function_call_output':
+    case 'local_shell_call_output': {
       const out = rec(payload.output);
-      const text = cut(asText(out?.content ?? payload.output) ?? "");
-      return [{
-        role: "tool",
-        kind: "tool_result",
-        text,
-        title: "tool result",
-        toolName: null,
-        toolCallId: str(payload.call_id),
-        status: out?.success === false ? "error" : null,
-        rawType: ptype,
-      }];
+      const text = cut(asText(out?.content ?? payload.output) ?? '');
+      return [
+        {
+          role: 'tool',
+          kind: 'tool_result',
+          text,
+          title: 'tool result',
+          toolName: null,
+          toolCallId: str(payload.call_id),
+          status: out?.success === false ? 'error' : null,
+          rawType: ptype,
+        },
+      ];
     }
-    case "reasoning":
+    case 'reasoning':
       // Codex ships reasoning encrypted (no plaintext summary) — surface a marker.
-      return [{ role: "assistant", kind: "thinking", text: "[reasoning]", title: null, toolName: null, toolCallId: null, status: null, rawType: ptype }];
+      return [
+        {
+          role: 'assistant',
+          kind: 'thinking',
+          text: '[reasoning]',
+          title: null,
+          toolName: null,
+          toolCallId: null,
+          status: null,
+          rawType: ptype,
+        },
+      ];
     default:
       return [];
   }
 }
 
-export function parse(lines: string[], startLine: number, textLimit: number = DEFAULT_TEXT_LIMIT, endLine?: number): TranscriptMessage[] {
+export function parse(
+  lines: string[],
+  startLine: number,
+  textLimit: number = DEFAULT_TEXT_LIMIT,
+  endLine?: number,
+): TranscriptMessage[] {
   const out: TranscriptMessage[] = [];
   const callArgs = new Map<string, Record<string, unknown> | null>();
   const callName = new Map<string, string>();
@@ -104,7 +135,7 @@ export function parse(lines: string[], startLine: number, textLimit: number = DE
   const end = endLine !== undefined ? Math.min(lines.length, endLine) : lines.length;
   for (let i = Math.max(0, startLine - 1); i < end; i++) {
     const raw = lines[i];
-    if (!raw || raw.trim() === "") continue;
+    if (!raw || raw.trim() === '') continue;
     const seq = i + 1;
     let parsed: unknown;
     try {
@@ -113,24 +144,30 @@ export function parse(lines: string[], startLine: number, textLimit: number = DE
       continue;
     }
     const entry = rec(parsed);
-    if (!entry || str(entry.type) !== "response_item") continue;
+    if (!entry || str(entry.type) !== 'response_item') continue;
     const payload = rec(entry.payload);
     if (!payload) continue;
     const createdAt = str(entry.timestamp);
     // Stash raw call args + outputs by call-id so the fold can summarize each result.
-    const ptype = str(payload.type) ?? "";
+    const ptype = str(payload.type) ?? '';
     const callId = str(payload.call_id) ?? str(payload.id);
-    if ((ptype === "function_call" || ptype === "local_shell_call" || ptype === "web_search_call") && callId) {
-      callName.set(callId, str(payload.name) ?? "tool");
+    if (
+      (ptype === 'function_call' || ptype === 'local_shell_call' || ptype === 'web_search_call') &&
+      callId
+    ) {
+      callName.set(callId, str(payload.name) ?? 'tool');
       callArgs.set(callId, parseArgs(payload));
     }
-    if ((ptype === "function_call_output" || ptype === "local_shell_call_output") && callId) {
+    if ((ptype === 'function_call_output' || ptype === 'local_shell_call_output') && callId) {
       const o = rec(payload.output);
-      results.set(callId, { content: asText(o?.content ?? payload.output) ?? "", isError: o?.success === false });
+      results.set(callId, {
+        content: asText(o?.content ?? payload.output) ?? '',
+        isError: o?.success === false,
+      });
     }
     fromPayload(payload, textLimit).forEach((p, key) => {
       const args =
-        p.kind === "tool_call" && p.toolCallId ? (callArgs.get(p.toolCallId) ?? null) : null;
+        p.kind === 'tool_call' && p.toolCallId ? (callArgs.get(p.toolCallId) ?? null) : null;
       out.push({
         id: `${p.toolCallId ?? String(seq)}:${key}`,
         seq,
@@ -180,16 +217,23 @@ function foldResults(
 ): TranscriptMessage[] {
   const folded = new Set<string>();
   for (const m of msgs) {
-    if (m.kind !== "tool_call" || !m.toolCallId) continue;
+    if (m.kind !== 'tool_call' || !m.toolCallId) continue;
     const r = results.get(m.toolCallId);
     if (!r) continue;
     m.done = true;
-    m.status = r.isError ? "error" : null;
-    m.result = resultSummary(callName.get(m.toolCallId) ?? m.toolName ?? "tool", callArgs.get(m.toolCallId) ?? null, r.content, r.isError);
+    m.status = r.isError ? 'error' : null;
+    m.result = resultSummary(
+      callName.get(m.toolCallId) ?? m.toolName ?? 'tool',
+      callArgs.get(m.toolCallId) ?? null,
+      r.content,
+      r.isError,
+    );
     m.resultText = clip(r.content, textLimit); // full output for the expanded card
     folded.add(m.toolCallId);
   }
-  return msgs.filter((m) => !(m.kind === "tool_result" && m.toolCallId !== null && folded.has(m.toolCallId)));
+  return msgs.filter(
+    (m) => !(m.kind === 'tool_result' && m.toolCallId !== null && folded.has(m.toolCallId)),
+  );
 }
 
 /** The rollout's CURRENT model — the most recent `turn_context.payload.model` (each turn stamps it;
@@ -216,9 +260,9 @@ export function usedTokens(lines: string[]): number | null {
     if (!line) continue;
     try {
       const entry = rec(JSON.parse(line));
-      if (str(entry?.type) !== "event_msg") continue;
+      if (str(entry?.type) !== 'event_msg') continue;
       const payload = rec(entry?.payload);
-      if (str(payload?.type) !== "token_count") continue;
+      if (str(payload?.type) !== 'token_count') continue;
       const info = rec(payload?.info);
       const usage = rec(info?.last_token_usage) ?? rec(info?.total_token_usage);
       const n = num(usage?.input_tokens);

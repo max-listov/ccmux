@@ -2,7 +2,8 @@
 title: Recoverable native content streaming beyond status snapshots
 description: Expose incremental conversation content with bounded delivery, exact cursors and honest replay limits while retaining cheap monitoring.
 type: task
-status: in-progress
+status: done
+completed: 2026-08-30 13:15 +07:00
 created: 2026-08-30
 updated: 2026-08-30
 priority: P1
@@ -67,33 +68,57 @@ native completion, not stream closure or a quiet interval, decides the turn outc
   one correlated answer. Interrupt/failure/disconnect remain distinguishable.
 - [x] Slow subscribers and cancellations have bounded resource use. Record latency, bytes and CPU
   with one and multiple readers over a sustained run; monitoring does not launch extra native scans.
-- [ ] Golden native-event tests and real E2E cover both runtimes. Packed Bun/Node consumers,
+- [x] Golden native-event tests and real E2E cover both runtimes. Packed Bun/Node consumers,
   complete local gates and exact-SHA CI pass; publish and verify the exact artifact on owned runtimes.
 
 ## Boundaries
 
 No UI, new inference loop, unlimited event journal, official Desktop bridge or opaque raw-event
-passthrough. Part of the [native control roadmap](2026-08-30-native-harness-control-parity.md);
+passthrough. Part of the [native control roadmap](../in-progress/2026-08-30-native-harness-control-parity.md);
 the tasks share one integrated release and one global validation pair.
 
 ## Что сделано
 
-- `src/content/` implements the single bounded replay/baseline authority; native observers feed it
+- [x] `src/content/` implements the single bounded replay/baseline authority; native observers feed it
   without new provider connections. `src/control/nativeFeed.ts` and the current descriptor/client
   expose the same authenticated frames. Limits and reconnect rules are in
   `docs/architecture/native-content-and-turn-controls.md`; `scripts/native-content-acceptance.ts`
   is the runnable one/eight-reader consumer.
-- Actual Codex responses were 15,511 bytes and OpenCode responses 15,731 bytes: each assembled text
+- [x] Actual Codex responses were 15,511 bytes and OpenCode responses 15,731 bytes: each assembled text
   exactly matched native final history with one and eight subscribers. One slow reader consumed at
   250 ms/frame without blocking the writer. Fast-reader mean latency was approximately 57–67 ms;
   maximum 133 ms. Codex observer CPU was 4.58/6.60 seconds, OpenCode 1.40/1.39 seconds for the one/
   eight-reader runs. Slow-reader delay remained explicit and finite, not a provider-side stall.
-- Text digests: Codex `7e36b75fcfa7c9c53740c91a4e894ed95f93266ffdb5aabd7d6e70675b836cf9`,
+- [x] Text digests: Codex `7e36b75fcfa7c9c53740c91a4e894ed95f93266ffdb5aabd7d6e70675b836cf9`,
   OpenCode `1d44e5edb880d1cbc1aee2d0e6e56dec628b2be57169dd661700633898b36698`.
   Each fixture archived its managed session and verified its three tracked processes stopped.
-- Golden and regression tests cover UTF-8 offsets, duplicate/out-of-order events, bounded resets,
+- [x] Golden and regression tests cover UTF-8 offsets, duplicate/out-of-order events, bounded resets,
   retained terminal/request priority, truncated completed items, native Plan events, watcher cleanup,
   and idle lease/settings frames with an unchanged content cursor. Native approval/input, interrupt,
   model change and restart are exercised by the integrated selection/image/context programs.
-- Both independent implementation validators passed the entire package and their final targeted
-  rechecks. Exact-SHA CI, published artifact and rollout evidence remain in the global release gate.
+- [x] Both independent implementation validators passed the entire package and their final targeted
+  rechecks, including synthetic/compaction-context metadata selection without rewriting authored text.
+
+## Published acceptance
+
+- [x] Corrective release `v0.39.26`, release/tag `24cdb31e2997e4deea9e0e36ee992bc1da71d782`;
+  native-package implementation `3c7235454e657cefa5ec570d6fb4c927293b07e4` and metadata privacy fix
+  `5b1692f9e3e5ceb7879a0bf99f801316072cab56`. Complete gate: 929 tests, 4,556 assertions;
+  both independent implementation re-reviews passed. Exact-SHA CI
+  [33296143751](https://github.com/max-listov/ccmux/actions/runs/33296143751) passed.
+- [x] Downloaded runtime SHA-256: `6d2685bc49c517ba4abd812f5ed16714d763189328aa8c84fa8356a96c49ed42`;
+  downloaded client archive SHA-256: `15475d4f55670be57f803802c78a7d009f0280f0dcdbb88f686ef71100f6b3d8`.
+  Actual published bytes passed packed installation, Bun/Node and both TypeScript resolution checks.
+  All three owned installations match the runtime version/hash and report live owner projections.
+  The 33 pre-existing running sessions retained identity and remained running.
+- [x] Repeated installed-bundle/public-client acceptance passed on real Codex and OpenCode: actual
+  image recognition, exact preview, native content/history, idempotent create/message/fork, distinct
+  fork identity, source preservation, retained image access, native compaction with one revision/reset,
+  and retained unfinished checkpoint plus prior image facts. Internal attachment paths are absent
+  from public history/content. Evidence SHA-256:
+  `17edd555128d5e156b5e1397246ef193fee29258e7c84a716e7b7cdce3f68d9a`.
+  Cleanup archived/stopped all four fixture sessions and preserved unrelated registrations/daemon.
+- [x] `scripts/opencode-runtime-e2e.ts` passed again against the installed bundle: real tool effect,
+  exact input/approval, busy/defer, interruption, two-runtime chat/reply identity, daemon/provider
+  restart and continuation, then archive. Evidence SHA-256:
+  `429f099cd94a0f8035755acdf50f05dcba8bfabb6c073192341c07299bbfa30d`.

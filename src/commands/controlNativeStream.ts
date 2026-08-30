@@ -1,13 +1,13 @@
-import { once } from "node:events";
-import { createControlClient } from "../control/client.ts";
+import { once } from 'node:events';
+import { createControlClient } from '../control/client.ts';
 import {
   CCMUX_NATIVE_STREAM_HEARTBEAT_MS,
   CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
   ControlNativeStreamRequestSchema,
   controlNativeStreamFrame,
   readControlNativeStreamCursor,
-} from "../control/nativeStreamContract.ts";
-import type { ControlNativeSnapshot } from "../control/schema.ts";
+} from '../control/nativeStreamContract.ts';
+import type { ControlNativeSnapshot } from '../control/schema.ts';
 
 async function boundedStdin(maxBytes: number): Promise<string> {
   const reader = Bun.stdin.stream().getReader();
@@ -20,7 +20,7 @@ async function boundedStdin(maxBytes: number): Promise<string> {
       size += next.value.byteLength;
       if (size > maxBytes) {
         await reader.cancel();
-        throw new Error("Native stream input exceeds its byte budget");
+        throw new Error('Native stream input exceeds its byte budget');
       }
       chunks.push(next.value);
     }
@@ -38,24 +38,21 @@ async function boundedStdin(maxBytes: number): Promise<string> {
 
 async function writeFrame(snapshot: ControlNativeSnapshot): Promise<void> {
   const line = `${JSON.stringify(controlNativeStreamFrame(snapshot))}\n`;
-  if (!process.stdout.write(line)) await once(process.stdout, "drain");
+  if (!process.stdout.write(line)) await once(process.stdout, 'drain');
 }
 
 /** Fixed stdin contract + stable cursor; no caller argv, path, credential or provider process. */
 export async function cmdControlNativeStream(): Promise<number> {
   const abort = new AbortController();
   const cancel = () => abort.abort();
-  process.once("SIGINT", cancel);
-  process.once("SIGTERM", cancel);
+  process.once('SIGINT', cancel);
+  process.once('SIGTERM', cancel);
   const client = createControlClient();
   try {
     const input = ControlNativeStreamRequestSchema.parse(
       JSON.parse(await boundedStdin(CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES)),
     );
-    const resume = readControlNativeStreamCursor(
-      input.cursor,
-      input.target,
-    );
+    const resume = readControlNativeStreamCursor(input.cursor, input.target);
     const stream = await client.watchNative.withOptions(
       { target: input.target, cursor: resume },
       { signal: abort.signal },
@@ -65,12 +62,13 @@ export async function cmdControlNativeStream(): Promise<number> {
     let last: ControlNativeSnapshot | null = null;
     while (!abort.signal.aborted) {
       const outcome = await Promise.race([
-        pending.then((value) => ({ kind: "item" as const, value })),
-        Bun.sleep(CCMUX_NATIVE_STREAM_HEARTBEAT_MS).then(() => ({ kind: "heartbeat" as const })),
+        pending.then((value) => ({ kind: 'item' as const, value })),
+        Bun.sleep(CCMUX_NATIVE_STREAM_HEARTBEAT_MS).then(() => ({ kind: 'heartbeat' as const })),
       ]);
-      if (outcome.kind === "heartbeat") {
+      if (outcome.kind === 'heartbeat') {
         if (last !== null) {
-          if (Date.parse(last.expiresAt) <= Date.now()) throw new Error("Native stream lease expired");
+          if (Date.parse(last.expiresAt) <= Date.now())
+            throw new Error('Native stream lease expired');
           await writeFrame(last);
         }
         continue;
@@ -83,15 +81,16 @@ export async function cmdControlNativeStream(): Promise<number> {
     return 0;
   } catch (error) {
     if (abort.signal.aborted) return 0;
-    const code = error instanceof Error && error.message.includes("byte budget")
-      ? "INPUT_TOO_LARGE"
-      : "STREAM_UNAVAILABLE";
+    const code =
+      error instanceof Error && error.message.includes('byte budget')
+        ? 'INPUT_TOO_LARGE'
+        : 'STREAM_UNAVAILABLE';
     process.stderr.write(`${JSON.stringify({ error: code })}\n`);
     return 1;
   } finally {
     abort.abort();
-    process.removeListener("SIGINT", cancel);
-    process.removeListener("SIGTERM", cancel);
+    process.removeListener('SIGINT', cancel);
+    process.removeListener('SIGTERM', cancel);
     await client.close();
   }
 }

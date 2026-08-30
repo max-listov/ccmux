@@ -1,14 +1,14 @@
-import { render } from "ink";
-import { loadMachineConfig } from "../config/machine.ts";
-import type { MachineConfig } from "../types.ts";
-import { tmuxArgv } from "../tmux/tmux.ts";
-import { App } from "./App.tsx";
-import type { Intent } from "./App.tsx";
-import { createSession, waitReady } from "./actions.ts";
-import { log, setStderrLogging, LOG_FILE } from "../util/log.ts";
+import { render } from 'ink';
+import { loadMachineConfig } from '../config/machine.ts';
+import { tmuxArgv } from '../tmux/tmux.ts';
+import type { MachineConfig } from '../types.ts';
+import { LOG_FILE, log, setStderrLogging } from '../util/log.ts';
+import type { Intent } from './App.tsx';
+import { App } from './App.tsx';
+import { createSession, waitReady } from './actions.ts';
 
 function insideTmux(): boolean {
-  return process.env.TMUX !== undefined && process.env.TMUX !== "";
+  return process.env.TMUX !== undefined && process.env.TMUX !== '';
 }
 
 /** Hand the terminal cleanly to tmux before attaching. The REAL fix is releasing stdin:
@@ -24,7 +24,7 @@ function cleanTerminalForAttach(): void {
   } catch {
     /* best effort */
   }
-  process.stdout.write("\x1b[?25h"); // restore cursor (Ink hides it)
+  process.stdout.write('\x1b[?25h'); // restore cursor (Ink hides it)
 }
 
 /** Hand the terminal to tmux for the session, block until detach, then return so the
@@ -40,11 +40,21 @@ function cleanTerminalForAttach(): void {
  *  the sole owner of the terminal. Inherited fd 0/1/2 (not /dev/tty — VS Code's pty has no
  *  usable controlling terminal, so `open /dev/tty` fails there). */
 function attachTmux(m: MachineConfig, name: string): void {
-  const args = insideTmux() ? ["switch-client", "-t", `=${name}`] : ["attach", "-t", `=${name}`];
-  log.info({ msg: "attach", name, mode: args[0], tty: process.stdout.isTTY, term: process.env.TERM });
-  const r = Bun.spawnSync(tmuxArgv(m, ...args), { stdin: "inherit", stdout: "inherit", stderr: "pipe" });
-  const err = r.stderr ? r.stderr.toString().trim() : "";
-  log.info({ msg: "attach exited", name, code: r.exitCode, stderr: err.slice(0, 300) });
+  const args = insideTmux() ? ['switch-client', '-t', `=${name}`] : ['attach', '-t', `=${name}`];
+  log.info({
+    msg: 'attach',
+    name,
+    mode: args[0],
+    tty: process.stdout.isTTY,
+    term: process.env.TERM,
+  });
+  const r = Bun.spawnSync(tmuxArgv(m, ...args), {
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'pipe',
+  });
+  const err = r.stderr ? r.stderr.toString().trim() : '';
+  log.info({ msg: 'attach exited', name, code: r.exitCode, stderr: err.slice(0, 300) });
 }
 
 /** Last-resort crash trail: the TUI owns the terminal, so an uncaught throw would vanish.
@@ -58,8 +68,8 @@ function installCrashTrail(): void {
       /* best effort */
     }
   };
-  process.on("uncaughtException", onFatal("uncaughtException"));
-  process.on("unhandledRejection", onFatal("unhandledRejection"));
+  process.on('uncaughtException', onFatal('uncaughtException'));
+  process.on('unhandledRejection', onFatal('unhandledRejection'));
 }
 
 /** Die when the controlling terminal goes away, instead of orphaning. A closed VS Code/iTerm tab
@@ -73,7 +83,7 @@ function installExitOnTerminalDeath(): void {
   const die = (why: string): void => {
     if (dying) return;
     dying = true;
-    log.info({ msg: "terminal died — exiting", why });
+    log.info({ msg: 'terminal died — exiting', why });
     try {
       cleanTerminalForAttach();
     } catch {
@@ -81,11 +91,11 @@ function installExitOnTerminalDeath(): void {
     }
     process.exit(0);
   };
-  process.on("SIGHUP", () => die("SIGHUP"));
-  process.on("SIGTERM", () => die("SIGTERM"));
-  process.stdout.on("error", () => die("stdout error")); // EIO/EPIPE on a dead pty
-  process.stdin.on("error", () => die("stdin error"));
-  process.stdin.on("end", () => die("stdin end"));
+  process.on('SIGHUP', () => die('SIGHUP'));
+  process.on('SIGTERM', () => die('SIGTERM'));
+  process.stdout.on('error', () => die('stdout error')); // EIO/EPIPE on a dead pty
+  process.stdin.on('error', () => die('stdin error'));
+  process.stdin.on('end', () => die('stdin end'));
 }
 
 export async function runTui(fullscreen: boolean): Promise<number> {
@@ -93,13 +103,13 @@ export async function runTui(fullscreen: boolean): Promise<number> {
   installCrashTrail();
   installExitOnTerminalDeath();
   const m = loadMachineConfig();
-  log.info({ msg: "tui start", fullscreen, insideTmux: insideTmux(), logFile: LOG_FILE });
+  log.info({ msg: 'tui start', fullscreen, insideTmux: insideTmux(), logFile: LOG_FILE });
   for (;;) {
     let app: ReturnType<typeof render> | undefined;
     try {
       const intent = await new Promise<Intent>((resolve) => {
         app = render(<App m={m} initialFullscreen={fullscreen} onIntent={resolve} />);
-        void app.waitUntilExit().then(() => resolve({ type: "quit" }));
+        void app.waitUntilExit().then(() => resolve({ type: 'quit' }));
       });
       app?.unmount();
       // Wait for Ink to FINISH tearing down (raw-mode off, stdin listeners removed, alt-screen
@@ -108,22 +118,34 @@ export async function runTui(fullscreen: boolean): Promise<number> {
       // spawns mid-teardown, Ink re-touches stdin under it, the client's socket handshake breaks
       // → "server exited unexpectedly" + exit 1 (intermittent, second try works). See attach race.
       await app?.waitUntilExit();
-      log.info({ msg: "intent", type: intent.type, name: intent.type === "quit" ? undefined : intent.name });
-      if (intent.type === "quit") return 0;
-      const created = intent.type === "new" ? await createSession(m, intent.name, intent.dir, intent.agent) : undefined;
-      if (created) log.info({ msg: "created", name: created.name, dir: created.dir, uuid: created.uuid });
+      log.info({
+        msg: 'intent',
+        type: intent.type,
+        name: intent.type === 'quit' ? undefined : intent.name,
+      });
+      if (intent.type === 'quit') return 0;
+      const created =
+        intent.type === 'new'
+          ? await createSession(m, intent.name, intent.dir, intent.agent)
+          : undefined;
+      if (created)
+        log.info({ msg: 'created', name: created.name, dir: created.dir, uuid: created.uuid });
       cleanTerminalForAttach();
       if (created) {
         const t0 = Date.now();
         await waitReady(m, created); // attach to a drawn agent, not a half-booted blank pane
-        log.info({ msg: "waitReady done", name: created.name, ms: Date.now() - t0 });
+        log.info({ msg: 'waitReady done', name: created.name, ms: Date.now() - t0 });
       }
       attachTmux(m, intent.name);
       if (insideTmux()) return 0; // switch-client doesn't block — no menu to come back to
     } catch (err) {
       app?.unmount();
       cleanTerminalForAttach();
-      log.error({ msg: "tui loop error", err: String(err), stack: err instanceof Error ? err.stack : undefined });
+      log.error({
+        msg: 'tui loop error',
+        err: String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       process.stderr.write(`ccmux: ${err instanceof Error ? err.message : String(err)}\n`);
       return 1;
     }

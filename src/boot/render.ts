@@ -13,7 +13,7 @@ export type BootContext = {
 };
 
 function execStart(ctx: BootContext): string {
-  return [...ctx.selfArgv, "daemon"].join(" ");
+  return [...ctx.selfArgv, 'daemon'].join(' ');
 }
 
 export function renderSystemdUnit(ctx: BootContext): string {
@@ -46,7 +46,7 @@ WantedBy=multi-user.target
 }
 
 export function renderLaunchdPlist(ctx: BootContext): string {
-  const args = [...ctx.selfArgv, "daemon"].map((a) => `    <string>${a}</string>`).join("\n");
+  const args = [...ctx.selfArgv, 'daemon'].map((a) => `    <string>${a}</string>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

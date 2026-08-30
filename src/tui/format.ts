@@ -1,13 +1,13 @@
-import stringWidth from "string-width";
-import type { AgentKind, SessionState } from "../types.ts";
+import stringWidth from 'string-width';
+import type { AgentKind, SessionState } from '../types.ts';
 
 // Shared TUI primitives — used by BOTH the inline and fullscreen views, so the look
 // stays identical and nothing is duplicated.
 
-export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
+export const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
 export function pad(s: string, n: number): string {
-  return s.length >= n ? s.slice(0, n) : s + " ".repeat(n - s.length);
+  return s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length);
 }
 
 // ── display width (terminal columns), not JS string length ────────────────────────────
@@ -21,9 +21,9 @@ export function dispWidth(s: string): number {
 
 /** Longest prefix of `s` that fits in `max` display columns. */
 export function sliceToWidth(s: string, max: number): string {
-  if (max <= 0) return "";
+  if (max <= 0) return '';
   let w = 0;
-  let out = "";
+  let out = '';
   for (const ch of s) {
     const cw = stringWidth(ch);
     if (w + cw > max) break;
@@ -44,11 +44,11 @@ export function clipWidth(s: string, max: number): string {
 export function wrapText(s: string, width: number): string[] {
   const w = Math.max(1, width);
   const lines: string[] = [];
-  for (const para of s.split("\n")) {
-    let cur = "";
+  for (const para of s.split('\n')) {
+    let cur = '';
     let curW = 0;
     for (const token of para.split(/(\s+)/)) {
-      if (token === "") continue;
+      if (token === '') continue;
       const tw = stringWidth(token);
       if (curW + tw <= w) {
         cur += token;
@@ -57,13 +57,13 @@ export function wrapText(s: string, width: number): string[] {
       }
       if (/^\s+$/.test(token)) {
         lines.push(cur);
-        cur = "";
+        cur = '';
         curW = 0;
         continue;
       }
       if (curW > 0) {
         lines.push(cur);
-        cur = "";
+        cur = '';
         curW = 0;
       }
       let rest = token;
@@ -85,7 +85,7 @@ export function wrapText(s: string, width: number): string[] {
  *  memoized cards don't re-render on every poll tick just to repaint the same age. */
 export function fmtAge(ms: number): string {
   const s = Math.floor((Date.now() - ms) / 1000);
-  if (s < 60) return "now";
+  if (s < 60) return 'now';
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
@@ -108,32 +108,40 @@ export function fmtTokens(t: number): string {
  *    Paths always contain '/', so excluding it splits them into short, safe segments; real
  *    base64 image data is already neutralized upstream (normalize → "[image]"). */
 export function sanitize(s: string): string {
-  return s
-    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "") // ANSI CSI sequences
-    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "") // control bytes (keep \t \n)
-    .replace(/[︀-️‍]/g, "") // variation selectors + zero-width joiner
-    .replace(/\p{Extended_Pictographic}/gu, "•") // fold emoji → safe single-width marker
-    .replace(/[A-Za-z0-9+=_-]{56,}/g, "[…]"); // collapse blobs — NOT paths (no '/' in class)
+  return (
+    s
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip ANSI control bytes before rendering untrusted terminal output.
+      .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '') // ANSI CSI sequences
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: These control bytes corrupt terminal layout; tab and newline remain allowed.
+      .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '') // control bytes (keep \t \n)
+      .replace(/[︀-️‍]/g, '') // variation selectors + zero-width joiner
+      .replace(/\p{Extended_Pictographic}/gu, '•') // fold emoji → safe single-width marker
+      .replace(/[A-Za-z0-9+=_-]{56,}/g, '[…]')
+  ); // collapse blobs — NOT paths (no '/' in class)
 }
 
 /** Provider badge colour: claude=cyan, codex=yellow. */
-export function provColor(agent: AgentKind): "cyan" | "yellow" {
-  return agent === "codex" ? "yellow" : "cyan";
+export function provColor(agent: AgentKind): 'cyan' | 'yellow' {
+  return agent === 'codex' ? 'yellow' : 'cyan';
 }
 
 /** Foreground colour for a state label (undefined → terminal default). */
-export function stateColor(state: SessionState): "green" | "gray" | "magenta" | "red" | undefined {
-  if (state === "working") return "green";
-  if (state === "stopped") return "gray";
-  if (state === "external") return "magenta";
-  if (state === "blocked") return "red";
+export function stateColor(state: SessionState): 'green' | 'gray' | 'magenta' | 'red' | undefined {
+  if (state === 'working') return 'green';
+  if (state === 'stopped') return 'gray';
+  if (state === 'external') return 'magenta';
+  if (state === 'blocked') return 'red';
   return undefined;
 }
 
-export function dotGlyph(state: SessionState): { glyph: string; color: "green" | "gray" | "magenta" | "red" | undefined; dim: boolean } {
-  if (state === "working") return { glyph: "●", color: "green", dim: false };
-  if (state === "idle") return { glyph: "○", color: "gray", dim: false };
-  if (state === "external") return { glyph: "◆", color: "magenta", dim: false };
-  if (state === "blocked") return { glyph: "!", color: "red", dim: false };
-  return { glyph: "·", color: undefined, dim: true };
+export function dotGlyph(state: SessionState): {
+  glyph: string;
+  color: 'green' | 'gray' | 'magenta' | 'red' | undefined;
+  dim: boolean;
+} {
+  if (state === 'working') return { glyph: '●', color: 'green', dim: false };
+  if (state === 'idle') return { glyph: '○', color: 'gray', dim: false };
+  if (state === 'external') return { glyph: '◆', color: 'magenta', dim: false };
+  if (state === 'blocked') return { glyph: '!', color: 'red', dim: false };
+  return { glyph: '·', color: undefined, dim: true };
 }

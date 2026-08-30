@@ -1,12 +1,23 @@
-import type { TranscriptMessage } from "../types.ts";
-import { toolCategory, toolDisplayName } from "../agent/toolMeta.ts";
+import { toolCategory, toolDisplayName } from '../agent/toolMeta.ts';
+import type { TranscriptMessage } from '../types.ts';
 
 // Unified, agent-agnostic activity status — derived from the last transcript message +
 // whether the agent is actively working. Same vocabulary for Claude, Codex and any
 // future provider, so the fleet reads consistently. This is the foundation the upcoming
 // agent-command features build on.
 
-export type StatusKey = "thinking" | "writing" | "reading" | "editing" | "running" | "tool" | "waiting" | "idle" | "stopped" | "blocked" | "prompt";
+export type StatusKey =
+  | 'thinking'
+  | 'writing'
+  | 'reading'
+  | 'editing'
+  | 'running'
+  | 'tool'
+  | 'waiting'
+  | 'idle'
+  | 'stopped'
+  | 'blocked'
+  | 'prompt';
 
 export interface AgentStatus {
   key: StatusKey;
@@ -17,17 +28,17 @@ export interface AgentStatus {
 }
 
 const ICON: Record<StatusKey, string> = {
-  thinking: "✦",
-  writing: "✎",
-  reading: "◉",
-  editing: "✐",
-  running: "▸",
-  tool: "✱",
-  waiting: "◔",
-  idle: "○",
-  stopped: "▪",
-  blocked: "!",
-  prompt: "?",
+  thinking: '✦',
+  writing: '✎',
+  reading: '◉',
+  editing: '✐',
+  running: '▸',
+  tool: '✱',
+  waiting: '◔',
+  idle: '○',
+  stopped: '▪',
+  blocked: '!',
+  prompt: '?',
 };
 
 function st(key: StatusKey, label: string, color: string, active: boolean): AgentStatus {
@@ -36,35 +47,43 @@ function st(key: StatusKey, label: string, color: string, active: boolean): Agen
 
 function fromTool(name: string): AgentStatus {
   const cat = toolCategory(name);
-  if (cat === "read" || cat === "search") return st("reading", "reading", "blue", true);
-  if (cat === "edit" || cat === "write") return st("editing", "editing", "yellow", true);
-  if (cat === "run") return st("running", "running", "cyan", true);
-  return st("tool", toolDisplayName(name) || "tool", "cyan", true);
+  if (cat === 'read' || cat === 'search') return st('reading', 'reading', 'blue', true);
+  if (cat === 'edit' || cat === 'write') return st('editing', 'editing', 'yellow', true);
+  if (cat === 'run') return st('running', 'running', 'cyan', true);
+  return st('tool', toolDisplayName(name) || 'tool', 'cyan', true);
 }
 
 function working(lm: TranscriptMessage | null): AgentStatus {
-  if (!lm) return st("running", "working", "green", true);
-  if (lm.kind === "thinking") return st("thinking", "thinking", "magenta", true);
-  if (lm.kind === "tool_call") return fromTool(lm.toolName ?? "");
-  if (lm.kind === "tool_result") return st("running", "running", "cyan", true);
-  if (lm.role === "assistant") return st("writing", "writing", "green", true);
-  return st("thinking", "thinking", "magenta", true); // user just spoke → agent will respond
+  if (!lm) return st('running', 'working', 'green', true);
+  if (lm.kind === 'thinking') return st('thinking', 'thinking', 'magenta', true);
+  if (lm.kind === 'tool_call') return fromTool(lm.toolName ?? '');
+  if (lm.kind === 'tool_result') return st('running', 'running', 'cyan', true);
+  if (lm.role === 'assistant') return st('writing', 'writing', 'green', true);
+  return st('thinking', 'thinking', 'magenta', true); // user just spoke → agent will respond
 }
 
 /** Derive the unified status. `isWorking` = agent active right now (pane spinner for
  *  managed, recent file activity for external). */
-export function deriveStatus(opts: { running: boolean; isWorking: boolean; lastMessage: TranscriptMessage | null; blocked?: boolean; atPrompt?: string | null }): AgentStatus {
-  if (opts.blocked === true) return st("blocked", "blocked", "red", false);
+export function deriveStatus(opts: {
+  running: boolean;
+  isWorking: boolean;
+  lastMessage: TranscriptMessage | null;
+  blocked?: boolean;
+  atPrompt?: string | null;
+}): AgentStatus {
+  if (opts.blocked === true) return st('blocked', 'blocked', 'red', false);
   // Before anything else that could read as calm: a session at a menu looks idle to every other
   // signal and is the opposite of it. The label carries the QUESTION, so the fleet says what it
   // needs rather than only that it needs something.
-  if (opts.atPrompt != null && opts.atPrompt !== "") return st("prompt", `needs answer: ${opts.atPrompt}`, "yellow", false);
-  if (!opts.running) return st("stopped", "stopped", "gray", false);
+  if (opts.atPrompt != null && opts.atPrompt !== '')
+    return st('prompt', `needs answer: ${opts.atPrompt}`, 'yellow', false);
+  if (!opts.running) return st('stopped', 'stopped', 'gray', false);
   if (opts.isWorking) return working(opts.lastMessage);
   // not actively working → waiting for our input if the assistant finished its turn, else idle
   const lm = opts.lastMessage;
-  if (lm && lm.role === "assistant" && lm.kind === "message") return st("waiting", "waiting", "yellow", false);
-  return st("idle", "idle", "gray", false);
+  if (lm && lm.role === 'assistant' && lm.kind === 'message')
+    return st('waiting', 'waiting', 'yellow', false);
+  return st('idle', 'idle', 'gray', false);
 }
 
 /** Display mark: per-status icon, prefixed with the spinner when the agent is active. */

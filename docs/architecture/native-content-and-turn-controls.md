@@ -9,9 +9,11 @@ updated: 2026-08-30
 
 # One current control surface
 
-The local client and injected-fetch service client call the same domain operations. Service
-revision 2 and native stream profile `ccmux-native-v2` are the sole current contract. Older routes,
-content shapes and client profiles are not translated or kept alive. Native provider adapters
+The local client and injected-fetch service client call the same domain operations. The service
+uses the unversioned prefix `/ccmux/control`, ingress `/ccmux-control/invoke` and native stream
+profile `ccmux-native`. The required service-envelope revision is the literal `current`, not a
+version-negotiation mechanism. Numbered routes, content shapes and client profiles are not
+translated or kept alive. Native provider adapters
 are different implementations of those operations, not compatibility clients.
 
 The managed registry is the identity authority; provider history is the transcript authority.

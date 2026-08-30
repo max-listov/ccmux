@@ -1,8 +1,8 @@
-import { loadMachineConfig } from "../config/machine.ts";
-import { followEvents, readEvents } from "../events/feed.ts";
-import { humanizeDuration } from "../util/duration.ts";
-import type { SessionEvent } from "../types.ts";
-import { usageLine } from "./help.ts";
+import { loadMachineConfig } from '../config/machine.ts';
+import { followEvents, readEvents } from '../events/feed.ts';
+import type { SessionEvent } from '../types.ts';
+import { humanizeDuration } from '../util/duration.ts';
+import { usageLine } from './help.ts';
 
 /**
  * `ccmux events` — the contract an outside surface reads the feed through.
@@ -18,14 +18,14 @@ import { usageLine } from "./help.ts";
  * the boundary instant rather than risking a gap. Every event carries `id` for exactly that reason —
  * a consumer that acts on events drops the ids it has already handled.
  */
-const HUMAN: Record<SessionEvent["event"], string> = {
-  "turn-start": "started a turn",
-  "turn-end": "finished a turn",
-  waiting: "is waiting at a menu",
-  resumed: "left the menu and went back to work",
-  "session-start": "session started",
-  "session-stop": "session stopped",
-  "session-blocked": "session is blocked",
+const HUMAN: Record<SessionEvent['event'], string> = {
+  'turn-start': 'started a turn',
+  'turn-end': 'finished a turn',
+  waiting: 'is waiting at a menu',
+  resumed: 'left the menu and went back to work',
+  'session-start': 'session started',
+  'session-stop': 'session stopped',
+  'session-blocked': 'session is blocked',
 };
 
 /** One event as a line a person can read. Pure, so the wording is testable and cannot drift from
@@ -34,10 +34,11 @@ export function formatEvent(event: SessionEvent): string {
   const when = event.ts.slice(11, 19);
   const address = `${event.machine}:${event.session}`;
   const parts = [HUMAN[event.event]];
-  if (event.durationMs !== undefined) parts.push(`after ${humanizeDuration(Math.round(event.durationMs / 1000))}`);
-  if (event.interrupted === true) parts.push("(interrupted — it did not end on its own)");
-  if (event.detail !== undefined && event.detail !== "") parts.push(`— ${event.detail}`);
-  return `${when}  ${address.padEnd(24)} ${parts.join(" ")}`;
+  if (event.durationMs !== undefined)
+    parts.push(`after ${humanizeDuration(Math.round(event.durationMs / 1000))}`);
+  if (event.interrupted === true) parts.push('(interrupted — it did not end on its own)');
+  if (event.detail !== undefined && event.detail !== '') parts.push(`— ${event.detail}`);
+  return `${when}  ${address.padEnd(24)} ${parts.join(' ')}`;
 }
 
 /**
@@ -70,16 +71,19 @@ export function framedLine(event: SessionEvent): string {
  * take here — there is no error to notice, only events that quietly do not exist for the consumer —
  * and it is why the resume promise (`stableCursor`) cannot be declared until this is read.
  */
-const RESUME_CURSOR_ENV = "STITCHWIRE_STREAM_CURSOR";
+const RESUME_CURSOR_ENV = 'STITCHWIRE_STREAM_CURSOR';
 
 /**
  * Which instant to resume from. An explicit `--since` wins: it is a person asking a deliberate
  * question, while the variable is a transport mechanism, and the person must be able to override
  * the machine. Pure, so both precedence and the empty-string case are testable.
  */
-export function resolveSince(explicit: string | undefined, fromEnv: string | undefined): string | undefined {
+export function resolveSince(
+  explicit: string | undefined,
+  fromEnv: string | undefined,
+): string | undefined {
   if (explicit !== undefined) return explicit;
-  return fromEnv !== undefined && fromEnv !== "" ? fromEnv : undefined;
+  return fromEnv !== undefined && fromEnv !== '' ? fromEnv : undefined;
 }
 
 export async function cmdEvents(args: string[]): Promise<number> {
@@ -91,19 +95,25 @@ export async function cmdEvents(args: string[]): Promise<number> {
   let limit: number | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === "--follow" || a === "-f") follow = true;
-    else if (a === "--json") json = true;
+    if (a === '--follow' || a === '-f') follow = true;
+    else if (a === '--json') json = true;
     // Kept separate from `--json` on purpose: `--json` is the clean stream of events, which is what a
     // person reads and what a local consumer wants. Wrapping every line in an envelope by default
     // would make the common case pay for the transport's contract.
-    else if (a === "--framed") framed = true;
-    else if (a === "--since") since = args[++i];
-    else if (a === "--session") session = args[++i];
-    else if (a === "-n") {
-      const parsed = Number.parseInt(args[++i] ?? "", 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) return console.error("events: -n needs a positive count"), 1;
+    else if (a === '--framed') framed = true;
+    else if (a === '--since') since = args[++i];
+    else if (a === '--session') session = args[++i];
+    else if (a === '-n') {
+      const parsed = Number.parseInt(args[++i] ?? '', 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        console.error('events: -n needs a positive count');
+        return 1;
+      }
       limit = parsed;
-    } else if (a?.startsWith("-")) return console.error(`events: unknown flag '${a}'\n${usageLine("events")}`), 1;
+    } else if (a?.startsWith('-')) {
+      console.error(`events: unknown flag '${a}'\n${usageLine('events')}`);
+      return 1;
+    }
   }
   const explicitSince = since;
   since = resolveSince(since, process.env[RESUME_CURSOR_ENV]);
@@ -112,8 +122,10 @@ export async function cmdEvents(args: string[]): Promise<number> {
     // hands back a cursor this same producer emitted, so an unparseable one is a defect somewhere,
     // and the alternative (ignore it, start from "now") is precisely the silent gap this reads the
     // variable to close.
-    const source = explicitSince === undefined ? `${RESUME_CURSOR_ENV} carried` : "--since needs";
-    console.error(`events: ${source} an ISO instant (e.g. ${new Date().toISOString()}), got '${since}'`);
+    const source = explicitSince === undefined ? `${RESUME_CURSOR_ENV} carried` : '--since needs';
+    console.error(
+      `events: ${source} an ISO instant (e.g. ${new Date().toISOString()}), got '${since}'`,
+    );
     return 1;
   }
 
@@ -150,13 +162,13 @@ export async function cmdEvents(args: string[]): Promise<number> {
       stop();
       resolve();
     };
-    process.on("SIGINT", end);
-    process.on("SIGTERM", end);
+    process.on('SIGINT', end);
+    process.on('SIGTERM', end);
     // A reader that went away is noticed on the next WRITE, not the moment it left: a closed pipe is
     // only observable by writing into it — measured, `destroyed`/`writable`/`close` all stay quiet
     // until then. So this behaves like every other follow tool, and the handler's real job is to
     // make that moment a clean exit instead of an unhandled EPIPE crash.
-    process.stdout.on("error", end);
+    process.stdout.on('error', end);
   });
   await done;
   return 0;

@@ -55,7 +55,10 @@ export function knownPromptModules(): string[] {
 export function resolvePromptModules(keys: string[], ctx: PromptModuleContext): string[] {
   return keys.map((key) => {
     const build = REGISTRY[key];
-    if (!build) throw new Error(`unknown prompt module '${key}' (known: ${knownPromptModules().join(", ") || "none"})`);
+    if (!build)
+      throw new Error(
+        `unknown prompt module '${key}' (known: ${knownPromptModules().join(', ') || 'none'})`,
+      );
     return build(ctx);
   });
 }

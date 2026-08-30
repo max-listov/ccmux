@@ -1,13 +1,13 @@
-import { ExternalInventoryJsonSchema } from "../config/schema.ts";
-import { loadMachineConfig } from "../config/machine.ts";
-import { discoverExternal } from "../external/discover.ts";
-import { observeExternalTurns } from "../external/turnState.ts";
-import type { ExternalInventoryJson, ExternalSession } from "../types.ts";
-import { VERSION } from "../util/version.ts";
-import { usageLine } from "./help.ts";
+import { loadMachineConfig } from '../config/machine.ts';
+import { ExternalInventoryJsonSchema } from '../config/schema.ts';
+import { discoverExternal } from '../external/discover.ts';
+import { observeExternalTurns } from '../external/turnState.ts';
+import type { ExternalInventoryJson, ExternalSession } from '../types.ts';
+import { VERSION } from '../util/version.ts';
+import { usageLine } from './help.ts';
 
 function pad(value: string, width: number): string {
-  return value.length >= width ? value : value + " ".repeat(width - value.length);
+  return value.length >= width ? value : value + ' '.repeat(width - value.length);
 }
 
 export function externalInventoryJson(
@@ -25,13 +25,13 @@ export function externalInventoryJson(
 
 export function externalTableLines(sessions: ExternalSession[]): string[] {
   const lines = [
-    `${pad("PROVIDER", 8)} ${pad("ORIGIN", 10)} ${pad("STORAGE", 8)} ${pad("WRITER", 25)} ${pad("TURN", 16)} ${pad("THREAD", 36)} DIR`,
+    `${pad('PROVIDER', 8)} ${pad('ORIGIN', 10)} ${pad('STORAGE', 8)} ${pad('WRITER', 25)} ${pad('TURN', 16)} ${pad('THREAD', 36)} DIR`,
   ];
   for (const session of sessions) {
-    const runtime = session.writerRuntime?.kind ?? "-";
+    const runtime = session.writerRuntime?.kind ?? '-';
     const writer = `${session.writerEvidence}/${runtime}`;
     lines.push(
-      `${pad(session.provider, 8)} ${pad(session.origin, 10)} ${pad(session.storage, 8)} ${pad(writer, 25)} ${pad(session.turnState.state, 16)} ${pad(session.threadId, 36)} ${session.dir ?? "-"}`,
+      `${pad(session.provider, 8)} ${pad(session.origin, 10)} ${pad(session.storage, 8)} ${pad(writer, 25)} ${pad(session.turnState.state, 16)} ${pad(session.threadId, 36)} ${session.dir ?? '-'}`,
     );
   }
   return lines;
@@ -47,15 +47,15 @@ function writeStdout(text: string): Promise<void> {
 }
 
 export async function cmdExternal(args: string[] = []): Promise<number> {
-  const unsupported = args.find((arg) => arg !== "--json");
+  const unsupported = args.find((arg) => arg !== '--json');
   if (unsupported !== undefined) {
-    console.error(`${usageLine("external")}\nunknown option: ${unsupported}`);
+    console.error(`${usageLine('external')}\nunknown option: ${unsupported}`);
     return 1;
   }
 
   const machine = loadMachineConfig();
   const sessions = await observeExternalTurns(machine, discoverExternal(machine));
-  if (args.includes("--json")) {
+  if (args.includes('--json')) {
     // This projection can be much larger than a pipe buffer. Await the stream callback: bundled
     // Bun may otherwise terminate after queueing only part of a `console.log` string for a pipeline.
     await writeStdout(`${JSON.stringify(externalInventoryJson(machine.rcPrefix, sessions))}\n`);

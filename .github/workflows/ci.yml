@@ -1,7 +1,7 @@
 # CI + Release — one workflow for everything.
 #
 # Jobs:
-#   ci      — typecheck + full test suite (every push / PR)
+#   ci      — Biome + typecheck + full test suite (every push / PR)
 #   smoke   — build the prod bundle and RUN it (`version`, `list --json`): a bundle that
 #             cannot even load dies here, before it can ever reach the fleet
 #   release — GitHub Release with fleet assets and native reader library (tag only, needs ci+smoke)
@@ -55,7 +55,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install tmux
 
-      - name: Typecheck + tests
+      - name: Biome + typecheck + tests
         run: bun run check
 
   smoke:

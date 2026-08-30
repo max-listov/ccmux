@@ -1,13 +1,20 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, statSync } from "node:fs";
-import { dirname } from "node:path";
-import { z } from "zod";
-import { CHAT_GENERATION, ChatCursorsSchema, ChatMessageSchema } from "../config/schema.ts";
-import type { ChatCursors, ChatMessage, ChatPrincipal, ChatTarget, MachineConfig, ManagedPeer } from "../types.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import { chatAckPath, chatCursorsPath, chatLedgerPath } from "../config/paths.ts";
-import { loadSessions } from "../config/sessions.ts";
-import { hasNativeRuntime } from "../runtime/capabilities.ts";
-import { readSelection } from "../runtime/selection.ts";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, statSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { z } from 'zod';
+import { chatAckPath, chatCursorsPath, chatLedgerPath } from '../config/paths.ts';
+import { CHAT_GENERATION, ChatCursorsSchema, ChatMessageSchema } from '../config/schema.ts';
+import { loadSessions } from '../config/sessions.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { readSelection } from '../runtime/selection.ts';
+import type {
+  ChatCursors,
+  ChatMessage,
+  ChatPrincipal,
+  ChatTarget,
+  MachineConfig,
+  ManagedPeer,
+} from '../types.ts';
+import { atomicWrite } from '../util/atomic.ts';
 import {
   chatTargetKey,
   managedPeerKey,
@@ -15,18 +22,18 @@ import {
   samePrincipal,
   sameTarget,
   targetLabel,
-} from "./identity.ts";
+} from './identity.ts';
 
 /** Reserved chat recipient = the human who runs the fleet. A message TO `owner` is NOT delivered
  *  to any pane (the owner has none) — it only surfaces out-of-band (Telegram, and later a frontend).
  *  A message FROM `owner` is the human, not a peer agent. Not a session name; can't collide because
  *  delivery only ever targets real sessions. */
-export const OWNER = "owner";
+export const OWNER = 'owner';
 
 /** Reserved SENDER = the command-line operator (a human or Claude driving `ccmux msg` from a shell) —
  *  NOT a managed session, NOT the owner. It's the default `from` for a command-line send, so those
  *  read as `cli → …` (and never masquerade as the owner). Not a delivery target. */
-export const CLI = "cli";
+export const CLI = 'cli';
 
 /**
  * Inter-agent chat storage — an append-only ledger (source of truth) + a small cursors file. Both
@@ -50,12 +57,12 @@ export function loadAckedIds(m: MachineConfig): Set<string> {
   const p = chatAckPath(m);
   const ids = new Set<string>();
   if (!existsSync(p)) return ids;
-  for (const raw of readFileSync(p, "utf8").split("\n")) {
+  for (const raw of readFileSync(p, 'utf8').split('\n')) {
     const line = raw.trim();
-    if (line === "") continue;
+    if (line === '') continue;
     try {
       const o: unknown = JSON.parse(line);
-      if (o && typeof o === "object" && "id" in o && typeof o.id === "string") ids.add(o.id);
+      if (o && typeof o === 'object' && 'id' in o && typeof o.id === 'string') ids.add(o.id);
     } catch {
       // skip — best-effort dedup log, not authoritative history
     }
@@ -69,8 +76,16 @@ export function loadAckedIds(m: MachineConfig): Set<string> {
  * All three suppress future delivery identically (both the daemon and the Stop hook skip any id in
  * this log), so a cancel is just a delivery that will never happen — the honest `by` keeps the log
  * readable. O_APPEND single-line write is atomic across the hook + daemon + sender processes. */
-export function appendAck(m: MachineConfig, id: string, by: "hook" | "daemon" | "cancel", to: ChatTarget): void {
-  appendFileSync(chatAckPath(m), `${JSON.stringify({ id, ts: new Date().toISOString(), by, to: chatTargetKey(to) })}\n`);
+export function appendAck(
+  m: MachineConfig,
+  id: string,
+  by: 'hook' | 'daemon' | 'cancel',
+  to: ChatTarget,
+): void {
+  appendFileSync(
+    chatAckPath(m),
+    `${JSON.stringify({ id, ts: new Date().toISOString(), by, to: chatTargetKey(to) })}\n`,
+  );
 }
 
 /** Undelivered CONDITIONAL messages (deferred or time-delayed), optionally filtered by sender /
@@ -150,13 +165,13 @@ export type LedgerSlot = ChatMessage | null;
  * answer is "this record predates the identity model" and the next step is obvious.
  */
 export function parseRecord(raw: unknown, where: string): LedgerSlot {
-  const generation = raw !== null && typeof raw === "object" && "v" in raw ? raw.v : undefined;
+  const generation = raw !== null && typeof raw === 'object' && 'v' in raw ? raw.v : undefined;
   if (generation !== CHAT_GENERATION) {
     // A NEWER generation is skew by definition — nothing is asked of anyone, the machine reads those
     // records once it is upgraded. An OLDER one is a migration that was never done, and it needs a
     // person; the two are not symmetric and must not be treated alike.
-    if (typeof generation === "number" && generation > CHAT_GENERATION) return null;
-    const found = generation === undefined ? "none" : String(generation);
+    if (typeof generation === 'number' && generation > CHAT_GENERATION) return null;
+    const found = generation === undefined ? 'none' : String(generation);
     throw new Error(
       `${where} — chat record generation ${found}, this build reads ${CHAT_GENERATION}. ` +
         `Records from before the identity model are not readable here; move them under archive/.`,
@@ -170,7 +185,9 @@ export function parseRecord(raw: unknown, where: string): LedgerSlot {
   // skipped. A record missing that core is malformed, and still fails loudly, because a writer bug
   // that goes quiet is a bug nobody fixes.
   if (LedgerCoreSchema.safeParse(raw).success) return null;
-  throw new Error(`${where} — chat record is generation ${CHAT_GENERATION} but malformed: it is missing fields every record of this generation carries`);
+  throw new Error(
+    `${where} — chat record is generation ${CHAT_GENERATION} but malformed: it is missing fields every record of this generation carries`,
+  );
 }
 
 /**
@@ -184,10 +201,10 @@ export function loadLedger(m: MachineConfig): LedgerSlot[] {
   const { ledger } = chatPaths(m);
   if (!existsSync(ledger)) return [];
   const out: LedgerSlot[] = [];
-  const lines = readFileSync(ledger, "utf8").split("\n");
+  const lines = readFileSync(ledger, 'utf8').split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]?.trim() ?? "";
-    if (line === "") continue;
+    const line = lines[i]?.trim() ?? '';
+    if (line === '') continue;
     let raw: unknown;
     try {
       raw = JSON.parse(line);
@@ -211,12 +228,20 @@ export function unreadableCount(slots: readonly LedgerSlot[]): number {
 export function appendMessage(m: MachineConfig, msg: ChatMessage): void {
   const { ledger } = chatPaths(m);
   const parsed = ChatMessageSchema.parse(msg);
-  if (parsed.to.kind === "managed" && parsed.to.machine === m.rcPrefix && parsed.turnOptions === undefined) {
+  if (
+    parsed.to.kind === 'managed' &&
+    parsed.to.machine === m.rcPrefix &&
+    parsed.turnOptions === undefined
+  ) {
     const target = parsed.to;
-    const session = loadSessions(m).find(row => row.name === target.session && row.uuid === target.threadId && row.agent === target.agent);
+    const session = loadSessions(m).find(
+      (row) =>
+        row.name === target.session && row.uuid === target.threadId && row.agent === target.agent,
+    );
     if (session && hasNativeRuntime(session)) {
       const selected = readSelection(m, session);
-      if (selected === null) throw new Error("Native selection is unavailable before message acceptance");
+      if (selected === null)
+        throw new Error('Native selection is unavailable before message acceptance');
       parsed.turnOptions = selected;
     }
   }
@@ -225,7 +250,11 @@ export function appendMessage(m: MachineConfig, msg: ChatMessage): void {
 
 /** Atomically admit an idempotent remote envelope across competing receiver processes. The lock
  * covers check+append, not merely line integrity. A crashed holder becomes reclaimable after 30s. */
-export async function appendMessageOnce(m: MachineConfig, msg: ChatMessage, signal?: AbortSignal): Promise<boolean> {
+export async function appendMessageOnce(
+  m: MachineConfig,
+  msg: ChatMessage,
+  signal?: AbortSignal,
+): Promise<boolean> {
   const { ledger } = chatPaths(m);
   const lock = `${ledger}.receive-lock`;
   mkdirSync(dirname(ledger), { recursive: true });
@@ -241,7 +270,7 @@ export async function appendMessageOnce(m: MachineConfig, msg: ChatMessage, sign
       } catch {
         // The holder released it between checks.
       }
-      if (Date.now() >= deadline) throw new Error("chat receive lock timed out");
+      if (Date.now() >= deadline) throw new Error('chat receive lock timed out');
       await Bun.sleep(20);
     }
   }
@@ -261,7 +290,7 @@ export function loadCursors(m: MachineConfig): ChatCursors {
   const { cursors } = chatPaths(m);
   if (!existsSync(cursors)) return ChatCursorsSchema.parse({});
   try {
-    return ChatCursorsSchema.parse(JSON.parse(readFileSync(cursors, "utf8")));
+    return ChatCursorsSchema.parse(JSON.parse(readFileSync(cursors, 'utf8')));
   } catch {
     return ChatCursorsSchema.parse({});
   }
@@ -294,7 +323,7 @@ export function unreadFor(
   const out: { msg: ChatMessage; idx: number }[] = [];
   for (let idx = since; idx < ledger.length; idx++) {
     const msg = ledger[idx];
-    if (!msg || msg.to.kind !== "managed" || managedPeerKey(msg.to) !== key) continue;
+    if (msg?.to.kind !== 'managed' || managedPeerKey(msg.to) !== key) continue;
     if (msg.id === activePickupId) continue; // already armed/injected; transcript pickup owns it
     if (acked?.has(msg.id) === true) continue; // already injected (Stop hook or daemon) — not pending
     out.push({ msg, idx });
@@ -303,15 +332,19 @@ export function unreadFor(
 }
 
 /** Advance a recipient's read cursor to the whole-ledger length (everything up to now seen). */
-export async function markRead(m: MachineConfig, recipient: ManagedPeer, ledgerLen: number): Promise<void> {
+export async function markRead(
+  m: MachineConfig,
+  recipient: ManagedPeer,
+  ledgerLen: number,
+): Promise<void> {
   const c = loadCursors(m);
   await saveCursors(m, { ...c, read: { ...c.read, [managedPeerKey(recipient)]: ledgerLen } });
 }
 
 /** One-line human render with the complete pinned endpoint identities. Shared by inbox + log. */
 export function fmtMessage(msg: ChatMessage): string {
-  const t = msg.ts.replace("T", " ").slice(0, 19);
-  const task = msg.task ? ` (task: ${msg.task})` : "";
+  const t = msg.ts.replace('T', ' ').slice(0, 19);
+  const task = msg.task ? ` (task: ${msg.task})` : '';
   return `[${t}] ${principalLabel(msg.from)} → ${targetLabel(msg.to)}${task}: ${msg.body}`;
 }
 
@@ -326,7 +359,7 @@ export function nextForRecipient(
   const key = managedPeerKey(recipient);
   for (let idx = Math.max(0, from); idx < ledger.length; idx++) {
     const msg = ledger[idx];
-    if (msg && msg.to.kind === "managed" && managedPeerKey(msg.to) === key) return { msg, idx };
+    if (msg && msg.to.kind === 'managed' && managedPeerKey(msg.to) === key) return { msg, idx };
   }
   return null;
 }

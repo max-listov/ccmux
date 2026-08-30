@@ -1,6 +1,6 @@
-import { realpathSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-import type { MachineConfig, Session } from "../../types.ts";
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import type { MachineConfig, Session } from '../../types.ts';
 
 /**
  * Path to a session's conversation transcript.
@@ -22,7 +22,7 @@ export function encodeDir(dir: string): string {
   // just "/"): `/Users/x/cc.dot_test` → `-Users-x-cc-dot-test`. Matching this EXACTLY is
   // critical — a mismatch means the transcript jsonl isn't found → resume falls back to
   // --session-id → "already in use" relaunch loop. (Verified against real ~/.claude/projects.)
-  return safeRealpath(dir).replace(/[^a-zA-Z0-9]/g, "-");
+  return safeRealpath(dir).replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 function safeRealpath(dir: string): string {
@@ -44,9 +44,7 @@ export function historyFile(s: Session, m: MachineConfig): string {
  *  - first launch ever → --session-id creates the conversation AT this uuid
  */
 export function resumeArgs(uuid: string, dir: string, projectsDir: string): string[] {
-  return existsSync(histFile(dir, uuid, projectsDir))
-    ? ["--resume", uuid]
-    : ["--session-id", uuid];
+  return existsSync(histFile(dir, uuid, projectsDir)) ? ['--resume', uuid] : ['--session-id', uuid];
 }
 
 /**

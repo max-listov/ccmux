@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Box, Text } from 'ink';
 
 /** A slim custom vertical scrollbar for the windowed list. The thumb height is proportional
  *  to the visible fraction and its position to how far the window is scrolled; it glows in the
@@ -26,8 +26,8 @@ export function Scrollbar({
   for (let i = 0; i < height; i++) {
     const inThumb = i >= thumbTop && i < thumbTop + thumbH;
     rows.push(
-      <Text key={i} color={inThumb ? color : "gray"} dimColor={!inThumb}>
-        {inThumb ? "┃" : "│"}
+      <Text key={i} color={inThumb ? color : 'gray'} dimColor={!inThumb}>
+        {inThumb ? '┃' : '│'}
       </Text>,
     );
   }

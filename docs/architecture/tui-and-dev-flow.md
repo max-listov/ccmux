@@ -57,7 +57,7 @@ list aggregation. It is produced by the existing daemon observation loop.
   отказ при грязном дереве / не-main / существующем теге → прегейт `bun run check` → бамп
   `package.json` → перенос `[Unreleased]`-секции CHANGELOG в датированную `[X.Y.Z]` →
   коммит `X.Y.Z: notes` → тег `vX.Y.Z` → push.
-- **Публикация** — `.github/workflows/ci.yml`: job `ci` (typecheck+тесты) гоняется на
+- **Публикация** — `.github/workflows/ci.yml`: job `ci` (Biome + typecheck + тесты + packed clients) гоняется на
   КАЖДЫЙ push/PR; job `smoke` собирает бандл и ЗАПУСКАЕТ его (`version` == package.json,
   `list --json` на чистой машине) — CI-двойник fleet-preflight, кривой бандл умирает до
   публикации; job `release` (только тег `v*`, needs ci+smoke) — guard «тег == версия

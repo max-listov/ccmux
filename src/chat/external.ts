@@ -19,9 +19,9 @@
  * records themselves, and closing one is the deliberate act.
  */
 
-import { EXTERNAL_PREFIX, externalAddress, samePrincipal } from "./identity.ts";
-import type { LedgerSlot } from "./store.ts";
-import type { ChatMessage, ChatPrincipal, MachineConfig } from "../types.ts";
+import type { ChatMessage, ChatPrincipal, MachineConfig } from '../types.ts';
+import { EXTERNAL_PREFIX, externalAddress, samePrincipal } from './identity.ts';
+import type { LedgerSlot } from './store.ts';
 
 export { EXTERNAL_PREFIX };
 
@@ -48,10 +48,13 @@ export function lookupExternal(m: MachineConfig, token: string): ExternalLookup 
   const where = m.externals[name];
   if (where !== undefined) return { name, where };
   const declared = Object.keys(m.externals).sort();
-  const known = declared.length === 0
-    ? `this machine declares none — add one under "externals" in machine.json: {"${name}": "where they work and how you reach them"}`
-    : `declared here: ${declared.map(externalAddress).join(", ")}`;
-  return { error: `no owner outside the fleet is declared as '${externalAddress(name)}' — ${known}` };
+  const known =
+    declared.length === 0
+      ? `this machine declares none — add one under "externals" in machine.json: {"${name}": "where they work and how you reach them"}`
+      : `declared here: ${declared.map(externalAddress).join(', ')}`;
+  return {
+    error: `no owner outside the fleet is declared as '${externalAddress(name)}' — ${known}`,
+  };
 }
 
 /** One letter sent outside the fleet, and whether an answer has been recorded for it. */
@@ -71,20 +74,23 @@ export interface OutstandingLetter {
  * Scoped to one sender by default, because "what have I not heard back on" is a question each agent
  * asks about its own correspondence.
  */
-export function outstandingExternal(ledger: readonly LedgerSlot[], from?: ChatPrincipal): OutstandingLetter[] {
+export function outstandingExternal(
+  ledger: readonly LedgerSlot[],
+  from?: ChatPrincipal,
+): OutstandingLetter[] {
   // COUNTED, not a set: two letters to the same owner want two answers, and a set would let one
   // reply close both — under-reporting exactly what this list exists to show. Oldest first, so an
   // answer closes the letter that has been waiting longest.
   const answers = new Map<string, number>();
   for (const msg of ledger) {
     if (msg === null || msg.onBehalfOf === null || !isExternalToken(msg.onBehalfOf)) continue;
-    const key = `${externalNameOf(msg.onBehalfOf)}\u0000${msg.task ?? ""}`;
+    const key = `${externalNameOf(msg.onBehalfOf)}\u0000${msg.task ?? ''}`;
     answers.set(key, (answers.get(key) ?? 0) + 1);
   }
   const out: OutstandingLetter[] = [];
   for (const msg of ledger) {
-    if (msg === null || msg.to.kind !== "external") continue;
-    const key = `${msg.to.name}\u0000${msg.task ?? ""}`;
+    if (msg === null || msg.to.kind !== 'external') continue;
+    const key = `${msg.to.name}\u0000${msg.task ?? ''}`;
     const remaining = answers.get(key) ?? 0;
     if (remaining > 0) {
       answers.set(key, remaining - 1); // this letter is the one that answer belongs to
@@ -103,11 +109,16 @@ export function outstandingExternal(ledger: readonly LedgerSlot[], from?: ChatPr
  * else and bring an answer back, and a reply that cannot be attributed to the letter it answers is
  * how this became untracked in the first place.
  */
-export function courierNote(name: string, where: string, body: string, task: string | null): string {
-  const forTask = task === null ? "" : `\ntask: ${task}`;
+export function courierNote(
+  name: string,
+  where: string,
+  body: string,
+  task: string | null,
+): string {
+  const forTask = task === null ? '' : `\ntask: ${task}`;
   return (
     `To ${name} — outside the fleet, reached through you.\nwhere: ${where}${forTask}\n\n${body}\n\n` +
     `When they answer, record it so the sender is told and the letter stops waiting:\n` +
-    `  ccmux relay ${externalAddress(name)}${task === null ? "" : ` --task ${task}`} "<their answer>"`
+    `  ccmux relay ${externalAddress(name)}${task === null ? '' : ` --task ${task}`} "<their answer>"`
   );
 }

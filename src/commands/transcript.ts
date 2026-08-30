@@ -1,15 +1,15 @@
-import { rcName } from "../config/machine.ts";
-import { loadSessions, findSession } from "../config/sessions.ts";
-import { readTranscript } from "../agent/index.ts";
-import { forwardIfRemote } from "../fleet/forward.ts";
-import { VERSION } from "../util/version.ts";
-import type { TranscriptJson, TranscriptMessage } from "../types.ts";
+import { readTranscript } from '../agent/index.ts';
+import { rcName } from '../config/machine.ts';
+import { findSession, loadSessions } from '../config/sessions.ts';
+import { forwardIfRemote } from '../fleet/forward.ts';
+import type { TranscriptJson, TranscriptMessage } from '../types.ts';
+import { VERSION } from '../util/version.ts';
 
 /** Newest assistant TEXT block (skipping tool calls/results and thinking) — the agent's answer. */
 export function lastAssistantText(messages: TranscriptMessage[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg?.role === "assistant" && msg.kind === "message" && msg.text) return msg.text;
+    if (msg?.role === 'assistant' && msg.kind === 'message' && msg.text) return msg.text;
   }
   return null;
 }
@@ -17,7 +17,7 @@ export function lastAssistantText(messages: TranscriptMessage[]): string | null 
 const LAST_MESSAGE_WINDOW = 200; // enough lines back to find the last answer without reading the file
 
 const USAGE =
-  "usage: ccmux transcript <name> --json [--tail N] [--cursor LINE] [--before LINE --limit N]\n" +
+  'usage: ccmux transcript <name> --json [--tail N] [--cursor LINE] [--before LINE --limit N]\n' +
   "       ccmux transcript <name> --last-message        (just the agent's final answer, as text)";
 
 // Full text, not the display clip: `--last-message` exists precisely to get the WHOLE report
@@ -42,19 +42,19 @@ export function parseOpts(args: string[]): Opts {
   let limit: number | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === "--json") json = true;
-    else if (a === "--last-message") lastMessage = true;
-    else if (a === "--tail") {
-      const n = Number.parseInt(args[++i] ?? "", 10);
+    if (a === '--json') json = true;
+    else if (a === '--last-message') lastMessage = true;
+    else if (a === '--tail') {
+      const n = Number.parseInt(args[++i] ?? '', 10);
       if (Number.isFinite(n)) tail = n;
-    } else if (a === "--cursor") {
-      const n = Number.parseInt(args[++i] ?? "", 10);
+    } else if (a === '--cursor') {
+      const n = Number.parseInt(args[++i] ?? '', 10);
       if (Number.isFinite(n)) cursor = n;
-    } else if (a === "--before") {
-      const n = Number.parseInt(args[++i] ?? "", 10);
+    } else if (a === '--before') {
+      const n = Number.parseInt(args[++i] ?? '', 10);
       if (Number.isFinite(n)) before = n;
-    } else if (a === "--limit") {
-      const n = Number.parseInt(args[++i] ?? "", 10);
+    } else if (a === '--limit') {
+      const n = Number.parseInt(args[++i] ?? '', 10);
       if (Number.isFinite(n)) limit = n;
     } else if (a !== undefined && /^\d+$/.test(a)) {
       tail = Number.parseInt(a, 10);
@@ -79,7 +79,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     console.log(USAGE);
     return 1;
   }
-  const fwd = await forwardIfRemote(name, "transcript", args);
+  const fwd = await forwardIfRemote(name, 'transcript', args);
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
@@ -112,7 +112,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     generatedAt: new Date().toISOString(),
     session: { name: s.name, uuid: s.uuid, rc: rcName(m, s.name), dir: s.dir, machine: m.rcPrefix },
     source: {
-      kind: read.available ? `${read.agent}-jsonl` : "unavailable",
+      kind: read.available ? `${read.agent}-jsonl` : 'unavailable',
       path: read.path,
       available: read.available,
       error: read.error,

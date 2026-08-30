@@ -1,8 +1,8 @@
-import { readdirSync, statSync } from "node:fs";
-import type { MachineConfig, Session } from "../../types.ts";
-import { rec, str } from "../normalize.ts";
-import { readHeadLines, readTailLines } from "../../util/readLines.ts";
-import { encodeDir, histFile } from "./resume.ts";
+import { readdirSync, statSync } from 'node:fs';
+import type { MachineConfig, Session } from '../../types.ts';
+import { readHeadLines, readTailLines } from '../../util/readLines.ts';
+import { rec, str } from '../normalize.ts';
+import { encodeDir, histFile } from './resume.ts';
 
 // ── follow the fork ─────────────────────────────────────────────────────────────
 // ccmux pins one uuid per session, but Claude Code does NOT keep that uuid forever:
@@ -37,7 +37,7 @@ function headTitle(lines: string[]): string | null {
       continue; // head slice may cut the last line — fine, titles sit at the top
     }
     if (!entry) continue;
-    if (str(entry.type) === "custom-title") return str(entry.customTitle);
+    if (str(entry.type) === 'custom-title') return str(entry.customTitle);
   }
   return null;
 }
@@ -91,7 +91,8 @@ export function detectFork(
   } catch {
     return null;
   }
-  const pinnedMs = lastMessageMs(histFile(s.dir, s.uuid, m.projectsDir)) ?? Number.NEGATIVE_INFINITY;
+  const pinnedMs =
+    lastMessageMs(histFile(s.dir, s.uuid, m.projectsDir)) ?? Number.NEGATIVE_INFINITY;
   let best: { uuid: string; ms: number } | null = null;
   for (const fn of files) {
     if (!UUID_JSONL_RE.test(fn)) continue;

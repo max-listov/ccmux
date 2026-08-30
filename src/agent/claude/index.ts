@@ -1,13 +1,13 @@
-import type { AgentProvider } from "../index.ts";
-import { buildArgv, launchEnv, launchEnvKeys, launchInputs, preflight } from "./launch.ts";
-import { detectFork } from "./fork.ts";
-import { historyFile, findHistoryElsewhere } from "./resume.ts";
-import { parse, usedTokens, lastModel } from "./transcript.ts";
-import { scanPane, promptAnswer, inspectChatPane } from "./pane.ts";
+import type { AgentProvider } from '../index.ts';
+import { detectFork } from './fork.ts';
+import { buildArgv, launchEnv, launchEnvKeys, launchInputs, preflight } from './launch.ts';
+import { inspectChatPane, promptAnswer, scanPane } from './pane.ts';
+import { findHistoryElsewhere, historyFile } from './resume.ts';
+import { lastModel, parse, usedTokens } from './transcript.ts';
 
 /** Claude Code provider — everything agent-specific for `agent: "claude"`. */
 export const claudeProvider: AgentProvider = {
-  id: "claude",
+  id: 'claude',
   preflight,
   buildArgv,
   launchEnv,

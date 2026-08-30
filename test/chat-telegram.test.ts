@@ -1,76 +1,84 @@
-import { test, expect } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { formatForTg, classifyHttpStatus, mirrorPending } from "../src/chat/telegram.ts";
-import { ChatCursorsSchema } from "../src/config/schema.ts";
-import { MachineConfigSchema } from "../src/config/schema.ts";
-import { appendMessage, chatPaths } from "../src/chat/store.ts";
-import type { ChatMessage } from "../src/types.ts";
-import { makeChatMessage, makeOwner, makePeer } from "./helpers.ts";
+import { expect, test } from 'bun:test';
+import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { appendMessage, chatPaths } from '../src/chat/store.ts';
+import { classifyHttpStatus, formatForTg, mirrorPending } from '../src/chat/telegram.ts';
+import { ChatCursorsSchema, MachineConfigSchema } from '../src/config/schema.ts';
+import type { ChatMessage } from '../src/types.ts';
+import { makeChatMessage, makeOwner, makePeer } from './helpers.ts';
 
 const msg = (from: string, to: string, body: string, task: string | null = null): ChatMessage =>
   makeChatMessage({
-    id: "11111111-1111-4111-8111-111111111111",
-    ts: "2026-07-19T10:00:00.000Z",
-    from: makePeer({ machine: "host-a", session: from }),
-    to: to === "owner" ? makeOwner() : makePeer({ machine: "host-a", session: to }),
+    id: '11111111-1111-4111-8111-111111111111',
+    ts: '2026-07-19T10:00:00.000Z',
+    from: makePeer({ machine: 'host-a', session: from }),
+    to: to === 'owner' ? makeOwner() : makePeer({ machine: 'host-a', session: to }),
     body,
     task,
   });
 
-test("formatForTg bolds the routing header and renders task + multi-line body verbatim", () => {
-  expect(formatForTg(msg("a", "b", "hi"))).toBe("<b>[host-a:a → host-a:b]</b>\n\nhi");
-  expect(formatForTg(msg("a", "b", "l1\nl2", "deploy"))).toBe("<b>[host-a:a → host-a:b]</b> · <i>deploy</i>\n\nl1\nl2");
+test('formatForTg bolds the routing header and renders task + multi-line body verbatim', () => {
+  expect(formatForTg(msg('a', 'b', 'hi'))).toBe('<b>[host-a:a → host-a:b]</b>\n\nhi');
+  expect(formatForTg(msg('a', 'b', 'l1\nl2', 'deploy'))).toBe(
+    '<b>[host-a:a → host-a:b]</b> · <i>deploy</i>\n\nl1\nl2',
+  );
 });
 
-test("the route is written for a PERSON: no provider, no thread uuid", () => {
+test('the route is written for a PERSON: no provider, no thread uuid', () => {
   // Both belong in the pane tag, where an agent copies the address to answer. Here they were 55% of
   // a 130-character header that nobody could act on — this mirror is one-way.
-  const line = formatForTg(msg("a", "b", "hi"));
-  expect(line).not.toContain("11111111-1111-4111-8111-111111111111");
-  expect(line).not.toContain("ccmux/claude@");
+  const line = formatForTg(msg('a', 'b', 'hi'));
+  expect(line).not.toContain('11111111-1111-4111-8111-111111111111');
+  expect(line).not.toContain('ccmux/claude@');
   // machine:session is already unique across the fleet — that is what fleet addressing is for.
-  expect(line).toContain("host-a:a");
+  expect(line).toContain('host-a:a');
 });
 
-test("formatForTg marks owner-directed messages (an agent wrote to the human)", () => {
-  expect(formatForTg(msg("agent-b", "owner", "a poem for you"))).toBe("📩 <b>[host-a:agent-b → you]</b>\n\na poem for you");
-  expect(formatForTg(msg("a", "b", "hi"))).not.toContain("📩"); // agent↔agent stays plain
+test('formatForTg marks owner-directed messages (an agent wrote to the human)', () => {
+  expect(formatForTg(msg('agent-b', 'owner', 'a poem for you'))).toBe(
+    '📩 <b>[host-a:agent-b → you]</b>\n\na poem for you',
+  );
+  expect(formatForTg(msg('a', 'b', 'hi'))).not.toContain('📩'); // agent↔agent stays plain
 });
 
-test("a sender that crossed machines keeps its OWN machine, so the route is never ambiguous", () => {
+test('a sender that crossed machines keeps its OWN machine, so the route is never ambiguous', () => {
   // Once all machines mirror into the same chat, a bare session name is ambiguous: the same name
   // commonly exists on two boxes. Dropping the uuid is safe; dropping the MACHINE would not be. The
   // recipient is local to the ledger being mirrored; a crossed sender keeps its own machine.
-  const crossed = { ...msg("agent-a", "agent-b", "done"), from: makePeer({ machine: "host-b", session: "agent-a" }) };
-  expect(formatForTg(crossed)).toBe("<b>[host-b:agent-a → host-a:agent-b]</b>\n\ndone");
+  const crossed = {
+    ...msg('agent-a', 'agent-b', 'done'),
+    from: makePeer({ machine: 'host-b', session: 'agent-a' }),
+  };
+  expect(formatForTg(crossed)).toBe('<b>[host-b:agent-a → host-a:agent-b]</b>\n\ndone');
 });
 
-test("formatForTg escapes HTML-special chars in the body so parse_mode=HTML never trips a 400", () => {
-  expect(formatForTg(msg("a", "b", "1 < 2 && 3 > 2"))).toBe("<b>[host-a:a → host-a:b]</b>\n\n1 &lt; 2 &amp;&amp; 3 &gt; 2");
+test('formatForTg escapes HTML-special chars in the body so parse_mode=HTML never trips a 400', () => {
+  expect(formatForTg(msg('a', 'b', '1 < 2 && 3 > 2'))).toBe(
+    '<b>[host-a:a → host-a:b]</b>\n\n1 &lt; 2 &amp;&amp; 3 &gt; 2',
+  );
 });
 
-test("classifyHttpStatus: 4xx permanent (skip), 429/5xx transient (retry)", () => {
-  expect(classifyHttpStatus(400)).toBe("permanent");
-  expect(classifyHttpStatus(403)).toBe("permanent");
-  expect(classifyHttpStatus(404)).toBe("permanent");
-  expect(classifyHttpStatus(429)).toBe("transient");
-  expect(classifyHttpStatus(500)).toBe("transient");
-  expect(classifyHttpStatus(502)).toBe("transient");
+test('classifyHttpStatus: 4xx permanent (skip), 429/5xx transient (retry)', () => {
+  expect(classifyHttpStatus(400)).toBe('permanent');
+  expect(classifyHttpStatus(403)).toBe('permanent');
+  expect(classifyHttpStatus(404)).toBe('permanent');
+  expect(classifyHttpStatus(429)).toBe('transient');
+  expect(classifyHttpStatus(500)).toBe('transient');
+  expect(classifyHttpStatus(502)).toBe('transient');
 });
 
-test("mirrorPending is a fail-soft no-op when telegram is unconfigured (no network, no cursor)", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "ccmux-tg-"));
+test('mirrorPending is a fail-soft no-op when telegram is unconfigured (no network, no cursor)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-tg-'));
   const m = MachineConfigSchema.parse({
-    claudeBin: "/bin/claude",
-    tmuxBin: "/bin/tmux",
-    projectsDir: "/p",
-    rcPrefix: "test",
+    claudeBin: '/bin/claude',
+    tmuxBin: '/bin/tmux',
+    projectsDir: '/p',
+    rcPrefix: 'test',
     stateDir: dir,
-    bootLabel: "b",
+    bootLabel: 'b',
   });
-  appendMessage(m, msg("a", "b", "hi"));
+  appendMessage(m, msg('a', 'b', 'hi'));
   await mirrorPending(m); // must not throw and must not touch the cursor file
   expect(existsSync(chatPaths(m).cursors)).toBe(false);
 });
@@ -84,11 +92,11 @@ test("turning the mirror ON starts a live feed — it never replays the machine'
   expect(ChatCursorsSchema.parse({ telegram: 7 }).telegram).toBe(7);
 });
 
-test("the route line is a bracketed HEADER with air under it, not a first line of the body", () => {
+test('the route line is a bracketed HEADER with air under it, not a first line of the body', () => {
   // On a phone the header and the body ran together and stopped reading as two different things.
-  const out = formatForTg(msg("a", "b", "body"));
-  const [head, blank, ...rest] = out.split("\n");
-  expect(head).toBe("<b>[host-a:a → host-a:b]</b>");
-  expect(blank).toBe("");
-  expect(rest.join("\n")).toBe("body");
+  const out = formatForTg(msg('a', 'b', 'body'));
+  const [head, blank, ...rest] = out.split('\n');
+  expect(head).toBe('<b>[host-a:a → host-a:b]</b>');
+  expect(blank).toBe('');
+  expect(rest.join('\n')).toBe('body');
 });

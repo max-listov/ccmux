@@ -1,13 +1,13 @@
-import { existsSync, mkdirSync, unlinkSync } from "node:fs";
-import { dirname } from "node:path";
-import type { MachineConfig } from "../types.ts";
-import { PLATFORM, UID, HOME } from "../env.ts";
-import { bootArgv } from "../config/paths.ts";
-import { renderSystemdUnit, renderLaunchdPlist, type BootContext } from "./render.ts";
-import { atomicWrite } from "../util/atomic.ts";
-import { run } from "../util/spawn.ts";
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { bootArgv } from '../config/paths.ts';
+import { HOME, PLATFORM, UID } from '../env.ts';
+import type { MachineConfig } from '../types.ts';
+import { atomicWrite } from '../util/atomic.ts';
+import { run } from '../util/spawn.ts';
+import { type BootContext, renderLaunchdPlist, renderSystemdUnit } from './render.ts';
 
-const isMac = PLATFORM === "darwin";
+const isMac = PLATFORM === 'darwin';
 
 function pathEnv(m: MachineConfig): string {
   const dirs = [
@@ -16,25 +16,25 @@ function pathEnv(m: MachineConfig): string {
     // spawning bun by absolute path in code; without it, auto-update preflight failed silently.
     dirname(m.claudeBin),
     dirname(m.tmuxBin),
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-    "/usr/sbin",
-    "/sbin",
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
   ];
-  if (isMac) dirs.unshift("/opt/homebrew/bin");
-  return [...new Set(dirs)].join(":");
+  if (isMac) dirs.unshift('/opt/homebrew/bin');
+  return [...new Set(dirs)].join(':');
 }
 
 function context(m: MachineConfig): BootContext {
   return {
     selfArgv: bootArgv(),
     label: m.bootLabel,
-    user: UID === 0 ? "root" : (process.env.USER ?? ""),
+    user: UID === 0 ? 'root' : (process.env.USER ?? ''),
     home: HOME,
     configPath: process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`,
     pathEnv: pathEnv(m),
-    logDir: isMac ? `${HOME}/Library/Logs` : "/var/log",
+    logDir: isMac ? `${HOME}/Library/Logs` : '/var/log',
   };
 }
 
@@ -48,17 +48,17 @@ export async function installBoot(m: MachineConfig): Promise<void> {
     mkdirSync(dirname(plist), { recursive: true });
     await atomicWrite(plist, renderLaunchdPlist(ctx));
     const domain = `gui/${UID}`;
-    await run(["launchctl", "bootout", `${domain}/${m.bootLabel}`]); // ignore "not loaded"
+    await run(['launchctl', 'bootout', `${domain}/${m.bootLabel}`]); // ignore "not loaded"
     await Bun.sleep(500); // bootout is async — let it fully unload before re-bootstrap (else races to "already loaded")
-    await run(["launchctl", "bootstrap", domain, plist]);
-    await run(["launchctl", "enable", `${domain}/${m.bootLabel}`]);
-    await run(["launchctl", "kickstart", "-k", `${domain}/${m.bootLabel}`]); // guarantee it's actually running
+    await run(['launchctl', 'bootstrap', domain, plist]);
+    await run(['launchctl', 'enable', `${domain}/${m.bootLabel}`]);
+    await run(['launchctl', 'kickstart', '-k', `${domain}/${m.bootLabel}`]); // guarantee it's actually running
     console.log(`wrote ${plist} and bootstrapped launchd ${m.bootLabel}`);
   } else {
     const unit = systemdUnitPath(m.bootLabel);
     await atomicWrite(unit, renderSystemdUnit(ctx));
-    await run(["systemctl", "daemon-reload"]);
-    await run(["systemctl", "enable", "--now", m.bootLabel]);
+    await run(['systemctl', 'daemon-reload']);
+    await run(['systemctl', 'enable', '--now', m.bootLabel]);
     console.log(`wrote ${unit} and enabled systemd ${m.bootLabel}`);
   }
 }
@@ -74,21 +74,21 @@ export async function writeBootUnitOnly(m: MachineConfig): Promise<void> {
     await atomicWrite(plist, renderLaunchdPlist(ctx));
   } else {
     await atomicWrite(systemdUnitPath(m.bootLabel), renderSystemdUnit(ctx));
-    await run(["systemctl", "daemon-reload"]);
+    await run(['systemctl', 'daemon-reload']);
   }
 }
 
 export async function uninstallBoot(m: MachineConfig): Promise<void> {
   if (isMac) {
-    await run(["launchctl", "bootout", `gui/${UID}/${m.bootLabel}`]);
+    await run(['launchctl', 'bootout', `gui/${UID}/${m.bootLabel}`]);
     const plist = launchdPlistPath(m.bootLabel);
     if (existsSync(plist)) unlinkSync(plist);
   } else {
-    await run(["systemctl", "disable", "--now", m.bootLabel]);
+    await run(['systemctl', 'disable', '--now', m.bootLabel]);
     const unit = systemdUnitPath(m.bootLabel);
     if (existsSync(unit)) {
       unlinkSync(unit);
-      await run(["systemctl", "daemon-reload"]);
+      await run(['systemctl', 'daemon-reload']);
     }
   }
   console.log(`uninstalled boot unit ${m.bootLabel}`);
@@ -96,6 +96,6 @@ export async function uninstallBoot(m: MachineConfig): Promise<void> {
 
 /** Bounce the daemon in place — sessions outlive it, so this never drops a conversation. */
 export async function restartBoot(m: MachineConfig): Promise<void> {
-  if (isMac) await run(["launchctl", "kickstart", "-k", `gui/${UID}/${m.bootLabel}`]);
-  else await run(["systemctl", "restart", m.bootLabel]);
+  if (isMac) await run(['launchctl', 'kickstart', '-k', `gui/${UID}/${m.bootLabel}`]);
+  else await run(['systemctl', 'restart', m.bootLabel]);
 }

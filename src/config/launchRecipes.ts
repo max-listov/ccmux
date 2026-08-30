@@ -1,19 +1,19 @@
-import { createHash } from "node:crypto";
-import { accessSync, constants, statSync } from "node:fs";
-import { AppError } from "stitchkit";
-import { MachineLaunchRecipeSchema } from "./schema.ts";
-import { envFilePath, stableJson } from "../agent/launchInputs.ts";
-import { isReservedEnvKey, sessionEnvRecipe } from "../agent/sessionEnv.ts";
-import { ownedCodexFlags } from "../agent/codex/ownedLaunch.ts";
+import { createHash } from 'node:crypto';
+import { accessSync, constants, statSync } from 'node:fs';
+import { AppError } from 'stitchkit';
+import { ownedCodexFlags } from '../agent/codex/ownedLaunch.ts';
+import { envFilePath, stableJson } from '../agent/launchInputs.ts';
+import { isReservedEnvKey, sessionEnvRecipe } from '../agent/sessionEnv.ts';
 import type {
   LaunchRecipeMetadata,
   LaunchRecipeReference,
   MachineConfig,
   MachineLaunchRecipe,
   Session,
-} from "../types.ts";
-import { log } from "../util/log.ts";
-import { modelSelectionFlags } from "./modelSelectionFlags.ts";
+} from '../types.ts';
+import { log } from '../util/log.ts';
+import { modelSelectionFlags } from './modelSelectionFlags.ts';
+import { MachineLaunchRecipeSchema } from './schema.ts';
 
 const MAX_RECIPE_ENV_FILE_BYTES = 1024 * 1024;
 
@@ -30,14 +30,16 @@ function recipeDigest(recipe: MachineLaunchRecipe): string {
     flags: recipe.flags,
     environment: [...new Set(recipe.environment)].sort(),
     capabilities: [...new Set(recipe.capabilities)].sort(),
-    ...(recipe.collaborationMode === undefined ? {} : { collaborationMode: recipe.collaborationMode }),
+    ...(recipe.collaborationMode === undefined
+      ? {}
+      : { collaborationMode: recipe.collaborationMode }),
   };
-  return createHash("sha256").update(stableJson(canonical)).digest("hex");
+  return createHash('sha256').update(stableJson(canonical)).digest('hex');
 }
 
 function unavailable(id: string, reason: string): never {
-  log.error({ msg: "configured launch recipe is unavailable", recipeId: id, reason });
-  throw new AppError("LAUNCH_RECIPE_UNAVAILABLE", "Launch recipe is unavailable", 409);
+  log.error({ msg: 'configured launch recipe is unavailable', recipeId: id, reason });
+  throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', 'Launch recipe is unavailable', 409);
 }
 
 function verifyAvailability(
@@ -56,11 +58,12 @@ function verifyAvailability(
   }
   if (recipe.envFile !== undefined) {
     const path = envFilePath({ dir: workspace, envFile: recipe.envFile });
-    if (path === null) unavailable(id, "declared environment file did not resolve");
+    if (path === null) unavailable(id, 'declared environment file did not resolve');
     try {
       const stat = statSync(path);
-      if (!stat.isFile()) unavailable(id, "declared environment source is not a regular file");
-      if (stat.size > MAX_RECIPE_ENV_FILE_BYTES) unavailable(id, "declared environment source exceeds its size limit");
+      if (!stat.isFile()) unavailable(id, 'declared environment source is not a regular file');
+      if (stat.size > MAX_RECIPE_ENV_FILE_BYTES)
+        unavailable(id, 'declared environment source exceeds its size limit');
       accessSync(path, constants.R_OK);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -73,9 +76,15 @@ function verifyAvailability(
     process.env.NODE_ENV,
   );
   if (environment.refused.length > 0)
-    unavailable(id, `declared environment tried to set reserved names: ${environment.refused.join(",")}`);
-  const missing = [...new Set(recipe.environment)].filter((name) => environment.env[name] === undefined).sort();
-  if (missing.length > 0) unavailable(id, `required environment names are unavailable: ${missing.join(",")}`);
+    unavailable(
+      id,
+      `declared environment tried to set reserved names: ${environment.refused.join(',')}`,
+    );
+  const missing = [...new Set(recipe.environment)]
+    .filter((name) => environment.env[name] === undefined)
+    .sort();
+  if (missing.length > 0)
+    unavailable(id, `required environment names are unavailable: ${missing.join(',')}`);
 }
 
 /** Resolve before create receipts, registry mutation or provider spawn. The caller controls only an
@@ -88,9 +97,9 @@ export function resolveControlLaunchRecipe(
 ): ResolvedControlLaunch {
   if (reference === undefined) return { flags: [...callerFlags] };
   if (callerFlags.length > 0)
-    throw new AppError("INVALID_RECIPE_CREATE", "Launch recipe owns native configuration", 409);
+    throw new AppError('INVALID_RECIPE_CREATE', 'Launch recipe owns native configuration', 409);
   const configured = m.launchRecipes[reference.id];
-  if (configured === undefined) unavailable(reference.id, "recipe id is not configured");
+  if (configured === undefined) unavailable(reference.id, 'recipe id is not configured');
   const recipe = MachineLaunchRecipeSchema.parse(configured);
   if (recipe.revision !== reference.revision)
     unavailable(reference.id, `requested revision ${reference.revision} is not active`);
@@ -100,7 +109,9 @@ export function resolveControlLaunchRecipe(
     revision: recipe.revision,
     digest: recipeDigest(recipe),
     capabilities: [...new Set(recipe.capabilities)].sort(),
-    ...(recipe.collaborationMode === undefined ? {} : { collaborationMode: recipe.collaborationMode }),
+    ...(recipe.collaborationMode === undefined
+      ? {}
+      : { collaborationMode: recipe.collaborationMode }),
   };
   return {
     flags: [...recipe.flags],
@@ -111,7 +122,10 @@ export function resolveControlLaunchRecipe(
 
 /** Every managed App Server spawn revalidates the immutable host definition. A removed or edited
  * recipe blocks before Bun.spawn, while an unchanged recipe keeps the persisted UUID/generation. */
-export function verifyManagedLaunchRecipe(m: MachineConfig, session: Pick<Session, "dir" | "envFile" | "flags" | "launchRecipe" | "modelSelection">): void {
+export function verifyManagedLaunchRecipe(
+  m: MachineConfig,
+  session: Pick<Session, 'dir' | 'envFile' | 'flags' | 'launchRecipe' | 'modelSelection'>,
+): void {
   if (session.launchRecipe === undefined) return;
   const resolved = resolveControlLaunchRecipe(
     m,
@@ -121,8 +135,14 @@ export function verifyManagedLaunchRecipe(m: MachineConfig, session: Pick<Sessio
   );
   if (
     resolved.launchRecipe?.digest !== session.launchRecipe.digest ||
-    stableJson(resolved.launchRecipe?.capabilities ?? []) !== stableJson(session.launchRecipe.capabilities) ||
-    stableJson([...resolved.flags, ...modelSelectionFlags(session.modelSelection)]) !== stableJson(session.flags) ||
+    stableJson(resolved.launchRecipe?.capabilities ?? []) !==
+      stableJson(session.launchRecipe.capabilities) ||
+    stableJson([...resolved.flags, ...modelSelectionFlags(session.modelSelection)]) !==
+      stableJson(session.flags) ||
     resolved.envFile !== session.envFile
-  ) unavailable(session.launchRecipe.id, "persisted managed launch no longer matches its configured recipe");
+  )
+    unavailable(
+      session.launchRecipe.id,
+      'persisted managed launch no longer matches its configured recipe',
+    );
 }
