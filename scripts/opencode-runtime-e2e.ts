@@ -12,6 +12,7 @@ import { readManagedRuntimeStatus } from "../src/runtime/status.ts";
 import { killSession } from "../src/tmux/tmux.ts";
 import { verifyOpenCodeActions } from "./opencode-actions-e2e.ts";
 import { verifyRuntimeCoexistence } from "./runtime-coexistence-e2e.ts";
+import { verifyRuntimeConfidentiality } from "./runtime-confidentiality-e2e.ts";
 
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 function report(phase: string, evidence: unknown) { console.log(JSON.stringify({ phase, evidence })); }
@@ -33,7 +34,8 @@ if (root === undefined) {
     extraFlags: [], remoteControl: false, chatEnabled: true, eventsEnabled: false, externalInventory: false,
     ensureInterval: 3600, autoUpdate: false }), 0o600);
   const env: Record<string, string | undefined> = { ...process.env, CCMUX_CONFIG: config, CCMUX_STATE_DIR: join(probe, "state"),
-    CCMUX_CACHE_DIR: join(probe, "cache"), CCMUX_DATA_DIR: join(probe, "data") };
+    CCMUX_CACHE_DIR: join(probe, "cache"), CCMUX_DATA_DIR: join(probe, "data"),
+    NATIVE_RUNTIME_PROBE_SECRET: `fixture-runtime-secret-${crypto.randomUUID()}` };
   delete env.CCMUX_SESSION; delete env.CCMUX_CHAT_CREDENTIAL;
   const child = Bun.spawn([process.execPath, "--no-env-file", import.meta.filename, probe], {
     env, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
@@ -76,7 +78,7 @@ try {
   check(first?.nativeSession?.id === receipt.nativeSession?.id, "Continuation mismatch");
   report("created-through-public-service", { receipt, oneWriter: loadSessions(m).length === 1, generation: first?.generation });
   const messageId = crypto.randomUUID();
-  const body = "This is an isolated runtime acceptance test. Use the shell tool to run pwd, printf CCMUX_NATIVE_TOOL_OK, and append exactly one line with the text effect to effect.txt in this workspace. Do not edit other files, contact other agents, or print environment variables. Reply NATIVE_DONE afterwards.";
+  const body = 'This is an isolated runtime acceptance test. Use the shell tool to run pwd, printf CCMUX_NATIVE_TOOL_OK, and append exactly one line with the text effect to effect.txt in this workspace. Also run: test -n "$NATIVE_RUNTIME_PROBE_SECRET" && printf CHECKED > env-check.txt . Do not print the variable value. Do not edit other files, contact other agents, or print environment variables. Reply NATIVE_DONE afterwards.';
   await service.message({ target, messageId, body });
   check((await service.message({ target, messageId, body })).duplicate, "Message retry was not idempotent");
   let approvals = 0;
@@ -98,6 +100,7 @@ try {
   check((await service.get({ target })).model === create.modelSelection.model, "Selected native model was not preserved");
   check(approvals > 0, "No real native approval was observed");
   check(readFileSync(join(root, "workspace", "effect.txt"), "utf8").trim() === "effect", "Tool side effect duplicated");
+  await verifyRuntimeConfidentiality(m, session, frame, root, cli);
   report("native-tool-turn", { kinds: [...new Set(frame.items.map(item => item.kind))], approvals, model: (await service.get({ target })).model });
   await verifyOpenCodeActions(service, target);
   const peer = await verifyRuntimeCoexistence(m, service, target, join(root, "workspace"));

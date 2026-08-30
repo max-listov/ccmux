@@ -28,7 +28,15 @@ function run(gate: string, command: string, args: string[]) {
 }
 
 try {
-  const packed = await packageControlServiceClient(packageDir);
+  // Post-publication verification must consume the downloaded artifact, not rebuild its substitute.
+  const suppliedArtifact = process.env.CCMUX_PACKED_CLIENT_ARTIFACT;
+  const packed = suppliedArtifact === undefined
+    ? await packageControlServiceClient(packageDir)
+    : await (async () => {
+      const artifact = resolve(suppliedArtifact);
+      const bytes = new Uint8Array(await Bun.file(artifact).arrayBuffer());
+      return { artifact, bytes: bytes.byteLength, sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex") };
+    })();
   mkdirSync(consumer, { recursive: true });
   await Bun.write(
     join(consumer, "package.json"),

@@ -72,9 +72,9 @@ mutations; retries reconcile the same reservation and never create a second writ
   must never be stopped as a child owned by CCMux.
 - [ ] Integrate the published optional Stitchkit harness with host-supplied configuration/tool policy
   and SQLite placement; ship a reproducible thin runner/entrypoint with an exact dependency version.
-- [ ] Bind plugin/driver capabilities to the published local/service clients and descriptor; no
+- [x] Bind plugin/driver capabilities to the published local/service clients and descriptor; no
   runtime-specific branches in the cross-machine transport.
-- [ ] Update lifecycle documentation, release artifacts and compatibility/rollback instructions.
+- [x] Update lifecycle documentation, release artifacts and compatibility/rollback instructions.
 
 ## Acceptance
 
@@ -86,7 +86,7 @@ mutations; retries reconcile the same reservation and never create a second writ
 - [x] Existing Codex/interactive session behavior is retained; no terminal scraping for new native lanes.
 - [x] Real receipts identify runtime/provider/model/version. Compatibility probes of external models
   inside Codex are optional evidence, not a requirement that all providers pass through Codex.
-- [ ] Publish the driver/client release and report runnable examples plus remaining capability gaps.
+- [x] Publish the driver/client release and report runnable examples plus remaining capability gaps.
 
 ## Dependencies
 
@@ -116,6 +116,35 @@ Stitchkit harness seam; agree that boundary through the existing owner-task hand
 - Focused regression coverage includes lost create/prompt replies, late native admission, missing/
   corrupt journals, cursor/mailbox crash boundaries, text deltas/roles, private errors/tool payloads,
   byte limits, CRLF SSE framing and identity/lease refusal. Packed Bun/Node/NodeNext/bundler clients pass.
+
+## Published native slice and post-rollout evidence
+
+- Release: `v0.39.24`; implementation `7d4d91dd21c323137c3352c6c21e3e570c658349`;
+  release/tag `d78d9fc18ce33a26b13153c8529c5179b5913afe`.
+- Full local gate: 831 tests, 0 failures, 3937 assertions in 128 files, plus TypeScript and packed
+  consumer checks. Exact-release-SHA CI and smoke passed; tag run `33288566081` published assets.
+- Runtime bundle SHA-256: `8ea40380c4b83b9870ac75072f7c8b8a714883136abbd64b7409e3ca5cff89f6`.
+  Published client archive SHA-256: `e24240f88562dddfc4890971960cb80861fb722faaba73bb899a6521d18e9ab5`.
+- All three owned installations converged through the existing updater to that exact bundle.
+  Live daemon projections report `0.39.24`; all 33 pre-existing running sessions retained their
+  managed identities and original process start times. No production session restart was needed.
+- The downloaded published client successfully reads runtime capabilities and native OpenCode
+  model catalogs before a chat on all three hosts. Its downloaded archive, not a local rebuild,
+  passes Bun, Node, NodeNext and bundler consumer checks. Prepared control streaming returns live
+  successive snapshots through the published client.
+- Re-ran `scripts/opencode-runtime-e2e.ts` with `CCMUX_E2E_CLI` selecting the installed release
+  bundle: the complete two-runtime tool/request/chat/restart/resume/archive sequence passed.
+  A secret-like fixture was positively proved present in the real provider environment and absent
+  from public metadata, process argv and outward logs. Existing production registrations are untouched.
+- Reproduction: select the installed bundle with `CCMUX_E2E_CLI`, then run
+  `bun --no-env-file scripts/opencode-runtime-e2e.ts`. To verify an already downloaded client archive,
+  set `CCMUX_PACKED_CLIENT_ARTIFACT` and run `bun --no-env-file scripts/verify-control-service-client.ts`.
+- Pre-existing interactive-session diagnostics remain visible: one delivery held for an unsent
+  composer, four legacy undeclared environment sources, and an optional transit without its agent.
+  They were not hidden or changed by this native adapter rollout; all daemon processes are active.
+
+The published native slice is verified, not the entire task. The three remaining unchecked items
+require the optional custom harness and are not satisfied by an unavailable capability placeholder.
 
 ## Remaining external dependency
 
