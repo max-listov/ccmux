@@ -2,9 +2,10 @@
 title: Preserve native approval scope and cancellation while awaiting approval
 description: Expose bounded permission context and allow exact cancellation of a suspended native turn without accepting its request.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
 updated: 2026-08-30
+completed: 2026-08-30
 ---
 
 ## Problem
@@ -35,7 +36,7 @@ archiving the whole conversation is not a replacement for cancelling one pending
 - [x] Interrupt a real suspended request; verify terminal interruption, pending request removal,
   no tool side effect, unchanged session identity, and a subsequent usable turn.
 - [x] Cover stale turn/generation, repeated interrupt and concurrent native settlement.
-- [ ] Publish the current client/runtime contract and return exact release plus real receipts.
+- [x] Publish the current client/runtime contract and return exact release plus real receipts.
 
 ## Implementation plan
 
@@ -64,4 +65,27 @@ that exact turn, including when the provider emits no separate permission-resolv
   distinct scopes. Both files stayed unchanged; pending requests disappeared and another turn
   completed on the same identity. A real Codex input request was cancelled and recovered likewise.
   No approval was accepted. The isolated fixtures were archived and all five processes exited.
-- Publication/post-rollout acceptance remains open until the actual release artifacts are verified.
+- Published artifact acceptance passed as recorded below.
+
+## Published verification
+
+`v0.39.32`, release SHA `cae03aff71dfdf3c845aa15b1f54692bbff9982b`, implementation
+`d58f7a7db57bc811f22f1e38482bf569d459e69b`. Runtime SHA256
+`f2389f99fc4eb1100c41f777918b560d8959a5150fd5ec2f4cb38b7983bb5f7e`; client SHA256
+`0069f56030641ded1d5b3b34237b06c98a84ea52843331c0f5804b362ddef896`.
+
+Downloaded GitHub runtime and installed public client passed narrow/broad external-write
+cancellation without either write, exact stale identity refusals, repeated abort safety, real native
+input cancellation and subsequent turns on unchanged identities. Both fixtures were archived and
+all five tracked processes exited. Three owned runtimes have exact hash/version parity and live
+projections; 33 preexisting running sessions kept identity and start times.
+
+One qualification attempt ended without invoking a tool because the model refused an unqualified
+cross-project instruction. The fixture now declares the host owner's narrow mandate for its two
+disposable files, without granting native permission. It fails immediately on a terminal turn with
+no request instead of waiting for a nonexistent approval. The corrected probe passed against the
+published artifact; this fixture correction ships with the completion evidence.
+
+Full gates: 956 tests, 4785 assertions, 153 files, no failures; Biome, typecheck, all five packed
+consumer gates and exact-SHA CI passed. [Public verification](https://github.com/max-listov/ccmux/releases/download/v0.39.32/post-rollout-verification.json)
+records safe receipts and evidence digests.

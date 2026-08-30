@@ -2,9 +2,10 @@
 title: Preserve native tool identity and distinguish lifecycle completion from outcome
 description: The current content stream drops native failure evidence and tool names, preventing truthful consumer tool status.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
 updated: 2026-08-30
+completed: 2026-08-30
 priority: P1
 ---
 
@@ -31,7 +32,7 @@ must not infer tool success from `complete` or turn success, or reconstruct it f
   tool call identity across updates. Avoid raw provider dumps, secrets and private tool payloads.
 - [x] Golden tests distinguish successful/nonzero-exit/failed/interrupted/unknown outcomes and
   preserve OpenCode tool names. Reconnect must retain the same evidence.
-- [ ] Verify real successful and failing tools through the installed public client, then publish
+- [x] Verify real successful and failing tools through the installed public client, then publish
   the fix with exact release evidence and update the descriptor if the contract changes.
 
 No consumer-specific adapter, prompt parsing or second writer. Missing evidence stays explicit.
@@ -51,7 +52,7 @@ commands, arguments, output, raw error strings and arbitrary metadata are not pr
 - [x] Share provider outcome mapping between live observation and native history.
 - [x] Preserve exact identities and terminal evidence through bounded baseline/replay and reconnect.
 - [x] Cover success, nonzero exit, failure, interruption, decline, absent evidence and private payloads.
-- [ ] Run isolated successful/failing native shell turns through the typed public client on both
+- [x] Run isolated successful/failing native shell turns through the typed public client on both
   runtimes, then verify the published artifact and owned installations.
 
 ## Что сделано
@@ -68,4 +69,20 @@ commands, arguments, output, raw error strings and arbitrary metadata are not pr
   restart retained exact tool identities/outcomes. Cleanup archived only two fixtures, with all five
   tracked fixture processes gone and zero archive failures. Telegram was disabled in isolated config.
 - Architecture and decision documents describe outcome authority and unchanged bounded transport.
-  Publication/post-rollout acceptance remains open until the actual release artifacts are verified.
+  Publication/post-rollout acceptance is recorded below.
+
+## Published verification
+
+`v0.39.32`, release SHA `cae03aff71dfdf3c845aa15b1f54692bbff9982b`, implementation
+`d58f7a7db57bc811f22f1e38482bf569d459e69b`. Runtime SHA256
+`f2389f99fc4eb1100c41f777918b560d8959a5150fd5ec2f4cb38b7983bb5f7e`; public client SHA256
+`0069f56030641ded1d5b3b34237b06c98a84ea52843331c0f5804b362ddef896`.
+
+Both exact-SHA CI runs passed; full local/release gate: 956 tests, 4785 assertions, 153 files,
+zero failures, Biome, typecheck and five packed Bun/Node/type-consumer gates. Downloaded GitHub
+runtime and installed tgz repeated both real exit-code tools, live/history/reconnect, daemon/provider
+restart and exact cleanup proofs. All three owned runtimes have matching version/hash and live
+projections; all 33 preexisting running identities/start times were preserved.
+
+[Public verification artifact](https://github.com/max-listov/ccmux/releases/download/v0.39.32/post-rollout-verification.json)
+contains allowlisted facts and evidence digests, not private runtime identifiers or payloads.

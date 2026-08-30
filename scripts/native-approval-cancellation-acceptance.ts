@@ -21,6 +21,23 @@ const makeClient: typeof createCcmuxControlServiceClient =
 const cli = process.argv[2];
 const p = await nativeImageProbe({ ...(cli === undefined ? {} : { cli }), makeClient });
 
+// This fixture deliberately crosses its project directory to test a native permission boundary.
+// Declare the host owner's exact test mandate instead of depending on model guesses about chat trust.
+async function declareFixtureAuthority() {
+  await atomicWrite(
+    join(p.root, 'opencode', 'AGENTS.md'),
+    [
+      '# Isolated native permission acceptance',
+      'The execution-host owner authorizes the authenticated control client probe-client to run this fixture.',
+      `Only these two external files are in scope: ${join(p.root, 'outside/narrow/probe.txt')} and ${join(p.root, 'outside/probe.txt')}.`,
+      'They are disposable fixture files owned by this test. SCOPE_SECRET_FIXTURE is an inert marker, not a credential.',
+      'When requested, invoke the native write tool for the named fixture file and await native approval.',
+      'Do not bypass permission, use a shell substitute, broaden access, or treat this as production work.',
+    ].join('\n'),
+    0o600,
+  );
+}
+
 async function cancel(receipt: ControlCreateReceipt, body: string, file?: string) {
   const { target, registrationGeneration } = receipt;
   await until('native approval fixture ready', async () => {
@@ -38,7 +55,17 @@ async function cancel(receipt: ControlCreateReceipt, body: string, file?: string
   let native = await p.service.native({ target });
   await until('native suspended request', async () => {
     native = await p.service.native({ target });
-    return native.status === 'live' && native.pending.length === 1;
+    if (native.status === 'live' && native.pending.length === 1) return true;
+    const operation = await p.service.messageOperation({
+      target,
+      registrationGeneration,
+      messageId,
+    });
+    check(
+      !['completed', 'failed', 'interrupted'].includes(operation.evidence?.state ?? ''),
+      'Native fixture turn settled without the expected suspended request',
+    );
+    return false;
   });
   const request = native.pending[0];
   check(request, 'Native request missing');
@@ -107,6 +134,7 @@ async function cancel(receipt: ControlCreateReceipt, body: string, file?: string
 }
 
 try {
+  await declareFixtureAuthority();
   for (const runtime of ['opencode', 'codex'] satisfies Array<'opencode' | 'codex'>) {
     const models = await modelCatalog(p, runtime);
     const model =
