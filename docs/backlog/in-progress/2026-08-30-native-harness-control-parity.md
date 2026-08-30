@@ -111,6 +111,8 @@ The authorized follow-up release carries the unversioned control surface and Bio
 in `../done/2026-08-30-unversioned-control-and-biome-gate.md`. Release verification uses an isolated
 daemon/configuration without notification destinations for mutating native probes; production
 checks read the installed contract and session continuity without sending fixture messages.
+Installed-artifact verification also exposed an initial content/readiness race, tracked in
+`2026-08-30-native-content-before-readiness.md`; its corrective patch remains in the release conveyor.
 Cross-machine image acceptance is held only by the transport activation boundary below.
 The existing native runtime integration task retains its
 separate optional published-dependency boundary; these five tasks do not claim that dependency ready.

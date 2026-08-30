@@ -232,12 +232,17 @@ export class OwnedCodexConnection {
         source: 'admission',
         turnId: null,
       });
-    this.projection = projection;
     this.applicationPolicy = application;
     if (application?.runtime === 'codex' && application.skills.length === 0)
       projection.policyEvidence(applicationPolicyEvidence(application, 'applied'));
     this.content = new ContentProducer(this.m, session, projection.snapshot().generation);
     this.contentThreadId = session.uuid;
+    // Live status makes this identity readable. Commit its initial content before enabling
+    // status callbacks; native events remain buffered while the baseline write is pending.
+    await this.content.writer.flushPending();
+    signal.throwIfAborted();
+    this.liveRpc();
+    this.projection = projection;
     this.content.buffer.noteOmitted(this.omittedContent);
     // Events were registered before thread/start or resume. Replay before applying the response;
     // a snapshot that raced a newer event must never overwrite that event.

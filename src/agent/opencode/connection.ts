@@ -66,6 +66,9 @@ export class OpenCodeConnection {
   }
   async open(signal: AbortSignal): Promise<void> {
     const combined = AbortSignal.any([signal, this.abort.signal]);
+    // Native status and event callbacks must not precede the first exact readable baseline.
+    await this.content.writer.flushPending();
+    combined.throwIfAborted();
     const { stream } = await this.server.client.event.subscribe(undefined, {
       signal: combined,
       sseMaxRetryAttempts: 1,

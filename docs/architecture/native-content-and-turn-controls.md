@@ -73,6 +73,9 @@ There are at most 32 readers with one coalesced notice each, a 50 ms write inter
 filesystem watchers and a shared one-second lease check. A stable notification inode is updated only after atomic snapshot publication.
 Readers add no provider connection, token queue, transcript poll or observer pass.
 
+Native admission commits its initial identity-bound content baseline before enabling live status
+callbacks. Subsequent token updates remain coalesced; a failed initial write refuses readiness.
+
 Lease/settings-only updates retain the same content cursor but publish refreshed metadata. Native
 Plan deltas and completed Plan items use the assistant-content kind. Completed native items reject
 late nonterminal updates even when their retained baseline is explicitly truncated. On reset, clients

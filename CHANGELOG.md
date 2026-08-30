@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Commit the initial native content baseline before Codex/OpenCode readiness becomes visible.
+  Immediate reads after managed create no longer race the first coalesced content write; write
+  failures refuse admission, and native events remain buffered during initial publication.
+
 ## [0.39.27] — 2026-08-30
 
 use unversioned control API and enforce Biome checks

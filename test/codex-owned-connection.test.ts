@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -13,7 +13,9 @@ import {
 import { supportsOwnedCodexVersion } from '../src/agent/codex/ownedLaunch.ts';
 import { ownedCodexSocket, privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
 import { OWNED_CODEX_OMIT_NOTIFICATIONS } from '../src/agent/codex/ownedRpc.ts';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { OwnedCodexStatusWriter, readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { readContent } from '../src/content/read.ts';
+import { ContentWriter } from '../src/content/store.ts';
 import { readEvents } from '../src/events/feed.ts';
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 
@@ -208,6 +210,61 @@ function fixture(
     },
   };
 }
+
+test('fresh and resumed status publication always follows a readable exact content baseline', async () => {
+  for (const fresh of [true, false]) {
+    const f = fixture('delayed');
+    const connection = new OwnedCodexConnection(f.m, f.s, process.pid);
+    const observations: boolean[] = [];
+    const write = OwnedCodexStatusWriter.prototype.write;
+    const spy = spyOn(OwnedCodexStatusWriter.prototype, 'write').mockImplementation(function (
+      this: OwnedCodexStatusWriter,
+      snapshot,
+    ) {
+      try {
+        const content = readContent(f.m, f.s);
+        observations.push(
+          content.generation === snapshot.generation &&
+            content.target.threadId === snapshot.threadId,
+        );
+      } catch {
+        observations.push(false);
+      }
+      return write.call(this, snapshot);
+    });
+    try {
+      await connection.open(new AbortController().signal);
+      await connection.admit(fresh, new AbortController().signal);
+      expect(observations.length).toBeGreaterThan(0);
+      expect(observations.every(Boolean)).toBe(true);
+    } finally {
+      spy.mockRestore();
+      await connection.close('stopped');
+      f.close();
+    }
+  }
+});
+
+test('initial content publication failure cannot advertise Codex readiness', async () => {
+  const f = fixture('delayed');
+  const connection = new OwnedCodexConnection(f.m, f.s, process.pid);
+  const flush = spyOn(ContentWriter.prototype, 'flushPending').mockRejectedValue(
+    new Error('fixture content write refused'),
+  );
+  const write = spyOn(OwnedCodexStatusWriter.prototype, 'write');
+  try {
+    await connection.open(new AbortController().signal);
+    await expect(connection.admit(true, new AbortController().signal)).rejects.toThrow(
+      'fixture content write refused',
+    );
+    expect(write).not.toHaveBeenCalled();
+  } finally {
+    flush.mockRestore();
+    write.mockRestore();
+    await connection.close('stopped');
+    f.close();
+  }
+});
 
 test('fresh admission retries the named empty-rollout failure only after committed session_meta', async () => {
   const f = fixture('delayed'),
