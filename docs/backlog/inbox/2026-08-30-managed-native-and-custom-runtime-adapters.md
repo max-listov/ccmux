@@ -64,7 +64,7 @@ as part of this task. Existing interactive sessions remain supported and untouch
 
 ## Dependencies
 
-Codex fixes: active `2026-08-30-model-catalog-before-first-managed-session.md` and
-`2026-08-30-managed-model-selection-and-collaboration-policy.md`. OpenCode implementation and
+Codex fixes are published in `v0.39.23`: `../done/2026-08-30-model-catalog-before-first-managed-session.md`
+and `../done/2026-08-30-managed-model-selection-and-collaboration-policy.md`. OpenCode implementation and
 driver-contract work can proceed independently. Custom driver waits only for the published
 Stitchkit harness seam; agree that boundary through the existing owner-task handoff process.

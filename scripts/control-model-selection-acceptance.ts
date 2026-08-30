@@ -20,6 +20,11 @@ const root = realpathSync(mkdtempSync("/tmp/ccmux-owned-probe-"));
 const config = join(root, "machine.json");
 const cli = resolve(process.argv[2] ?? "src/cli.ts");
 const commandPrefix = cli.endsWith(".ts") || cli.endsWith(".js") ? [process.execPath, "--no-env-file", cli] : [cli];
+// An extracted, checksum-verified published package can prove the installed client boundary too.
+const publishedClient = process.argv[3];
+const makeServiceClient: typeof createCcmuxControlServiceClient = publishedClient === undefined
+  ? createCcmuxControlServiceClient
+  : (await import(resolve(publishedClient))).createCcmuxControlServiceClient;
 const machine = MachineConfigSchema.parse({ ...loadMachineConfig(), stateDir: join(root, "state"),
   rcPrefix: "probe", tmuxSocket: `ccmux-owned-${root.split("-").at(-1)}`, fleet: {}, wire: { peers: [] },
   autoUpdate: false, chatEnabled: true, sessionEvents: true, remoteControl: false, telegram: undefined,
@@ -54,7 +59,7 @@ async function command(args: string[]) {
   const [out, err, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
   check(code === 0, `Command failed (${code}): ${out} ${err}`);
 }
-const remote = createCcmuxControlServiceClient(async (url, init) => {
+const remote = makeServiceClient(async (url, init) => {
   const operation = ControlServiceOperationSchema.parse(new URL(String(url)).pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1));
   return fetch("http://ccmux.local/ccmux-control/v1/invoke", { unix: controlSocket(machine), method: "POST",
     headers: { "content-type": "application/json" }, body: JSON.stringify({ v: 1, id: crypto.randomUUID(),
@@ -90,7 +95,8 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
   await until("tool turn", async () => {
     const frame = await remote.native({ target, cursor: { generation: before.generation, sequence: before.sequence } });
     return frame.items.some((item) => item.kind === "assistant" && item.text?.includes(marker)) &&
-      frame.items.some((item) => item.kind === "tool" && item.stage === "completed");
+      frame.items.some((item) => item.kind === "tool" && item.tool === "commandExecution" &&
+        item.stage === "completed" && item.status === "completed");
   });
   await idle(target);
   const rpc = await connectOwnedCodex(machine, session);
@@ -181,7 +187,8 @@ try {
   check(plain.launchRecipe === undefined && plain.modelSelection === undefined, "Default create synthesized selection");
   await idle(plain.target);
   for (const target of targets) check((await remote.archive({ target })).archived, "Archive failed");
-  console.log(JSON.stringify({ ok: true, models: choices, recipeCount: 1, emptyInventoryCatalog: true,
+  console.log(JSON.stringify({ ok: true, publishedClient: publishedClient !== undefined,
+    models: choices, recipeCount: 1, emptyInventoryCatalog: true,
     directory: true, nativeToolTurns: 3, differingPreset: "injected into real native capability response; real turn retained selection",
     retryOneWriter: true, changedSelectionRefused: true, unavailableBeforeWriter: true, exactPlanInput: true,
     wait: waited.outcome, defaultCreate: true, providerAndDaemonRestart: true, archived: targets.length,

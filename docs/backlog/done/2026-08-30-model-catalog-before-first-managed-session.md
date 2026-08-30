@@ -2,9 +2,10 @@
 title: Read the authenticated model catalog before the first managed session
 description: Remove the managed-thread bootstrap dependency from provider model discovery while preserving transport authorization.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
 updated: 2026-08-30
+completed: 2026-08-30 08:18 +07:00
 priority: P1
 ---
 
@@ -45,7 +46,7 @@ to resolve explicitly, not evidence that the existing provider read fails.
 - [x] Empty managed inventory can list authenticated models before creating the first chat.
 - [x] Stopped/archived targets are not needed for bootstrap.
 - [x] Two differently configured runtimes cannot cross-label their catalog responses.
-- [ ] Real installed-client acceptance and patch release evidence are recorded.
+- [x] Real installed-client acceptance and patch release evidence are recorded.
 
 ## Что сделано
 
@@ -58,4 +59,30 @@ to resolve explicitly, not evidence that the existing provider read fails.
   refuses to label OpenAI picker metadata as a custom-provider catalog.
 - Real native `scripts/control-models-e2e.ts`: 7 visible and 2 hidden models; pagination, safe fields,
   no managed row before or after the read. The declared-service acceptance also reads both default
-  and profiled catalogs before the first create. Installed release verification remains below.
+  and profiled catalogs before the first create.
+
+### Published and installed acceptance
+
+- [x] Implementation `1353706170a5685af27342761f516e3930529d07`; release
+  [`v0.39.23`](https://github.com/max-listov/ccmux/releases/tag/v0.39.23), exact SHA
+  `80258c0947b3b1d2a575934e335aaaa76e0b2a9f`. Release and push gates passed: 814 tests,
+  0 failures, 3,855 assertions; packed Bun, Node, NodeNext and bundler consumers all passed.
+- [x] Exact-SHA [release CI](https://github.com/max-listov/ccmux/actions/runs/33285015429)
+  and [main CI](https://github.com/max-listov/ccmux/actions/runs/33285015204) succeeded.
+- [x] `scripts/control-model-selection-acceptance.ts` ran against the installed release bundle
+  and extracted, checksum-verified published service-client package. Its initially empty inventory
+  returned seven native models through the declared service before any session existed; it then
+  completed native model selection, tool execution, input response, restart and archival checks.
+- [x] All three owned installations report version `0.39.23`, live monitoring and the same bundle
+  SHA256 `db5a72f8cfa6968ee1ad243d3c4c73360a6ea9eda598eedee36e2e491952b661`.
+  Each installed host catalog returned seven models; all 33 pre-existing running sessions retained
+  their UUID and running state. No private launch profiles or consumer configuration were changed.
+- [x] Published service-client archive SHA256:
+  `d9e9c946d747b51be34046b4a40c22ccda8d216a54ab228740e65b63d3edf086`.
+  Standalone local client SHA256:
+  `7ba96f1bacb83b8cfd886ff2a1b0ae0f1ab3935d35285ff62c6935e5866db4b9`.
+
+The native acceptance has no remaining blocker. This is not a blanket clean-fleet diagnosis:
+existing operational diagnostics also report legacy undeclared environment inputs in four unrelated
+interactive sessions, one held message at a nonempty composer, and an unavailable optional transit
+route. This work does not change those sessions' environment, clear their input or configure transit.

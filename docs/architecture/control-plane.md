@@ -412,9 +412,13 @@ provider usage and only target isolated test sessions; the model-catalog probe i
 native-runtime-capable release removes the new control API
 without changing conversation UUIDs, chat storage or ordinary CLI behavior.
 
-`scripts/control-model-selection-acceptance.ts [ccmux-entrypoint]` uses isolated state and an isolated
-tmux socket with native authentication. It proves empty-inventory service discovery, directory reads,
+`scripts/control-model-selection-acceptance.ts [ccmux-entrypoint] [published-client-module]` uses isolated
+state and an isolated tmux socket with native authentication. The optional client module is the
+extracted, checksum-verified service package's `dist/index.js`; supplying it together with the
+installed CCMux entrypoint tests the published boundary rather than only source imports.
+It proves empty-inventory service discovery, directory reads,
 two catalog models under one profile, native shell execution in Plan, same-ID refusal/retry, and
-provider/daemon restart. Its differing-preset test explicitly substitutes just that capability field
+provider/daemon restart. Tool acceptance requires a completed native `commandExecution` item and
+the terminal response, not merely any tool item. Its differing-preset test explicitly substitutes just that capability field
 before sending the resulting policy into a real native turn; the installed preset itself may report
 `model: null`. The probe records this distinction rather than claiming a provider-advertised mismatch.

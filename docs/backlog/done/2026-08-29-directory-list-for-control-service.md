@@ -2,9 +2,10 @@
 title: Read-only directory listing for the managed control service
 description: Consumers that pick a workspace folder on a remote host need a bounded read-only directory listing operation; the control service currently exposes only session lifecycle, native reads and model catalog.
 type: task
-status: in-progress
+status: done
 created: 2026-08-29
 updated: 2026-08-30
+completed: 2026-08-30 08:18 +07:00
 ---
 
 ## Зачем
@@ -33,7 +34,7 @@ something on the host.
 
 - [x] Add bounded directory.list through the existing local/service contracts and read admission.
 - [x] Use a directory-versioned cursor; refuse changed directories and symlink traversal.
-- [ ] Test filesystem behavior and packed clients, then document and release.
+- [x] Test filesystem behavior and packed clients, then document and release.
 
 ## Acceptance checks
 
@@ -51,3 +52,12 @@ something on the host.
   `STALE_CURSOR` instead of silently dropping entries. No shell or file-content read is used.
 - Three filesystem regressions, packed Bun/Node/type consumers and a real declared-service listing
   passed. Bounds and authorization are documented in `docs/architecture/control-plane.md`.
+
+### Published and installed acceptance
+
+- [x] Released in `v0.39.23`, exact SHA `80258c0947b3b1d2a575934e335aaaa76e0b2a9f`.
+  Full gate passed with 814 tests and packed Bun/Node/type consumers; exact-SHA CI and all three
+  installed runtimes passed. See [the shared release evidence](2026-08-30-model-catalog-before-first-managed-session.md#published-and-installed-acceptance).
+- [x] The checksum-verified published service client listed a real directory through the installed
+  daemon's declared-service ingress during native acceptance. Installed CLI reads on all three owned
+  hosts also succeeded. No caller shell command, file-content read or consumer gateway was introduced.
