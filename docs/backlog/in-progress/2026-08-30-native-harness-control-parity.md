@@ -112,7 +112,10 @@ in `../done/2026-08-30-unversioned-control-and-biome-gate.md`. Release verificat
 daemon/configuration without notification destinations for mutating native probes; production
 checks read the installed contract and session continuity without sending fixture messages.
 Installed-artifact verification also exposed an initial content/readiness race, tracked in
-`2026-08-30-native-content-before-readiness.md`; its corrective patch remains in the release conveyor.
+[`2026-08-30-native-content-before-readiness.md`](../done/2026-08-30-native-content-before-readiness.md).
+Corrective `v0.39.28` passed downloaded-artifact acceptance, exact native requests, two-runtime chat,
+restart/resume and three-runtime parity with 33 running sessions preserved. The task records exact
+hashes and the retained failed-probe evidence; late approvals remain serviced through terminal pickup.
 Cross-machine image acceptance is held only by the transport activation boundary below.
 The existing native runtime integration task retains its
 separate optional published-dependency boundary; these five tasks do not claim that dependency ready.

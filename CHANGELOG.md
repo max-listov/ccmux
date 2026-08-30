@@ -6,6 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep native acceptance approvals serviced until both cross-runtime message pickups complete;
+  distinguish a durable reply from terminal processing and cover late approval and failed outcomes.
+
 ## [0.39.28] — 2026-08-30
 
 publish native content before runtime readiness
