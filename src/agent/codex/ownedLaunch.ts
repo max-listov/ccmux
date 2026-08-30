@@ -5,6 +5,9 @@ import { chatEnabledFor } from "../../config/chat.ts";
 import { promptInvocation, UID } from "../../env.ts";
 import { compareSemver } from "../../util/version.ts";
 import { modelSelectionFlags } from "../../config/modelSelectionFlags.ts";
+import { readSelection } from "../../runtime/selection.ts";
+import { composePolicyDeveloperInstructions } from "../../policy/codex.ts";
+import { verifyApplicationPolicy } from "../../policy/resolve.ts";
 
 /** Only explicit native configuration flags; routing and identity cannot be overridden by flags. */
 export function ownedCodexFlags(flags: readonly string[]): { server: string[]; client: string[] } {
@@ -54,16 +57,23 @@ export function ownedCodexClientArgv(s: Session, m: MachineConfig): string[] {
 }
 
 export function ownedCodexThreadParams(s: Session, m: MachineConfig): Record<string, unknown> {
-  return { cwd: s.dir, ...(s.modelSelection === undefined ? {} : {
-    model: s.modelSelection.model, modelProvider: s.modelSelection.provider,
-  }), developerInstructions: buildPrompt(s.name, promptInvocation(), "codex", "ccmux",
-    chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix) };
+  const selected = readSelection(m, s)?.options.model ?? s.modelSelection;
+  return { cwd: s.dir, ...(selected === undefined ? {} : {
+    model: selected.model, modelProvider: selected.provider,
+  }), developerInstructions: ownedCodexDeveloperInstructions(s, m) };
+}
+
+export function ownedCodexDeveloperInstructions(s: Session, m: MachineConfig): string {
+  const supervisor = buildPrompt(s.name, promptInvocation(), "codex", "ccmux",
+    chatEnabledFor(s, m), s.promptModules, m.ownerLang, m.rcPrefix);
+  return s.applicationPolicy === undefined ? supervisor
+    : composePolicyDeveloperInstructions(verifyApplicationPolicy(m, "codex", s.applicationPolicy), supervisor);
 }
 
 export function supportsOwnedCodexVersion(text: string): boolean {
   const version = text.trim().match(/^codex-cli (\d+\.\d+\.\d+)(-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
-  return version?.[1] !== undefined && compareSemver(version[1], "0.147.0") >= 0
-    && !(version[1] === "0.147.0" && version[2]);
+  return version?.[1] !== undefined && compareSemver(version[1], "0.151.0") >= 0
+    && !(version[1] === "0.151.0" && version[2]);
 }
 
 /** No process, registry or provider configuration is changed by admission validation. */
@@ -72,7 +82,7 @@ export function preflightOwnedCodex(m: MachineConfig, flags: readonly string[]):
   if (!m.codexBin) throw new Error("codexBin is not configured");
   const versionResult = Bun.spawnSync([m.codexBin, "--version"], { stdout: "pipe", stderr: "pipe", timeout: 5_000 });
   if (versionResult.exitCode !== 0 || !supportsOwnedCodexVersion(versionResult.stdout.toString())) {
-    throw new Error("Native ownership requires Codex CLI 0.147.0 or newer");
+    throw new Error("Native ownership requires Codex CLI 0.151.0 or newer");
   }
   for (const args of [["app-server", "--help"], ["resume", "--help"]]) {
     const result = Bun.spawnSync([m.codexBin, ...args], { stdout: "pipe", stderr: "pipe", timeout: 5_000 });

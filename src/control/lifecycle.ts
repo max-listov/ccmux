@@ -16,11 +16,27 @@ import { AgentKindSchema, LaunchRecipeMetadataSchema, ManagedPeerSchema, ModelSe
 import { runtimeCapabilities } from "../runtime/capabilities.ts";
 import { validateOpenCodeSelection } from "../agent/opencode/catalog.ts";
 import { privateRuntimeDirectory } from "../agent/codex/ownedPaths.ts";
-import { resolveControlLaunchRecipe } from "../config/launchRecipes.ts";
+import { resolveControlLaunchRecipe, type ResolvedControlLaunch } from "../config/launchRecipes.ts";
 import { stableJson } from "../agent/launchInputs.ts";
 import { log } from "../util/log.ts";
 import { validateModelSelection } from "../config/modelSelection.ts";
 import { modelSelectionFlags } from "../config/modelSelectionFlags.ts";
+import { ApplicationPolicyMetadataSchema, type ApplicationPolicyMetadata } from "../policy/schema.ts";
+import { resolveApplicationPolicy } from "../policy/resolve.ts";
+import { projectApplicationPolicy } from "../policy/projection.ts";
+import { readManagedRuntimeStatus } from "../runtime/status.ts";
+import { NativeForkSourceSchema, prepareNativeFork, type NativeForkSource } from "../context/fork.ts";
+import { withNativeAdmission } from "../runtime/admission.ts";
+import { assertNoContextMutation, nativeId } from "../context/store.ts";
+import { controlTarget } from "./target.ts";
+import { inheritAttachmentPins } from "../attachments/pins.ts";
+import { createNativeBootstrap } from "../commands/create.ts";
+import { blockingInbound } from "../commands/wait.ts";
+import { readRuntimeInput } from "../runtime/input.ts";
+import { readSelection } from "../runtime/selection.ts";
+import { NativeForkRequestSchema, type NativeForkRequest } from "../context/schema.ts";
+import { verifyManagedLaunchRecipe } from "../config/launchRecipes.ts";
+import { verifyApplicationPolicy } from "../policy/resolve.ts";
 
 type CreateInput = z.input<typeof ControlCreateSchema>;
 const CreateRowSchema = z.object({
@@ -29,10 +45,13 @@ const CreateRowSchema = z.object({
   name: z.string(), workspace: z.string(), flags: z.array(z.string()),
   envFile: z.string().min(1).optional(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
+  forkSource: NativeForkSourceSchema.optional(),
   status: z.enum(["pending", "complete", "failed"]), threadId: z.uuid().nullable(),
   error: z.string().max(512).nullable(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
 }).strict();
 type CreateRow = z.infer<typeof CreateRowSchema>;
+type ForkAdmission = { source: NativeForkSource; launch: ResolvedControlLaunch & { applicationPolicy?: ApplicationPolicyMetadata } };
 const StoreSchema = z.array(CreateRowSchema).max(256);
 
 const storePath = (m: Pick<MachineConfig, "stateDir">) => join(m.stateDir, "control", "create-requests.json");
@@ -69,7 +88,7 @@ function matchingSession(m: MachineConfig, row: CreateRow): Session | null {
 
 export async function createControlSession(m: MachineConfig, input: CreateInput, signal: AbortSignal,
   create: typeof createManagedSession = createManagedSession,
-  validateSelection: typeof validateModelSelection = validateModelSelection) {
+  validateSelection: typeof validateModelSelection = validateModelSelection, fork?: ForkAdmission) {
   const workspace = normalizeWorkspace(input.workspace);
   const runtime = input.runtime ?? "codex";
   if (runtime === "custom") throw new AppError("UNSUPPORTED", "Custom runtime is not available on this host", 409);
@@ -81,7 +100,9 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
     throw new AppError("UNSUPPORTED", "Interactive model selection is provider-owned", 409);
   if (input.modelSelection !== undefined && (input.flags?.length ?? 0) > 0)
     throw new AppError("INVALID_INPUT", "Typed model selection cannot carry caller flags", 400);
-  const resolved = resolveControlLaunchRecipe(m, workspace, input.launchRecipe, input.flags ?? []);
+  const resolved = fork?.launch ?? resolveControlLaunchRecipe(m, workspace, input.launchRecipe, input.flags ?? []);
+  const applicationPolicy = fork?.launch.applicationPolicy ?? (input.applicationPolicy === undefined ? undefined
+    : resolveApplicationPolicy(m, runtime, input.applicationPolicy).metadata);
   const canonical = {
     name: input.name,
     workspace,
@@ -90,6 +111,8 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
     ...(resolved.envFile === undefined ? {} : { envFile: resolved.envFile }),
     ...(resolved.launchRecipe === undefined ? {} : { launchRecipe: resolved.launchRecipe }),
     ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+    ...(applicationPolicy === undefined ? {} : { applicationPolicy }),
+    ...(fork === undefined ? {} : { forkSource: fork.source }),
   };
   const digest = fingerprint(canonical);
   const accepted = load(m).find((row) => row.requestId === input.requestId);
@@ -115,7 +138,8 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
       const now = new Date().toISOString();
       row = CreateRowSchema.parse({ requestId: input.requestId, fingerprint: digest, generation: crypto.randomUUID(),
         ...canonical, status: "pending", threadId: null, error: null, createdAt: now, updatedAt: now });
-      await save(m, [...rows.slice(-255), row]);
+      if (rows.length >= 256) throw new AppError("CREATE_CAPACITY", "Managed create receipt capacity reached", 409);
+      await save(m, [...rows, row]);
     }, "control create receipt");
     signal.throwIfAborted();
     if (row.status === "failed") throw new AppError("CREATE_FAILED", "Managed session create failed", 409);
@@ -127,16 +151,22 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
       if (!pending) {
         try {
           const agent = row.runtime ?? "codex";
+          if (row.forkSource !== undefined) await prepareNativeFork(m, row.generation, row.forkSource);
           session = await create(m, { name: row.name, dir: row.workspace, agent, flags: row.flags,
             router: false, runtime: agent === "codex" ? "app-server" : agent === "claude" ? "tui" : "native",
             registrationGeneration: row.generation, chatEnabled: true,
             ...(row.envFile === undefined ? {} : { envFile: row.envFile }),
             ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
-            ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }) });
+            ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }),
+            ...(row.applicationPolicy === undefined ? {} : { applicationPolicy: row.applicationPolicy }) });
         } catch (error) {
           session = matchingSession(m, row);
           if (session === null) {
             const message = String(error).slice(0, 512);
+            if (row.forkSource !== undefined) {
+              log.error({ msg: "managed native fork remains unresolved", requestId: row.requestId, error: message });
+              throw new AppError("FORK_PENDING", "Native fork is unresolved; retry the same request", 503);
+            }
             await withDirectoryLock(storeLockPath(m), async () => save(m, load(m).map((item) => item.requestId === row.requestId
               ? { ...item, status: "failed" as const, error: message, updatedAt: new Date().toISOString() } : item)), "control create receipt");
             log.error({ msg: "managed control create failed", requestId: row.requestId, recipeId: row.launchRecipe?.id ?? null, error: message });
@@ -157,17 +187,73 @@ export async function createControlSession(m: MachineConfig, input: CreateInput,
       (row.threadId !== null && session.uuid !== row.threadId) ||
       stableJson(session.flags) !== stableJson(row.flags) || session.envFile !== row.envFile ||
       stableJson(session.launchRecipe ?? null) !== stableJson(row.launchRecipe ?? null) ||
-      stableJson(session.modelSelection ?? null) !== stableJson(row.modelSelection ?? null)
+      stableJson(session.modelSelection ?? null) !== stableJson(row.modelSelection ?? null) ||
+      stableJson(session.applicationPolicy ?? null) !== stableJson(row.applicationPolicy ?? null)
     ) throw new AppError("CORRUPT_STATE", "Managed create identity does not match its receipt", 503);
     const ready = session;
+    if (row.forkSource !== undefined) {
+      const source = controlTarget(m, row.forkSource.target);
+      if (source.registrationGeneration !== row.forkSource.registration)
+        throw new AppError("IDENTITY_MISMATCH", "Native fork source registration changed", 409);
+      await inheritAttachmentPins(m, source, ready, signal);
+    }
     await withDirectoryLock(storeLockPath(m), async () => save(m, load(m).map((item) => item.requestId === row.requestId
       ? { ...item, status: "complete" as const, threadId: ready.uuid, updatedAt: new Date().toISOString() } : item)), "control create receipt");
+    const native = row.applicationPolicy === undefined ? null : readManagedRuntimeStatus(m, ready);
     return { requestId: row.requestId, target: managedPeer(m.rcPrefix, session), workspace: row.workspace, duplicate,
+      registrationGeneration: row.generation,
       ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
       ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }),
+      ...(row.applicationPolicy === undefined ? {} : { applicationPolicy: projectApplicationPolicy(row.applicationPolicy,
+        native?.status ?? "unavailable", native?.snapshot?.applicationPolicy) }),
       ...(session.nativeSession === undefined ? {} : { nativeSession: session.nativeSession }),
       ...(row.runtime === undefined ? {} : { driverCapabilities: runtimeCapabilities(session) }) };
   }, "control create request");
+}
+
+/** One create journal reserves the destination before its own native server forks the source. */
+export async function forkControlSession(m: MachineConfig, raw: NativeForkRequest, signal: AbortSignal) {
+  const input = NativeForkRequestSchema.parse(raw), sourceTarget = input.target;
+  const source = controlTarget(m, sourceTarget);
+  return withNativeAdmission(m, source, async () => {
+    const current = controlTarget(m, sourceTarget);
+    const accepted = load(m).find(row => row.requestId === input.requestId);
+    if (accepted !== undefined && (accepted.forkSource === undefined || accepted.forkSource.registration !== current.registrationGeneration
+      || accepted.forkSource.registration !== input.registrationGeneration || accepted.forkSource.generation !== input.generation
+      || accepted.name !== input.name || stableJson(accepted.forkSource.target) !== stableJson(sourceTarget)))
+      throw new AppError("IDEMPOTENCY_CONFLICT", "Native fork source changed", 409);
+    if (accepted === undefined) assertNoContextMutation(m, current);
+    const status = readManagedRuntimeStatus(m, current);
+    if (accepted === undefined && (current.registrationGeneration !== input.registrationGeneration || status.snapshot?.generation !== input.generation))
+      throw new AppError("IDENTITY_MISMATCH", "Native fork source generation changed", 409);
+    if (accepted === undefined && (!current.registrationGeneration || !nativeId(current) || status.status !== "live" || !status.snapshot
+      || status.snapshot.state !== "idle" || status.snapshot.turn?.status === "inProgress" || status.snapshot.pendingRequests.length !== 0))
+      throw new AppError("FORK_BUSY", "Native source must be idle before fork", 409);
+    const pendingInput = readRuntimeInput(m, current);
+    if (accepted === undefined && (blockingInbound(m, current, Date.now()).length !== 0 || (pendingInput !== null && pendingInput.phase !== "accepted")))
+      throw new AppError("FORK_BUSY", "Native source has accepted input pending", 409);
+    if (current.agent !== "codex" && current.agent !== "opencode")
+      throw new AppError("UNSUPPORTED", "Native fork is unavailable for this runtime", 409);
+    const sourceIdentity = accepted?.forkSource ?? NativeForkSourceSchema.parse({ target: sourceTarget, registration: current.registrationGeneration,
+      generation: status.snapshot?.generation, nativeId: nativeId(current), turnId: status.snapshot?.turn?.id ?? null,
+      selection: readSelection(m, current)?.options });
+    if (sourceIdentity.selection === undefined) throw new AppError("FORK_UNAVAILABLE", "Native source selection is unavailable", 409);
+    const sourceLaunch = accepted ?? current;
+    const modelFlags = modelSelectionFlags(sourceLaunch.modelSelection);
+    const flags = modelFlags.length > 0 && stableJson(sourceLaunch.flags.slice(-modelFlags.length)) === stableJson(modelFlags)
+      ? sourceLaunch.flags.slice(0, -modelFlags.length) : [...sourceLaunch.flags];
+    const launch = { flags, ...(sourceLaunch.envFile === undefined ? {} : { envFile: sourceLaunch.envFile }),
+      ...(sourceLaunch.launchRecipe === undefined ? {} : { launchRecipe: sourceLaunch.launchRecipe }),
+      ...(sourceLaunch.applicationPolicy === undefined ? {} : { applicationPolicy: sourceLaunch.applicationPolicy }) };
+    const policySession = { ...current, ...launch, flags: sourceLaunch.flags,
+      ...(sourceLaunch.modelSelection === undefined ? {} : { modelSelection: sourceLaunch.modelSelection }) };
+    verifyManagedLaunchRecipe(m, policySession);
+    if (launch.applicationPolicy !== undefined) verifyApplicationPolicy(m, current.agent, launch.applicationPolicy);
+    return createControlSession(m, { requestId: input.requestId, name: input.name, workspace: accepted?.workspace ?? current.dir,
+      runtime: current.agent, flags: [], modelSelection: accepted?.modelSelection ?? sourceIdentity.selection.model }, signal,
+      (machine, destination) => createNativeBootstrap(machine, destination, { kind: "fork", sourceThreadId: current.uuid }),
+      validateModelSelection, { source: sourceIdentity, launch });
+  });
 }
 
 export async function archiveControlSession(m: MachineConfig, target: z.infer<typeof ManagedPeerSchema>) {

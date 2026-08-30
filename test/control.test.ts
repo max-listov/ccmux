@@ -22,6 +22,10 @@ import { createControlServer } from "../src/control/server.ts";
 import { createControlClient, createControlProxy } from "../src/control/client.ts";
 import { controlSocket, prepareControlDirectory } from "../src/control/path.ts";
 import { readNativeCommand, writeNativeReceipt } from "../src/agent/codex/ownedControl.ts";
+import { ContentBuffer } from "../src/content/buffer.ts";
+import { ContentWriter } from "../src/content/store.ts";
+import { seedNativeSelection } from "../src/runtime/selection.ts";
+import { nativeCatalogFixture } from "./fixtures/native-catalog.ts";
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -29,8 +33,11 @@ afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await c
 async function fixture(native = false) {
   const root = mkdtempSync("/tmp/ccmux-control-test-");
   const m = makeMachine({ stateDir: root, rcPrefix: "host-a", projectsDir: join(root, "history"), chatEnabled: true });
-  const s = makeSession({ name: "agent-a", dir: root, agent: native ? "codex" : "claude", runtime: native ? "app-server" : "tui", chat: true });
+  const s = makeSession({ name: "agent-a", dir: root, agent: native ? "codex" : "claude", runtime: native ? "app-server" : "tui", chat: true,
+    registrationGeneration: crypto.randomUUID(), ...(native ? { modelSelection: { provider: "openai", model: "model-a" } } : {}) });
   await writeSessionsUnlocked(m, [s]);
+  const catalog = native ? nativeCatalogFixture(m, s) : null;
+  if (native) await seedNativeSelection(m, s, { runtime: "codex", model: { provider: "openai", model: "model-a" }, mode: "default" });
   const p = new ControlPublisher(m);
   const monitoring = new MonitoringPublisher();
   const publish = async () => {
@@ -41,7 +48,7 @@ async function fixture(native = false) {
   const owned = createControlServer(m, p);
   const socket = controlSocket(m);
   const client = createControlClient({ socket });
-  cleanup.push(async () => { await client.close(); p.close(); await owned.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 }); await owned.observability.close(); rmSync(root, { recursive: true, force: true }); });
+  cleanup.push(async () => { await client.close(); p.close(); await catalog?.stop(true); await owned.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 }); await owned.observability.close(); rmSync(root, { recursive: true, force: true }); });
   return { m, s, p, publish, owned, client, socket, target: managedPeer(m.rcPrefix, s) };
 }
 
@@ -90,8 +97,8 @@ test("message acceptance is durable, identity-authenticated and idempotent witho
   const credential = rotateChatCredential(f.m, f.s);
   const client = createControlClient({ socket: f.socket, session: f.s.name, credential });
   const input = { target: f.target, messageId: crypto.randomUUID(), body: "private message body", defer: true, task: "sample-task" };
-  expect(await client.message(input)).toEqual({ accepted: true, duplicate: false, messageId: input.messageId });
-  expect(await client.message(input)).toEqual({ accepted: true, duplicate: true, messageId: input.messageId });
+  expect(await client.message(input)).toEqual({ accepted: true, duplicate: false, messageId: input.messageId, turnOptions: null });
+  expect(await client.message(input)).toEqual({ accepted: true, duplicate: true, messageId: input.messageId, turnOptions: null });
   await expect(client.message({ ...input, body: "different" })).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
   await expect(f.client.message(input)).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
   expect(loadLedger(f.m)).toHaveLength(1);
@@ -242,6 +249,10 @@ test("native feed is bounded, cursored and exact responses expose submission unc
   const f = await fixture(true);
   const p = new OwnedCodexProjection(f.m, f.s, process.pid);
   const writer = new OwnedCodexStatusWriter(f.m, f.s.name);
+  const content = new ContentBuffer(f.m, f.s, p.snapshot().generation);
+  const contentWriter = new ContentWriter(f.m, f.s);
+  const publishContent = async () => { contentWriter.offer(() => content.snapshot()); await contentWriter.flush(); };
+  cleanup.push(() => contentWriter.close());
   p.reconcile({ type: "idle" }, 0);
   p.event({ method: "item/completed", params: { threadId: f.s.uuid, turnId: "turn-a",
     item: { id: "user-a", type: "userMessage", content: [{ type: "text", text: "hello" }] } } });
@@ -249,23 +260,28 @@ test("native feed is bounded, cursored and exact responses expose submission unc
     item: { id: "tool-a", type: "commandExecution", status: "completed", command: "private", cwd: "/private" } } });
   p.request({ id: "approval-a", method: "item/fileChange/requestApproval", params: { threadId: f.s.uuid,
     turnId: "turn-a", itemId: "tool-a", startedAtMs: Date.now(), reason: "confirm", availableDecisions: ["accept", "decline"] } });
+  content.lifecycle("tool", "turn-a", "tool-a", "completed", "commandExecution");
+  content.lifecycle("request", "turn-a", "s:approval-a", "requested", "approval");
+  await publishContent();
   await writer.write(p.snapshot()); await f.publish();
   const baseline = await f.client.native({ target: f.target, cursor: null });
   expect(baseline).toMatchObject({ reset: "initial", pending: [{ requestId: "s:approval-a", kind: "approval" }] });
-  expect(baseline.items.map((item) => item.kind)).toEqual(["user", "tool", "approval"]);
+  expect(baseline.baseline.map((item) => item.kind)).toEqual(["tool", "request"]);
   expect(JSON.stringify(baseline)).not.toContain("private");
   expect(JSON.stringify(baseline)).not.toContain("rpcId");
   const cursor = { generation: baseline.generation, sequence: baseline.sequence };
-  expect(await f.client.native({ target: f.target, cursor })).toMatchObject({ reset: null, items: [] });
+  expect(await f.client.native({ target: f.target, cursor })).toMatchObject({ reset: null, records: [], baseline: [] });
   expect((await f.client.native({ target: f.target, cursor: { generation: crypto.randomUUID(), sequence: 0 } })).reset).toBe("generation");
 
   const stop = new AbortController();
   const stream = await f.client.watchNative.withOptions({ target: f.target, cursor }, { signal: stop.signal });
-  expect((await stream.next()).value).toMatchObject({ reset: null, items: [] });
+  expect((await stream.next()).value).toMatchObject({ reset: null, records: [], baseline: [] });
   p.event({ method: "item/completed", params: { threadId: f.s.uuid, turnId: "turn-a",
     item: { id: "assistant-a", type: "agentMessage", text: "done" } } });
+  content.text("assistant", "turn-a", "assistant-a", "done", "replace", true);
+  await publishContent();
   await writer.write(p.snapshot()); await f.publish();
-  expect((await stream.next()).value.items).toMatchObject([{ kind: "assistant", nativeId: "assistant-a", text: "done" }]);
+  expect((await stream.next()).value.records).toMatchObject([{ kind: "assistant", itemId: "assistant-a", text: "done" }]);
   stop.abort(); await stream.return?.();
 
   const operationId = crypto.randomUUID();

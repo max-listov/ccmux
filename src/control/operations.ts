@@ -1,4 +1,13 @@
 import { AppError } from "stitchkit";
+import { ControlHistoryReadSchema, ControlCompactSchema, ControlContextOperationReadSchema } from "./contextSchema.ts";
+import { readControlHistory, compactControlContext, readControlContextOperation } from "./context.ts";
+import { NativeForkRequestSchema } from "../context/schema.ts";
+import { SteeringInputSchema, SteeringSelectorSchema } from "../steering/schema.ts";
+import { steerNativeTurn, readNativeSteering } from "../steering/service.ts";
+import { readControlSelection, updateControlSelection } from "./selection.ts";
+import { SelectionReadSchema, SelectionUpdateSchema } from "./selectionSchema.ts";
+import { AttachmentBeginSchema, AttachmentChunkSchema, AttachmentUploadSelectorSchema, AttachmentReadSchema } from "../attachments/schema.ts";
+import { beginAttachmentUpload, appendAttachmentChunk, finalizeAttachmentUpload, cancelAttachmentUpload, readAttachmentChunk } from "../attachments/service.ts";
 import { readRuntimeCatalog } from "../runtime/catalog.ts";
 import {
   BoundedAdmissionRefusalError,
@@ -14,7 +23,7 @@ import { withSessionRegistryLock } from "../config/registryLock.ts";
 import { startSession } from "../commands/lifecycle.ts";
 import { acceptControlMessage } from "./message.ts";
 import { interruptControlTurn, waitControlSession } from "./native.ts";
-import { archiveControlSession, createControlSession } from "./lifecycle.ts";
+import { archiveControlSession, createControlSession, forkControlSession } from "./lifecycle.ts";
 import { readControlNative, respondControlNative } from "./nativeFeed.ts";
 import { readControlModels } from "./models.ts";
 import { ControlDirectoryReadSchema } from "./directorySchema.ts";
@@ -76,6 +85,43 @@ export function createControlOperations(
     policy: { global: { maxConcurrent: 4 } },
   });
   const operations = {
+    history: (input: z.output<typeof ControlHistoryReadSchema>, signal?: AbortSignal) =>
+      reads.run(undefined, ({ signal: admitted }) => readControlHistory(m, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 6_000 }).catch(controlRefusal),
+    compact: (input: z.output<typeof ControlCompactSchema>, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => compactControlContext(m, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 5_000 }).catch(controlRefusal),
+    contextOperation: (input: z.output<typeof ControlContextOperationReadSchema>) => readControlContextOperation(m, input),
+    fork: (input: z.output<typeof NativeForkRequestSchema>, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => forkControlSession(m, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 60_000 }).catch(controlRefusal),
+    steer: (input: z.output<typeof SteeringInputSchema>, principal: ChatPrincipal, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => steerNativeTurn(m, principal, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 15_000 }).catch(controlRefusal),
+    steeringOperation: (input: z.output<typeof SteeringSelectorSchema>, principal: ChatPrincipal, signal?: AbortSignal) =>
+      reads.run(undefined, ({ signal: admitted }) => readNativeSteering(m, principal, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 5_000 }).catch(controlRefusal),
+    selection: (input: z.output<typeof SelectionReadSchema>, signal?: AbortSignal) =>
+      reads.run(undefined, ({ signal: admitted }) => readControlSelection(m, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 5_000 }).catch(controlRefusal),
+    select: (input: z.output<typeof SelectionUpdateSchema>, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => updateControlSelection(m, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 10_000 }).catch(controlRefusal),
+    attachmentBegin: (input: z.output<typeof AttachmentBeginSchema>, principal: ChatPrincipal, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => beginAttachmentUpload(m, principal, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 10_000 }).catch(controlRefusal),
+    attachmentChunk: (input: z.output<typeof AttachmentChunkSchema>, principal: ChatPrincipal, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => appendAttachmentChunk(m, principal, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 10_000 }).catch(controlRefusal),
+    attachmentFinalize: (input: z.output<typeof AttachmentUploadSelectorSchema>, principal: ChatPrincipal, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => finalizeAttachmentUpload(m, principal, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 10_000 }).catch(controlRefusal),
+    attachmentCancel: (input: z.output<typeof AttachmentUploadSelectorSchema>, principal: ChatPrincipal, signal?: AbortSignal) =>
+      mutations.run(input.target.session, ({ signal: admitted }) => cancelAttachmentUpload(m, principal, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 10_000 }).catch(controlRefusal),
+    attachmentRead: (input: z.output<typeof AttachmentReadSchema>, principal: ChatPrincipal, signal?: AbortSignal) =>
+      reads.run(undefined, ({ signal: admitted }) => readAttachmentChunk(m, principal, input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 5_000 }).catch(controlRefusal),
     runtimes: () => readRuntimeCatalog(m),
     list: () => publisher.read(),
     external: () => external.read(),

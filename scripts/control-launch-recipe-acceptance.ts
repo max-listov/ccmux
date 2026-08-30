@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
 import { basename, dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -109,10 +110,10 @@ const remote = createCcmuxControlServiceClient(async (url, init) => {
   );
   const payload = typeof init?.body === "string" ? init.body : "{}";
   payloads.push(payload);
-  return fetch("http://ccmux.local/ccmux-control/v1/invoke", {
+  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
     unix: controlSocket(activeMachine), method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ v: 1, id: crypto.randomUUID(), caller: activeMachine.rcPrefix,
-      service: "ccmux.control", revision: "1", operation, payload }),
+      service: "ccmux.control", revision: CCMUX_CONTROL_SERVICE_REVISION, operation, payload }),
   });
 });
 

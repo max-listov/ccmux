@@ -7,6 +7,7 @@ import { loadSessions } from "../src/config/sessions.ts";
 import { readOwnedCodexStatus } from "../src/agent/codex/ownedStatus.ts";
 import { connectOwnedCodex } from "../src/agent/codex/ownedRpc.ts";
 import { startCodexAppTurn } from "../src/agent/codex/appServer.ts";
+import { codexTextInput } from "../src/agent/codex/turnInput.ts";
 import { findOwnedCodexReceipt } from "../src/chat/ownedCodexReceipt.ts";
 import { loadLedger, loadCursors } from "../src/chat/store.ts";
 import { managedPeer, managedPeerKey } from "../src/chat/identity.ts";
@@ -70,7 +71,7 @@ let rpc = await connectOwnedCodex(m, session);
 try {
   const nativeBeforeApproval = await client.native({ target, cursor: null });
   const approvalTurn = await startCodexAppTurn(rpc, session.uuid, crypto.randomUUID(),
-    "This is an authorized approval-boundary test. Request permission to run the harmless command printf APPROVAL_TEST with sandbox_permissions=require_escalated and justification=approval boundary test. Do not use a non-escalated alternative; wait for the actual approval response. Do not modify files or message anyone.");
+    codexTextInput("This is an authorized approval-boundary test. Request permission to run the harmless command printf APPROVAL_TEST with sandbox_permissions=require_escalated and justification=approval boundary test. Do not use a non-escalated alternative; wait for the actual approval response. Do not modify files or message anyone."));
   await until("actual native approval", () => current()?.state === "waiting-approval");
   await command(["msg", session.name, `${token} approval gate: reply APPROVAL_GATE_DONE only. Do not message anyone.`, "--defer"]);
   await command(["wait", session.name, "--timeout", "2"], 2);
@@ -96,17 +97,18 @@ try {
   const nativeAfterApproval = await client.native({ target, cursor: {
     generation: nativeBeforeApproval.generation, sequence: nativeBeforeApproval.sequence,
   } });
-  const nativeKinds = new Set(nativeAfterApproval.items.map((item) => item.kind));
-  for (const kind of ["user", "reasoning", "tool", "assistant", "terminal"] as const) {
+  const nativeRecords = [...nativeAfterApproval.baseline, ...nativeAfterApproval.records];
+  const nativeKinds = new Set(nativeRecords.map((item) => item.kind));
+  for (const kind of ["tool", "assistant", "terminal"] as const) {
     check(nativeKinds.has(kind), `Native turn projection missed ${kind}`);
   }
-  check(nativeAfterApproval.items.every((item, index, items) => index === 0 || item.sequence > items[index - 1]!.sequence),
+  check(nativeRecords.every((item, index, items) => index === 0 || item.sequence > items[index - 1]!.sequence),
     "Native item projection is not strictly ordered");
   progress("approval-exact-response", { approvalTurn, requestId: approval.requestId,
     operationId: approvalOperation, orderedKinds: [...nativeKinds], subsequentMessageCompleted: true });
 
   const interrupted = await startCodexAppTurn(rpc, session.uuid, crypto.randomUUID(),
-    "Run sleep 30, then reply INTERRUPTION_TEST_DONE. Do not contact anyone or change files.");
+    codexTextInput("Run sleep 30, then reply INTERRUPTION_TEST_DONE. Do not contact anyone or change files."));
   await until("real active turn before interruption", () => current()?.turn?.id === interrupted && current()?.state === "working");
   await rpc.request("turn/interrupt", { threadId: session.uuid, turnId: interrupted });
   const settled = await command(["wait", session.name, "--timeout", "30"]);

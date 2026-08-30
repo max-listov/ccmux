@@ -166,6 +166,8 @@ test("status and native projections expose the same safe recipe metadata only", 
     const native = new OwnedCodexProjection(f.machine, session, process.pid);
     native.reconcile({ type: "idle" }, 0);
     await new OwnedCodexStatusWriter(f.machine, session.name).write(native.snapshot());
+    const content = new ContentProducer(f.machine, session, native.snapshot().generation);
+    await content.writer.flush();
     const monitoring = new MonitoringPublisher();
     monitoring.begin(f.machine);
     monitoring.sample(f.machine, session, 1, "❯\n? for shortcuts", UNSEEN);
@@ -180,5 +182,7 @@ test("status and native projections expose the same safe recipe metadata only", 
       expect(outward).not.toContain(f.envFile);
     }
     publisher.close();
+    await content.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+import { ContentProducer } from "../src/content/producer.ts";

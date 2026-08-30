@@ -1,6 +1,7 @@
+import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
 import { afterEach, expect, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ownedCodexSocket } from "../src/agent/codex/ownedPaths.ts";
 import { makeMachine, makeSession } from "./helpers.ts";
@@ -121,15 +122,15 @@ async function fixture(options: { extraClaudeSession?: boolean } = {}) {
       const route = new URL(String(url));
       const operation = ControlServiceOperationSchema.parse(route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1));
       const payload = typeof init?.body === "string" ? init.body : "{}";
-      return fetch("http://ccmux.local/ccmux-control/v1/invoke", { unix: socket, method: "POST",
+      return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, { unix: socket, method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ v: 1, id: crypto.randomUUID(), caller: "host-b", service: "ccmux.control",
-          revision: "1", operation, payload }) });
+          revision: CCMUX_CONTROL_SERVICE_REVISION, operation, payload }) });
     }) };
 }
 
 const invoke = (f: Awaited<ReturnType<typeof fixture>>, body: unknown) =>
-  fetch("http://ccmux.local/ccmux-control/v1/invoke", { unix: f.socket, method: "POST",
+  fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, { unix: f.socket, method: "POST",
     headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 test("model catalog is a bounded provider-owned read that forwards only safe metadata", async () => {
@@ -227,6 +228,25 @@ test("provider failures fail closed instead of substituting a local catalog", as
   await expect(f.client.models({ target: f.target })).rejects.toMatchObject({ code: "UNAVAILABLE", status: 503 });
 });
 
+test("catalog failure retains the exact cause only in private owner diagnostics", async () => {
+  const f = await fixture();
+  const marker = "fixture-private-catalog-cause";
+  const connect: ControlModelsConnector = async () => { throw new Error(marker); };
+  const error = await readControlModels(f.m, { target: f.target, cursor: null, limit: 64, includeHidden: false },
+    new AbortController().signal, connect).catch((cause: unknown) => cause);
+  expect(error).toMatchObject({ code: "UNAVAILABLE", status: 503, message: "Model catalog is unavailable" });
+  expect(String(error)).not.toContain(marker);
+  expect(JSON.stringify(error)).not.toContain(marker);
+  const root = join(f.m.stateDir, "native-diagnostics");
+  const files = readdirSync(root);
+  expect(files).toHaveLength(1);
+  const path = join(root, files[0]!);
+  expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ stage: "model-catalog" });
+  expect(readFileSync(path, "utf8")).toContain(marker);
+  expect(statSync(root).mode & 0o777).toBe(0o700);
+  expect(statSync(path).mode & 0o777).toBe(0o600);
+});
+
 test("unconfigured provider homes fail closed", async () => {
   const root = mkdtempSync("/tmp/ccmux-models-unit-");
   cleanup.push(async () => rmSync(root, { recursive: true, force: true }));
@@ -270,15 +290,15 @@ test("handler bounds drop provider extras, honor optional efforts and reject ove
 test("declared service dispatch keeps the envelope, effect metadata and response budget for model.list", async () => {
   const f = await fixture();
   const envelope = {
-    v: 1, id: crypto.randomUUID(), caller: "host-b", service: "ccmux.control", revision: "1",
+    v: 1, id: crypto.randomUUID(), caller: "host-b", service: "ccmux.control", revision: CCMUX_CONTROL_SERVICE_REVISION,
     operation: "model.list", payload: JSON.stringify({ target: f.target }),
   };
   const reply = await (await invoke(f, envelope)).json();
   const local = await f.client.models({ target: f.target });
-  expect(reply).toEqual({ v: 1, revision: "1", result: local });
+  expect(reply).toEqual({ v: 1, revision: CCMUX_CONTROL_SERVICE_REVISION, result: local });
   expect((await invoke(f, { ...envelope, operation: "unknown.op" })).status).toBe(400);
   expect((await invoke(f, { ...envelope, payload: JSON.stringify({ target: f.target, limit: 65 }) })).status).toBe(400);
-  expect((await invoke(f, { ...envelope, revision: "2" })).status).toBe(400);
+  expect((await invoke(f, { ...envelope, revision: "obsolete" })).status).toBe(400);
 
   f.provider.set("oversize-page");
   expect(JSON.stringify(await f.client.models({ target: f.target })).length).toBeGreaterThan(256 * 1024);

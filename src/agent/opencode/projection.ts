@@ -3,6 +3,8 @@ import type { MachineConfig, Session } from "../../types.ts";
 import type { ManagedRuntimeSnapshot } from "../../runtime/schema.ts";
 import type { OwnedCodexNativeItem, OwnedCodexPendingRequest } from "../codex/ownedSchema.ts";
 import { VERSION } from "../../util/version.ts";
+import { ApplicationPolicyEvidenceSchema } from "../../policy/reference.ts";
+import type { ApplicationPolicyEvidence } from "../../policy/reference.ts";
 import { OpenCodeDeltaSchema, OpenCodeEventSchema, OpenCodeMessageSchema, OpenCodePartSchema, OpenCodePermissionSchema,
   OpenCodeQuestionSchema, OpenCodeStatusSchema, openCodeTerminal, type OpenCodeMessage, type OpenCodePart } from "./protocol.ts";
 
@@ -20,12 +22,17 @@ export class OpenCodeProjection {
     const now = new Date().toISOString();
     this.value = { protocol: 1, provider: "opencode", machine: m.rcPrefix, session: session.name, threadId: session.uuid,
       generation: crypto.randomUUID(), registrationGeneration: session.registrationGeneration,
-      nativeSession: session.nativeSession, modelSelection: session.modelSelection,
+      nativeSession: session.nativeSession, nativeSelection: null,
       sequence: 0, pid: process.pid, providerPid, version: VERSION, connected: false, state: "unknown",
-      reason: "starting", observedAt: now, expiresAt: now, turn: null, events: [], nativeSequence: 0, nativeItems: [], pendingRequests: [] };
+      reason: "starting", observedAt: now, expiresAt: now, turn: null, events: [], nativeSequence: 0, nativeItems: [], pendingRequests: [],
+      ...(session.applicationPolicy === undefined ? {} : { applicationPolicy: { policy: session.applicationPolicy, state: "desired" } }) };
   }
 
   snapshot(): ManagedRuntimeSnapshot { return structuredClone(this.value); }
+  policyEvidence(evidence: ApplicationPolicyEvidence): void {
+    if (this.value.applicationPolicy?.policy.digest !== evidence.policy.digest) throw new Error("Native policy identity changed");
+    this.value.applicationPolicy = ApplicationPolicyEvidenceSchema.parse(evidence);
+  }
   private own(id: string): boolean { return id === this.value.nativeSession?.id; }
   private touch(kind: ManagedRuntimeSnapshot["events"][number]["kind"] = "state"): void {
     const now = Date.now();
@@ -54,6 +61,7 @@ export class OpenCodeProjection {
     this.touch("turn-start");
   }
   unavailable(reason: string): void {
+    if (this.value.applicationPolicy !== undefined) this.value.applicationPolicy.state = "unavailable";
     this.value.connected = false; this.value.state = "unknown"; this.value.reason = reason; this.touch("unavailable");
   }
   status(raw: unknown, revision = this.revision): void {
@@ -76,7 +84,8 @@ export class OpenCodeProjection {
     if (message.parentID === undefined || this.value.turn?.id !== message.parentID) return;
     if (this.parents.size >= 256 && !this.parents.has(message.id)) this.parents.delete(this.parents.keys().next().value ?? "");
     this.parents.set(message.id, message.parentID);
-    if (message.providerID && message.modelID) this.value.modelSelection = { provider: message.providerID, model: message.modelID };
+    if (message.providerID && message.modelID) this.value.nativeSelection = {
+      model: { provider: message.providerID, model: message.modelID }, options: null, source: "assistant", turnId: message.parentID };
     const outcome = openCodeTerminal(message);
     if (!complete || outcome === null || this.value.turn.status !== "inProgress") return;
     if (outcome === "failed") this.report?.({ messageId: message.id, error: message.error });

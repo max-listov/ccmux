@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
 import { createHash } from "node:crypto";
 import { parseNDJSON } from "stitchkit";
 import { loadMachineConfig } from "../src/config/machine.ts";
@@ -31,7 +32,7 @@ const remote = createCcmuxControlServiceClient(async (url, init) => {
   const operation = ControlServiceOperationSchema.parse(
     route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
   );
-  return fetch("http://ccmux.local/ccmux-control/v1/invoke", {
+  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
     unix: socket,
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -40,7 +41,7 @@ const remote = createCcmuxControlServiceClient(async (url, init) => {
       id: crypto.randomUUID(),
       caller: machine.rcPrefix,
       service: "ccmux.control",
-      revision: "1",
+      revision: CCMUX_CONTROL_SERVICE_REVISION,
       operation,
       payload: typeof init?.body === "string" ? init.body : "{}",
     }),
@@ -134,14 +135,14 @@ try {
   const deadline = Date.now() + 120_000;
   let waitOutcome = "timeout";
   let native = await remote.native({ target, cursor: null });
-  let responseSeen = native.items.some(
+  let responseSeen = native.baseline.some(
     (item) => item.kind === "assistant" && item.text?.includes("CCMUX_SERVICE_READY"),
   );
   while (!responseSeen && Date.now() < deadline) {
     const waited = await remote.wait({ target, timeoutMs: 25_000 });
     waitOutcome = waited.outcome;
     native = await remote.native({ target, cursor: null });
-    responseSeen = native.items.some(
+    responseSeen = native.baseline.some(
       (item) => item.kind === "assistant" && item.text?.includes("CCMUX_SERVICE_READY"),
     );
   }
@@ -151,7 +152,7 @@ try {
   const initialData = JSON.parse(initial.data);
   const resumed = await oneStreamFrame({ target, cursor: initial.cursor });
   const resumedData = JSON.parse(resumed.data);
-  if (initialData.reset !== "initial" || resumedData.reset !== null || resumedData.items.length !== 0)
+  if (initialData.reset !== "initial" || resumedData.reset !== null || resumedData.records.length !== 0 || resumedData.baseline.length !== 0)
     throw new Error("native stream resume did not preserve cursor semantics");
 
   const archive = await remote.archive({ target });
@@ -175,7 +176,7 @@ try {
       stream: {
         initialReset: initialData.reset,
         resumedReset: resumedData.reset,
-        resumedItems: resumedData.items.length,
+        resumedRecords: resumedData.records.length,
         cursorStable: initial.cursor === resumed.cursor,
       },
       archived,

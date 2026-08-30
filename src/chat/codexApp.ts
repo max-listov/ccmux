@@ -10,6 +10,7 @@ import {
 import { codexAppMessagePersisted } from "../agent/codex/appPickup.ts";
 import type { ChatMessage, CodexAppPeer, MachineConfig } from "../types.ts";
 import { codexAppPeer } from "./identity.ts";
+import { codexTextInput } from "../agent/codex/turnInput.ts";
 
 export function currentCodexAppThreadId(env: NodeJS.ProcessEnv = process.env): string | null {
   const parsed = z.uuid().safeParse(env.CODEX_THREAD_ID);
@@ -61,7 +62,7 @@ export async function deliverCodexAppMessage(
       if (thread.status.type !== "idle") return { delivered: false, reason: `Codex App thread resumed into ${thread.status.type}` };
     }
     if (thread.status.type !== "idle") return { delivered: false, reason: `Codex App thread is ${thread.status.type}` };
-    const turnId = await startCodexAppTurn(rpc, msg.to.threadId, msg.id, text);
+    const turnId = await startCodexAppTurn(rpc, msg.to.threadId, msg.id, codexTextInput(text));
     return { delivered: true, duplicate: false, turnId };
   } finally {
     rpc.close();

@@ -6,6 +6,35 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Added
+
+- Send validated PNG/JPEG attachments through authenticated upload, immutable references and native
+  image input. Preserve exact input order and retained previews across retry, fork and restart.
+- Stream bounded native conversation content with stable item offsets, replay cursors, explicit
+  gaps/truncation, native terminal evidence and bounded slow-reader recovery.
+- Select persistent session defaults or per-turn model/mode options without replacing managed
+  identity. Separate accepted defaults from observed native settings and model rerouting.
+- Read bounded native history, fork native context and explicitly compact it with durable operation
+  identity. Expose exact Codex steering; refuse unsupported steering and rollback capabilities.
+- Apply immutable owner-defined instructions, skills and agent policy with safe native provenance.
+
+### Changed
+
+- Replace the prior control contract with service revision 2 and native profile `ccmux-native-v2`.
+  This is one current API: obsolete routes, aliases and parallel compatibility clients are removed.
+  Update transport bindings and clients from the published descriptor before enabling remote calls.
+- Native Codex ownership now requires version 0.151.0 or newer. Preserve durable session identity,
+  native history and accepted work; do not migrate sessions by starting unrelated conversations.
+
+### Safety
+
+- Keep native history work cancellable and separate from heartbeat/approval handling. Preserve one
+  writer, bounded unresolved RPCs, exact compaction completion and fail-closed uncertain mutations.
+- Decode complete images with bounded resources; keep image bytes, private paths, credentials and
+  provider diagnostics outside public metadata. Retain exact failure causes in private owner evidence.
+- Verify real image, selection, policy, history, steering and streaming flows on both native runtimes;
+  operation-specific unsupported capabilities remain explicit rather than advertised as full IDE parity.
+
 ## [0.39.24] — 2026-08-30
 
 add managed OpenCode and capability-aware runtime control

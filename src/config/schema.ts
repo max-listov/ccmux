@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { ExternalTurnStateSchema } from "../external/turnSchema.ts";
+import { NativeModelSelectionSchema, AcceptedTurnOptionsSchema } from "../runtime/selectionSchema.ts";
+import { AttachmentReferencesSchema } from "../attachments/reference.ts";
+import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from "../policy/schema.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single source of truth for every persisted/remote shape. No bare interfaces,
@@ -48,10 +51,7 @@ export const LaunchRecipeReferenceSchema = z.object({
   id: LaunchRecipeIdSchema,
   revision: LaunchRecipeRevisionSchema,
 }).strict();
-export const ModelSelectionSchema = z.object({
-  provider: z.string().min(1).max(128).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/),
-  model: z.string().min(1).max(256).regex(/^[a-zA-Z0-9~][a-zA-Z0-9._:/+~-]*$/),
-}).strict();
+export const ModelSelectionSchema = NativeModelSelectionSchema;
 export const LaunchRecipeMetadataSchema = LaunchRecipeReferenceSchema.extend({
   digest: z.string().regex(/^[0-9a-f]{64}$/),
   capabilities: z.array(LaunchRecipeCapabilitySchema).max(32),
@@ -152,6 +152,7 @@ export const SessionSchema = z.object({
    * definition is deliberately not stored here: the existing session fields remain launch truth. */
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
   /** Per-session opt-out from the event feed. Undefined → follow the machine. Same two-level shape
    *  as `chatEnabled`, for the session nobody wants announced. */
   eventsEnabled: z.boolean().optional(),
@@ -251,6 +252,7 @@ export const MachineConfigSchema = z.object({
   /** Named launch policies selected by the public control API. Callers can name and pin one, but
    * cannot supply any definition field or secret value themselves. */
   launchRecipes: z.record(LaunchRecipeIdSchema, MachineLaunchRecipeSchema).default({}),
+  agentPolicies: AgentPoliciesSchema,
   // RC display-name prefix so the phone/Telegram client knows which box a session is on. A
   // free-form lowercase slug (local, dev, prod, staging, …) — see RC_PREFIX_RE. The regex
   // loud-fails on garbage (the real intent), and `install` refuses if it can't be set.
@@ -530,6 +532,9 @@ export const ChatMessageSchema = z.object({
   // hold). `defer || notBefore !== null` makes a message CONDITIONAL — delivered by id, off the
   // in-order cursor, so it never head-of-line-blocks immediate mail.
   notBefore: z.string().nullable(),
+  turnOptions: AcceptedTurnOptionsSchema.optional(),
+  images: AttachmentReferencesSchema.optional(),
+  controlFingerprint: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).strict();
 
 /** Delivery/read bookkeeping, kept OUT of the append-only ledger. `read[managedPeerKey]` = the ledger

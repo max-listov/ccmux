@@ -9,10 +9,17 @@ import { conditionalMessage, pickPendingDelivery } from "./pendingDelivery.ts";
 import { formatChatInjection } from "./format.ts";
 import { replyRouteToSender } from "./replyRoute.ts";
 import { promptInvocation } from "../env.ts";
+import { withNativeAdmission } from "../runtime/admission.ts";
+import { contextMutationPending } from "../context/store.ts";
 
 /** Existing chat ledger is the only queue. The runtime mailbox is one durable dispatch receipt. */
 export async function deliverNativeRuntimePending(m: MachineConfig, s: Session, ledger: readonly LedgerSlot[],
   cursors: ReturnType<typeof loadCursors>, acked: ReadonlySet<string>, rateHeld: boolean, now = Date.now()): Promise<number> {
+  return withNativeAdmission(m, s, () => deliverLocked(m, s, ledger, cursors, acked, rateHeld, now));
+}
+
+async function deliverLocked(m: MachineConfig, s: Session, ledger: readonly LedgerSlot[],
+  cursors: ReturnType<typeof loadCursors>, acked: ReadonlySet<string>, rateHeld: boolean, now: number): Promise<number> {
   const recipient = managedPeer(m.rcPrefix, s);
   const key = managedPeerKey(recipient);
   const pickup = cursors.pickups[key];
@@ -32,9 +39,11 @@ export async function deliverNativeRuntimePending(m: MachineConfig, s: Session, 
         read.snapshot.turn?.id === input.nativeId && read.snapshot.turn.status !== "inProgress");
       const slot = pickup.ledgerIndex === null ? null : ledger[pickup.ledgerIndex];
       if (pickup.native?.phase === "intent" && previousComplete && read.snapshot.state === "idle" && slot?.id === pickup.messageId) {
+        if (contextMutationPending(m, s)) { await hold("native context operation is unresolved"); return 0; }
         // Cursor intent is durable before the mailbox. A crash in between is safe to repair only
         // when no unresolved native dispatch exists; corrupt or uncertain receipts never replay.
         await writeRuntimeInput(m, s, { messageId: slot.id, nativeId: openCodeMessageId(slot.id, Date.parse(pickup.injectedAt)),
+          images: slot.images, turnOptions: slot.turnOptions,
           phase: "queued", text: formatChatInjection(slot, { cli: promptInvocation(), reply: replyRouteToSender(m, slot.from) }) });
         return 1;
       }
@@ -55,6 +64,7 @@ export async function deliverNativeRuntimePending(m: MachineConfig, s: Session, 
     return 0;
   }
   if (pick === null) return 0;
+  if (contextMutationPending(m, s)) { await hold("native context operation is unresolved"); return 0; }
   if (rateHeld || read.snapshot.state !== "idle" || read.snapshot.turn?.status === "inProgress") {
     await hold(rateHeld ? "native chat inbound rate limit" : `native runtime is ${read.snapshot.state}`); return 0;
   }
@@ -67,6 +77,7 @@ export async function deliverNativeRuntimePending(m: MachineConfig, s: Session, 
   }
   await saveCursors(m, cursors);
   await writeRuntimeInput(m, s, { messageId: pick.msg.id, nativeId: openCodeMessageId(pick.msg.id, now), phase: "queued",
+    images: pick.msg.images, turnOptions: pick.msg.turnOptions,
     text: formatChatInjection(pick.msg, { cli: promptInvocation(), reply: replyRouteToSender(m, pick.msg.from) }) });
   clearChatHold(s.name);
   return 1;

@@ -6,6 +6,7 @@ import { cliPrincipal } from "../chat/identity.ts";
 import type { ControlOperations } from "./operations.ts";
 import {
   CCMUX_CONTROL_SERVICE_MAX_REQUEST_BYTES,
+  CCMUX_CONTROL_SERVICE_REVISION,
   ControlServiceInvocationSchema,
   ControlServiceReplyEnvelopeSchema,
   controlServiceInputs,
@@ -19,7 +20,7 @@ export const controlServiceIngressContract = defineContract(
   {
     invoke: {
       method: "POST",
-      path: "/v1/invoke",
+      path: "/v2/invoke",
       desc: "Invoke one declared CCMux control operation from a trusted service transport",
       input: ControlServiceInvocationSchema,
       output: ControlServiceReplyEnvelopeSchema,
@@ -32,7 +33,7 @@ export function createControlServiceIngress(operations: ControlOperations) {
   return implement(controlServiceIngressContract, {
     invoke: async ({ input, signal }) => {
       const result = await dispatchControlService(operations, input, signal);
-      return ControlServiceReplyEnvelopeSchema.parse({ v: 1, revision: "1", result });
+      return ControlServiceReplyEnvelopeSchema.parse({ v: 1, revision: CCMUX_CONTROL_SERVICE_REVISION, result });
     },
   });
 }
@@ -43,6 +44,8 @@ export async function dispatchControlService(
   invocation: ControlServiceInvocation,
   signal?: AbortSignal,
 ): Promise<unknown> {
+  if (new TextEncoder().encode(invocation.payload).byteLength > serviceOperation(invocation.operation).limits.requestBytes)
+    throw new AppError("REQUEST_TOO_LARGE", "Service payload exceeds its operation budget", 400);
   let decoded: unknown;
   try {
     decoded = JSON.parse(invocation.payload);
@@ -52,6 +55,45 @@ export async function dispatchControlService(
   let result: unknown;
   try {
     switch (invocation.operation) {
+      case "history.read":
+        result = await operations.history(controlServiceInputs["history.read"].parse(decoded), signal);
+        break;
+      case "context.compact":
+        result = await operations.compact(controlServiceInputs["context.compact"].parse(decoded), signal);
+        break;
+      case "context.operation":
+        result = operations.contextOperation(controlServiceInputs["context.operation"].parse(decoded));
+        break;
+      case "session.fork":
+        result = await operations.fork(controlServiceInputs["session.fork"].parse(decoded), signal);
+        break;
+      case "turn.steer":
+        result = await operations.steer(controlServiceInputs["turn.steer"].parse(decoded), cliPrincipal(invocation.caller), signal);
+        break;
+      case "turn.steering-operation":
+        result = await operations.steeringOperation(controlServiceInputs["turn.steering-operation"].parse(decoded), cliPrincipal(invocation.caller), signal);
+        break;
+      case "selection.read":
+        result = await operations.selection(controlServiceInputs["selection.read"].parse(decoded), signal);
+        break;
+      case "selection.update":
+        result = await operations.select(controlServiceInputs["selection.update"].parse(decoded), signal);
+        break;
+      case "attachment.begin":
+        result = await operations.attachmentBegin(controlServiceInputs["attachment.begin"].parse(decoded), cliPrincipal(invocation.caller), signal);
+        break;
+      case "attachment.chunk":
+        result = await operations.attachmentChunk(controlServiceInputs["attachment.chunk"].parse(decoded), cliPrincipal(invocation.caller), signal);
+        break;
+      case "attachment.finalize":
+        result = await operations.attachmentFinalize(controlServiceInputs["attachment.finalize"].parse(decoded), cliPrincipal(invocation.caller), signal);
+        break;
+      case "attachment.cancel":
+        result = await operations.attachmentCancel(controlServiceInputs["attachment.cancel"].parse(decoded), cliPrincipal(invocation.caller), signal);
+        break;
+      case "attachment.read":
+        result = await operations.attachmentRead(controlServiceInputs["attachment.read"].parse(decoded), cliPrincipal(invocation.caller), signal);
+        break;
       case "runtime.list":
         controlServiceInputs["runtime.list"].parse(decoded);
         result = operations.runtimes();

@@ -5,6 +5,9 @@ import { CHAT_GENERATION, ChatCursorsSchema, ChatMessageSchema } from "../config
 import type { ChatCursors, ChatMessage, ChatPrincipal, ChatTarget, MachineConfig, ManagedPeer } from "../types.ts";
 import { atomicWrite } from "../util/atomic.ts";
 import { chatAckPath, chatCursorsPath, chatLedgerPath } from "../config/paths.ts";
+import { loadSessions } from "../config/sessions.ts";
+import { hasNativeRuntime } from "../runtime/capabilities.ts";
+import { readSelection } from "../runtime/selection.ts";
 import {
   chatTargetKey,
   managedPeerKey,
@@ -208,6 +211,15 @@ export function unreadableCount(slots: readonly LedgerSlot[]): number {
 export function appendMessage(m: MachineConfig, msg: ChatMessage): void {
   const { ledger } = chatPaths(m);
   const parsed = ChatMessageSchema.parse(msg);
+  if (parsed.to.kind === "managed" && parsed.to.machine === m.rcPrefix && parsed.turnOptions === undefined) {
+    const target = parsed.to;
+    const session = loadSessions(m).find(row => row.name === target.session && row.uuid === target.threadId && row.agent === target.agent);
+    if (session && hasNativeRuntime(session)) {
+      const selected = readSelection(m, session);
+      if (selected === null) throw new Error("Native selection is unavailable before message acceptance");
+      parsed.turnOptions = selected;
+    }
+  }
   appendFileSync(ledger, `${JSON.stringify(parsed)}\n`);
 }
 

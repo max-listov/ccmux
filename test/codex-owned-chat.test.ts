@@ -11,7 +11,7 @@ import frames from "./fixtures/codex-pane/v0.147.0.json";
 
 function fixture() {
   const m = makeMachine({ rcPrefix: "host-a" });
-  const s = makeSession({ agent: "codex", runtime: "app-server" });
+  const s = makeSession({ agent: "codex", runtime: "app-server", registrationGeneration: randomUUID() });
   const msg = makeChatMessage({ id: randomUUID(), to: managedPeer(m.rcPrefix, s) });
   const key = managedPeerKey(managedPeer(m.rcPrefix, s));
   const cursors = ChatCursorsSchema.parse({});

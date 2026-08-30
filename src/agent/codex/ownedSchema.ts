@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ApplicationPolicyEvidenceSchema } from "../../policy/reference.ts";
+import { NativeSelectionEvidenceSchema } from "../../runtime/selectionSchema.ts";
 
 export const CODEX_RUNTIME_TTL_MS = 5_000;
 export const CODEX_RUNTIME_MAX_BYTES = 128 * 1024;
@@ -67,6 +69,8 @@ export const OwnedCodexSnapshotSchema = z.object({
   nativeSequence: z.number().int().nonnegative().default(0),
   nativeItems: z.array(OwnedCodexNativeItemSchema).max(CODEX_RUNTIME_MAX_NATIVE_ITEMS).default([]),
   pendingRequests: z.array(OwnedCodexPendingRequestSchema).max(16).default([]),
+  applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
+  nativeSelection: NativeSelectionEvidenceSchema.nullable().default(null),
 }).strict();
 export type OwnedCodexSnapshot = z.infer<typeof OwnedCodexSnapshotSchema>;
 export type OwnedCodexTurn = z.infer<typeof OwnedCodexTurnSchema>;

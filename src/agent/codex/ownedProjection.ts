@@ -6,6 +6,10 @@ import { CODEX_RUNTIME_MAX_EVENTS, CODEX_RUNTIME_MAX_NATIVE_ITEMS, CODEX_RUNTIME
   type OwnedCodexNativeItem, type OwnedCodexPendingRequest, type OwnedCodexSnapshot, type OwnedCodexTurn } from "./ownedSchema.ts";
 import { VERSION } from "../../util/version.ts";
 import { projectNativeEvent, projectNativeRequest, resolvedRequestId } from "./ownedNative.ts";
+import { ApplicationPolicyEvidenceSchema } from "../../policy/schema.ts";
+import type { ApplicationPolicyEvidence } from "../../policy/schema.ts";
+import { NativeSelectionEvidenceSchema, type NativeSelectionEvidence } from "../../runtime/selectionSchema.ts";
+import { codexSelectionEvent } from "./selectionEvidence.ts";
 
 const StatusEvent = z.object({ threadId: z.uuid(), status: z.unknown() });
 const TurnEvent = z.object({ threadId: z.uuid(), turn: z.object({
@@ -25,10 +29,20 @@ export class OwnedCodexProjection {
       connected: false, state: "unknown", reason: "starting", observedAt: new Date(now).toISOString(),
       expiresAt: new Date(now).toISOString(), turn: null, events: [], nativeSequence: 0,
       nativeItems: [], pendingRequests: [],
+      nativeSelection: null,
+      ...(s.applicationPolicy === undefined ? {} : { applicationPolicy: { policy: s.applicationPolicy, state: "desired" } }),
     };
   }
 
   snapshot(): OwnedCodexSnapshot { return structuredClone(this.value); }
+  selectionEvidence(evidence: NativeSelectionEvidence): void {
+    this.value.nativeSelection = NativeSelectionEvidenceSchema.parse(evidence);
+  }
+
+  policyEvidence(evidence: ApplicationPolicyEvidence): void {
+    if (this.value.applicationPolicy?.policy.digest !== evidence.policy.digest) throw new Error("Native policy identity changed");
+    this.value.applicationPolicy = ApplicationPolicyEvidenceSchema.parse(evidence);
+  }
 
   reconcile(status: unknown, revision: number, now = Date.now()): boolean {
     if (revision !== this.revision) return false;
@@ -42,6 +56,8 @@ export class OwnedCodexProjection {
   }
 
   event(event: CodexRpcEvent, now = Date.now()): boolean {
+    const selection = codexSelectionEvent(event, this.value.threadId, this.value.nativeSelection);
+    if (selection !== null) { this.selectionEvidence(selection); this.touch(now); return true; }
     if (event.method === "thread/status/changed") {
       const parsed = StatusEvent.safeParse(event.params);
       if (!parsed.success || parsed.data.threadId !== this.value.threadId) return false;
@@ -124,6 +140,7 @@ export class OwnedCodexProjection {
     this.value.connected = false;
     this.value.state = "unknown";
     this.value.reason = reason;
+    if (this.value.applicationPolicy !== undefined) this.value.applicationPolicy.state = "unavailable";
     this.value.expiresAt = new Date(now).toISOString();
     this.append("unavailable", now);
   }

@@ -13,6 +13,19 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
   upstream?: ApplicationAdmission, dependencies: ControlOperationDependencies = {}) {
   const { operations, mutations, waits, reads } = createControlOperations(m, publisher, external, upstream, dependencies);
   const service = implement(controlContract, {
+    history: ({ input, signal }) => operations.history(input, signal),
+    compact: ({ input, signal }) => operations.compact(input, signal),
+    contextOperation: ({ input }) => operations.contextOperation(input),
+    fork: ({ input, signal }) => operations.fork(input, signal),
+    steer: ({ input, signal, principal }) => operations.steer(input, ChatPrincipalSchema.parse(principal), signal),
+    steeringOperation: ({ input, signal, principal }) => operations.steeringOperation(input, ChatPrincipalSchema.parse(principal), signal),
+    selection: ({ input, signal }) => operations.selection(input, signal),
+    select: ({ input, signal }) => operations.select(input, signal),
+    attachmentBegin: ({ input, signal, principal }) => operations.attachmentBegin(input, ChatPrincipalSchema.parse(principal), signal),
+    attachmentChunk: ({ input, signal, principal }) => operations.attachmentChunk(input, ChatPrincipalSchema.parse(principal), signal),
+    attachmentFinalize: ({ input, signal, principal }) => operations.attachmentFinalize(input, ChatPrincipalSchema.parse(principal), signal),
+    attachmentCancel: ({ input, signal, principal }) => operations.attachmentCancel(input, ChatPrincipalSchema.parse(principal), signal),
+    attachmentRead: ({ input, signal, principal }) => operations.attachmentRead(input, ChatPrincipalSchema.parse(principal), signal),
     runtimes: operations.runtimes,
     directories: ({ input, signal }) => operations.directories(input, signal),
     list: operations.list,
@@ -31,7 +44,7 @@ export function controlServices(m: MachineConfig, publisher: ControlPublisher, e
   const events = implement(controlEventsContract, {
     watch: ({ signal }) => publisher.subscribe(signal),
     watchExternal: ({ signal }) => external.subscribe(signal),
-    watchNative: ({ input, signal }) => subscribeControlNative(m, publisher, input.target, input.cursor, signal),
+    watchNative: ({ input, signal }) => subscribeControlNative(m, input.target, input.cursor, signal),
   });
   const ingress = createControlServiceIngress(operations);
   return { services: [service, events, ingress], service, ingress, mutations, waits, reads };

@@ -63,13 +63,13 @@ test("model validation cannot create a provider or infer an unsupported selectio
     AbortSignal.timeout(1_000))).rejects.toMatchObject({ code: "MODEL_UNAVAILABLE", message: "Selected model is unavailable" });
 });
 
-test("a loaded model mismatch is refused before collaboration discovery or turn submission", async () => {
+test("a loaded provider mismatch is refused before collaboration discovery or turn submission", async () => {
   const session = makeSession({ modelSelection: { provider: "openai", model: "model-a" } });
   let reads = 0;
   const rpc = { close() {}, async request() { reads++; return {}; } };
-  await expect(prepareManagedCodexTurn(rpc, session, {
+  await expect(prepareManagedCodexTurn(rpc, makeMachine(), session, {
     thread: { id: session.uuid, name: session.name, source: "appServer", status: { type: "idle" }, canAcceptDirectInput: true, turns: [] },
-    model: "model-b", modelProvider: "openai",
+    model: "model-a", modelProvider: "other-provider",
   })).rejects.toMatchObject({ code: "COLLABORATION_MODE_UNAVAILABLE" });
   expect(reads).toBe(0);
 });

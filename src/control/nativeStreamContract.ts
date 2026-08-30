@@ -3,7 +3,7 @@ import { ManagedPeerSchema } from "../config/schema.ts";
 import { managedPeerKey } from "../chat/identity.ts";
 import { CONTROL_MAX_BYTES, ControlNativeCursorSchema, ControlNativeSnapshotSchema } from "./schema.ts";
 
-export const CCMUX_NATIVE_STREAM_PROFILE = "ccmux-native-v1";
+export const CCMUX_NATIVE_STREAM_PROFILE = "ccmux-native-v2";
 export const CCMUX_NATIVE_STREAM_COMMAND = "control-native-stream";
 export const CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES = 4096;
 export const CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES = CONTROL_MAX_BYTES + 1024;
@@ -11,7 +11,7 @@ export const CCMUX_NATIVE_STREAM_HEARTBEAT_MS = 2000;
 
 const ControlNativeStreamCursorPayloadSchema = z
   .object({
-    v: z.literal(1),
+    v: z.literal(2),
     target: ManagedPeerSchema,
     cursor: ControlNativeCursorSchema,
   })
@@ -21,7 +21,7 @@ const ControlNativeStreamCursorTokenSchema = z
   .string()
   .min(1)
   .max(512)
-  .regex(/^ccn1_[A-Za-z0-9_-]+$/);
+  .regex(/^ccn2_[A-Za-z0-9_-]+$/);
 
 export const ControlNativeStreamRequestSchema = z
   .object({
@@ -64,11 +64,11 @@ export function encodeControlNativeStreamCursor(
   target: z.output<typeof ManagedPeerSchema>,
   cursor: z.output<typeof ControlNativeCursorSchema>,
 ): string {
-  const payload = JSON.stringify(ControlNativeStreamCursorPayloadSchema.parse({ v: 1, target, cursor }));
+  const payload = JSON.stringify(ControlNativeStreamCursorPayloadSchema.parse({ v: 2, target, cursor }));
   const bytes = new TextEncoder().encode(payload);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `ccn1_${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`;
+  return `ccn2_${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`;
 }
 
 export function readControlNativeStreamCursor(

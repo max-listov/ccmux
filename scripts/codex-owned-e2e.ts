@@ -6,6 +6,7 @@ import { loadSessions } from "../src/config/sessions.ts";
 import { readOwnedCodexStatus } from "../src/agent/codex/ownedStatus.ts";
 import { connectOwnedCodex } from "../src/agent/codex/ownedRpc.ts";
 import { startCodexAppTurn } from "../src/agent/codex/appServer.ts";
+import { codexTextInput } from "../src/agent/codex/turnInput.ts";
 import { findOwnedCodexReceipt } from "../src/chat/ownedCodexReceipt.ts";
 import { loadLedger } from "../src/chat/store.ts";
 import { managedPeer, chatPrincipalKey, chatTargetKey } from "../src/chat/identity.ts";
@@ -69,7 +70,7 @@ progress("round-trip", loadLedger(m).filter((msg) => msg !== null && msg.body.in
 
 const rpc = await connectOwnedCodex(m, a);
 try {
-  const busyId = await startCodexAppTurn(rpc, a.uuid, crypto.randomUUID(), "Run the shell command sleep 15, then reply BUSY_TEST_DONE. This is a timing test. Do not message anyone or do other work.");
+  const busyId = await startCodexAppTurn(rpc, a.uuid, crypto.randomUUID(), codexTextInput("Run the shell command sleep 15, then reply BUSY_TEST_DONE. This is a timing test. Do not message anyone or do other work."));
   await until("native working", () => snapshot(a)?.turn?.id === busyId && snapshot(a)?.state === "working", 15_000);
   await command(["msg", a.name, `Deferred test ${token}: reply DEFERRED_DONE and do not contact anyone.`, "--defer"]);
   await command(["wait", a.name, "--timeout", "2"], 5_000, 2);

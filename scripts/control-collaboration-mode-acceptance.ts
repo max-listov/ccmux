@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
 import { basename, dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { MachineConfigSchema } from "../src/config/schema.ts";
@@ -95,10 +96,10 @@ const remote = createCcmuxControlServiceClient(async (url, init) => {
     route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
   );
   const payload = typeof init?.body === "string" ? init.body : "{}";
-  return fetch("http://ccmux.local/ccmux-control/v1/invoke", {
+  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
     unix: controlSocket(activeMachine), method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ v: 1, id: crypto.randomUUID(), caller: activeMachine.rcPrefix,
-      service: "ccmux.control", revision: "1", operation, payload }),
+      service: "ccmux.control", revision: CCMUX_CONTROL_SERVICE_REVISION, operation, payload }),
   });
 });
 
@@ -150,7 +151,7 @@ async function requestAndAnswer(target: Awaited<ReturnType<typeof remote.create>
     return current.state === "idle" && current.turn?.status === "completed";
   }, 120_000);
   const after = await remote.native({ target, cursor: null });
-  check(after.items.some((item) => item.kind === "assistant" && item.text?.includes(marker)),
+  check([...after.baseline, ...after.records].some((item) => item.kind === "assistant" && item.text?.includes(marker)),
     "terminal assistant response did not contain the exact marker");
   return { turnId: input.turnId, requestId: input.requestId, operationId, generation: frame.generation };
 }

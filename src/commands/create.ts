@@ -16,6 +16,10 @@ import { killSessionIfGeneration } from "../tmux/tmux.ts";
 import { startBootstrapSession, startSession } from "./lifecycle.ts";
 import { nativeDriver } from "../runtime/driver.ts";
 import type { ModelSelection } from "../config/modelSelectionFlags.ts";
+import type { ApplicationPolicyMetadata } from "../policy/schema.ts";
+import { verifyApplicationPolicy } from "../policy/resolve.ts";
+import { policyUnavailable } from "../policy/errors.ts";
+import { readNativeForkIntent } from "../context/fork.ts";
 
 export type CreateManagedInput = {
   name: string;
@@ -31,6 +35,7 @@ export type CreateManagedInput = {
   envFile?: string;
   launchRecipe?: LaunchRecipeMetadata;
   modelSelection?: ModelSelection;
+  applicationPolicy?: ApplicationPolicyMetadata;
 };
 
 export type NativeBootstrapOperation =
@@ -50,7 +55,16 @@ function sessionFields(input: CreateManagedInput): Omit<Session, "uuid"> {
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
     ...(input.launchRecipe === undefined ? {} : { launchRecipe: input.launchRecipe }),
     ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+    ...(input.applicationPolicy === undefined ? {} : { applicationPolicy: input.applicationPolicy }),
   });
+}
+
+function verifyCreatePolicy(m: MachineConfig, input: CreateManagedInput): void {
+  if (input.applicationPolicy === undefined) return;
+  const native = input.agent === "codex" && input.runtime === "app-server" ||
+    input.agent === "opencode" && (input.runtime === undefined || input.runtime === "native");
+  if (!native) policyUnavailable(input.applicationPolicy.id, "native-runtime-required");
+  verifyApplicationPolicy(m, input.agent, input.applicationPolicy);
 }
 
 async function createClaude(m: MachineConfig, input: CreateManagedInput): Promise<Session> {
@@ -66,6 +80,10 @@ async function createClaude(m: MachineConfig, input: CreateManagedInput): Promis
 }
 
 async function rollbackPending(m: MachineConfig, pending: PendingSession, error: string): Promise<never> {
+  const provisional = SessionSchema.parse({ ...pending.session, uuid: pending.generation, registrationGeneration: pending.generation });
+  const fork = pending.operation.kind === "fork" ? readNativeForkIntent(m, provisional) : null;
+  // Provider fork has no idempotency key. Preserve its reserved registration after uncertain admission.
+  if (fork !== null && fork.state !== "reserved") throw new Error(error);
   await killSessionIfGeneration(m, pending.session.name, pending.generation);
   await removePendingSession(m, pending.generation);
   await removeSessionIfGeneration(m, pending.session.name, pending.generation);
@@ -78,6 +96,8 @@ export async function createNativeBootstrap(
   input: CreateManagedInput,
   operation: NativeBootstrapOperation,
 ): Promise<Session> {
+  verifyCreatePolicy(m, input);
+  nativeDriver(sessionFields(input))?.preflight(m, input.flags);
   getProvider(input.agent).preflight(m);
   if (findSession(loadSessions(m), input.name) || loadPendingSessions(m).some((item) => item.session.name === input.name)) {
     throw new Error(`'${input.name}' already exists`);
@@ -158,6 +178,7 @@ export async function forkCodexThread(
 
 /** Shared transactional create path for CLI and TUI. */
 export async function createManagedSession(m: MachineConfig, input: CreateManagedInput): Promise<Session> {
+  verifyCreatePolicy(m, input);
   const fields = sessionFields(input);
   if (fields.runtime === "app-server" && fields.agent !== "codex") throw new Error("app-server runtime requires --agent codex");
   if (fields.runtime === "native" && fields.agent !== "opencode" && fields.agent !== "custom") throw new Error("This provider does not use the native HTTP runtime");

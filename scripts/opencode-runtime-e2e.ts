@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
 import { mkdtempSync, mkdirSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
@@ -53,9 +54,9 @@ const local = createControlClient({ socket: controlSocket(m) });
 const service = createCcmuxControlServiceClient(async (url, init) => {
   const route = new URL(String(url));
   const operation = ControlServiceOperationSchema.parse(route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1));
-  return fetch("http://ccmux.local/ccmux-control/v1/invoke", { unix: controlSocket(m), method: "POST",
+  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, { unix: controlSocket(m), method: "POST",
     headers: { "content-type": "application/json" }, ...(init?.signal === undefined ? {} : { signal: init.signal }),
-    body: JSON.stringify({ v: 1, id: crypto.randomUUID(), caller: "probe-client", service: "ccmux.control", revision: "1",
+    body: JSON.stringify({ v: 1, id: crypto.randomUUID(), caller: "probe-client", service: "ccmux.control", revision: CCMUX_CONTROL_SERVICE_REVISION,
       operation, payload: typeof init?.body === "string" ? init.body : "{}" }) });
 });
 try {
@@ -95,13 +96,14 @@ try {
     return result.outcome === "completed";
   });
   const frame = await service.native({ target });
-  check(frame.items.some(item => item.kind === "tool" && item.stage === "completed"), "No real tool completion");
-  check(frame.items.some(item => item.kind === "terminal" && item.status === "completed"), "No native terminal evidence");
+  const content = [...frame.baseline, ...frame.records];
+  check(content.some(item => item.kind === "tool" && item.status === "completed"), "No real tool completion");
+  check(content.some(item => item.kind === "terminal" && item.status === "completed"), "No native terminal evidence");
   check((await service.get({ target })).model === create.modelSelection.model, "Selected native model was not preserved");
   check(approvals > 0, "No real native approval was observed");
   check(readFileSync(join(root, "workspace", "effect.txt"), "utf8").trim() === "effect", "Tool side effect duplicated");
   await verifyRuntimeConfidentiality(m, session, frame, root, cli);
-  report("native-tool-turn", { kinds: [...new Set(frame.items.map(item => item.kind))], approvals, model: (await service.get({ target })).model });
+  report("native-tool-turn", { kinds: [...new Set(content.map(item => item.kind))], approvals, model: (await service.get({ target })).model });
   await verifyOpenCodeActions(service, target);
   const peer = await verifyRuntimeCoexistence(m, service, target, join(root, "workspace"));
   const baseline = await local.list();

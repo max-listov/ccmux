@@ -19,6 +19,7 @@ import { setStderrLogging } from "../util/log.ts";
 import { superviseReady } from "./run.ts";
 import { nativeDriver } from "../runtime/driver.ts";
 import { ManagedRuntimeExit } from "../runtime/exit.ts";
+import { readNativeForkIntent } from "../context/fork.ts";
 
 const POLL_MS = 50;
 
@@ -37,8 +38,12 @@ async function block(generation: string, error: string): Promise<number> {
     // The bootstrap owns terminal cleanup. The initiating CLI may have been killed, so leaving
     // rollback to its polling loop would reserve this name forever. The lifecycle block remains
     // as an identity-scoped error side channel for a still-alive initiator.
-    await removeSessionIfGeneration(m, pending.session.name, generation);
-    await removePendingSession(m, generation);
+    const provisional = SessionSchema.parse({ ...pending.session, uuid: pending.generation, registrationGeneration: generation });
+    const fork = pending.operation.kind === "fork" ? readNativeForkIntent(m, provisional) : null;
+    if (fork === null || fork.state === "reserved") {
+      await removeSessionIfGeneration(m, pending.session.name, generation);
+      await removePendingSession(m, generation);
+    }
   } else {
     // Admission may already have promoted the row. A later client/identity failure still needs
     // a terminal block; silently dropping it here would let the daemon retry indefinitely.
@@ -65,7 +70,8 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
   const provisional = SessionSchema.parse({ ...pending.session, uuid: pending.generation, registrationGeneration: generation });
   const driver = nativeDriver(provisional);
   if (driver !== null) {
-    if (pending.operation.kind !== "create") return block(generation, "Native bootstrap requires a new conversation");
+    if (pending.operation.kind !== "create" && (pending.operation.kind !== "fork" || readNativeForkIntent(m, provisional) === null))
+      return block(generation, "Native bootstrap requires an owner-admitted conversation operation");
     try {
       await driver.run(m, provisional, (session) => promotePendingSession(m, generation, session.uuid, session.nativeSession));
       return 0;

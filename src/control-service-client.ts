@@ -24,6 +24,15 @@ export {
   type ControlServiceInvocation,
   type ControlServiceOperation,
 } from "./control/serviceDescriptor.ts";
+export { SelectionReadSchema, SelectionUpdateSchema, SelectionResultSchema } from "./control/selectionSchema.ts";
+export { NativeTurnOptionsSchema, AcceptedTurnOptionsSchema, NativeSelectionEvidenceSchema,
+  type NativeTurnOptions, type AcceptedTurnOptions, type NativeSelectionEvidence } from "./runtime/selectionSchema.ts";
+export { ATTACHMENT_LIMITS, AttachmentReferenceSchema, AttachmentReferencesSchema, AttachmentMediaTypeSchema,
+  type AttachmentReference, type AttachmentMediaType } from "./attachments/reference.ts";
+export { AttachmentBeginSchema, AttachmentChunkSchema, AttachmentUploadSelectorSchema, AttachmentReadSchema,
+  AttachmentUploadReceiptSchema, AttachmentReadReceiptSchema, AttachmentCancelReceiptSchema,
+  type AttachmentBegin, type AttachmentChunk, type AttachmentUploadSelector, type AttachmentRead,
+  type AttachmentUploadReceipt, type AttachmentReadReceipt, type AttachmentCancelReceipt } from "./attachments/schema.ts";
 export { ControlDirectoryReadSchema, ControlDirectoryResultSchema,
   type ControlDirectoryRead, type ControlDirectoryResult } from "./control/directorySchema.ts";
 export { ModelSelectionSchema } from "./config/schema.ts";
@@ -80,3 +89,11 @@ export {
   readControlNativeStreamCursor,
   type ControlNativeStreamRequest,
 } from "./control/nativeStreamContract.ts";
+export { ControlHistoryReadSchema, ControlHistoryResultSchema, ControlCompactSchema, ControlContextOperationReadSchema,
+  ControlContextOperationResultSchema, PublicContextOperationSchema } from "./control/contextSchema.ts";
+export { NativeForkRequestSchema, NativeHistoryEntrySchema, NativeHistoryPageSchema, NativeHistoryQuerySchema,
+  type NativeForkRequest, type NativeHistoryPage, type NativeHistoryEntry } from "./context/schema.ts";
+export { SteeringInputSchema, SteeringSelectorSchema, SteeringReceiptSchema, SteeringReadResultSchema,
+  type SteeringInput, type SteeringSelector, type SteeringReceipt } from "./steering/schema.ts";
+export { ContentReadSchema, ContentCursorSchema, ContentRecordSchema } from "./content/schema.ts";
+export { ApplicationPolicyReferenceSchema, ApplicationPolicyMetadataSchema, ApplicationPolicyEvidenceSchema } from "./policy/reference.ts";

@@ -13,6 +13,7 @@ import { log } from "../util/log.ts";
 import { ControlModelCatalogSchema, ControlModelsReadSchema, type ControlModelCatalog } from "./schema.ts";
 import { controlTarget } from "./target.ts";
 import { readOpenCodeModels } from "../agent/opencode/catalog.ts";
+import { recordRuntimeDiagnostic } from "../runtime/diagnostics.ts";
 
 export type ControlModelsConnector = (machine: MachineConfig, options: CodexRpcOptions, session: Session) => Promise<CodexAppRpc>;
 type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
@@ -107,6 +108,7 @@ export async function readControlModels(m: MachineConfig, input: ModelsReadInput
         ...(launch.launchRecipe === undefined ? {} : { launchRecipe: launch.launchRecipe }) }));
   } catch (error) {
     if (error instanceof AppError) throw error;
+    await recordRuntimeDiagnostic(m, input.target?.session ?? null, "model-catalog", error);
     if (error instanceof z.ZodError) unavailable("malformed-provider-page", error);
     unavailable("provider-read-failed", error);
   }

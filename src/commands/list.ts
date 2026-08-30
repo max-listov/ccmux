@@ -140,7 +140,7 @@ async function buildRow(
     lifecycleError: native?.state === "blocked" ? `native status unavailable: ${native.read.reason ?? native.read.snapshot?.reason ?? "unknown"}` : null,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
-    model: prettyModel(native?.read.snapshot?.modelSelection?.model ?? sessionModel(s, m)),
+    model: prettyModel(native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m)),
     contextLabel,
     context,
     uptimeText: uptimeSeconds === null ? "—" : humanizeDuration(uptimeSeconds),

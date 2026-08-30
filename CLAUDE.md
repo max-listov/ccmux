@@ -64,6 +64,20 @@ buffer. After publication, verify local HEAD, the published commit/tag and packa
 identify any deliberately retained local-only changes explicitly. A release is not complete while
 the working checkout still presents already-published implementation as uncommitted work.
 
+## One current control contract; no compatibility branches
+Control APIs may make breaking changes: there is no required installed-client compatibility
+population. Keep one current contract, descriptor, client path and native-content stream. Replace
+superseded interfaces in the same change; do not retain legacy endpoints, aliases, version-parallel
+clients, compatibility wrappers or fallback dispatch "for existing clients". A protocol revision
+identifies the current contract; it is not a reason to keep an older implementation alive. Update
+owned callers, examples, tests and release artifacts together. Provider-specific adapters and
+local/remote transports share the same domain operations; they are not compatibility alternatives.
+
+This does not authorize losing session identities, native history, credentials or accepted work.
+Preserve durable state and one-writer/idempotency guarantees through an explicit bounded migration
+when necessary, not through a second permanent runtime path. The prohibited branch arose from
+assuming an installed-client requirement that the project does not have.
+
 ## ⚠️ TUI: горячий цикл и сироты (если «комп горячий»)
 Интерактивный TUI (Ink) умеет жечь ядро и сиротеть — это **реальный инцидент** (`ccmux-dev -f`
 держал ~84% ядра 14ч). Полный разбор + инварианты + пошаговый дебаг — **`docs/architecture/tui-and-dev-flow.md`

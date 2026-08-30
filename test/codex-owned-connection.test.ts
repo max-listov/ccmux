@@ -20,7 +20,7 @@ function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none
     codexCorrelationTimeoutMs: 150,
     sessionEvents: true,
   });
-  const s = makeSession({ agent: "codex", runtime: "app-server", eventsEnabled: true,
+  const s = makeSession({ agent: "codex", runtime: "app-server", eventsEnabled: true, registrationGeneration: crypto.randomUUID(),
     ...(collaboration ? { launchRecipe: { id: "input-policy", revision: "r1", digest: "a".repeat(64),
       capabilities: ["input-requests"], collaborationMode: "plan" as const } } : {}) });
   const path = ownedCodexSocket(m, s.name); privateRuntimeDirectory(dirname(path));
@@ -61,7 +61,7 @@ function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none
             })}\n`), 40);
           }
           respond({ thread: { id: s.uuid, name: null, source: "cli", status: native, canAcceptDirectInput: true },
-            model: "model-current", reasoningEffort: "low" });
+            model: "model-current", modelProvider: "openai", reasoningEffort: "low" });
         }
         if (message.method === "turn/start") {
           turnParams.push(message.params);
@@ -78,7 +78,7 @@ function fixture(publication: "none" | "delayed" | "empty" | "malformed" = "none
             readRace = false;
           }
           respond({ thread: { id: wrongIdentity ? crypto.randomUUID() : s.uuid, name: null, source: "cli", status: native, canAcceptDirectInput: true },
-            model: "model-current", reasoningEffort: "low" });
+            model: "model-current", modelProvider: "openai", reasoningEffort: "low" });
         }
         if (message.method === "collaborationMode/list") respond({ data: supportsCollaboration
           ? [{ name: "Plan", mode: "plan", model: null, reasoning_effort: "medium" }]
@@ -197,8 +197,8 @@ test("mismatched native resume and malformed active flags never admit an idle re
 });
 
 test("native version floor excludes older/unknown/floor prerelease binaries", () => {
-  for (const version of ["codex-cli 0.147.0", "codex-cli 0.147.0+build.1", "codex-cli 0.150.0-alpha.8", "codex-cli 1.0.0"]) expect(supportsOwnedCodexVersion(version)).toBe(true);
-  for (const version of ["unknown", "codex-cli 0.146.0", "codex-cli 0.147.0-alpha.1", "codex-cli 0.150.0-..", "codex-cli 0.150.0invalid"]) expect(supportsOwnedCodexVersion(version)).toBe(false);
+  for (const version of ["codex-cli 0.151.0", "codex-cli 0.151.0+build.1", "codex-cli 0.152.0-alpha.8", "codex-cli 1.0.0"]) expect(supportsOwnedCodexVersion(version)).toBe(true);
+  for (const version of ["unknown", "codex-cli 0.150.0", "codex-cli 0.151.0-alpha.1", "codex-cli 0.150.0-..", "codex-cli 0.150.0invalid"]) expect(supportsOwnedCodexVersion(version)).toBe(false);
 });
 
 test("approval and input responses stay on the owning RPC connection and reject stale projection generations", async () => {

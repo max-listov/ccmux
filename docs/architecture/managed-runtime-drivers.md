@@ -58,8 +58,12 @@ CLI creation is `ccmux new agent-a ~/code/demo --agent opencode`; native input a
 control service, not an invented terminal composer. OpenCode does not accept Codex launch recipes or
 caller flags. Claude exposes its existing interactive lifecycle, not native model/request parity.
 
-HTTP reads are capped at 2 MiB, each SSE frame at 256 KiB, admission buffering at 128 events/512 KiB,
-history reconciliation at 64 messages, projection at 128 items/128 KiB and pending requests at four.
+HTTP non-image JSON reads are capped at 2 MiB and each non-image SSE frame at 256 KiB. OpenCode echoes
+input images inline; a bounded lexical pass elides only native PNG/JPEG data-URL payloads before
+JSON allocation (8 MiB per image, 16 MiB aggregate encoded images). Other fields keep their original
+ceilings. Startup reconciles the most recent message and its exact parent, not lifetime history.
+Admission buffering is 128 events/512 KiB, status projection 128 items/128 KiB, pending requests 16.
+Content/history have separate [bounded current contracts](native-content-and-turn-controls.md).
 Question responses preserve native option labels, multiplicity and exact question/request IDs.
 The native process owns its full transcript; the control feed intentionally omits tool inputs,
 outputs and provider error payloads. Last private native diagnostics are bounded owner-only files
@@ -78,9 +82,11 @@ published dependency and acceptance are available.
 
 ## Upgrade and rollback
 
-Existing Claude/Codex rows need no migration. Runtime selection defaults to Codex at the public
-create boundary, and old create fingerprints remain unchanged. Rollout restarts only the daemon;
-existing session writers remain alive. Newly created OpenCode rows require this release or newer,
+Runtime selection defaults to Codex at the public create boundary; accepted create identities remain
+immutable. Current content/control clients must match the released descriptor. An older observer
+cannot produce the new content projection: a daemon-only update does not upgrade existing native
+writer code. Resume those writers at a safe boundary and verify the new projection generation.
+Do not interrupt unrelated active work merely to manufacture parity. Native state requires this release or newer,
 including archived rows: archive retains their runtime and continuation fields. A bundle-only
 rollback cannot make an older parser understand them. Before native admission, retain a registry
 backup. If rollback is necessary, stop native writers and the daemon, preserve the current registry

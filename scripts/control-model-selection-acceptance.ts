@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
 import { chmodSync, mkdtempSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
@@ -13,6 +14,7 @@ import { newSession, killSession } from "../src/tmux/tmux.ts";
 import { readOwnedCodexStatus } from "../src/agent/codex/ownedStatus.ts";
 import { connectOwnedCodex } from "../src/agent/codex/ownedRpc.ts";
 import { prepareManagedCodexTurn, resumeCodexAppThreadContext, startCodexAppTurn } from "../src/agent/codex/appServer.ts";
+import { codexTextInput } from "../src/agent/codex/turnInput.ts";
 import type { ManagedPeer, Session } from "../src/types.ts";
 
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -61,9 +63,9 @@ async function command(args: string[]) {
 }
 const remote = makeServiceClient(async (url, init) => {
   const operation = ControlServiceOperationSchema.parse(new URL(String(url)).pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1));
-  return fetch("http://ccmux.local/ccmux-control/v1/invoke", { unix: controlSocket(machine), method: "POST",
+  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, { unix: controlSocket(machine), method: "POST",
     headers: { "content-type": "application/json" }, body: JSON.stringify({ v: 1, id: crypto.randomUUID(),
-      caller: machine.rcPrefix, service: "ccmux.control", revision: "1", operation,
+      caller: machine.rcPrefix, service: "ccmux.control", revision: CCMUX_CONTROL_SERVICE_REVISION, operation,
       payload: typeof init?.body === "string" ? init.body : "{}" }) });
 });
 async function idle(target: ManagedPeer) {
@@ -87,16 +89,16 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
         if (method !== "collaborationMode/list") return response;
         const presets = z.object({ data: z.array(z.object({ mode: z.string().nullable() }).passthrough()) }).parse(response);
         return { data: presets.data.map((preset) => ({ ...preset, model: differentPreset })) };
-      } }, session, context);
-      check(policy?.collaborationMode.settings.model === session.modelSelection?.model, "Preset replaced model");
-      await startCodexAppTurn(rpc, target.threadId, crypto.randomUUID(), body, policy);
+      } }, machine, session, context);
+      check(policy?.collaborationMode?.settings.model === session.modelSelection?.model, "Preset replaced model");
+      await startCodexAppTurn(rpc, target.threadId, crypto.randomUUID(), codexTextInput(body), policy);
     } finally { rpc.close(); }
   } else await remote.message({ target, messageId: crypto.randomUUID(), body });
   await until("tool turn", async () => {
     const frame = await remote.native({ target, cursor: { generation: before.generation, sequence: before.sequence } });
-    return frame.items.some((item) => item.kind === "assistant" && item.text?.includes(marker)) &&
-      frame.items.some((item) => item.kind === "tool" && item.tool === "commandExecution" &&
-        item.stage === "completed" && item.status === "completed");
+    const records = [...frame.baseline, ...frame.records];
+    return records.some((item) => item.kind === "assistant" && item.text?.includes(marker)) &&
+      records.some((item) => item.kind === "tool" && item.text === "commandExecution" && item.status === "completed");
   });
   await idle(target);
   const rpc = await connectOwnedCodex(machine, session);
@@ -160,7 +162,7 @@ try {
     requestId: pending.requestId, kind: "input" as const, answers };
   await refused(() => remote.respond({ ...answer, generation: crypto.randomUUID() }), "STALE_REQUEST");
   check((await remote.respond(answer)).outcome === "submitted", "Exact input response failed");
-  await until("input answer completed", async () => (await remote.native({ target: first.created.target, cursor: null })).items
+  await until("input answer completed", async () => (await remote.native({ target: first.created.target, cursor: null })).baseline
     .some((item) => item.kind === "assistant" && item.text?.includes(inputMarker)));
   await idle(first.created.target);
   const before = readOwnedCodexStatus(machine, first.session).snapshot;
@@ -175,10 +177,10 @@ try {
   check(retry.duplicate && retry.target.threadId === first.created.target.threadId &&
     retry.modelSelection?.model === first.input.modelSelection.model, "Restart changed selection/identity");
   await toolTurn(retry.target, first.session);
-  const model = (await remote.get({ target: retry.target })).modelSelection;
+  const model = (await remote.get({ target: retry.target })).nativeSelection?.model;
   check(model?.model === first.input.modelSelection.model, "Status lost model selection");
   const native = await remote.native({ target: retry.target, cursor: null });
-  check(native.modelSelection?.model === model.model, "Native projection lost selection");
+  check(native.nativeSelection?.model.model === model.model, "Native projection lost selection");
   const waited = await remote.wait({ target: retry.target, timeoutMs: 10_000 });
   check(["idle", "completed"].includes(waited.outcome), "Wait did not see a terminal native boundary");
   const plain = await remote.create({ requestId: crypto.randomUUID(), name: "default-native", workspace: root,

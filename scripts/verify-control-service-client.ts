@@ -56,7 +56,9 @@ try {
       ApiError, ControlServiceDescriptorSchema, ControlNativeStreamFrameSchema, ControlTargetSchema,
       LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ModelSelectionSchema,
       ControlDirectoryResultSchema,
-      RuntimeCatalogSchema,
+      RuntimeCatalogSchema, CCMUX_CONTROL_SERVICE_REVISION, AttachmentReferenceSchema, SelectionResultSchema,
+      NativeSelectionEvidenceSchema, ControlHistoryResultSchema, ControlContextOperationResultSchema,
+      SteeringReceiptSchema, NativeForkRequestSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -72,10 +74,11 @@ try {
       }).strict()).min(1).max(64),
     }).strict();
     const {target} = ControlTargetSchema.parse({target:{kind:'managed',source:'ccmux',machine:'host-a',agent:'codex',session:'agent-a',threadId:crypto.randomUUID()}});
+    const registrationGeneration = crypto.randomUUID();
     let calls = 0;
     const client = createCcmuxControlServiceClient(async () => {
       calls++;
-      return Response.json({v:1,revision:'1',result:{target,archived:true,duplicate:false,stopped:true}});
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{target,archived:true,duplicate:false,stopped:true}});
     });
     const receipt = await client.archive({target});
     if (!receipt.archived || calls !== 1) throw new Error('typed reply failed');
@@ -86,8 +89,8 @@ try {
     let createPayload = '';
     const creator = createCcmuxControlServiceClient(async (_url, init) => {
       createPayload = typeof init?.body === 'string' ? init.body : '';
-      return Response.json({v:1,revision:'1',result:{
-        requestId:'11111111-1111-4111-8111-111111111111',target,workspace:'/work',duplicate:false,
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{
+        requestId:'11111111-1111-4111-8111-111111111111',target,workspace:'/work',registrationGeneration,duplicate:false,
         launchRecipe:recipeMetadata,modelSelection:{provider:'openai',model:'model-a'},
       }});
     });
@@ -99,21 +102,65 @@ try {
       createPayload.includes('fixture-secret') || createPayload.includes('collaborationMode'))
       throw new Error('safe recipe contract failed');
     const nativeTarget = {...target,agent:'opencode'};
-    const capabilities = {runtime:'opencode',structured:true,modelCatalog:true,modelSelection:true,approval:true,input:true,nativeStream:true,interrupt:true,resume:true};
+    const capabilities = {runtime:'opencode',structured:true,modelCatalog:true,modelSelection:true,approval:true,input:true,nativeStream:true,interrupt:true,resume:true,
+      imageInput:true,selectionDefaults:true,turnOptions:true,turnSteering:false,history:true,fork:true,compaction:true,rollback:false,applicationPolicy:true};
     const runtimeClient = createCcmuxControlServiceClient(async (url, init) => {
-      if (String(url).endsWith('/runtime.list')) return Response.json({v:1,revision:'1',result:{runtimes:[{runtime:'opencode',availability:'configured',reason:null,capabilities}]}});
+      if (String(url).endsWith('/runtime.list')) return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{runtimes:[{runtime:'opencode',availability:'configured',reason:null,capabilities}]}});
       const payload = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
       if (payload.runtime !== 'opencode' || payload.modelSelection.provider !== 'external') throw new Error('runtime selection lost');
-      return Response.json({v:1,revision:'1',result:{requestId:payload.requestId,target:nativeTarget,workspace:'/work',duplicate:false,
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{requestId:payload.requestId,target:nativeTarget,workspace:'/work',registrationGeneration,duplicate:false,
         nativeSession:{runtime:'opencode',id:'ses_native',version:'1.18.20'},driverCapabilities:capabilities,modelSelection:payload.modelSelection}});
     });
     const runtimeCatalog = RuntimeCatalogSchema.parse(await runtimeClient.runtimes({}));
     if (runtimeCatalog.runtimes[0]?.capabilities.structured !== true) throw new Error('runtime capabilities failed');
     const nativeCreated = await runtimeClient.create({requestId:crypto.randomUUID(),runtime:'opencode',name:'agent-a',workspace:'/work',modelSelection:{provider:'external',model:'model-a'}});
     if (nativeCreated.nativeSession?.id !== 'ses_native' || nativeCreated.target.agent !== 'opencode') throw new Error('native identity lost');
+    const reference = AttachmentReferenceSchema.parse({id:crypto.randomUUID(),digest:'b'.repeat(64),mediaType:'image/png',bytes:3,width:1,height:1});
+    const selectionResult = SelectionResultSchema.parse({protocol:1,registrationGeneration,
+      current:{revision:1,options:{runtime:'codex',model:{provider:'openai',model:'model-a'},mode:'plan'}}});
+    const uploadClient = createCcmuxControlServiceClient(async (url, init) => {
+      const payload = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+      const result = String(url).endsWith('/selection.read') || String(url).endsWith('/selection.update') ? selectionResult
+        : String(url).endsWith('/attachment.finalize') ? reference
+          : String(url).endsWith('/attachment.read') ? {reference,offset:0,data:'YWJj',nextOffset:3,complete:true}
+            : String(url).endsWith('/attachment.cancel') ? {uploadId:reference.id,cancelled:true}
+              : {uploadId:reference.id,receivedBytes:String(url).endsWith('/attachment.chunk') ? 3 : 0,totalBytes:3,phase:'uploading',expiresAt:new Date().toISOString()};
+      if (payload.target.threadId !== target.threadId) throw new Error('upload target lost');
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result});
+    });
+    await uploadClient.selection({target,registrationGeneration});
+    await uploadClient.select({target,registrationGeneration,operationId:crypto.randomUUID(),expectedRevision:0,
+      options:{runtime:'codex',model:{provider:'openai',model:'model-a'},mode:'plan'}});
+    await uploadClient.attachmentBegin({target,uploadId:reference.id,mediaType:'image/png',totalBytes:3,digest:reference.digest});
+    await uploadClient.attachmentChunk({target,uploadId:reference.id,offset:0,data:'YWJj'});
+    const finalized = await uploadClient.attachmentFinalize({target,uploadId:reference.id});
+    const preview = await uploadClient.attachmentRead({target,reference:finalized,offset:0});
+    if (preview.data !== 'YWJj' || !preview.complete) throw new Error('attachment preview contract failed');
+    await uploadClient.attachmentCancel({target,uploadId:reference.id});
+    const generation = crypto.randomUUID(), operationId = crypto.randomUUID();
+    NativeSelectionEvidenceSchema.parse({model:modelSelection,options:selectionResult.current.options,source:'settings',turnId:null});
+    const historyResult = ControlHistoryResultSchema.parse({target,registrationGeneration,runtime:'codex',nativeId:target.threadId,
+      revision:1,entries:[],nextCursor:null,completeness:'complete',omittedItems:0,omittedBytes:0});
+    const contextResult = ControlContextOperationResultSchema.parse({target,registrationGeneration,operation:{operationId,generation,
+      state:'queued',revision:1,createdAt:1,updatedAt:1}});
+    const steeringResult = SteeringReceiptSchema.parse({protocol:1,operationId,target,registrationGeneration,generation,
+      turnId:'turn-a',clientUserMessageId:'steer:'+operationId,state:'submitted',observedAt:new Date().toISOString()});
+    const contextClient = createCcmuxControlServiceClient(async (url) => {
+      const result = String(url).endsWith('/history.read') ? historyResult
+        : String(url).endsWith('/turn.steer') ? steeringResult
+          : String(url).endsWith('/turn.steering-operation') ? {operation:steeringResult} : contextResult;
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result});
+    });
+    if ((await contextClient.history({target,registrationGeneration,limit:8})).nativeId !== target.threadId) throw new Error('history contract failed');
+    await contextClient.compact({target,registrationGeneration,generation,operationId});
+    await contextClient.contextOperation({target,registrationGeneration,operationId});
+    await contextClient.steer({target,registrationGeneration,generation,operationId,expectedTurnId:'turn-a',body:'continue'});
+    await contextClient.steeringOperation({target,registrationGeneration,operationId});
+    const forkInput = NativeForkRequestSchema.parse({target,registrationGeneration,generation,requestId:crypto.randomUUID(),name:'fork-a'});
+    if (typeof contextClient.fork !== 'function' || forkInput.target.threadId !== target.threadId) throw new Error('fork client missing');
     const reader = createCcmuxControlServiceClient(async (url) => {
       const directory = String(url).endsWith('/directory.list');
-      return Response.json({v:1,revision:'1',result:directory
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:directory
         ? {path:'/work',parent:'/',entries:[{name:'repo',kind:'dir',path:'/work/repo'}],nextCursor:null}
         : {source:{kind:'host',machine:'host-a',provider:'openai'},data:[],nextCursor:null}});
     });

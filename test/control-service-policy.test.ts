@@ -45,7 +45,7 @@ const TransportDescriptorSchema = z
 
 test("published control descriptor satisfies the independent transport policy contract", () => {
   expect(TransportDescriptorSchema.parse(ccmuxControlServiceDescriptor)).toEqual(ccmuxControlServiceDescriptor);
-  expect(ccmuxControlServiceDescriptor.operations).toHaveLength(12);
+  expect(ccmuxControlServiceDescriptor.operations).toHaveLength(ControlServiceOperationSchema.options.length);
   expect(ccmuxControlServiceDescriptor.operations).toContainEqual(expect.objectContaining({ id: "runtime.list", effect: "runtime.read" }));
   for (const operation of ccmuxControlServiceDescriptor.operations) {
     expect(operation.effect).toBe(controlServiceEffects[operation.id]);

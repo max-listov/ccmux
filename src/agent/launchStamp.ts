@@ -6,6 +6,7 @@ import type { MachineConfig, Session } from "../types.ts";
 import { chatEnabledFor } from "../config/chat.ts";
 import { envInput, type LaunchInput } from "./launchInputs.ts";
 import { LaunchRecipeMetadataSchema, ModelSelectionSchema } from "../config/schema.ts";
+import { ApplicationPolicyMetadataSchema } from "../policy/reference.ts";
 
 /**
  * What a session was LAUNCHED with — so "does this one still need a restart?" is a fact you can
@@ -43,6 +44,7 @@ export const LaunchStampSchema = z.object({
    * than stale; recipe definitions and environment values never enter the stamp. */
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
   ts: z.number(),
 });
 export type LaunchStamp = z.infer<typeof LaunchStampSchema>;
@@ -94,6 +96,7 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
     promptModules: [...s.promptModules].sort(),
     ...(s.launchRecipe === undefined ? {} : { launchRecipe: s.launchRecipe }),
     ...(s.modelSelection === undefined ? {} : { modelSelection: s.modelSelection }),
+    ...(s.applicationPolicy === undefined ? {} : { applicationPolicy: s.applicationPolicy }),
   };
 }
 
@@ -143,6 +146,8 @@ export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, "
   if (mods(stamp.promptModules) !== mods(now.promptModules)) out.push("modules");
   if (stamp.launchRecipe !== undefined && stableRecipe(stamp.launchRecipe) !== stableRecipe(now.launchRecipe))
     out.push("recipe");
+  if (JSON.stringify(stamp.applicationPolicy ?? null) !== JSON.stringify(now.applicationPolicy ?? null))
+    out.push("policy");
   // Anything else the launch recipe covers — a reworded prompt, ownerLang, extraFlags. Reported only
   // when nothing more specific explains it, so the message stays as precise as the evidence allows.
   if (out.length === 0 && stamp.hash !== now.hash) out.push("config");

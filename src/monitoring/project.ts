@@ -40,7 +40,7 @@ export function projectMonitoringRow(m: MachineConfig, s: Session, startedAt: nu
     plane: "managed", name: s.name, agent: s.agent, uuid: s.uuid, rc: rcName(m, s.name),
     address: `${m.rcPrefix}:${s.name}`,
     dir: s.dir, archived: s.archived, running, state,
-    model: running ? native?.read.snapshot?.modelSelection?.model ?? sessionModel(s, m) : null,
+    model: running ? native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m) : null,
     contextPercent: running && pct !== null && pct >= 0 && pct <= 100 ? pct : null,
     uptimeSeconds: startedAt === undefined ? null : Math.max(0, Math.floor(now / 1000 - startedAt)),
     lastActivityAt: activity === null ? null : new Date(activity).toISOString(),

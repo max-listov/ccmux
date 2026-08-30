@@ -6,10 +6,14 @@ import type { MachineConfig, Session } from "../types.ts";
 import { managedRuntimeRoot } from "./status.ts";
 import { readPrivateJson } from "./store.ts";
 import { atomicWrite } from "../util/atomic.ts";
+import { AttachmentReferencesSchema } from "../attachments/reference.ts";
+import { AcceptedTurnOptionsSchema } from "./selectionSchema.ts";
 
 export const RuntimeInputSchema = z.object({
   messageId: z.uuid(), nativeId: z.string().min(1).max(256), text: z.string().min(1).max(32_768),
   phase: z.enum(["queued", "dispatching", "accepted", "uncertain"]),
+  images: AttachmentReferencesSchema.optional(),
+  turnOptions: AcceptedTurnOptionsSchema.optional(),
 }).strict();
 export type RuntimeInput = z.infer<typeof RuntimeInputSchema>;
 const path = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m, s), "input.json");

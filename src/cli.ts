@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { VERSION } from "./util/version.ts";
+import { cmdValidateAttachment } from "./attachments/decoderCommand.ts";
 import { cmdList } from "./commands/list.ts";
 import { cmdStatus } from "./commands/status.ts";
 import { cmdNew } from "./commands/new.ts";
@@ -174,6 +175,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdUninstall();
     case "daemon":
       return cmdDaemon(); // never returns
+    case "_attachment-validate":
+      return cmdValidateAttachment();
     case "_run":
       return cmdRun(rest[0]); // hidden: in-session relaunch loop (tmux invokes this)
     case "_bootstrap":

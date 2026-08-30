@@ -79,6 +79,15 @@ approval/input responses, native turn interruption and between-turn waits; the r
 self-contained `control-client.js` and SHA-256 asset. Commands retain exact provider/machine/session
 identity and existing delivery gates. See the [resident control contract](docs/architecture/control-plane.md).
 
+The current native control contract supports PNG/JPEG attachments, incremental assistant/Plan
+content with bounded replay, revisioned model/mode defaults and per-message options. It also exposes
+native history, destination-owned fork, manual compaction and immutable application-policy evidence.
+Codex supports exact active-turn steering; OpenCode advertises that operation as unsupported.
+Neither runtime advertises rollback. The current contract replaces obsolete client endpoints;
+operators install its exact descriptor and native stream profile together. See
+[native content and turn controls](docs/architecture/native-content-and-turn-controls.md) for
+capabilities, limits, selection semantics and runnable examples.
+
 `client.runtimes({})` discovers configured runtimes and explicit capabilities. Public create accepts
 `runtime` independently from `modelSelection: { provider, model }`; omitted runtime remains Codex.
 `models({ runtime: "opencode" })` reads the host's configured native provider catalog before a chat.

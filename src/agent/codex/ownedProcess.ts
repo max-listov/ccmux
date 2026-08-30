@@ -16,6 +16,7 @@ import { loadSessions } from "../../config/sessions.ts";
 import { ownedChildAlive, stopOwnedChildGroup } from "./ownedChild.ts";
 import { verifyManagedLaunchRecipe } from "../../config/launchRecipes.ts";
 import { ManagedRuntimeExit } from "../../runtime/exit.ts";
+import { verifyApplicationPolicy } from "../../policy/resolve.ts";
 
 type Process = ReturnType<typeof Bun.spawn>;
 
@@ -40,6 +41,7 @@ async function socketOccupied(path: string): Promise<boolean> {
 export async function runOwnedCodexProcess(m: MachineConfig, initial: Session,
   promote?: (uuid: string) => Promise<Session>): Promise<void> {
   verifyManagedLaunchRecipe(m, initial);
+  if (initial.applicationPolicy !== undefined) verifyApplicationPolicy(m, "codex", initial.applicationPolicy);
   const socket = ownedCodexSocket(m, initial.name);
   privateRuntimeDirectory(dirname(socket));
   await withDirectoryLock(`${socket}.owner`, async () => {
@@ -115,6 +117,7 @@ async function run(m: MachineConfig, initial: Session, promote?: (uuid: string) 
           } else {
             await connection.applyControlResponse();
             await connection.refresh(session);
+            connection.applyContext(session, abort.signal);
           }
           reconnectDelay = 500;
         } catch (error) {

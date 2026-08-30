@@ -5,9 +5,12 @@ import { nativeResponseFingerprint, readNativeCommand, readNativeReceipt, writeN
 import type { MachineConfig } from "../types.ts";
 import { ManagedPeerSchema } from "../config/schema.ts";
 import { z } from "zod";
-import type { ControlPublisher } from "./publisher.ts";
+import { readContent, subscribeContent } from "../content/read.ts";
+import type { ContentRead } from "../content/schema.ts";
 import type { ControlNativeSnapshot } from "./schema.ts";
 import { controlTarget } from "./target.ts";
+import { projectApplicationPolicy } from "../policy/projection.ts";
+import { readSelection } from "../runtime/selection.ts";
 
 type Target = z.infer<typeof ManagedPeerSchema>;
 type Cursor = { generation: string; sequence: number } | null;
@@ -15,37 +18,38 @@ type Cursor = { generation: string; sequence: number } | null;
 export function readControlNative(m: MachineConfig, target: Target, cursor: Cursor): ControlNativeSnapshot {
   const session = controlTarget(m, target);
   if (!hasNativeRuntime(session)) throw new AppError("UNSUPPORTED", "Native feed requires an owned structured runtime", 409);
+  return nativeFrame(m, target, readContent(m, session, cursor));
+}
+
+function nativeFrame(m: MachineConfig, target: Target, content: ContentRead): ControlNativeSnapshot {
+  const session = controlTarget(m, target);
   const read = readManagedRuntimeStatus(m, session);
   if (read.status !== "live" || read.snapshot === null) throw new AppError("UNAVAILABLE", `Native projection is ${read.reason ?? read.status}`, 503);
   const snapshot = read.snapshot;
-  let reset: ControlNativeSnapshot["reset"] = null;
-  let items = snapshot.nativeItems;
-  if (cursor === null) reset = "initial";
-  else if (cursor.generation !== snapshot.generation) reset = "generation";
-  else {
-    const oldest = snapshot.nativeItems[0]?.sequence ?? snapshot.nativeSequence + 1;
-    if (cursor.sequence > snapshot.nativeSequence || cursor.sequence < oldest - 1) reset = "gap";
-    else items = snapshot.nativeItems.filter((item) => item.sequence > cursor.sequence);
-  }
-  return { target, generation: snapshot.generation, sequence: snapshot.nativeSequence, reset,
-    observedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt, items,
+  if (content.generation !== snapshot.generation) throw new AppError("UNAVAILABLE", "Native generation changed", 503);
+  return { ...content,
+    observedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt,
     pending: snapshot.pendingRequests.map(({ rpcId: _rpcId, ...pending }) => pending),
     ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
-    ...(session.modelSelection === undefined ? {} : { modelSelection: session.modelSelection }),
-    ...(snapshot.nativeSession === undefined ? {} : { nativeSession: snapshot.nativeSession, driverCapabilities: runtimeCapabilities(session) }) };
+    selection: readSelection(m, session), nativeSelection: snapshot.nativeSelection ?? null,
+    driverCapabilities: runtimeCapabilities(session),
+    ...(session.applicationPolicy === undefined ? {} : { applicationPolicy: projectApplicationPolicy(session.applicationPolicy,
+      read.status, snapshot.applicationPolicy) }),
+    ...(snapshot.nativeSession === undefined ? {} : { nativeSession: snapshot.nativeSession }) };
 }
 
-export async function* subscribeControlNative(m: MachineConfig, publisher: ControlPublisher, target: Target,
+export async function* subscribeControlNative(m: MachineConfig, target: Target,
   cursor: Cursor, signal: AbortSignal): AsyncIterable<ControlNativeSnapshot> {
-  let next = cursor;
+  const session = controlTarget(m, target);
+  if (!hasNativeRuntime(session)) throw new AppError("UNSUPPORTED", "Native feed requires an owned structured runtime", 409);
   let last = "";
-  for await (const _snapshot of publisher.subscribe(signal)) {
-    const frame = readControlNative(m, target, next);
-    const fingerprint = `${frame.generation}:${frame.sequence}:${frame.pending.map((item) => item.requestId).join(",")}`;
-    if (fingerprint === last) continue;
-    last = fingerprint;
+  for await (const content of subscribeContent(m, session, cursor, signal)) {
+    const frame = nativeFrame(m, target, content);
+    const stamp = JSON.stringify([frame.generation, frame.sequence, frame.status, frame.observedAt, frame.expiresAt,
+      frame.pending, frame.selection, frame.nativeSelection, frame.applicationPolicy]);
+    if (stamp === last) continue;
+    last = stamp;
     yield frame;
-    next = { generation: frame.generation, sequence: frame.sequence };
   }
 }
 

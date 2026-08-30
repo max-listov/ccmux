@@ -2,8 +2,12 @@ import { z } from "zod";
 import { AgentKindSchema, NativeSessionSchema, LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ManagedPeerSchema, ModelSelectionSchema } from "../config/schema.ts";
 import { RuntimeCapabilitiesSchema } from "../runtime/capabilities.ts";
 import { OwnedCodexTurnSchema } from "../agent/codex/ownedSchema.ts";
-import { OwnedCodexNativeItemSchema, OwnedCodexPendingRequestSchema } from "../agent/codex/ownedSchema.ts";
+import { OwnedCodexPendingRequestSchema } from "../agent/codex/ownedSchema.ts";
+import { ContentReadSchema, ContentCursorSchema } from "../content/schema.ts";
 import { SESSION_NAME_RE } from "../config/schema.ts";
+import { AttachmentReferencesSchema } from "../attachments/reference.ts";
+import { NativeTurnOptionsSchema, AcceptedTurnOptionsSchema, NativeSelectionEvidenceSchema } from "../runtime/selectionSchema.ts";
+import { ApplicationPolicyReferenceSchema, ApplicationPolicyEvidenceSchema } from "../policy/reference.ts";
 
 export const CONTROL_MAX_BYTES = 512 * 1024;
 export const CONTROL_MAX_READERS = 32;
@@ -21,7 +25,9 @@ export const ControlRowSchema = z.object({
   turn: OwnedCodexTurnSchema.nullable(),
   model: z.string().max(512).nullable(),
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
-  modelSelection: ModelSelectionSchema.optional(),
+  selection: AcceptedTurnOptionsSchema.nullable(),
+  nativeSelection: NativeSelectionEvidenceSchema.nullable(),
+  applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
   capabilities: z.object({ message: z.boolean(), start: z.boolean(), interrupt: z.boolean(), wait: z.boolean() }).strict(),
 }).strict();
 export type ControlRow = z.infer<typeof ControlRowSchema>;
@@ -41,14 +47,17 @@ export const ControlSnapshotSchema = z.object({
 export type ControlSnapshot = z.infer<typeof ControlSnapshotSchema>;
 export const ControlMessageSchema = ControlTargetSchema.extend({
   messageId: z.uuid(),
-  body: z.string().trim().min(1).max(16_384),
+  body: z.string().trim().max(16_384).default(""),
+  images: AttachmentReferencesSchema.default([]),
+  options: NativeTurnOptionsSchema.optional(),
   defer: z.boolean().default(false),
   notBefore: z.iso.datetime().nullable().default(null),
   task: z.string().max(256).nullable().default(null),
-}).strict();
-export type ControlMessage = z.infer<typeof ControlMessageSchema>;
+}).strict().refine(value => value.body.length > 0 || value.images.length > 0, "Message input is empty");
+export type ControlMessage = z.input<typeof ControlMessageSchema>;
 export const ControlMessageReceiptSchema = z.object({
   messageId: z.uuid(), accepted: z.literal(true), duplicate: z.boolean(),
+  turnOptions: AcceptedTurnOptionsSchema.nullable(),
 }).strict();
 export const ControlInterruptSchema = ControlTargetSchema.extend({ turnId: z.string().min(1).max(256) }).strict();
 export const ControlActionReceiptSchema = z.object({ target: ManagedPeerSchema, accepted: z.literal(true) }).strict();
@@ -58,12 +67,15 @@ export const ControlCreateSchema = z.object({
   workspace: z.string().startsWith("/").max(4_096), flags: z.array(z.string().max(4_096)).max(32).default([]),
   launchRecipe: LaunchRecipeReferenceSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  applicationPolicy: ApplicationPolicyReferenceSchema.optional(),
 }).strict();
 export type ControlCreate = z.input<typeof ControlCreateSchema>;
 export const ControlCreateReceiptSchema = z.object({
   requestId: z.uuid(), target: ManagedPeerSchema, workspace: z.string().startsWith("/").max(4_096),
+  registrationGeneration: z.uuid(),
   duplicate: z.boolean(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
   nativeSession: NativeSessionSchema.optional(),
   driverCapabilities: RuntimeCapabilitiesSchema.optional(),
 }).strict();
@@ -72,14 +84,15 @@ export const ControlArchiveReceiptSchema = z.object({
   target: ManagedPeerSchema, archived: z.literal(true), duplicate: z.boolean(), stopped: z.boolean(),
 }).strict();
 export type ControlArchiveReceipt = z.infer<typeof ControlArchiveReceiptSchema>;
-export const ControlNativeCursorSchema = z.object({ generation: z.uuid(), sequence: z.number().int().nonnegative() }).strict();
+export const ControlNativeCursorSchema = ContentCursorSchema;
 export const ControlNativeReadSchema = ControlTargetSchema.extend({ cursor: ControlNativeCursorSchema.nullable().default(null) }).strict();
-export const ControlNativeSnapshotSchema = z.object({
-  target: ManagedPeerSchema, generation: z.uuid(), sequence: z.number().int().nonnegative(),
-  reset: z.enum(["initial", "generation", "gap"]).nullable(), observedAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
-  items: z.array(OwnedCodexNativeItemSchema).max(128), pending: z.array(OwnedCodexPendingRequestSchema.omit({ rpcId: true })).max(16),
+export const ControlNativeSnapshotSchema = ContentReadSchema.extend({
+  observedAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
+  pending: z.array(OwnedCodexPendingRequestSchema.omit({ rpcId: true })).max(16),
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
-  modelSelection: ModelSelectionSchema.optional(),
+  selection: AcceptedTurnOptionsSchema.nullable(),
+  nativeSelection: NativeSelectionEvidenceSchema.nullable(),
+  applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
   nativeSession: NativeSessionSchema.optional(),
   driverCapabilities: RuntimeCapabilitiesSchema.optional(),
 }).strict();
@@ -121,6 +134,7 @@ export const ControlModelSchema = z.object({
     reasoningEffort: z.string().min(1).max(64), description: z.string().max(1_024),
   }).strict()).max(32).optional(),
   defaultReasoningEffort: z.string().min(1).max(64).optional(),
+  variants: z.array(z.string().min(1).max(128)).max(64).optional(),
 }).strict();
 export type ControlModel = z.infer<typeof ControlModelSchema>;
 export const ControlModelCatalogSchema = z.object({
@@ -130,6 +144,7 @@ export const ControlModelCatalogSchema = z.object({
     provider: z.string().min(1).max(128).nullable(), runtime: AgentKindSchema.optional(), launchRecipe: LaunchRecipeMetadataSchema.optional(),
   }).strict(),
   data: z.array(ControlModelSchema).max(CONTROL_MODELS_MAX_PAGE),
+  agents: z.array(z.string().min(1).max(128)).max(128).optional(),
   nextCursor: z.string().max(4_096).nullable(),
 }).strict();
 export type ControlModelCatalog = z.infer<typeof ControlModelCatalogSchema>;
@@ -155,6 +170,7 @@ export function currentControlSnapshot(snapshot: ControlSnapshot, now = Date.now
       row.availability = current.status === "unavailable" ? "unavailable" : "stale";
       row.state = "unknown";
       row.reason = current.reason ?? "observation-expired";
+      if (row.applicationPolicy !== undefined) row.applicationPolicy.state = "unavailable";
     }
   }
   return current;

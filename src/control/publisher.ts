@@ -8,6 +8,8 @@ import { loadSessions } from "../config/sessions.ts";
 import type { MonitoringSnapshot } from "../monitoring/schema.ts";
 import type { MachineConfig } from "../types.ts";
 import { VERSION } from "../util/version.ts";
+import { projectApplicationPolicy } from "../policy/projection.ts";
+import { readSelection } from "../runtime/selection.ts";
 import { CONTROL_MAX_BYTES, CONTROL_MAX_READERS, ControlSnapshotSchema, currentControlSnapshot,
   type ControlRow, type ControlSnapshot } from "./schema.ts";
 
@@ -42,11 +44,14 @@ export class ControlPublisher {
         availability: native?.status ?? "live", reason: native?.reason ?? null,
         observedAt: native?.snapshot?.observedAt ?? item.observedAt,
         expiresAt: native?.snapshot?.expiresAt ?? expiry,
-        turn: native?.snapshot?.turn ?? null, model: native?.snapshot?.modelSelection?.model ?? item.model,
+        turn: native?.snapshot?.turn ?? null, model: native?.snapshot?.nativeSelection?.model.model ?? item.model,
         driverCapabilities: runtimeCapabilities(session),
         ...(session.nativeSession === undefined ? {} : { nativeSession: native?.snapshot?.nativeSession ?? session.nativeSession }),
         ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
-        ...(session.modelSelection === undefined ? {} : { modelSelection: session.modelSelection }),
+        selection: owned ? readSelection(m, session) : null,
+        nativeSelection: native?.snapshot?.nativeSelection ?? null,
+        ...(session.applicationPolicy === undefined ? {} : { applicationPolicy: projectApplicationPolicy(session.applicationPolicy,
+          native?.status ?? "unavailable", native?.snapshot?.applicationPolicy) }),
         capabilities: { message: chatEnabledFor(session, m), start: !session.archived, interrupt: owned, wait: owned },
       };
       const size = Buffer.byteLength(JSON.stringify(row)) + 1;

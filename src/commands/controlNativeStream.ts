@@ -69,7 +69,10 @@ export async function cmdControlNativeStream(): Promise<number> {
         Bun.sleep(CCMUX_NATIVE_STREAM_HEARTBEAT_MS).then(() => ({ kind: "heartbeat" as const })),
       ]);
       if (outcome.kind === "heartbeat") {
-        if (last !== null) await writeFrame(last);
+        if (last !== null) {
+          if (Date.parse(last.expiresAt) <= Date.now()) throw new Error("Native stream lease expired");
+          await writeFrame(last);
+        }
         continue;
       }
       if (outcome.value.done) break;

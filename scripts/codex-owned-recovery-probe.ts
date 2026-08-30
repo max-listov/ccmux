@@ -7,6 +7,7 @@ import { readOwnedCodexStatus } from "../src/agent/codex/ownedStatus.ts";
 import { ownedCodexSocket, ownedCodexStatusPath } from "../src/agent/codex/ownedPaths.ts";
 import { connectOwnedCodex } from "../src/agent/codex/ownedRpc.ts";
 import { readCodexAppThread, startCodexAppTurn } from "../src/agent/codex/appServer.ts";
+import { codexTextInput } from "../src/agent/codex/turnInput.ts";
 import { readCodexRuntime } from "../src/agent/codex/ownedRead.ts";
 import { readEvents } from "../src/events/feed.ts";
 import { capturePaneStyled, killSession, newSession, sendKeysLiteral, sendKeysNamed } from "../src/tmux/tmux.ts";
@@ -49,7 +50,7 @@ const feed = readEvents(m, { session: s.name, since: feedStart });
 check(feed.some((event) => event.event === "turn-start") && feed.some((event) => event.event === "turn-end"), "Native boundaries missing from existing event feed");
 progress("same-writer-and-native-feed", { threadId: s.uuid, providerPid: baseline.providerPid, interactiveTurn, events: feed.map(({ event, threadId }) => ({ event, threadId })) });
 
-const active = await startCodexAppTurn(rpc, s.uuid, crypto.randomUUID(), "Run sleep 8, then reply DAEMON_CONTINUITY. Do not change files or message anyone.");
+const active = await startCodexAppTurn(rpc, s.uuid, crypto.randomUUID(), codexTextInput("Run sleep 8, then reply DAEMON_CONTINUITY. Do not change files or message anyone."));
 await until("active before daemon restart", () => snapshot()?.turn?.id === active && snapshot()?.state === "working");
 await killSession(m, "probe-daemon");
 await newSession(m, "probe-daemon", root, [process.execPath, "--no-env-file", cli, "daemon"], env);
@@ -89,7 +90,7 @@ await rpc.request("thread/resume", { threadId: s.uuid, excludeTurns: true });
 const started = performance.now(), cpu = process.cpuUsage(), initialRss = process.memoryUsage().rss;
 let calls = 0, peakRss = initialRss, maxBytes = 0;
 try { while (performance.now() - started < 60_000) {
-  if (loadTurn === null && performance.now() - started >= 1000) loadTurn = await startCodexAppTurn(rpc, s.uuid, crypto.randomUUID(), "Reply READER_LOAD_TEST briefly. No tools, files or messages.");
+  if (loadTurn === null && performance.now() - started >= 1000) loadTurn = await startCodexAppTurn(rpc, s.uuid, crypto.randomUUID(), codexTextInput("Reply READER_LOAD_TEST briefly. No tools, files or messages."));
   const batch = await Promise.all(Array.from({ length: 100 }, () => readCodexRuntime({ session: s.name, threadId: s.uuid, timeoutMs: 1000 })));
   check(batch.every((read) => read.status === "live" && read.snapshot?.providerPid === benchPid), "Resident load lost/replaced the native runtime");
   const observed = batch[0]?.snapshot;

@@ -49,7 +49,7 @@ export async function verifyOpenCodeActions(client: Client, target: ManagedPeer)
   await until("working tool before defer", async () => {
     await approve(client, target);
     const state = await client.get({ target });
-    return state.state === "working" && (await client.native({ target })).items.some(item => item.kind === "tool" && item.turnId === state.turn?.id && item.status === "running");
+    return state.state === "working" && (await client.native({ target })).baseline.some(item => item.kind === "tool" && item.turnId === state.turn?.id && item.status === "running");
   });
   const busy = await client.get({ target });
   const deferredId = crypto.randomUUID();
@@ -64,7 +64,7 @@ export async function verifyOpenCodeActions(client: Client, target: ManagedPeer)
   await until("working tool before interrupt", async () => {
     await approve(client, target);
     const state = await client.get({ target });
-    return state.state === "working" && (await client.native({ target })).items.some(item => item.kind === "tool" && item.turnId === state.turn?.id && item.status === "running");
+    return state.state === "working" && (await client.native({ target })).baseline.some(item => item.kind === "tool" && item.turnId === state.turn?.id && item.status === "running");
   });
   const active = await client.get({ target });
   check(active.turn, "No exact native turn");

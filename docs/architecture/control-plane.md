@@ -62,10 +62,10 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `create` / `create-session` | POST `/control/create` | Idempotent workspace-scoped runtime selection; omitted runtime is Codex |
 | `runtimes` | POST `/control/runtimes` | Host runtime availability and explicit capabilities |
 | `archive` / `archive-session` | POST `/control/archive` | Exact archive/stop receipt; history retained |
-| `message` | POST `/control/message` | Durable acceptance and duplicate flag |
+| `message` | POST `/control/message` | Durable acceptance, duplicate flag and pinned turn options |
 | `start` | POST `/control/start` | Start existing non-archived identity; no duplicate writer |
 | `interrupt` | POST `/control/interrupt` | Interrupt the exact working native turn |
-| `native` / `native-items` | POST `/control/native` | Bounded native-item snapshot after an optional cursor |
+| `native` / `native-items` | POST `/control/native` | Bounded content baseline/replay after an optional cursor |
 | `models` | POST `/control/models` | Bounded provider-owned model catalog after an optional cursor |
 | `directories` | POST `/control/directories` | Bounded names-only workspace directory page |
 | `respond` / `respond-native` | POST `/control/native/respond` | Exact current approval/input response receipt |
@@ -74,6 +74,17 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `external` | GET `/control/external` | Prepared external native status; no lifecycle rights |
 | `watchExternal` / `watch-external` | GET `/control-events/external` | External absolute snapshots, separate from managed rows |
 | `watchNative` / `watch-native` | POST `/control-events/native` | Cursored native item frames with explicit resync |
+| `selection` / `select` | POST `/control/selection` / `/control/selection/update` | Revisioned defaults, compare-and-swap between turns |
+| `attachmentBegin/Chunk/Finalize/Cancel/Read` | POST `/control/attachment/<operation>` | Bounded authenticated PNG/JPEG transfer and preview |
+| `steer` / `steeringOperation` | POST `/control/turn/steer` / `/control/turn/steering-operation` | Exact active-turn input and durable receipt |
+| `history` | POST `/control/history` | Bounded provider-owned history page |
+| `compact` / `contextOperation` | POST `/control/context/compact` / `/control/context/operation` | Native compaction admission and completion evidence |
+| `fork` | POST `/control/fork` | Same-workspace native fork with a new managed identity |
+
+The current service revision is **2** and the sole native stream profile is **ccmux-native-v2**.
+There is no version-1 dispatcher, compatibility client or text-only alias. See
+[native content and turn controls](native-content-and-turn-controls.md) for the current model,
+attachment, content-replay, steering and context contracts.
 
 `create` accepts an absolute workspace, a legal registry name, explicit native flags and a
 caller-generated immutable request UUID. The workspace is normalized before the request fingerprint
@@ -112,10 +123,12 @@ profile can launch different catalog models without one recipe per model. Typed 
 caller flags; the selected provider must match effective native host configuration. OpenAI model
 selection is checked against the native catalog before a create receipt or registry mutation.
 Validation is a bounded metadata read, not a conversation. The selection is included in the create
-fingerprint, durable session, launch stamp and safe receipt/status/native projection. A same-ID retry
+fingerprint, durable session, launch stamp and immutable create receipt. A same-ID retry
 with another selection is `IDEMPOTENCY_CONFLICT`; an accepted identical retry reconciles without
 depending on catalog availability. Native start/resume passes the exact selection and checks the
-provider's response. Selection survives daemon/provider restart. Calls without selection retain
+provider's response. Revisioned `selection` in status describes future-turn defaults; `nativeSelection`
+is separately sourced from native admission/settings or assistant evidence, never from that desired
+default. Calls without selection retain
 the native default and existing known-model recipe behavior. Custom-provider configuration remains
 host-owned; this interface does not aggregate or proxy external inference services.
 
@@ -127,9 +140,9 @@ provider's built-in preset. Missing support returns generic `COLLABORATION_MODE_
 pickup intent or turn acceptance; the owner log keeps the exact probe failure. The existing native
 pending request and exact response contract remains the sole input path. See the
 [managed collaboration policy decision](../decisions/2026-08-29-managed-codex-collaboration-policy.md).
-The loaded thread model always wins over `preset.model`: a Plan preset may supply mode and effort,
-but cannot replace the selected model. A loaded thread that differs from a pinned selection fails
-closed before turn submission.
+The accepted turn model always wins over `preset.model`: a Plan preset may supply mode and effort,
+but cannot replace that model. Provider/authentication changes still require another runtime.
+Create admission checks immutable identity; later turns use their own durably pinned options.
 
 `message` requires a caller-generated immutable UUID. Retrying
 the same sender/target/body/defer/notBefore/task with that UUID returns `duplicate: true`.
@@ -139,11 +152,11 @@ input requests, partial composers and ambiguous native pickup. The API never typ
 states. `interrupt` requires both the exact session identity and current native turn ID, rechecks
 provider state and never answers an approval or input request.
 
-`native` projects only known native item fields: user/assistant text, bounded reasoning summaries,
-tool type/status, numeric usage, terminal state and approval/input prompts. Commands, output,
-working directories, diffs, arbitrary tool payloads and credentials are not copied. The snapshot
-generation plus sequence is the cursor. A first read, runtime generation change or retained-window
-gap returns `reset=initial|generation|gap`; the included bounded snapshot is authoritative.
+`native` projects assistant text, provider-public reasoning summaries, tool type/status, numeric
+usage, terminal lifecycle and exact pending requests. User messages belong to authenticated
+`history`, not the hot content feed. Commands, output, directories, diffs, arbitrary tool payloads
+and credentials are not copied. Generation/sequence cursors return `records` for retained replay
+or a bounded `baseline` with `reset=initial|generation|gap|context`. There is no old `items` field.
 
 `models({})` reads the native App Server catalog before the first conversation, with no managed
 target or registry row. An optional `launchRecipe: { id, revision }` selects host-owned configuration;
@@ -299,13 +312,13 @@ install an MCP server into existing provider sessions or change Desktop configur
 
 The local control routes remain a same-user API and are never exposed directly as a remote
 service. A transport that already authenticates nodes and grants declared operations binds the
-separate fixed owner ingress at `/ccmux-control/v1/invoke`. The transport constructs this strict
+separate fixed owner ingress at `/ccmux-control/v2/invoke`. The transport constructs this strict
 envelope:
 
 ```ts
 {
   v: 1, id, caller,
-  service: "ccmux.control", revision: "1",
+  service: "ccmux.control", revision: "2",
   operation, payload: JSON.stringify(input),
 }
 ```
@@ -313,7 +326,7 @@ envelope:
 `operation` is trusted outer metadata. The ingress selects one handler from it and only then parses
 `payload` with the existing control input schema; a nested selector cannot change the handler.
 The result is validated with the matching existing output schema and wrapped as
-`{ v: 1, revision: "1", result }`. The ingress and local routes share one in-process operation
+`{ v: 1, revision: "2", result }`. The ingress and local routes share one in-process operation
 surface, mutation admission, wait admission, registry, chat ledger and native provider adapter.
 It is not an HTTP-to-CLI proxy and cannot create another provider writer.
 
@@ -325,23 +338,19 @@ virtual routing metadata and the descriptor. It grants nothing and opens no conn
 operator owns the private ingress socket path, node binding, credentials and exact
 service/revision/operation/effect grants.
 
-The descriptor declares eleven operations and their byte/deadline budgets. A remote wait is capped
+The descriptor declares the current operations and their individual byte/deadline budgets. A remote wait is capped
 at 25 seconds inside a 30-second service deadline. Service delivery is never retried by the owner
 client. If transport delivery is unknown, the caller retains that uncertainty. An idempotent
 `session.create` may deliberately retry the same immutable `requestId`: the durable create receipt
 reconciles one registration generation and one writer. Other mutations require their own exact
 idempotency identity or an authoritative read before any caller-selected retry.
 
-Revision 1 effects are stable dot-delimited authorization identifiers: `session.read`,
-`session.create`, `session.archive`, `message.send`, `session.start`, `turn.interrupt`,
-`native.read`, `native.respond`, `session.wait`, `model.read` and `directory.read`. Operation metadata, the typed
-client contract and `descriptor.json` all read them from one owner mapping. Every service,
-operation and effect identifier satisfies `^[a-z0-9][a-z0-9._-]*$`; an operator must feed the
-descriptor unchanged into its declared-service policy parser. A valid activated revision pins its
-effects and requires a new revision for any later authorization-identity change. The `model.read`
-and `directory.read` additions preserve earlier effect identifiers. Operators explicitly grant new
-operations when adopting the updated descriptor. A descriptor that cannot pass the policy parser cannot have a valid
-activation or grant migration; correcting that descriptor retains its unactivated revision.
+Revision 2 effects are dot-delimited authorization identifiers. Operation metadata, typed client
+and `descriptor.json` read the same owner mapping in `src/control/serviceCatalog.ts`. Every service,
+operation and effect identifier satisfies `^[a-z0-9][a-z0-9._-]*$`. Operators consume the current
+descriptor unchanged and explicitly grant the operations needed, including separate attachment,
+selection, history/context, fork and steering effects. Obsolete descriptors are refused, not
+translated into another compatibility path.
 
 Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
 created with `createCcmuxNativeStreamProfile(<absolute standard ccmux executable>)`. The standard
@@ -356,7 +365,9 @@ owner cursor; it contains no path, executable, credential or operation selector.
 
 Each producer line is exactly `{ channel: "data", data, cursor }`. `data` is a validated bounded
 `ControlNativeSnapshot`; `cursor` binds exact target, generation and sequence and is capped at 512
-bytes. The producer repeats the last snapshot every two seconds as a heartbeat with the same cursor.
+bytes. The producer repeats an unexpired snapshot every two seconds as a heartbeat with the same cursor;
+the shared subscription refreshes native lease/settings metadata without manufacturing content sequence.
+An expired lease terminates the producer instead of repeating a falsely live frame.
 Reconnect passes that cursor back in the next typed stdin request: a matching generation resumes after the sequence, while a new
 generation or retained-window miss returns the canonical `generation` or `gap` reset snapshot.
 Cancellation aborts the local subscription and closes both Unix transports. No workspace path,
@@ -373,8 +384,8 @@ provider credential, arbitrary executable, shell text or consumer-owned parser c
   must re-evaluate `expiresAt` while retaining a snapshot; disconnect is not idle.
 - Managed status streams begin with a full baseline. Native streams begin with a cursor-relative
   frame and carry an explicit reset when a baseline is required. Pending revisions coalesce to one
-  latest notice per reader; no durable replay is claimed. Reconnect gets a fresh
-  generation/sequence baseline.
+  latest notice per reader. Native content replays only its bounded retained window; generation
+  changes or gaps explicitly reset it. Provider history is a separate bounded native read.
 - At most 32 subscribers (including active resident waits); framework output buffering is at most
   16 framed items per connection. Frames are capped at 512 KiB + 1 KiB, heartbeats every 2 seconds.
   Unix transport applies physical socket backpressure; no cumulative lifetime cap on a stream.

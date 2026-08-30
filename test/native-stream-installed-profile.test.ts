@@ -21,6 +21,8 @@ import { makePeer } from "./helpers.ts";
 
 function bundle(path: string, sequence: number): void {
   const snapshot = {
+    protocol: 1, selection: null, nativeSelection: null, registrationGeneration: "33333333-3333-4333-8333-333333333333",
+    nativeId: "11111111-1111-4111-8111-111111111111", omittedRecords: 0, status: "live",
     target: makePeer({ agent: "codex", session: "agent-a" }),
     generation: "22222222-2222-4222-8222-222222222222",
     sequence,
@@ -28,7 +30,7 @@ function bundle(path: string, sequence: number): void {
     observedAt: "2026-08-29T00:00:00.000Z",
     expiresAt: "2026-08-29T00:01:00.000Z",
     pending: [],
-    items: [],
+    records: [], baseline: [],
   };
   const line = JSON.stringify(controlNativeStreamFrame(snapshot));
   writeFileSync(path, `#!/bin/sh\nread request\nprintf '%s\\n' '${line}'\n`);

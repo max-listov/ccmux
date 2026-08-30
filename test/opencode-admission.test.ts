@@ -22,7 +22,8 @@ test("lost native create response reconciles the reservation without a second PO
   const { m, s } = fixture();
   const { nativeSession: _continuation, ...initial } = s;
   let posts = 0;
-  const native = { id: "ses_native", directory: s.dir, version: "1.18.20", metadata: { ccmuxRegistration: s.registrationGeneration } };
+  const native = { id: "ses_native", directory: s.dir, version: "1.18.20", model: { id: "model-a", providerID: "provider-a" },
+    metadata: { ccmuxRegistration: s.registrationGeneration } };
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
     if (request.method === "POST") { posts++; return new Response("lost after commit", { status: 502 }); }
     return Response.json(new URL(request.url).pathname === "/session" ? [native] : native);
@@ -56,7 +57,8 @@ test("missing or corrupt admission evidence refuses instead of spawning a replac
 
 test("lost prompt ACK is proven by the exact native user record and never reposted", async () => {
   const { m, s } = fixture();
-  const input = { messageId: crypto.randomUUID(), nativeId: "msg_input", text: "safe prompt", phase: "queued" } satisfies Parameters<typeof writeRuntimeInput>[2];
+  const input = { messageId: crypto.randomUUID(), nativeId: "msg_input", text: "safe prompt", phase: "queued",
+    turnOptions: { revision: 0, options: { runtime: "opencode", model: { provider: "provider-a", model: "model-a" } } } } satisfies Parameters<typeof writeRuntimeInput>[2];
   await writeRuntimeInput(m, s, input);
   const projection = new OpenCodeProjection(m, s, process.pid); projection.status({ type: "idle" });
   let posts = 0;

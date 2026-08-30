@@ -1,4 +1,11 @@
 import { defineContract } from "stitchkit";
+import { ControlHistoryReadSchema, ControlHistoryResultSchema, ControlCompactSchema, ControlContextOperationReadSchema, ControlContextOperationResultSchema } from "./contextSchema.ts";
+import { NativeForkRequestSchema } from "../context/schema.ts";
+import { SteeringInputSchema, SteeringSelectorSchema, SteeringReceiptSchema, SteeringReadResultSchema } from "../steering/schema.ts";
+import { SelectionReadSchema, SelectionUpdateSchema, SelectionResultSchema } from "./selectionSchema.ts";
+import { AttachmentBeginSchema, AttachmentChunkSchema, AttachmentUploadSelectorSchema, AttachmentReadSchema,
+  AttachmentUploadReceiptSchema, AttachmentReadReceiptSchema, AttachmentCancelReceiptSchema } from "../attachments/schema.ts";
+import { AttachmentReferenceSchema } from "../attachments/reference.ts";
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from "../runtime/capabilities.ts";
 import { ControlDirectoryReadSchema, ControlDirectoryResultSchema } from "./directorySchema.ts";
 import { ExternalStatusSnapshotSchema, EXTERNAL_MAX_BYTES } from "../external/resident-schema.ts";
@@ -11,6 +18,32 @@ import {
 } from "./schema.ts";
 
 export const controlContract = defineContract({ prefix: "control", scope: "local" }, {
+  history: { method: "POST", path: "/history", desc: "Read a bounded native history page through its existing owner",
+    input: ControlHistoryReadSchema, output: ControlHistoryResultSchema, idempotent: true, timeout: 7_000 },
+  compact: { method: "POST", path: "/context/compact", desc: "Accept an exact idle native compaction operation",
+    input: ControlCompactSchema, output: ControlContextOperationResultSchema, idempotent: true },
+  contextOperation: { method: "POST", path: "/context/operation", desc: "Read durable native compaction completion evidence",
+    input: ControlContextOperationReadSchema, output: ControlContextOperationResultSchema, idempotent: true },
+  fork: { method: "POST", path: "/fork", desc: "Fork one idle native conversation without changing its source",
+    input: NativeForkRequestSchema, output: ControlCreateReceiptSchema, idempotent: true, timeout: 65_000 },
+  steer: { method: "POST", path: "/turn/steer", desc: "Submit content to an exact active native turn",
+    input: SteeringInputSchema, output: SteeringReceiptSchema, idempotent: true, timeout: 15_000 },
+  steeringOperation: { method: "POST", path: "/turn/steering-operation", desc: "Read exact steering acceptance without resubmission",
+    input: SteeringSelectorSchema, output: SteeringReadResultSchema, idempotent: true },
+  selection: { method: "POST", path: "/selection", desc: "Read the exact session's revisioned native turn defaults",
+    input: SelectionReadSchema, output: SelectionResultSchema, idempotent: true },
+  select: { method: "POST", path: "/selection/update", desc: "Change native turn defaults between turns with revision CAS",
+    input: SelectionUpdateSchema, output: SelectionResultSchema, idempotent: true },
+  attachmentBegin: { method: "POST", path: "/attachment/begin", desc: "Reserve one bounded image upload for an exact target",
+    input: AttachmentBeginSchema, output: AttachmentUploadReceiptSchema, idempotent: true },
+  attachmentChunk: { method: "POST", path: "/attachment/chunk", desc: "Append one authenticated bounded image chunk",
+    input: AttachmentChunkSchema, output: AttachmentUploadReceiptSchema, idempotent: true },
+  attachmentFinalize: { method: "POST", path: "/attachment/finalize", desc: "Verify complete image bytes and return an immutable reference",
+    input: AttachmentUploadSelectorSchema, output: AttachmentReferenceSchema, idempotent: true },
+  attachmentCancel: { method: "POST", path: "/attachment/cancel", desc: "Cancel an unretained image upload",
+    input: AttachmentUploadSelectorSchema, output: AttachmentCancelReceiptSchema, idempotent: true },
+  attachmentRead: { method: "POST", path: "/attachment/read", desc: "Read one authorized preview chunk; never expose owner paths",
+    input: AttachmentReadSchema, output: AttachmentReadReceiptSchema, idempotent: true },
   runtimes: { method: "POST", path: "/runtimes", desc: "Discover configured execution runtimes and explicit capabilities",
     toolName: "runtimes", expose: ["HTTP", "CLI", "MCP"], idempotent: true,
     input: RuntimeCatalogInputSchema, output: RuntimeCatalogSchema },

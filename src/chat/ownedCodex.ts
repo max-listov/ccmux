@@ -15,6 +15,10 @@ import { replyRouteToSender } from "./replyRoute.ts";
 import { promptInvocation } from "../env.ts";
 import { findOwnedCodexReceipt } from "./ownedCodexReceipt.ts";
 import { log } from "../util/log.ts";
+import { withNativeAdmission } from "../runtime/admission.ts";
+import { contextMutationPending } from "../context/store.ts";
+import { codexTextInput } from "../agent/codex/turnInput.ts";
+import { resolveMessageAttachments } from "../attachments/pins.ts";
 
 type Cursors = ReturnType<typeof loadCursors>;
 export const nativeDeliveryDependencies = {
@@ -26,6 +30,11 @@ export const nativeDeliveryDependencies = {
 /** The daemon is the sole cursor writer. All managed native submissions pass this same gate. */
 export async function deliverOwnedCodexPending(m: MachineConfig, s: Session, ledger: readonly LedgerSlot[],
   cursors: Cursors, acked: ReadonlySet<string>, rateHeld: boolean, now = Date.now(), deps = nativeDeliveryDependencies): Promise<number> {
+  return withNativeAdmission(m, s, () => deliverLocked(m, s, ledger, cursors, acked, rateHeld, now, deps));
+}
+
+async function deliverLocked(m: MachineConfig, s: Session, ledger: readonly LedgerSlot[],
+  cursors: Cursors, acked: ReadonlySet<string>, rateHeld: boolean, now: number, deps: typeof nativeDeliveryDependencies): Promise<number> {
   const recipient = managedPeer(m.rcPrefix, s);
   const key = managedPeerKey(recipient);
   const pickup = cursors.pickups[key];
@@ -60,6 +69,7 @@ export async function deliverOwnedCodexPending(m: MachineConfig, s: Session, led
     } finally { rpc.close(); }
   }
   if (pick === null) return 0;
+  if (contextMutationPending(m, s)) { await hold("native context operation is unresolved"); return 0; }
   if (rateHeld) { await hold("native chat inbound rate limit"); return 0; }
   if (observed.snapshot.state !== "idle") { await hold(`native runtime is ${observed.snapshot.state}`); return 0; }
   if (await deps.typing(m, s.name, 3)) { await hold("a human typed in that pane a moment ago"); return 0; }
@@ -70,7 +80,7 @@ export async function deliverOwnedCodexPending(m: MachineConfig, s: Session, led
     if (!gated) { await hold("native client input could not be gated"); return 0; }
     const inspection = inspectNativeCodexInput(await deps.capture(m, s.name, 40));
     if (inspection?.state !== "deliverable") { await hold(inspection?.reason ?? "native client readiness unavailable"); return 0; }
-    const context = s.launchRecipe?.collaborationMode === undefined
+    const context = s.launchRecipe?.collaborationMode === undefined && pick.msg.turnOptions === undefined
       ? { thread: await readCodexAppThread(rpc, s.uuid) }
       : await resumeCodexAppThreadContext(rpc, s.uuid);
     const thread = context.thread;
@@ -83,11 +93,13 @@ export async function deliverOwnedCodexPending(m: MachineConfig, s: Session, led
     }
     let policy: Awaited<ReturnType<typeof prepareManagedCodexTurn>>;
     try {
-      policy = await prepareManagedCodexTurn(rpc, s, context);
+      policy = await prepareManagedCodexTurn(rpc, m, s, context, pick.msg.turnOptions?.options);
     } catch {
       await hold("managed collaboration policy is unavailable");
       return 0;
     }
+    const attachments = pick.msg.images?.length
+      ? await resolveMessageAttachments(m, s, pick.msg.id, pick.msg.images, AbortSignal.timeout(5_000)) : [];
     const conditional = conditionalMessage(pick.msg);
     cursors.pickups[key] = { messageId: pick.msg.id, ledgerIndex: pick.idx, conditional,
       injectedAt: new Date(now).toISOString(), native: { phase: "intent", turnId: null } };
@@ -97,7 +109,9 @@ export async function deliverOwnedCodexPending(m: MachineConfig, s: Session, led
     }
     await deps.save(m, cursors);
     const text = formatChatInjection(pick.msg, { cli: promptInvocation(), reply: replyRouteToSender(m, pick.msg.from) });
-    const turnId = await startCodexAppTurn(rpc, s.uuid, pick.msg.id, text, policy);
+    const input = codexTextInput(text);
+    for (const attachment of attachments) input.push({ type: "localImage", path: attachment.path });
+    const turnId = await startCodexAppTurn(rpc, s.uuid, pick.msg.id, input, policy);
     const current = cursors.pickups[key];
     if (current === undefined) throw new Error("Native pickup intent disappeared");
     current.native = { phase: "accepted", turnId };

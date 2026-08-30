@@ -14,9 +14,11 @@ import { computeStamp } from "../launchStamp.ts";
 import { writeLaunchStamp } from "../sessionStatus.ts";
 import { promptInvocation } from "../../env.ts";
 import { recordRuntimeDiagnostic } from "../../runtime/diagnostics.ts";
+import { verifyApplicationPolicy } from "../../policy/resolve.ts";
 
 export async function runOpenCodeProcess(m: MachineConfig, initial: Session,
   promote?: (session: Session) => Promise<Session>): Promise<void> {
+  if (initial.applicationPolicy !== undefined) verifyApplicationPolicy(m, "opencode", initial.applicationPolicy);
   const root = managedRuntimeRoot(m, initial);
   privateRuntimeDirectory(root);
   await withDirectoryLock(join(root, "owner.lock"), async () => {

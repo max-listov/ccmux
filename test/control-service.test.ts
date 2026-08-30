@@ -1,7 +1,15 @@
+import { CCMUX_CONTROL_SERVICE_INGRESS_PATH, CCMUX_CONTROL_SERVICE_REVISION } from "../src/control/serviceDescriptor.ts";
 import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseNDJSON } from "stitchkit";
+import { z } from "zod";
+import { ContentBuffer } from "../src/content/buffer.ts";
+import { ContentWriter } from "../src/content/store.ts";
+import { ownedCodexSocket, privateRuntimeDirectory } from "../src/agent/codex/ownedPaths.ts";
+import { dirname } from "node:path";
+import { imageBytes, digest } from "./attachments-fixture.test.ts";
+import { ATTACHMENT_LIMITS } from "../src/attachments/reference.ts";
 import { loadSessions, writeSessionsUnlocked } from "../src/config/sessions.ts";
 import { managedPeer, managedPeerKey } from "../src/chat/identity.ts";
 import { loadLedger } from "../src/chat/store.ts";
@@ -33,6 +41,24 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
+function catalogFixture(socket: string) {
+  privateRuntimeDirectory(dirname(socket));
+  const RequestSchema = z.object({ id: z.union([z.string(), z.number()]).optional(), method: z.string() }).passthrough();
+  return Bun.serve({ unix: socket, fetch(request, server) {
+    if (server.upgrade(request)) return;
+    return new Response(null, { status: 400 });
+  }, websocket: { message(ws, value) {
+    const request = RequestSchema.parse(JSON.parse(String(value)));
+    if (request.id === undefined) return;
+    const result = request.method === "initialize" ? { userAgent: "codex/0.147.0" }
+      : request.method === "config/read" ? { config: { model_provider: "openai" } }
+        : { data: ["model-a", "model-b"].map((id) => ({ id, model: id, displayName: id, description: "fixture",
+          hidden: false, isDefault: id === "model-a", inputModalities: ["text", "image"], serviceTiers: [],
+          supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "fixture" }], defaultReasoningEffort: "medium" })), nextCursor: null };
+    ws.send(JSON.stringify({ id: request.id, result }));
+  } } });
+}
+
 async function fixture(options: { launchRecipe?: boolean } = {}) {
   const root = mkdtempSync("/tmp/ccmux-service-test-");
   const recipeEnvFile = join(root, "provider.env");
@@ -59,6 +85,8 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
     dir: root,
     agent: "codex",
     runtime: "app-server",
+    registrationGeneration: crypto.randomUUID(),
+    modelSelection: { provider: "openai", model: "model-a" },
     chatEnabled: true,
   });
   await writeSessionsUnlocked(machine, [session]);
@@ -74,6 +102,12 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
   });
   const writer = new OwnedCodexStatusWriter(machine, session.name);
   await writer.write(native.snapshot());
+  const content = new ContentBuffer(machine, session, native.snapshot().generation);
+  content.text("assistant", "turn-a", "assistant-a", "ready", "replace", true);
+  const contentWriter = new ContentWriter(machine, session);
+  contentWriter.offer(() => content.snapshot());
+  await contentWriter.flush();
+  const provider = catalogFixture(ownedCodexSocket(machine, session.name));
   const publisher = new ControlPublisher(machine);
   const monitoring = new MonitoringPublisher();
   const publish = async () => {
@@ -120,7 +154,7 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
     );
     const payload = typeof init?.body === "string" ? init.body : "{}";
     servicePayloads.push(payload);
-    return fetch("http://ccmux.local/ccmux-control/v1/invoke", {
+    return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
       unix: socket,
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -129,7 +163,7 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
         id: crypto.randomUUID(),
         caller: "host-b",
         service: "ccmux.control",
-        revision: "1",
+        revision: CCMUX_CONTROL_SERVICE_REVISION,
         operation,
         payload,
       }),
@@ -138,6 +172,8 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
   const target = managedPeer(machine.rcPrefix, session);
   cleanup.push(async () => {
     await local.close();
+    await contentWriter.close();
+    await provider.stop(true);
     publisher.close();
     owned.external.close();
     await owned.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
@@ -163,6 +199,41 @@ test("declared service activates a host-owned recipe without carrying its enviro
   expect(f.createCalls()).toBe(1);
 });
 
+test("current declared service exposes revisioned selection and image upload without a second ingress", async () => {
+  const f = await fixture();
+  const registrationGeneration = f.session.registrationGeneration;
+  if (registrationGeneration === undefined) throw new Error("fixture registration missing");
+  const selection = await f.remote.selection({ target: f.target, registrationGeneration });
+  expect(selection.current).toMatchObject({ revision: 0, options: { model: { model: "model-a" }, mode: "default" } });
+  const change = { target: f.target, registrationGeneration, operationId: crypto.randomUUID(), expectedRevision: 0,
+    options: { runtime: "codex", model: { provider: "openai", model: "model-b" }, mode: "plan", effort: "medium" } };
+  const changed = await f.remote.select({ ...change, options: { ...change.options, runtime: "codex", mode: "plan", effort: "medium" } });
+  expect(changed.current).toMatchObject({ revision: 1, options: { model: { model: "model-b" }, mode: "plan" } });
+  expect(await f.remote.select({ ...change, options: { ...change.options, runtime: "codex", mode: "plan", effort: "medium" } })).toEqual(changed);
+
+  const bytes = imageBytes("png", 320, 240, true), uploadId = crypto.randomUUID();
+  const begin = await f.remote.attachmentBegin({ target: f.target, uploadId, mediaType: "image/png", totalBytes: bytes.length, digest: digest(bytes) });
+  expect(begin.receivedBytes).toBe(0);
+  for (let offset = 0; offset < bytes.length; offset += ATTACHMENT_LIMITS.chunkBytes) {
+    const receipt = await f.remote.attachmentChunk({ target: f.target, uploadId, offset,
+      data: bytes.subarray(offset, offset + ATTACHMENT_LIMITS.chunkBytes).toString("base64") });
+    expect(receipt.receivedBytes).toBe(Math.min(bytes.length, offset + ATTACHMENT_LIMITS.chunkBytes));
+  }
+  const reference = await f.remote.attachmentFinalize({ target: f.target, uploadId });
+  expect(reference).toMatchObject({ id: uploadId, digest: digest(bytes), width: 320, height: 240 });
+  const preview = await f.remote.attachmentRead({ target: f.target, reference, offset: 0 });
+  expect(Buffer.from(preview.data, "base64")).toEqual(bytes.subarray(0, ATTACHMENT_LIMITS.chunkBytes));
+  await expect(f.local.attachmentRead({ target: f.target, reference, offset: 0 })).rejects.toMatchObject({ code: "ATTACHMENT_UNAVAILABLE" });
+  const messageId = crypto.randomUUID();
+  expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({ messageId, accepted: true, duplicate: false, turnOptions: changed.current });
+  expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({ messageId, accepted: true, duplicate: true, turnOptions: changed.current });
+  expect(loadLedger(f.machine)[0]).toMatchObject({ body: "", images: [reference], turnOptions: changed.current });
+  await expect(f.remote.attachmentCancel({ target: f.target, uploadId })).rejects.toMatchObject({ code: "ATTACHMENT_UNAVAILABLE" });
+  expect(f.servicePayloads.filter((payload) => payload.includes('"images"')).every((payload) => Buffer.byteLength(payload) < 32 * 1024)).toBe(true);
+  expect((await fetch("http://ccmux.local/ccmux-control/v1/invoke", { unix: f.socket, method: "POST",
+    headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(404);
+});
+
 test("declared service reuses exact control operations, identity and admission", async () => {
   const f = await fixture();
   expect(await f.remote.get({ target: f.target })).toEqual(await f.local.get({ target: f.target }));
@@ -174,11 +245,13 @@ test("declared service reuses exact control operations, identity and admission",
     messageId,
     accepted: true,
     duplicate: false,
+    turnOptions: (await f.remote.selection({ target: f.target, registrationGeneration: f.session.registrationGeneration! })).current,
   });
   expect(await f.remote.message({ target: f.target, messageId, body: "service message" })).toEqual({
     messageId,
     accepted: true,
     duplicate: true,
+    turnOptions: (await f.remote.selection({ target: f.target, registrationGeneration: f.session.registrationGeneration! })).current,
   });
   expect(loadLedger(f.machine)).toHaveLength(1);
   expect(loadLedger(f.machine)[0]?.from).toEqual({ kind: "cli", source: "ccmux", machine: "host-b" });
@@ -203,7 +276,7 @@ test("declared service reuses exact control operations, identity and admission",
 test("service envelope, effect, nested selector, size and stale identity fail closed", async () => {
   const f = await fixture();
   const invoke = (body: unknown) =>
-    fetch("http://ccmux.local/ccmux-control/v1/invoke", {
+    fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
       unix: f.socket,
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -214,11 +287,11 @@ test("service envelope, effect, nested selector, size and stale identity fail cl
     id: crypto.randomUUID(),
     caller: "host-b",
     service: "ccmux.control",
-    revision: "1",
+    revision: CCMUX_CONTROL_SERVICE_REVISION,
     operation: "session.get",
     payload: JSON.stringify({ target: f.target }),
   };
-  expect((await invoke({ ...base, revision: "2" })).status).toBe(400);
+  expect((await invoke({ ...base, revision: "1" })).status).toBe(400);
   expect((await invoke({ ...base, operation: "unknown" })).status).toBe(400);
   expect(
     (await invoke({ ...base, payload: JSON.stringify({ target: f.target, operation: "session.archive" }) })).status,
@@ -314,7 +387,7 @@ test("native stream cursor binds target and source adapter resumes, heartbeats a
     Symbol.asyncIterator
   ]();
   const resumedFrame = await nextFrame(resumed, resumedFrames, "resume");
-  expect(JSON.parse(resumedFrame.data)).toMatchObject({ target: f.target, reset: null, items: [] });
+  expect(JSON.parse(resumedFrame.data)).toMatchObject({ target: f.target, reset: null, records: [] });
   resumed.kill("SIGTERM");
   expect(await resumed.exited).toBe(0);
 

@@ -6,8 +6,7 @@ import { ownedCodexSocket } from "./ownedPaths.ts";
 // These notifications are not turn state. In particular app/list/updated can be megabytes of
 // connector metadata, broadcast when an interactive client refreshes its app catalogue.
 export const OWNED_CODEX_OMIT_NOTIFICATIONS = [
-  "app/list/updated", "item/agentMessage/delta",
-  "item/reasoning/textDelta", "item/reasoning/summaryTextDelta", "item/commandExecution/outputDelta",
+  "app/list/updated", "item/reasoning/textDelta", "item/commandExecution/outputDelta",
   "item/fileChange/outputDelta", "item/mcpToolCall/progress",
 ];
 
