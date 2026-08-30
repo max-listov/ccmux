@@ -28,10 +28,15 @@ test('relay itself no longer invents a cause either', () => {
   const err = console.error;
   console.error = (...a: unknown[]) => void lines.push(a.join(' '));
   try {
-    relay({ code: 1, stdout: '', stderr: '', transportFailed: true }, 'restart x');
+    relay(
+      { code: 1, stdout: '', stderr: '', transportFailed: true, delivery: 'unknown' },
+      'restart x',
+    );
   } finally {
     console.error = err;
   }
   expect(lines.join('\n')).not.toMatch(/agent forwarding/i);
   expect(lines.join('\n')).toMatch(/no reason reported/i);
+  expect(lines.join('\n')).toContain('execution is unknown');
+  expect(lines.join('\n')).not.toContain('nothing was sent');
 });

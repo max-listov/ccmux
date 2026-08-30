@@ -3,7 +3,7 @@ import { loadSessions } from '../config/sessions.ts';
 import { contextMutationPending } from '../context/store.ts';
 import { promptInvocation } from '../env.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
-import { openCodeMessageId, readRuntimeInput, writeRuntimeInput } from '../runtime/input.ts';
+import { readRuntimeInput, runtimeInputId, writeRuntimeInput } from '../runtime/input.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { formatChatInjection } from './format.ts';
@@ -62,8 +62,10 @@ async function deliverLocked(
       const previousComplete =
         input === null ||
         (input.phase === 'accepted' &&
-          read.snapshot.turn?.id === input.nativeId &&
-          read.snapshot.turn.status !== 'inProgress');
+          (s.agent === 'custom'
+            ? input.terminal !== undefined
+            : read.snapshot.turn?.id === input.nativeId &&
+              read.snapshot.turn.status !== 'inProgress'));
       const slot = pickup.ledgerIndex === null ? null : ledger[pickup.ledgerIndex];
       if (
         pickup.native?.phase === 'intent' &&
@@ -79,7 +81,7 @@ async function deliverLocked(
         // when no unresolved native dispatch exists; corrupt or uncertain receipts never replay.
         await writeRuntimeInput(m, s, {
           messageId: slot.id,
-          nativeId: openCodeMessageId(slot.id, Date.parse(pickup.injectedAt)),
+          nativeId: runtimeInputId(s, slot.id, Date.parse(pickup.injectedAt)),
           images: slot.images,
           turnOptions: slot.turnOptions,
           phase: 'queued',
@@ -100,12 +102,22 @@ async function deliverLocked(
     }
     pickup.native = { phase: 'accepted', turnId: input.nativeId };
     advanceMessageOperation(m, s, pickup.messageId, 'admitted', input.nativeId, now);
+    const currentTurnId = input.continuations.at(-1)?.turnId ?? input.nativeId;
     const terminal =
-      read.snapshot.turn?.id === input.nativeId && read.snapshot.turn.status !== 'inProgress';
+      s.agent === 'custom'
+        ? input.terminal !== undefined
+        : read.snapshot.turn?.id === currentTurnId && read.snapshot.turn.status !== 'inProgress';
     if (terminal && read.snapshot.state === 'idle') {
       const turn = read.snapshot.turn;
       if (turn !== null && turn.status !== 'inProgress')
-        advanceMessageOperation(m, s, pickup.messageId, turn.status, input.nativeId, now);
+        advanceMessageOperation(
+          m,
+          s,
+          pickup.messageId,
+          input.terminal ?? turn.status,
+          input.nativeId,
+          now,
+        );
       if (pickup.conditional) appendAck(m, pickup.messageId, 'daemon', recipient);
       delete cursors.pickups[key];
       clearChatHold(s.name);
@@ -140,7 +152,7 @@ async function deliverLocked(
   await saveCursors(m, cursors);
   await writeRuntimeInput(m, s, {
     messageId: pick.msg.id,
-    nativeId: openCodeMessageId(pick.msg.id, now),
+    nativeId: runtimeInputId(s, pick.msg.id, now),
     phase: 'queued',
     images: pick.msg.images,
     turnOptions: pick.msg.turnOptions,

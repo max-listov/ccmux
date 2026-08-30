@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
-import { CODEX_RUNTIME_MAX_BYTES, CODEX_RUNTIME_TTL_MS } from '../agent/codex/ownedSchema.ts';
 import { readOwnedCodexStatus } from '../agent/codex/ownedStatus.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { readRuntimeLease } from './lease.ts';
+import { NATIVE_RUNTIME_MAX_BYTES, NATIVE_RUNTIME_TTL_MS } from './projectionSchema.ts';
 import {
   type ManagedRuntimeRead,
   type ManagedRuntimeSnapshot,
@@ -33,7 +33,7 @@ export function readManagedRuntimeStatus(
   const snapshot = readPrivateJson(
     join(managedRuntimeRoot(m, s), 'status.json'),
     ManagedRuntimeSnapshotSchema,
-    CODEX_RUNTIME_MAX_BYTES,
+    NATIVE_RUNTIME_MAX_BYTES,
   );
   if (snapshot === null)
     return { protocol: 1, status: 'unavailable', reason: 'unavailable', snapshot: null };
@@ -54,7 +54,7 @@ function validateRuntimeLiveness(
   snapshot: ManagedRuntimeSnapshot,
   now: number,
 ): ManagedRuntimeRead {
-  const lease = readRuntimeLease(snapshot, now, CODEX_RUNTIME_TTL_MS);
+  const lease = readRuntimeLease(snapshot, now, NATIVE_RUNTIME_TTL_MS);
   return { protocol: 1, ...lease, snapshot: lease.status === 'live' ? snapshot : null };
 }
 
@@ -81,7 +81,7 @@ export class ManagedRuntimeStatusWriter {
         const value = this.next;
         this.next = null;
         const bytes = JSON.stringify(ManagedRuntimeSnapshotSchema.parse(value));
-        if (Buffer.byteLength(bytes) > CODEX_RUNTIME_MAX_BYTES)
+        if (Buffer.byteLength(bytes) > NATIVE_RUNTIME_MAX_BYTES)
           throw new Error('Native projection exceeds its byte limit');
         await atomicWrite(this.path, bytes, 0o600);
       }

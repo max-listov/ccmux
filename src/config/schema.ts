@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CustomLaunchConfigSchema } from '../agent/custom/config.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
 import { ExternalTurnStateSchema } from '../external/turnSchema.ts';
 import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from '../policy/schema.ts';
@@ -93,6 +94,7 @@ export const MachineLaunchRecipeSchema = z
     /** Select the provider's installed preset on every turn. Model, effort and built-in instructions
      * are resolved from the provider; the recipe stores no caller-authored prompt. */
     collaborationMode: CodexCollaborationModeSchema.optional(),
+    custom: CustomLaunchConfigSchema.optional(),
   })
   .strict();
 

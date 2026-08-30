@@ -20,15 +20,16 @@ const m = { ...loadMachineConfig(), stateDir: join(root, 'state'), rcPrefix: 'pr
 const monitoring = new MonitoringPublisher();
 const publisher = new ControlPublisher(m);
 let client: ReturnType<typeof createControlClient> | undefined;
+let owned: ReturnType<typeof createControlServer> | undefined;
 try {
   monitoring.begin(m);
   publisher.publish(m, await monitoring.publish(m));
-  const owned = createControlServer(m, publisher);
+  owned = createControlServer(m, publisher);
   client = createControlClient({ socket: controlSocket(m) });
   check(loadSessions(m).length === 0, 'Registry is not empty before discovery');
-  const first = await client.models({ limit: 2 });
+  const first = await client.models({ runtime: 'codex', limit: 2 });
   check(
-    first.target === undefined && first.source.kind === 'host',
+    first.target === undefined && first.source.kind === 'host' && first.source.runtime === 'codex',
     'Host catalog invented a target',
   );
   check(first.data.length === 2, `Expected a two-model first page, got ${first.data.length}`);
@@ -36,7 +37,11 @@ try {
     typeof first.nextCursor === 'string' && first.nextCursor.length > 0,
     'Provider page did not continue',
   );
-  const second = await client.models({ cursor: first.nextCursor, limit: 2 });
+  const second = await client.models({ runtime: 'codex', cursor: first.nextCursor, limit: 2 });
+  check(
+    JSON.stringify(second.source) === JSON.stringify(first.source),
+    'Runtime source changed between pages',
+  );
   check(second.data.length === 2, 'Second page was empty');
   check(
     new Set([...first.data, ...second.data].map((model) => model.id)).size === 4,
@@ -44,6 +49,7 @@ try {
   );
 
   const full = await client.models({});
+  check(full.source.runtime === 'codex', 'Default runtime identity is absent');
   check(full.nextCursor === null, 'Full page still reported a continuation cursor');
   check(full.data.length >= 4, 'Full catalog smaller than its own pagination');
   const defaults = full.data.filter((model) => model.isDefault);
@@ -78,6 +84,9 @@ try {
       {
         probe: 'control-models-e2e',
         connected: true,
+        runtime: first.source.runtime,
+        provider: first.source.provider,
+        emptyRegistry: true,
         visibleModels: full.data.length,
         hiddenModels: hidden.data.length - full.data.length,
         defaultModel: defaults[0]?.id ?? null,
@@ -89,12 +98,10 @@ try {
       2,
     ),
   );
-
-  await client.close();
-  await owned.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
-  await owned.observability.close();
-  publisher.close();
 } finally {
   await client?.close();
+  await owned?.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
+  await owned?.observability.close();
+  publisher.close();
   rmSync(root, { recursive: true, force: true });
 }

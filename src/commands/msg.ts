@@ -499,6 +499,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
           result.failureDetail ?? null,
           RETRY_WINDOW_MS / 60_000,
           result.permanent === true,
+          result.delivery,
         ),
       );
       return 0;

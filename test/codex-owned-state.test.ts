@@ -12,15 +12,15 @@ import { ownedCodexSocket, ownedCodexStatusPath } from '../src/agent/codex/owned
 import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
 import type { OwnedCodexRead } from '../src/agent/codex/ownedSchema.ts';
 import {
-  CODEX_RUNTIME_MAX_BYTES,
-  CODEX_RUNTIME_MAX_EVENTS,
-  CODEX_RUNTIME_TTL_MS,
-} from '../src/agent/codex/ownedSchema.ts';
-import {
   OwnedCodexStatusWriter,
   readOwnedCodexStatus,
   validateOwnedCodex,
 } from '../src/agent/codex/ownedStatus.ts';
+import {
+  NATIVE_RUNTIME_MAX_BYTES,
+  NATIVE_RUNTIME_MAX_EVENTS,
+  NATIVE_RUNTIME_TTL_MS,
+} from '../src/runtime/projectionSchema.ts';
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 const session = makeSession({ agent: 'codex', runtime: 'app-server' });
@@ -149,8 +149,8 @@ test('resident events are bounded and readers detect cursor gaps and generation 
     reason: null,
     snapshot: p.snapshot(),
   };
-  expect(read.snapshot.events).toHaveLength(CODEX_RUNTIME_MAX_EVENTS);
-  expect(Buffer.byteLength(JSON.stringify(read.snapshot))).toBeLessThan(CODEX_RUNTIME_MAX_BYTES);
+  expect(read.snapshot.events).toHaveLength(NATIVE_RUNTIME_MAX_EVENTS);
+  expect(Buffer.byteLength(JSON.stringify(read.snapshot))).toBeLessThan(NATIVE_RUNTIME_MAX_BYTES);
   expect(codexRuntimeUpdates(read, first.cursor ?? undefined).reset).toBe('gap');
   expect(codexRuntimeUpdates(read, { generation: randomUUID(), sequence: 1 }).reset).toBe(
     'generation',
@@ -169,7 +169,7 @@ test('reader never exposes expired, dead, wrong identity or disconnected positiv
   const identity = { machine: machine.rcPrefix, session: session.name, threadId: session.uuid };
   const bytes = JSON.stringify(p.snapshot());
   expect(validateOwnedCodex(bytes, identity, 10_001).status).toBe('live');
-  expect(validateOwnedCodex(bytes, identity, 10_000 + CODEX_RUNTIME_TTL_MS)).toMatchObject({
+  expect(validateOwnedCodex(bytes, identity, 10_000 + NATIVE_RUNTIME_TTL_MS)).toMatchObject({
     status: 'stale',
     snapshot: null,
   });
@@ -206,7 +206,7 @@ test('prepared file reader rejects symlinks, permissive files and oversize; coal
   chmodSync(file, 0o666);
   expect(readOwnedCodexStatus(m, session).reason).toBe('unauthorized');
   chmodSync(file, 0o600);
-  writeFileSync(file, ' '.repeat(CODEX_RUNTIME_MAX_BYTES + 1));
+  writeFileSync(file, ' '.repeat(NATIVE_RUNTIME_MAX_BYTES + 1));
   expect(readOwnedCodexStatus(m, session).reason).toBe('oversized');
   const linkMachine = makeMachine({ stateDir: join(m.stateDir, 'other') });
   const link = ownedCodexStatusPath(linkMachine, session.name);

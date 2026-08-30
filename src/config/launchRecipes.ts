@@ -33,6 +33,7 @@ function recipeDigest(recipe: MachineLaunchRecipe): string {
     ...(recipe.collaborationMode === undefined
       ? {}
       : { collaborationMode: recipe.collaborationMode }),
+    ...(recipe.custom === undefined ? {} : { custom: recipe.custom }),
   };
   return createHash('sha256').update(stableJson(canonical)).digest('hex');
 }
@@ -49,11 +50,22 @@ function verifyAvailability(
   recipe: MachineLaunchRecipe,
 ): void {
   try {
-    ownedCodexFlags([...recipe.flags, ...m.extraFlags]);
+    if (recipe.custom === undefined) ownedCodexFlags([...recipe.flags, ...m.extraFlags]);
+    else if (recipe.flags.length > 0 || recipe.collaborationMode !== undefined)
+      unavailable(id, 'custom composition cannot carry Codex configuration');
   } catch (error) {
     unavailable(id, `native configuration was refused: ${String(error)}`);
   }
-  for (const name of recipe.environment) {
+  for (const name of [
+    ...recipe.environment,
+    ...(recipe.custom === undefined
+      ? []
+      : [
+          recipe.custom.provider.credentialEnv,
+          recipe.custom.approvalSecretEnv,
+          ...recipe.custom.commandEnvironment,
+        ]),
+  ]) {
     if (isReservedEnvKey(name)) unavailable(id, `environment name ${name} is reserved`);
   }
   if (recipe.envFile !== undefined) {
@@ -80,7 +92,15 @@ function verifyAvailability(
       id,
       `declared environment tried to set reserved names: ${environment.refused.join(',')}`,
     );
-  const missing = [...new Set(recipe.environment)]
+  const required =
+    recipe.custom === undefined
+      ? recipe.environment
+      : [
+          ...recipe.environment,
+          recipe.custom.provider.credentialEnv,
+          recipe.custom.approvalSecretEnv,
+        ];
+  const missing = [...new Set(required)]
     .filter((name) => environment.env[name] === undefined)
     .sort();
   if (missing.length > 0)
@@ -94,13 +114,18 @@ export function resolveControlLaunchRecipe(
   workspace: string,
   reference: LaunchRecipeReference | undefined,
   callerFlags: readonly string[],
+  runtime: 'codex' | 'custom' = 'codex',
 ): ResolvedControlLaunch {
   if (reference === undefined) return { flags: [...callerFlags] };
   if (callerFlags.length > 0)
     throw new AppError('INVALID_RECIPE_CREATE', 'Launch recipe owns native configuration', 409);
   const configured = m.launchRecipes[reference.id];
   if (configured === undefined) unavailable(reference.id, 'recipe id is not configured');
-  const recipe = MachineLaunchRecipeSchema.parse(configured);
+  const parsed = MachineLaunchRecipeSchema.safeParse(configured);
+  if (!parsed.success) unavailable(reference.id, 'host recipe definition is invalid');
+  const recipe = parsed.data;
+  if ((recipe.custom === undefined ? 'codex' : 'custom') !== runtime)
+    unavailable(reference.id, 'recipe runtime differs from requested runtime');
   if (recipe.revision !== reference.revision)
     unavailable(reference.id, `requested revision ${reference.revision} is not active`);
   verifyAvailability(m, workspace, reference.id, recipe);
@@ -124,7 +149,9 @@ export function resolveControlLaunchRecipe(
  * recipe blocks before Bun.spawn, while an unchanged recipe keeps the persisted UUID/generation. */
 export function verifyManagedLaunchRecipe(
   m: MachineConfig,
-  session: Pick<Session, 'dir' | 'envFile' | 'flags' | 'launchRecipe' | 'modelSelection'>,
+  session: Pick<Session, 'dir' | 'envFile' | 'flags' | 'launchRecipe' | 'modelSelection'> & {
+    agent?: Session['agent'];
+  },
 ): void {
   if (session.launchRecipe === undefined) return;
   const resolved = resolveControlLaunchRecipe(
@@ -132,13 +159,16 @@ export function verifyManagedLaunchRecipe(
     session.dir,
     { id: session.launchRecipe.id, revision: session.launchRecipe.revision },
     [],
+    session.agent === 'custom' ? 'custom' : 'codex',
   );
   if (
     resolved.launchRecipe?.digest !== session.launchRecipe.digest ||
     stableJson(resolved.launchRecipe?.capabilities ?? []) !==
       stableJson(session.launchRecipe.capabilities) ||
-    stableJson([...resolved.flags, ...modelSelectionFlags(session.modelSelection)]) !==
-      stableJson(session.flags) ||
+    stableJson([
+      ...resolved.flags,
+      ...(session.agent === 'custom' ? [] : modelSelectionFlags(session.modelSelection)),
+    ]) !== stableJson(session.flags) ||
     resolved.envFile !== session.envFile
   )
     unavailable(

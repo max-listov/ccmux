@@ -55,8 +55,7 @@ export async function forwardIfRemote(
   return { done: true, code };
 }
 
-/** Does this verb CHANGE anything on the far side? Only then may a transport failure claim that
- *  "nothing was sent" — for a read (`wait`, `transcript`, `logs`) that phrasing is simply false. */
+/** Mutating verbs require a delivery-certainty warning when the remote verdict is unknown. */
 const WRITES = new Set([
   'msg',
   'restart',

@@ -5,7 +5,7 @@ import {
   readContextOperation,
   readNativeHistory,
 } from '../context/service.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime, runtimeCapabilities } from '../runtime/capabilities.ts';
 import type { MachineConfig } from '../types.ts';
 import {
   type ControlCompactSchema,
@@ -35,6 +35,8 @@ export async function readControlHistory(
   signal: AbortSignal,
 ) {
   const session = exactTarget(m, input);
+  if (!runtimeCapabilities(session).history)
+    throw new AppError('UNSUPPORTED', 'Native history is unavailable', 409);
   const page = await readNativeHistory(
     m,
     session,
@@ -50,6 +52,8 @@ export async function compactControlContext(
   signal: AbortSignal,
 ) {
   const session = exactTarget(m, input);
+  if (!runtimeCapabilities(session).compaction)
+    throw new AppError('UNSUPPORTED', 'Native compaction is unavailable', 409);
   const operation = await compactNativeContext(
     m,
     session,

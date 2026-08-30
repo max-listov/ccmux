@@ -14,6 +14,12 @@ import {
   MessageOperationResultSchema,
 } from '../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../context/schema.ts';
+import {
+  ExternalContentCapabilitiesSchema,
+  ExternalContentReadSchema,
+  ExternalContentResultSchema,
+  ExternalContentSelectorSchema,
+} from '../external/contentSchema.ts';
 import { EXTERNAL_MAX_BYTES, ExternalStatusSnapshotSchema } from '../external/resident-schema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../runtime/capabilities.ts';
 import {
@@ -60,6 +66,24 @@ import {
 export const controlContract = defineContract(
   { prefix: 'control', scope: 'local' },
   {
+    externalHistory: {
+      method: 'POST',
+      path: '/external/history',
+      desc: 'Read bounded external authored text without writer mutation',
+      input: ExternalContentReadSchema,
+      output: ExternalContentResultSchema,
+      idempotent: true,
+      timeout: 7_000,
+    },
+    externalCapabilities: {
+      method: 'POST',
+      path: '/external/capabilities',
+      desc: 'Read exact external content and control eligibility',
+      input: ExternalContentSelectorSchema,
+      output: ExternalContentCapabilitiesSchema,
+      idempotent: true,
+      timeout: 7_000,
+    },
     messageOperation: {
       method: 'POST',
       path: '/message/operation',

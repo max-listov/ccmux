@@ -10,7 +10,7 @@ export function attachmentSession(m: MachineConfig, target: ManagedPeer, write: 
   const session = controlTarget(m, target);
   assertAttachment(
     (session.agent === 'codex' && session.runtime === 'app-server') ||
-      (session.agent === 'opencode' && session.runtime === 'native'),
+      (['opencode', 'custom'].includes(session.agent) && session.runtime === 'native'),
     'unsupported-runtime',
   );
   assertAttachment(session.registrationGeneration !== undefined, 'registration-required');

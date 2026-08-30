@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
+import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { stableJson } from '../agent/launchInputs.ts';
 import { validateOpenCodeSelection } from '../agent/opencode/catalog.ts';
 import { inheritAttachmentPins } from '../attachments/pins.ts';
@@ -41,6 +42,7 @@ import {
 } from '../policy/schema.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { recordRuntimeDiagnostic } from '../runtime/diagnostics.ts';
 import { readRuntimeInput } from '../runtime/input.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
@@ -150,9 +152,7 @@ export async function createControlSession(
 ) {
   const workspace = normalizeWorkspace(input.workspace);
   const runtime = input.runtime ?? 'codex';
-  if (runtime === 'custom')
-    throw new AppError('UNSUPPORTED', 'Custom runtime is not available on this host', 409);
-  if (runtime !== 'codex' && input.launchRecipe !== undefined)
+  if (runtime !== 'codex' && runtime !== 'custom' && input.launchRecipe !== undefined)
     throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
   if (runtime !== 'codex' && (input.flags?.length ?? 0) > 0)
     throw new AppError(
@@ -165,7 +165,26 @@ export async function createControlSession(
   if (input.modelSelection !== undefined && (input.flags?.length ?? 0) > 0)
     throw new AppError('INVALID_INPUT', 'Typed model selection cannot carry caller flags', 400);
   const resolved =
-    fork?.launch ?? resolveControlLaunchRecipe(m, workspace, input.launchRecipe, input.flags ?? []);
+    fork?.launch ??
+    resolveControlLaunchRecipe(
+      m,
+      workspace,
+      input.launchRecipe,
+      input.flags ?? [],
+      runtime === 'custom' ? 'custom' : 'codex',
+    );
+  let modelSelection = input.modelSelection;
+  if (runtime === 'custom') {
+    if (input.applicationPolicy !== undefined)
+      throw new AppError('UNSUPPORTED', 'Custom composition is owned by its launch recipe', 409);
+    try {
+      const host = prepareCustomHost(m, { dir: workspace, ...resolved });
+      modelSelection = customModel(host.config, input.modelSelection).selection;
+    } catch (error) {
+      await recordRuntimeDiagnostic(m, null, 'custom-create-preflight', error);
+      throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', 'Launch recipe is unavailable', 409);
+    }
+  }
   const applicationPolicy =
     fork?.launch.applicationPolicy ??
     (input.applicationPolicy === undefined
@@ -181,7 +200,7 @@ export async function createControlSession(
     ...(runtime === 'codex' ? {} : { runtime }),
     ...(resolved.envFile === undefined ? {} : { envFile: resolved.envFile }),
     ...(resolved.launchRecipe === undefined ? {} : { launchRecipe: resolved.launchRecipe }),
-    ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+    ...(modelSelection === undefined ? {} : { modelSelection }),
     ...(applicationPolicy === undefined ? {} : { applicationPolicy }),
     ...(fork === undefined ? {} : { forkSource: fork.source }),
   };
@@ -192,7 +211,8 @@ export async function createControlSession(
   if (accepted === undefined && input.modelSelection !== undefined) {
     if (runtime === 'opencode')
       await validateOpenCodeSelection(m, workspace, input.modelSelection, signal);
-    else await validateSelection(m, resolved, workspace, input.modelSelection, signal);
+    else if (runtime === 'codex')
+      await validateSelection(m, resolved, workspace, input.modelSelection, signal);
   }
   privateRuntimeDirectory(dirname(storeLockPath(m)));
   return withDirectoryLock(

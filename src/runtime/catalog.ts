@@ -26,8 +26,12 @@ export function readRuntimeCatalog(m: MachineConfig) {
       },
       {
         runtime: 'custom',
-        availability: 'unavailable',
-        reason: 'published-harness-unavailable',
+        availability: Object.values(m.launchRecipes).some((recipe) => recipe.custom !== undefined)
+          ? 'configured'
+          : 'unavailable',
+        reason: Object.values(m.launchRecipes).some((recipe) => recipe.custom !== undefined)
+          ? null
+          : 'runtime-not-configured',
         capabilities: runtimeCapabilities({ agent: 'custom', runtime: 'native' }),
       },
     ],

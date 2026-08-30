@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { routeFor } from '../src/fleet/address.ts';
 import { peersOf, queuedForRetryNotice } from '../src/fleet/transport.ts';
-import { refusalIsPermanent, runWire } from '../src/fleet/wire.ts';
+import { runWire } from '../src/fleet/wire.ts';
 import { callWireDoor } from '../src/fleet/wireDoor.ts';
+import { refusalIsPermanent } from '../src/fleet/wireProtocol.ts';
 import { makeMachine } from './helpers.ts';
 
 const cleanup: Array<() => void> = [];
@@ -23,12 +24,10 @@ test('capacity is temporary; policy and request are permanent', () => {
   expect(refusalIsPermanent('request')).toBe(true);
 });
 
-test('an older door that cannot say leaves the kind UNKNOWN, and nothing is inferred', () => {
+test('unclassified refusal leaves permanence unknown', () => {
   // Not "assume temporary" and not "assume permanent": both are guesses, and a guess here either
   // throws mail away or retries something that will never work.
-  expect(refusalIsPermanent(undefined)).toBeUndefined();
   expect(refusalIsPermanent('none')).toBeUndefined();
-  expect(refusalIsPermanent('future-class')).toBeUndefined();
 });
 
 test('bounded Unix door preserves additive replies and exact command outcomes', async () => {
@@ -41,6 +40,9 @@ test('bounded Unix door preserves additive replies and exact command outcomes', 
       expect(input).toMatchObject({ to: 'host-b', argv: ['ccmux', 'list', '--json'], stdin: null });
       return Response.json({
         v: 2,
+        id: crypto.randomUUID(),
+        ts: new Date().toISOString(),
+        from: 'host-b',
         code: 7,
         stdout: 'owner-output',
         stderr: 'owner-error',
@@ -64,7 +66,13 @@ test('bounded Unix door preserves additive replies and exact command outcomes', 
       'list',
       '--json',
     ]),
-  ).toEqual({ code: 7, stdout: 'owner-output', stderr: 'owner-error', transportFailed: false });
+  ).toEqual({
+    code: 7,
+    stdout: 'owner-output',
+    stderr: 'owner-error',
+    transportFailed: false,
+    delivery: 'received',
+  });
 });
 
 test('oversized and stalled local responses terminate and release their Unix transport', async () => {
@@ -147,11 +155,17 @@ test('version, malformed data and every refusal class remain distinct', async ()
     ['denied', 'policy', true],
     ['denied', 'request', true],
     ['denied', 'capacity', false],
-    ['remote-exit', 'none', undefined],
-    ['future-failure', 'future-refusal', undefined],
+    ['timeout', 'none', undefined],
+    ['transport', 'none', undefined],
+    ['exec', 'none', undefined],
+    ['offline', 'none', undefined],
+    ['rejected', 'request', true],
   ] satisfies Array<[string, string, boolean | undefined]>) {
     reply = {
       v: 2,
+      id: crypto.randomUUID(),
+      ts: new Date().toISOString(),
+      from: 'host-b',
       code: 1,
       stdout: '',
       stderr: '',

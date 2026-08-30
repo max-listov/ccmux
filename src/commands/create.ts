@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
+import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { getProvider } from '../agent/index.ts';
 import { clearLifecycleBlockIfGeneration, readLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import type { ModelSelection } from '../config/modelSelectionFlags.ts';
@@ -249,6 +250,8 @@ export async function createManagedSession(
   if ((fields.agent === 'opencode' || fields.agent === 'custom') && fields.runtime !== 'native')
     throw new Error('This provider requires a native runtime');
   nativeDriver(fields)?.preflight(m, input.flags);
+  if (fields.agent === 'custom')
+    customModel(prepareCustomHost(m, fields).config, fields.modelSelection);
   getProvider(input.agent).preflight(m);
   if (
     findSession(loadSessions(m), input.name) ||

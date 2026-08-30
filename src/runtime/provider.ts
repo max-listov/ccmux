@@ -7,13 +7,9 @@ import { CHAT_CREDENTIAL_ENV } from '../chat/auth.ts';
 export function nativeProvider(id: 'opencode' | 'custom'): AgentProvider {
   return {
     id,
-    preflight:
-      id === 'opencode'
-        ? preflightOpenCode
-        : () => {
-            throw new Error('Published custom harness is unavailable');
-          },
+    preflight: id === 'opencode' ? preflightOpenCode : () => undefined,
     buildArgv: (_s, m) => {
+      if (id === 'custom') return ['stitchkit/agent-runtime/harness'];
       if (id !== 'opencode' || m.opencodeBin === undefined)
         throw new Error('Native executable is unavailable');
       return [m.opencodeBin, 'serve', '--hostname', '127.0.0.1', '--port', '<owned-ephemeral>'];

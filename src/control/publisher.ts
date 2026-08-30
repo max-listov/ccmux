@@ -80,6 +80,9 @@ export class ControlPublisher {
         ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
         selection: owned ? readSelection(m, session) : null,
         nativeSelection: native?.snapshot?.nativeSelection ?? null,
+        ...(native?.snapshot?.nativeProfile === undefined
+          ? {}
+          : { nativeProfile: native.snapshot.nativeProfile }),
         ...(session.applicationPolicy === undefined
           ? {}
           : {

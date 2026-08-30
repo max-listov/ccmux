@@ -3,21 +3,21 @@ import { nativeTurnState } from '../../external/turnState.ts';
 import type { ApplicationPolicyEvidence } from '../../policy/schema.ts';
 import { ApplicationPolicyEvidenceSchema } from '../../policy/schema.ts';
 import {
+  NATIVE_RUNTIME_MAX_EVENTS,
+  NATIVE_RUNTIME_MAX_NATIVE_ITEMS,
+  NATIVE_RUNTIME_TTL_MS,
+  type NativeItem,
+  type NativePendingRequest,
+  type NativeTurn,
+} from '../../runtime/projectionSchema.ts';
+import {
   type NativeSelectionEvidence,
   NativeSelectionEvidenceSchema,
 } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { VERSION } from '../../util/version.ts';
 import { projectNativeEvent, projectNativeRequest, resolvedRequestId } from './ownedNative.ts';
-import {
-  CODEX_RUNTIME_MAX_EVENTS,
-  CODEX_RUNTIME_MAX_NATIVE_ITEMS,
-  CODEX_RUNTIME_TTL_MS,
-  type OwnedCodexNativeItem,
-  type OwnedCodexPendingRequest,
-  type OwnedCodexSnapshot,
-  type OwnedCodexTurn,
-} from './ownedSchema.ts';
+import type { OwnedCodexSnapshot } from './ownedSchema.ts';
 import type { CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
 import { codexSelectionEvent } from './selectionEvidence.ts';
 
@@ -33,7 +33,7 @@ const TurnEvent = z.object({
 /** State belongs to one connection generation. Snapshot reconciliation is revision guarded. */
 export class OwnedCodexProjection {
   private value: OwnedCodexSnapshot;
-  private submittedRequests = new Map<string, OwnedCodexPendingRequest>();
+  private submittedRequests = new Map<string, NativePendingRequest>();
   revision = 0;
 
   constructor(m: MachineConfig, s: Session, providerPid: number, now = Date.now()) {
@@ -84,7 +84,7 @@ export class OwnedCodexProjection {
     return true;
   }
 
-  restoreTurn(turn: OwnedCodexTurn | null): void {
+  restoreTurn(turn: NativeTurn | null): void {
     this.value.turn =
       turn === null
         ? null
@@ -188,7 +188,7 @@ export class OwnedCodexProjection {
     return true;
   }
 
-  pendingRequest(requestId: string): OwnedCodexPendingRequest | null {
+  pendingRequest(requestId: string): NativePendingRequest | null {
     return this.value.pendingRequests.find((item) => item.requestId === requestId) ?? null;
   }
 
@@ -269,7 +269,7 @@ export class OwnedCodexProjection {
 
   private touch(now: number): void {
     this.value.observedAt = new Date(now).toISOString();
-    this.value.expiresAt = new Date(now + CODEX_RUNTIME_TTL_MS).toISOString();
+    this.value.expiresAt = new Date(now + NATIVE_RUNTIME_TTL_MS).toISOString();
   }
 
   private append(kind: OwnedCodexSnapshot['events'][number]['kind'], now: number): void {
@@ -280,12 +280,12 @@ export class OwnedCodexProjection {
       state: this.value.state,
       turn: this.value.turn === null ? null : { ...this.value.turn },
     };
-    this.value.events = [...this.value.events, event].slice(-CODEX_RUNTIME_MAX_EVENTS);
+    this.value.events = [...this.value.events, event].slice(-NATIVE_RUNTIME_MAX_EVENTS);
   }
 
-  private appendNative(item: OwnedCodexNativeItem): void {
+  private appendNative(item: NativeItem): void {
     this.value.nativeSequence = item.sequence;
-    const items = [...this.value.nativeItems, item].slice(-CODEX_RUNTIME_MAX_NATIVE_ITEMS);
+    const items = [...this.value.nativeItems, item].slice(-NATIVE_RUNTIME_MAX_NATIVE_ITEMS);
     while (items.length > 1 && Buffer.byteLength(JSON.stringify(items)) > 64 * 1024) items.shift();
     this.value.nativeItems = items;
   }

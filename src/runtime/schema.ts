@@ -1,10 +1,9 @@
 import { z } from 'zod';
-import { OwnedCodexSnapshotSchema } from '../agent/codex/ownedSchema.ts';
 import { NativeSessionSchema } from '../config/schema.ts';
+import { NativeSnapshotSchema } from './projectionSchema.ts';
 
 /** The native projection vocabulary is shared; protocol-specific records remain driver-owned. */
-export const ManagedRuntimeSnapshotSchema = OwnedCodexSnapshotSchema.extend({
-  provider: z.enum(['codex', 'opencode', 'custom']),
+export const ManagedRuntimeSnapshotSchema = NativeSnapshotSchema.extend({
   nativeSession: NativeSessionSchema.optional(),
   registrationGeneration: z.uuid().optional(),
 });

@@ -68,6 +68,7 @@ export async function currentSelection(
       options: { runtime: 'codex', model, mode: s.launchRecipe?.collaborationMode ?? 'default' },
     };
   if (s.agent === 'opencode') return { revision: 0, options: { runtime: 'opencode', model } };
+  if (s.agent === 'custom') return { revision: 0, options: { runtime: 'custom', model } };
   throw new AppError('UNSUPPORTED', 'Native selection is unavailable', 409);
 }
 

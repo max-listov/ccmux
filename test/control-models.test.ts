@@ -257,7 +257,8 @@ const invoke = (f: Awaited<ReturnType<typeof fixture>>, body: unknown) =>
 
 test('model catalog is a bounded provider-owned read that forwards only safe metadata', async () => {
   const f = await fixture();
-  const read = await f.client.models({ target: f.target });
+  const read = await f.client.models({ target: f.target, runtime: 'codex' });
+  expect(read.source.runtime).toBe('codex');
   expect(read.target).toEqual(f.target);
   expect(read.data.map((model) => model.id)).toEqual(['model-a', 'model-b']);
   expect(read.data[0]).toMatchObject({
@@ -290,10 +291,22 @@ test('model catalog is a bounded provider-owned read that forwards only safe met
 
 test('pagination is deterministic, provider-cursored and bounded by the strict input schema', async () => {
   const f = await fixture();
-  const first = await f.client.models({ target: f.target, limit: 1 });
+  const first = await f.remote.models({ target: f.target, runtime: 'codex', limit: 1 });
   expect(first.data.map((model) => model.id)).toEqual(['model-a']);
   expect(first.nextCursor).toBe('1');
-  const second = await f.client.models({ target: f.target, cursor: first.nextCursor, limit: 1 });
+  const second = await f.remote.models({
+    target: f.target,
+    runtime: 'codex',
+    cursor: first.nextCursor,
+    limit: 1,
+  });
+  expect(first.source).toEqual({
+    kind: 'session',
+    runtime: 'codex',
+    machine: f.m.rcPrefix,
+    provider: 'openai',
+  });
+  expect(second.source).toEqual(first.source);
   expect(second.data.map((model) => model.id)).toEqual(['model-b']);
   expect(second.nextCursor).toBeNull();
   expect(f.provider.requests[1]).toEqual({
@@ -372,6 +385,21 @@ test('unknown identities fail closed before any provider contact', async () => {
     await expect(f.remote.models({ target })).rejects.toMatchObject({
       code: 'IDENTITY_MISMATCH',
       status: 409,
+    });
+  }
+  expect(f.provider.requests).toEqual([]);
+});
+
+test('explicit runtime mismatch refuses before dispatch even with a valid target', async () => {
+  const f = await fixture();
+  for (const runtime of ['opencode', 'custom', 'claude'] satisfies Array<
+    'opencode' | 'custom' | 'claude'
+  >) {
+    await expect(f.remote.models({ target: f.target, runtime })).rejects.toMatchObject({
+      code: 'IDENTITY_MISMATCH',
+    });
+    await expect(f.client.models({ target: f.target, runtime })).rejects.toMatchObject({
+      code: 'IDENTITY_MISMATCH',
     });
   }
   expect(f.provider.requests).toEqual([]);
@@ -613,7 +641,14 @@ test('zod model schemas accept canonical safe shapes only', () => {
     session: 'agent-a',
     threadId: '11111111-1111-4111-8111-111111111111',
   };
-  const source = { kind: 'session', machine: 'host-a', provider: 'openai' };
+  const source = { kind: 'session', runtime: 'codex', machine: 'host-a', provider: 'openai' };
+  expect(
+    ControlModelCatalogSchema.safeParse({
+      source: { kind: 'host', machine: 'host-a', provider: 'openai' },
+      data: [],
+      nextCursor: null,
+    }).success,
+  ).toBe(false);
   expect(
     ControlModelCatalogSchema.safeParse({ target: peer, source, data: [], nextCursor: null })
       .success,

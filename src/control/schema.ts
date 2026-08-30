@@ -1,8 +1,4 @@
 import { z } from 'zod';
-import {
-  OwnedCodexPendingRequestSchema,
-  OwnedCodexTurnSchema,
-} from '../agent/codex/ownedSchema.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
 import {
   AgentKindSchema,
@@ -18,7 +14,9 @@ import {
   ApplicationPolicyEvidenceSchema,
   ApplicationPolicyReferenceSchema,
 } from '../policy/reference.ts';
+import { RuntimeAppliedProfileSchema } from '../policy/runtimeProfile.ts';
 import { RuntimeCapabilitiesSchema } from '../runtime/capabilities.ts';
+import { NativePendingRequestSchema, NativeTurnSchema } from '../runtime/projectionSchema.ts';
 import {
   AcceptedTurnOptionsSchema,
   NativeSelectionEvidenceSchema,
@@ -48,12 +46,13 @@ export const ControlRowSchema = z
     reason: z.string().max(512).nullable(),
     observedAt: z.iso.datetime(),
     expiresAt: z.iso.datetime(),
-    turn: OwnedCodexTurnSchema.nullable(),
+    turn: NativeTurnSchema.nullable(),
     model: z.string().max(512).nullable(),
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     selection: AcceptedTurnOptionsSchema.nullable(),
     nativeSelection: NativeSelectionEvidenceSchema.nullable(),
     applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
+    nativeProfile: RuntimeAppliedProfileSchema.optional(),
     capabilities: z
       .object({
         message: z.boolean(),
@@ -152,12 +151,13 @@ export const ControlNativeReadSchema = ControlTargetSchema.extend({
 export const ControlNativeSnapshotSchema = ContentReadSchema.extend({
   observedAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
-  pending: z.array(OwnedCodexPendingRequestSchema.omit({ rpcId: true })).max(16),
+  pending: z.array(NativePendingRequestSchema.omit({ rpcId: true })).max(16),
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   selection: AcceptedTurnOptionsSchema.nullable(),
   nativeSelection: NativeSelectionEvidenceSchema.nullable(),
   applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
   nativeSession: NativeSessionSchema.optional(),
+  nativeProfile: RuntimeAppliedProfileSchema.optional(),
   driverCapabilities: RuntimeCapabilitiesSchema.optional(),
 }).strict();
 export type ControlNativeSnapshot = z.infer<typeof ControlNativeSnapshotSchema>;
@@ -242,7 +242,7 @@ export const ControlModelCatalogSchema = z
         kind: z.enum(['host', 'session']),
         machine: z.string().min(1),
         provider: z.string().min(1).max(128).nullable(),
-        runtime: AgentKindSchema.optional(),
+        runtime: AgentKindSchema,
         launchRecipe: LaunchRecipeMetadataSchema.optional(),
       })
       .strict(),
@@ -250,7 +250,16 @@ export const ControlModelCatalogSchema = z
     agents: z.array(z.string().min(1).max(128)).max(128).optional(),
     nextCursor: z.string().max(4_096).nullable(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (catalog) =>
+      catalog.source.kind === 'host'
+        ? catalog.target === undefined
+        : catalog.target !== undefined &&
+          catalog.target.agent === catalog.source.runtime &&
+          catalog.target.machine === catalog.source.machine,
+    'Catalog source must match its exact managed identity',
+  );
 export type ControlModelCatalog = z.infer<typeof ControlModelCatalogSchema>;
 export const ControlWaitSchema = ControlTargetSchema.extend({
   timeoutMs: z.number().int().min(1).max(60_000).default(30_000),
@@ -288,6 +297,7 @@ export function currentControlSnapshot(
       row.state = 'unknown';
       row.reason = current.reason ?? 'observation-expired';
       if (row.applicationPolicy !== undefined) row.applicationPolicy.state = 'unavailable';
+      delete row.nativeProfile;
     }
   }
   return current;

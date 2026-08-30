@@ -118,8 +118,17 @@ is not relabelled as cross-machine transport acceptance.
   `test/opencode-image-elision.test.ts` covers limits without widening ordinary response budgets.
 - [x] `src/context/history.ts` preserves native image order independently of pin insertion order;
   `test/history-image-order.test.ts` covers reversed/repeated pointers and registration isolation.
-- [ ] Cross-machine image proof waits for the external transport's current descriptor/profile
-  activation described in the umbrella task. Local service E2E is not labelled remote acceptance.
+- [ ] Cross-machine image proof requires an isolated authorized service fixture as described
+  in the umbrella task. Local service E2E is not labelled remote acceptance.
+
+### Refreshed transport preflight (2026-08-31)
+
+The remote node now declares the current 26-operation control service and native profile;
+the earlier old-descriptor finding is superseded. Its binding reaches the production daemon,
+whose configured notification mirror broadcasts every admitted chat message. The acceptance
+mandate explicitly requires isolated fixtures without user-facing test notifications. No fixture
+message was sent, notification cursor changed or production mirror disabled. Cross-machine
+mutating acceptance still needs an isolated transport binding; production read operations do not.
 
 ## Published acceptance
 

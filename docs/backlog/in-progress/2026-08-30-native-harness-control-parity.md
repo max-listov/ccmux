@@ -184,12 +184,12 @@ open. Local service probes are not substituted for that external acceptance.
 
 ## Transport activation boundary
 
-Read-only rollout preflight found the existing remote transport binding still declares the old
-service revision and native profile. The new owner descriptor cannot update another service's
-authorization policy by itself. A scoped operator activation task has been recorded in the private
-transport owner's backlog. No transport configuration, consumer source or alternate gateway was
-changed. Cross-machine image acceptance remains open until that owner replaces the binding using
-the exact published current artifact and returns correlated real request/stream evidence.
+The 2026-08-31 preflight supersedes the earlier old-descriptor finding: the remote binding now
+declares the current 26-operation service and native profile. It reaches the production daemon
+with user-facing notification mirroring enabled. Real mutating fixtures must remain isolated;
+silencing the production mirror or emitting test notifications is not an acceptance substitute.
+The image task records this narrower outstanding isolated-binding boundary. Production read
+checks and independent Custom integration continue; no alternate gateway is introduced.
 
 ## Post-publication native acceptance finding
 

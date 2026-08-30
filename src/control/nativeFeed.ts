@@ -6,6 +6,7 @@ import {
   readNativeReceipt,
   writeNativeCommand,
 } from '../agent/codex/ownedControl.ts';
+import { readMessageJournal } from '../chat/messageOperationStore.ts';
 import type { ManagedPeerSchema } from '../config/schema.ts';
 import { readContent, subscribeContent } from '../content/read.ts';
 import type { ContentRead } from '../content/schema.ts';
@@ -51,6 +52,7 @@ function nativeFrame(
     ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
     selection: readSelection(m, session),
     nativeSelection: snapshot.nativeSelection ?? null,
+    ...(snapshot.nativeProfile === undefined ? {} : { nativeProfile: snapshot.nativeProfile }),
     driverCapabilities: runtimeCapabilities(session),
     ...(session.applicationPolicy === undefined
       ? {}
@@ -111,6 +113,22 @@ export async function respondControlNative(
   if (!hasNativeRuntime(session))
     throw new AppError('UNSUPPORTED', 'Native responses require an owned structured runtime', 409);
   const fingerprint = nativeResponseFingerprint(input);
+  const canonical = readMessageJournal(m, session)
+    ?.records.flatMap((record) => record.continuations)
+    .find((continuation) => continuation.responseOperationId === input.operationId);
+  if (canonical) {
+    if (canonical.responseFingerprint !== fingerprint || canonical.requestId !== input.requestId)
+      throw new AppError('IDEMPOTENCY_CONFLICT', 'Native response payload changed', 409);
+    return {
+      operationId: input.operationId,
+      requestId: input.requestId,
+      outcome: 'submitted',
+    } satisfies {
+      operationId: string;
+      requestId: string;
+      outcome: 'submitted';
+    };
+  }
   const prior = readNativeReceipt(m, input.target.session);
   if (prior?.operationId === input.operationId) {
     if (prior.fingerprint !== fingerprint)

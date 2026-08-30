@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for managed sessions an
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-26
+updated: 2026-08-30
 ---
 
 # Peer routing and session identity
@@ -20,7 +20,9 @@ into a cwd-based guess.
 | Address | Which exact conversation is the target? | `host-a:agent-a`, `host-a:app/<uuid>` | Routes to one registry session or App thread. |
 | Capability | What can that source/provider pair actually do? | managed chat, App Server turn input, native task messaging | Decides which operation is legal; capability is not identity. |
 
-Two sessions can share one project directory while using different providers or sources. Therefore
+Two sessions can share one execution directory while using different providers or sources. A cwd
+does not prove a Git checkout or product/repository membership. Any product catalogue is explicit
+and consumer-owned; a dependency or harness project label does not establish membership. Therefore
 cwd, project name, model name, and recency are never routing keys. `ccmux list --json` requires an
 `agent` field for every local session. `ccmux fleet` preserves the field from peers; if an older peer
 does not send it, the human view says `unknown` instead of silently claiming Claude.
@@ -266,6 +268,14 @@ the comparison, a door speaking a contract this build does not know is indisting
 malformed answer — and the reader goes looking for a broken agent instead of a version skew. Unknown
 keys, by contrast, pass through: strict parsing of somebody else's evolving answer means "break on
 their next release".
+
+The current reader requires every door2 field; tolerance applies only to additive keys, not missing
+`failure`, `refusal`, `retryAfterMs` or any other required field. An incomplete success-looking reply
+is unknown, never a synthetic successful command. `RemoteResult.delivery` distinguishes `not-sent`,
+`unknown` and `received` independently of the remote exit/refusal verdict. Only positive pre-dispatch
+evidence permits the CLI to say nothing was sent. Lost replies never trigger an arbitrary-command
+replay or transport fallback. Chat retry is the separate idempotent owner operation: the same
+envelope ID and exact target survive every attempt and atomic receive admits it once.
 
 ### A retry uses the same resolver as a send
 

@@ -78,8 +78,10 @@ mutations; retries reconcile the same reservation and never create a second writ
 
 ## Acceptance
 
-- [ ] Codex, OpenCode and custom harness sessions coexist without writer or transcript identity collisions.
-- [ ] OpenCode and custom harness each perform a real external-model tool turn in an isolated workspace.
+- [x] Codex, OpenCode and custom harness sessions coexist without writer or transcript identity collisions.
+  `scripts/custom-coexistence-acceptance.ts` proves three real owners and all three exact chat edges.
+- [x] OpenCode and custom harness each perform a real external-model tool turn in an isolated workspace.
+  Public managed acceptance proves a signed Custom file write and authenticated three-runtime commands.
 - [x] Retry preserves identity; interruption and restart/resume do not duplicate tool side effects.
 - [x] Tool calls, reasoning, text, usage and terminal outcomes preserve causal order; transport closure
   alone cannot report success. Unsupported approval/input features are reported honestly.
@@ -91,9 +93,12 @@ mutations; retries reconcile the same reservation and never create a second writ
 ## Dependencies
 
 Codex fixes are published in `v0.39.23`: `../done/2026-08-30-model-catalog-before-first-managed-session.md`
-and `../done/2026-08-30-managed-model-selection-and-collaboration-policy.md`. OpenCode implementation and
-driver-contract work can proceed independently. Custom driver waits only for the published
-Stitchkit harness seam; agree that boundary through the existing owner-task handoff process.
+and `../done/2026-08-30-managed-model-selection-and-collaboration-policy.md`. The published
+`stitchkit@0.70.1` includes the Custom harness and coding-tool seam. Published-package macOS and
+Linux file/security probes pass; the owner platform blocker is resolved. Sequential signed approvals
+hit a different reproduced upstream history defect. Complete managed acceptance remains. The
+[adoption program](2026-08-30-stitchkit-069-adoption-program.md) defines its sequence,
+host boundaries, exact approval-continuation mapping, packaging and combined verification.
 
 ## Что сделано
 
@@ -143,14 +148,43 @@ Stitchkit harness seam; agree that boundary through the existing owner-task hand
   composer, four legacy undeclared environment sources, and an optional transit without its agent.
   They were not hidden or changed by this native adapter rollout; all daemon processes are active.
 
-The published native slice is verified, not the entire task. The three remaining unchecked items
-require the optional custom harness and are not satisfied by an unavailable capability placeholder.
+The published native slice is verified. The former Custom sequential-approval publication blocker
+is resolved by 0.70.2; the remaining requirement is the combined publication and rollout below.
 
-## Remaining external dependency
+## Remaining integration
 
-Registry verification on 2026-08-30: published `stitchkit@0.68.11` exports neither
-`stitchkit/agent-runtime/harness` nor `stitchkit/agent-runtime/coding-tools`. The owner implementation
-exists but its publication is separately deferred. No unpublished checkout or copied loop is used.
-The native adapter slice can ship independently; Custom remains `unavailable`, and custom coexistence,
-tool acceptance and runner/SQLite integration stay unchecked. This task stays in-progress until that
-published dependency is available and those real checks pass. No downstream workaround is requested.
+Current qualification (2026-08-31): published `stitchkit@0.70.2`, exact source
+`9df049633804ffab5daffffa2de16a40373ebdfc`, replaces the failing dependency below. The sequential
+signed-approval regression and published-only probe both pass. Real candidate service acceptance
+passes coding read/search/patch, observed command exits 0/7, deny/defer, pending-interrupt refusal,
+active interrupt and child cleanup, plus one-writer create/message retries and worker/daemon
+restart. Evidence: `68e4f68b7f3ef97baa578aa77dabd4b8e707bb09c61c08424ee688133de2ef38`.
+The adoption program owns the final combined gate/publication; the following older qualification
+is retained as historical reproduction, not an outstanding upstream publication blocker.
+
+Registry/archive verification on 2026-08-30 confirms `stitchkit@0.70.1` publishes
+`stitchkit/agent-runtime/harness`, `stitchkit/agent-runtime/coding-tools` and the Bun SQLite store.
+Exact source: `c9a86d4962178debc017a821d7034aed18bd91da`; downloaded archive SHA-256:
+`6d1bacd4d84f0da5cb1317e39f9f96cffb65f3582002ab72982f97bb96b54ea0`. Export JS/types exist and the
+archive matches registry integrity. No unpublished checkout or copied execution loop is needed.
+
+The prior working tree pinned `0.70.1` and included the real installed Custom runner, immutable host
+composition, exact signed response correlation, bounded native/history/image projection and
+diagnostic ownership. The linked adoption program records the actual evidence: real managed
+create/message retries, one signed tool continuation through worker restart, daemon restart,
+vision, canonical history, applied profile and Codex → OpenCode → Custom → Codex messaging.
+
+`scripts/custom-sequential-approval-probe.ts` reproduces the release blocker with only published
+Stitchkit/AI SDK dependencies on macOS and Linux: the second accepted signed approval fails with
+`AI_InvalidToolApprovalError`. The first effect exists, the second does not, and the third native
+run commits `provider_failure` before model invocation. No supervisor code is needed to trigger it.
+The existing Stitchkit in-progress task `2026-08-30-automatic-approval-history-chronology.md`
+contains the cross-record case and a source fix with focused/packed evidence; publication is still
+unchecked. Registry latest remains `0.70.1`, and release preflight repeats both failing probes.
+No dependency source, signature policy or provider history is patched in this consumer.
+`test/custom-multiple-approvals.test.ts` remains enabled and failing. The adoption program records
+the current preflight and the dependency-publication boundary.
+
+Historical 0.70.1 full local gate: 980 passing tests, one failing sequential-approval regression, 4,966
+assertions across 165 files; Biome/TypeScript pass. All five packed-client checks pass separately.
+Publication, release bump and rollout have not run. Existing production sessions are unchanged.

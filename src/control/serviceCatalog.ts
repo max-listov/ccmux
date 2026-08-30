@@ -14,6 +14,12 @@ import {
   MessageOperationResultSchema,
 } from '../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../context/schema.ts';
+import {
+  ExternalContentCapabilitiesSchema,
+  ExternalContentReadSchema,
+  ExternalContentResultSchema,
+  ExternalContentSelectorSchema,
+} from '../external/contentSchema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../runtime/capabilities.ts';
 import {
   SteeringInputSchema,
@@ -64,6 +70,8 @@ export const CCMUX_CONTROL_SERVICE_MAX_REQUEST_BYTES = 64 * 1024;
 export const CCMUX_CONTROL_SERVICE_MAX_RESPONSE_BYTES = CONTROL_MAX_BYTES + 4096;
 
 export const ControlServiceOperationSchema = z.enum([
+  'external.history',
+  'external.capabilities',
   'message.operation',
   'history.read',
   'context.compact',
@@ -95,6 +103,7 @@ export type ControlServiceOperation = z.infer<typeof ControlServiceOperationSche
 
 export const ControlServiceEffectSchema = z
   .enum([
+    'external.content.read',
     'message.read',
     'history.read',
     'context.write',
@@ -123,6 +132,8 @@ export const ControlServiceEffectSchema = z
 export type ControlServiceEffect = z.infer<typeof ControlServiceEffectSchema>;
 
 export const controlServiceEffects = {
+  'external.history': 'external.content.read',
+  'external.capabilities': 'external.content.read',
   'message.operation': 'message.read',
   'history.read': 'history.read',
   'context.compact': 'context.write',
@@ -164,6 +175,8 @@ export const ControlServiceWaitSchema = ControlWaitSchema.extend({
 }).strict();
 
 export const controlServiceInputs = {
+  'external.history': ExternalContentReadSchema,
+  'external.capabilities': ExternalContentSelectorSchema,
   'message.operation': MessageOperationReadSchema,
   'history.read': ControlHistoryReadSchema,
   'context.compact': ControlCompactSchema,
@@ -193,6 +206,8 @@ export const controlServiceInputs = {
 };
 
 export const controlServiceOutputs = {
+  'external.history': ExternalContentResultSchema,
+  'external.capabilities': ExternalContentCapabilitiesSchema,
   'message.operation': MessageOperationResultSchema,
   'history.read': ControlHistoryResultSchema,
   'context.compact': ControlContextOperationResultSchema,

@@ -79,9 +79,41 @@ export function prepareMessageOperation(
     fingerprint,
     phase: 'preparing',
     turnId: null,
+    continuations: [],
+    pendingApprovals: [],
     observedAt: new Date(now).toISOString(),
     expiresAt: null,
   });
+  write(m, s, journal);
+}
+
+/** Correlation evidence derived from canonical native admissions, never an execution queue. */
+export function projectMessageContinuation(
+  m: MachineConfig,
+  s: Session,
+  messageId: string,
+  evidence: Pick<MessageOperationRecord, 'continuations' | 'pendingApprovals'>,
+): void {
+  const journal = readMessageJournal(m, s);
+  const record = journal?.records.find((item) => item.messageId === messageId);
+  if (!journal || !record || record.expiresAt !== null) return;
+  if (record.turnId === null) messageOperationFailure();
+  const parents = new Set([record.turnId]);
+  for (const continuation of evidence.continuations) {
+    if (!parents.has(continuation.parentTurnId) || parents.has(continuation.turnId))
+      messageOperationFailure();
+    parents.add(continuation.turnId);
+  }
+  if (
+    JSON.stringify(evidence.continuations.slice(0, record.continuations.length)) !==
+    JSON.stringify(record.continuations)
+  )
+    messageOperationFailure();
+  if (evidence.pendingApprovals.some((approval) => !parents.has(approval.turnId)))
+    messageOperationFailure();
+  record.continuations = evidence.continuations;
+  record.pendingApprovals = evidence.pendingApprovals;
+  record.observedAt = new Date().toISOString();
   write(m, s, journal);
 }
 

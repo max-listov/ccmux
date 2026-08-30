@@ -23,6 +23,9 @@ same durable chat + native turn operations ← control contract ← ├─ CLI/t
 
 Managed operations and `list`/`watch` contain only registered managed sessions. The same listener
 also exposes a separate read-only [external native projection](external-resident-status.md).
+External conversation reads use [bounded external content](external-content.md): exact
+provider/machine/thread identity, authored-text pages and explicit unsupported controls, without
+adopting an external writer.
 Desktop-owned threads are not imported, adopted, restarted or counted as managed sessions.
 Their observation prerequisites remain separate. No TCP listener or fleet-routing replacement is added.
 
@@ -95,6 +98,17 @@ reconciles the stable registration generation and cannot mint a second writer. R
 UUID for another name, workspace or flag set is `IDEMPOTENCY_CONFLICT`. `archive` marks the exact
 identity before stopping its process group, so healing and routing stop while registry and provider
 history remain available for deliberate resume.
+
+`workspace` and session `dir` describe an execution directory, not a Product Project, Repository,
+Checkout identity or harness workspace membership. Create accepts an existing directory without
+requiring a Git root; multiple exact sessions can share that directory. Normalization belongs to
+create idempotency, while fleet transport preserves the registered directory unchanged. Neither
+normalization nor path-prefix matching establishes product membership or grants control authority.
+
+Product-to-repository membership is explicit and many-to-many. A private companion repository may
+belong to the same product; consuming a dependency does not automatically make it a member.
+The consumer owns that private catalogue, independently of harness project labels. CCMux exposes
+execution facts and exact session identities, not a project registry or inferred membership.
 
 An optional `runtime` selects Claude, Codex or native OpenCode independently of inference selection.
 Custom is discoverable but unavailable until the published optional harness is integrated and
@@ -191,6 +205,12 @@ default and hidden markers, input modalities, service tiers and supported/defaul
 efforts when present. Provider errors, deadline and malformed or oversized pages fail closed as
 `UNAVAILABLE`/`TIMEOUT` — no static or local catalog is ever substituted, and a model from a
 different runtime is never reported.
+
+Every catalog source requires `runtime`, including the default/explicit Codex host read before
+the first chat and exact managed-session reads. Runtime comes from the selected execution adapter,
+never the inference provider. Session source runtime/machine must match its target; a mismatched
+explicit selector is refused before provider contact. Pagination retains the same source identity.
+Missing optional model metadata remains absent, not guessed from the runtime.
 
 `models({ runtime: "opencode" })` instead uses OpenCode's configured-provider catalog, never the
 universal model database or an OpenAI picker. Its source identifies the runtime and has nullable
@@ -416,8 +436,17 @@ replies have a 52 MiB cumulative ceiling, 64 KiB header ceiling, 8 MiB request c
 connection per call and a deadline that includes body completion. Cancellation, malformed framing,
 oversize and stalled bodies close the socket before returning. The door protocol remains parsed by
 CCMux so additive fields, version refusal, command exit, truncation and policy/request/capacity
-outcomes retain their existing meaning. There is no private client artifact in the public install,
-no socket discovery, daemon start, automatic replay or SSH fallback.
+outcomes retain their existing meaning. The single reader in `src/fleet/wireProtocol.ts` requires
+door2 version, ID, timestamp, sender, integer code, both streams, failure, refusal, retry hint,
+detail and truncation. Additive keys are ignored; missing fields, unknown enum values and
+contradictory refusal/retry fields cannot become success. There is no private client artifact in
+the public install, daemon start, automatic arbitrary-command replay or SSH fallback.
+
+`RemoteResult.delivery` is independent of command exit: `not-sent` requires local pre-dispatch
+evidence or a structured pre-execution refusal; timeout, malformed reply and after-dispatch loss
+are `unknown`; a valid command/exec verdict is `received`. SSH exit 255/timeouts are unknown.
+Mutating CLI relays warn against blind replay when execution is unknown. The chat outbox alone
+retries an immutable envelope through atomic receiver deduplication, including a lost first ACK.
 
 # Daemon lifecycle and verification
 

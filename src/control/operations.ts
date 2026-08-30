@@ -26,6 +26,11 @@ import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { withSessionRegistryLock } from '../config/registryLock.ts';
 import { ChatPrincipalSchema } from '../config/schema.ts';
 import type { NativeForkRequestSchema } from '../context/schema.ts';
+import { readExternalContent, readExternalContentCapabilities } from '../external/content.ts';
+import type {
+  ExternalContentReadSchema,
+  ExternalContentSelectorSchema,
+} from '../external/contentSchema.ts';
 import type { ExternalStatusPublisher } from '../external/resident-publisher.ts';
 import { readRuntimeCatalog } from '../runtime/catalog.ts';
 import type { SteeringInputSchema, SteeringSelectorSchema } from '../steering/schema.ts';
@@ -80,6 +85,7 @@ export const CONTROL_MODELS_CALL_BUDGET_MS = 5_000;
 
 export type ControlOperationDependencies = {
   createManagedSession?: (machine: MachineConfig, input: CreateManagedInput) => Promise<Session>;
+  assertExternalConfig?: () => void;
 };
 
 /**
@@ -106,6 +112,41 @@ export function createControlOperations(
     policy: { global: { maxConcurrent: 4 } },
   });
   const operations = {
+    externalHistory: (input: z.output<typeof ExternalContentReadSchema>, signal?: AbortSignal) =>
+      reads
+        .run(
+          undefined,
+          async ({ signal: admitted }) => {
+            dependencies.assertExternalConfig?.();
+            const result = await readExternalContent(m, input, admitted);
+            dependencies.assertExternalConfig?.();
+            return result;
+          },
+          {
+            ...(signal ? { signal } : {}),
+            timeoutMs: 6_000,
+          },
+        )
+        .catch(controlRefusal),
+    externalCapabilities: (
+      input: z.output<typeof ExternalContentSelectorSchema>,
+      signal?: AbortSignal,
+    ) =>
+      reads
+        .run(
+          undefined,
+          async ({ signal: admitted }) => {
+            dependencies.assertExternalConfig?.();
+            const result = await readExternalContentCapabilities(m, input.target, admitted);
+            dependencies.assertExternalConfig?.();
+            return result;
+          },
+          {
+            ...(signal ? { signal } : {}),
+            timeoutMs: 6_000,
+          },
+        )
+        .catch(controlRefusal),
     messageOperation: (
       input: z.output<typeof MessageOperationReadSchema>,
       principal: ChatPrincipal,

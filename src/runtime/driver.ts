@@ -1,5 +1,6 @@
 import { preflightOwnedCodex } from '../agent/codex/ownedLaunch.ts';
 import { runOwnedCodexProcess } from '../agent/codex/ownedProcess.ts';
+import { runCustomProcess } from '../agent/custom/process.ts';
 import { runOpenCodeProcess } from '../agent/opencode/process.ts';
 import { preflightOpenCode } from '../agent/opencode/server.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -15,6 +16,12 @@ export interface ManagedRuntimeDriver {
 }
 
 const drivers: Partial<Record<Session['agent'], ManagedRuntimeDriver>> = {
+  custom: {
+    preflight: (_m, flags) => {
+      if (flags.length) throw new Error('Custom requires typed host configuration');
+    },
+    run: runCustomProcess,
+  },
   codex: {
     preflight: preflightOwnedCodex,
     run: (m, s, promote) =>

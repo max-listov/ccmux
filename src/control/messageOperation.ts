@@ -37,6 +37,8 @@ export function readMessageOperation(
         state: record.phase === 'preparing' ? 'uncertain' : record.phase,
         nativeSession: journal.nativeSession,
         turnId: record.turnId,
+        continuations: record.continuations,
+        pendingApprovals: record.pendingApprovals,
         observedAt: record.observedAt,
         expiresAt: record.expiresAt,
       },

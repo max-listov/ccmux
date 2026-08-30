@@ -30,7 +30,7 @@ Remote Control/statusline и permission-mode — Claude-specific capabilities; C
   отправляет provider-native `turn/start`; второй runtime и второй writer не создаются.
 - **Runtime отдельно от model provider** — Claude, Codex и OpenCode имеют разные протоколы;
   выбор модели не создаёт новый вид сессии. Optional Custom использует только опубликованный
-  Stitchkit harness; до доступности этого seam он явно unavailable, без скопированного цикла.
+  Stitchkit harness; до квалификации managed adapter он явно unavailable, без скопированного цикла.
 - **Native история — источник правды беседы**: JSONL у interactive CLI, structured API/events
   у headless server. Пейн-скрейп остаётся только в существующих interactive adapters.
 - **Production-система**: рулит реальными сессиями на флоте машин. Деплой — только по

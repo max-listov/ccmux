@@ -15,6 +15,7 @@ export const NativeModelSelectionSchema = z
   })
   .strict();
 export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
+  z.object({ runtime: z.literal('custom'), model: NativeModelSelectionSchema }).strict(),
   z
     .object({
       runtime: z.literal('codex'),
@@ -34,6 +35,7 @@ export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
     })
     .strict(),
 ]);
+export type NativeModelSelection = z.infer<typeof NativeModelSelectionSchema>;
 export type NativeTurnOptions = z.infer<typeof NativeTurnOptionsSchema>;
 export const AcceptedTurnOptionsSchema = z
   .object({

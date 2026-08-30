@@ -161,6 +161,7 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
         id: rec.envelope.id,
         to: `${target.machine}:${target.session}`,
         detail: r.failureDetail ?? '',
+        delivery: r.delivery,
       });
     }
     // Still no route → leave it queued; the next tick tries again until the window closes.

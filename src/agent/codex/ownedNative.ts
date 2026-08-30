@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { OwnedCodexNativeItem, OwnedCodexPendingRequest } from './ownedSchema.ts';
+import type { NativeItem, NativePendingRequest } from '../../runtime/projectionSchema.ts';
 import type { CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
 
 const ItemEvent = z.object({
@@ -73,7 +73,7 @@ export function projectNativeEvent(
   threadId: string,
   sequence: number,
   now = Date.now(),
-): OwnedCodexNativeItem | null {
+): NativeItem | null {
   const base = { sequence, at: new Date(now).toISOString(), requestId: null, usage: null };
   if (event.method === 'item/started' || event.method === 'item/completed') {
     const parsed = ItemEvent.safeParse(event.params);
@@ -173,7 +173,7 @@ export function projectNativeRequest(
   request: CodexRpcRequest,
   threadId: string,
   now = Date.now(),
-): OwnedCodexPendingRequest | null {
+): NativePendingRequest | null {
   if (
     request.method === 'item/commandExecution/requestApproval' ||
     request.method === 'item/fileChange/requestApproval'

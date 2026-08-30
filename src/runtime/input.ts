@@ -3,6 +3,7 @@ import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
+import { NativeContinuationsSchema } from '../chat/messageOperationSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { AcceptedTurnOptionsSchema } from './selectionSchema.ts';
@@ -17,6 +18,8 @@ export const RuntimeInputSchema = z
     phase: z.enum(['queued', 'dispatching', 'accepted', 'uncertain']),
     images: AttachmentReferencesSchema.optional(),
     turnOptions: AcceptedTurnOptionsSchema.optional(),
+    continuations: NativeContinuationsSchema.default([]),
+    terminal: z.enum(['completed', 'interrupted', 'failed']).optional(),
   })
   .strict();
 export type RuntimeInput = z.infer<typeof RuntimeInputSchema>;
@@ -35,7 +38,7 @@ export function readRuntimeInput(m: MachineConfig, s: Session): RuntimeInput | n
 export const writeRuntimeInput = (
   m: MachineConfig,
   s: Session,
-  input: RuntimeInput,
+  input: z.input<typeof RuntimeInputSchema>,
 ): Promise<void> => atomicWrite(path(m, s), JSON.stringify(RuntimeInputSchema.parse(input)), 0o600);
 
 /** Native IDs embed creation order. The durable ledger ID provides the collision-resistant suffix. */
@@ -47,3 +50,6 @@ export function openCodeMessageId(messageId: string, timestamp: number): string 
     .join('');
   return `msg_${time}${suffix}`;
 }
+
+export const runtimeInputId = (s: Pick<Session, 'agent'>, messageId: string, timestamp: number) =>
+  s.agent === 'custom' ? messageId : openCodeMessageId(messageId, timestamp);

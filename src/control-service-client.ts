@@ -147,6 +147,17 @@ export {
   serviceOperation,
 } from './control/serviceDescriptor.ts';
 export {
+  EXTERNAL_CONTENT_LIMITS,
+  ExternalContentCapabilitiesSchema,
+  type ExternalContentRead,
+  ExternalContentReadSchema,
+  type ExternalContentResult,
+  ExternalContentResultSchema,
+  ExternalContentSelectorSchema,
+  type ExternalContentTarget,
+  ExternalContentTargetSchema,
+} from './external/contentSchema.ts';
+export {
   ApplicationPolicyEvidenceSchema,
   ApplicationPolicyMetadataSchema,
   ApplicationPolicyReferenceSchema,

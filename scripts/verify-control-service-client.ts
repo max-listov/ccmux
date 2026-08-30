@@ -59,8 +59,9 @@ try {
     import descriptorFile from '@ccmux/control-service-client/descriptor.json' with {type:'json'};
     import {
       ApiError, ControlServiceDescriptorSchema, ControlNativeStreamFrameSchema, ControlTargetSchema,
+      ExternalContentReadSchema, ExternalContentResultSchema,
       LaunchRecipeMetadataSchema, LaunchRecipeReferenceSchema, ModelSelectionSchema,
-      ControlDirectoryResultSchema,
+      ControlDirectoryResultSchema, ControlModelCatalogSchema, ControlModelsReadSchema,
       RuntimeCatalogSchema, CCMUX_CONTROL_SERVICE_REVISION, AttachmentReferenceSchema, SelectionResultSchema,
       NativeSelectionEvidenceSchema, ControlHistoryResultSchema, ControlContextOperationResultSchema,
       SteeringReceiptSchema, NativeForkRequestSchema, MessageOperationResultSchema, ToolObservationSchema, ContentRecordSchema, PermissionScopeSchema, ControlInterruptSchema,
@@ -80,6 +81,14 @@ try {
     }).strict();
     const {target} = ControlTargetSchema.parse({target:{kind:'managed',source:'ccmux',machine:'host-a',agent:'codex',session:'agent-a',threadId:crypto.randomUUID()}});
     const registrationGeneration = crypto.randomUUID();
+    const externalTarget = {provider:'codex',machine:'host-a',threadId:crypto.randomUUID()};
+    const externalRead = ExternalContentReadSchema.parse({target:externalTarget});
+    const externalPage = ExternalContentResultSchema.parse({target:externalTarget,outcome:'available',revision:'a'.repeat(64),observedAt:new Date().toISOString(),entries:[{id:'123',role:'assistant',text:'authored',truncated:false}],nextCursor:null,truncated:false,omittedRecords:0});
+    const external = createCcmuxControlServiceClient(async (url) => {
+      if (!String(url).endsWith('/external.history')) throw new Error('external history route lost');
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:externalPage});
+    });
+    if ((await external.externalHistory(externalRead)).entries[0]?.text !== 'authored') throw new Error('external content lost');
     const operationInput = {target,registrationGeneration,messageId:crypto.randomUUID()};
     const operationResult = MessageOperationResultSchema.parse({...operationInput,outcome:'available',evidence:{state:'completed',nativeSession:{runtime:'codex',id:target.threadId},turnId:'turn-exact',observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+10000).toISOString()}});
     const operations = createCcmuxControlServiceClient(async (url) => {
@@ -187,10 +196,37 @@ try {
       const directory = String(url).endsWith('/directory.list');
       return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:directory
         ? {path:'/work',parent:'/',entries:[{name:'repo',kind:'dir',path:'/work/repo'}],nextCursor:null}
-        : {source:{kind:'host',machine:'host-a',provider:'openai'},data:[],nextCursor:null}});
+        : {source:{kind:'host',runtime:'codex',machine:'host-a',provider:'openai'},data:[],nextCursor:null}});
     });
     const catalog = await reader.models({});
     if (catalog.target !== undefined || catalog.source.kind !== 'host') throw new Error('host discovery failed');
+    for (const runtime of ['codex','opencode','custom']) {
+      for (const kind of ['host','session']) {
+        const input = ControlModelsReadSchema.parse({runtime,...(kind === 'session' ? {target:{...target,agent:runtime}} : {}),limit:1});
+        const source = {kind,runtime,machine:'host-a',provider:'openai'};
+        const pages = createCcmuxControlServiceClient(async (url, init) => {
+          const payload = ControlModelsReadSchema.parse(JSON.parse(String(init?.body)));
+          if (!String(url).endsWith('/model.list') || payload.runtime !== runtime || payload.target?.agent !== input.target?.agent) throw new Error('catalog selector lost');
+          return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{
+            ...(input.target ? {target:input.target} : {}),source,data:[],nextCursor:payload.cursor === null ? 'page-2' : null}});
+        });
+        const first = await pages.models(input);
+        const second = await pages.models({...input,cursor:first.nextCursor});
+        const knownRuntime: 'claude'|'codex'|'opencode'|'custom' = first.source.runtime;
+        if (knownRuntime !== runtime || second.source.runtime !== runtime || JSON.stringify(first.source) !== JSON.stringify(second.source)) throw new Error('catalog runtime identity lost');
+      }
+    }
+    for (const source of [
+      {kind:'host',machine:'host-a',provider:'openai'},
+      {kind:'session',machine:'host-a',provider:'openai',runtime:'opencode'},
+    ]) {
+      const malformed = {source,...(source.kind === 'session' ? {target} : {}),data:[],nextCursor:null};
+      if (ControlModelCatalogSchema.safeParse(malformed).success) throw new Error('catalog omission or mismatch accepted');
+      const invalid = createCcmuxControlServiceClient(async () => Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:malformed}));
+      let refused = false;
+      try { await invalid.models({runtime:'codex'}); } catch (error) { if (!(error instanceof ApiError)) throw error; refused = true; }
+      if (!refused) throw new Error('packed client accepted invalid catalog');
+    }
     const directory = ControlDirectoryResultSchema.parse(await reader.directories({path:'/work'}));
     if (directory.entries[0]?.kind !== 'dir') throw new Error('directory listing failed');
     if (ccmuxControlServiceComposition.descriptor !== ccmuxControlServiceDescriptor ||

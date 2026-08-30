@@ -10,6 +10,25 @@ export const MESSAGE_OPERATION_LIMITS = {
   bytes: 512 * 1024,
   terminalTtlMs: 7 * 24 * 60 * 60 * 1000,
 };
+export const NativeContinuationSchema = z
+  .object({
+    requestId: z.string().min(1).max(256),
+    parentTurnId: z.string().min(1).max(256),
+    responseOperationId: z.uuid(),
+    responseFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    turnId: z.string().min(1).max(256),
+    decision: z.enum(['accept', 'decline']),
+  })
+  .strict();
+export const NativePendingApprovalSchema = z
+  .object({
+    requestId: z.string().min(1).max(256),
+    turnId: z.string().min(1).max(256),
+    callId: z.string().min(1).max(256),
+  })
+  .strict();
+export const NativeContinuationsSchema = z.array(NativeContinuationSchema).max(32);
+export type NativeContinuation = z.infer<typeof NativeContinuationSchema>;
 export const MessageOperationReadSchema = z
   .object({
     target: ManagedPeerSchema,
@@ -30,6 +49,8 @@ export const MessageOperationEvidenceSchema = z
     state: MessageOperationStateSchema,
     nativeSession: NativeMessageSessionSchema,
     turnId: z.string().min(1).max(256).nullable(),
+    continuations: NativeContinuationsSchema.default([]),
+    pendingApprovals: z.array(NativePendingApprovalSchema).max(16).default([]),
     observedAt: z.iso.datetime(),
     expiresAt: z.iso.datetime().nullable(),
   })
@@ -60,6 +81,8 @@ export const MessageOperationRecordSchema = z
     fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
     phase: z.enum(['preparing', ...MessageOperationStateSchema.options]),
     turnId: z.string().min(1).max(256).nullable(),
+    continuations: NativeContinuationsSchema.default([]),
+    pendingApprovals: z.array(NativePendingApprovalSchema).max(16).default([]),
     observedAt: z.iso.datetime(),
     expiresAt: z.iso.datetime().nullable(),
   })

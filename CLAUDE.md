@@ -61,6 +61,10 @@ checkout. Never create a temporary release clone, secondary worktree or alternat
 path to bypass the clean-tree guard or leave the visible checkout behind published history.
 CI may check out the published tag to build assets; it is not a second development/release source.
 
+This rule governs this repository's release checkout, not product-to-repository cardinality.
+A product may include several repositories, and a repository may participate in several products.
+Membership must be explicit; a dependency, directory or harness workspace name does not establish it.
+
 Before releasing, reconcile the authorized changes in this checkout while preserving unrelated
 reviewed changes. A clean-tree requirement is not permission to discard or reorganize the review
 buffer. After publication, verify local HEAD, the published commit/tag and package version agree;

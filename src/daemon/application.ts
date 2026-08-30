@@ -21,12 +21,30 @@ import { EXTERNAL_INTERVAL_MS } from '../external/resident-schema.ts';
 import { flushOutbox } from '../fleet/flush.ts';
 import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
+import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/journalOwner.ts';
 import type { MachineConfig } from '../types.ts';
 import { clearBootGuard } from '../util/bootGuard.ts';
 import { log, setLogLevel } from '../util/log.ts';
 
 /** The daemon owns these resources, not the independently supervised provider writers. */
 export function createDaemonApplication(initial: MachineConfig) {
+  let journal: OwnedRuntimeJournal | undefined;
+  const chronology = defineManagedResource({
+    id: 'diagnostic-journal',
+    start: async () => {
+      journal = await openOwnedRuntimeJournal(initial, { kind: 'daemon' });
+      journal.submit({
+        at: new Date().toISOString(),
+        runtime: 'daemon',
+        kind: journal.recovered ? 'recovery' : 'started',
+      });
+      return { value: journal };
+    },
+    close: async () => {
+      journal?.submit({ at: new Date().toISOString(), runtime: 'daemon', kind: 'stopped' });
+      await journal?.close();
+    },
+  });
   const monitoring = new MonitoringPublisher();
   const publisher = new ControlPublisher(initial);
   const external = new ExternalStatusPublisher(initial.rcPrefix);
@@ -35,6 +53,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   const machine = loadMachineConfig;
   const projection = defineManagedResource({
     id: 'projection',
+    dependsOn: [chronology],
     start: () => ({ value: publisher }),
     stopAdmission: () => publisher.close(),
     close: () => {
@@ -51,7 +70,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   });
   const controlOwner = defineManagedResource({
     id: 'control-owner',
-    dependsOn: [projection, externalOwner],
+    dependsOn: [projection, externalOwner, chronology],
     start: (ctx) => {
       const owned = createControlServer(
         initial,
@@ -84,6 +103,7 @@ export function createDaemonApplication(initial: MachineConfig) {
       await observeOnce(m, previous, Date.now(), monitoring.sample);
       signal.throwIfAborted();
       const snapshot = await monitoring.publish(m);
+      await journal?.publishStatus();
       // The existing monitoring file follows configuration changes. A bound IPC listener
       // cannot change its address in place: its clients must reconnect after a restart.
       if (m.stateDir !== initial.stateDir || m.rcPrefix !== initial.rcPrefix)
@@ -91,6 +111,12 @@ export function createDaemonApplication(initial: MachineConfig) {
       else publisher.publish(m, snapshot);
     },
     onError: (error) => {
+      journal?.submit({
+        at: new Date().toISOString(),
+        runtime: 'daemon',
+        kind: 'observer-gap',
+        outcome: 'unavailable',
+      });
       publisher.unavailable('observation-failed');
       log.warn({ msg: 'session event pass failed', err: String(error) });
     },
@@ -174,6 +200,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   const application: ApplicationHandle = createApplication({
     id: 'ccmux-daemon',
     resources: [
+      chronology,
       projection,
       externalOwner,
       controlOwner,

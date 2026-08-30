@@ -1,12 +1,11 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { readRuntimeLease } from '../../runtime/lease.ts';
+import { NATIVE_RUNTIME_MAX_BYTES, NATIVE_RUNTIME_TTL_MS } from '../../runtime/projectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
 import { ownedCodexStatusPath, privateRuntimeDirectory } from './ownedPaths.ts';
 import {
-  CODEX_RUNTIME_MAX_BYTES,
-  CODEX_RUNTIME_TTL_MS,
   type OwnedCodexRead,
   type OwnedCodexSnapshot,
   OwnedCodexSnapshotSchema,
@@ -41,7 +40,7 @@ export function validateOwnedCodexLiveness(
   snapshot: OwnedCodexSnapshot,
   now = Date.now(),
 ): OwnedCodexRead {
-  const lease = readRuntimeLease(snapshot, now, CODEX_RUNTIME_TTL_MS);
+  const lease = readRuntimeLease(snapshot, now, NATIVE_RUNTIME_TTL_MS);
   return { protocol: 1, ...lease, snapshot: lease.status === 'live' ? snapshot : null };
 }
 
@@ -60,10 +59,10 @@ export function readOwnedCodexStatus(
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o022) !== 0)
       return unavailableOwnedCodex('unauthorized');
-    if (stat.size > CODEX_RUNTIME_MAX_BYTES) return unavailableOwnedCodex('oversized');
-    const bytes = Buffer.alloc(CODEX_RUNTIME_MAX_BYTES + 1);
+    if (stat.size > NATIVE_RUNTIME_MAX_BYTES) return unavailableOwnedCodex('oversized');
+    const bytes = Buffer.alloc(NATIVE_RUNTIME_MAX_BYTES + 1);
     const size = readSync(fd, bytes, 0, bytes.length, 0);
-    if (size > CODEX_RUNTIME_MAX_BYTES) return unavailableOwnedCodex('oversized');
+    if (size > NATIVE_RUNTIME_MAX_BYTES) return unavailableOwnedCodex('oversized');
     return validateOwnedCodex(
       bytes.toString('utf8', 0, size),
       { machine: m.rcPrefix, session: s.name, threadId: s.uuid },
@@ -104,7 +103,7 @@ export class OwnedCodexStatusWriter {
         const snapshot = this.next;
         this.next = null;
         const bytes = JSON.stringify(OwnedCodexSnapshotSchema.parse(snapshot));
-        if (Buffer.byteLength(bytes) > CODEX_RUNTIME_MAX_BYTES)
+        if (Buffer.byteLength(bytes) > NATIVE_RUNTIME_MAX_BYTES)
           throw new Error('Owned Codex projection exceeds its byte limit');
         await atomicWrite(ownedCodexStatusPath(this.m, this.name), bytes, 0o600);
       }

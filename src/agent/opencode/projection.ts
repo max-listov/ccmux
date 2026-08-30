@@ -2,10 +2,10 @@ import { z } from 'zod';
 import type { ApplicationPolicyEvidence } from '../../policy/reference.ts';
 import { ApplicationPolicyEvidenceSchema } from '../../policy/reference.ts';
 import { openCodePermissionScope } from '../../runtime/permissionScope.ts';
+import type { NativeItem, NativePendingRequest } from '../../runtime/projectionSchema.ts';
 import type { ManagedRuntimeSnapshot } from '../../runtime/schema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { VERSION } from '../../util/version.ts';
-import type { OwnedCodexNativeItem, OwnedCodexPendingRequest } from '../codex/ownedSchema.ts';
 import {
   OpenCodeDeltaSchema,
   OpenCodeEventSchema,
@@ -19,7 +19,7 @@ import {
   openCodeTerminal,
 } from './protocol.ts';
 
-type Item = Omit<OwnedCodexNativeItem, 'sequence' | 'at'>;
+type Item = Omit<NativeItem, 'sequence' | 'at'>;
 const ItemDefaults = { requestId: null, status: null, text: null, tool: null, usage: null };
 
 /** One observer epoch; bounded causal records and exact native request identities. */
@@ -266,7 +266,7 @@ export class OpenCodeProjection {
       text: ((prior.text ?? '') + delta.delta).slice(-8_192),
     });
   }
-  pending(request: OwnedCodexPendingRequest): void {
+  pending(request: NativePendingRequest): void {
     if (this.value.pendingRequests.some((value) => value.requestId === request.requestId)) return;
     if (this.value.pendingRequests.length >= 4) throw new Error('Native request window exceeded');
     this.value.pendingRequests.push(request);

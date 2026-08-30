@@ -100,7 +100,11 @@ export function nearLimitImage(): Buffer {
 }
 
 export async function nativeImageProbe(
-  options: { cli?: string; makeClient?: typeof createCcmuxControlServiceClient } = {},
+  options: {
+    cli?: string;
+    makeClient?: typeof createCcmuxControlServiceClient;
+    configure?: (root: string, machine: ReturnType<typeof loadMachineConfig>) => Promise<void>;
+  } = {},
 ) {
   const root = realpathSync(mkdtempSync('/tmp/ccmux-image-steering-'));
   chmodSync(root, 0o700);
@@ -139,6 +143,7 @@ export async function nativeImageProbe(
     JSON.stringify({ permission: { bash: 'ask' } }),
     0o600,
   );
+  await options.configure?.(root, machine);
   await atomicWrite(config, JSON.stringify(machine), 0o600);
   const env: Record<string, string | undefined> = {
     ...process.env,

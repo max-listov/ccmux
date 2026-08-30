@@ -35,17 +35,11 @@ const RemoteSessionSchema = z.object({
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),
   /**
-   * The directory that session was declared with, carried through UNCHANGED.
-   *
-   * The only factual checkout identity a fleet consumer gets. Without it a peer's session arrives
-   * with an address and a provider and nothing that says WHERE it works, so anything wanting to join
-   * a session to a project has to guess from its name — and a name is chosen by a person, is usually
-   * the project's, and is exactly the guess that has already misrouted work on this fleet.
-   *
-   * Transported, never interpreted. A consumer matching by longest path prefix needs the string as
-   * the owner declared it: shortening it, resolving symlinks or trimming a trailing slash would each
-   * silently change which project it matches. ccmux knows what a session declared; what that
-   * directory MEANS belongs to whoever keeps the catalogue.
+   * The session's declared execution directory, carried through unchanged by fleet transport.
+   * It need not be a Git checkout and proves neither repository identity nor product membership.
+   * Several exact session identities may share it. A path prefix, dependency or harness project
+   * label is not membership authority; any explicit many-to-many product/repository catalogue
+   * belongs to the consumer. Routing uses the managed address and pinned native identity.
    *
    * Null from a peer too old to report it — which is a peer whose other sessions still arrive.
    */

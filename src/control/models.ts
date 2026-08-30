@@ -6,6 +6,7 @@ import { nativeModelProvider, withCodexCatalogRuntime } from '../agent/codex/cat
 import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
 import { connectOwnedCodex } from '../agent/codex/ownedRpc.ts';
 import type { CodexRpcOptions } from '../agent/codex/rpc.ts';
+import { readCustomModels } from '../agent/custom/catalog.ts';
 import { expandHome } from '../agent/launchInputs.ts';
 import { readOpenCodeModels } from '../agent/opencode/catalog.ts';
 import { resolveControlLaunchRecipe } from '../config/launchRecipes.ts';
@@ -136,6 +137,7 @@ export async function readControlModels(
       );
     const runtime = target?.agent ?? input.runtime ?? 'codex';
     if (runtime === 'opencode') return await readOpenCodeModels(m, input, target, signal);
+    if (runtime === 'custom') return readCustomModels(m, input, target);
     if (runtime !== 'codex')
       throw new AppError('UNSUPPORTED', 'This runtime does not expose a model catalog', 409);
     if (input.target !== undefined) {
@@ -150,6 +152,7 @@ export async function readControlModels(
       try {
         return await readProviderModels(rpc, input, {
           kind: 'session',
+          runtime: 'codex',
           machine: m.rcPrefix,
           provider: await nativeModelProvider(rpc),
           ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
@@ -169,6 +172,7 @@ export async function readControlModels(
     return await withCodexCatalogRuntime(m, launch, m.codexHome, signal, async (rpc) =>
       readProviderModels(rpc, input, {
         kind: 'host',
+        runtime: 'codex',
         machine: m.rcPrefix,
         provider: await nativeModelProvider(rpc),
         ...(launch.launchRecipe === undefined ? {} : { launchRecipe: launch.launchRecipe }),

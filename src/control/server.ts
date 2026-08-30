@@ -21,7 +21,19 @@ export function createControlServer(
   dependencies: ControlOperationDependencies = {},
 ) {
   prepareControlDirectory(m);
-  const controls = controlServices(m, publisher, external, upstream, dependencies);
+  const controls = controlServices(m, publisher, external, upstream, {
+    ...dependencies,
+    assertExternalConfig() {
+      const current = currentMachine();
+      if (
+        current.externalInventory !== m.externalInventory ||
+        current.codexSessionsDir !== m.codexSessionsDir ||
+        current.projectsDir !== m.projectsDir
+      )
+        throw new AppError('CONFIG_CHANGED', 'External content requires a restart', 503);
+      dependencies.assertExternalConfig?.();
+    },
+  });
   const authorize = controlAuth(m);
   const observability = createObservability({
     request: {

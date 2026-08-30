@@ -37,6 +37,9 @@ OpenCode uses the native SDK/API and SSE. A custom driver composes a published o
 it does not implement an inference loop, tool scheduler, product prompts or credential routing.
 Capabilities are explicit per driver. An unavailable driver or unsupported operation is rejected
 before registry mutation. Cross-machine transport dispatches the same typed control operations.
+Custom is configured only when the execution host defines a Custom launch recipe. The working-tree
+adapter composes `stitchkit@0.70.1`; it is not yet released because sequential signed approvals hit
+a reproduced upstream history defect. Configuration availability is not release acceptance.
 
 Prepared native projections are bounded in bytes, events and requests, leased by observation time
 and tied to producer liveness. Native identifiers, selected model/provider and runtime version are
@@ -77,8 +80,70 @@ stop the provider child. Provider restart changes observation generation, not ma
 `scripts/opencode-runtime-e2e.ts` runs an isolated real daemon and provider sessions, exercises native
 tools/approval/input, exact retries, busy/defer, interrupt, cross-runtime chat, daemon restart and
 provider resume. It requires existing native account access; it does not install credentials or
-modify a production registration. The custom runner is deliberately not claimed runnable until its
-published dependency and acceptance are available.
+modify a production registration. `scripts/custom-managed-acceptance.ts` runs the built Custom
+entrypoint through the same public service with existing operator-owned credentials and private
+fixtures. Its optional coexistence, coding and resident lanes report independent outcomes.
+
+## Custom execution owner
+
+`src/agent/custom/process.ts` holds the existing managed owner lock. One Harness and SQLite store
+own a conversation whose native ID is the managed registration generation. Launch recipe identity,
+revision and digest pin the environment, model registry, allowed tools, executable aliases and
+resource source digests. Callers supply only the immutable recipe reference and typed selection.
+The existing environment resolver is reused; provider and signing keys are not copied into tool
+command environments. Only explicit host environment names and the existing scoped chat identity
+are passed to commands. The service does not expose executable aliases as a caller shell gateway.
+
+`custom` supports native text, image-capable configured models, history, selection, signed tool
+approval, interrupt and resume. It does not advertise fork, compaction, rollback, steering, native
+question input or caller application-policy mutation. Unsupported operations refuse before mutation.
+Host-defined resources use the published lazy resource tools. `nativeProfile` reports only the actual
+model, approved tool names and safe resource IDs/digests, never resource bodies or private paths.
+
+The chat ledger remains the FIFO/defer queue. Its one-item native mailbox records accepted options
+before Harness submission. The canonical user input ID and run ID bind the original message;
+run input IDs, not a nonexistent user-message run field, prove that binding. Signed approval ends
+the producing native run without completing the managed message. Its response admits a tool-role
+input and a distinct successor. Bounded `continuations` retain the original `turnId`, parent run,
+request, response operation/fingerprint, actual successor and decision. A repeated exact response
+reconciles; a changed answer conflicts. An uncertain response is not blindly replayed.
+
+Queued canonical work may resume. An interrupted owner with unresolved executing effects remains
+held as `prior-owner-execution-unresolved`; automatic replay is prohibited. Completed inputs and
+pending signed approvals are restored from the same store, with a stable host signing secret.
+Client detach never closes the Harness. Worker shutdown cancels commands, drains observation,
+closes the engine and then releases its owner resources.
+
+Transient event epoch/sequence and durable event IDs are distinct. Duplicate events are ignored;
+a gap invalidates content until bounded canonical reconciliation. Status is limited to 128 KiB,
+128 metadata items and 16 requests; correlation reads at most 128 recent canonical records and
+32 continuation runs. Existing content/history limits apply separately. Prepared status reads do
+not submit model work or open a second canonical-store writer. Tool exit 7 is a failed tool even
+when the enclosing model turn reports success. Internal model errors are retained through an
+operator-only bounded observability sink, not public content or stderr mirrors.
+
+The installed CLI embeds a digest-verified Custom runner and the published Darwin file addons.
+`custom/package.ts` materializes immutable private package bytes under the configured state root;
+no execution depends on the source checkout, network installation or temporary release repository.
+Linux uses the package's contained-files backend. Package directories and native history survive
+archive and are not deleted to make an incompatible rollback appear successful.
+
+## Diagnostic journal boundary
+
+`src/runtime/journal.ts` provides a metadata-only factory over the published Stitchkit journal.
+Its strict schema accepts lifecycle categories, registration/message UUIDs and hashed native
+correlation, not names, prompts, tool arguments or raw failures. Raw causes remain in the separate
+private diagnostic facility. Daemon and worker identities resolve distinct fixed journal paths.
+
+The limits are 8 KiB per event, 256 queued items/1 MiB, 2 MiB per file and four files per writer.
+Admission refusal counters, physical-write status, rotation and partial-tail evidence remain
+observable. Admission into memory is not durable delivery, fsync or native-turn completion.
+`src/runtime/journalOwner.ts` integrates the daemon and Custom worker lifetimes. A private PID claim
+and existing owner-aware directory lock authorize removal of only an upstream lock whose writer
+is positively dead. Unclaimed, live or reused PID locks refuse; journal data is retained. Status
+counters are persisted with a one-second cadence and at bounded close. Request, answer, interrupt,
+gap and terminal transitions carry only allowlisted metadata. Other native engines retain their
+existing private diagnostics; no journal is used as their canonical execution state.
 
 ## Upgrade and rollback
 

@@ -48,6 +48,8 @@ export interface RemoteResult {
   /** The transport failed (unreachable / no transit / refused / timed out) — not the remote
    *  command's verdict. */
   transportFailed: boolean;
+  /** Remote execution certainty, independent of its exit code or a local HTTP acknowledgement. */
+  delivery: 'not-sent' | 'unknown' | 'received';
   /** What actually went wrong, when the transport can say. ssh cannot distinguish "no route" from
    *  "no agent forwarding", so it leaves this unset and the generic sentence stands; the wire knows
    *  the difference between offline, denied and timed out, and saying "ssh unreachable" for a
@@ -83,7 +85,13 @@ export async function runRemote(
       ? await runWithInput(full, opts.stdin, { timeoutMs })
       : await run(full, { timeoutMs });
   const transportFailed = r.timedOut === true || r.code === SSH_EXIT_TRANSPORT;
-  return { code: r.code, stdout: r.stdout, stderr: r.stderr, transportFailed };
+  return {
+    code: r.code,
+    stdout: r.stdout,
+    stderr: r.stderr,
+    transportFailed,
+    delivery: transportFailed ? 'unknown' : 'received',
+  };
 }
 
 /** Relay a remote run to this process's own output and exit code — byte-exact stdout, so JSON
@@ -108,6 +116,7 @@ export function queuedForRetryNotice(
   detail: string | null,
   windowMinutes: number,
   permanent = false,
+  delivery: RemoteResult['delivery'] = 'unknown',
 ): string {
   const cause = detail ?? 'the transport reported no reason';
   // A PERMANENT refusal makes the sentence above a lie in the one direction that costs: it promises
@@ -121,14 +130,20 @@ export function queuedForRetryNotice(
     );
   }
   return (
-    `${what}: the hop failed right now (${cause}) — the message is QUEUED, not lost. ` +
+    `${what}: the hop failed right now (${cause}; delivery: ${delivery}) — the message is QUEUED, not lost. ` +
     `ccmux retries it automatically for up to ${windowMinutes} minutes. Nothing is required of you or of anyone else.`
   );
 }
 
 export function relay(r: RemoteResult, what: string, writes = true): number {
   if (r.transportFailed) {
-    const tail = writes ? ' — nothing was sent' : '';
+    const tail = !writes
+      ? ''
+      : r.delivery === 'not-sent'
+        ? ' — nothing was sent'
+        : r.delivery === 'unknown'
+          ? ' — execution is unknown; do not blindly repeat the command'
+          : ' — the remote failure was received';
     const cause = r.failureDetail ?? 'no reason reported';
     console.error(`${what}: transport failed (${cause})${tail}`);
     if (r.stderr.trim() !== '') console.error(r.stderr.trimEnd());
@@ -170,6 +185,7 @@ export function runPeer(
       stdout: '',
       stderr: '',
       transportFailed: true,
+      delivery: 'not-sent',
       failureDetail: `no route to '${machine}': it is in neither the ssh fleet map nor wire.peers`,
     });
   }

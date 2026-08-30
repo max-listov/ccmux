@@ -62,6 +62,18 @@ export async function dispatchControlService(
   let result: unknown;
   try {
     switch (invocation.operation) {
+      case 'external.history':
+        result = await operations.externalHistory(
+          controlServiceInputs['external.history'].parse(decoded),
+          signal,
+        );
+        break;
+      case 'external.capabilities':
+        result = await operations.externalCapabilities(
+          controlServiceInputs['external.capabilities'].parse(decoded),
+          signal,
+        );
+        break;
       case 'message.operation':
         result = operations.messageOperation(
           controlServiceInputs['message.operation'].parse(decoded),

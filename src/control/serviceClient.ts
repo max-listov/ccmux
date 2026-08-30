@@ -16,6 +16,12 @@ import {
   MessageOperationResultSchema,
 } from '../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../context/schema.ts';
+import {
+  ExternalContentCapabilitiesSchema,
+  ExternalContentReadSchema,
+  ExternalContentResultSchema,
+  ExternalContentSelectorSchema,
+} from '../external/contentSchema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../runtime/capabilities.ts';
 import {
   SteeringInputSchema,
@@ -79,6 +85,26 @@ function serviceReply<T>(result: z.ZodType<T>) {
 export const ccmuxControlServiceContract = defineContract(
   { prefix: CCMUX_CONTROL_SERVICE_PREFIX },
   {
+    externalHistory: {
+      method: 'POST',
+      path: '/external.history',
+      desc: 'Read bounded authored text without claiming an external writer',
+      input: ExternalContentReadSchema,
+      output: serviceReply(ExternalContentResultSchema),
+      idempotent: true,
+      timeout: 7_000,
+      meta: { effect: controlServiceEffects['external.history'] },
+    },
+    externalCapabilities: {
+      method: 'POST',
+      path: '/external.capabilities',
+      desc: 'Read exact external content and control eligibility',
+      input: ExternalContentSelectorSchema,
+      output: serviceReply(ExternalContentCapabilitiesSchema),
+      idempotent: true,
+      timeout: 7_000,
+      meta: { effect: controlServiceEffects['external.capabilities'] },
+    },
     messageOperation: {
       method: 'POST',
       path: '/message.operation',
@@ -311,7 +337,7 @@ export const ccmuxControlServiceContract = defineContract(
     models: {
       method: 'POST',
       path: '/model.list',
-      desc: 'Read the connected App Server model catalog after an optional cursor',
+      desc: 'Read the selected runtime model catalog with explicit source identity',
       input: ControlModelsReadSchema,
       output: serviceReply(ControlModelCatalogSchema),
       idempotent: true,

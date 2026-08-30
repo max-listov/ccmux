@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { customBundlePlugin } from './bundle-custom.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_CLI = join(ROOT, 'src', 'cli.ts');
@@ -32,6 +33,7 @@ export async function buildBundle(outfile: string): Promise<boolean> {
     entrypoints: [SRC_CLI],
     target: 'bun',
     plugins: [
+      await customBundlePlugin(),
       {
         name: 'stub-react-devtools',
         setup(build) {

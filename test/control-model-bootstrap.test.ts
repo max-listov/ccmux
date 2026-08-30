@@ -30,10 +30,15 @@ test('host catalog needs no managed row and metadata child is reaped', async () 
   try {
     const page = await readControlModels(
       f.machine,
-      ControlModelsReadSchema.parse({}),
+      ControlModelsReadSchema.parse({ runtime: 'codex' }),
       AbortSignal.timeout(3_000),
     );
-    expect(page.source).toEqual({ kind: 'host', machine: f.machine.rcPrefix, provider: 'openai' });
+    expect(page.source).toEqual({
+      kind: 'host',
+      machine: f.machine.rcPrefix,
+      provider: 'openai',
+      runtime: 'codex',
+    });
     expect(page.target).toBeUndefined();
     expect(page.data[0]).toMatchObject({ id: 'preset-a', model: 'model-a' });
     expect(loadSessions(f.machine)).toEqual([]);

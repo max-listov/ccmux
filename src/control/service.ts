@@ -24,6 +24,8 @@ export function controlServices(
     dependencies,
   );
   const service = implement(controlContract, {
+    externalHistory: ({ input, signal }) => operations.externalHistory(input, signal),
+    externalCapabilities: ({ input, signal }) => operations.externalCapabilities(input, signal),
     messageOperation: ({ input, principal }) =>
       operations.messageOperation(input, ChatPrincipalSchema.parse(principal)),
     history: ({ input, signal }) => operations.history(input, signal),

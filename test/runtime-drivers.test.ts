@@ -54,11 +54,12 @@ test('runtime selection is separate from inference selection and unavailable dri
       { requestId: crypto.randomUUID(), name: 'a', workspace, runtime: 'custom' },
       new AbortController().signal,
     ),
-  ).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+  ).rejects.toMatchObject({ code: 'LAUNCH_RECIPE_UNAVAILABLE' });
   expect(loadSessions(m)).toEqual([]);
   expect(existsSync(join(m.stateDir, 'control', 'create-requests.json'))).toBe(false);
   expect(readRuntimeCatalog(m).runtimes.find((row) => row.runtime === 'custom')).toMatchObject({
     availability: 'unavailable',
+    reason: 'runtime-not-configured',
   });
   expect(runtimeCapabilities({ agent: 'claude', runtime: 'tui' })).toMatchObject({
     structured: false,

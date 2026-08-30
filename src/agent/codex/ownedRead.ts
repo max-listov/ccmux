@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { machineConfigPath, resolveMonitoringLocation } from '../../config/monitoring-location.ts';
 import { MonitoringFileError, readBoundedFile } from '../../monitoring/native-file.ts';
+import { NATIVE_RUNTIME_MAX_BYTES } from '../../runtime/projectionSchema.ts';
 import { ownedCodexStatusPath } from './ownedPaths.ts';
-import { CODEX_RUNTIME_MAX_BYTES, type OwnedCodexRead } from './ownedSchema.ts';
+import type { OwnedCodexRead } from './ownedSchema.ts';
 import {
   unavailableOwnedCodex,
   validateOwnedCodex,
@@ -39,7 +40,7 @@ async function readOnce(session: string, threadId: string): Promise<OwnedCodexRe
     const location = resolveMonitoringLocation(JSON.parse(config));
     const bytes = await readBoundedFile(
       ownedCodexStatusPath(location, session),
-      CODEX_RUNTIME_MAX_BYTES,
+      NATIVE_RUNTIME_MAX_BYTES,
     );
     const after = await readConfig(path);
     const next = resolveMonitoringLocation(JSON.parse(after));

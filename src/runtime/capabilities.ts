@@ -104,15 +104,19 @@ const capabilities = {
   },
   custom: {
     runtime: 'custom',
-    structured: false,
-    modelCatalog: false,
-    modelSelection: false,
-    approval: false,
+    structured: true,
+    modelCatalog: true,
+    modelSelection: true,
+    approval: true,
     input: false,
-    nativeStream: false,
-    interrupt: false,
-    resume: false,
+    nativeStream: true,
+    interrupt: true,
+    resume: true,
     ...unsupportedNativeOperations,
+    selectionDefaults: true,
+    turnOptions: true,
+    history: true,
+    imageInput: true,
   },
 } satisfies Record<Session['agent'], RuntimeCapabilities>;
 
@@ -138,6 +142,6 @@ export function runtimeCapabilities(
 export function hasNativeRuntime(session: Pick<Session, 'agent' | 'runtime'>): boolean {
   return (
     (session.agent === 'codex' && session.runtime === 'app-server') ||
-    (session.agent === 'opencode' && session.runtime === 'native')
+    (['opencode', 'custom'].includes(session.agent) && session.runtime === 'native')
   );
 }

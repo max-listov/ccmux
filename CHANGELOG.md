@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Run optional Custom sessions with the published Stitchkit headless harness, canonical SQLite
+  history, immutable host tools/resources and exact signed approval continuations. Preserve
+  one-writer create/message retries, restart identity, bounded live evidence and private diagnostics.
+- Qualify Stitchkit 0.70.2 with sequential approvals, real coding/denial/defer/interruption and
+  installed runner packaging. Keep native Codex/OpenCode execution engines unchanged.
+- Require model catalog execution-runtime identity independently of model provider, and validate
+  required transport fields while retaining owner idempotent chat retry after unknown delivery.
+- Add bounded read-only external authored-text history and explicit control eligibility. Exact
+  provider/host/thread cursors refuse changed storage; reads never create or take over a writer.
+
 ## [0.39.33] — 2026-08-30
 
 qualify native approval acceptance
