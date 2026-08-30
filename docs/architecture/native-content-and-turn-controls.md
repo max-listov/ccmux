@@ -89,7 +89,56 @@ OpenCode native `synthetic` text and internal compaction-summary text are not au
 content. History keeps their metadata with explicit omitted-byte counts; public live content omits
 them. This is native-metadata selection, not text-pattern sanitization of user or assistant messages.
 
+## Tool observations
+
+`ContentRecord.tool` and `NativeHistoryEntry.tool` share the exported `ToolObservationSchema`:
+`{callId, name, lifecycle, outcome, exitCode}`. Absent observation is `null`; absent call/name/exit
+evidence is separately `null`. Names are bounded to 128 characters, call IDs to 256. Lifecycle is
+`pending | running | completed | unknown`; outcome is
+`unknown | succeeded | failed | interrupted | declined`. Nonterminal observations cannot claim
+an outcome or exit code. `complete`, outer `status` and a completed parent turn do not imply success.
+
+Codex command exit codes, explicit native failure/decline/interruption and dynamic-tool success
+flags are authoritative. Native completed file changes and completed MCP calls with a result carry
+their provider-defined success semantics. Other completed items without result evidence remain
+unknown. OpenCode preserves the native tool name and explicit error/interruption metadata; `bash`
+exit codes distinguish success from nonzero exit even when its native lifecycle is completed.
+Generic OpenCode completion without structured result evidence remains unknown. Output/error text
+is never parsed to manufacture an outcome, and arbitrary result bodies/metadata are not published.
+
+`itemId` remains the native item ID: the Codex item ID or OpenCode part ID. `tool.callId` is the
+separate call identity (OpenCode `callID`); consumers must not equate a part with a call or turn.
+Live observation and native history use the same provider mapper. Bounded replay/baseline retain
+the complete typed observation. Duplicate or late nonterminal/unknown updates cannot erase known
+terminal evidence; changing a known call identity on the same item is refused. History cannot infer
+a lifecycle event it did not observe when the native stored item supplies no status.
+
+Both published clients and native stream serialization use these same schemas. The existing
+26-operation descriptor and `current` revision remain; there is no new route, alternative stream,
+compatibility adapter, provider reader or writer. See the
+[tool observation decision](../decisions/2026-08-30-native-tool-observation-outcomes.md).
+
 # Steering and context
+
+## Approval scope and cancellation
+
+Pending requests contain nullable `scope: PermissionScope`. Supported OpenCode filesystem
+permissions expose `operation`, `kind: filesystem-patterns`, and separate `requested`/`session`
+sets, each `{patterns, omitted, complete}`. The first is the immediate permission; the second is
+the native `always` grant used by `acceptForSession`, which may be wider. Each set retains at most
+eight unchanged patterns of at most 1024 UTF-8 bytes. Oversized/control-character patterns are
+omitted, never shortened into a misleading narrower path. Missing fields and omissions mean
+incomplete context. Non-filesystem permissions (including shell commands) and Codex approvals
+without a supported resource projection have `scope: null`; UI must say context is unavailable.
+Raw command/input/diff/error/metadata bodies are not public approval scope. This display context
+does not itself authorize anything or relax host policy.
+
+`interrupt({target,generation,turnId})` cancels exact in-progress computation or suspended
+approval/input through the existing writer. Stale generation/turn and unknown/idle states refuse.
+OpenCode persists intent before abort, checks again after yielding to native events, and does not
+replay an uncertain abort. Terminal evidence retires only that turn's pending requests, including
+when native abort emits no separate permission-resolved event. Late requests for a terminal turn
+are ignored. No permission is accepted and no conversation is archived by cancellation.
 
 `steer` binds target, registration, generation, expected turn and operation UUID. It uses a durable
 intent before the native call and `steer:<operationId>` as its native message identity. This prevents
@@ -121,5 +170,6 @@ another native conversation. Restart and late retry use the accepted create byte
 
 Runnable isolated acceptance scripts are `native-image-steering-acceptance.ts`,
 `native-context-acceptance.ts`, `native-policy-acceptance.ts`, `native-selection-acceptance.ts`
-and `native-content-acceptance.ts`
+`native-content-acceptance.ts`, `native-tool-observation-acceptance.ts` and
+`native-approval-cancellation-acceptance.ts`
 under `scripts/`. They require existing native account access, not caller-supplied credentials.

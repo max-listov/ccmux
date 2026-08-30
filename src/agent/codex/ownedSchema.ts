@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ApplicationPolicyEvidenceSchema } from '../../policy/reference.ts';
+import { PermissionScopeSchema } from '../../runtime/permissionScope.ts';
 import { NativeSelectionEvidenceSchema } from '../../runtime/selectionSchema.ts';
 
 export const CODEX_RUNTIME_TTL_MS = 5_000;
@@ -93,6 +94,7 @@ export const OwnedCodexPendingRequestSchema = z
     turnId: z.string().min(1).max(256),
     itemId: z.string().min(1).max(256),
     reason: z.string().max(2_048).nullable(),
+    scope: PermissionScopeSchema.nullable().default(null),
     decisions: z.array(z.enum(['accept', 'acceptForSession', 'decline', 'cancel'])).max(4),
     questions: z.array(OwnedCodexQuestionSchema).max(3),
     requestedAt: z.iso.datetime(),

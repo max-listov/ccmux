@@ -301,7 +301,8 @@ export function createControlOperations(
       mutations
         .run(
           input.target.session,
-          ({ signal: admitted }) => interruptControlTurn(m, input.target, input.turnId, admitted),
+          ({ signal: admitted }) =>
+            interruptControlTurn(m, input.target, input.generation, input.turnId, admitted),
           { ...(signal ? { signal } : {}), timeoutMs: 10_000 },
         )
         .catch(controlRefusal),

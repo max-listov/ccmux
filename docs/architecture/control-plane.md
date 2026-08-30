@@ -64,7 +64,7 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `archive` / `archive-session` | POST `/control/archive` | Exact archive/stop receipt; history retained |
 | `message` | POST `/control/message` | Durable acceptance, duplicate flag and pinned turn options |
 | `start` | POST `/control/start` | Start existing non-archived identity; no duplicate writer |
-| `interrupt` | POST `/control/interrupt` | Interrupt the exact working native turn |
+| `interrupt` | POST `/control/interrupt` | Interrupt the exact active or suspended native turn |
 | `native` / `native-items` | POST `/control/native` | Bounded content baseline/replay after an optional cursor |
 | `models` | POST `/control/models` | Bounded provider-owned model catalog after an optional cursor |
 | `directories` | POST `/control/directories` | Bounded names-only workspace directory page |
@@ -151,13 +151,22 @@ the same sender/target/body/defer/notBefore/task with that UUID returns `duplica
 Reusing it for different content or identity is `IDEMPOTENCY_CONFLICT`. Acceptance means stored,
 not delivered or completed. Existing delivery gates hold messages during busy turns, approvals,
 input requests, partial composers and ambiguous native pickup. The API never types into those UI
-states. `interrupt` requires both the exact session identity and current native turn ID, rechecks
-provider state and never answers an approval or input request.
+states. `interrupt({target,generation,turnId})` requires the exact session identity, observer
+generation and in-progress native turn ID. Working, waiting-approval and waiting-input are
+cancellable; stale generation, unknown/idle state and a different turn refuse. The existing owner
+rechecks before native cancellation and never answers or accepts an approval/input request.
+Native acknowledgement means accepted cancellation, not terminal completion. Observe the exact
+message operation or terminal stream event for completion. OpenCode retains an accepted interrupt
+receipt for an idempotent repeat; an uncertain acknowledgement is never automatically replayed.
+Codex native CAS refuses a turn that has already settled.
 
 `native` projects assistant text, provider-public reasoning summaries, tool type/status, numeric
-usage, terminal lifecycle and exact pending requests. User messages belong to authenticated
-`history`, not the hot content feed. Commands, output, directories, diffs, arbitrary tool payloads
-and credentials are not copied. Generation/sequence cursors return `records` for retained replay
+usage, terminal lifecycle and exact pending requests. Each tool record/history entry has a shared
+typed `tool` observation; lifecycle completion alone never implies success. User messages belong to
+authenticated `history`, not the hot content feed. Commands, output, diffs, arbitrary tool payloads
+and credentials are not copied. Pending approvals may include bounded native filesystem patterns
+needed for informed authorization; this explicit scope is separate from raw tool input.
+Generation/sequence cursors return `records` for retained replay
 or a bounded `baseline` with `reset=initial|generation|gap|context`. There is no old `items` field.
 
 `models({})` reads the native App Server catalog before the first conversation, with no managed

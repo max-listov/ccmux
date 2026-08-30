@@ -32,6 +32,7 @@ test('pickup acceptance services approvals arriving after the round trip', async
                   turnId: 'turn-a',
                   itemId: 'item-a',
                   reason: null,
+                  scope: null,
                   decisions: ['accept'],
                   questions: [],
                   requestedAt: new Date().toISOString(),

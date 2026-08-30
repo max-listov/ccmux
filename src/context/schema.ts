@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
 import { ManagedPeerSchema } from '../config/schema.ts';
+import { ToolObservationSchema } from '../content/toolSchema.ts';
 
 export const HISTORY_LIMITS = {
   entries: 64,
@@ -26,6 +27,7 @@ export const NativeHistoryEntrySchema = z
     images: AttachmentReferencesSchema,
     omittedImages: z.number().int().nonnegative(),
     status: z.enum(['inProgress', 'completed', 'failed', 'unknown']),
+    tool: ToolObservationSchema.nullable().default(null),
   })
   .strict();
 export const NativeHistoryPageSchema = z

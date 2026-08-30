@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ApplicationPolicyEvidence } from '../../policy/reference.ts';
 import { ApplicationPolicyEvidenceSchema } from '../../policy/reference.ts';
+import { openCodePermissionScope } from '../../runtime/permissionScope.ts';
 import type { ManagedRuntimeSnapshot } from '../../runtime/schema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { VERSION } from '../../util/version.ts';
@@ -202,6 +203,10 @@ export class OpenCodeProjection {
         },
       });
     this.value.turn.status = outcome;
+    // Native abort removes suspended permissions without necessarily emitting permission.replied.
+    // The exact terminal turn is authoritative; never synthesize an accept/decline decision.
+    for (const request of [...this.value.pendingRequests])
+      if (request.turnId === message.parentID) this.resolve(request.requestId);
     this.value.state = 'idle';
     this.append({
       ...ItemDefaults,
@@ -323,6 +328,7 @@ export class OpenCodeProjection {
     if (
       !this.own(request.sessionID) ||
       !this.value.turn ||
+      this.value.turn.status !== 'inProgress' ||
       (request.tool && this.parents.get(request.tool.messageID) !== this.value.turn.id)
     )
       return;
@@ -334,6 +340,7 @@ export class OpenCodeProjection {
       turnId: this.value.turn.id,
       itemId: request.tool?.callID ?? request.id,
       reason: request.permission,
+      scope: openCodePermissionScope(request),
       decisions: ['accept', 'acceptForSession', 'decline'],
       questions: [],
       requestedAt: new Date().toISOString(),
@@ -344,6 +351,7 @@ export class OpenCodeProjection {
     if (
       !this.own(request.sessionID) ||
       !this.value.turn ||
+      this.value.turn.status !== 'inProgress' ||
       (request.tool && this.parents.get(request.tool.messageID) !== this.value.turn.id)
     )
       return;
@@ -355,6 +363,7 @@ export class OpenCodeProjection {
       turnId: this.value.turn.id,
       itemId: request.tool?.callID ?? request.id,
       reason: null,
+      scope: null,
       decisions: [],
       questions: request.questions.map((question, i) => ({
         id: String(i),

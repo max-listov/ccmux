@@ -196,6 +196,7 @@ export function projectNativeRequest(
       turnId: parsed.data.turnId,
       itemId: parsed.data.itemId,
       reason: clip(parsed.data.reason, 2_048),
+      scope: null,
       decisions: [...decisions],
       questions: [],
       requestedAt: new Date(parsed.data.startedAtMs ?? now).toISOString(),
@@ -212,6 +213,7 @@ export function projectNativeRequest(
       turnId: parsed.data.turnId,
       itemId: parsed.data.itemId,
       reason: null,
+      scope: null,
       decisions: [],
       questions: parsed.data.questions.map((question) => ({
         ...question,

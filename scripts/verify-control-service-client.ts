@@ -63,7 +63,7 @@ try {
       ControlDirectoryResultSchema,
       RuntimeCatalogSchema, CCMUX_CONTROL_SERVICE_REVISION, AttachmentReferenceSchema, SelectionResultSchema,
       NativeSelectionEvidenceSchema, ControlHistoryResultSchema, ControlContextOperationResultSchema,
-      SteeringReceiptSchema, NativeForkRequestSchema, MessageOperationResultSchema,
+      SteeringReceiptSchema, NativeForkRequestSchema, MessageOperationResultSchema, ToolObservationSchema, ContentRecordSchema, PermissionScopeSchema, ControlInterruptSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -150,9 +150,21 @@ try {
     if (preview.data !== 'YWJj' || !preview.complete) throw new Error('attachment preview contract failed');
     await uploadClient.attachmentCancel({target,uploadId:reference.id});
     const generation = crypto.randomUUID(), operationId = crypto.randomUUID();
+    const permissionScope = PermissionScopeSchema.parse({operation:'external_directory',kind:'filesystem-patterns',requested:{patterns:['/work/narrow/*'],omitted:0,complete:true},session:{patterns:['/work/*'],omitted:0,complete:true}});
+    if (permissionScope.requested.patterns[0] === permissionScope.session.patterns[0]) throw new Error('Approval scopes conflated');
+    const interruptInput = ControlInterruptSchema.parse({target,generation,turnId:'turn-a'});
+    const canceller = createCcmuxControlServiceClient(async (url, init) => {
+      const payload = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+      if (!String(url).endsWith('/turn.interrupt') || payload.generation !== generation || payload.turnId !== 'turn-a') throw new Error('Cancellation identity lost');
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{target,accepted:true}});
+    });
+    await canceller.interrupt(interruptInput);
     NativeSelectionEvidenceSchema.parse({model:modelSelection,options:selectionResult.current.options,source:'settings',turnId:null});
+    const tool = ToolObservationSchema.parse({callId:'native-call',name:'bash',lifecycle:'completed',outcome:'failed',exitCode:7});
+    const toolRecord = ContentRecordSchema.parse({sequence:1,at:new Date().toISOString(),kind:'tool',operation:'lifecycle',turnId:'turn-a',itemId:'part-a',revision:1,offsetBytes:0,prefixKnown:true,text:null,totalBytes:0,omittedBytes:0,complete:true,status:'completed',tool});
+    if (toolRecord.tool?.outcome !== 'failed' || !toolRecord.complete) throw new Error('Tool lifecycle/outcome conflated');
     const historyResult = ControlHistoryResultSchema.parse({target,registrationGeneration,runtime:'codex',nativeId:target.threadId,
-      revision:1,entries:[],nextCursor:null,completeness:'complete',omittedItems:0,omittedBytes:0});
+      revision:1,entries:[{turnId:'turn-a',itemId:'part-a',kind:'tool',text:null,omittedBytes:0,images:[],omittedImages:0,status:'completed',tool}],nextCursor:null,completeness:'complete',omittedItems:0,omittedBytes:0});
     const contextResult = ControlContextOperationResultSchema.parse({target,registrationGeneration,operation:{operationId,generation,
       state:'queued',revision:1,createdAt:1,updatedAt:1}});
     const steeringResult = SteeringReceiptSchema.parse({protocol:1,operationId,target,registrationGeneration,generation,
@@ -164,6 +176,7 @@ try {
       return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result});
     });
     if ((await contextClient.history({target,registrationGeneration,limit:8})).nativeId !== target.threadId) throw new Error('history contract failed');
+    if ((await contextClient.history({target,registrationGeneration,limit:8})).entries[0]?.tool?.exitCode !== 7) throw new Error('Native tool outcome lost by client');
     await contextClient.compact({target,registrationGeneration,generation,operationId});
     await contextClient.contextOperation({target,registrationGeneration,operationId});
     await contextClient.steer({target,registrationGeneration,generation,operationId,expectedTurnId:'turn-a',body:'continue'});

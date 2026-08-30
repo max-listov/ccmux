@@ -40,6 +40,13 @@ export {
 } from './config/schema.ts';
 export { ContentCursorSchema, ContentReadSchema, ContentRecordSchema } from './content/schema.ts';
 export {
+  ToolLifecycleSchema,
+  ToolNameSchema,
+  type ToolObservation,
+  ToolObservationSchema,
+  ToolOutcomeSchema,
+} from './content/toolSchema.ts';
+export {
   type NativeForkRequest,
   NativeForkRequestSchema,
   type NativeHistoryEntry,
@@ -119,6 +126,7 @@ export {
   RuntimeCatalogInputSchema,
   RuntimeCatalogSchema,
 } from './runtime/capabilities.ts';
+export { type PermissionScope, PermissionScopeSchema } from './runtime/permissionScope.ts';
 export {
   type AcceptedTurnOptions,
   AcceptedTurnOptionsSchema,

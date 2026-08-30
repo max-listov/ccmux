@@ -102,6 +102,7 @@ export const ControlMessageReceiptSchema = z
   })
   .strict();
 export const ControlInterruptSchema = ControlTargetSchema.extend({
+  generation: z.uuid(),
   turnId: z.string().min(1).max(256),
 }).strict();
 export const ControlActionReceiptSchema = z

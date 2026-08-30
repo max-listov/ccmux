@@ -1,6 +1,8 @@
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import type { CodexAppRpc, CodexRpcEvent } from '../agent/codex/rpc.ts';
+import { CodexToolFieldsSchema, codexToolObservation } from '../agent/codex/toolObservation.ts';
+import { toolHistoryStatus } from '../content/toolSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { boundedHistoryPage, historyCursor, historyImageReferences } from './history.ts';
 import type { NativeContextApi } from './pump.ts';
@@ -52,13 +54,11 @@ const InputSchema = z.object({
   path: z.string().optional(),
   url: z.string().optional(),
 });
-const ItemSchema = z.object({
+const ItemSchema = CodexToolFieldsSchema.extend({
   id: Id,
-  type: z.string(),
   text: z.string().optional(),
   summary: z.array(z.string()).optional(),
   content: z.unknown().optional(),
-  status: z.string().optional(),
 });
 const PageSchema = z.object({
   data: z.array(z.object({ turnId: Id, item: ItemSchema })).max(64),
@@ -99,6 +99,7 @@ export function codexContextApi(m: MachineConfig, s: Session, rpc: CodexAppRpc):
       const entries: NativeHistoryEntry[] = [];
       for (const { turnId, item } of page.data) {
         signal.throwIfAborted();
+        const tool = codexToolObservation(item);
         let text: string | null = null,
           kind: NativeHistoryEntry['kind'] = 'other',
           pointers: string[] = [],
@@ -124,22 +125,16 @@ export function codexContextApi(m: MachineConfig, s: Session, rpc: CodexAppRpc):
           kind = 'reasoning-summary';
           text = item.summary?.join('\n') ?? null;
         } else if (item.type === 'contextCompaction') kind = 'compaction';
-        else if (
-          [
-            'commandExecution',
-            'fileChange',
-            'mcpToolCall',
-            'dynamicToolCall',
-            'webSearch',
-            'imageGeneration',
-          ].includes(item.type)
-        )
-          kind = 'tool';
+        else if (tool !== null) kind = 'tool';
         const references = await historyImageReferences(m, s, pointers, signal);
         const status =
-          item.status === 'inProgress' || item.status === 'completed' || item.status === 'failed'
-            ? item.status
-            : 'unknown';
+          tool !== null
+            ? toolHistoryStatus(tool)
+            : item.status === 'inProgress' ||
+                item.status === 'completed' ||
+                item.status === 'failed'
+              ? item.status
+              : 'unknown';
         entries.push({
           turnId,
           itemId: item.id,
@@ -149,6 +144,7 @@ export function codexContextApi(m: MachineConfig, s: Session, rpc: CodexAppRpc):
           images: references,
           omittedImages: Math.max(0, images - references.length),
           status,
+          tool,
         });
       }
       signal.throwIfAborted();

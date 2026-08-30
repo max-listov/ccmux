@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import type { OpenCodeClient } from '../agent/opencode/server.ts';
+import {
+  OpenCodeToolFieldsSchema,
+  openCodeToolObservation,
+} from '../agent/opencode/toolObservation.ts';
+import { toolHistoryStatus } from '../content/toolSchema.ts';
 import { readSelection } from '../runtime/selection.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { boundedHistoryPage, historyCursor, historyImageReferences } from './history.ts';
@@ -19,13 +24,12 @@ const MessageSchema = z.object({
   }),
   parts: z
     .array(
-      z.object({
+      OpenCodeToolFieldsSchema.extend({
         id: Id,
         type: z.string(),
         text: z.string().optional(),
         filename: z.string().optional(),
         synthetic: z.boolean().optional(),
-        state: z.object({ status: z.string() }).optional(),
       }),
     )
     .max(256),
@@ -58,6 +62,7 @@ export function openCodeContextApi(
       for (const { info, parts } of page.items) {
         if (info.sessionID !== sessionID) throw new Error('Native history identity mismatch');
         for (const part of parts) {
+          const tool = part.type === 'tool' ? openCodeToolObservation(part) : null;
           let kind: NativeHistoryEntry['kind'] = 'other',
             text: string | null = null;
           // Native synthetic context and compaction summaries can contain private tool inputs.
@@ -72,11 +77,13 @@ export function openCodeContextApi(
           const pointers = part.type === 'file' && part.filename ? [part.filename] : [];
           const images = await historyImageReferences(m, s, pointers, signal);
           const status =
-            part.state?.status === 'error' || info.error !== undefined
-              ? 'failed'
-              : info.time.completed !== undefined || info.role === 'user'
-                ? 'completed'
-                : 'unknown';
+            tool !== null
+              ? toolHistoryStatus(tool)
+              : info.error !== undefined
+                ? 'failed'
+                : info.time.completed !== undefined || info.role === 'user'
+                  ? 'completed'
+                  : 'unknown';
           entries.push({
             turnId: info.parentID ?? info.id,
             itemId: part.id,
@@ -86,6 +93,7 @@ export function openCodeContextApi(
             images,
             omittedImages: part.type === 'file' && images.length === 0 ? 1 : 0,
             status,
+            tool,
           });
         }
       }

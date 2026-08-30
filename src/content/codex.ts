@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { projectNativeRequest, publicRequestId } from '../agent/codex/ownedNative.ts';
 import type { CodexRpcEvent, CodexRpcRequest } from '../agent/codex/rpc.ts';
+import { CodexToolFieldsSchema, codexToolObservation } from '../agent/codex/toolObservation.ts';
 import type { ContentBuffer } from './buffer.ts';
 
 const Id = z.string().min(1).max(256);
@@ -14,9 +15,8 @@ const Delta = z.object({
 const Item = z.object({
   threadId: Id,
   turnId: Id,
-  item: z.object({
+  item: CodexToolFieldsSchema.extend({
     id: Id,
-    type: z.string(),
     text: z
       .string()
       .max(2 * 1024 * 1024)
@@ -45,17 +45,6 @@ const Usage = z.object({
     }),
   }),
 });
-const safeTools = new Set([
-  'commandExecution',
-  'fileChange',
-  'mcpToolCall',
-  'dynamicToolCall',
-  'webSearch',
-  'imageView',
-  'imageGeneration',
-  'collabAgentToolCall',
-]);
-
 export const CODEX_CONTENT_METHODS = new Set([
   'item/agentMessage/delta',
   'item/plan/delta',
@@ -105,8 +94,10 @@ export function observeCodexContent(
           'replace',
           complete,
         );
-    } else if (safeTools.has(item.type))
-      buffer.lifecycle('tool', data.turnId, item.id, complete ? 'completed' : 'started', item.type);
+    } else {
+      const tool = codexToolObservation(item, complete ? 'completed' : 'started');
+      if (tool) buffer.tool(data.turnId, item.id, tool);
+    }
   } else if (event.method === 'turn/completed') {
     const data = Turn.parse(event.params);
     if (data.threadId === threadId)

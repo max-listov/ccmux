@@ -8,6 +8,7 @@ import {
   OpenCodePartSchema,
   openCodeTerminal,
 } from '../agent/opencode/protocol.ts';
+import { openCodeToolObservation } from '../agent/opencode/toolObservation.ts';
 import type { ContentBuffer } from './buffer.ts';
 
 /** Native reasoning parts are not summaries; only ordinary assistant text is public content here. */
@@ -64,8 +65,7 @@ export class OpenCodeContentObserver {
         'replace',
         part.time?.end !== undefined,
       );
-    else if (part.type === 'tool' && part.state)
-      this.buffer.lifecycle('tool', turn, part.callID ?? part.id, part.state.status);
+    else if (part.type === 'tool') this.buffer.tool(turn, part.id, openCodeToolObservation(part));
   }
   event(raw: unknown): void {
     const event = OpenCodeEventSchema.parse(raw);

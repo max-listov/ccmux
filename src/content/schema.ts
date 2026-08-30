@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ManagedPeerSchema } from '../config/schema.ts';
+import { ToolObservationSchema } from './toolSchema.ts';
 
 export const CONTENT_FILE_MAX_BYTES = 512 * 1024;
 export const CONTENT_EVENT_BYTES = 4096;
@@ -42,6 +43,7 @@ export const ContentRecordSchema = z
     omittedBytes: z.number().int().nonnegative(),
     complete: z.boolean(),
     status: z.string().max(128).nullable(),
+    tool: ToolObservationSchema.nullable().default(null),
   })
   .strict();
 export type ContentRecord = z.infer<typeof ContentRecordSchema>;

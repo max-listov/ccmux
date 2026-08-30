@@ -75,6 +75,7 @@ test('idle, disconnected, stale generation or turn and pending approvals/input f
     turnId: request.input.expectedTurnId,
     itemId: 'item-a',
     reason: null,
+    scope: null,
     decisions: [],
     questions: [],
     requestedAt: new Date().toISOString(),

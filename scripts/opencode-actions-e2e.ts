@@ -149,7 +149,11 @@ export async function verifyOpenCodeActions(client: Client, target: ManagedPeer)
   });
   const active = await client.get({ target });
   check(active.turn, 'No exact native turn');
-  await client.interrupt({ target, turnId: active.turn.id });
+  await client.interrupt({
+    target,
+    generation: (await client.native({ target })).generation,
+    turnId: active.turn.id,
+  });
   await settle(client, target, 'interrupted');
   await client.message({
     target,

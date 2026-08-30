@@ -6,6 +6,17 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Preserve bounded typed native tool identity, name, lifecycle, outcome and observed exit code in
+  content, replay and history. Distinguish nonzero shell exits and native failures/interruption from
+  lifecycle completion; missing result evidence remains explicitly unknown.
+- Align OpenCode live/history part and call identities, preserve terminal tool evidence through
+  reconnect and late updates, and verify both native runtimes through the published client surface.
+- Expose bounded native filesystem approval scopes, separating the immediate request from a
+  session-wide grant. Preserve explicit missing/omitted context without publishing tool bodies.
+- Require native generation on exact turn interruption; allow cancellation while awaiting approval
+  or input. Retire pending requests on native terminal evidence without accepting permission or
+  archiving the conversation, and refuse stale turns/generations without a second abort.
+
 ## [0.39.31] — 2026-08-30
 
 complete native process-group cleanup

@@ -1,10 +1,24 @@
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import type { OwnedCodexSnapshot } from '../agent/codex/ownedSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from './status.ts';
 import { readPrivateJson } from './store.ts';
+
+export function isCancellableTurn(
+  snapshot: Pick<OwnedCodexSnapshot, 'generation' | 'state' | 'turn'>,
+  generation: string,
+  turnId: string,
+): boolean {
+  return (
+    snapshot.generation === generation &&
+    snapshot.turn?.id === turnId &&
+    snapshot.turn.status === 'inProgress' &&
+    ['working', 'waiting-approval', 'waiting-input'].includes(snapshot.state)
+  );
+}
 
 const InterruptSchema = z
   .object({
@@ -23,19 +37,26 @@ export const writeRuntimeInterrupt = (m: MachineConfig, s: Session, value: Runti
 export async function requestRuntimeInterrupt(
   m: MachineConfig,
   s: Session,
+  generation: string,
   turnId: string,
   signal: AbortSignal,
 ): Promise<void> {
   const read = readManagedRuntimeStatus(m, s);
+  const prior = readRuntimeInterrupt(m, s);
+  if (
+    read.status === 'live' &&
+    read.snapshot?.generation === generation &&
+    prior?.generation === generation &&
+    prior.turnId === turnId &&
+    prior.phase === 'accepted'
+  )
+    return;
   if (
     read.status !== 'live' ||
-    read.snapshot?.turn?.id !== turnId ||
-    read.snapshot.state !== 'working' ||
-    read.snapshot.turn.status !== 'inProgress'
+    !read.snapshot ||
+    !isCancellableTurn(read.snapshot, generation, turnId)
   )
-    throw new AppError('TURN_MISMATCH', 'The exact working turn is unavailable', 409);
-  const generation = read.snapshot.generation;
-  const prior = readRuntimeInterrupt(m, s);
+    throw new AppError('TURN_MISMATCH', 'The exact active turn is unavailable', 409);
   if (prior?.generation !== generation || prior.turnId !== turnId)
     await writeRuntimeInterrupt(m, s, { generation, turnId, phase: 'queued' });
   const deadline = Date.now() + 5_000;

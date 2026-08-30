@@ -7,7 +7,7 @@ import { loadCursors } from '../chat/store.ts';
 import { blockingInbound } from '../commands/wait.ts';
 import { withSessionRegistryLock } from '../config/registryLock.ts';
 import { hasNativeRuntime } from '../runtime/capabilities.ts';
-import { requestRuntimeInterrupt } from '../runtime/interrupt.ts';
+import { isCancellableTurn, requestRuntimeInterrupt } from '../runtime/interrupt.ts';
 import type { MachineConfig, ManagedPeer } from '../types.ts';
 import type { ControlPublisher } from './publisher.ts';
 import { ControlWaitResultSchema } from './schema.ts';
@@ -16,6 +16,7 @@ import { controlTarget } from './target.ts';
 export async function interruptControlTurn(
   m: MachineConfig,
   target: ManagedPeer,
+  generation: string,
   turnId: string,
   signal: AbortSignal,
 ) {
@@ -25,24 +26,32 @@ export async function interruptControlTurn(
     if (!hasNativeRuntime(session))
       throw new AppError('UNSUPPORTED', 'Native interruption is unavailable for this runtime', 409);
     if (session.runtime === 'native') {
-      await requestRuntimeInterrupt(m, session, turnId, signal);
+      await requestRuntimeInterrupt(m, session, generation, turnId, signal);
       return { target, accepted: true } satisfies { target: ManagedPeer; accepted: true };
     }
     const read = readOwnedCodexStatus(m, session);
     if (
       read.status !== 'live' ||
-      read.snapshot?.state !== 'working' ||
-      read.snapshot.turn?.id !== turnId ||
-      read.snapshot.turn.status !== 'inProgress'
+      !read.snapshot ||
+      !isCancellableTurn(read.snapshot, generation, turnId)
     ) {
-      throw new AppError('TURN_MISMATCH', 'The exact working turn is unavailable', 409);
+      throw new AppError('TURN_MISMATCH', 'The exact active turn is unavailable', 409);
     }
     const rpc = await connectOwnedCodex(m, session, { signal });
     try {
       const thread = await readCodexAppThread(rpc, session.uuid);
       controlTarget(m, target);
-      if (thread.status.type !== 'active' || thread.status.activeFlags.length !== 0) {
-        throw new AppError('TURN_MISMATCH', 'The runtime is not actively computing', 409);
+      const current = readOwnedCodexStatus(m, session);
+      if (
+        thread.status.type !== 'active' ||
+        thread.status.activeFlags.some(
+          (flag) => !['waitingOnApproval', 'waitingOnUserInput'].includes(flag),
+        ) ||
+        current.status !== 'live' ||
+        !current.snapshot ||
+        !isCancellableTurn(current.snapshot, generation, turnId)
+      ) {
+        throw new AppError('TURN_MISMATCH', 'The exact active turn is unavailable', 409);
       }
       signal.throwIfAborted();
       await rpc.request('turn/interrupt', { threadId: target.threadId, turnId });

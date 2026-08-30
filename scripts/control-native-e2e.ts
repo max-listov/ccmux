@@ -184,7 +184,11 @@ try {
     });
     check(active.turn, 'No native turn identity');
     const interruptedTurn = active.turn.id;
-    await client.interrupt({ target: targetA, turnId: interruptedTurn });
+    await client.interrupt({
+      target: targetA,
+      generation: (await client.native({ target: targetA })).generation,
+      turnId: interruptedTurn,
+    });
     check(
       (await settled(targetA)).outcome === 'interrupted',
       'Interruption reported as normal completion',

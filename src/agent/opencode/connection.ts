@@ -9,11 +9,11 @@ import {
 } from '../../context/pump.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { emitRuntimeBoundaries } from '../../runtime/events.ts';
-import { readRuntimeInterrupt, writeRuntimeInterrupt } from '../../runtime/interrupt.ts';
 import { ManagedRuntimeStatusWriter } from '../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { prepareOpenCodeCatalog } from './catalog.ts';
 import { applyOpenCodeInput } from './input.ts';
+import { applyOpenCodeInterrupt } from './interrupt.ts';
 import { OpenCodeProjection } from './projection.ts';
 import { OpenCodeMessageSchema, OpenCodePartSchema, OpenCodeStatusSchema } from './protocol.ts';
 import { applyOpenCodeResponse } from './responses.ts';
@@ -208,26 +208,7 @@ export class OpenCodeConnection {
       );
     });
     await applyOpenCodeResponse(this.m, this.session, this.server.client, this.projection, signal);
-    const interrupt = readRuntimeInterrupt(this.m, this.session);
-    if (interrupt?.phase === 'queued') {
-      const snapshot = this.projection.snapshot();
-      const valid =
-        interrupt.generation === snapshot.generation &&
-        interrupt.turnId === snapshot.turn?.id &&
-        snapshot.turn.status === 'inProgress' &&
-        snapshot.state === 'working';
-      await writeRuntimeInterrupt(this.m, this.session, {
-        ...interrupt,
-        phase: valid ? 'uncertain' : 'rejected',
-      });
-      if (valid && this.session.nativeSession) {
-        await this.server.client.session.abort(
-          { sessionID: this.session.nativeSession.id },
-          { signal },
-        );
-        await writeRuntimeInterrupt(this.m, this.session, { ...interrupt, phase: 'accepted' });
-      }
-    }
+    await applyOpenCodeInterrupt(this.m, this.session, this.server.client, this.projection, signal);
     await applyOpenCodeInput(this.m, this.session, this.server.client, this.projection, signal);
     await this.publish();
   }

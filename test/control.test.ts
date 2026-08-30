@@ -363,7 +363,11 @@ test('native approval/input/working states remain distinct; interruption cannot 
     await f.publish();
     expect((await f.client.get({ target: f.target })).state).toBe(state);
     await expect(
-      f.client.interrupt({ target: f.target, turnId: 'unrelated' }),
+      f.client.interrupt({
+        target: f.target,
+        generation: crypto.randomUUID(),
+        turnId: 'unrelated',
+      }),
     ).rejects.toMatchObject({ code: 'TURN_MISMATCH' });
     expect((await f.client.wait({ target: f.target, timeoutMs: 20 })).outcome).toBe('timeout');
   }
@@ -445,7 +449,13 @@ test('native feed is bounded, cursored and exact responses expose submission unc
       availableDecisions: ['accept', 'decline'],
     },
   });
-  content.lifecycle('tool', 'turn-a', 'tool-a', 'completed', 'commandExecution');
+  content.tool('turn-a', 'tool-a', {
+    callId: 'tool-a',
+    name: 'commandExecution',
+    lifecycle: 'completed',
+    outcome: 'unknown',
+    exitCode: null,
+  });
   content.lifecycle('request', 'turn-a', 's:approval-a', 'requested', 'approval');
   await publishContent();
   await writer.write(p.snapshot());

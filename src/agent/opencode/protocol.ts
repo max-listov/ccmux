@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OpenCodeToolFieldsSchema } from './toolObservation.ts';
 
 const Id = z.string().min(1).max(256);
 export const OpenCodeSessionSchema = z.object({
@@ -35,19 +36,17 @@ export const OpenCodeMessageSchema = z.object({
     .optional(),
 });
 export type OpenCodeMessage = z.infer<typeof OpenCodeMessageSchema>;
-export const OpenCodePartSchema = z.object({
+export const OpenCodePartSchema = OpenCodeToolFieldsSchema.extend({
   id: Id,
   sessionID: Id,
   messageID: Id,
   type: z.string(),
   text: z.string().optional(),
   synthetic: z.boolean().optional(),
-  tool: z.string().optional(),
-  callID: Id.optional(),
   time: z.object({ start: z.number().optional(), end: z.number().optional() }).optional(),
-  state: z
-    .object({
-      status: z.enum(['pending', 'running', 'completed', 'error']),
+  state: OpenCodeToolFieldsSchema.shape.state
+    .unwrap()
+    .extend({
       input: z.record(z.string(), z.unknown()).optional(),
       output: z.string().optional(),
       error: z.string().optional(),
@@ -66,6 +65,8 @@ export const OpenCodePermissionSchema = z.object({
   id: Id,
   sessionID: Id,
   permission: z.string().max(256),
+  patterns: z.array(z.string()).max(256).optional(),
+  always: z.array(z.string()).max(256).optional(),
   tool: z.object({ messageID: Id, callID: Id }).optional(),
 });
 export const OpenCodeQuestionSchema = z.object({
