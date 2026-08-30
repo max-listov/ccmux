@@ -2,7 +2,8 @@
 title: Typed application policy and applied evidence for managed native runtimes
 description: Separate caller-owned agent policy from host-owned launch configuration without copying loops or widening permissions.
 type: task
-status: in-progress
+status: done
+completed: 2026-08-30 13:02 +07:00
 created: 2026-08-30
 updated: 2026-08-30
 ---
@@ -38,7 +39,7 @@ supervisor select application prompts/skills or duplicate their canonical source
   user-message history or create another provider loop/writer.
 - [x] Verify canonical source loading and selected skill body application on a real native turn;
   desired metadata alone is insufficient. Cover restart, mismatched revision, unsupported policy.
-- [ ] Publish typed service client/descriptor with exact version and packed consumer evidence.
+- [x] Publish typed service client/descriptor with exact version and packed consumer evidence.
 
 ## Acceptance
 
@@ -58,3 +59,13 @@ supervisor select application prompts/skills or duplicate their canonical source
   Evidence SHA-256: `65d3c4086507d7bf15743fb2de0642fe00750aa75ab39ff7ceee12823f49614f`.
 - [x] `test/policy-selection-admission.test.ts` closes the admission/dispatch policy-agent seam;
   `docs/decisions/2026-08-30-native-application-policy.md` documents the applied-evidence boundary.
+- [x] Published `v0.39.25`: implementation `3c7235454e657cefa5ec570d6fb4c927293b07e4`,
+  release `2cc132e3e1bb1235d5dba967d7ba39655b8a58b1`; exact-SHA CI run
+  [33295298409](https://github.com/max-listov/ccmux/actions/runs/33295298409) passed.
+  Runtime bundle SHA-256: `3de1dc4e00afae0f7af1030068aa8d9e67a9ac8d2bfcd20374fdc2687b83e0ff`.
+  Downloaded client archive SHA-256: `4ab1717877b4c154eaae3a84810656628d8043ce978266c7299ab42b4b0df72d`.
+  The actual published archive passed installation, Bun/Node and both TypeScript resolution checks.
+  All three owned runtimes reported this exact version/hash and live owner projections; existing
+  managed identities and running sessions were preserved. Local native service revision 2 reads
+  passed on both remote execution hosts; cross-machine transport activation remains a separate
+  unresolved acceptance boundary in the roadmap.

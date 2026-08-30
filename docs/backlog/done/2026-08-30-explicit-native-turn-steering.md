@@ -2,14 +2,15 @@
 title: Explicit identity-pinned native turn steering
 description: Add deliberate active-turn input while preserving idle-only durable messaging and exact approval boundaries.
 type: task
-status: in-progress
+status: done
+completed: 2026-08-30 13:02 +07:00
 created: 2026-08-30
 updated: 2026-08-30
 priority: P2
 pipeline: native-harness-control
 order: 4
 depends-on:
-  - 2026-08-30-managed-image-attachments.md
+  - ../in-progress/2026-08-30-managed-image-attachments.md
   - 2026-08-30-in-session-model-and-mode-selection.md
 ---
 
@@ -60,13 +61,13 @@ steering does not grant permission to change model, launch policy or answer a pe
   interrupted transport and restart produce correct refusal/reconciliation without duplicate injection.
 - [x] Test both adapters against their actual protocols. Record unsupported exact-turn guarantees
   as a concrete capability limitation and evidence, not a passed interoperability claim.
-- [ ] Packed Bun/Node client checks, full local gates and exact-SHA CI pass. Record the release and
+- [x] Packed Bun/Node client checks, full local gates and exact-SHA CI pass. Record the release and
   artifact hashes and owned-runtime rollout proof; leave unverified support explicitly unresolved.
 
 ## Boundaries
 
 No implicit steering, generic config mutation, automatic interruption or terminal scraping. This
-is an explicit opt-in extension in the [native control roadmap](2026-08-30-native-harness-control-parity.md),
+is an explicit opt-in extension in the [native control roadmap](../in-progress/2026-08-30-native-harness-control-parity.md),
 not a change to the established idle-only inter-agent chat contract.
 
 ## Что сделано
@@ -77,3 +78,13 @@ not a change to the established idle-only inter-agent chat contract.
   duplicate receipt, stale generation refusal, pending input refusal/exact answer and deferred image.
 - [x] OpenCode explicitly refuses exact-turn steering before dispatch because its protocol does not
   provide equivalent CAS. This is a documented capability boundary, not fabricated parity.
+- [x] Published `v0.39.25`: implementation `3c7235454e657cefa5ec570d6fb4c927293b07e4`,
+  release `2cc132e3e1bb1235d5dba967d7ba39655b8a58b1`; exact-SHA CI run
+  [33295298409](https://github.com/max-listov/ccmux/actions/runs/33295298409) passed.
+  Runtime bundle SHA-256: `3de1dc4e00afae0f7af1030068aa8d9e67a9ac8d2bfcd20374fdc2687b83e0ff`.
+  Downloaded client archive SHA-256: `4ab1717877b4c154eaae3a84810656628d8043ce978266c7299ab42b4b0df72d`.
+  The actual published archive passed installation, Bun/Node and both TypeScript resolution checks.
+  All three owned runtimes reported this exact version/hash and live owner projections; existing
+  managed identities and running sessions were preserved. Local native service revision 2 reads
+  passed on both remote execution hosts; cross-machine transport activation remains a separate
+  unresolved acceptance boundary in the roadmap.

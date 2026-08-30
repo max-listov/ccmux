@@ -11,6 +11,7 @@ const MessageSchema = z.object({ info: z.object({ id: Id, sessionID: Id, role: z
   parentID: Id.optional(), summary: z.union([z.boolean(), z.object({}).strip()]).optional(), time: z.object({ completed: z.number().optional() }),
   error: z.unknown().optional() }),
   parts: z.array(z.object({ id: Id, type: z.string(), text: z.string().optional(), filename: z.string().optional(),
+    synthetic: z.boolean().optional(),
     state: z.object({ status: z.string() }).optional() })).max(256) });
 const PageSchema = z.array(MessageSchema).max(64);
 
@@ -31,15 +32,19 @@ export function openCodeContextApi(m: MachineConfig, s: Session, client: OpenCod
         if (info.sessionID !== sessionID) throw new Error("Native history identity mismatch");
         for (const part of parts) {
           let kind: NativeHistoryEntry["kind"] = "other", text: string | null = null;
-          if (part.type === "text") { kind = info.role; text = part.text ?? null; }
+          // Native synthetic context and compaction summaries can contain private tool inputs.
+          // Keep their existence/omission explicit without rewriting authored conversation text.
+          const internal = part.synthetic === true || info.summary === true;
+          if (part.type === "compaction" || info.summary === true) kind = "compaction";
+          else if (part.type === "text" && !internal) { kind = info.role; text = part.text ?? null; }
           else if (part.type === "tool") kind = "tool";
-          else if (part.type === "compaction" || info.summary === true) kind = "compaction";
           // OpenCode reasoning text is not a promised reasoning summary: do not publish it.
           const pointers = part.type === "file" && part.filename ? [part.filename] : [];
           const images = await historyImageReferences(m, s, pointers, signal);
           const status = part.state?.status === "error" || info.error !== undefined ? "failed"
             : info.time.completed !== undefined || info.role === "user" ? "completed" : "unknown";
-          entries.push({ turnId: info.parentID ?? info.id, itemId: part.id, kind, text, omittedBytes: 0,
+          entries.push({ turnId: info.parentID ?? info.id, itemId: part.id, kind, text,
+            omittedBytes: internal && part.type === "text" ? Buffer.byteLength(part.text ?? "") : 0,
             images, omittedImages: part.type === "file" && images.length === 0 ? 1 : 0, status });
         }
       }

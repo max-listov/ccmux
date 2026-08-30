@@ -80,6 +80,9 @@ OpenCode's own image echoes are bounded/elided before SDK JSON allocation. Non-i
 remain unchanged; native user image references are joined to existing authorized pins for history.
 Neither raw reasoning nor tool inputs/outputs, errors, local image paths or credentials are public
 content. Explicit omissions are not described as a complete transcript.
+OpenCode native `synthetic` text and internal compaction-summary text are not authored conversation
+content. History keeps their metadata with explicit omitted-byte counts; public live content omits
+them. This is native-metadata selection, not text-pattern sanitization of user or assistant messages.
 
 # Steering and context
 

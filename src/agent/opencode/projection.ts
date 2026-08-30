@@ -15,6 +15,7 @@ const ItemDefaults = { requestId: null, status: null, text: null, tool: null, us
 export class OpenCodeProjection {
   private value: ManagedRuntimeSnapshot;
   private parents = new Map<string, string>();
+  private privateMessages = new Set<string>();
   revision = 0;
 
   constructor(m: MachineConfig, session: Session, providerPid: number, private report?: (error: unknown) => void) {
@@ -54,6 +55,7 @@ export class OpenCodeProjection {
   }
   start(messageId: string, at = Date.now()): void {
     this.parents.clear();
+    this.privateMessages.clear();
     this.parents.set(messageId, messageId);
     this.value.turn = { id: messageId, status: "inProgress", startedAt: new Date(at).toISOString() };
     this.value.state = "working";
@@ -84,6 +86,10 @@ export class OpenCodeProjection {
     if (message.parentID === undefined || this.value.turn?.id !== message.parentID) return;
     if (this.parents.size >= 256 && !this.parents.has(message.id)) this.parents.delete(this.parents.keys().next().value ?? "");
     this.parents.set(message.id, message.parentID);
+    if (message.summary === true) {
+      this.privateMessages.add(message.id);
+      while (this.privateMessages.size > 256) this.privateMessages.delete(this.privateMessages.values().next().value ?? "");
+    }
     if (message.providerID && message.modelID) this.value.nativeSelection = {
       model: { provider: message.providerID, model: message.modelID }, options: null, source: "assistant", turnId: message.parentID };
     const outcome = openCodeTerminal(message);
@@ -103,6 +109,7 @@ export class OpenCodeProjection {
     if (!this.own(part.sessionID)) return;
     const turnId = this.parents.get(part.messageID);
     if (turnId === undefined || turnId !== this.value.turn?.id) return;
+    if (part.synthetic === true || this.privateMessages.has(part.messageID)) return;
     if (part.type === "text" || part.type === "reasoning") {
       this.append({ ...ItemDefaults, kind: part.messageID === turnId ? "user" : part.type === "text" ? "assistant" : "reasoning",
         stage: part.time?.end === undefined ? "updated" : "completed", nativeId: part.id, turnId, text: part.text?.slice(-8_192) ?? null });
@@ -115,7 +122,8 @@ export class OpenCodeProjection {
   }
   private delta(raw: unknown): void {
     const delta = OpenCodeDeltaSchema.parse(raw);
-    if (!this.own(delta.sessionID) || delta.field !== "text" || this.parents.get(delta.messageID) !== this.value.turn?.id) return;
+    if (!this.own(delta.sessionID) || delta.field !== "text" || this.privateMessages.has(delta.messageID)
+      || this.parents.get(delta.messageID) !== this.value.turn?.id) return;
     const prior = this.value.nativeItems.findLast(item => item.nativeId === delta.partID && item.turnId === this.value.turn?.id);
     if (prior === undefined || !["assistant", "reasoning", "user"].includes(prior.kind)) return;
     this.append({ ...prior, stage: "updated", text: ((prior.text ?? "") + delta.delta).slice(-8_192) });

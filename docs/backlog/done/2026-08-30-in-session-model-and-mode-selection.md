@@ -2,7 +2,8 @@
 title: Native model and collaboration selection within an existing session
 description: Change runtime-supported model and interaction options without changing managed identity or rewriting an immutable launch recipe.
 type: task
-status: in-progress
+status: done
+completed: 2026-08-30 13:02 +07:00
 created: 2026-08-30
 updated: 2026-08-30
 priority: P1
@@ -70,14 +71,14 @@ the durable accepted selection revision; an indeterminate native change requires
   or reconcile deterministically. Busy, approval/input, unavailable model and provider mismatch fail closed.
 - [x] Daemon/provider restart preserves the latest accepted default; late create retry does not roll
   it back. Create-only and text-only input work through the single current contract, without old-client branches.
-- [ ] Packed Bun/Node clients, complete local gates, exact-SHA CI and real session E2E pass. Record
+- [x] Packed Bun/Node clients, complete local gates, exact-SHA CI and real session E2E pass. Record
   release/artifact hashes and verify owned-runtime rollout with the published client.
 
 ## Boundaries
 
 No account/provider credential management, arbitrary config strings, new agent prompts/tools or
 runtime conversion. This extends the completed create-time selection task, not reopens it.
-See the [native control roadmap](2026-08-30-native-harness-control-parity.md).
+See the [native control roadmap](../in-progress/2026-08-30-native-harness-control-parity.md).
 
 ## Что сделано
 
@@ -90,3 +91,13 @@ See the [native control roadmap](2026-08-30-native-harness-control-parity.md).
   drift refuses before ledger/default mutation, while the authorized or omitted agent passes.
 - [x] Contract and decision: `docs/architecture/native-content-and-turn-controls.md`,
   `docs/decisions/2026-08-30-single-native-content-and-selection-contract.md`.
+- [x] Published `v0.39.25`: implementation `3c7235454e657cefa5ec570d6fb4c927293b07e4`,
+  release `2cc132e3e1bb1235d5dba967d7ba39655b8a58b1`; exact-SHA CI run
+  [33295298409](https://github.com/max-listov/ccmux/actions/runs/33295298409) passed.
+  Runtime bundle SHA-256: `3de1dc4e00afae0f7af1030068aa8d9e67a9ac8d2bfcd20374fdc2687b83e0ff`.
+  Downloaded client archive SHA-256: `4ab1717877b4c154eaae3a84810656628d8043ce978266c7299ab42b4b0df72d`.
+  The actual published archive passed installation, Bun/Node and both TypeScript resolution checks.
+  All three owned runtimes reported this exact version/hash and live owner projections; existing
+  managed identities and running sessions were preserved. Local native service revision 2 reads
+  passed on both remote execution hosts; cross-machine transport activation remains a separate
+  unresolved acceptance boundary in the roadmap.

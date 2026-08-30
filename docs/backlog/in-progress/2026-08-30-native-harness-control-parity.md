@@ -48,9 +48,9 @@ this comparison does not claim that T3's common adapter exposes both.
    upload, immutable reference, native delivery, visual recognition and restart-safe retention.
 2. **P1 — [Live content](2026-08-30-native-content-stream-and-replay.md).** Incremental text,
    correlated lifecycle, reconnect and explicit truncation/gaps without amplifying status reads.
-3. **P1 — [Model and mode selection](2026-08-30-in-session-model-and-mode-selection.md).**
+3. **P1 — [Model and mode selection](../done/2026-08-30-in-session-model-and-mode-selection.md).**
    Native per-turn options and persistent session defaults, independent of credentials/launch profile.
-4. **P2 — [Explicit steer](2026-08-30-explicit-native-turn-steering.md).** Deliberate active-turn
+4. **P2 — [Explicit steer](../done/2026-08-30-explicit-native-turn-steering.md).** Deliberate active-turn
    input, never implicit steering by the existing message/defer path.
 5. **P2 — [History and context](2026-08-30-native-history-and-context-controls.md).** Bounded native
    history and deliberate fork/compact with exact continuation and safe mutation semantics.
@@ -180,3 +180,21 @@ authorization policy by itself. A scoped operator activation task has been recor
 transport owner's backlog. No transport configuration, consumer source or alternate gateway was
 changed. Cross-machine image acceptance remains open until that owner replaces the binding using
 the exact published current artifact and returns correlated real request/stream evidence.
+
+## Post-publication native acceptance finding
+
+The installed `v0.39.25` bundle and downloaded client passed real Codex image/history/fork/compact
+acceptance, but the OpenCode history probe found native `synthetic: true` read-tool text containing
+an internal attachment-store path. A native compaction summary can repeat the same internal data.
+These are runtime-generated context, not user-authored conversation text. The owner fix excludes
+synthetic and compaction-summary text by native metadata across history/content projection, retains
+explicit history omission counts, and never heuristically rewrites ordinary user/assistant text.
+The final package remains open pending the corrective patch and repeated installed-artifact check.
+
+The corrective source passed the complete local gate: 929 tests, 4,556 assertions across 147 files,
+plus packed installation, Bun/Node and both TypeScript resolution modes. Both independent global
+implementation validators returned PASS after re-reviewing the metadata-based fix; focused reviews
+also confirmed terminal outcomes and native selection are retained. Selection, explicit steering
+and applied-policy tasks are closed against their actual published `v0.39.25` evidence. Image,
+content, context and integrated acceptance remain open for the corrective installed-artifact check
+and, where required, the external transport activation.

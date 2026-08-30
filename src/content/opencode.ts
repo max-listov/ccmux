@@ -10,6 +10,7 @@ export class OpenCodeContentObserver {
   constructor(private buffer: ContentBuffer, private nativeId: string) {}
   message(message: OpenCodeMessage): void {
     if (message.sessionID !== this.nativeId) return;
+    if (message.summary === true) { this.parents.delete(message.id); return; }
     const turn = message.role === "user" ? message.id : message.parentID;
     if (turn === undefined) return;
     this.parents.set(message.id, turn);
@@ -24,12 +25,12 @@ export class OpenCodeContentObserver {
   }
   part(part: OpenCodePart): void {
     if (part.sessionID !== this.nativeId) return;
-    this.partTypes.set(part.id, part.type);
+    this.partTypes.set(part.id, part.synthetic === true ? "internal" : part.type);
     while (this.partTypes.size > 256) {
       const oldest = this.partTypes.keys().next().value; if (oldest === undefined) break; this.partTypes.delete(oldest);
     }
     const turn = this.parents.get(part.messageID);
-    if (turn === undefined || turn === part.messageID) return;
+    if (part.synthetic === true || turn === undefined || turn === part.messageID) return;
     if (part.type === "text" && part.text !== undefined) this.buffer.text("assistant", turn, part.id, part.text, "replace", part.time?.end !== undefined);
     else if (part.type === "tool" && part.state) this.buffer.lifecycle("tool", turn, part.callID ?? part.id, part.state.status);
   }

@@ -12,6 +12,7 @@ export const OpenCodeStatusSchema = z.discriminatedUnion("type", [
 ]);
 export const OpenCodeMessageSchema = z.object({
   id: Id, sessionID: Id, role: z.enum(["user", "assistant"]), parentID: Id.optional(),
+  summary: z.union([z.boolean(), z.object({}).strip()]).optional(),
   providerID: Id.optional(), modelID: Id.optional(), finish: z.string().optional(),
   time: z.object({ created: z.number(), completed: z.number().optional() }),
   error: z.object({ name: z.string(), data: z.unknown() }).optional(),
@@ -21,6 +22,7 @@ export const OpenCodeMessageSchema = z.object({
 export type OpenCodeMessage = z.infer<typeof OpenCodeMessageSchema>;
 export const OpenCodePartSchema = z.object({
   id: Id, sessionID: Id, messageID: Id, type: z.string(), text: z.string().optional(),
+  synthetic: z.boolean().optional(),
   tool: z.string().optional(), callID: Id.optional(),
   time: z.object({ start: z.number().optional(), end: z.number().optional() }).optional(),
   state: z.object({ status: z.enum(["pending", "running", "completed", "error"]),

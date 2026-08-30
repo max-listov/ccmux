@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep native synthetic context and compaction-summary text out of public OpenCode history/content.
+  These runtime-generated parts can contain internal tool inputs and attachment-store paths. Preserve
+  explicit history omission counts and ordinary authored conversation text without heuristic rewriting.
+
 ## [0.39.25] — 2026-08-30
 
 add native images, replay, selection and context controls
