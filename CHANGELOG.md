@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.40] — 2026-08-31
+
+Compose a host-owned local model provider for the Custom runtime
+
 - Compose a host-owned local model provider in the Custom runtime: the launch recipe's provider is
   now `openrouter` or `local`, the local kind reaching an OpenAI-compatible model server through the
   published adapter with an optional credential. Endpoint and credential stay in host configuration
@@ -18,7 +22,6 @@ the GitHub Release with that section as the notes.
 - Batch thread-lock inspection by argument bytes instead of a fixed count and group each `lsof`
   answer once instead of re-scanning it per path, since `lsof` walks every process before it
   examines any path. Discovery over two thousand threads: 7171 ms to 4021 ms on a busy host.
-
 ## [0.39.39] — 2026-08-31
 
 Qualify remote image control and close native harness acceptance
