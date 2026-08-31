@@ -1,16 +1,14 @@
 import { existsSync, readFileSync, statSync, watch } from 'node:fs';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { chatLedgerPath, outboxPath } from '../config/paths.ts';
 import { CHAT_GENERATION } from '../config/schema.ts';
 import { OutboundSchema } from '../fleet/outbox.ts';
 import type { MachineConfig } from '../types.ts';
-import type { LogRow } from './fleetLog.ts';
-import {
-  LogMachineSchema,
-  LogRowSchema,
-  rowFromLedgerRecord,
-  rowFromOutbound,
-} from './fleetLog.ts';
+import type { LogFrame, LogRow } from './feedSchema.ts';
+
+export { type LogFrame, LogFrameSchema } from './feedSchema.ts';
+
+import { rowFromLedgerRecord, rowFromOutbound } from './fleetLog.ts';
 import { parseRecord } from './store.ts';
 
 /**
@@ -88,21 +86,6 @@ export function parseCursor(raw: string): CursorParse {
   }
   return { cursor: { gen, ledger, outbox } };
 }
-
-/**
- * One frame of the feed.
- *
- * Strict and discriminated, because a consumer branches on `kind` and an unknown key here is a
- * protocol error rather than a courtesy. `machine` frames carry availability, so a reader can tell
- * "nothing happened there" from "we could not look" without inferring it from silence — the same
- * distinction the snapshot already makes, kept in the streaming shape so both can be read by one
- * parser.
- */
-export const LogFrameSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('row'), cursor: z.string(), row: LogRowSchema }).strict(),
-  z.object({ kind: z.literal('machine'), cursor: z.string(), machine: LogMachineSchema }).strict(),
-]);
-export type LogFrame = z.infer<typeof LogFrameSchema>;
 
 /**
  * The largest frame this feed will emit.

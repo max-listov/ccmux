@@ -1,11 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildEnvelope } from '../src/chat/compose.ts';
 import { formatChatInjection } from '../src/chat/format.ts';
-import { managedPeer, ownerTarget } from '../src/chat/identity.ts';
-import { appendMessage, loadCursors, loadLedger } from '../src/chat/store.ts';
+import { loadCursors, loadLedger } from '../src/chat/store.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { loadSessions } from '../src/config/sessions.ts';
 import type { ControlMessage } from '../src/control/schema.ts';
 import {
   check,
@@ -161,14 +158,31 @@ try {
       'Missing suppression evidence',
     );
     check(!privateLog().includes('telegram mirror delivered'), 'Conversation echoed to Telegram');
-    const session = loadSessions(p.machine).find((row) => row.uuid === created.target.threadId);
-    check(session, 'Managed session missing');
-    const notice = buildEnvelope(
-      managedPeer(p.machine.rcPrefix, session),
-      ownerTarget(),
-      'CCMux: проверка уведомлений пройдена. Ввод человека и межагентский чат больше не зеркалятся автоматически; это одно явное уведомление владельцу.',
+    const courier = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        p.cli,
+        'msg',
+        'owner',
+        'CCMux: проверка уведомлений пройдена. Ввод человека и межагентский чат больше не зеркалятся автоматически; это одно явное уведомление владельцу.',
+      ],
+      {
+        env: p.env,
+        stdin: 'ignore',
+        stdout: 'ignore',
+        stderr: Bun.file(join(p.root, 'notice-error.log')),
+      },
     );
-    appendMessage(p.machine, notice);
+    check((await courier.exited) === 0, 'Explicit owner CLI route failed');
+    const notice = loadLedger(p.machine).at(-1);
+    check(
+      notice &&
+        notice.to.kind === 'owner' &&
+        notice.from.kind === 'cli' &&
+        notice.notification === 'owner',
+      'Explicit operator notice identity lost',
+    );
     await until('explicit owner notice delivered', async () =>
       privateLog().includes(`"msg":"telegram mirror delivered","messageId":"${notice.id}"`),
     );

@@ -84,6 +84,14 @@ Snapshot/feed preserve `messageId`, structured `sender`/`target`, `origin`, `not
 Sent/received copies retain the same identity; consumers correlate by ID, not text or timestamps.
 The owner mirror reads only its destination ledger, never outbound copies.
 
+The published `@ccmux/control-service-client` package root (repository entrypoint
+`ccmux/control-service-client`) exports `LogRowSchema`, `LogPayloadSchema`, `LogFrameSchema`,
+`LogMachineSchema`, `ChatPrincipalSchema`, `ChatTargetSchema` and inferred types. These are the same
+definitions used by the runtime, extracted into `chat/feedSchema.ts` and `chat/identitySchema.ts`.
+Their dependency graph is browser-safe and has no filesystem, process, CLI or runtime startup.
+Use these schemas rather than copying consumer DTOs. Registration generation comes from a create
+receipt or the public native snapshot/frame; `session.get` does not carry that field.
+
 # Existing records
 
 Absent persisted origin/audience is historical missing evidence. The reader projects fixed-size

@@ -1,70 +1,18 @@
-import { z } from 'zod';
-import { ChatPrincipalSchema, ChatTargetSchema } from '../config/schema.ts';
 import type { Outbound } from '../fleet/outbox.ts';
 import { outboundId, outboundTimestamp } from '../fleet/outbox.ts';
+import type { LogMachine, LogRow } from './feedSchema.ts';
 import { principalLabel, targetLabel } from './identity.ts';
-import {
-  MessageOriginSchema,
-  NotificationAudienceSchema,
-  unknownMessageOrigin,
-} from './originSchema.ts';
+import { unknownMessageOrigin } from './originSchema.ts';
 import type { LedgerSlot } from './store.ts';
 
-/**
- * One chronological view of a conversation that physically lives in several files on several
- * machines.
- *
- * This is the piece that was missing when a mis-addressed report cost hours (incident 2026-08-05):
- * each machine's ledger is its own little world, so reconstructing "who asked whom, and what came
- * back" meant walking two boxes by hand and eyeballing timestamps. Here both halves — what we SENT
- * (outbox) and what ARRIVED (ledger) — become rows of the same stream.
- *
- * Rows are ordered by their own machine's clock, so a merged view is only as aligned as the fleet's
- * clocks are. That is fine for reading a story ("ask, then reply") and deliberately NOT presented as
- * a causal order: nothing downstream depends on this ordering, it is a human-facing view.
- */
-export const LogRowSchema = z.object({
-  messageId: z.uuid().nullable(),
-  sender: ChatPrincipalSchema.nullable(),
-  target: ChatTargetSchema.nullable(),
-  origin: MessageOriginSchema,
-  notification: NotificationAudienceSchema,
-  registrationGeneration: z.uuid().nullable(),
-  machine: z.string(), // whose log this row came from — carried ON the row so a merged stream is self-describing
-  ts: z.string(),
-  // chat         — landed in THIS machine's ledger (received, or sent to a local peer)
-  // sent         — WE sent it to another machine (outbox)
-  kind: z.enum(['chat', 'sent']),
-  from: z.string(),
-  to: z.string(),
-  task: z.string().nullable().default(null),
-  body: z.string(),
-  note: z.string().default(''), // e.g. why an outgoing message never left
-});
-export type LogRow = z.infer<typeof LogRowSchema>;
-
-/** Which machines the rows came from, and which could not be reached. Always present, so a consumer
- *  can tell "nothing happened there" from "we could not look". */
-export const LogMachineSchema = z.object({
-  machine: z.string(),
-  ok: z.boolean().default(true),
-  error: z.string().nullable().default(null),
-});
-export type LogMachine = z.infer<typeof LogMachineSchema>;
-
-/**
- * The `--json` payload — ONE shape whether you asked about this machine or the whole fleet, so a
- * consumer never has to branch on which flag was used. It is also the wire format `--fleet` reads
- * from a peer (a peer is always asked without `--fleet`, so it answers about itself).
- *
- * Identity and provenance fields are required in the current contract. Missing remote evidence
- * refuses the payload rather than granting notification eligibility from display labels.
- */
-export const LogPayloadSchema = z.object({
-  machines: z.array(LogMachineSchema).default([]),
-  rows: z.array(LogRowSchema).default([]),
-});
-export type LogPayload = z.infer<typeof LogPayloadSchema>;
+export {
+  type LogMachine,
+  LogMachineSchema,
+  type LogPayload,
+  LogPayloadSchema,
+  type LogRow,
+  LogRowSchema,
+} from './feedSchema.ts';
 
 /**
  * One ledger record as a row. ONE definition, used by the snapshot and by the feed alike — two

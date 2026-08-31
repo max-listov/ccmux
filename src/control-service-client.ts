@@ -23,6 +23,22 @@ export {
   AttachmentUploadSelectorSchema,
 } from './attachments/schema.ts';
 export {
+  type LogFrame,
+  LogFrameSchema,
+  type LogMachine,
+  LogMachineSchema,
+  type LogPayload,
+  LogPayloadSchema,
+  type LogRow,
+  LogRowSchema,
+} from './chat/feedSchema.ts';
+export {
+  type ChatPrincipal,
+  ChatPrincipalSchema,
+  type ChatTarget,
+  ChatTargetSchema,
+} from './chat/identitySchema.ts';
+export {
   MESSAGE_OPERATION_LIMITS,
   type MessageOperationEvidence,
   MessageOperationEvidenceSchema,

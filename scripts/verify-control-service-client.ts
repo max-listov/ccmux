@@ -66,6 +66,7 @@ try {
       NativeSelectionEvidenceSchema, ControlHistoryResultSchema, ControlContextOperationResultSchema,
       SteeringReceiptSchema, NativeForkRequestSchema, MessageOperationResultSchema, ToolObservationSchema, ContentRecordSchema, PermissionScopeSchema, ControlInterruptSchema,
       MessageAttributionSchema, MessageOriginSchema, NotificationAudienceSchema, ControlMessageSchema,
+      ChatPrincipalSchema, ChatTargetSchema, LogRowSchema, LogPayloadSchema, LogFrameSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -100,6 +101,16 @@ try {
     const attribution = MessageAttributionSchema.parse({applicationId:'sample-app',channelId:'chat',actor:'human'});
     const origin = MessageOriginSchema.parse({ingress:'service',actor:'human',assurance:'application-attested',application:{...attribution,revision:'r1',digest:'b'.repeat(64)}});
     const notification = NotificationAudienceSchema.parse('conversation');
+    const sender = ChatPrincipalSchema.parse({kind:'service',source:'ccmux',machine:'host-a',transport:'declared-service'});
+    const chatTarget = ChatTargetSchema.parse(target);
+    const logRow = LogRowSchema.parse({messageId:operationInput.messageId,sender,target:chatTarget,origin,notification,registrationGeneration,
+      machine:'host-a',ts:new Date().toISOString(),kind:'chat',from:'display',to:'display',body:'sample input'});
+    const logPayload = LogPayloadSchema.parse({machines:[{machine:'host-a'}],rows:[logRow]});
+    const logFrame = LogFrameSchema.parse({kind:'row',cursor:'2.1.0',row:logPayload.rows[0]});
+    if (logFrame.kind !== 'row' || logFrame.row.messageId !== operationInput.messageId || logFrame.row.origin.assurance !== 'application-attested')
+      throw new Error('Typed feed identity lost');
+    const {origin:omittedOrigin,...incompleteRow} = logRow;
+    if (LogRowSchema.safeParse(incompleteRow).success) throw new Error('Missing feed origin accepted');
     const messageInput = ControlMessageSchema.parse({...operationInput,origin:attribution,body:'sample input'});
     const messenger = createCcmuxControlServiceClient(async (url, init) => {
       const request = ControlMessageSchema.parse(JSON.parse(String(init?.body)));
@@ -264,7 +275,20 @@ try {
     }
     `,
   );
+  await Bun.write(
+    join(consumer, 'browser.ts'),
+    `
+    import {LogRowSchema,LogPayloadSchema,LogFrameSchema,ChatPrincipalSchema,ChatTargetSchema} from '@ccmux/control-service-client';
+    export const schemas = {LogRowSchema,LogPayloadSchema,LogFrameSchema,ChatPrincipalSchema,ChatTargetSchema};
+  `,
+  );
   if (run('install', process.execPath, ['install', '--ignore-scripts'])) {
+    run('browser-bundle', process.execPath, [
+      'build',
+      '--target=browser',
+      '--outdir=browser',
+      'browser.ts',
+    ]);
     run('bun-runtime', process.execPath, ['check.ts']);
     run('node-runtime', 'node', ['--experimental-strip-types', 'check.ts']);
     for (const resolution of ['nodenext', 'bundler']) {

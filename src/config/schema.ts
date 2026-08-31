@@ -1,4 +1,26 @@
 import { z } from 'zod';
+import {
+  AgentKindSchema,
+  ChatPrincipalSchema,
+  ChatTargetSchema,
+  RC_PREFIX_RE,
+  SESSION_NAME_RE,
+} from '../chat/identitySchema.ts';
+
+export {
+  AgentKindSchema,
+  ChatPrincipalSchema,
+  ChatTargetSchema,
+  CliPrincipalSchema,
+  CodexAppPeerSchema,
+  ExternalTargetSchema,
+  ManagedPeerSchema,
+  OwnerTargetSchema,
+  RC_PREFIX_RE,
+  SESSION_NAME_RE,
+  ServicePrincipalSchema,
+} from '../chat/identitySchema.ts';
+
 import { CustomLaunchConfigSchema } from '../agent/custom/config.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
 import {
@@ -28,18 +50,6 @@ export const PermissionModeSchema = z.enum([
   'dontAsk',
   'bypassPermissions',
 ]);
-
-/**
- * Legal tmux session name for ccmux. `:` is excluded on two independent grounds: it separates the
- * machine from the session in a fleet address, and tmux splits a target at the first `:` — a session
- * named with one could never be captured or sent to, so nothing legal is being taken away. (A `.` is
- * fine and stays legal: tmux only treats it as a metacharacter in the `window.pane` part AFTER the
- * colon — verified by creating a dotted session and driving it through `=name:0.0`.)
- */
-export const SESSION_NAME_RE = /^[^|\s#:]+$/;
-
-/** Agent CLI backing a managed session. Persisted explicitly on every registry row. */
-export const AgentKindSchema = z.enum(['claude', 'codex', 'opencode', 'custom']);
 
 /** Provider continuation is not the managed registration UUID. */
 export const NativeSessionSchema = z
@@ -253,11 +263,6 @@ export const TelegramConfigSchema = z.object({
   chatId: z.string().min(1), // numeric group/DM id (a string — supergroups are negative)
   topicId: z.number().int().positive().optional(), // message_thread_id of a forum topic
 });
-
-/** A machine's RC/display-name prefix — a free-form lowercase slug (local, dev, prod, staging, …).
- *  NOT a fixed enum: the fleet grows past 3 machines. This pattern still loud-fails on garbage,
- *  which was the only real value of the old `z.enum(["local","dev","prod"])`. */
-export const RC_PREFIX_RE = /^[a-z][a-z0-9-]*$/;
 
 /**
  * Per-machine config: the ONE-artifact / many-configs split. Everything that
@@ -479,93 +484,6 @@ export const ReleaseSchema = z.object({
 // lives in the cursors (single writer = the daemon), never mutated back into the
 // ledger. This keeps the ledger a clean, replayable, exportable log for debugging.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Exact identity of a ccmux-managed runtime. The human selector is machine+session, but an
- * immutable message pins the provider and thread too, so reuse can never redirect queued mail. */
-export const ManagedPeerSchema = z
-  .object({
-    kind: z.literal('managed'),
-    source: z.literal('ccmux'),
-    machine: z.string().regex(RC_PREFIX_RE),
-    agent: AgentKindSchema,
-    session: z.string().min(1).regex(SESSION_NAME_RE),
-    threadId: z.uuid(),
-  })
-  .strict();
-
-/** A human/tool invoking ccmux outside a managed session. It has no provider or thread identity. */
-export const CliPrincipalSchema = z
-  .object({
-    kind: z.literal('cli'),
-    source: z.literal('ccmux'),
-    machine: z.string().regex(RC_PREFIX_RE),
-  })
-  .strict();
-
-/** A control ingress authenticates host authority, not a terminal or human author. */
-export const ServicePrincipalSchema = z
-  .object({
-    kind: z.literal('service'),
-    source: z.literal('ccmux'),
-    machine: z.string().regex(RC_PREFIX_RE),
-    transport: z.enum(['local', 'declared-service']),
-  })
-  .strict();
-
-/** Exact identity of a Codex thread owned by an already-running App Server. The title is a
- * human-readable snapshot only; routing and equality use the immutable thread UUID. */
-export const CodexAppPeerSchema = z
-  .object({
-    kind: z.literal('codex-app'),
-    source: z.literal('codex-app'),
-    machine: z.string().regex(RC_PREFIX_RE),
-    agent: z.literal('codex'),
-    threadId: z.uuid(),
-    name: z.string().min(1).max(240).nullable(),
-  })
-  .strict();
-
-/** Valid senders. Owner authority is provenance, not a spoofable sender route. */
-export const ChatPrincipalSchema = z.union([
-  ManagedPeerSchema,
-  CodexAppPeerSchema,
-  CliPrincipalSchema,
-  ServicePrincipalSchema,
-]);
-
-/** The owner is an out-of-band sink, never a fake managed peer. */
-export const OwnerTargetSchema = z.object({ kind: z.literal('owner') }).strict();
-
-/**
- * A component owner who works OUTSIDE this fleet — an agent in another product, under another
- * subscription, that ccmux is not the transport for and should not pretend to be.
- *
- * Its own kind rather than a session name, because the alternative is what people actually did: with
- * nothing to address, they addressed the project — and a project name is usually also a session
- * name, so the message resolved, delivered, exited zero, and landed on a neighbour. Giving that
- * party a name of its own takes it out of the namespace it never belonged in.
- *
- * The route is a human, and that is not a defect to be engineered away: one hop through a person is
- * cheaper than integrating with someone else's product. What was missing is that the hop was
- * unwritten — no record, no reply address, and no way to ask what has not come back. It is written
- * now, and the mirror the owner already reads is what carries it.
- *
- * `name` is an address token, under the same rules as a session name and a role.
- */
-export const ExternalTargetSchema = z
-  .object({
-    kind: z.literal('external'),
-    source: z.literal('ccmux'),
-    name: z.string().min(1).regex(SESSION_NAME_RE),
-  })
-  .strict();
-
-export const ChatTargetSchema = z.union([
-  ManagedPeerSchema,
-  CodexAppPeerSchema,
-  OwnerTargetSchema,
-  ExternalTargetSchema,
-]);
 
 /** One immutable v2 chat envelope. `task` is an optional pointer so the channel stays a phone call
  * (details live in the task). There are deliberately no defaults: mixed/old wire shapes fail. */

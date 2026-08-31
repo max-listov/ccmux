@@ -80,6 +80,8 @@ does not grant execution authority or change provider permission modes.
   across the principal cutover; accepted pending image input survives upgrade without widening scope.
 - [x] Explicit human-facing external courier messages remain eligible; distinct message IDs with
   identical bodies remain distinct messages and notifications.
+- [x] Public browser-safe client exports snapshot/feed and endpoint schemas from their single
+  canonical definitions; packed consumers import them without copying DTOs or loading runtime I/O.
 - [ ] Contract, daemon/client, tests and current architecture agree. Report deterministic tests
   separately from live provider/Telegram evidence and disclose crash/uncertain-send limits:
   transport without recipient idempotency must not be advertised as exactly-once delivery.
@@ -127,3 +129,9 @@ do not rewrite history or reset cursors. Snapshot/feed expose the same structure
   the refusal itself took 4 ms). Replaced repeated setup with one schema-checked full journal,
   preserving the deadline and adding unchanged-journal evidence. The failed tag remains immutable;
   the next patch carries this qualification fix and the complete origin/audience implementation.
+- The following local candidate was paused before push after a consumer identified missing public
+  feed-schema exports. Extracted endpoint and feed schemas into pure modules and exposed them through
+  the existing typed client entrypoint; added packed browser-build and shared-definition checks.
+- Updated gate: 1001 tests / 5139 assertions, packed browser bundle, Bun/Node execution and both
+  TypeScript resolutions passed. The live notification probe uses the actual explicit owner CLI
+  route, without attributing a test-driver notice to the managed provider.
