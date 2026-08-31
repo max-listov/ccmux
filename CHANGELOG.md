@@ -6,11 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.38] — 2026-08-31
+
+Drain resident native streams during managed shutdown
+
 - Adopt Stitchkit 0.70.5 so managed shutdown cancels and drains open native HTTP streams before
   closing the control resource, without a second lifecycle or caller-side cancellation workaround.
 - Qualify clean daemon replacement with a subscribed native reader, retained image input and
   exact message correlation; preserve supervised provider writers and session identities.
-
 ## [0.39.37] — 2026-08-31
 
 Preserve message origin, typed feeds and explicit notifications
