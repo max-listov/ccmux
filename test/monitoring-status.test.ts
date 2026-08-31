@@ -137,10 +137,11 @@ test('row and byte limits report omissions', async () => {
   const p = new MonitoringPublisher();
   p.begin(m);
   for (let i = 0; i < 300; i++)
-    p.sample(m, makeSession({ name: `agent-${i}` }), undefined, null, UNSEEN);
+    p.sample(m, makeSession({ name: `agent-${i}`, dir: m.stateDir }), undefined, null, UNSEEN);
   const full = await p.publish(m);
   expect(full.sessions.length).toBe(STATUS_MAX_ITEMS);
   expect(full.omitted).toBe(44);
+  expect(full.sessions.every((row) => row.dir === m.stateDir)).toBe(true);
   p.begin(m);
   for (let i = 0; i < 300; i++)
     p.sample(

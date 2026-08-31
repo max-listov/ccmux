@@ -51,6 +51,7 @@ import {
 import { UNSEEN } from '../src/events/observe.ts';
 import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
+import { NATIVE_RUNTIME_TTL_MS } from '../src/runtime/projectionSchema.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
 import { digest, imageBytes } from './attachments-fixture.test.ts';
 import { makeCli, makeMachine, makeSession } from './helpers.ts';
@@ -825,7 +826,11 @@ test('native stream cursor binds target and source adapter resumes, heartbeats a
   const config = join(f.root, 'machine.json');
   writeFileSync(config, JSON.stringify(f.machine));
 
-  const run = (cursor: string | null) => {
+  const run = async (cursor: string | null) => {
+    // Each connection observes a live resident producer, not the first child's old lease.
+    f.native.reconcile({ type: 'idle' }, f.native.revision);
+    await f.writer.write(f.native.snapshot());
+    await f.publish();
     const child = Bun.spawn(
       [process.execPath, '--no-env-file', 'src/cli.ts', 'control-native-stream'],
       {
@@ -839,10 +844,14 @@ test('native stream cursor binds target and source adapter resumes, heartbeats a
         stderr: 'pipe',
       },
     );
+    cleanup.push(async () => {
+      child.kill('SIGTERM');
+      await child.exited;
+    });
     return child;
   };
   const nextFrame = async (
-    child: ReturnType<typeof run>,
+    child: Awaited<ReturnType<typeof run>>,
     iterator: AsyncIterator<unknown>,
     label: string,
   ) => {
@@ -854,7 +863,7 @@ test('native stream cursor binds target and source adapter resumes, heartbeats a
     throw new Error(`${label} stream ended ${code}: ${error}`);
   };
 
-  const first = run(null);
+  const first = await run(null);
   const firstFrames = parseNDJSON<unknown>(new Response(first.stdout), {
     maxLineBytes: 2 * 1024 * 1024,
   })[Symbol.asyncIterator]();
@@ -872,7 +881,10 @@ test('native stream cursor binds target and source adapter resumes, heartbeats a
   expect(await first.exited).toBe(0);
   expect(await new Response(first.stderr).text()).toBe('');
 
-  const resumed = run(initial.cursor);
+  f.native.reconcile({ type: 'idle' }, f.native.revision, Date.now() - NATIVE_RUNTIME_TTL_MS - 1);
+  await f.writer.write(f.native.snapshot());
+  await expect(f.local.native({ target: f.target })).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+  const resumed = await run(initial.cursor);
   const resumedFrames = parseNDJSON<unknown>(new Response(resumed.stdout), {
     maxLineBytes: 2 * 1024 * 1024,
   })[Symbol.asyncIterator]();
@@ -892,7 +904,7 @@ test('native stream cursor binds target and source adapter resumes, heartbeats a
     generation: initialSnapshot.generation,
     sequence: initialSnapshot.sequence + 10_000,
   });
-  const gap = run(gapCursor);
+  const gap = await run(gapCursor);
   const gapFrames = parseNDJSON<unknown>(new Response(gap.stdout), {
     maxLineBytes: 2 * 1024 * 1024,
   })[Symbol.asyncIterator]();

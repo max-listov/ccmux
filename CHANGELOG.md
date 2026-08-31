@@ -11,6 +11,10 @@ the GitHub Release with that section as the notes.
   previews. Fixture input explicitly uses conversation-only notification audience.
 - Enforce structural publication privacy for current Markdown and staged additions, with safe
   file/line diagnostics, generic regression fixtures and no embedded private-identifier denylist.
+- Isolate monitoring row-limit acceptance from host home automount lookups without increasing
+  test timeouts or changing production monitoring behavior.
+- Renew synthetic native-producer evidence between independent stream connections and explicitly
+  verify expired evidence still refuses; preserve production freshness and replay contracts.
 
 ## [0.39.38] — 2026-08-31
 
