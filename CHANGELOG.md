@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.39] — 2026-08-31
+
+Qualify remote image control and close native harness acceptance
+
 - Qualify remote managed Codex/OpenCode image input through the typed service client, including
   ordered PNG/JPEG, image-only input, near-limit images, exact message/turn correlation and retained
   previews. Fixture input explicitly uses conversation-only notification audience.
@@ -15,7 +19,6 @@ the GitHub Release with that section as the notes.
   test timeouts or changing production monitoring behavior.
 - Renew synthetic native-producer evidence between independent stream connections and explicitly
   verify expired evidence still refuses; preserve production freshness and replay contracts.
-
 ## [0.39.38] — 2026-08-31
 
 Drain resident native streams during managed shutdown
