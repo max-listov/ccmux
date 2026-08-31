@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.41] — 2026-08-31
+
+Read parked sessions honestly, verify declared registries, name the local server
+
 - Read a row's state by one rule wherever it came from: an archived session that is not running
   reads `archived` in the fleet map, as it already did locally. The map printed a peer's raw
   run-state and called sixty-one deliberately parked sessions `stopped`, which reads as live
@@ -23,7 +27,6 @@ the GitHub Release with that section as the notes.
   catalog page and the applied profile. `local` says the address was checked and cannot say which
   engine answered; the label carries that half without entering `selection.provider`, which is
   matched against the host adapter.
-
 ## [0.39.40] — 2026-08-31
 
 Compose a host-owned local model provider for the Custom runtime
