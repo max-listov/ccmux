@@ -213,10 +213,12 @@ export async function nativeImageProbe(
     service,
     client,
     async restartDaemon() {
+      const pid = daemon.pid;
       daemon.kill('SIGTERM');
-      await daemon.exited;
+      const code = await daemon.exited;
       daemon = spawn();
       await ready();
+      return { pid, code };
     },
     async cleanup() {
       const sessions = loadSessions(machine),

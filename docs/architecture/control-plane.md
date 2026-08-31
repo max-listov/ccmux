@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-08-30
+updated: 2026-08-31
 ---
 
 # Ownership
@@ -461,6 +461,13 @@ closes admission and streams, drains up to 5 seconds, then spends at most 2 seco
 cleanup. SIGINT/SIGTERM retain exit codes 130/143 for boot-unit restart policy. `_run`, native
 provider writers and tmux sessions are not application resources and survive daemon shutdown.
 Operation audit records contain action/outcome/duration, never payloads or capability headers.
+
+Stitchkit 0.70.5 owns cooperative HTTP stream cancellation when admission closes. Native feed
+sources receive their existing signal and finish before the server resource reports closed;
+consumers do not have to abort first or install a separate shutdown wrapper. Finite requests keep
+their drain budget, and uncooperative cleanup is still reported as pending/failed. The native
+stream regression and real-provider acceptance keep a reader subscribed during daemon replacement
+and require a clean self-report plus preserved session/message identity, not merely healthy restart.
 
 ### Exact message correlation
 

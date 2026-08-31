@@ -64,13 +64,13 @@ does not grant execution authority or change provider permission modes.
 
 ## Acceptance
 
-- [ ] A real application-to-managed-provider input has correct non-CLI origin, reaches exactly
+- [x] A real application-to-managed-provider input has correct non-CLI origin, reaches exactly
   one target turn and is retained in conversation/audit, with zero automatic Telegram echo.
 - [x] Forged human/application claims, wrong application binding, stale target generation and
   unauthorized agent-to-human escalation are refused before append/provider submission.
 - [x] Same messageId and identical content/context is idempotent; changed body, actor, channel,
   target or notification intent under that ID is a conflict. No repeated provider turn.
-- [ ] Agent-to-agent traffic does not automatically notify a human. An authorized human-directed
+- [x] Agent-to-agent traffic does not automatically notify a human. An authorized human-directed
   notice still reaches the enabled mirror; suppression of one row does not stall a later notice.
 - [x] Feed reconnect/resume and sent/received copies preserve origin and stable identity and do
   not create duplicate notification eligibility. Historical records remain readable and quiet.
@@ -82,7 +82,7 @@ does not grant execution authority or change provider permission modes.
   identical bodies remain distinct messages and notifications.
 - [x] Public browser-safe client exports snapshot/feed and endpoint schemas from their single
   canonical definitions; packed consumers import them without copying DTOs or loading runtime I/O.
-- [ ] Contract, daemon/client, tests and current architecture agree. Report deterministic tests
+- [x] Contract, daemon/client, tests and current architecture agree. Report deterministic tests
   separately from live provider/Telegram evidence and disclose crash/uncertain-send limits:
   transport without recipient idempotency must not be advertised as exactly-once delivery.
 
@@ -122,8 +122,9 @@ do not rewrite history or reset cursors. Snapshot/feed expose the same structure
   all three tracked processes exited. No production session/config was changed.
 - Initial complete local gate: 1000 tests passed, with packed Bun/Node execution and both TypeScript
   module-resolution checks. The final gate also covers the explicit exported origin contract.
-- Published-runtime, live Telegram and fleet verification remain open below the release boundary;
-  deterministic mirror tests are not represented as delivery to a real sink.
+- Published-runtime and live Telegram qualification completed below. Full release closure remains
+  open for the reproduced managed HTTP-stream shutdown dependency defect; notification assertions
+  are not evidence of clean daemon shutdown under an active resident stream.
 - Candidate 0.39.35 tag CI stopped publication: the pre-existing capacity fixture performed 256
   whole-journal write transactions and exceeded its 5-second test deadline (5.7 seconds setup;
   the refusal itself took 4 ms). Replaced repeated setup with one schema-checked full journal,
@@ -135,3 +136,66 @@ do not rewrite history or reset cursors. Snapshot/feed expose the same structure
 - Updated gate: 1001 tests / 5139 assertions, packed browser bundle, Bun/Node execution and both
   TypeScript resolutions passed. The live notification probe uses the actual explicit owner CLI
   route, without attributing a test-driver notice to the managed provider.
+
+## Published qualification and remaining release blocker
+
+- Published `v0.39.37`, release SHA `77eb8dfe07391ebd3196b9ebad2d03664423660a`;
+  origin implementation `7452e20700edf4dd0be4d41757f605dde41d99e8`, final public-schema
+  implementation `c8a1fb4188f1c7e2d7569fb6bb825ebc3fb60ed1`.
+- Exact-SHA tag CI `33359986696` and main CI `33359986451` succeeded. Full local gate:
+  1001 tests / 5139 assertions; packed browser, Bun, Node, NodeNext and Bundler checks passed.
+- Downloaded published bundle SHA-256:
+  `aa7ac2f01662400cad6911f0e9a64a07ca75aa4cd7d7a0a10edd77804e7d411e`.
+  Downloaded typed-client archive SHA-256:
+  `e309266fc41e79b1e44ee3004d8db5ac6c97c3e3af78fab42b779920675dc194`.
+  Both match published checksums; the downloaded archive passes all packed consumer checks.
+- `scripts/message-origin-acceptance.ts <published-bundle> --telegram` exited zero: actual Codex
+  image consumed, honest application framing in native history, one exact turn, accepted retry
+  across daemon replacement, retained preview and zero input echo with the real sink enabled.
+  One explicit owner notice was delivered. Peer suppression and uncertain-send behavior are
+  deterministic tests, not a claim of exactly-once Telegram delivery. The fixture archived its
+  one session; all three tracked processes exited and both fixture shutdowns reported clean.
+- All three owned runtimes have the exact published bundle and live daemon version. The 35
+  previously running sessions remain running with the same UUIDs and non-reset uptime; no live
+  lifecycle errors. Doctor exits zero on all three. Host configuration was not changed.
+- The rollout also exposed a separate release blocker: a real daemon with an active resident HTTP
+  stream reports control-resource force cleanup failure after its 5000/2000 ms shutdown budgets.
+  A second restart of the newly installed `0.39.37` reproduces it. Healthy startup and preserved
+  sessions do not turn that shutdown report into successful release qualification.
+- Independently reproduced through published `stitchkit@0.70.2` and latest `0.70.4` with a real
+  Unix-socket NDJSON contract, `managedServerResource`, and a cooperative signal-aware source:
+  positive HTTP 200 frame, then `cleanupComplete: false`, source not aborted/returned, one pending
+  response. Finite-source control is clean in about 3 ms. The same raw Bun stop behavior reproduces
+  on Linux and macOS. No copied server lifecycle or consumer runtime workaround was added.
+- Owner follow-up: Stitchkit `docs/backlog/inbox/2026-08-31-managed-server-shutdown-with-active-http-streams.md`.
+  After its fixed artifact, adopt it, rerun the real open-stream shutdown proof and complete the
+  next owner patch/rollout. Keep this task in progress until that self-report is clean.
+- The release asset `post-rollout-verification.json` records passing feature evidence and the
+  unresolved lifecycle qualification separately. It explicitly declares blocked closure, rather
+  than presenting live status, preserved sessions or successful CI as a clean shutdown proof.
+
+## Dependency qualification follow-through
+
+Stitchkit 0.70.5 is published at `54879c4a3e080a6b9edfdb295d4440fe4969b63d`;
+exact-SHA CI `33363360555` and publication `33363630991` succeeded. It owns cancellation and
+draining of cooperative HTTP sources; no consumer lifecycle wrapper is required.
+
+- [x] Reproduce an open native control stream through the existing managed application boundary
+  on the old dependency, then pin 0.70.5 and prove clean shutdown without cancelling the client first.
+- [x] Run the complete local and packed-client gate; qualify a real managed session with an open
+  resident stream across daemon replacement, retaining identity and accepted-message correlation.
+- [ ] Publish the next patch from the canonical checkout, verify exact-SHA CI and artifacts,
+  then verify all owned runtimes and their clean shutdown self-report before closing this task.
+
+- `test/control-service.test.ts`: positive native frame and exact registration precede shutdown;
+  0.70.2 returns incomplete cleanup at the same 100/200 ms budgets, 0.70.5 is clean with no
+  pending requests or client-side abort. The registry is unchanged. Independent finite/open
+  source controls also pass; open-source cancellation and finally settle in about 9 ms.
+- `scripts/message-origin-acceptance.ts` now keeps a native subscription open while replacing
+  its real managed daemon. Source acceptance passes: clean shutdown in about 14 ms, ordinary
+  signal exit 143, explicit stream interruption and reconnect at the same generation/cursor.
+  The exact accepted image message completes once; retained preview and refusal cases pass.
+  The isolated session is archived and all three tracked processes exit. No notification was
+  sent by this source run; the previous published real-sink evidence remains separate.
+- Updated complete gate: 1002 tests / 5149 assertions, plus packed browser, Bun, Node,
+  NodeNext and Bundler consumers. The release ceremony repeats the full gate on the final tree.

@@ -1,8 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { formatChatInjection } from '../src/chat/format.ts';
 import { loadCursors, loadLedger } from '../src/chat/store.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
+import { createControlClient } from '../src/control/client.ts';
+import { controlSocket } from '../src/control/path.ts';
 import type { ControlMessage } from '../src/control/schema.ts';
 import {
   check,
@@ -97,8 +100,89 @@ try {
     () => p.service.message({ ...input, notification: 'owner' }),
     'IDEMPOTENCY_CONFLICT',
   );
-  // Accepted input and retained image must survive daemon replacement at any pickup phase.
-  await p.restartDaemon();
+  // Keep a real native reader open during replacement; the server must cancel its source.
+  const nativeClient = createControlClient({ socket: controlSocket(p.machine) });
+  const readerAbort = new AbortController();
+  const stream = await nativeClient.watchNative.withOptions(
+    { target: created.target, cursor: null },
+    { signal: readerAbort.signal },
+  );
+  try {
+    const first = await stream.next();
+    check(
+      !first.done && first.value.registrationGeneration === created.registrationGeneration,
+      'Open-stream positive baseline missing',
+    );
+    const stopped = await p.restartDaemon();
+    check(stopped.code === 143, 'Daemon did not retain its normal signal exit');
+    const ShutdownLog = z.object({
+      msg: z.literal('daemon stopped'),
+      pid: z.number(),
+      result: z.object({
+        outcome: z.literal('clean'),
+        cleanupComplete: z.literal(true),
+        pendingOperations: z.literal(0),
+        resources: z.array(z.object({ state: z.literal('closed'), failures: z.array(z.never()) })),
+        durationMs: z.number(),
+      }),
+    });
+    const stoppedLog = readFileSync(join(p.machine.stateDir, 'ccmux.log'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => ShutdownLog.safeParse(JSON.parse(line)))
+      .find((row) => row.success && row.data.pid === stopped.pid);
+    check(stoppedLog?.success, 'Managed daemon did not report complete clean shutdown');
+    // Replacement interrupts the subscription, not the provider turn. Do not call it completion.
+    let interrupted = false;
+    try {
+      for await (const _frame of stream) {
+        /* buffered native frames */
+      }
+    } catch (error) {
+      check(
+        error instanceof Error && 'code' in error && error.code === 'STREAM_TRUNCATED',
+        'Unexpected native stream failure during replacement',
+      );
+      interrupted = true;
+    }
+    check(interrupted, 'Server cancellation was presented as natural stream completion');
+    check(!readerAbort.signal.aborted, 'Client cancellation masked server cleanup');
+    const resumedClient = createControlClient({ socket: controlSocket(p.machine) });
+    try {
+      const resumed = await resumedClient.watchNative({
+        target: created.target,
+        cursor: { generation: first.value.generation, sequence: first.value.sequence },
+      });
+      try {
+        const next = await resumed.next();
+        check(
+          !next.done &&
+            next.value.registrationGeneration === created.registrationGeneration &&
+            next.value.generation === first.value.generation &&
+            next.value.reset === null,
+          'Native stream did not resume the same generation after replacement',
+        );
+      } finally {
+        await resumed.return?.();
+      }
+    } finally {
+      await resumedClient.close();
+    }
+    report('native-stream-shutdown', {
+      positiveNativeFrame: true,
+      clientCancelledFirst: false,
+      cleanShutdown: true,
+      interruptionExplicit: true,
+      sameGenerationResumed: true,
+      durationMs: stoppedLog.data.result.durationMs,
+      signalExitCode: stopped.code,
+    });
+  } finally {
+    readerAbort.abort();
+    await stream.return?.();
+    await nativeClient.close();
+  }
+  // Accepted input and retained image survive replacement at any pickup phase.
   check((await p.service.message(input)).duplicate, 'Restart changed accepted identity');
   const selector = {
     target: created.target,

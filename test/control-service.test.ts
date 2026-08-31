@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseNDJSON } from 'stitchkit';
+import { createApplication, managedServerResource } from 'stitchkit/application';
+import { ContractStreamFrameSchema } from 'stitchkit/contract';
 import { z } from 'zod';
 import { ownedCodexSocket, privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
 import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
@@ -35,7 +37,7 @@ import {
 } from '../src/control/nativeStreamContract.ts';
 import { controlSocket } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import type { ControlMessage } from '../src/control/schema.ts';
+import { type ControlMessage, ControlNativeSnapshotSchema } from '../src/control/schema.ts';
 import { createControlServer } from '../src/control/server.ts';
 import {
   CCMUX_CONTROL_SERVICE_INGRESS_PATH,
@@ -775,6 +777,47 @@ test('service envelope, effect, nested selector, size and stale identity fail cl
       answers: null,
     }),
   ).rejects.toMatchObject({ code: 'STALE_REQUEST', status: 409 });
+});
+
+test('managed shutdown drains an open native stream before closing control', async () => {
+  const f = await fixture();
+  const application = createApplication({
+    id: 'native-stream-shutdown',
+    resources: [managedServerResource({ id: 'control', server: f.owned.server })],
+    shutdown: { gracePeriodMs: 100, forceTimeoutMs: 200 },
+  });
+  await application.start();
+  const clientAbort = new AbortController();
+  const response = await fetch('http://ccmux.local/control-events/native', {
+    unix: f.socket,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ target: f.target, cursor: null }),
+    signal: clientAbort.signal,
+  });
+  const frames = parseNDJSON<unknown>(response)[Symbol.asyncIterator]();
+  try {
+    expect(response.status).toBe(200);
+    const first = await frames.next();
+    expect(first.done).toBe(false);
+    const frame = ContractStreamFrameSchema.parse(first.value);
+    if (frame.type !== 'data') throw new Error('Expected a native data frame');
+    const snapshot = ControlNativeSnapshotSchema.parse(frame.data);
+    expect(snapshot.target).toEqual(f.target);
+    expect(snapshot.registrationGeneration).toBe(f.session.registrationGeneration ?? null);
+
+    // Keep the client subscribed: cancellation belongs to the managed server resource.
+    const result = await application.shutdown();
+    expect(result.cleanupComplete).toBe(true);
+    expect(result.outcome).toBe('clean');
+    expect(f.owned.server.status.pendingRequests).toBe(0);
+    expect((await frames.next()).done).toBe(true);
+    expect(clientAbort.signal.aborted).toBe(false);
+    expect(loadSessions(f.machine)).toEqual([f.session]);
+  } finally {
+    clientAbort.abort();
+    await frames.return(undefined);
+  }
 });
 
 test('native stream cursor binds target and source adapter resumes, heartbeats and cancels', async () => {
