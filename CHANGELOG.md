@@ -6,12 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.37] — 2026-08-31
+
+Preserve message origin, typed feeds and explicit notifications
+
 - Export browser-safe snapshot/feed and endpoint schemas from the existing typed client, with one
   canonical definition shared by runtime readers and packed Bun/Node/browser consumers.
 - Include the origin/audience cutover and capacity-fixture qualification from the unpublished
   candidates: conversation traffic is quiet, explicit notices remain available, and accepted images
   plus retry identity survive daemon restart.
-
 ## [0.39.36] — 2026-08-31
 
 Preserve message origin without notification echo
