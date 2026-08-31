@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.39.36] — 2026-08-31
+
+Preserve message origin without notification echo
+
 - Publish host-bound application attribution, honest native framing and structured message/feed
   identity. Preserve accepted input, attachment ownership and exact idempotent retry after restart.
 - Make conversation input and peer coordination quiet by default; keep explicit owner notices
@@ -13,7 +17,6 @@ the GitHub Release with that section as the notes.
 - Qualify full-capacity admission with a schema-checked persisted fixture instead of hundreds of
   setup rewrites. Keep the original test deadline and assert that refusal leaves the journal intact.
 - Supersede the unpublished 0.39.35 candidate, whose tag gate caught the fixture timeout.
-
 ## [0.39.35] — 2026-08-31
 
 Preserve message origin and explicit notification audience
