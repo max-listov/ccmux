@@ -6,6 +6,19 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Compose a host-owned local model provider in the Custom runtime: the launch recipe's provider is
+  now `openrouter` or `local`, the local kind reaching an OpenAI-compatible model server through the
+  published adapter with an optional credential. Endpoint and credential stay in host configuration
+  and reach no catalog page, selection evidence or caller input.
+- Decide locality from the address literal rather than the label: `localhost`, loopback, private and
+  link-local addresses only, with no embedded credential, query, fragment or name resolution, so a
+  public endpoint cannot be declared local and the provenance the catalog publishes is a fact.
+- Preserve what a local server reports about usage and what it omits: counts it sends are
+  provider-reported, counts it does not stay unavailable, and cost is unavailable rather than zero.
+- Batch thread-lock inspection by argument bytes instead of a fixed count and group each `lsof`
+  answer once instead of re-scanning it per path, since `lsof` walks every process before it
+  examines any path. Discovery over two thousand threads: 7171 ms to 4021 ms on a busy host.
+
 ## [0.39.39] — 2026-08-31
 
 Qualify remote image control and close native harness acceptance

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PolicySourceSchema } from '../../policy/schema.ts';
 import { NativeModelSelectionSchema } from '../../runtime/selectionSchema.ts';
+import { ENDPOINT_REFUSAL_TEXT, parseLocalEndpoint } from './endpoint.ts';
 
 const EnvironmentNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 export const CustomToolNameSchema = z.enum([
@@ -13,16 +14,36 @@ export const CustomToolNameSchema = z.enum([
   'read_resource',
 ]);
 
+/**
+ * Which inference provider this host composes, and what each kind needs from the host to work.
+ *
+ * A discriminated union rather than an endpoint bolted onto one shape, because the kinds do not
+ * differ by configuration alone: they differ in provenance. `kind` is what the catalog publishes as
+ * the source of an answer and what every model in the registry must declare, so a local endpoint
+ * described as `openrouter` would not be a shortcut — it would make the runtime report the wrong
+ * origin for the work it did.
+ *
+ * The credential is required for the aggregator and optional for a local server, which is not a
+ * relaxation of the rule but the rule stated accurately: an aggregator without a key cannot answer
+ * at all, while the common local servers accept requests without one.
+ */
+export const CustomProviderSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('openrouter'), credentialEnv: EnvironmentNameSchema }).strict(),
+  z
+    .object({
+      kind: z.literal('local'),
+      endpoint: z.string().min(1).max(2048),
+      credentialEnv: EnvironmentNameSchema.optional(),
+    })
+    .strict(),
+]);
+export type CustomProvider = z.infer<typeof CustomProviderSchema>;
+
 /** Execution-host definition only. The public API selects the existing immutable launch recipe;
  * it never receives this configuration, source paths, executable aliases or credentials. */
 export const CustomLaunchConfigSchema = z
   .object({
-    provider: z
-      .object({
-        kind: z.literal('openrouter'),
-        credentialEnv: EnvironmentNameSchema,
-      })
-      .strict(),
+    provider: CustomProviderSchema,
     models: z
       .array(
         z
@@ -67,6 +88,17 @@ export const CustomLaunchConfigSchema = z
         code: 'custom',
         message: 'Execution credentials are not command capabilities',
       });
+    // Validated here rather than inside the union member so the discriminator stays a plain object
+    // schema; the reason for refusal is carried through verbatim instead of collapsing to "invalid".
+    if (value.provider.kind === 'local') {
+      const endpoint = parseLocalEndpoint(value.provider.endpoint);
+      if ('refused' in endpoint)
+        ctx.addIssue({
+          code: 'custom',
+          message: ENDPOINT_REFUSAL_TEXT[endpoint.refused],
+          path: ['provider', 'endpoint'],
+        });
+    }
     if (new Set(value.resources.map(({ id }) => id)).size !== value.resources.length)
       ctx.addIssue({ code: 'custom', message: 'Resource identities must be unique' });
     const key = (model: z.infer<typeof NativeModelSelectionSchema>) => JSON.stringify(model);

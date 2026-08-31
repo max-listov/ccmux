@@ -56,12 +56,18 @@ function verifyAvailability(
   } catch (error) {
     unavailable(id, `native configuration was refused: ${String(error)}`);
   }
+  // A provider that declares no credential env contributes no name to verify; the ones it does
+  // declare are verified exactly as before.
+  const customCredentialEnv =
+    recipe.custom?.provider.credentialEnv === undefined
+      ? []
+      : [recipe.custom.provider.credentialEnv];
   for (const name of [
     ...recipe.environment,
     ...(recipe.custom === undefined
       ? []
       : [
-          recipe.custom.provider.credentialEnv,
+          ...customCredentialEnv,
           recipe.custom.approvalSecretEnv,
           ...recipe.custom.commandEnvironment,
         ]),
@@ -95,11 +101,7 @@ function verifyAvailability(
   const required =
     recipe.custom === undefined
       ? recipe.environment
-      : [
-          ...recipe.environment,
-          recipe.custom.provider.credentialEnv,
-          recipe.custom.approvalSecretEnv,
-        ];
+      : [...recipe.environment, ...customCredentialEnv, recipe.custom.approvalSecretEnv];
   const missing = [...new Set(required)]
     .filter((name) => environment.env[name] === undefined)
     .sort();

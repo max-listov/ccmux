@@ -125,7 +125,11 @@ describe('external inventory command', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+    // Declared rather than inherited. This case builds the shipped bundle and then runs a real
+    // discovery over two thousand threads, whose cost includes one `lsof` pass over every process
+    // on the machine — so its wall time tracks how busy the host is, not whether the flush works.
+    // The default five seconds was never chosen for it; the assertion above is what it measures.
+  }, 30_000);
 
   test("normal event-loop completion preserves a command's non-zero exit code", async () => {
     const proc = Bun.spawn(['bun', CLI, 'external', '--bogus'], {

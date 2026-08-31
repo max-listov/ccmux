@@ -94,6 +94,24 @@ The existing environment resolver is reused; provider and signing keys are not c
 command environments. Only explicit host environment names and the existing scoped chat identity
 are passed to commands. The service does not expose executable aliases as a caller shell gateway.
 
+The host also names which adapter serves that registry. `openrouter` reaches the aggregator and
+requires its credential; `local` reaches an OpenAI-compatible model server on this host or its own
+network, and its credential is optional because the common local servers accept requests without
+one. `src/agent/custom/provider.ts` composes the published adapter for the configured kind into the
+same two-method provider the model registry consumes, so the harness, canonical store, tool loop and
+approval flow do not vary by provider. Every model declares the kind that serves it and the catalog
+publishes that kind as the provenance of an answer; a model whose provider does not match the host
+adapter is invalid configuration rather than an unresolved provider at the first turn.
+
+`local` is decided from the address rather than asserted by the label. `src/agent/custom/endpoint.ts`
+accepts an http or https URL whose host is `localhost` or a loopback, private or link-local address
+literal, carrying no embedded credential, query or fragment, and it resolves no names. A public
+endpoint therefore cannot be declared local, which is what makes the published provenance a fact and
+forecloses a silent reroute to a hosted provider. Endpoint and credential stay in host configuration
+and appear in no catalog page, selection evidence or caller input. Token counts a local server
+reports are `provider-reported` and counts it omits stay `unavailable`; local inference reports no
+price, so cost is `unavailable` rather than zero.
+
 `custom` supports native text, image-capable configured models, history, selection, signed tool
 approval, interrupt and resume. It does not advertise fork, compaction, rollback, steering, native
 question input or caller application-policy mutation. Unsupported operations refuse before mutation.

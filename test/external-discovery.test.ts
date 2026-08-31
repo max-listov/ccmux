@@ -6,7 +6,10 @@ import { ExternalSessionSchema } from '../src/config/schema.ts';
 import { codexOrigin, codexWriterRuntime, isDedicatedCodexCommand } from '../src/external/codex.ts';
 import {
   codexThreadLockPath,
+  groupLsofHolders,
   lockHeldByDescendant,
+  lsofPathChunks,
+  MAX_LSOF_ARG_BYTES,
   parseLsofHolders,
 } from '../src/external/codexLocks.ts';
 import { discoverOne } from '../src/external/discover.ts';
@@ -266,3 +269,62 @@ describe('Codex session metadata', () => {
 });
 
 import { unknownTurnState } from '../src/external/turnSchema.ts';
+
+describe('lsof batching', () => {
+  const lockA = '/Users/u/.codex/thread-writer-locks/a.lock';
+  const lockB = '/Users/u/.codex/thread-writer-locks/b.lock';
+  const output = [
+    'p42',
+    'ccodex',
+    `n${lockA}`,
+    'p43',
+    'cnode',
+    `n${lockB}`,
+    `n${lockA}`,
+    'p44',
+    'cnode',
+    '/some/other/file',
+    '',
+  ].join('\n');
+
+  test('grouping the whole answer once agrees with asking about each path', () => {
+    // The batch reader replaced one pass per path with one pass per batch. Equivalence with the
+    // single-path reader is the property that made that safe, so it is asserted rather than assumed.
+    const grouped = groupLsofHolders(output);
+    for (const path of [lockA, lockB, '/never/opened']) {
+      expect(grouped.get(path) ?? []).toEqual(parseLsofHolders(output, path));
+    }
+    expect(grouped.get(lockA)).toEqual([
+      { pid: 42, command: 'codex' },
+      { pid: 43, command: 'node' },
+    ]);
+  });
+
+  test('a process naming one lock twice is still one holder of it', () => {
+    const repeated = ['p42', 'ccodex', `n${lockA}`, `n${lockA}`, ''].join('\n');
+    expect(groupLsofHolders(repeated).get(lockA)).toEqual([{ pid: 42, command: 'codex' }]);
+    expect(groupLsofHolders(repeated).get(lockA)).toEqual(parseLsofHolders(repeated, lockA));
+  });
+
+  test('paths are batched by argument bytes, so one system scan covers many locks', () => {
+    // `lsof` walks every process before it looks at any path, so the invocation count is what costs.
+    // A fixed batch size paid that scan again every hundred paths; the bound is now the argv budget.
+    const paths = Array.from(
+      { length: 500 },
+      (_, i) => `/locks/${String(i).padStart(4, '0')}.lock`,
+    );
+    expect(lsofPathChunks(paths, MAX_LSOF_ARG_BYTES)).toEqual([paths]);
+    const chunks = lsofPathChunks(paths, 100);
+    expect(chunks.flat()).toEqual(paths);
+    for (const chunk of chunks) {
+      const bytes = chunk.reduce((sum, path) => sum + Buffer.byteLength(path) + 1, 0);
+      // Every chunk fits the budget, except that a single oversized path still travels alone.
+      expect(chunk.length === 1 || bytes <= 100).toBe(true);
+    }
+  });
+
+  test('one path longer than the whole budget is still asked about, not dropped', () => {
+    const huge = `/locks/${'x'.repeat(300)}.lock`;
+    expect(lsofPathChunks([huge, '/locks/b.lock'], 100)).toEqual([[huge], ['/locks/b.lock']]);
+  });
+});

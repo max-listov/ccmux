@@ -41,6 +41,16 @@ the existing allowed `-c key=value` argv. A provider config names an environment
 value remains in the declared env file or host environment and never becomes argv. Missing inputs,
 reserved CCMux names, refused native flags and revision/digest drift fail before provider spawn.
 
+A Custom recipe additionally names which adapter answers for its model registry. `openrouter`
+requires a credential environment name; `local` carries an OpenAI-compatible endpoint and an
+optional one, because the common local model servers accept requests without authentication. The
+endpoint is a recipe value and never a caller input, and it is accepted only as an http or https URL
+whose host is `localhost` or a loopback, private or link-local address literal, with no embedded
+credential, query or fragment. A public address cannot be configured as `local`, so the provenance
+the catalog publishes for an answer is a property of the configuration rather than a label attached
+to it. Every model in the registry declares the kind that serves it; a mismatch is refused when the
+recipe is defined, not when a turn reaches the provider.
+
 A recipe may additionally pin `collaborationMode: "plan"` (or the explicit provider default). This
 is turn policy, not caller-authored prompt text: before every managed turn it starts, CCMux asks the installed
 App Server for its collaboration-mode catalog, selects the named preset and uses the provider's

@@ -14,7 +14,6 @@ import {
   type AgentHarnessProfileEvent,
   createHeadlessAgentHarness,
 } from 'stitchkit/agent-runtime/harness';
-import { openRouterProvider } from 'stitchkit/agent-runtime/openrouter';
 import { createBunSqliteAgentRuntimeStore } from 'stitchkit/agent-runtime/sqlite/bun';
 import { mountAgent } from 'stitchkit/tools';
 import { z } from 'zod';
@@ -23,6 +22,7 @@ import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
 import { customArtifactStore } from './artifacts.ts';
 import type { PreparedCustomHost } from './host.ts';
 import { CustomInputMetadataSchema } from './input.ts';
+import { customLanguageModelProvider } from './provider.ts';
 import { prepareCustomResources } from './resources.ts';
 
 /** The supervisor holds its existing owner lock before entering here. This is composition of the
@@ -76,7 +76,9 @@ export async function openCustomEngine(input: {
         },
       ]),
     ),
-    providers: { openrouter: input.provider ?? openRouterProvider({ apiKey: host.credential }) },
+    // Keyed by the configured kind so a model's declared provider and the adapter that serves it
+    // are the same word; the registry refuses a model whose provider it cannot resolve.
+    providers: { [host.config.provider.kind]: input.provider ?? customLanguageModelProvider(host) },
   });
   models.preflight(session.modelSelection?.model ?? host.config.defaultModel.model);
   const artifacts = customArtifactStore(join(root, 'outputs'));
