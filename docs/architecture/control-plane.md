@@ -516,6 +516,17 @@ provider usage and only target isolated test sessions; the model-catalog probe i
 native-runtime-capable release removes the new control API
 without changing conversation UUIDs, chat storage or ordinary CLI behavior.
 
+`scripts/remote-image-acceptance.ts` exports `remoteImageAcceptance(service, options)` for a typed
+service client backed by an authenticated cross-machine transport. Supply a dedicated existing
+test workspace and unique fixture prefix; no host names, credentials or transport configuration
+are embedded in the script. It creates and archives exact managed Codex/OpenCode fixtures, uses
+explicit conversation-only notification audience, and transfers locally generated PNG/JPEG bytes
+only through attachment operations. Acceptance includes image-only input, both multiple-image
+orders, same-ID retry/conflict, an input larger than the message envelope and a near-limit image
+on each runtime. Native completion is correlated by message ID and registration generation;
+bounded history, retained preview and safe native content are checked against that exact turn.
+Run against the checksum-verified published client and installed owner for release qualification.
+
 `scripts/control-model-selection-acceptance.ts [ccmux-entrypoint] [published-client-module]` uses isolated
 state and an isolated tmux socket with native authentication. The optional client module is the
 extracted, checksum-verified service package's `dist/index.js`; supplying it together with the

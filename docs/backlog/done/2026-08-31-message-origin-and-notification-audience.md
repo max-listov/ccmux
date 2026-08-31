@@ -2,9 +2,10 @@
 title: Preserve message origin and explicit notification audience
 description: Separate authenticated ingress, attributed author and human notification intent across admission, durable chat records and their projections.
 type: task
-status: in-progress
+status: done
 created: 2026-08-31
 updated: 2026-08-31
+completed: 2026-08-31 13:35 +0700
 ---
 
 ## Why
@@ -58,7 +59,7 @@ does not grant execution authority or change provider permission modes.
 - [x] Specify an explicit bounded handling/migration of existing durable records. Do not invent
   missing human provenance, replay history as new notifications, reset cursors or delete accepted
   messages. Keep one current API; no parallel legacy runtime or permanent fallback clients.
-- [ ] Update contract/client artifacts and architecture, run focused regressions and full owner
+- [x] Update contract/client artifacts and architecture, run focused regressions and full owner
   gates, then complete the already authorized owner release path. Record exact version, commit,
   published artifact hashes and installed-runtime evidence; no consumer deployment is implied.
 
@@ -137,7 +138,7 @@ do not rewrite history or reset cursors. Snapshot/feed expose the same structure
   TypeScript resolutions passed. The live notification probe uses the actual explicit owner CLI
   route, without attributing a test-driver notice to the managed provider.
 
-## Published qualification and remaining release blocker
+## Initial publication and reproduced lifecycle blocker
 
 - Published `v0.39.37`, release SHA `77eb8dfe07391ebd3196b9ebad2d03664423660a`;
   origin implementation `7452e20700edf4dd0be4d41757f605dde41d99e8`, final public-schema
@@ -167,9 +168,10 @@ do not rewrite history or reset cursors. Snapshot/feed expose the same structure
   positive HTTP 200 frame, then `cleanupComplete: false`, source not aborted/returned, one pending
   response. Finite-source control is clean in about 3 ms. The same raw Bun stop behavior reproduces
   on Linux and macOS. No copied server lifecycle or consumer runtime workaround was added.
-- Owner follow-up: Stitchkit `docs/backlog/inbox/2026-08-31-managed-server-shutdown-with-active-http-streams.md`.
-  After its fixed artifact, adopt it, rerun the real open-stream shutdown proof and complete the
-  next owner patch/rollout. Keep this task in progress until that self-report is clean.
+- Owner follow-up completed in Stitchkit
+  `docs/backlog/done/2026-08-31-managed-server-shutdown-with-active-http-streams.md`.
+  The fixed artifact is adopted and qualified in the next patch below. The initial failed
+  shutdown evidence remains valid for the earlier artifact, not the corrected release.
 - The release asset `post-rollout-verification.json` records passing feature evidence and the
   unresolved lifecycle qualification separately. It explicitly declares blocked closure, rather
   than presenting live status, preserved sessions or successful CI as a clean shutdown proof.
@@ -184,7 +186,7 @@ draining of cooperative HTTP sources; no consumer lifecycle wrapper is required.
   on the old dependency, then pin 0.70.5 and prove clean shutdown without cancelling the client first.
 - [x] Run the complete local and packed-client gate; qualify a real managed session with an open
   resident stream across daemon replacement, retaining identity and accepted-message correlation.
-- [ ] Publish the next patch from the canonical checkout, verify exact-SHA CI and artifacts,
+- [x] Publish the next patch from the canonical checkout, verify exact-SHA CI and artifacts,
   then verify all owned runtimes and their clean shutdown self-report before closing this task.
 
 - `test/control-service.test.ts`: positive native frame and exact registration precede shutdown;
@@ -199,3 +201,30 @@ draining of cooperative HTTP sources; no consumer lifecycle wrapper is required.
   sent by this source run; the previous published real-sink evidence remains separate.
 - Updated complete gate: 1002 tests / 5149 assertions, plus packed browser, Bun, Node,
   NodeNext and Bundler consumers. The release ceremony repeats the full gate on the final tree.
+
+## Terminal qualification: 0.39.38
+
+- Release/tag `72f01b544fff58187041eb40ae7adc7a6d4d37ea`; lifecycle implementation
+  `0feb9c7a96092e5b63f486a131641bc60a96a313`. Canonical checkout HEAD, remote main, tag and
+  package version agree. Exact-SHA tag CI `33364380179` and main CI `33364380091` succeeded;
+  tag CI passed 1002 tests / 5147 assertions on its platform plus all packed-client gates.
+- Downloaded bundle SHA-256 `302bcf501c8e187d41a4ffe5e3a84ef62fc760bb5dda317acc58907ed179dbf9`;
+  typed-client archive SHA-256 `502caca1bc5687830a4aec8a9c16ff9626571e1b72fb47adfd1556854d3c9a27`;
+  native client SHA-256 `b234efe3c6b60a9938cb0934b124bcaeca4f47622915b81199c705a035fad01e`.
+  Published checksums match; downloaded client passes browser, Bun, Node and both type resolutions.
+- Published-bundle real Codex acceptance passed with an open native reader: clean shutdown in
+  about 11 ms, explicit stream interruption, same-generation cursor resume, exact image turn,
+  retained preview and idempotent accepted retry. The actual notification sink suppresses input
+  and delivers one explicit owner notice. Cleanup archives the fixture and stops all three
+  tracked processes; no supervised production provider is restarted by this probe.
+- All three owned installations and live daemons run the exact published bundle. The 35 previously
+  running sessions preserve their UUIDs and uptime, with no live lifecycle errors. Doctor exits zero
+  on each host. Each installed daemon is then gracefully restarted while readers remain subscribed:
+  two hosts have real managed/native readers, the third has a managed snapshot reader (no native
+  session was invented there). Clean shutdown durations are approximately 12, 27 and 21 ms.
+  All resources report closed, cleanup complete; clients did not cancel first. Boot units restore
+  the same installed version. The checked daemon generations have no warning/error log records.
+- The corrected release's `post-rollout-verification.json` records this complete qualification;
+  the previous release's explicitly blocked artifact is unchanged. No consumer configuration,
+  credentials, provider policy or host reboot is part of the rollout. This task is complete;
+  independent image/authentication and historical privacy tasks retain their own open scope.

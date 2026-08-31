@@ -480,8 +480,8 @@ Run this as one integrated native/Custom qualification program; avoid unrelated 
 - On each host, distinguish installed runner from configured provider and working credentials.
   A missing host model configuration is not evidence that a live Custom session succeeded there.
 - Cross-machine checks use the declared-service lane when its owner activation is available. The
-  existing [image task](../in-progress/2026-08-30-managed-image-attachments.md) and its
-  [roadmap](../in-progress/2026-08-30-native-harness-control-parity.md) retain their own external
+  existing [image task](2026-08-30-managed-image-attachments.md) and its
+  [roadmap](2026-08-30-native-harness-control-parity.md) retained their own external
   transport acceptance. A library upgrade alone does not satisfy that acceptance.
 
 ## Optional subsequent work, not first-release blockers

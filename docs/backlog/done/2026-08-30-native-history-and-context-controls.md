@@ -10,7 +10,7 @@ priority: P2
 pipeline: native-harness-control
 order: 5
 depends-on:
-  - ../in-progress/2026-08-30-managed-image-attachments.md
+  - 2026-08-30-managed-image-attachments.md
   - 2026-08-30-native-content-stream-and-replay.md
 related: ../done/2026-08-10-discover-and-own-external-codex-threads.md
 ---
@@ -84,7 +84,7 @@ Attachment retention follows references in source and fork; cleanup cannot break
 
 No second transcript database, filesystem snapshot service, automatic fork-on-resume failure,
 cross-runtime history conversion, official Desktop adoption or consumer UI changes. Part of the
-[native control roadmap](../in-progress/2026-08-30-native-harness-control-parity.md); all slices share one integrated release.
+[native control roadmap](2026-08-30-native-harness-control-parity.md); all slices share one integrated release.
 
 ## Что сделано
 

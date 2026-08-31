@@ -78,7 +78,7 @@ the durable accepted selection revision; an indeterminate native change requires
 
 No account/provider credential management, arbitrary config strings, new agent prompts/tools or
 runtime conversion. This extends the completed create-time selection task, not reopens it.
-See the [native control roadmap](../in-progress/2026-08-30-native-harness-control-parity.md).
+See the [native control roadmap](2026-08-30-native-harness-control-parity.md).
 
 ## Что сделано
 

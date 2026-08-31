@@ -74,7 +74,7 @@ native completion, not stream closure or a quiet interval, decides the turn outc
 ## Boundaries
 
 No UI, new inference loop, unlimited event journal, official Desktop bridge or opaque raw-event
-passthrough. Part of the [native control roadmap](../in-progress/2026-08-30-native-harness-control-parity.md);
+passthrough. Part of the [native control roadmap](2026-08-30-native-harness-control-parity.md);
 the tasks share one integrated release and one global validation pair.
 
 ## Что сделано

@@ -2,9 +2,10 @@
 title: Native harness control roadmap with images first
 description: Close concrete managed Codex and OpenCode control gaps without claiming complete harness or IDE parity.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
 updated: 2026-08-31
+completed: 2026-08-31 19:14 +0700
 priority: P1
 pipeline: native-harness-control
 order: 0
@@ -13,11 +14,11 @@ depends-on: —
 
 ## Why
 
-Native transport is not feature parity. The current managed control plane can supervise sessions,
-send text, observe bounded events and resolve native requests, but it cannot yet carry an image
-through the public message contract. Other gaps prevent a client from using native capabilities
-without bypassing CCMux. This program prioritizes useful operations, not a promise to expose every
-provider endpoint or reproduce an IDE.
+Native transport is not feature parity. This program qualifies managed image input, incremental
+content, model/mode selection, steering and history/context operations through one public control
+contract. All five child slices are complete, including cross-machine image acceptance on an
+authenticated execution host with unrelated sessions and services preserved.
+The program does not promise every provider endpoint or reproduce an IDE.
 
 ## Evidence and reference baseline
 
@@ -86,7 +87,7 @@ implementation order, not separate review ceremonies or separate releases.
 
 ## Plan
 
-- [ ] Implement and verify the five linked slices in their declared scope.
+- [x] Implement and verify the five linked slices in their declared scope.
 - [x] Maintain an operation-level capability matrix with unsupported cases and version evidence in
   `docs/architecture/managed-runtime-drivers.md` and the published client documentation.
 - [x] Keep architecture/ADR, packed clients and release notes aligned with each implemented slice.
@@ -116,9 +117,9 @@ Installed-artifact verification also exposed an initial content/readiness race, 
 Corrective `v0.39.28` passed downloaded-artifact acceptance, exact native requests, two-runtime chat,
 restart/resume and three-runtime parity with 33 running sessions preserved. The task records exact
 hashes and the retained failed-probe evidence; late approvals remain serviced through terminal pickup.
-Cross-machine image acceptance is held only by the transport activation boundary below.
-The existing native runtime integration task retains its
-separate optional published-dependency boundary; these five tasks do not claim that dependency ready.
+Cross-machine image acceptance is complete through the existing authenticated service lane.
+This roadmap's completion covers the five declared slices, not every upstream feature or optional
+runtime extension.
 
 ### Accepted global review decisions
 
@@ -158,8 +159,8 @@ TypeScript resolution modes passed. This is baseline evidence only, not new-feat
 - [x] Each shipped slice records local gates, packed Bun/Node consumer checks, exact-SHA CI,
   release/tag and artifact hashes, plus owned-runtime rollout parity. Do not invent a future version.
 
-The image task's real cross-machine transport acceptance remains unverified and keeps this roadmap
-open. Local service probes are not substituted for that external acceptance.
+The image task records actual remote Codex/OpenCode results, including both near-limit cases;
+local service probes are not substituted for cross-machine acceptance.
 
 ## Что сделано
 
@@ -182,7 +183,7 @@ open. Local service probes are not substituted for that external acceptance.
   The targeted private-catalog-diagnostic regression also passed; exact causes are retained only in
   a private directory/file and public errors stay generic. `git diff HEAD --check` is clean.
 
-## Transport activation boundary
+## Historical transport activation boundary
 
 The 2026-08-31 follow-up resolved the old-descriptor and isolated-binding boundaries. A temporary
 isolated service fixture on an owned execution host passed real remote Codex image recognition,
@@ -190,7 +191,8 @@ image-only/ordered inputs, retry and preview/history through the declared transp
 uploaded/read the same bytes but its configured provider refused authentication at the first model
 turn; the remote near-limit case was not reached. The image task records exact evidence and cleanup.
 All temporary policy/daemon state was removed; no notification sink or credential was changed.
-This remaining host-authentication boundary is separate from the completed Custom integration.
+This historical host-authentication finding is superseded by the completion below, not by changing
+that host's credentials. Custom integration was already complete independently.
 
 ## Post-publication native acceptance finding
 
@@ -210,8 +212,24 @@ plus packed installation, Bun/Node and both TypeScript resolution modes. Both in
 implementation validators returned PASS after re-reviewing the metadata-based fix; focused reviews
 also confirmed terminal outcomes and native selection are retained. Selection, explicit steering
 and applied-policy tasks are closed against their actual published `v0.39.25` evidence. Content
-and context tasks are closed against the corrective installed-artifact check. Images and
-this roadmap remain open only for the external transport activation.
+and context tasks were closed against the corrective installed-artifact check. Images and
+this roadmap were held open until the separately recorded cross-machine completion below.
+
+## Final scoped completion (2026-08-31)
+
+All five linked slices are done. Real remote Codex and OpenCode both passed PNG/JPEG recognition,
+image-only and text-plus-image input, ordered multiple images in both directions, same-ID retry,
+changed-order conflict, exact native-turn correlation and retained history/preview. Both accepted
+the 8,112,933-byte near-limit image through the existing authenticated declared service transport.
+The [image task](2026-08-30-managed-image-attachments.md) records exact evidence hashes, the retained
+failed probe, its corrected sequential cleanup and successful follow-up. All fixture registrations
+were archived and the execution host's 15 preexisting running sessions preserved. No credentials,
+service bindings or unrelated runtime configuration changed.
+
+The final package includes a reusable remote acceptance runner and a read-only publication guard,
+with 1,006 passing tests / 5,164 assertions and packed Bun/Node/browser/type-resolution gates.
+There is no remaining external blocker for this roadmap's declared scope. This does not claim
+official Desktop attachment, unsupported provider operations or complete IDE parity.
 
 ## Published acceptance
 

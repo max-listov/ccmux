@@ -9,7 +9,7 @@ updated: 2026-07-30
 
 # t3code → ccmux: разбор и 22 идеи
 
-Источник: `github.com/pingdotgg/t3code` (клон `~/home/deps/t3code`, ~15k файлов).
+Источник: `github.com/pingdotgg/t3code` (локальный reference checkout, ~15k файлов).
 Анализ: 5 параллельных read-only агентов по подсистемам (Codex-драйв · ACP-абстракция ·
 сервер+персист · remote/транспорт · build/agent-config) + собственное чтение docs/архитектуры.
 

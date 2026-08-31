@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Qualify remote managed Codex/OpenCode image input through the typed service client, including
+  ordered PNG/JPEG, image-only input, near-limit images, exact message/turn correlation and retained
+  previews. Fixture input explicitly uses conversation-only notification audience.
+- Enforce structural publication privacy for current Markdown and staged additions, with safe
+  file/line diagnostics, generic regression fixtures and no embedded private-identifier denylist.
+
 ## [0.39.38] — 2026-08-31
 
 Drain resident native streams during managed shutdown

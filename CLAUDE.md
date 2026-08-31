@@ -17,6 +17,13 @@ in examples, motivation text, and backlog notes.
 - Before finishing any edit that touches `.md`/comments, sweep the changed lines for private tokens.
 - If unsure whether a term is private, treat it as private and use a placeholder.
 
+`bun scripts/check-publication.ts` checks current tracked/untracked Markdown as part of the full
+gate. The pre-commit hook uses the same structural rules on staged additions in every file type.
+It rejects concrete home-path shapes, deployment-machine label shapes, operational frontmatter
+and UUID-addressed return routes; diagnostics show only file, line and rule. Generic placeholders
+remain valid. This is not an exhaustive private-name detector or a historical Git/asset scan:
+review arbitrary prose manually, and never embed private identifiers in the checker itself.
+
 ### Commit messages carry the same rule — and one leak the list above missed
 Claude Code appends `Co-Authored-By: Claude …` and `Claude-Session: https://claude.ai/code/session_…`
 to commit messages **by default**. That default lives in the agent's environment, not in this repo,

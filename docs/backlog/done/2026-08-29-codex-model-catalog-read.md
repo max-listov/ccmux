@@ -97,7 +97,7 @@ item is the published patch release itself, reserved for the maintainer's explic
 - [x] Release v0.39.22 (`ef8bc46…`, tag `v0.39.22`) published via CI (gate → build → publish,
       runs `33248235677`/`33248235772` both green); manifest `release.json` sha256 matches the
       published `ccmux.js` byte-for-byte.
-- [x] Rollout verified on owned runtimes: local `m5`, `prod` (ML-PROD) and `dev` (ML-DEV) all
-      report `release.current = latest = 0.39.22` with `ok: true`, daemons active after
+- [x] Rollout verified on all three owned runtimes; each reports
+      `release.current = latest = 0.39.22` with `ok: true`, daemons active after
       self-update; `ccmux control --help` lists the new `models` command from the installed
       bundle.

@@ -273,7 +273,7 @@ export async function nativeImageProbe(
 export type NativeImageProbe = Awaited<ReturnType<typeof nativeImageProbe>>;
 
 export async function uploadImage(
-  p: NativeImageProbe,
+  p: Pick<NativeImageProbe, 'service'>,
   target: ManagedPeer,
   bytes: Buffer,
   mediaType: 'image/png' | 'image/jpeg',
@@ -297,7 +297,7 @@ export async function uploadImage(
   return reference;
 }
 export async function previewImage(
-  p: NativeImageProbe,
+  p: Pick<NativeImageProbe, 'service'>,
   target: ManagedPeer,
   reference: AttachmentReference,
   expected: Buffer,
@@ -313,7 +313,7 @@ export async function previewImage(
   check(Buffer.concat(chunks).equals(expected), 'Preview bytes changed');
 }
 export async function modelCatalog(
-  p: NativeImageProbe,
+  p: Pick<NativeImageProbe, 'service'>,
   runtime: 'codex' | 'opencode',
   target?: ManagedPeer,
 ) {

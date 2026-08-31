@@ -2,9 +2,10 @@
 title: Keep operational coordination identities out of public task documents
 description: Remove private coordination metadata from public-facing backlog records and qualify the publication guard without embedding private identifiers.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
+completed: 2026-08-31 19:02 +0700
 priority: P1
 ---
 
@@ -30,21 +31,21 @@ never in a public library's backlog or release notes.
 
 ## Scope
 
-The bounded follow-up permits removing the operational footer from the active inbox document
-only, preserving its technical scope. The historical done record, Git history and refs remain
-untouched. Exact historical evidence and the proposed minimal redaction are retained privately,
-not copied into this public task. Publication-guard changes need separate scope agreement.
-No index change, commit, publication or rollout is part of this follow-up.
+The approved completion scope includes the active-document correction, a minimal anonymization
+of the identified historical rollout sentence, and a structural publication guard with generic
+regression fixtures. Preserve technical acceptance, versions and artifact evidence. Git history,
+existing tags and released artifacts are not rewritten. Exact historical values stay in private
+evidence. This task participates in the integrated patch release and owned-runtime verification.
 
 - [x] Remove operational executor/return metadata from the pending public draft after scope agreement.
-- [ ] Resolve the historical record through an explicitly agreed minimal privacy correction;
+- [x] Resolve the historical record through an explicitly agreed minimal privacy correction;
       preserve its technical acceptance and release evidence and do not rewrite Git history implicitly.
-- [ ] Define publication verification for coordination metadata using generic structural fixtures,
+- [x] Define publication verification for coordination metadata using generic structural fixtures,
       without publishing the protected identifiers in a denylist or test case.
 
 ## Acceptance
 
-- [ ] The two identified public-facing records contain no concrete private machine/session identity.
+- [x] The two identified public-facing records contain no concrete private machine/session identity.
 - [x] Generic release version, commit and artifact evidence remain intact.
 - [x] Privacy verification covers the agreed scope and names any unscanned history/assets explicitly.
 - [x] No private companion path, consumer identity or report destination is copied into public source,
@@ -60,5 +61,20 @@ No index change, commit, publication or rollout is part of this follow-up.
       evidence outside this repository and returned by the authorized direct coordination channel.
 - [x] Targeted search confirms the changed active draft has no concrete operational identity.
       No full historical or release-asset privacy scan is claimed. Git refs/history/index are untouched.
-- [ ] Separately agree historical redaction and publication-guard scope. They remain deliberately
-      unimplemented; neither this record nor a passing hook is blanket publication approval.
+- [x] Historical redaction and publication-guard scope are explicitly approved for completion on
+      2026-08-31. A passing structural guard is not a claim to identify every private value.
+- [x] Anonymized only the rollout machine labels in
+      `docs/backlog/done/2026-08-29-codex-model-catalog-read.md`; version, CI runs, bundle checksum
+      claim and technical acceptance are preserved. No Git history, tag or release asset was rewritten.
+- [x] `scripts/publication-privacy.ts` owns structural rules; `scripts/check-publication.ts`
+      checks current Markdown in the normal gate and staged additions through `.githooks/pre-commit`.
+      Diagnostics return location/rule only. No protected values are embedded in fixtures or rules.
+- [x] `test/publication-privacy.test.ts`: generic positive/negative cases, deleted text, source-line
+      mapping, real staged-vs-working-tree disagreement, unchanged index bytes and non-echoing
+      diagnostics all pass (4 tests / 15 assertions).
+- [x] The first full current-Markdown scan also identified a machine-layout path in
+      `docs/research/2026-07-30-t3code-analysis-ideas.md`; its source reference now uses generic
+      checkout wording. The repeated scan covers 169 Markdown files with zero structural findings.
+- [x] Complete local gate passes: 1006 tests / 5164 assertions across 170 files, plus browser,
+      Bun/Node and both TypeScript packed-client resolutions. Manual changed-line review remains
+      required for arbitrary private prose; historical revisions and assets are explicitly unscanned.

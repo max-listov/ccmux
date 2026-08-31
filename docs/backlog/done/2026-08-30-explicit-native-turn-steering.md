@@ -10,7 +10,7 @@ priority: P2
 pipeline: native-harness-control
 order: 4
 depends-on:
-  - ../in-progress/2026-08-30-managed-image-attachments.md
+  - 2026-08-30-managed-image-attachments.md
   - 2026-08-30-in-session-model-and-mode-selection.md
 ---
 
@@ -67,7 +67,7 @@ steering does not grant permission to change model, launch policy or answer a pe
 ## Boundaries
 
 No implicit steering, generic config mutation, automatic interruption or terminal scraping. This
-is an explicit opt-in extension in the [native control roadmap](../in-progress/2026-08-30-native-harness-control-parity.md),
+is an explicit opt-in extension in the [native control roadmap](2026-08-30-native-harness-control-parity.md),
 not a change to the established idle-only inter-agent chat contract.
 
 ## Что сделано

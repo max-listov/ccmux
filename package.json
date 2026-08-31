@@ -21,7 +21,7 @@
     "tui:hot": "bun --hot src/cli.ts",
     "daemon:watch": "bun --watch src/cli.ts daemon",
     "smoke": "bash scripts/tui-smoke.sh",
-    "check": "bun run lint && tsc --noEmit && bun test && bun scripts/verify-control-service-client.ts",
+    "check": "bun run lint && bun scripts/check-publication.ts && tsc --noEmit && bun test && bun scripts/verify-control-service-client.ts",
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
