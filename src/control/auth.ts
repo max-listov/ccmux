@@ -1,7 +1,7 @@
 import { AppError } from 'stitchkit';
 import { createAuthHook } from 'stitchkit/server';
 import { hasChatCredential } from '../chat/auth.ts';
-import { cliPrincipal, managedPeer } from '../chat/identity.ts';
+import { managedPeer, servicePrincipal } from '../chat/identity.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { ChatPrincipalSchema } from '../config/schema.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
@@ -11,7 +11,7 @@ import type { ChatPrincipal, MachineConfig } from '../types.ts';
 export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrincipal {
   const sessionName = headers.get('x-ccmux-session');
   const credential = headers.get('authorization');
-  if (sessionName === null && credential === null) return cliPrincipal(m.rcPrefix);
+  if (sessionName === null && credential === null) return servicePrincipal(m.rcPrefix, 'local');
   if (sessionName === null || credential === null || !credential.startsWith('Bearer ')) {
     throw new AppError('UNAUTHORIZED', 'Invalid managed caller credentials', 401);
   }

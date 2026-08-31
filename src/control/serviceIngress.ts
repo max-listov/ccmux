@@ -2,7 +2,7 @@ import { AppError } from 'stitchkit';
 import { defineContract } from 'stitchkit/contract';
 import { implement } from 'stitchkit/server';
 import { ZodError } from 'zod';
-import { cliPrincipal } from '../chat/identity.ts';
+import { servicePrincipal } from '../chat/identity.ts';
 import type { ControlOperations } from './operations.ts';
 import {
   CCMUX_CONTROL_SERVICE_MAX_REQUEST_BYTES,
@@ -77,7 +77,7 @@ export async function dispatchControlService(
       case 'message.operation':
         result = operations.messageOperation(
           controlServiceInputs['message.operation'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
         );
         break;
       case 'history.read':
@@ -103,14 +103,14 @@ export async function dispatchControlService(
       case 'turn.steer':
         result = await operations.steer(
           controlServiceInputs['turn.steer'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;
       case 'turn.steering-operation':
         result = await operations.steeringOperation(
           controlServiceInputs['turn.steering-operation'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;
@@ -129,35 +129,35 @@ export async function dispatchControlService(
       case 'attachment.begin':
         result = await operations.attachmentBegin(
           controlServiceInputs['attachment.begin'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;
       case 'attachment.chunk':
         result = await operations.attachmentChunk(
           controlServiceInputs['attachment.chunk'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;
       case 'attachment.finalize':
         result = await operations.attachmentFinalize(
           controlServiceInputs['attachment.finalize'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;
       case 'attachment.cancel':
         result = await operations.attachmentCancel(
           controlServiceInputs['attachment.cancel'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;
       case 'attachment.read':
         result = await operations.attachmentRead(
           controlServiceInputs['attachment.read'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;
@@ -189,7 +189,7 @@ export async function dispatchControlService(
       case 'message.send':
         result = await operations.message(
           controlServiceInputs['message.send'].parse(decoded),
-          cliPrincipal(invocation.caller),
+          servicePrincipal(invocation.caller, 'declared-service'),
           signal,
         );
         break;

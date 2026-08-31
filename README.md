@@ -605,7 +605,7 @@ but forgets to report back doesn't strand it: the timer wakes the router, it che
 transcript, and closes or escalates on its own. The protocol lives in code (`promptModules`), resolved
 fresh at each launch, so an update reaches every router on its next restart.
 
-**Telegram mirror (one-way).** Add to machine.json to forward every message to a bot — a group, a
+**Telegram mirror (one-way).** Add to machine.json to forward explicit owner notices to a bot — a group, a
 DM, or a forum topic:
 
 ```json
@@ -615,11 +615,18 @@ DM, or a forum topic:
 `topicId` is optional. Absent → no mirroring (fail-soft). It's outbound only — ccmux sends to
 Telegram, never reads from it.
 
-Configure it on **every machine** and the whole fleet lands in one chat: each machine mirrors its own
-ledger with its own cursor, so nothing is coordinated and nothing is duplicated. Every mirrored line
+Each machine consumes its own ledger with a durable cursor. Human input and agent-to-agent
+conversation are quiet; explicit `msg owner` and external courier routes remain eligible. Service
+notices require host-authorized notification intent. Historical records without origin evidence are
+readable but quiet. A transient error holds the cursor; a permanent error skips the notice. A crash
+or lost Telegram acknowledgement can duplicate a notice: this sink is not exactly-once. Every mirrored line
 is written as a fleet address (`dev:worker → prod:api`) — with several machines in one chat, bare
 names would be ambiguous, since the same session name commonly exists on two boxes. Give each machine
 its own `topicId` if you'd rather keep them in separate threads.
+
+Applications use the [message origin and audience contract](docs/architecture/message-origin.md).
+The chat snapshot and resumable feed preserve `messageId`, structured `sender`/`target`, `origin`,
+`notification` and registration generation. Display labels and `kind: chat` are not notification intent.
 
 ### Coordinating agents — the whole recipe
 

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { CustomLaunchConfigSchema } from '../agent/custom/config.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
+import {
+  MessageApplicationsSchema,
+  MessageOriginSchema,
+  NotificationAudienceSchema,
+} from '../chat/originSchema.ts';
 import { ExternalTurnStateSchema } from '../external/turnSchema.ts';
 import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from '../policy/schema.ts';
 import {
@@ -240,7 +245,7 @@ export const LifecycleBlockSchema = z.object({
   at: z.iso.datetime(),
 });
 
-/** Optional Telegram mirror of the inter-agent chat: forward every message to a bot — a group, a
+/** Optional Telegram sink for explicit owner notices — a group, a
  *  DM, or a specific forum topic. Any ccmux user drops in their own @BotFather token + target;
  *  absent → no mirroring (fail-soft). Set in machine.json. */
 export const TelegramConfigSchema = z.object({
@@ -289,6 +294,7 @@ export const MachineConfigSchema = z.object({
    * cannot supply any definition field or secret value themselves. */
   launchRecipes: z.record(LaunchRecipeIdSchema, MachineLaunchRecipeSchema).default({}),
   agentPolicies: AgentPoliciesSchema,
+  messageApplications: MessageApplicationsSchema,
   // RC display-name prefix so the phone/Telegram client knows which box a session is on. A
   // free-form lowercase slug (local, dev, prod, staging, …) — see RC_PREFIX_RE. The regex
   // loud-fails on garbage (the real intent), and `install` refuses if it can't be set.
@@ -496,6 +502,16 @@ export const CliPrincipalSchema = z
   })
   .strict();
 
+/** A control ingress authenticates host authority, not a terminal or human author. */
+export const ServicePrincipalSchema = z
+  .object({
+    kind: z.literal('service'),
+    source: z.literal('ccmux'),
+    machine: z.string().regex(RC_PREFIX_RE),
+    transport: z.enum(['local', 'declared-service']),
+  })
+  .strict();
+
 /** Exact identity of a Codex thread owned by an already-running App Server. The title is a
  * human-readable snapshot only; routing and equality use the immutable thread UUID. */
 export const CodexAppPeerSchema = z
@@ -514,6 +530,7 @@ export const ChatPrincipalSchema = z.union([
   ManagedPeerSchema,
   CodexAppPeerSchema,
   CliPrincipalSchema,
+  ServicePrincipalSchema,
 ]);
 
 /** The owner is an out-of-band sink, never a fake managed peer. */
@@ -571,6 +588,9 @@ export const ChatMessageSchema = z
     ts: z.string(), // ISO-8601 send time
     from: ChatPrincipalSchema,
     to: ChatTargetSchema,
+    origin: MessageOriginSchema.optional(),
+    notification: NotificationAudienceSchema.optional(),
+    registrationGeneration: z.uuid().optional(),
     body: z.string(),
     task: z.string().nullable(),
     // Deferred delivery: hold until the recipient VOLUNTARILY finishes its turn — delivered by the
@@ -631,8 +651,8 @@ export const ChatCursorsSchema = z.object({
         .strict(),
     )
     .default({}),
-  // Telegram mirror progress: ledger LENGTH mirrored to the bot (a BROADCAST sink — every message,
-  // in order). Persisted so a restart resends only the un-mirrored backlog, never the whole history.
+  // Telegram progress: ledger LENGTH consumed (sent, permanently refused or deliberately suppressed).
+  // Persisted so a restart considers only the remaining backlog, never the whole history.
   // `null` = the mirror has never run on this machine. Distinct from 0 on purpose: turning the
   // mirror ON must start a LIVE FEED, not replay the machine's whole history into the chat. (Learned
   // the hard way: enabling it on two servers instantly re-sent 25 old messages, because every

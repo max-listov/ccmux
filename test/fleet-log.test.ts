@@ -110,10 +110,25 @@ test('machine column appears only when there is more than one machine to tell ap
   ).toBe('host-bbbb'.length);
 });
 
-test("a peer's payload is parsed leniently — partial rows beat refusing to show anything", () => {
+test('a current peer payload requires identity and origin while retaining optional display defaults', () => {
   const parsed = LogPayloadSchema.safeParse({
     machines: [{ machine: 'host-b' }],
-    rows: [{ machine: 'host-b', ts: 't', kind: 'chat', from: 'a', to: 'b', body: 'x' }],
+    rows: [
+      {
+        messageId: null,
+        sender: null,
+        target: null,
+        origin: { ingress: 'unknown', actor: 'unknown', assurance: 'unknown', application: null },
+        notification: 'conversation',
+        registrationGeneration: null,
+        machine: 'host-b',
+        ts: 't',
+        kind: 'chat',
+        from: 'a',
+        to: 'b',
+        body: 'x',
+      },
+    ],
   });
   expect(parsed.success).toBe(true);
   expect(parsed.data?.rows[0]?.task).toBeNull();

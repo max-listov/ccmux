@@ -6,6 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Separate authenticated service ingress, application-attested author and notification audience.
+  Host-bound attribution and exact registration generation are retained with message identity;
+  conflicting retries cannot change context or escalate notification intent.
+- Stop automatically mirroring conversation input and peer coordination to Telegram. Explicit
+  owner notices and external courier routes remain available; historical unknown origin is quiet.
+  Suppression advances the cursor, while uncertain sends retain the existing retry semantics.
+- Preserve machine-scoped attachment uploads, accepted image pins and operation receipts across
+  the ingress cutover. Snapshot/feed retain message IDs, structured endpoints and accepted origin.
+
 ## [0.39.34] — 2026-08-30
 
 Custom harness, exact runtime identity and bounded external history

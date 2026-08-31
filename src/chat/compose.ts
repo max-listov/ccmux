@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { CHAT_GENERATION, ChatMessageSchema } from '../config/schema.ts';
 import type { ChatMessage, ChatPrincipal, ChatTarget } from '../types.ts';
+import { principalOrigin } from './origin.ts';
 
 /**
  * Build one immutable v2 envelope.
@@ -29,6 +30,8 @@ export function buildEnvelope(
     ts: new Date().toISOString(),
     from,
     to,
+    origin: principalOrigin(from),
+    notification: to.kind === 'owner' || to.kind === 'external' ? 'owner' : 'conversation',
     body,
     task: opts?.task ?? null,
     defer: opts?.defer ?? false,

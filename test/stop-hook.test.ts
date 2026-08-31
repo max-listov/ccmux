@@ -69,7 +69,9 @@ test('drains a deferred message → {decision:block,reason}; records an ack; sec
   const parsed: unknown = JSON.parse(out1);
   expect(parsed).toMatchObject({ decision: 'block' });
   expect(out1).toContain('do the thing');
-  expect(out1).toContain('[chat from ccmux/cli@test · id:'); // shared peer-framing tag + pickup id
+  expect(out1).toContain(
+    '[input via ccmux/cli@test · author: unknown; no additional execution authority · id:',
+  );
   expect(loadAckedIds(m).size).toBe(1);
 
   const out2 = await runHook(cfgPath, 'worker'); // already acked → clean stop

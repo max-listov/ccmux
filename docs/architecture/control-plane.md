@@ -9,6 +9,10 @@ updated: 2026-08-30
 
 # Ownership
 
+Message admission, application attribution and notification suppression follow the
+[message origin and audience contract](message-origin.md). Transport identity alone never proves
+a human author, and conversation receipt is not a notification request.
+
 CCMux owns session identity, the durable chat journal, delivery receipts, native provider adapters
 and supervisor restart policy. Stitchkit owns the typed request contract, HTTP/CLI/tool execution,
 bounded Unix transport, stream framing, operation admission and process-local resource ordering.

@@ -1,3 +1,4 @@
+import { principalOrigin } from '../src/chat/origin.ts';
 import { CHAT_GENERATION, MachineConfigSchema, SessionSchema } from '../src/config/schema.ts';
 import type {
   ChatMessage,
@@ -66,12 +67,16 @@ export function makeOwner(): ChatTarget {
 }
 
 export function makeChatMessage(over: Partial<ChatMessage> = {}): ChatMessage {
+  const from = over.from ?? makePeer({ session: 'sender' });
+  const to = over.to ?? makePeer({ session: 'worker' });
   return {
     v: CHAT_GENERATION,
     id: UUID,
     ts: '2026-08-05T00:00:00.000Z',
-    from: makePeer({ session: 'sender' }),
-    to: makePeer({ session: 'worker' }),
+    from,
+    to,
+    origin: principalOrigin(from),
+    notification: to.kind === 'owner' || to.kind === 'external' ? 'owner' : 'conversation',
     body: 'hello',
     task: null,
     defer: false,

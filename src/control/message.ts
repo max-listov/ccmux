@@ -6,6 +6,8 @@ import { withPinnedAttachments } from '../attachments/pins.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
 import { advanceMessageOperation, prepareMessageOperation } from '../chat/messageOperationStore.ts';
+import { admitMessageOrigin } from '../chat/origin.ts';
+import { unknownMessageOrigin } from '../chat/originSchema.ts';
 import { appendMessageOnce, loadLedger } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { withSessionRegistryLock } from '../config/registryLock.ts';
@@ -29,6 +31,17 @@ export async function acceptControlMessage(
     withSessionRegistryLock(m, async () => {
       signal.throwIfAborted();
       const session = controlTarget(m, input.target);
+      if (
+        input.registrationGeneration !== undefined &&
+        input.registrationGeneration !== session.registrationGeneration
+      )
+        throw new AppError(
+          'IDENTITY_MISMATCH',
+          'The exact managed registration is unavailable',
+          409,
+        );
+      const notification = input.notification ?? 'conversation';
+      const origin = admitMessageOrigin(m, from, input.origin, notification);
       if (!chatEnabledFor(session, m) || !supportsManagedInput(session)) {
         throw new AppError('CHAT_DISABLED', 'Target cannot receive managed messages', 409);
       }
@@ -43,6 +56,8 @@ export async function acceptControlMessage(
           prior.notBefore !== input.notBefore ||
           prior.task !== input.task ||
           prior.onBehalfOf !== null ||
+          (prior.origin !== undefined && stableJson(prior.origin) !== stableJson(origin)) ||
+          (prior.notification !== undefined && prior.notification !== notification) ||
           (prior.controlFingerprint !== undefined
             ? prior.controlFingerprint !== fingerprint
             : input.images.length > 0 || input.options !== undefined)
@@ -56,6 +71,9 @@ export async function acceptControlMessage(
         if (hasNativeRuntime(session)) advanceMessageOperation(m, session, prior.id, 'queued');
         return {
           messageId: prior.id,
+          origin: prior.origin ?? unknownMessageOrigin(),
+          notification: prior.notification ?? 'conversation',
+          registrationGeneration: prior.registrationGeneration ?? null,
           accepted: true as const,
           duplicate: true,
           turnOptions: prior.turnOptions ?? null,
@@ -80,6 +98,11 @@ export async function acceptControlMessage(
           task: input.task,
         }),
         id: input.messageId,
+        origin,
+        notification,
+        ...(session.registrationGeneration === undefined
+          ? {}
+          : { registrationGeneration: session.registrationGeneration }),
         controlFingerprint: fingerprint,
         ...(turnOptions === undefined ? {} : { turnOptions }),
         ...(input.images.length === 0 ? {} : { images: input.images }),
@@ -113,6 +136,9 @@ export async function acceptControlMessage(
         );
       return {
         messageId: envelope.id,
+        origin,
+        notification,
+        registrationGeneration: envelope.registrationGeneration ?? null,
         accepted: true as const,
         duplicate: false,
         turnOptions: envelope.turnOptions ?? null,

@@ -2,11 +2,12 @@
 title: Model catalog must identify the selected execution runtime
 description: Return explicit execution-runtime identity for every accepted runtime-selected catalog read.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
+completed: 2026-08-31T05:34:02+07:00
 priority: P1
-related: docs/backlog/in-progress/2026-08-30-managed-native-and-custom-runtime-adapters.md
+related: docs/backlog/done/2026-08-30-managed-native-and-custom-runtime-adapters.md
 ---
 
 ## Problem
@@ -45,7 +46,7 @@ already present in the active adapter implementation. No parallel catalog or exe
       or label an unknown identity as the requested runtime without checking its source.
 - [x] Add deterministic packed-client coverage for explicit runtime selection, host/session scope,
       mismatch refusal and stable source identity across pagination.
-- [ ] Return exact release/artifact and actual installed acceptance under the owner's release
+- [x] Return exact release/artifact and actual installed acceptance under the owner's release
       authority, or an explicit contract decision if the proposed requirement is incorrect.
 
 ## Acceptance
@@ -54,7 +55,7 @@ already present in the active adapter implementation. No parallel catalog or exe
 - [x] Exact session reads cannot be mislabeled as another runtime's catalog.
 - [x] Provider identity and runtime identity remain separate; missing optional model metadata stays unknown.
 - [x] Public client/descriptor and owner runtime agree; public installation needs no private inputs.
-- [ ] Record exact checks and release result; do not claim consumer UI acceptance on its behalf.
+- [x] Record exact checks and release result; do not claim consumer UI acceptance on its behalf.
 
 ## Что сделано
 
@@ -88,3 +89,14 @@ configuration or production runtime is changed.
 The combined 0.70.2 pre-publication gate supersedes the historical failed gate: Biome/TypeScript,
 993 tests with 5,069 assertions and all five packed consumers passed. SHA-256:
 `9b4c4202dfd72f2d40679f019c6e7a7c1447b88ca8fbb6fce7882ced5f2a4e3d`.
+
+## Published completion
+
+`v0.39.34`, release/tag `3258d7bb0f960fe5e9380395c35ff605364f8cfe`, implementation
+`6d89daea6974fbae90e99ac9665f197e8a19dd93`. Both exact-SHA CI runs passed. The actual
+downloaded client passed all five consumers and read the live remote host catalog through the
+declared service: `runtime=codex`, `provider=openai`, nonempty first page and continuation cursor.
+Evidence SHA-256: `2afd253df90fbbaddd1385217e687b2d5458da1d08a7c208149764f68f5a7404`.
+Three-host version/hash parity and public archive integrity are recorded in the
+[verification artifact](https://github.com/max-listov/ccmux/releases/download/v0.39.34/post-rollout-verification.json).
+No consumer UI or consumer dependency was changed or claimed verified.

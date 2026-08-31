@@ -2,9 +2,10 @@
 title: Managed Codex, OpenCode and custom harness runtime adapters
 description: Define one session supervision contract across structured native runtimes and an optional Stitchkit harness without owning their agent loops.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
+completed: 2026-08-31T05:34:02+07:00
 priority: P1
 ---
 
@@ -70,7 +71,7 @@ mutations; retries reconcile the same reservation and never create a second writ
 - [x] Implement managed OpenCode server startup or explicit adoption, authenticated SDK control,
   native session resume, tool/request mapping and bounded streaming. An externally owned server
   must never be stopped as a child owned by CCMux.
-- [ ] Integrate the published optional Stitchkit harness with host-supplied configuration/tool policy
+- [x] Integrate the published optional Stitchkit harness with host-supplied configuration/tool policy
   and SQLite placement; ship a reproducible thin runner/entrypoint with an exact dependency version.
 - [x] Bind plugin/driver capabilities to the published local/service clients and descriptor; no
   runtime-specific branches in the cross-machine transport.
@@ -94,9 +95,8 @@ mutations; retries reconcile the same reservation and never create a second writ
 
 Codex fixes are published in `v0.39.23`: `../done/2026-08-30-model-catalog-before-first-managed-session.md`
 and `../done/2026-08-30-managed-model-selection-and-collaboration-policy.md`. The published
-`stitchkit@0.70.1` includes the Custom harness and coding-tool seam. Published-package macOS and
-Linux file/security probes pass; the owner platform blocker is resolved. Sequential signed approvals
-hit a different reproduced upstream history defect. Complete managed acceptance remains. The
+`stitchkit@0.70.2` includes the Custom harness and coding-tool seam plus the sequential approval
+history fix. Published-package macOS/Linux file probes and real managed acceptance pass. The
 [adoption program](2026-08-30-stitchkit-069-adoption-program.md) defines its sequence,
 host boundaries, exact approval-continuation mapping, packaging and combined verification.
 
@@ -162,6 +162,8 @@ restart. Evidence: `68e4f68b7f3ef97baa578aa77dabd4b8e707bb09c61c08424ee688133de2
 The adoption program owns the final combined gate/publication; the following older qualification
 is retained as historical reproduction, not an outstanding upstream publication blocker.
 
+### Historical 0.70.1 qualification
+
 Registry/archive verification on 2026-08-30 confirms `stitchkit@0.70.1` publishes
 `stitchkit/agent-runtime/harness`, `stitchkit/agent-runtime/coding-tools` and the Bun SQLite store.
 Exact source: `c9a86d4962178debc017a821d7034aed18bd91da`; downloaded archive SHA-256:
@@ -188,3 +190,15 @@ the current preflight and the dependency-publication boundary.
 Historical 0.70.1 full local gate: 980 passing tests, one failing sequential-approval regression, 4,966
 assertions across 165 files; Biome/TypeScript pass. All five packed-client checks pass separately.
 Publication, release bump and rollout have not run. Existing production sessions are unchanged.
+
+## Published Custom completion
+
+The historical qualification above is superseded by `v0.39.34` with `stitchkit@0.70.2`.
+Implementation `6d89daea6974fbae90e99ac9665f197e8a19dd93`, release/tag
+`3258d7bb0f960fe5e9380395c35ff605364f8cfe`; full gate 993 tests / 5,069 assertions and
+five packed consumers passed. Both exact-SHA CI runs `33339092883` / `33339092898` are green.
+Downloaded-artifact Custom coding, signed allow/deny, restart, defer/interrupt and exact three-runtime
+chat passed. The [verification artifact](https://github.com/max-listov/ccmux/releases/download/v0.39.34/post-rollout-verification.json)
+records hashes, fixture cleanup and three-host parity with all 34 preexisting running sessions
+preserved. All four drivers now have their actual capability boundaries; Custom does not claim
+native fork, compaction, structured input requests or exact in-turn steering.

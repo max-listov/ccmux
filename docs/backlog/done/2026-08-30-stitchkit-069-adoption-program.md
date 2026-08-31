@@ -2,11 +2,12 @@
 title: Adopt the published Stitchkit harness as the custom execution engine and bounded evidence foundation
 description: Integrate the published headless harness through the existing supervisor, with exact continuation, host-owned tools and policy, bounded observation and release-grade acceptance.
 type: task
-status: in-progress
+status: done
 created: 2026-08-30
 updated: 2026-08-31
+completed: 2026-08-31T05:34:02+07:00
 priority: P1
-related: ../in-progress/2026-08-30-managed-native-and-custom-runtime-adapters.md
+related: 2026-08-30-managed-native-and-custom-runtime-adapters.md
 ---
 
 ## Purpose and authority
@@ -19,7 +20,7 @@ The authorized program covers implementation, verification, publication and owne
 Acceptance remains open until each required behavior has inspectable evidence. Optional subsequent
 work and consumer deployments stay outside this execution scope.
 
-The existing [runtime adapter task](../in-progress/2026-08-30-managed-native-and-custom-runtime-adapters.md)
+The existing [runtime adapter task](2026-08-30-managed-native-and-custom-runtime-adapters.md)
 remains the canonical task for the Custom runner. This plan supplies its dependency cutover,
 integration sequence, cross-cutting diagnostics and combined acceptance; it is not a duplicate runner task.
 
@@ -224,7 +225,7 @@ publish and verify owned-runtime parity. Never skip the enabled regression or sh
 - [x] Complete the sequential-approval regression after the corrected published dependency.
 - [x] Complete the remaining coding/deny/defer/interrupt and recovery acceptance; the current
       real managed coding lane passes through signed denial, queue admission and child cancellation.
-- [ ] Complete the final full green gate, release artifact and owned-runtime rollout.
+- [x] Complete the final full green gate, release artifact and owned-runtime rollout.
 
 Historical 0.70.1 gate: Biome and TypeScript passed; 980 tests passed, one sequential-approval test
 failed, 4,966 assertions across 165 files. This is retained failed evidence, superseded by the
@@ -518,7 +519,20 @@ Run this as one integrated native/Custom qualification program; avoid unrelated 
 - [x] Complete Custom runner, immutable host composition and real persistent conversation acceptance.
 - [x] Complete exact approval continuation, correlation and capability-aware public operations.
 - [x] Complete bounded projection/history/diagnostic integration and privacy/adversarial probes.
-- [ ] Complete combined installed/published E2E and authorized fleet rollout with exact evidence.
+- [x] Complete combined installed/published E2E and authorized fleet rollout with exact evidence.
+
+## Published completion
+
+Release `v0.39.34`, implementation `6d89daea6974fbae90e99ac9665f197e8a19dd93`,
+release/tag `3258d7bb0f960fe5e9380395c35ff605364f8cfe`. Exact-SHA CI runs
+`33339092883` and `33339092898` passed, including bundle smoke and publication.
+The [post-rollout verification artifact](https://github.com/max-listov/ccmux/releases/download/v0.39.34/post-rollout-verification.json)
+records downloaded bundle/client hashes, five packed consumers, real Custom coding and the
+Codex → OpenCode → Custom → Codex route. All fixture processes exited with no notification sink.
+All three owned installations match the bundle; 34 preexisting running identities and uptimes
+are preserved. Daemons/producers are live and diagnostic journals report no failures.
+Host deployment does not imply a Custom provider credential/profile has been enabled everywhere.
+The separately scoped image transport acceptance and historical privacy follow-up remain open.
 
 ## Primary references
 

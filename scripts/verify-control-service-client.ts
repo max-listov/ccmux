@@ -65,6 +65,7 @@ try {
       RuntimeCatalogSchema, CCMUX_CONTROL_SERVICE_REVISION, AttachmentReferenceSchema, SelectionResultSchema,
       NativeSelectionEvidenceSchema, ControlHistoryResultSchema, ControlContextOperationResultSchema,
       SteeringReceiptSchema, NativeForkRequestSchema, MessageOperationResultSchema, ToolObservationSchema, ContentRecordSchema, PermissionScopeSchema, ControlInterruptSchema,
+      MessageAttributionSchema, MessageOriginSchema, NotificationAudienceSchema, ControlMessageSchema,
       ccmuxControlServiceComposition, ccmuxControlServiceDescriptor,
       controlServiceEffects, createCcmuxControlServiceClient, createCcmuxNativeStreamProfile,
       encodeControlNativeStreamCursor, readControlNativeStreamCursor,
@@ -96,6 +97,19 @@ try {
       return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:operationResult});
     });
     if ((await operations.messageOperation(operationInput)).evidence?.turnId !== 'turn-exact') throw new Error('exact message correlation lost');
+    const attribution = MessageAttributionSchema.parse({applicationId:'sample-app',channelId:'chat',actor:'human'});
+    const origin = MessageOriginSchema.parse({ingress:'service',actor:'human',assurance:'application-attested',application:{...attribution,revision:'r1',digest:'b'.repeat(64)}});
+    const notification = NotificationAudienceSchema.parse('conversation');
+    const messageInput = ControlMessageSchema.parse({...operationInput,origin:attribution,body:'sample input'});
+    const messenger = createCcmuxControlServiceClient(async (url, init) => {
+      const request = ControlMessageSchema.parse(JSON.parse(String(init?.body)));
+      if (!String(url).endsWith('/message.send') || request.origin?.actor !== 'human' || request.registrationGeneration !== registrationGeneration)
+        throw new Error('Application origin input lost');
+      return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{messageId:request.messageId,accepted:true,duplicate:false,turnOptions:null,registrationGeneration,origin,notification}});
+    });
+    const messageReceipt = await messenger.message(messageInput);
+    if (messageReceipt.origin.assurance !== 'application-attested' || messageReceipt.notification !== 'conversation' || messageReceipt.registrationGeneration !== registrationGeneration)
+      throw new Error('Accepted origin receipt lost');
     let calls = 0;
     const client = createCcmuxControlServiceClient(async () => {
       calls++;

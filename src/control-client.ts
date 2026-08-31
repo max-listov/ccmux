@@ -32,6 +32,14 @@ export {
   MessageOperationResultSchema,
   MessageOperationStateSchema,
 } from './chat/messageOperationSchema.ts';
+export {
+  type MessageAttribution,
+  MessageAttributionSchema,
+  type MessageOrigin,
+  MessageOriginSchema,
+  type NotificationAudience,
+  NotificationAudienceSchema,
+} from './chat/originSchema.ts';
 export type { ModelSelection } from './config/modelSelectionFlags.ts';
 export {
   LaunchRecipeMetadataSchema,

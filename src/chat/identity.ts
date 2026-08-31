@@ -29,6 +29,13 @@ export function cliPrincipal(machine: string): CliPrincipal {
   return { kind: 'cli', source: 'ccmux', machine };
 }
 
+export function servicePrincipal(
+  machine: string,
+  transport: 'local' | 'declared-service',
+): ChatPrincipal {
+  return { kind: 'service', source: 'ccmux', machine, transport };
+}
+
 export function codexAppPeer(machine: string, threadId: string, name: string | null): CodexAppPeer {
   return { kind: 'codex-app', source: 'codex-app', machine, agent: 'codex', threadId, name };
 }
@@ -68,6 +75,8 @@ export function chatPrincipalKey(principal: ChatPrincipal): string {
   if (principal.kind === 'managed') return managedPeerKey(principal);
   if (principal.kind === 'codex-app')
     return `${principal.source}:${principal.machine}#${principal.threadId}`;
+  // Both ingress paths authorize the same host account. This opaque durable key also owns
+  // pre-cutover uploads, retained pins and operation receipts; it is not author attribution.
   return `${principal.source}:${principal.machine}:cli`;
 }
 
@@ -87,6 +96,7 @@ export function sameTarget(left: ChatTarget, right: ChatTarget): boolean {
 
 export function principalLabel(principal: ChatPrincipal): string {
   if (principal.kind === 'cli') return `ccmux/cli@${principal.machine}`;
+  if (principal.kind === 'service') return `ccmux/service@${principal.machine}`;
   if (principal.kind === 'codex-app')
     return `codex-app@${principal.machine}:${principal.name ?? 'thread'}#${principal.threadId}`;
   return `ccmux/${principal.agent}@${principal.machine}:${principal.session}#${principal.threadId}`;
@@ -112,6 +122,7 @@ export function targetLabel(target: ChatTarget): string {
  */
 export function humanLabel(principal: ChatPrincipal): string {
   if (principal.kind === 'cli') return `${principal.machine}:cli`;
+  if (principal.kind === 'service') return `${principal.machine}:service`;
   if (principal.kind === 'codex-app')
     return `${principal.machine}:${principal.name ?? codexAppAddress(principal.threadId)}`;
   return `${principal.machine}:${principal.session}`;

@@ -4,7 +4,7 @@ description: Close concrete managed Codex and OpenCode control gaps without clai
 type: task
 status: in-progress
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 priority: P1
 pipeline: native-harness-control
 order: 0
@@ -76,7 +76,7 @@ implementation order, not separate review ceremonies or separate releases.
   and `nativeStream: true` must not imply images, full transcript fidelity or universal operation support.
 - Existing Claude interactive behavior remains intact; unsupported new operations refuse before
   side effects. Custom integration stays in the existing
-  [runtime task](../in-progress/2026-08-30-managed-native-and-custom-runtime-adapters.md) and does not
+  [runtime task](../done/2026-08-30-managed-native-and-custom-runtime-adapters.md) and does not
   block these Codex/OpenCode slices. No duplicate Custom task is created.
 - Do not copy T3's framework, UI, auth infrastructure or lifecycle fallbacks wholesale. In particular,
   uncertain resume must not silently start another conversation. This scoped source review, not the
@@ -184,12 +184,13 @@ open. Local service probes are not substituted for that external acceptance.
 
 ## Transport activation boundary
 
-The 2026-08-31 preflight supersedes the earlier old-descriptor finding: the remote binding now
-declares the current 26-operation service and native profile. It reaches the production daemon
-with user-facing notification mirroring enabled. Real mutating fixtures must remain isolated;
-silencing the production mirror or emitting test notifications is not an acceptance substitute.
-The image task records this narrower outstanding isolated-binding boundary. Production read
-checks and independent Custom integration continue; no alternate gateway is introduced.
+The 2026-08-31 follow-up resolved the old-descriptor and isolated-binding boundaries. A temporary
+isolated service fixture on an owned execution host passed real remote Codex image recognition,
+image-only/ordered inputs, retry and preview/history through the declared transport. Remote OpenCode
+uploaded/read the same bytes but its configured provider refused authentication at the first model
+turn; the remote near-limit case was not reached. The image task records exact evidence and cleanup.
+All temporary policy/daemon state was removed; no notification sink or credential was changed.
+This remaining host-authentication boundary is separate from the completed Custom integration.
 
 ## Post-publication native acceptance finding
 

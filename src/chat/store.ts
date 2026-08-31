@@ -1,6 +1,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmdirSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { stableJson } from '../agent/launchInputs.ts';
 import { chatAckPath, chatCursorsPath, chatLedgerPath } from '../config/paths.ts';
 import { CHAT_GENERATION, ChatCursorsSchema, ChatMessageSchema } from '../config/schema.ts';
 import { loadSessions } from '../config/sessions.ts';
@@ -276,7 +278,24 @@ export async function appendMessageOnce(
   }
   try {
     signal?.throwIfAborted();
-    if (loadLedger(m).some((item) => item?.id === msg.id)) return false;
+    const prior = loadLedger(m).find((item) => item?.id === msg.id);
+    if (prior) {
+      // Native selection can be resolved by the recipient on first append. All caller-supplied
+      // immutable fields, including provenance/audience, must match on a transport retry.
+      const { turnOptions: acceptedOptions, ...accepted } = prior;
+      const { turnOptions: requestedOptions, ...requested } = msg;
+      if (
+        stableJson(accepted) !== stableJson(requested) ||
+        (requestedOptions !== undefined &&
+          stableJson(acceptedOptions) !== stableJson(requestedOptions))
+      )
+        throw new AppError(
+          'IDEMPOTENCY_CONFLICT',
+          'Message ID already belongs to a different request',
+          409,
+        );
+      return false;
+    }
     appendMessage(m, msg);
     return true;
   } finally {

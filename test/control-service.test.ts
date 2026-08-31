@@ -7,17 +7,22 @@ import { ownedCodexSocket, privateRuntimeDirectory } from '../src/agent/codex/ow
 import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
 import { ATTACHMENT_LIMITS } from '../src/attachments/reference.ts';
-import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
+import { beginAttachmentUpload } from '../src/attachments/service.ts';
+import { rowFromLedgerRecord } from '../src/chat/fleetLog.ts';
+import { formatChatInjection } from '../src/chat/format.ts';
+import { managedPeer, managedPeerKey, servicePrincipal } from '../src/chat/identity.ts';
 import { MESSAGE_OPERATION_LIMITS } from '../src/chat/messageOperationSchema.ts';
 import {
   advanceMessageOperation,
   prepareMessageOperation,
 } from '../src/chat/messageOperationStore.ts';
-import { loadLedger } from '../src/chat/store.ts';
+import { principalOrigin } from '../src/chat/origin.ts';
+import { chatPaths, loadLedger } from '../src/chat/store.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { ContentBuffer } from '../src/content/buffer.ts';
 import { ContentWriter } from '../src/content/store.ts';
 import { createControlClient } from '../src/control/client.ts';
+import { acceptControlMessage } from '../src/control/message.ts';
 import {
   ControlNativeStreamFrameSchema,
   encodeControlNativeStreamCursor,
@@ -25,6 +30,7 @@ import {
 } from '../src/control/nativeStreamContract.ts';
 import { controlSocket } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
+import type { ControlMessage } from '../src/control/schema.ts';
 import { createControlServer } from '../src/control/server.ts';
 import {
   CCMUX_CONTROL_SERVICE_INGRESS_PATH,
@@ -95,6 +101,15 @@ async function fixture(options: { launchRecipe?: boolean } = {}) {
   const recipeSecret = 'fixture-service-secret-never-public';
   if (options.launchRecipe) writeFileSync(recipeEnvFile, `MODEL_SERVICE_TOKEN=${recipeSecret}\n`);
   const machine = makeMachine({
+    messageApplications: {
+      'sample-app': {
+        revision: 'r1',
+        callers: ['host-b'],
+        channels: ['chat'],
+        actors: ['human', 'agent'],
+        ownerNotifications: false,
+      },
+    },
     stateDir: root,
     rcPrefix: 'host-a',
     projectsDir: join(root, 'history'),
@@ -376,12 +391,18 @@ test('current declared service exposes revisioned selection and image upload wit
   expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({
     messageId,
     accepted: true,
+    origin: principalOrigin(servicePrincipal('host-b', 'declared-service')),
+    notification: 'conversation',
+    registrationGeneration: f.session.registrationGeneration ?? null,
     duplicate: false,
     turnOptions: changed.current,
   });
   expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({
     messageId,
     accepted: true,
+    origin: principalOrigin(servicePrincipal('host-b', 'declared-service')),
+    notification: 'conversation',
+    registrationGeneration: f.session.registrationGeneration ?? null,
     duplicate: true,
     turnOptions: changed.current,
   });
@@ -410,6 +431,177 @@ test('current declared service exposes revisioned selection and image upload wit
   ).toBe(404);
 });
 
+test('application attribution is host-bound, generation-pinned, durable and part of retry identity', async () => {
+  const f = await fixture();
+  const input = {
+    target: f.target,
+    registrationGeneration: z.uuid().parse(f.session.registrationGeneration),
+    messageId: crypto.randomUUID(),
+    body: 'application conversation',
+    origin: { applicationId: 'sample-app', channelId: 'chat', actor: 'human' },
+  } satisfies ControlMessage;
+  await expect(
+    f.remote.message({ ...input, origin: { ...input.origin, applicationId: 'forged' } }),
+  ).rejects.toMatchObject({ code: 'ORIGIN_REFUSED' });
+  await expect(
+    f.remote.message({ ...input, origin: { ...input.origin, channelId: 'wrong' } }),
+  ).rejects.toMatchObject({ code: 'ORIGIN_REFUSED' });
+  await expect(f.local.message(input)).rejects.toMatchObject({ code: 'ORIGIN_REFUSED' });
+  await expect(f.remote.message({ ...input, notification: 'owner' })).rejects.toMatchObject({
+    code: 'ORIGIN_REFUSED',
+  });
+  await expect(
+    f.remote.message({ ...input, registrationGeneration: crypto.randomUUID() }),
+  ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
+  expect(loadLedger(f.machine)).toHaveLength(0);
+  const first = await f.remote.message(input);
+  expect(first).toMatchObject({
+    notification: 'conversation',
+    registrationGeneration: input.registrationGeneration,
+    origin: {
+      ingress: 'service',
+      actor: 'human',
+      assurance: 'application-attested',
+      application: { applicationId: 'sample-app', channelId: 'chat', revision: 'r1' },
+    },
+  });
+  expect(await f.remote.message(input)).toEqual({ ...first, duplicate: true });
+  await expect(
+    f.remote.message({ ...input, origin: { ...input.origin, actor: 'agent' } }),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  await expect(f.remote.message({ ...input, body: 'changed' })).rejects.toMatchObject({
+    code: 'IDEMPOTENCY_CONFLICT',
+  });
+  const row = loadLedger(f.machine)[0];
+  if (!row) throw new Error('missing accepted message');
+  const framing = formatChatInjection(row);
+  expect(framing).toContain('application input via ccmux/service');
+  expect(framing).toContain('not independently authenticated');
+  expect(framing).not.toContain('cli');
+  expect(rowFromLedgerRecord('host-a', row)).toMatchObject({
+    messageId: input.messageId,
+    origin: first.origin,
+    notification: 'conversation',
+    sender: row.from,
+    target: f.target,
+  });
+  const second = await f.remote.message({ ...input, messageId: crypto.randomUUID() });
+  expect(second.messageId).not.toBe(first.messageId);
+  expect(loadLedger(f.machine)).toHaveLength(2);
+  const binding = f.machine.messageApplications['sample-app'];
+  if (!binding) throw new Error('missing binding');
+  binding.channels.push('other');
+  await expect(
+    f.remote.message({ ...input, origin: { ...input.origin, channelId: 'other' } }),
+  ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  binding.revision = 'r2';
+  await expect(f.remote.message(input)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  expect(loadLedger(f.machine)[0]?.origin).toEqual(first.origin);
+  expect(loadLedger(f.machine)).toHaveLength(2);
+});
+
+test('pre-cutover machine-owned uploads remain usable by the current service and retained input', async () => {
+  const f = await fixture();
+  const bytes = imageBytes('png', 10, 10, true);
+  const uploadId = crypto.randomUUID();
+  await beginAttachmentUpload(
+    f.machine,
+    makeCli('host-b'),
+    {
+      target: f.target,
+      uploadId,
+      mediaType: 'image/png',
+      totalBytes: bytes.length,
+      digest: digest(bytes),
+    },
+    new AbortController().signal,
+  );
+  await f.remote.attachmentChunk({
+    target: f.target,
+    uploadId,
+    offset: 0,
+    data: bytes.toString('base64'),
+  });
+  const reference = await f.remote.attachmentFinalize({ target: f.target, uploadId });
+  const input = {
+    target: f.target,
+    registrationGeneration: z.uuid().parse(f.session.registrationGeneration),
+    messageId: crypto.randomUUID(),
+    images: [reference],
+    origin: { applicationId: 'sample-app', channelId: 'chat', actor: 'human' },
+  } satisfies ControlMessage;
+  const receipt = await f.remote.message(input);
+  expect(receipt.accepted).toBe(true);
+  expect((await f.remote.message(input)).duplicate).toBe(true);
+  expect(
+    Buffer.from(
+      (await f.remote.attachmentRead({ target: f.target, reference, offset: 0 })).data,
+      'base64',
+    ),
+  ).toEqual(bytes);
+  expect(loadLedger(f.machine)).toHaveLength(1);
+});
+
+test('accepted historical machine input and image pins survive the ingress cutover without reattribution', async () => {
+  const f = await fixture();
+  const bytes = imageBytes('png', 10, 10, true);
+  const uploadId = crypto.randomUUID();
+  await beginAttachmentUpload(
+    f.machine,
+    makeCli('host-b'),
+    {
+      target: f.target,
+      uploadId,
+      mediaType: 'image/png',
+      totalBytes: bytes.length,
+      digest: digest(bytes),
+    },
+    new AbortController().signal,
+  );
+  await f.remote.attachmentChunk({
+    target: f.target,
+    uploadId,
+    offset: 0,
+    data: bytes.toString('base64'),
+  });
+  const reference = await f.remote.attachmentFinalize({ target: f.target, uploadId });
+  const input = {
+    target: f.target,
+    messageId: crypto.randomUUID(),
+    images: [reference],
+    body: 'accepted before upgrade',
+    defer: true,
+  };
+  await acceptControlMessage(f.machine, makeCli('host-b'), input, new AbortController().signal);
+  const old = loadLedger(f.machine)[0];
+  if (!old) throw new Error('missing historical fixture');
+  delete old.origin;
+  delete old.notification;
+  delete old.registrationGeneration;
+  writeFileSync(chatPaths(f.machine).ledger, `${JSON.stringify(old)}\n`);
+  const retry = await f.remote.message(input);
+  expect(retry).toMatchObject({
+    duplicate: true,
+    notification: 'conversation',
+    origin: { ingress: 'unknown', actor: 'unknown', assurance: 'unknown' },
+    registrationGeneration: null,
+  });
+  const operation = await f.remote.messageOperation({
+    target: f.target,
+    messageId: input.messageId,
+    registrationGeneration: z.uuid().parse(f.session.registrationGeneration),
+  });
+  expect(operation.evidence?.state).toBe('queued');
+  expect(
+    Buffer.from(
+      (await f.remote.attachmentRead({ target: f.target, reference, offset: 0 })).data,
+      'base64',
+    ),
+  ).toEqual(bytes);
+  expect(loadLedger(f.machine)).toHaveLength(1);
+  expect(loadLedger(f.machine)[0]?.origin).toBeUndefined();
+});
+
 test('declared service reuses exact control operations, identity and admission', async () => {
   const f = await fixture();
   expect(await f.remote.get({ target: f.target })).toEqual(await f.local.get({ target: f.target }));
@@ -420,6 +612,9 @@ test('declared service reuses exact control operations, identity and admission',
   expect(await f.remote.message({ target: f.target, messageId, body: 'service message' })).toEqual({
     messageId,
     accepted: true,
+    origin: principalOrigin(servicePrincipal('host-b', 'declared-service')),
+    notification: 'conversation',
+    registrationGeneration: f.session.registrationGeneration ?? null,
     duplicate: false,
     turnOptions: (
       await f.remote.selection({
@@ -431,6 +626,9 @@ test('declared service reuses exact control operations, identity and admission',
   expect(await f.remote.message({ target: f.target, messageId, body: 'service message' })).toEqual({
     messageId,
     accepted: true,
+    origin: principalOrigin(servicePrincipal('host-b', 'declared-service')),
+    notification: 'conversation',
+    registrationGeneration: f.session.registrationGeneration ?? null,
     duplicate: true,
     turnOptions: (
       await f.remote.selection({
@@ -441,7 +639,8 @@ test('declared service reuses exact control operations, identity and admission',
   });
   expect(loadLedger(f.machine)).toHaveLength(1);
   expect(loadLedger(f.machine)[0]?.from).toEqual({
-    kind: 'cli',
+    kind: 'service',
+    transport: 'declared-service',
     source: 'ccmux',
     machine: 'host-b',
   });

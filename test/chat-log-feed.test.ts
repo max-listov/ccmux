@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { rowFromLedgerRecord } from '../src/chat/fleetLog.ts';
 import {
   boundFrame,
   formatCursor,
@@ -163,6 +164,7 @@ test('an oversized record is REPLACED with a named refusal, never cut', () => {
   // Cutting JSON is the failure this feed exists to remove: a truncated document is not partly
   // readable, and the reader learns nothing about why.
   const row = {
+    ...rowFromLedgerRecord('host-a', null),
     machine: 'host-a',
     ts: '2026-08-26T10:00:00.000Z',
     kind: 'chat' as const,
@@ -191,6 +193,7 @@ test('the cap counts BYTES, so a long Unicode body is bounded by what the transp
   // same size on the wire, and a cap that counted characters would let it through.
   const emoji = '🙂'.repeat(MAX_FRAME_BYTES / 2); // 4 bytes each — well past the cap
   const row = {
+    ...rowFromLedgerRecord('host-a', null),
     machine: 'host-a',
     ts: 't',
     kind: 'chat' as const,
@@ -211,6 +214,7 @@ test('a long Unicode body that FITS is passed through untouched', () => {
   // all — this feed is the record of what was said.
   const body = 'ответ владельцу: релиз выпущен, всё раскатано 🚀';
   const row = {
+    ...rowFromLedgerRecord('host-a', null),
     machine: 'host-a',
     ts: 't',
     kind: 'chat' as const,

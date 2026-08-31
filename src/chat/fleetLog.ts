@@ -1,7 +1,13 @@
 import { z } from 'zod';
+import { ChatPrincipalSchema, ChatTargetSchema } from '../config/schema.ts';
 import type { Outbound } from '../fleet/outbox.ts';
 import { outboundId, outboundTimestamp } from '../fleet/outbox.ts';
 import { principalLabel, targetLabel } from './identity.ts';
+import {
+  MessageOriginSchema,
+  NotificationAudienceSchema,
+  unknownMessageOrigin,
+} from './originSchema.ts';
 import type { LedgerSlot } from './store.ts';
 
 /**
@@ -18,6 +24,12 @@ import type { LedgerSlot } from './store.ts';
  * a causal order: nothing downstream depends on this ordering, it is a human-facing view.
  */
 export const LogRowSchema = z.object({
+  messageId: z.uuid().nullable(),
+  sender: ChatPrincipalSchema.nullable(),
+  target: ChatTargetSchema.nullable(),
+  origin: MessageOriginSchema,
+  notification: NotificationAudienceSchema,
+  registrationGeneration: z.uuid().nullable(),
   machine: z.string(), // whose log this row came from — carried ON the row so a merged stream is self-describing
   ts: z.string(),
   // chat         — landed in THIS machine's ledger (received, or sent to a local peer)
@@ -45,8 +57,8 @@ export type LogMachine = z.infer<typeof LogMachineSchema>;
  * consumer never has to branch on which flag was used. It is also the wire format `--fleet` reads
  * from a peer (a peer is always asked without `--fleet`, so it answers about itself).
  *
- * Parsed LENIENTLY from a remote: another box may run an older ccmux, and a partly-readable log
- * beats refusing to show anything.
+ * Identity and provenance fields are required in the current contract. Missing remote evidence
+ * refuses the payload rather than granting notification eligibility from display labels.
  */
 export const LogPayloadSchema = z.object({
   machines: z.array(LogMachineSchema).default([]),
@@ -65,6 +77,12 @@ export type LogPayload = z.infer<typeof LogPayloadSchema>;
 export function rowFromLedgerRecord(machine: string, msg: LedgerSlot): LogRow {
   if (msg === null) {
     return {
+      messageId: null,
+      sender: null,
+      target: null,
+      origin: unknownMessageOrigin(),
+      notification: 'conversation',
+      registrationGeneration: null,
       machine,
       ts: '',
       kind: 'chat',
@@ -78,6 +96,12 @@ export function rowFromLedgerRecord(machine: string, msg: LedgerSlot): LogRow {
   return {
     machine,
     ts: msg.ts,
+    messageId: msg.id,
+    sender: msg.from,
+    target: msg.to,
+    origin: msg.origin ?? unknownMessageOrigin(),
+    notification: msg.notification ?? 'conversation',
+    registrationGeneration: msg.registrationGeneration ?? null,
     kind: 'chat',
     // A remote sender is shown with its machine, because that is the only rendering from which a
     // full pinned source can be read directly — no cwd/name inference is needed.
@@ -99,6 +123,12 @@ export function rowFromOutbound(
   return {
     machine,
     ts: outboundTimestamp(o),
+    messageId: o.envelope.id,
+    sender: o.envelope.from,
+    target: o.envelope.to,
+    origin: o.envelope.origin ?? unknownMessageOrigin(),
+    notification: o.envelope.notification ?? 'conversation',
+    registrationGeneration: o.envelope.registrationGeneration ?? null,
     kind: 'sent',
     from: principalLabel(o.envelope.from),
     to: targetLabel(o.envelope.to),

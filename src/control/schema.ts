@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
 import {
+  MessageAttributionSchema,
+  MessageOriginSchema,
+  NotificationAudienceSchema,
+} from '../chat/originSchema.ts';
+import {
   AgentKindSchema,
   LaunchRecipeMetadataSchema,
   LaunchRecipeReferenceSchema,
@@ -82,6 +87,9 @@ export const ControlSnapshotSchema = z
 export type ControlSnapshot = z.infer<typeof ControlSnapshotSchema>;
 export const ControlMessageSchema = ControlTargetSchema.extend({
   messageId: z.uuid(),
+  origin: MessageAttributionSchema.optional(),
+  notification: NotificationAudienceSchema.optional(),
+  registrationGeneration: z.uuid().optional(),
   body: z.string().trim().max(16_384).default(''),
   images: AttachmentReferencesSchema.default([]),
   options: NativeTurnOptionsSchema.optional(),
@@ -90,11 +98,18 @@ export const ControlMessageSchema = ControlTargetSchema.extend({
   task: z.string().max(256).nullable().default(null),
 })
   .strict()
+  .refine(
+    (value) => value.origin === undefined || value.registrationGeneration !== undefined,
+    'Attributed input requires registration generation',
+  )
   .refine((value) => value.body.length > 0 || value.images.length > 0, 'Message input is empty');
 export type ControlMessage = z.input<typeof ControlMessageSchema>;
 export const ControlMessageReceiptSchema = z
   .object({
     messageId: z.uuid(),
+    origin: MessageOriginSchema,
+    notification: NotificationAudienceSchema,
+    registrationGeneration: z.uuid().nullable(),
     accepted: z.literal(true),
     duplicate: z.boolean(),
     turnOptions: AcceptedTurnOptionsSchema.nullable(),

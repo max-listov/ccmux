@@ -4,7 +4,7 @@ description: Deliver image-only and text-plus-image input to managed Codex and O
 type: task
 status: in-progress
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 priority: P1
 pipeline: native-harness-control
 order: 1
@@ -118,8 +118,8 @@ is not relabelled as cross-machine transport acceptance.
   `test/opencode-image-elision.test.ts` covers limits without widening ordinary response budgets.
 - [x] `src/context/history.ts` preserves native image order independently of pin insertion order;
   `test/history-image-order.test.ts` covers reversed/repeated pointers and registration isolation.
-- [ ] Cross-machine image proof requires an isolated authorized service fixture as described
-  in the umbrella task. Local service E2E is not labelled remote acceptance.
+- [ ] Complete the remaining remote OpenCode/near-limit cases after the execution host's
+  configured provider authentication is restored. The exact refreshed evidence follows below.
 
 ### Refreshed transport preflight (2026-08-31)
 
@@ -129,6 +129,27 @@ whose configured notification mirror broadcasts every admitted chat message. The
 mandate explicitly requires isolated fixtures without user-facing test notifications. No fixture
 message was sent, notification cursor changed or production mirror disabled. Cross-machine
 mutating acceptance still needs an isolated transport binding; production read operations do not.
+
+### Real isolated cross-machine follow-up (2026-08-31)
+
+The isolated-binding boundary was resolved for a bounded live probe using the published
+`v0.39.34` runtime/client, existing service lane and a separate daemon without notification sinks.
+No working production service binding was replaced. Image bytes originated on the caller machine
+and crossed `attachment.begin/chunk/finalize/read`; no shared path, SSH or CLI image upload.
+
+Real remote Codex passed PNG/JPEG recognition, image-only and text-plus-image input, ordered
+multiple images, exact preview, same-ID create/message retry and retained native history references.
+The remote OpenCode upload/preview also passed, but its configured provider rejected authentication
+on the first model turn. The exact native diagnostic is retained privately; a catalog entry and
+successful upload are not model success. No credentials were copied or changed. The large-image
+remote case was not reached. Evidence SHA-256:
+`d2da18a7a5194decafde9f7e0119f1a0825f320ebbdb83df6039b7f0603dd7d5`.
+
+All three fixture registrations were archived, the isolated daemon/tmux processes exited, and
+the temporary binding plus 13 fixture grants on each relevant policy were removed while retaining
+unrelated configuration. A subsequent unauthorized route returned `denied / not-dispatched`.
+The production daemon and its preexisting running sessions were preserved. This narrows the
+remaining boundary to host authentication and the unperformed remote cases, not transport support.
 
 ## Published acceptance
 

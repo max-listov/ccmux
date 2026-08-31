@@ -75,12 +75,12 @@ async function sendTelegram(
 }
 
 /**
- * Mirror any un-mirrored ledger messages to Telegram (a BROADCAST sink — every message, in order).
+ * Consume ledger rows in order; send only explicit owner notices with accepted origin evidence.
  * Fail-soft: no telegram config → no-op (chat core is unaffected). A transient failure HOLDS the
  * cursor (retry next pass, so a restart resends only the backlog); a permanent failure (bad
  * token/chat) SKIPS that one message so it never freezes the mirror. Cheap when caught up.
  */
-export async function mirrorPending(m: MachineConfig): Promise<void> {
+export async function mirrorPending(m: MachineConfig, send = sendTelegram): Promise<void> {
   const tg = m.telegram;
   if (tg === undefined) return;
   const ledger = loadLedger(m);
@@ -108,10 +108,22 @@ export async function mirrorPending(m: MachineConfig): Promise<void> {
       cur++;
       continue;
     }
-    const result = await sendTelegram(tg, formatForTg(msg, m.externals));
+    // Unknown historical provenance and conversation traffic are audit data, not notices.
+    // Suppression consumes the row without claiming a Telegram delivery.
+    if (msg.origin === undefined || msg.notification !== 'owner') {
+      log.info({
+        msg: 'telegram mirror suppressed',
+        messageId: msg.id,
+        reason: msg.origin === undefined ? 'historical-origin-unknown' : 'conversation-audience',
+      });
+      cur++;
+      continue;
+    }
+    const result = await send(tg, formatForTg(msg, m.externals));
     if (result === 'transient') {
       log.warn({
         msg: 'telegram mirror transient failure — holding, retry next pass',
+        messageId: msg.id,
         from: principalLabel(msg.from),
         to: targetLabel(msg.to),
       });
@@ -120,10 +132,12 @@ export async function mirrorPending(m: MachineConfig): Promise<void> {
     if (result === 'permanent') {
       log.warn({
         msg: 'telegram mirror permanent failure — skipping message',
+        messageId: msg.id,
         from: principalLabel(msg.from),
         to: targetLabel(msg.to),
       });
     }
+    if (result === 'ok') log.info({ msg: 'telegram mirror delivered', messageId: msg.id });
     cur++; // ok or permanent → move past it
   }
   if (cur !== start) await saveCursors(m, { ...cursors, telegram: cur });

@@ -9,6 +9,7 @@ import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
 import { rotateChatCredential } from '../src/chat/auth.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
+import { principalOrigin } from '../src/chat/origin.ts';
 import { loadCursors, loadLedger, saveCursors } from '../src/chat/store.ts';
 import { blockingInbound } from '../src/commands/wait.ts';
 import { withSessionRegistryLock } from '../src/config/registryLock.ts';
@@ -180,12 +181,18 @@ test('message acceptance is durable, identity-authenticated and idempotent witho
     duplicate: false,
     messageId: input.messageId,
     turnOptions: null,
+    origin: principalOrigin(f.target),
+    notification: 'conversation',
+    registrationGeneration: f.s.registrationGeneration ?? null,
   });
   expect(await client.message(input)).toEqual({
     accepted: true,
     duplicate: true,
     messageId: input.messageId,
     turnOptions: null,
+    origin: principalOrigin(f.target),
+    notification: 'conversation',
+    registrationGeneration: f.s.registrationGeneration ?? null,
   });
   await expect(client.message({ ...input, body: 'different' })).rejects.toMatchObject({
     code: 'IDEMPOTENCY_CONFLICT',
