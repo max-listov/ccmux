@@ -46,6 +46,15 @@ to the address so a human or agent can choose deliberately between, for example,
 The address selects the target; provider and UUID validate and pin it. Provider is not added
 as an alternative address syntax, because parallel address forms would create two sources of truth.
 
+The fleet map reads a row's state by one rule wherever the row came from: an archived session that
+is not running reads `archived`, and one that is somehow running reports what it is doing, because
+the run-state is the more truthful signal at that moment. A peer sends its raw run-state and its
+archived flag; the verdict is reached locally, so the two halves of the map cannot disagree about
+the same session. Archived rows are counted rather than printed by default — `--all` prints them —
+since a machine that runs control-plane exercises accumulates far more parked sessions than live
+ones, and a map that lists what is not happening stops being a map. `--json` is never folded: a
+machine reader asked for the registry and filters for itself.
+
 Each v2 chat envelope carries full structured `from` and `to` identities. Remote send resolves the
 target once, then receiver and retry use that same immutable provider+UUID endpoint. The receiver
 serializes idempotency check+append, so concurrent retries produce one ledger row. A rotating

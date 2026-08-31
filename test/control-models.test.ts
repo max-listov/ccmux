@@ -305,6 +305,7 @@ test('pagination is deterministic, provider-cursored and bounded by the strict i
     runtime: 'codex',
     machine: f.m.rcPrefix,
     provider: 'openai',
+    providerLabel: null,
   });
   expect(second.source).toEqual(first.source);
   expect(second.data.map((model) => model.id)).toEqual(['model-b']);
@@ -641,10 +642,16 @@ test('zod model schemas accept canonical safe shapes only', () => {
     session: 'agent-a',
     threadId: '11111111-1111-4111-8111-111111111111',
   };
-  const source = { kind: 'session', runtime: 'codex', machine: 'host-a', provider: 'openai' };
+  const source = {
+    kind: 'session',
+    runtime: 'codex',
+    machine: 'host-a',
+    provider: 'openai',
+    providerLabel: null,
+  };
   expect(
     ControlModelCatalogSchema.safeParse({
-      source: { kind: 'host', machine: 'host-a', provider: 'openai' },
+      source: { kind: 'host', machine: 'host-a', provider: 'openai', providerLabel: null },
       data: [],
       nextCursor: null,
     }).success,

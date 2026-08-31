@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { readCustomModels } from '../src/agent/custom/catalog.ts';
 import { CustomLaunchConfigSchema } from '../src/agent/custom/config.ts';
 import { isLocalAddress, parseLocalEndpoint } from '../src/agent/custom/endpoint.ts';
-import { customModel } from '../src/agent/custom/host.ts';
+import { customModel, customProviderLabel } from '../src/agent/custom/host.ts';
 import { ControlModelsReadSchema } from '../src/control/schema.ts';
 import { customFixture as fixture } from './custom-fixture.ts';
 
@@ -140,4 +140,91 @@ test('an unsupported selection is refused before anything is submitted to a prov
   expect(() => customModel(host.config, { provider: 'local', model: 'local/absent' })).toThrow(
     'unavailable',
   );
+});
+
+test('a host may name the server behind the local kind, and it travels beside the locality fact', async () => {
+  // `local` says the address was checked; it cannot say which engine answered, so a host running two
+  // reports the same provenance for both. The label carries that half without weakening the other.
+  const { m, host } = await fixture(async (_root, config) => {
+    config.provider = { kind: 'local', endpoint: 'http://127.0.0.1:1234/v1', label: 'lm-studio' };
+    config.models = [
+      { selection: { ...LOCAL_MODEL }, contextWindow: 8192, capabilities: ['tools'] },
+    ];
+    config.defaultModel = { ...LOCAL_MODEL };
+  });
+  expect(customProviderLabel(host.config)).toBe('lm-studio');
+  const catalog = readCustomModels(
+    m,
+    ControlModelsReadSchema.parse({ launchRecipe: { id: 'coding', revision: 'one' } }),
+  );
+  expect(catalog.source.provider).toBe('local');
+  expect(catalog.source.providerLabel).toBe('lm-studio');
+  // Still not part of identity: selection matches on provider and model, and the label is neither.
+  expect(catalog.data[0]?.provider).toBe('local');
+  expect(customModel(host.config, { ...LOCAL_MODEL })).toMatchObject({ contextWindow: 8192 });
+  expect(JSON.stringify(catalog)).not.toContain('127.0.0.1');
+});
+
+test('a host that names nothing keeps exactly the previous answer', async () => {
+  const { m, host } = await localFixture();
+  expect(customProviderLabel(host.config)).toBeNull();
+  const catalog = readCustomModels(
+    m,
+    ControlModelsReadSchema.parse({ launchRecipe: { id: 'coding', revision: 'one' } }),
+  );
+  expect(catalog.source.providerLabel).toBeNull();
+});
+
+test('the aggregator has no server label to give', async () => {
+  // The label belongs to the local kind, where "which server" is a real question. An aggregator is
+  // already named by its kind, so inventing a second name there would be noise, not provenance.
+  const { host } = await fixture();
+  expect(customProviderLabel(host.config)).toBeNull();
+  const parsed = CustomLaunchConfigSchema.safeParse({
+    provider: { kind: 'openrouter', credentialEnv: 'FIXTURE_PROVIDER_KEY', label: 'anything' },
+    models: [
+      {
+        selection: { provider: 'openrouter', model: 'a/b' },
+        contextWindow: 8192,
+        capabilities: [],
+      },
+    ],
+    defaultModel: { provider: 'openrouter', model: 'a/b' },
+    trustedRoots: [],
+    resources: [],
+    tools: [],
+    approvalTools: [],
+    approvalSecretEnv: 'FIXTURE_APPROVAL_KEY',
+    executables: {},
+    commandEnvironment: [],
+  });
+  expect(parsed.success).toBe(false);
+});
+
+test('a label is a name, not free text', async () => {
+  // It is host configuration pinned by the recipe digest rather than caller input, so the charset is
+  // the whole guard needed — but it still has to be a name, because readers will display it.
+  const build = (label: string) =>
+    CustomLaunchConfigSchema.safeParse({
+      provider: { kind: 'local', endpoint: 'http://127.0.0.1:1234/v1', label },
+      models: [{ selection: { ...LOCAL_MODEL }, contextWindow: 8192, capabilities: [] }],
+      defaultModel: { ...LOCAL_MODEL },
+      trustedRoots: [],
+      resources: [],
+      tools: [],
+      approvalTools: [],
+      approvalSecretEnv: 'FIXTURE_APPROVAL_KEY',
+      executables: {},
+      commandEnvironment: [],
+    }).success;
+  // Real engines are named with dots and hyphens, so those belong in a name: refusing `llama.cpp`
+  // would push the host into inventing a spelling nobody uses.
+  expect(build('lm-studio')).toBe(true);
+  expect(build('llama.cpp')).toBe(true);
+  expect(build('vllm_1')).toBe(true);
+  // Display text, a path, or anything a reader could mistake for an address is not a name.
+  expect(build('LM Studio')).toBe(false);
+  expect(build('http://127.0.0.1:1234')).toBe(false);
+  expect(build('-leading')).toBe(false);
+  expect(build('')).toBe(false);
 });

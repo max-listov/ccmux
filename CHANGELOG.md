@@ -6,6 +6,24 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Read a row's state by one rule wherever it came from: an archived session that is not running
+  reads `archived` in the fleet map, as it already did locally. The map printed a peer's raw
+  run-state and called sixty-one deliberately parked sessions `stopped`, which reads as live
+  sessions that had fallen over. Parked rows are now counted rather than listed (`--all` prints
+  them, `--json` is never folded); the live fleet map went from 96 rows to 35.
+- Query `lsof` only for thread lock files that exist, since it walks every process before examining
+  any path and a discovery poll asks about every recorded thread. Lock inspection over two thousand
+  threads: 4021 ms to 3 ms; the whole inventory read 6846 ms to 402 ms. What this gives up — a live
+  holder of an unlinked lock — is stated in the architecture doc.
+- Add `ccmux models <launch-recipe-id>` to check a declared model registry against the provider that
+  must serve it. Diagnostic only: an unreachable provider reports `unknown`, never `missing`, and a
+  context window the provider never published stays declared and unverified rather than agreed.
+  Three outcomes, three exit codes.
+- Let a local provider carry a host-declared `label` naming the server behind it, reported in the
+  catalog page and the applied profile. `local` says the address was checked and cannot say which
+  engine answered; the label carries that half without entering `selection.provider`, which is
+  matched against the host adapter.
+
 ## [0.39.40] — 2026-08-31
 
 Compose a host-owned local model provider for the Custom runtime

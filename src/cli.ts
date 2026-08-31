@@ -21,6 +21,7 @@ import { cmdRestart, cmdRestartWorker, cmdStart, cmdStop } from './commands/life
 import { cmdList } from './commands/list.ts';
 import { cmdLogs } from './commands/logs.ts';
 import { cmdMode } from './commands/mode.ts';
+import { cmdModels } from './commands/models.ts';
 import { cmdMsg, cmdReceiveChat, cmdResolveCodexApp } from './commands/msg.ts';
 import { cmdNew } from './commands/new.ts';
 import { cmdRelay } from './commands/relay.ts';
@@ -160,6 +161,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdTranscript(rest[0], rest.slice(1));
     case 'wait':
       return cmdWait(rest[0], rest.slice(1));
+    case 'models':
+      return cmdModels(rest);
     case 'doctor':
       return cmdDoctor(rest);
     case 'fleet':

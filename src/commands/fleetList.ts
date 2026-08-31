@@ -11,7 +11,7 @@ import { AgentKindSchema, ReleaseStandingSchema } from '../config/schema.ts';
 import { peersOf, runPeer } from '../fleet/transport.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { VERSION } from '../util/version.ts';
-import { collectRows } from './list.ts';
+import { collectRows, rowStateLabel } from './list.ts';
 
 /**
  * `ccmux fleet` — every session on every machine of the fleet, in one view.
@@ -31,6 +31,8 @@ const RemoteSessionSchema = z.object({
   name: z.string(),
   agent: AgentKindSchema.nullable().default(null),
   state: z.string().default('?'),
+  /** Absent on a peer running an older ccmux, where `false` reproduces the previous reading. */
+  archived: z.boolean().default(false),
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),
@@ -110,7 +112,8 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
     sessions: local.map((r) => ({
       name: r.session.name,
       agent: r.session.agent,
-      state: r.state,
+      state: rowStateLabel(r.state, r.running, r.session.archived),
+      archived: r.session.archived,
       model: r.model,
       running: r.running,
       uptime: { text: r.uptimeText },
@@ -170,7 +173,12 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
           version: parsed.version,
           release: parsed.release,
           behind: null,
-          sessions: parsed.sessions,
+          // A peer reports its raw run-state; the parked/running verdict is reached here so both
+          // halves of the map are read by the same rule.
+          sessions: parsed.sessions.map((session) => ({
+            ...session,
+            state: rowStateLabel(session.state, session.running, session.archived),
+          })),
         };
       } catch {
         return {
@@ -226,6 +234,23 @@ export function formatFleetSession(
   return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(session.state, 9)} ${pad(session.model ?? '-', 11)} ${pad(session.uptime?.text ?? '', 7)}${role}${restart}`;
 }
 
+/**
+ * Parked rows are counted, never silently dropped.
+ *
+ * An archived session is one somebody deliberately took out of service, and on a machine that runs
+ * control-plane exercises they outnumber the live ones several times over. Printing them beside
+ * working sessions turns the map into a list of things that are not happening. Hiding them outright
+ * would be the other lie, so the count stays on screen with the flag that brings them back.
+ */
+export function partitionParked<T extends { archived: boolean }>(
+  sessions: readonly T[],
+  all: boolean,
+): { shown: readonly T[]; parked: number } {
+  if (all) return { shown: sessions, parked: 0 };
+  const shown = sessions.filter((session) => !session.archived);
+  return { shown, parked: sessions.length - shown.length };
+}
+
 export async function cmdFleet(args: string[] = []): Promise<number> {
   const m = loadMachineConfig();
   const machines = await collectFleet(m);
@@ -267,12 +292,14 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
             ? ''
             : '  (cannot reach the release feed — this is what it knew)';
     console.log(`${label}  [ccmux ${fm.version}]${standing}`);
-    for (const s of fm.sessions) {
+    const { shown, parked } = partitionParked(fm.sessions, args.includes('--all'));
+    for (const s of shown) {
       // Full address on every line — the thing you copy into `ccmux msg` without guessing.
       // A session that a restart would change is flagged right here, so "who is still on the old
       // prompt" is readable across the fleet instead of remembered.
       console.log(formatFleetSession(fm.machine, s));
     }
+    if (parked > 0) console.log(`  … ${parked} archived (ccmux fleet --all)`);
   }
   return 0; // unreachable machines are routine, never a failure exit
 }

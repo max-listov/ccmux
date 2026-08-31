@@ -10,6 +10,8 @@ export const RuntimeAppliedProfileSchema = z
     observedAt: z.iso.datetime(),
     recipeDigest: PolicyDigestSchema,
     model: NativeModelSelectionSchema,
+    /** The host's name for the server that answered, when it declared one. Never part of identity. */
+    providerLabel: z.string().max(64).nullable().default(null),
     tools: z.array(PolicyIdSchema).max(16),
     resources: z
       .array(

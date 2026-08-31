@@ -257,6 +257,8 @@ export const ControlModelCatalogSchema = z
         kind: z.enum(['host', 'session']),
         machine: z.string().min(1),
         provider: z.string().min(1).max(128).nullable(),
+        /** Which server backs `provider`, when the host declared one. Reported, never matched on. */
+        providerLabel: z.string().max(64).nullable().default(null),
         runtime: AgentKindSchema,
         launchRecipe: LaunchRecipeMetadataSchema.optional(),
       })

@@ -63,6 +63,11 @@ export function prepareCustomHost(
 }
 export type PreparedCustomHost = ReturnType<typeof prepareCustomHost>;
 
+/** The host's name for the server behind this provider, or null when it declared none. */
+export function customProviderLabel(config: CustomLaunchConfig): string | null {
+  return config.provider.kind === 'local' ? (config.provider.label ?? null) : null;
+}
+
 export function customModel(config: CustomLaunchConfig, selection: Session['modelSelection']) {
   const selected = selection ?? config.defaultModel;
   const model = config.models.find(

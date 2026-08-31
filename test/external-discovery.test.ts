@@ -6,7 +6,9 @@ import { ExternalSessionSchema } from '../src/config/schema.ts';
 import { codexOrigin, codexWriterRuntime, isDedicatedCodexCommand } from '../src/external/codex.ts';
 import {
   codexThreadLockPath,
+  codexThreadLockState,
   groupLsofHolders,
+  inspectCodexThreadLocks,
   lockHeldByDescendant,
   lsofPathChunks,
   MAX_LSOF_ARG_BYTES,
@@ -326,5 +328,59 @@ describe('lsof batching', () => {
   test('one path longer than the whole budget is still asked about, not dropped', () => {
     const huge = `/locks/${'x'.repeat(300)}.lock`;
     expect(lsofPathChunks([huge, '/locks/b.lock'], 100)).toEqual([[huge], ['/locks/b.lock']]);
+  });
+});
+
+describe('thread lock inspection cost', () => {
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+    );
+
+  test('a lock file that is not there is answered without a system scan', () => {
+    // `lsof` walks every process before it looks at any path, so asking it about thousands of locks
+    // that do not exist is most of what a discovery poll costs — for the same answer every time.
+    const home = mkdtempSync(join(tmpdir(), 'ccmux-locks-'));
+    try {
+      mkdirSync(join(home, 'thread-writer-locks'), { recursive: true });
+      const m = makeMachine({ codexHome: home });
+      const started = Date.now();
+      const seen = inspectCodexThreadLocks(m, ids(500));
+      const elapsed = Date.now() - started;
+      expect(seen.size).toBe(500);
+      for (const inspection of seen.values()) {
+        expect(inspection.evidence).toBe('none-observed');
+        expect(inspection.holders).toEqual([]);
+      }
+      // A single lsof pass on a busy host costs hundreds of milliseconds on its own. This asserts
+      // the query did not happen at all, without reaching into how it would have been spawned.
+      expect(elapsed).toBeLessThan(400);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('a lock file that does exist is still asked about', () => {
+    // The saving must come from skipping absent paths only. A present lock is the case the whole
+    // mechanism exists for, so it keeps costing a real query.
+    const home = mkdtempSync(join(tmpdir(), 'ccmux-locks-'));
+    try {
+      const dir = join(home, 'thread-writer-locks');
+      mkdirSync(dir, { recursive: true });
+      const [held = '', absent = ''] = ids(2);
+      writeFileSync(join(dir, `${held}.lock`), '');
+      const m = makeMachine({ codexHome: home });
+      expect(codexThreadLockState(m, held)?.present).toBe(true);
+      expect(codexThreadLockState(m, absent)?.present).toBe(false);
+      const seen = inspectCodexThreadLocks(m, [held, absent]);
+      // Nothing holds it, so the verdict matches — but it was reached by looking, and the path was
+      // canonicalised, which only happens for a file that is really there.
+      expect(seen.get(held)?.evidence).toBe('none-observed');
+      expect(seen.get(held)?.path).toBe(realpathSync(join(dir, `${held}.lock`)));
+      expect(seen.get(absent)?.path).toBe(join(dir, `${absent}.lock`));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

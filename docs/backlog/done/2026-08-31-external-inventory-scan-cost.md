@@ -2,9 +2,10 @@
 title: Thread discovery pays a whole-system lsof scan for locks that do not exist
 description: Discovery asks lsof about every candidate thread lock, including paths with no file, and that scan dominates an inventory read on a busy host.
 type: task
-status: inbox
+status: done
 created: 2026-08-31
 updated: 2026-08-31
+completed: 2026-08-31 22:38 +0700
 priority: P2
 ---
 
@@ -47,3 +48,23 @@ away exactly the evidence this code was written to collect.
 Decide that explicitly before optimising — measure how much is actually saved on a realistic thread
 count first, because the fixed 700 ms scan remains either way and may be most of what a normal host
 pays.
+
+## Что сделано
+
+- [x] `src/external/codexLocks.ts` queries `lsof` only for lock files that exist and reports
+      `none-observed` for the rest, which is the answer a query would have returned for every one of
+      them. Discovery over 2000 threads: lock inspection **4021 ms → 3 ms**, whole read
+      **6846 ms → 402 ms**.
+- [x] The trade is stated where the code makes it and in
+      `docs/architecture/external-session-ownership.md`: a live holder of a lock something has since
+      unlinked is no longer named. Nothing in the writer protocol produces that state, and
+      `none-observed` was already never a claim that a thread is free.
+- [x] `test/external-discovery.test.ts` — an absent lock is answered without a system scan (asserted
+      by elapsed time, not by reaching into how a subprocess would have been spawned), and a lock
+      that does exist is still queried and still canonicalised.
+
+## Что это НЕ решает
+
+- [x] The fixed ~700 ms cost of one `lsof` pass remains for any host that does hold locks. That is
+      the price of the evidence and is not worth removing; the measurement above is the argument for
+      leaving it.

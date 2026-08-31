@@ -34,6 +34,23 @@ export const CustomProviderSchema = z.discriminatedUnion('kind', [
       kind: z.literal('local'),
       endpoint: z.string().min(1).max(2048),
       credentialEnv: EnvironmentNameSchema.optional(),
+      /**
+       * Which local server this is, when the host cares to say.
+       *
+       * `kind` answers where the work ran and is checked against the address; it deliberately cannot
+       * answer what served it, so a host running two local engines reports the same provenance for
+       * both. This carries that missing half — beside the locality fact, never instead of it.
+       *
+       * Free-form on purpose: the point of an OpenAI-compatible adapter is that the server does not
+       * have to be one we have heard of, and a known-set would make this runtime the registrar of
+       * every engine anyone runs. The charset is narrow and the value is host configuration pinned
+       * by the recipe digest, not caller input, so a typo is a recipe change and not a silent
+       * identity. It is reported and never matched on: nothing selects a model by this.
+       */
+      label: z
+        .string()
+        .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)
+        .optional(),
     })
     .strict(),
 ]);

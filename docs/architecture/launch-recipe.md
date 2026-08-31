@@ -51,6 +51,9 @@ the catalog publishes for an answer is a property of the configuration rather th
 to it. Every model in the registry declares the kind that serves it; a mismatch is refused when the
 recipe is defined, not when a turn reaches the provider.
 
+The local kind may also name its server with an optional `label`, reported beside the locality fact
+and never used to select anything.
+
 A recipe may additionally pin `collaborationMode: "plan"` (or the explicit provider default). This
 is turn policy, not caller-authored prompt text: before every managed turn it starts, CCMux asks the installed
 App Server for its collaboration-mode catalog, selects the named preset and uses the provider's

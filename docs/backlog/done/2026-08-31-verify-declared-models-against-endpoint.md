@@ -2,9 +2,10 @@
 title: Verify a host-declared model registry against the provider that must serve it
 description: Let the execution host prove its declared model registry is actually servable, instead of discovering a typo at the first turn.
 type: task
-status: inbox
+status: done
 created: 2026-08-31
 updated: 2026-08-31
+completed: 2026-08-31 22:38 +0700
 priority: P2
 ---
 
@@ -37,3 +38,29 @@ set changes without the configuration changing, so the registry silently drifts 
 Not model discovery and not auto-population of the registry: the host decides what it authorizes,
 and a provider listing a model is not authorization to use it. Not a capability benchmark — whether
 a model is good at tool calls is not a fact an endpoint can be asked for.
+
+## Что сделано
+
+- [x] `src/agent/custom/verify.ts` — `compareRegistry` is pure and holds the distinctions:
+      served / not served / unknown, and a context window that agrees, is contradicted, or was never
+      published. Only a number the provider actually sent can contradict a declaration, and only in
+      one direction — declaring less than a server supports is a budget choice, declaring more is a
+      prompt it cannot honour.
+- [x] `src/commands/models.ts` + `ccmux models <launch-recipe-id> [--json]`. Three outcomes, three
+      exit codes: settled (0), the provider contradicted the declaration (2), we could not look (3).
+      Collapsing the last two would report a quiet server as a broken registry.
+- [x] Never a dependency: nothing calls it at startup or before a turn, which is why an unreachable
+      provider yields `unknown` and not `missing`.
+- [x] `test/custom-registry-verify.test.ts` — 9 checks, including an HTTP refusal, a non-OpenAI body
+      and a throwing connection, each reported as unreachable with its own reason.
+
+### Настоящая приёмка
+- [x] Against the live local server, declaring two models it serves and one invented id: both found,
+      `not/served-anywhere` reported NOT SERVED, exit 2. The endpoint publishes no context length, so
+      all three read "declared, not published by the server" — including a deliberately absurd
+      1048576 window, which the check pointedly does **not** call agreed.
+- [x] Against a dead port: every model `unknown`, exit 3.
+
+### Границы
+- [x] The aggregator reports `not-queryable` with its reason rather than being silently skipped or
+      called unreachable — its catalog is a vendor-wide inventory reached by a different API.

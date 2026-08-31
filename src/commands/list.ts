@@ -209,8 +209,19 @@ function pad(s: string, n: number): string {
   return s.length >= n ? s : s + ' '.repeat(n - s.length);
 }
 
-/** Archived (parked) sessions show "archived" in the human STATE column unless they're
- *  actually running — the run-state (working/idle) is the more truthful signal then. */
+/**
+ * Archived (parked) sessions read as "archived" unless they are actually running — the run-state
+ * (working/idle) is the more truthful signal then.
+ *
+ * Exported because the fleet map must reach the same verdict from a peer's JSON. It did not: it
+ * printed the raw run-state, so a session someone had deliberately parked appeared as `stopped`,
+ * which reads as a live session that is down and wants restarting. Fifty-five parked rows presented
+ * that way is the difference between a map and a mess.
+ */
+export function rowStateLabel(state: string, running: boolean, archived: boolean): string {
+  return archived && !running ? 'archived' : state;
+}
+
 function stateLabel(r: ListRow): string {
   if (r.session.archived && !r.running) return 'archived';
   // A session at a menu reads as `idle` to every other signal — the pane is still, no tool is
@@ -301,7 +312,16 @@ export async function collectRows(
 export async function cmdList(args: string[] = []): Promise<number> {
   const m = loadMachineConfig();
   const rows = await collectRows(m);
-  if (args.includes('--json')) printJson(m, rows);
-  else printTable(m, rows);
+  // `--json` is a machine's answer and stays complete: a consumer filters for itself, and a reader
+  // that asked for everything must not be given a view. Only the human table folds.
+  if (args.includes('--json')) {
+    printJson(m, rows);
+    return 0;
+  }
+  const all = args.includes('--all');
+  const shown = all ? rows : rows.filter((r) => !(r.session.archived && !r.running));
+  printTable(m, shown);
+  const parked = rows.length - shown.length;
+  if (parked > 0) console.log(`… ${parked} archived (ccmux list --all)`);
   return 0;
 }

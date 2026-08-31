@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { resolveControlLaunchRecipe } from '../../config/launchRecipes.ts';
 import { ControlModelCatalogSchema, type ControlModelsReadSchema } from '../../control/schema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { prepareCustomHost } from './host.ts';
+import { customProviderLabel, prepareCustomHost } from './host.ts';
 
 const CursorSchema = z
   .object({ digest: z.string().length(64), offset: z.int().min(0).max(128) })
@@ -47,6 +47,7 @@ export function readCustomModels(
       kind: target ? 'session' : 'host',
       machine: m.rcPrefix,
       provider: host.config.provider.kind,
+      providerLabel: customProviderLabel(host.config),
       runtime: 'custom',
       launchRecipe: launch.launchRecipe,
     },

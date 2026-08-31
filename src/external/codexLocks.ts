@@ -21,12 +21,25 @@ function lsofBin(): string | null {
   return null;
 }
 
-export function codexThreadLockPath(m: MachineConfig, threadId: string): string | null {
+/**
+ * Where a thread's lock would be, and whether anything is actually there.
+ *
+ * The two answers travel together because they are decided by one `existsSync`, and the caller that
+ * batches queries needs both: the path to ask about, and whether asking is worth a system scan.
+ */
+export function codexThreadLockState(
+  m: MachineConfig,
+  threadId: string,
+): { path: string; present: boolean } | null {
   if (!m.codexHome) return null;
   const path = `${m.codexHome}/thread-writer-locks/${threadId}.lock`;
   // lsof reports canonical names. macOS exposes the temp root as /var/... while the kernel reports
   // /private/var/...; comparing the unresolved spelling made a real held lock look unobserved.
-  return existsSync(path) ? realpathSync(path) : path;
+  return existsSync(path) ? { path: realpathSync(path), present: true } : { path, present: false };
+}
+
+export function codexThreadLockPath(m: MachineConfig, threadId: string): string | null {
+  return codexThreadLockState(m, threadId)?.path ?? null;
 }
 
 /** Parse lsof field output (`-Fpcn`) without trusting human-aligned columns. */
@@ -153,15 +166,34 @@ export function inspectCodexThreadLocks(
 ): Map<string, CodexLockInspection> {
   const out = new Map<string, CodexLockInspection>();
   const bin = lsofBin();
-  const entries = threadIds.flatMap((threadId) => {
-    const path = codexThreadLockPath(m, threadId);
-    return path ? [{ threadId, path }] : [];
+  const states = threadIds.flatMap((threadId) => {
+    const state = codexThreadLockState(m, threadId);
+    return state ? [{ threadId, ...state }] : [];
   });
-  if (!bin || entries.length !== threadIds.length) {
-    for (const entry of entries)
-      out.set(entry.threadId, { evidence: 'unknown', path: entry.path, holders: [] });
+  if (!bin || states.length !== threadIds.length) {
+    for (const state of states)
+      out.set(state.threadId, { evidence: 'unknown', path: state.path, holders: [] });
     return out;
   }
+  /**
+   * A lock file that is not in the namespace is asked about for free.
+   *
+   * `lsof` walks every process's descriptors before it examines any path, and a discovery poll asks
+   * about every recorded thread — thousands, of which a handful are ever locked. Paying a
+   * whole-system scan to be told that a file which does not exist is not open is the bulk of what an
+   * inventory read costs, and it is the same answer every time.
+   *
+   * What this gives up, stated plainly: a live writer still holding a descriptor for a lock that
+   * something has since unlinked. `lsof` could name that holder; `existsSync` cannot. It is a state
+   * nothing in the writer protocol produces — the holder creates the file and removes it when done —
+   * and `none-observed` is already documented as "not proof the thread is free", which is what keeps
+   * adoption from treating it as permission. `lockOnlyIds` still finds every lock that does exist,
+   * so a real lock is never invisible for want of a rollout beside it.
+   */
+  for (const state of states)
+    if (!state.present)
+      out.set(state.threadId, { evidence: 'none-observed', path: state.path, holders: [] });
+  const entries = states.filter((state) => state.present);
   const byPath = new Map(entries.map((entry) => [entry.path, entry]));
   for (const paths of lsofPathChunks(entries.map((entry) => entry.path))) {
     const chunk = paths.flatMap((path) => {

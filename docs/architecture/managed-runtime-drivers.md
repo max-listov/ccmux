@@ -112,6 +112,23 @@ and appear in no catalog page, selection evidence or caller input. Token counts 
 reports are `provider-reported` and counts it omits stay `unavailable`; local inference reports no
 price, so cost is `unavailable` rather than zero.
 
+A local provider may also carry a host-declared `label` naming the server behind it. `kind` answers
+where the work ran and is checked against the address; it cannot answer what served it, so a host
+running two local engines would otherwise publish identical provenance for both. The label rides
+beside that fact in the catalog page and in the applied profile, is never matched on, and is never
+part of `selection.provider`, which is compared against the host adapter. It is free-form within a
+narrow charset because an OpenAI-compatible adapter exists precisely so the server need not be one
+this project has heard of; the value is recipe configuration pinned by digest, not caller input.
+
+`ccmux models <launch-recipe-id>` checks a declared registry against the provider that must serve
+it: per model, whether the provider currently serves that id, and whether a context window the
+provider published contradicts the declared one. It stays a diagnostic — never a startup dependency
+and never a turn-time probe — so an unreachable provider yields `unknown` rather than `missing`, and
+a fact the provider does not publish stays declared and unverified rather than being called agreed.
+Exit codes separate the three outcomes: settled, contradicted, or could not look. The registry is
+never populated or edited from what a provider lists; a server offering a model is not authorization
+to use it.
+
 `custom` supports native text, image-capable configured models, history, selection, signed tool
 approval, interrupt and resume. It does not advertise fork, compaction, rollback, steering, native
 question input or caller application-policy mutation. Unsupported operations refuse before mutation.

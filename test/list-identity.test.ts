@@ -31,6 +31,7 @@ test('fleet renders a missing remote provider as unknown, never Claude', () => {
     name: 'agent-a',
     agent: null,
     state: 'idle',
+    archived: false,
     model: null,
     running: true,
     stale: [],

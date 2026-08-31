@@ -170,6 +170,8 @@ export async function readOpenCodeModels(
       machine: m.rcPrefix,
       runtime: 'opencode',
       provider: null,
+      // OpenCode names its own providers; there is no separate server label behind them.
+      providerLabel: null,
     },
     ...(prepared === null ? {} : { agents: prepared.agents }),
     data: visible.slice(offset, offset + limit),

@@ -35,6 +35,15 @@ UUIDs. This exposes a pre-turn task whose rollout does not exist yet as storage 
 writer, without inventing cwd or origin. A stale lock filename without an OS holder is not a live
 item. `thread/list` loaded status and argv are enrichment only.
 
+Writer evidence is queried for lock files that exist and inferred for the rest. `lsof` walks every
+process's descriptors before it examines any path, so one call costs the same whether it is asked
+about one lock or none — and a discovery poll asks about every recorded thread, of which a handful
+are ever locked. A candidate whose lock file is not in the namespace is reported `none-observed`
+without a query. What that gives up is a live holder of a lock something has since unlinked: `lsof`
+could name it, `existsSync` cannot. Nothing in the writer protocol produces that state, the holder
+creates its lock and removes it when finished, and `none-observed` is already never a claim that a
+thread is free, which is what keeps adoption from reading the shortcut as permission.
+
 Writer ancestry stops before a shared tmux server: its retained launch arguments can describe
 another pane's supervisor. A real `_run`/`_bootstrap` ancestor below that boundary remains managed.
 Desktop ancestry requires the application executable, not merely a provider binary located inside

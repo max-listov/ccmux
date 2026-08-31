@@ -155,6 +155,7 @@ export async function readControlModels(
           runtime: 'codex',
           machine: m.rcPrefix,
           provider: await nativeModelProvider(rpc),
+          providerLabel: null,
           ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
         });
       } finally {
@@ -175,6 +176,7 @@ export async function readControlModels(
         runtime: 'codex',
         machine: m.rcPrefix,
         provider: await nativeModelProvider(rpc),
+        providerLabel: null,
         ...(launch.launchRecipe === undefined ? {} : { launchRecipe: launch.launchRecipe }),
       }),
     );

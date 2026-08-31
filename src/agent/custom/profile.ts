@@ -7,6 +7,7 @@ import type { Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
 import type { openCustomEngine } from './engine.ts';
 import type { PreparedCustomHost } from './host.ts';
+import { customProviderLabel } from './host.ts';
 
 const StoredProfileSchema = z
   .object({ registration: z.uuid(), nativeId: z.string(), profile: RuntimeAppliedProfileSchema })
@@ -44,6 +45,7 @@ export class CustomProfile {
       observedAt: new Date().toISOString(),
       recipeDigest: this.session.launchRecipe?.digest,
       model: { provider: event.model.provider, model: event.model.modelId },
+      providerLabel: customProviderLabel(this.host.config),
       tools: event.toolNames,
       resources,
     });
