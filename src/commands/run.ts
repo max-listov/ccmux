@@ -23,19 +23,62 @@ const PICKER_WATCH_MS = 45_000; // give up watching for blocking startup menus a
 const PICKER_POLL_MS = 1_000;
 
 /**
- * Dismiss Claude's BLOCKING "Resume from summary?" picker on an unattended resume, so a
- * daemon-healed reboot doesn't strand a big session at a menu (typed input would land on the
- * menu, not the conversation). One-shot + bounded: the first time the picker is seen we send
- * the policy choice (the option NUMBER), then confirm with Enter ONLY if the number key didn't
- * already select-and-confirm (re-check avoids a stray Enter submitting an empty turn). A session
- * that never shows a picker just costs a few cheap captures until PICKER_WATCH_MS. Provider-
- * agnostic: a no-op when the provider has no picker or the policy is "off". Not awaited by the
- * supervisor — it self-terminates while the loop blocks on the agent's exit.
+ * What to do with what the pane currently shows — the whole rule, with no tmux in it.
+ *
+ * `armed` means "a menu seen right now has not been answered yet". It is spent by answering and
+ * restored only by observing the pane with no menu on it, so the answer to "may I press a key into
+ * this pane" is never derived from a second look at the same unchanged screen.
+ */
+export type SettleDecision =
+  | { step: 'wait'; armed: true }
+  | { step: 'stop'; armed: false }
+  | { step: 'answer'; armed: false; key: string };
+
+export function settleStep(key: string | null, armed: boolean): SettleDecision {
+  // No menu: whatever we pressed before has cleared, so a menu appearing later is a different one.
+  if (key === null) return { step: 'wait', armed: true };
+  // A menu we have already answered is still up. Pressing again is the failure this rule exists to
+  // prevent — by now the pane may be a live composer, and the supervisor cannot tell from here.
+  if (!armed) return { step: 'stop', armed: false };
+  // The key travels with the decision, so the caller cannot press one the rule did not authorise.
+  return { step: 'answer', armed: false, key };
+}
+
+/**
+ * Dismiss a BLOCKING startup menu on an unattended resume, so a daemon-healed reboot doesn't strand
+ * a big session at a picker (typed input would land on the MENU, not the conversation).
+ *
+ * ## Once per menu, and only while we can still see the menu
+ *
+ * The dangerous direction here is not missing a menu — a stranded session is visible, `doctor`
+ * reports it, and a person can answer it. The dangerous direction is pressing a key into a pane that
+ * is no longer a menu, because there is no such thing as a harmless keystroke sent to a live
+ * conversation. Without the Enter it leaves a character in the composer, and an occupied composer
+ * holds every message addressed to that session, silently, until somebody clears it. With the Enter
+ * it submits a turn nobody wrote.
+ *
+ * Both happened. The previous loop re-answered on every poll for its whole 45-second window with no
+ * memory of what it had already pressed: the daemon's log recorded 86 presses, all the same key,
+ * across ten sessions, up to eight into one of them about 1.5 seconds apart. Five composers were
+ * later found holding that character, and two sessions received it as a user turn.
+ *
+ * So an answer is spent once and only re-armed by evidence: a further menu may be answered only
+ * after the pane has been observed with NO menu on it. That keeps the case this loop exists for —
+ * startup raising folder trust and then the resume picker — while making a second press into the
+ * same unchanged pane unreachable. An answer that does not clear its menu ends the watch instead of
+ * repeating: at that point the supervisor has done what it can say is right, and guessing again is
+ * how the keystroke escapes into the conversation.
+ *
+ * Provider-agnostic: a no-op when the provider has no picker or the policy is "off". Not awaited by
+ * the supervisor — it self-terminates while the loop blocks on the agent's exit.
  */
 async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvider): Promise<void> {
   const answer = provider.promptAnswer;
   if (!answer) return;
   const deadline = Date.now() + PICKER_WATCH_MS;
+  // False until the pane has been seen with no menu on it. A menu detected before we have ever seen
+  // the pane clear is still answered — that is the ordinary startup case — but only once.
+  let armed = true;
   while (Date.now() < deadline) {
     await Bun.sleep(PICKER_POLL_MS);
     let key: string | null = null;
@@ -44,8 +87,11 @@ async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvid
     } catch {
       continue; // pane not capturable yet (still spawning) — retry
     }
-    if (key === null) continue;
-    await sendKeysNamed(m, s.name, key);
+    const decision = settleStep(key, armed);
+    armed = decision.armed;
+    if (decision.step === 'wait') continue;
+    if (decision.step === 'stop') return;
+    await sendKeysNamed(m, s.name, decision.key);
     await Bun.sleep(500); // let the menu register the selection
     let stillUp = false;
     try {
@@ -54,10 +100,12 @@ async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvid
       stillUp = false;
     }
     if (stillUp) await sendKeysNamed(m, s.name, 'Enter'); // number only moved the cursor → confirm
-    log.info({ msg: 'answered a blocking prompt', name: s.name, agent: provider.id, key });
-    // Deliberately NOT returning: startup can raise more than one menu in a row (folder trust, then
-    // the resume picker). Answering the first and walking away is how a session still ends up
-    // stranded — the loop keeps watching until its own deadline.
+    log.info({
+      msg: 'answered a blocking prompt',
+      name: s.name,
+      agent: provider.id,
+      key: decision.key,
+    });
   }
 }
 

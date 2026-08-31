@@ -46,6 +46,21 @@ running when these happen:
 puts the agent straight back to work **without a new user turn**, so nothing else would ever follow.
 A reader tracking state would leave that session flagged "waiting for you" for hours.
 
+The supervisor answers a *startup* menu on an unattended resume, and it answers each one **once**.
+The arming is spent by pressing and restored only by observing the pane with no menu on it, so two
+menus in a row — folder trust, then the resume picker — are both answered while a second press into
+the same unchanged screen is unreachable. An answer that does not clear its menu ends the watch and
+leaves the session visibly waiting, which `doctor` reports and a person can act on.
+
+The asymmetry is deliberate and is the whole design. Missing a menu strands a session in a state
+every other signal already reports; pressing a key into a pane that is no longer a menu is
+unrecoverable in a different way, because there is no harmless keystroke to a live conversation.
+Without a following Enter the character sits in the composer, and an occupied composer holds every
+message addressed to that session, silently and for as long as it takes someone to look. With the
+Enter it becomes a turn nobody wrote. A key sent to a pane leaves no record distinguishing it from
+something a person typed, which is why both symptoms were first investigated as stray human input;
+the daemon's own log is what named the source.
+
 `session-start` is deliberately NOT written by the daemon even though it can see a pane appear: the
 hook says it better, a few seconds later but only when the conversation actually booted. Two writers
 announcing the same thing differently is worse than one writer announcing it late.

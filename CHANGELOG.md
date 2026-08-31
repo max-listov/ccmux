@@ -6,6 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Answer a blocking startup menu once instead of every second until the watch window expires. The
+  settler kept no memory of what it had pressed and required no evidence that the press changed
+  anything, so it re-answered while the detector matched: 86 keystrokes over four days, all the
+  same key, across ten sessions, up to eight into one of them. When the menu was gone but the pane
+  still matched, that key reached a live composer — where it silently holds every message addressed
+  to the session, or, with the confirming Enter, is submitted as a turn nobody wrote. Both were
+  observed. Two menus in a row are still both answered, because a pane seen with no menu on it is
+  what proves the second is a different menu.
+
 ## [0.39.41] — 2026-08-31
 
 Read parked sessions honestly, verify declared registries, name the local server
