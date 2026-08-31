@@ -598,9 +598,8 @@ export const ChatMessageSchema = z
     // the target is working (Claude's steering queue would flush it mid-turn — the whole bug this
     // fixes). False means normal peer-chat behavior.
     defer: z.boolean(),
-    // Honest provenance for a RELAYED message: who the instruction truly came from (e.g. "owner")
-    // when `from` is only the courier (the router). Null → `from` is the real origin. Rendered as
-    // "on behalf of <x>" so the recipient sees the true authority WITHOUT `from` ever being spoofed.
+    // Relay claim supplied by an authorized courier. It does not independently authenticate the
+    // claimed author or grant execution authority; `from` remains the actual ingress principal.
     onBehalfOf: z.string().nullable(),
     // Time-delayed delivery: an ISO-8601 instant before which the daemon must NOT deliver this message
     // (skipped while now < notBefore). Powers a router's self-`watchdog` (`msg <self> --after N`) so it

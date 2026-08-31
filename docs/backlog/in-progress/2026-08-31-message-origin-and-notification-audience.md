@@ -122,3 +122,8 @@ do not rewrite history or reset cursors. Snapshot/feed expose the same structure
   module-resolution checks. The final gate also covers the explicit exported origin contract.
 - Published-runtime, live Telegram and fleet verification remain open below the release boundary;
   deterministic mirror tests are not represented as delivery to a real sink.
+- Candidate 0.39.35 tag CI stopped publication: the pre-existing capacity fixture performed 256
+  whole-journal write transactions and exceeded its 5-second test deadline (5.7 seconds setup;
+  the refusal itself took 4 ms). Replaced repeated setup with one schema-checked full journal,
+  preserving the deadline and adding unchanged-journal evidence. The failed tag remains immutable;
+  the next patch carries this qualification fix and the complete origin/audience implementation.

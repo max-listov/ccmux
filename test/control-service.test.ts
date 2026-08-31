@@ -6,15 +6,20 @@ import { z } from 'zod';
 import { ownedCodexSocket, privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
 import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { writePrivateJson } from '../src/attachments/files.ts';
 import { ATTACHMENT_LIMITS } from '../src/attachments/reference.ts';
 import { beginAttachmentUpload } from '../src/attachments/service.ts';
 import { rowFromLedgerRecord } from '../src/chat/fleetLog.ts';
 import { formatChatInjection } from '../src/chat/format.ts';
 import { managedPeer, managedPeerKey, servicePrincipal } from '../src/chat/identity.ts';
-import { MESSAGE_OPERATION_LIMITS } from '../src/chat/messageOperationSchema.ts';
+import {
+  MESSAGE_OPERATION_LIMITS,
+  MessageOperationJournalSchema,
+} from '../src/chat/messageOperationSchema.ts';
 import {
   advanceMessageOperation,
   prepareMessageOperation,
+  readMessageJournal,
 } from '../src/chat/messageOperationStore.ts';
 import { principalOrigin } from '../src/chat/origin.ts';
 import { chatPaths, loadLedger } from '../src/chat/store.ts';
@@ -44,6 +49,7 @@ import {
 import { UNSEEN } from '../src/events/observe.ts';
 import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
+import { managedRuntimeRoot } from '../src/runtime/status.ts';
 import { digest, imageBytes } from './attachments-fixture.test.ts';
 import { makeCli, makeMachine, makeSession } from './helpers.ts';
 
@@ -306,19 +312,36 @@ test('declared message operation is caller-scoped and correlates identical-text 
 
 test('full pending receipt capacity refuses before durable queue admission', async () => {
   const f = await fixture();
-  for (let i = 0; i < MESSAGE_OPERATION_LIMITS.records; i++)
-    prepareMessageOperation(
-      f.machine,
-      f.session,
-      makeCli('host-b'),
-      crypto.randomUUID(),
-      'a'.repeat(64),
-    );
+  prepareMessageOperation(
+    f.machine,
+    f.session,
+    makeCli('host-b'),
+    crypto.randomUUID(),
+    'a'.repeat(64),
+  );
+  const journal = readMessageJournal(f.machine, f.session);
+  const record = journal?.records[0];
+  if (!journal || !record) throw new Error('missing prepared receipt fixture');
+  // Fill the persisted boundary once. Replaying 256 whole-journal transactions measures fixture
+  // disk speed, not the admission refusal under test, and exhausted the CI test deadline.
+  journal.records = Array.from({ length: MESSAGE_OPERATION_LIMITS.records }, () => ({
+    ...record,
+    messageId: crypto.randomUUID(),
+  }));
+  writePrivateJson(
+    managedRuntimeRoot(f.machine, f.session),
+    'message-receipts.json',
+    MessageOperationJournalSchema.parse(journal),
+  );
+  expect(readMessageJournal(f.machine, f.session)?.records).toHaveLength(
+    MESSAGE_OPERATION_LIMITS.records,
+  );
   const messageId = crypto.randomUUID();
   await expect(
     f.remote.message({ target: f.target, messageId, body: 'capacity probe' }),
   ).rejects.toMatchObject({ code: 'CAPACITY' });
   expect(loadLedger(f.machine).some((row) => row?.id === messageId)).toBe(false);
+  expect(readMessageJournal(f.machine, f.session)).toEqual(journal);
 });
 
 test('current declared service exposes revisioned selection and image upload without a second ingress', async () => {
