@@ -51,10 +51,10 @@ const row = (
   label: string | null,
   costUsd: number | null,
   planLimits: PlanLimits | null = null,
+  provider: string | null = null,
 ) => ({
   name,
-  account:
-    label === null ? null : { label, organization: null, subscription: null, provider: null },
+  account: label === null ? null : { label, organization: null, subscription: null, provider },
   costUsd,
   planLimits,
 });
@@ -128,4 +128,38 @@ test('sessions on one account share ONE plan window, not one window each', () =>
   );
   expect(lines[1]).toBe('  one@example.test [max]  cost unknown  host-a:agent-a');
   expect(lines[2]).toBe('    plan 5h 77% \u21bb2h');
+});
+
+test('one address on two providers is two plans, never one row showing the last one measured', () => {
+  // Signing into both runtimes with the same address is ordinary. Grouping on the address alone
+  // merged the two budgets and then displayed whichever had been measured most recently as "the"
+  // limit — a Codex week shown to someone reading it as their Claude session's headroom.
+  const accounts = fleetAccounts([
+    machine('host-a', [
+      row('agent-a', 'one@example.test', null, limits(91, '2026-09-01T09:59:00.000Z'), 'chatgpt'),
+      row(
+        'agent-b',
+        'one@example.test',
+        null,
+        limits(10, '2026-09-01T09:00:00.000Z'),
+        'firstParty',
+      ),
+    ]),
+  ]);
+  expect(accounts).toHaveLength(2);
+  expect(
+    accounts.map((account) => [account.provider, account.limits?.windows[0]?.percent]),
+  ).toEqual([
+    ['chatgpt', 91],
+    ['firstParty', 10],
+  ]);
+  const lines = accountLines(
+    [
+      machine('host-a', [
+        row('agent-a', 'one@example.test', null, limits(91, '2026-09-01T09:59:00.000Z'), 'chatgpt'),
+      ]),
+    ],
+    NOW,
+  );
+  expect(lines[1]).toBe('  one@example.test (chatgpt) [max]  cost unknown  host-a:agent-a');
 });

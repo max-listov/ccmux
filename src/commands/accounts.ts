@@ -49,9 +49,15 @@ export function fleetAccounts(machines: readonly AccountMachine[]): FleetAccount
     for (const session of fm.sessions) {
       const label = session.account?.label;
       if (!label) continue;
-      const group = groups.get(label) ?? {
+      // The provider is part of the identity, not decoration. One person signs into Claude and into
+      // Codex with the same address, and grouping on the address alone merged two different plans
+      // into one row — which then showed whichever was measured last as "the" limit. Two budgets,
+      // two windows, two rows.
+      const provider = session.account?.provider ?? null;
+      const key = `${provider ?? 'unknown'}\u0000${label}`;
+      const group = groups.get(key) ?? {
         label,
-        provider: session.account?.provider ?? null,
+        provider,
         plan: session.account?.subscription ?? null,
         costUsd: null,
         sessions: [],
@@ -67,10 +73,10 @@ export function fleetAccounts(machines: readonly AccountMachine[]): FleetAccount
       if (limits !== null && (group.limits === null || limits.observedAt > group.limits.observedAt))
         group.limits = limits;
       group.plan ??= limits?.plan ?? null;
-      groups.set(label, group);
+      groups.set(key, group);
     }
   return [...groups.values()]
-    .sort((a, b) => a.label.localeCompare(b.label))
+    .sort((a, b) => `${a.label}${a.provider}`.localeCompare(`${b.label}${b.provider}`))
     .map(({ costed, ...account }) => ({ ...account, costUsd: costed ? account.costUsd : null }));
 }
 
@@ -83,9 +89,13 @@ export function accountLines(machines: readonly AccountMachine[], now = Date.now
       // A total nobody reported is written as unknown, never as zero: zero is a claim that the
       // sessions cost nothing, which is a different statement from having no measurement.
       const cost = account.costUsd === null ? 'cost unknown' : `$${account.costUsd.toFixed(2)}`;
+      // The provider is printed beside the label for the same reason it keys the group: the two
+      // rows would otherwise be one address twice, with no way to tell which plan is which.
+      const who =
+        account.provider === null ? account.label : `${account.label} (${account.provider})`;
       const plan = account.plan === null ? '' : ` [${account.plan}]`;
       return [
-        `  ${account.label}${plan}  ${cost}  ${account.sessions.join(' ')}`,
+        `  ${who}${plan}  ${cost}  ${account.sessions.join(' ')}`,
         `    plan ${formatPlanLimits(account.limits, now)}`,
       ];
     }),
