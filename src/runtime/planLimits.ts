@@ -194,11 +194,21 @@ export function codexPlanLimits(reported: unknown, now: number): PlanLimits {
   const push = (id: string | null, bucket: Record<string, unknown>): void => {
     const name = label(bucket.limitName ?? bucket.limit_name);
     for (const position of ['primary', 'secondary'] as const) {
-      // The limit id is always part of the key, never only when it differs from the main bucket's.
-      // A pushed update carries whichever limit the last turn spent against, and with a positional
-      // key its `primary` overwrote the account-wide `primary`: the general week vanished behind a
-      // model's five hours, and both were labelled as if they were the same window.
-      const window = readWindow(`${id ?? 'limit'}:${position}`, bucket[position], {
+      const raw = bucket[position];
+      const minutes =
+        raw !== null && typeof raw === 'object'
+          ? ((raw as Record<string, unknown>).windowDurationMins ??
+            (raw as Record<string, unknown>).window_minutes)
+          : undefined;
+      // A window is identified by its limit AND its length, never by the slot it arrived in.
+      // Measured: the account read puts the weekly window in `primary` while a pushed update puts
+      // that model's five hours in the same slot under the same limit id — so a positional key made
+      // the push overwrite the account's week with a five-hour figure, and the 91% simply vanished.
+      const suffix =
+        typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0
+          ? `${Math.round(minutes)}m`
+          : position;
+      const window = readWindow(`${id ?? 'limit'}:${suffix}`, raw, {
         ...(name === null ? {} : { label: name }),
       });
       if (window) windows.push(window);

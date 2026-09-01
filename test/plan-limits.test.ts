@@ -81,13 +81,13 @@ test('no plan limit is its own answer, never an empty window list', () => {
 test('a Codex read states the duration, and the position never implies one', () => {
   const limits = codexPlanLimits(CODEX_LIVE, NOW);
   expect(limits.plan).toBe('pro');
-  const primary = limits.windows.find((window) => window.key === 'codex:primary');
+  const primary = limits.windows.find((window) => window.key === 'codex:10080m');
   expect(primary?.percent).toBe(91);
   // 10080 minutes is a week. Rendering `primary` as "5h" would have been an invention.
   expect(planWindowLabel(primary as never)).toBe('7d');
   // Per-model buckets keep the id the server named them with, so two accounts never collide.
-  expect(limits.windows.map((window) => window.key)).toContain('codex_model:primary');
-  expect(limits.windows.find((window) => window.key === 'codex_model:secondary')?.percent).toBe(3);
+  expect(limits.windows.map((window) => window.key)).toContain('codex_model:300m');
+  expect(limits.windows.find((window) => window.key === 'codex_model:10080m')?.percent).toBe(3);
 });
 
 test('the account read answers with an envelope, and its per-model windows are not dropped', () => {
@@ -98,8 +98,8 @@ test('the account read answers with an envelope, and its per-model windows are n
     rateLimitsByLimitId: CODEX_LIVE.rateLimitsByLimitId,
   };
   const keys = codexPlanLimits(envelope, NOW).windows.map((window) => window.key);
-  expect(keys).toContain('codex:primary');
-  expect(keys).toContain('codex_model:primary');
+  expect(keys).toContain('codex:10080m');
+  expect(keys).toContain('codex_model:300m');
 });
 
 test('the same reader takes the rollout spelling, because two readers would drift', () => {
@@ -135,9 +135,7 @@ test('a window named by its model is read by that name, not by the key beside it
   // `model scoped:Fable Fable` said one thing twice and read as two windows.
   expect(planWindowLabel(scoped as never)).toBe('Fable');
   // Codex names a per-model bucket instead of scoping it; the name is used the same way.
-  const codex = codexPlanLimits(CODEX_LIVE, NOW).windows.find(
-    (w) => w.key === 'codex_model:primary',
-  );
+  const codex = codexPlanLimits(CODEX_LIVE, NOW).windows.find((w) => w.key === 'codex_model:300m');
   expect(planWindowLabel(codex as never)).toBe('5h A scoped model');
 });
 
@@ -161,6 +159,6 @@ test('a pushed update carries one limit and must not erase the ones it is silent
     NOW + 60_000,
   );
   const merged = mergePlanLimits(read, pushed);
-  expect(merged.windows.find((window) => window.key === 'codex:primary')?.percent).toBe(91);
-  expect(merged.windows.find((window) => window.key === 'codex_model:primary')?.percent).toBe(7);
+  expect(merged.windows.find((window) => window.key === 'codex:10080m')?.percent).toBe(91);
+  expect(merged.windows.find((window) => window.key === 'codex_model:300m')?.percent).toBe(7);
 });
