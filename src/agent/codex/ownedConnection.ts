@@ -15,7 +15,11 @@ import {
 import { nativePolicySkillsAcknowledged, policySkillInputs } from '../../policy/codex.ts';
 import { applicationPolicyEvidence, verifyApplicationPolicy } from '../../policy/resolve.ts';
 import type { MaterializedPolicy } from '../../policy/schema.ts';
-import { codexPlanLimits, unpublishedPlanLimits } from '../../runtime/planLimits.ts';
+import {
+  codexPlanLimits,
+  mergePlanLimits,
+  unpublishedPlanLimits,
+} from '../../runtime/planLimits.ts';
 import { readSelection, seedNativeSelection } from '../../runtime/selection.ts';
 import { NativeTurnOptionsSchema } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -105,7 +109,15 @@ export class OwnedCodexConnection {
         if (event.method === ACCOUNT_LIMITS_EVENT) {
           const pushed = (event.params as { rateLimits?: unknown } | null)?.rateLimits;
           if (pushed !== undefined && this.projection !== null) {
-            this.projection.accountLimits(null, codexPlanLimits(pushed, Date.now()));
+            // Merged, not replaced: the push carries whichever limit the last turn spent against,
+            // and every window it is silent about is still the only measurement anybody has.
+            this.projection.accountLimits(
+              null,
+              mergePlanLimits(
+                this.projection.snapshot().planLimits,
+                codexPlanLimits(pushed, Date.now()),
+              ),
+            );
             this.lastLimitsAt = Date.now();
             this.publish();
           }

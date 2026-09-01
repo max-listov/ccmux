@@ -3,6 +3,7 @@ import {
   claudePlanLimits,
   codexPlanLimits,
   formatPlanLimits,
+  mergePlanLimits,
   mergeRateLimitEvent,
   planWindowLabel,
 } from '../src/runtime/planLimits.ts';
@@ -80,7 +81,7 @@ test('no plan limit is its own answer, never an empty window list', () => {
 test('a Codex read states the duration, and the position never implies one', () => {
   const limits = codexPlanLimits(CODEX_LIVE, NOW);
   expect(limits.plan).toBe('pro');
-  const primary = limits.windows.find((window) => window.key === 'primary');
+  const primary = limits.windows.find((window) => window.key === 'codex:primary');
   expect(primary?.percent).toBe(91);
   // 10080 minutes is a week. Rendering `primary` as "5h" would have been an invention.
   expect(planWindowLabel(primary as never)).toBe('7d');
@@ -97,7 +98,7 @@ test('the account read answers with an envelope, and its per-model windows are n
     rateLimitsByLimitId: CODEX_LIVE.rateLimitsByLimitId,
   };
   const keys = codexPlanLimits(envelope, NOW).windows.map((window) => window.key);
-  expect(keys).toContain('primary');
+  expect(keys).toContain('codex:primary');
   expect(keys).toContain('codex_model:primary');
 });
 
@@ -145,4 +146,21 @@ test('the fullest window is read first, because it is the one that stops the wor
   expect(line.startsWith('5h 77%')).toBe(true);
   expect(line).toContain('↻5h');
   expect(line).toContain('7d 63%');
+});
+
+test('a pushed update carries one limit and must not erase the ones it is silent about', () => {
+  // Measured live: after a model-scoped turn, Codex pushed only that model's windows. Replacing the
+  // set with the push made the account-wide week — the one at 91% — simply disappear.
+  const read = codexPlanLimits(CODEX_LIVE, NOW);
+  const pushed = codexPlanLimits(
+    {
+      limitId: 'codex_model',
+      limitName: 'A scoped model',
+      primary: { usedPercent: 7, windowDurationMins: 300, resetsAt: 1_788_277_655 },
+    },
+    NOW + 60_000,
+  );
+  const merged = mergePlanLimits(read, pushed);
+  expect(merged.windows.find((window) => window.key === 'codex:primary')?.percent).toBe(91);
+  expect(merged.windows.find((window) => window.key === 'codex_model:primary')?.percent).toBe(7);
 });

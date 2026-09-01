@@ -194,8 +194,11 @@ export function codexPlanLimits(reported: unknown, now: number): PlanLimits {
   const push = (id: string | null, bucket: Record<string, unknown>): void => {
     const name = label(bucket.limitName ?? bucket.limit_name);
     for (const position of ['primary', 'secondary'] as const) {
-      const key = id === null || id === primaryId ? position : `${id}:${position}`;
-      const window = readWindow(key, bucket[position], {
+      // The limit id is always part of the key, never only when it differs from the main bucket's.
+      // A pushed update carries whichever limit the last turn spent against, and with a positional
+      // key its `primary` overwrote the account-wide `primary`: the general week vanished behind a
+      // model's five hours, and both were labelled as if they were the same window.
+      const window = readWindow(`${id ?? 'limit'}:${position}`, bucket[position], {
         ...(name === null ? {} : { label: name }),
       });
       if (window) windows.push(window);
@@ -284,3 +287,24 @@ const humanizeUntil = (ms: number): string => {
   if (hours < 24) return minutes % 60 === 0 ? `${hours}h` : `${hours}h${minutes % 60}m`;
   return `${Math.floor(hours / 24)}d${hours % 24 === 0 ? '' : `${hours % 24}h`}`;
 };
+
+/**
+ * A newer reading merged onto an older one, window by window.
+ *
+ * Codex pushes an update carrying only the limit the last turn spent against, so replacing the
+ * whole set with it discards every window that update did not mention — an account-wide week
+ * disappearing the moment a model-scoped turn finished. Windows are identified by key, and a key
+ * the update does not carry keeps the value somebody did measure.
+ */
+export function mergePlanLimits(current: PlanLimits | undefined, incoming: PlanLimits): PlanLimits {
+  if (current === undefined || current.answer !== 'known' || incoming.answer !== 'known')
+    return incoming;
+  const fresh = new Map(incoming.windows.map((window) => [window.key, window]));
+  const kept = current.windows.filter((window) => !fresh.has(window.key));
+  return {
+    answer: 'known',
+    plan: incoming.plan ?? current.plan,
+    windows: [...incoming.windows, ...kept].slice(0, 32),
+    observedAt: incoming.observedAt,
+  };
+}
