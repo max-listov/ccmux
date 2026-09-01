@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.42.0] — 2026-09-01
+
+Answer the model catalog without a session, and carry which window a context fill was measured against
+
 Two things a fleet consumer could not do, both asked for by a consumer that hit them.
 
 - `models({ runtime: "claude" })` answers without a session. The list a caller needs to choose a
@@ -21,7 +25,6 @@ Two things a fleet consumer could not do, both asked for by a consumer that hit 
   projection kept only the percentage — so a reader watching the fleet saw a number it could not
   attribute, and the next step is inferring the ceiling from the model's NAME. A source that cannot
   know, such as a fill scraped from a status line, reports absence rather than `model-limit`.
-
 ## [0.41.0] — 2026-09-01
 
 One mechanism where there were four, one table where there were twelve, and the task queue moves out
