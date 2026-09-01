@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.43.0] — 2026-09-01
+
+Publish how much of the plan each account has left, and seed native Claude admission selection
 ## [0.42.0] — 2026-09-01
 
 Answer the model catalog without a session, and carry which window a context fill was measured against
