@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.43.8] — 2026-09-01
+
+Keep a large JSON answer whole when the reader is slower than the writer
 ## [0.43.7] — 2026-09-01
 
 Keep a large JSON answer whole when the reader is slower than the writer
