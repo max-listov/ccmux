@@ -14,8 +14,11 @@ export async function recordRuntimeDiagnostic(
 ): Promise<void> {
   const root = join(m.stateDir, 'native-diagnostics');
   privateRuntimeDirectory(root);
+  // Keyed by session AND stage. With the session alone, one file held every stage and the last
+  // writer won — so a generic wrapper written a moment after the informative cause destroyed it,
+  // and the only record left said "requires reconciliation" without saying of what.
   const key = createHash('sha256')
-    .update(name ?? 'host-catalog')
+    .update(`${name ?? 'host-catalog'}\u0000${stage}`)
     .digest('hex')
     .slice(0, 32);
   const detail =

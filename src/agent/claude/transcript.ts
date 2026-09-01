@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import type { TranscriptImage, TranscriptUsage } from '../../config/schema.ts';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../../types.ts';
 import { asText, clip, DEFAULT_TEXT_LIMIT, flattenContent, num, rec, str } from '../normalize.ts';
 import { resultSummary } from '../toolSummary.ts';
@@ -24,6 +26,8 @@ function kindFor(item: Record<string, unknown>): TranscriptKind {
       return 'tool_result';
     case 'thinking':
       return 'thinking';
+    case 'image':
+      return 'image';
     case '':
       return 'unknown';
     default:
@@ -64,10 +68,95 @@ function textFor(item: Record<string, unknown>): string {
     case 'thinking':
       return str(item.thinking) ?? '';
     case 'image':
-      return '[image]';
+      // No word here on purpose. `[image]` was a picture replaced by a string nothing could turn
+      // back into one; the picture is now addressed on the message instead.
+      return '';
     default:
       return asText(item) ?? '';
   }
+}
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Describe an image block without carrying it.
+ *
+ * The address is the entry's uuid and the block's position, which is stable for as long as the line
+ * that holds it — the transcript is append-only, so a line never moves. An image that cannot be
+ * fetched says which way it failed, because "unreadable" and "there was no image" call for
+ * different reactions from whoever is reading.
+ */
+export function imageDescriptor(
+  item: Record<string, unknown>,
+  entryUuid: string,
+  index: number,
+): TranscriptImage {
+  const address = `${entryUuid}#${index}`;
+  const source = rec(item.source);
+  const mediaType = str(source?.media_type) ?? null;
+  if (str(source?.type) !== 'base64')
+    // A URL source is somebody else's to fetch, and pretending otherwise would hand a reader an
+    // address this project cannot answer.
+    return { address, mediaType, bytes: null, digest: null, unavailable: 'unsupported-source' };
+  const data = str(source?.data);
+  if (!data) return { address, mediaType, bytes: null, digest: null, unavailable: 'malformed' };
+  const bytes = Math.floor((data.length * 3) / 4);
+  if (bytes > MAX_IMAGE_BYTES)
+    return { address, mediaType, bytes, digest: null, unavailable: 'too-large' };
+  return {
+    address,
+    mediaType,
+    bytes,
+    digest: createHash('sha256').update(data).digest('hex'),
+    unavailable: null,
+  };
+}
+
+/**
+ * The bytes behind an address, read from the same lines the message came from.
+ *
+ * Kept out of the message so a listing stays cheap: `lastMessage` in `list --json` is read
+ * constantly, and nobody asked it for pictures.
+ */
+export function readImage(
+  lines: string[],
+  address: string,
+): { mediaType: string | null; data: string } | { unavailable: TranscriptImage['unavailable'] } {
+  const [uuid, position] = address.split('#');
+  const index = Number.parseInt(position ?? '', 10);
+  if (!uuid || !Number.isInteger(index) || index < 0) return { unavailable: 'malformed' };
+  for (const raw of lines) {
+    if (!raw?.includes(uuid)) continue;
+    let entry: Record<string, unknown> | null;
+    try {
+      entry = rec(JSON.parse(raw));
+    } catch {
+      continue;
+    }
+    if (!entry || str(entry.uuid) !== uuid) continue;
+    const item = rec(contentItems(entry)[index]);
+    const source = rec(item?.source);
+    if (str(item?.type) !== 'image') return { unavailable: 'malformed' };
+    if (str(source?.type) !== 'base64') return { unavailable: 'unsupported-source' };
+    const data = str(source?.data);
+    if (!data) return { unavailable: 'malformed' };
+    return { mediaType: str(source?.media_type) ?? null, data };
+  }
+  return { unavailable: 'malformed' };
+}
+
+/** What the source said this answer cost. Absent fields stay null: unknown is not zero. */
+export function usageOf(entry: Record<string, unknown>): TranscriptUsage | null {
+  const usage = rec(rec(entry.message)?.usage);
+  if (!usage) return null;
+  const value = (key: string): number | null =>
+    typeof usage[key] === 'number' ? Math.max(0, Math.trunc(usage[key] as number)) : null;
+  return {
+    inputTokens: value('input_tokens'),
+    outputTokens: value('output_tokens'),
+    cacheReadTokens: value('cache_read_input_tokens'),
+    cacheCreationTokens: value('cache_creation_input_tokens'),
+  };
 }
 
 // Raw bits a tool_result carries, kept aside by call-id so the fold can summarize it against
@@ -120,7 +209,7 @@ export function parse(
           isError: item.is_error === true,
         });
       }
-      if (!(kind === 'tool_call' || (text !== null && text !== ''))) return;
+      if (!(kind === 'tool_call' || kind === 'image' || (text !== null && text !== ''))) return;
       out.push({
         id: `${entryUuid}:${key}`,
         seq,
@@ -147,6 +236,10 @@ export function parse(
             ? clip(JSON.stringify(rawInput, null, 2), textLimit)
             : null,
         resultText: null,
+        image: kind === 'image' ? imageDescriptor(item, entryUuid, key) : null,
+        // Carried on the message rather than only counted for the context window: the numbers were
+        // read and thrown away in the same breath, so nobody could say what a turn cost.
+        usage: roleFor(entry, item) === 'assistant' ? usageOf(entry) : null,
       });
     });
   }

@@ -105,4 +105,4 @@ agent-a: timed out after 12s — the recipient's UI has not painted yet (startin
       третье состояние тега. Отправителю с машины, до которой отсюда нет маршрута, тег
       прямо говорит об этом и называет работающий канал; вызывающий, который про
       маршрутизацию ничего не знает (зеркало в Telegram), по-прежнему молчит.
-      Транспортное решение вынесено в `docs/backlog/inbox/2026-08-05-return-channel-to-a-roaming-hub.md`.
+      Транспортное решение вынесено в `docs/backlog/done/2026-08-05-return-channel-to-a-roaming-hub.md`.

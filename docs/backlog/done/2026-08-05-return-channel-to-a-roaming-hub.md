@@ -6,7 +6,7 @@ status: done
 created: 2026-08-05
 updated: 2026-08-18
 completed: 2026-08-18 21:10 +07:00
-related: docs/backlog/in-progress/2026-08-18-stitchwire-transport.md
+related: docs/backlog/done/2026-08-18-stitchwire-transport.md
 ---
 
 # Обратный канал к кочующему хабу
@@ -77,5 +77,5 @@ related: docs/backlog/in-progress/2026-08-18-stitchwire-transport.md
       очереди (вызов либо доходит до подключённой ноды, либо честно падает); второй транспорт не
       появился — появился первый, который умеет это направление; несколько хабов перестали быть
       особым случаем, потому что хаба больше нет, есть равноправные ноды.
-- [x] Подробности: `docs/backlog/in-progress/2026-08-18-stitchwire-transport.md` и
+- [x] Подробности: `docs/backlog/done/2026-08-18-stitchwire-transport.md` и
       `stitchwire/docs/architecture/protocol.md`.

@@ -1,3 +1,5 @@
+import { runClaudeNativeProcess } from '../agent/claude/native/process.ts';
+import { resolveAgentSdk } from '../agent/claude/native/resolve.ts';
 import { preflightOwnedCodex } from '../agent/codex/ownedLaunch.ts';
 import { runOwnedCodexProcess } from '../agent/codex/ownedProcess.ts';
 import { runCustomProcess } from '../agent/custom/process.ts';
@@ -16,6 +18,15 @@ export interface ManagedRuntimeDriver {
 }
 
 const drivers: Partial<Record<Session['agent'], ManagedRuntimeDriver>> = {
+  claude: {
+    preflight: (m) => {
+      const resolved = resolveAgentSdk(m);
+      // Refused here, before anything durable exists, so a host that cannot run the mode never
+      // acquires a session that reports itself broken.
+      if ('unavailable' in resolved) throw new Error(resolved.detail);
+    },
+    run: runClaudeNativeProcess,
+  },
   custom: {
     preflight: (_m, flags) => {
       if (flags.length) throw new Error('Custom requires typed host configuration');

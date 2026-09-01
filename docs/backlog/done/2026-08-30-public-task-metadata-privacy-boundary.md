@@ -13,7 +13,7 @@ priority: P1
 
 A bounded source/document audit identified two public-facing records for review:
 
-- `docs/backlog/inbox/2026-08-30-external-thread-content-capability.md` requires generic technical scope
+- `docs/backlog/done/2026-08-30-external-thread-content-capability.md` requires generic technical scope
   without an operational executor or return-routing footer.
 - `docs/backlog/done/2026-08-29-codex-model-catalog-read.md` has concrete deployment machine labels
   in its rollout evidence near line 100. The record is tracked and predates this audit.
@@ -73,7 +73,7 @@ evidence. This task participates in the integrated patch release and owned-runti
       mapping, real staged-vs-working-tree disagreement, unchanged index bytes and non-echoing
       diagnostics all pass (4 tests / 15 assertions).
 - [x] The first full current-Markdown scan also identified a machine-layout path in
-      `docs/research/2026-07-30-t3code-analysis-ideas.md`; its source reference now uses generic
+      `docs/research/2026-07-30-the external reference harness-analysis-ideas.md`; its source reference now uses generic
       checkout wording. The repeated scan covers 169 Markdown files with zero structural findings.
 - [x] Complete local gate passes: 1006 tests / 5164 assertions across 170 files, plus browser,
       Bun/Node and both TypeScript packed-client resolutions. Manual changed-line review remains

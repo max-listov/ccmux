@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
+import { AppError } from 'stitchkit';
 import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { getProvider } from '../agent/index.ts';
 import { clearLifecycleBlockIfGeneration, readLifecycleBlock } from '../config/lifecycleBlocks.ts';
@@ -47,6 +48,8 @@ export type CreateManagedInput = {
   launchRecipe?: LaunchRecipeMetadata;
   modelSelection?: ModelSelection;
   applicationPolicy?: ApplicationPolicyMetadata;
+  /** Whether the runtime keeps a copy of every file this session modifies. Off unless asked. */
+  fileCheckpoints?: boolean;
 };
 
 export type NativeBootstrapOperation =
@@ -68,6 +71,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, 'uuid'> {
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
     ...(input.launchRecipe === undefined ? {} : { launchRecipe: input.launchRecipe }),
     ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+    ...(input.fileCheckpoints === undefined ? {} : { fileCheckpoints: input.fileCheckpoints }),
     ...(input.applicationPolicy === undefined
       ? {}
       : { applicationPolicy: input.applicationPolicy }),
@@ -245,7 +249,9 @@ export async function createManagedSession(
   const fields = sessionFields(input);
   if (fields.runtime === 'app-server' && fields.agent !== 'codex')
     throw new Error('app-server runtime requires --agent codex');
-  if (fields.runtime === 'native' && fields.agent !== 'opencode' && fields.agent !== 'custom')
+  if (fields.runtime === 'native' && fields.agent === 'claude' && !m.claudeNativeRuntime)
+    throw new AppError('UNAVAILABLE', 'The native Claude runtime is not enabled on this host', 409);
+  if (fields.runtime === 'native' && !['opencode', 'custom', 'claude'].includes(fields.agent))
     throw new Error('This provider does not use the native HTTP runtime');
   if ((fields.agent === 'opencode' || fields.agent === 'custom') && fields.runtime !== 'native')
     throw new Error('This provider requires a native runtime');

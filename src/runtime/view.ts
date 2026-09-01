@@ -1,3 +1,4 @@
+import { nativeContextInfo } from '../agent/claude/native/context.ts';
 import type { PaneScan } from '../agent/index.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import type { ManagedRuntimeRead } from './schema.ts';
@@ -17,6 +18,9 @@ export function managedRuntimeView(
   const read = readManagedRuntimeStatus(m, s, Math.max(now, Date.now()));
   const native = read.snapshot?.state ?? 'unknown';
   const atPrompt = native === 'waiting-approval' || native === 'waiting-input' ? native : null;
+  // The runtime's own measurement, not a pane scrape: a native session has no pane to read, which is
+  // why it reported no context at all before this.
+  const context = nativeContextInfo(read.snapshot);
   const state =
     native === 'working' ? 'working' : native === 'idle' || atPrompt !== null ? 'idle' : 'blocked';
   return {
@@ -28,8 +32,8 @@ export function managedRuntimeView(
       ready: read.status === 'live',
       state: native === 'unknown' ? 'indeterminate' : native === 'working' ? 'working' : 'idle',
       atPrompt,
-      contextLabel: '-',
-      context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+      contextLabel: context.text ?? '-',
+      context,
     },
   };
 }

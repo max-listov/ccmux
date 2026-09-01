@@ -22,26 +22,26 @@ The program does not promise every provider endpoint or reproduce an IDE.
 
 ## Evidence and reference baseline
 
-Reviewed on 2026-08-30: CCMux `v0.39.24` and T3 Code main at
-[`8dcb96314c976899e4df6951fb9af03131c2a46f`](https://github.com/pingdotgg/t3code/tree/8dcb96314c976899e4df6951fb9af03131c2a46f).
+Reviewed on 2026-08-30: CCMux `v0.39.24` and the external reference harness main at
+`8dcb96314c976899e4df6951fb9af03131c2a46f`.
 The comparison is source evidence, not a live parity test. References are pinned so later upstream
 changes do not silently change acceptance.
 
 | Area | Current CCMux evidence | Reference and intended result |
 | --- | --- | --- |
-| Images | `src/control/schema.ts` requires text-only `body`; native mailboxes also carry text | T3 attachment references and native image parts; deliver actual images to both runtimes |
-| Live content | `src/agent/codex/ownedRpc.ts` opts out of text/output deltas; OpenCode accumulates a bounded text tail | T3 maps incremental content events; provide recoverable content updates, separate from cheap status |
-| Selection | Typed model selection belongs to create; collaboration policy belongs to an immutable recipe | T3 send-turn options and in-session selection; change model/mode without replacing identity |
+| Images | `src/control/schema.ts` requires text-only `body`; native mailboxes also carry text | the reference harness attachment references and native image parts; deliver actual images to both runtimes |
+| Live content | `src/agent/codex/ownedRpc.ts` opts out of text/output deltas; OpenCode accumulates a bounded text tail | the reference harness maps incremental content events; provide recoverable content updates, separate from cheap status |
+| Selection | Typed model selection belongs to create; collaboration policy belongs to an immutable recipe | the reference harness send-turn options and in-session selection; change model/mode without replacing identity |
 | Active input | Durable messages wait for idle; interrupt is separate | Explicit native steer without changing default queue semantics |
 | Context | Public native reads are bounded projections, not conversation history or context management | Native history read, fork and compact; assess rollback separately because provider semantics differ |
 
-Primary T3 sources: [adapter contract](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Services/ProviderAdapter.ts),
-[turn input contract](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/packages/contracts/src/provider.ts),
-[Codex adapter](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Layers/CodexAdapter.ts),
-[OpenCode adapter](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Layers/OpenCodeAdapter.ts).
+Primary the reference harness sources: adapter contract,
+turn input contract,
+Codex adapter,
+OpenCode adapter.
 Native APIs: [Codex App Server](https://learn.chatgpt.com/docs/app-server) and
 [OpenCode server](https://opencode.ai/docs/server/). Fork/compact are native API opportunities;
-this comparison does not claim that T3's common adapter exposes both.
+this comparison does not claim that the reference harness's common adapter exposes both.
 
 ## Result and order
 
@@ -79,9 +79,9 @@ implementation order, not separate review ceremonies or separate releases.
   side effects. Custom integration stays in the existing
   [runtime task](../done/2026-08-30-managed-native-and-custom-runtime-adapters.md) and does not
   block these Codex/OpenCode slices. No duplicate Custom task is created.
-- Do not copy T3's framework, UI, auth infrastructure or lifecycle fallbacks wholesale. In particular,
+- Do not copy the reference harness's framework, UI, auth infrastructure or lifecycle fallbacks wholesale. In particular,
   uncertain resume must not silently start another conversation. This scoped source review, not the
-  older broad idea list in `docs/research/2026-07-30-t3code-analysis-ideas.md`, governs these tasks.
+  older broad idea list in `docs/research/2026-07-30-the external reference harness-analysis-ideas.md`, governs these tasks.
 - Image input is not image generation. PDFs, arbitrary file types, skills/MCP administration, account
   management and official Desktop attachment are not implicitly included in this program.
 

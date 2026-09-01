@@ -6,7 +6,7 @@ status: done
 created: 2026-08-05
 updated: 2026-08-05
 completed: 2026-08-05 10:58 +07:00
-related: docs/backlog/inbox/2026-08-05-fleet-addressing.md
+related: docs/backlog/done/2026-08-05-fleet-addressing.md
 ---
 
 # Наблюдаемость кросс-машинного обмена

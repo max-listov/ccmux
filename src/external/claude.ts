@@ -9,7 +9,7 @@ import {
 } from '../agent/claude/writers.ts';
 import { rec, str } from '../agent/normalize.ts';
 import { loadSessions } from '../config/sessions.ts';
-import type { ExternalSession, MachineConfig, WriterRuntime } from '../types.ts';
+import type { ExternalSession, MachineConfig, Session, WriterRuntime } from '../types.ts';
 import { MtimeCache } from '../util/mtimeCache.ts';
 import { readHeadLines, readTailUntil } from '../util/readLines.ts';
 import { externalCapabilities } from './capabilities.ts';
@@ -110,15 +110,40 @@ function readSession(
   });
 }
 
+/**
+ * Every conversation id this machine already drives, so none is offered for adoption.
+ *
+ * A terminal session is pinned by its registry uuid. A native session also owns a conversation in
+ * the same store under its native id, and adopting one this machine is already driving would put a
+ * second writer on it — the one thing the supervisor exists to prevent. Exported so the rule is
+ * tested by calling it rather than by a test re-implementing it beside the code.
+ */
+export function ownedClaudeConversations(sessions: readonly Session[]): Set<string> {
+  return new Set(
+    sessions
+      .filter((session) => session.agent === 'claude')
+      .flatMap((session) =>
+        session.nativeSession === undefined
+          ? [session.uuid]
+          : [session.uuid, session.nativeSession.id],
+      ),
+  );
+}
+
 export function discoverClaude(m: MachineConfig): ExternalSession[] {
   if (!existsSync(m.projectsDir)) return [];
   const live = processData();
   if (!live) return [];
-  const managed = new Set(
-    loadSessions(m)
-      .filter((session) => session.agent === 'claude')
-      .map((session) => session.uuid),
-  );
+  /**
+   * Conversations this machine already owns, by every id a managed session can hold.
+   *
+   * The registry uuid is the pin for a terminal session. A native session ALSO owns a conversation
+   * in the same store under its native id, and the two are different values for every mode but this
+   * one. Excluding only the uuid would offer a live native conversation for adoption, and adopting
+   * it would put a second writer on a conversation this machine is already driving — the one thing
+   * the whole supervisor is built to prevent.
+   */
+  const managed = ownedClaudeConversations(loadSessions(m));
   const targets = new Set([...live.targets].filter((threadId) => !managed.has(threadId)));
   if (targets.size === 0) return [];
   const processes = parsePs(live.output);

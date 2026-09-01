@@ -25,7 +25,7 @@ export const RuntimeJournalEventSchema = z
       'stopping',
       'stopped',
     ]),
-    runtime: z.enum(['daemon', 'codex', 'opencode', 'custom']),
+    runtime: z.enum(['daemon', 'codex', 'opencode', 'custom', 'claude']),
     registration: z.uuid().optional(),
     messageId: z.uuid().optional(),
     // Native opaque IDs stay in their canonical stores; diagnostics use digest correlation.

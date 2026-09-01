@@ -37,6 +37,14 @@ import type { SteeringInputSchema, SteeringSelectorSchema } from '../steering/sc
 import { readNativeSteering, steerNativeTurn } from '../steering/service.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
 import {
+  controlMcpServer,
+  readControlCommands,
+  readControlMcpServers,
+  rewindControlFiles,
+  runControlCommand,
+  setControlPermissionMode,
+} from './command.ts';
+import {
   compactControlContext,
   readControlContextOperation,
   readControlHistory,
@@ -56,12 +64,18 @@ import { interruptControlTurn, waitControlSession } from './native.ts';
 import { readControlNative, respondControlNative } from './nativeFeed.ts';
 import type { ControlPublisher } from './publisher.ts';
 import type {
+  ControlCommandsReadSchema,
   ControlCreateSchema,
   ControlInterruptSchema,
+  ControlMcpControlSchema,
+  ControlMcpReadSchema,
   ControlMessageSchema,
   ControlModelsReadSchema,
   ControlNativeReadSchema,
   ControlNativeResponseSchema,
+  ControlPermissionModeSchema,
+  ControlRewindSchema,
+  ControlRunCommandSchema,
   ControlTargetSchema,
   ControlWaitSchema,
 } from './schema.ts';
@@ -361,6 +375,41 @@ export function createControlOperations(
           ...(signal ? { signal } : {}),
           timeoutMs: CONTROL_MODELS_CALL_BUDGET_MS,
         })
+        .catch(controlRefusal),
+    commands: (input: z.output<typeof ControlCommandsReadSchema>) =>
+      readControlCommands(m, input.target),
+    command: (input: z.output<typeof ControlRunCommandSchema>, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) => runControlCommand(m, input, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 10_000 },
+        )
+        .catch(controlRefusal),
+    permissionMode: (input: z.output<typeof ControlPermissionModeSchema>, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) => setControlPermissionMode(m, input, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    mcpServers: (input: z.output<typeof ControlMcpReadSchema>) =>
+      readControlMcpServers(m, input.target),
+    mcpControl: (input: z.output<typeof ControlMcpControlSchema>, signal?: AbortSignal) =>
+      mutations
+        .run(input.target.session, ({ signal: admitted }) => controlMcpServer(m, input, admitted), {
+          ...(signal ? { signal } : {}),
+          timeoutMs: 30_000,
+        })
+        .catch(controlRefusal),
+    rewind: (input: z.output<typeof ControlRewindSchema>, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) => rewindControlFiles(m, input, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 60_000 },
+        )
         .catch(controlRefusal),
     respond: (input: NativeResponseInput, signal?: AbortSignal) =>
       mutations

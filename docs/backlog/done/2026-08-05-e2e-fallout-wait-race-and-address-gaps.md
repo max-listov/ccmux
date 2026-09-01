@@ -6,7 +6,7 @@ status: done
 created: 2026-08-05
 updated: 2026-08-05
 completed: 2026-08-05 11:58 +07:00
-related: docs/backlog/in-progress/2026-08-05-run-stderr-poisons-composer.md
+related: docs/backlog/done/2026-08-05-run-stderr-poisons-composer.md
 ---
 
 # Две находки живого прогона 0.6.0

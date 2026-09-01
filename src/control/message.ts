@@ -13,7 +13,7 @@ import { chatEnabledFor } from '../config/chat.ts';
 import { withSessionRegistryLock } from '../config/registryLock.ts';
 import { assertNoContextMutation } from '../context/store.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime, runtimeCapabilities } from '../runtime/capabilities.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { type ControlMessage, ControlMessageSchema } from './schema.ts';
 import { currentSelection, validateTurnOptions } from './selection.ts';
@@ -81,6 +81,11 @@ export async function acceptControlMessage(
       }
       if (!hasNativeRuntime(session) && (input.images.length > 0 || input.options !== undefined))
         throw new AppError('UNSUPPORTED', 'This runtime cannot accept structured turn input', 409);
+      // A declared capability nobody checks is worse than no capability: images were admitted for
+      // every native runtime, pinned, receipted as accepted, and then dropped by a runtime that
+      // never reads them. The caller saw success and the model never saw the image.
+      if (input.images.length > 0 && !runtimeCapabilities(session).imageInput)
+        throw new AppError('UNSUPPORTED', 'This runtime cannot accept image input', 409);
       if (hasNativeRuntime(session)) assertNoContextMutation(m, session);
       const selection = hasNativeRuntime(session)
         ? await currentSelection(m, session, signal)

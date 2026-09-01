@@ -6,7 +6,7 @@ status: done
 created: 2026-08-18
 updated: 2026-08-19
 completed: 2026-08-19 16:45 +07:00
-related: docs/backlog/inbox/2026-08-05-return-channel-to-a-roaming-hub.md
+related: docs/backlog/done/2026-08-05-return-channel-to-a-roaming-hub.md
 ---
 
 # Контекст

@@ -30,6 +30,7 @@ import {
 } from '../chat/originSchema.ts';
 import { ExternalTurnStateSchema } from '../external/turnSchema.ts';
 import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from '../policy/schema.ts';
+import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 import {
   AcceptedTurnOptionsSchema,
   NativeModelSelectionSchema,
@@ -54,7 +55,7 @@ export const PermissionModeSchema = z.enum([
 /** Provider continuation is not the managed registration UUID. */
 export const NativeSessionSchema = z
   .object({
-    runtime: z.enum(['opencode', 'custom']),
+    runtime: z.enum(['opencode', 'custom', 'claude']),
     id: z.string().min(1).max(256),
     version: z.string().min(1).max(64),
   })
@@ -198,6 +199,15 @@ export const SessionSchema = z.object({
    *  as `chatEnabled`, for the session nobody wants announced. */
   eventsEnabled: z.boolean().optional(),
   /**
+   * Whether the runtime keeps a copy of every file this session modifies, so an edit can be undone.
+   *
+   * Off unless asked for, and asked for per session rather than per host: a supervisor that quietly
+   * starts copying a working tree is a surprise, not a feature. Turning it on widens what this
+   * project is answerable for — the tree, not only the conversation — which is why it is a decision
+   * somebody makes rather than a default somebody discovers.
+   */
+  fileCheckpoints: z.boolean().optional(),
+  /**
    * What this session is FOR — the part of an identity a name does not carry.
    *
    * A name is chosen once, and it is usually the project's. A project has several sessions, and only
@@ -274,6 +284,24 @@ export const MachineConfigSchema = z.object({
   // Codex CLI binary — optional; only required for agent="codex" sessions.
   codexBin: z.string().startsWith('/').optional(),
   opencodeBin: z.string().startsWith('/').optional(),
+  /**
+   * Opt-in for the native Claude execution mode, off unless this host turns it on.
+   *
+   * The mode drives the operator's own `claude` binary through the published agent SDK instead of a
+   * terminal. Which authentication a given deployment may use with that path is the operator's
+   * decision to read and apply, and this flag is where that decision is expressed — which is why
+   * there is no default that enables it. Interactive Claude sessions are unaffected either way.
+   */
+  claudeNativeRuntime: z.boolean().default(false),
+  /**
+   * Package root of the agent SDK this host runs the native mode with.
+   *
+   * A path rather than a bundled copy, exactly like `codexBin` and `opencodeBin`: the SDK is a
+   * vendor runtime, and only our own harness is embedded. It also keeps the SDK/CLI pairing — which
+   * the vendor releases in lockstep — under the operator's control rather than pinned to whenever
+   * this project last cut a release.
+   */
+  claudeNativeSdk: z.string().startsWith('/').optional(),
   tmuxBin: z.string().startsWith('/'),
   // Optional dedicated tmux SOCKET (`tmux -L <socket>`). Unset → the default socket (prod). Set →
   // every tmux call is scoped to this socket, so an ISOLATED instance gets its OWN tmux server:
@@ -590,9 +618,43 @@ export const TranscriptKindSchema = z.enum([
   'tool_call',
   'tool_result',
   'thinking',
+  // An image the conversation carried. Its own kind rather than a message whose text says so:
+  // `[image]` was a word where a picture had been, and nothing could turn that word back into one.
+  'image',
   'event',
   'unknown',
 ]);
+
+/**
+ * An image in a transcript, addressed rather than inlined.
+ *
+ * The bytes stay out of the record on purpose: a message list is read constantly (it backs
+ * `lastMessage` in `list --json`), and carrying pictures through it would make every listing pay
+ * for content almost nobody asked to see. `address` is what a reader hands back to fetch them.
+ */
+export const TranscriptImageSchema = z.object({
+  /** `<entry-uuid>#<block-index>` — stable for the life of the line that holds it. */
+  address: z.string().min(1).max(256),
+  mediaType: z.string().min(1).max(128).nullable(),
+  bytes: z.number().int().nonnegative().nullable(),
+  /** Of the encoded content, so a reader can tell two pictures apart without fetching either. */
+  digest: z.string().length(64).nullable(),
+  /**
+   * Why the image cannot be fetched, when it cannot. Null means it can. An unreadable image must
+   * stay distinguishable from no image at all — that is the whole failure this replaces.
+   */
+  unavailable: z.enum(['unsupported-source', 'malformed', 'too-large']).nullable(),
+});
+export type TranscriptImage = z.infer<typeof TranscriptImageSchema>;
+
+/** What a turn spent, exactly as the source reports it. Absent is "unknown", never zero. */
+export const TranscriptUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative().nullable(),
+  outputTokens: z.number().int().nonnegative().nullable(),
+  cacheReadTokens: z.number().int().nonnegative().nullable(),
+  cacheCreationTokens: z.number().int().nonnegative().nullable(),
+});
+export type TranscriptUsage = z.infer<typeof TranscriptUsageSchema>;
 
 export const TranscriptMessageSchema = z.object({
   id: z.string(),
@@ -615,6 +677,13 @@ export const TranscriptMessageSchema = z.object({
   // JSON (the actual command/args), `resultText` = the paired tool_result's full output. Both
   // clipped to the display text limit; null for non-tool messages / still-running calls.
   input: z.string().nullable(),
+  /** The image this message carries, addressed. Null on every other kind of message. */
+  image: TranscriptImageSchema.nullable().default(null),
+  /**
+   * What this answer cost, when the source said. Null is "the source did not say" — a line written
+   * before this existed reports unknown, and unknown is not zero tokens.
+   */
+  usage: TranscriptUsageSchema.nullable().default(null),
   resultText: z.string().nullable(),
 });
 
@@ -883,6 +952,15 @@ export const ListItemSchema = z.object({
    * show as working without a counter rather than as a turn that began just now.
    */
   turnStartedAt: z.string().nullable().default(null),
+  /**
+   * Which account this session runs on, for the runtimes that name one, and what it has spent.
+   *
+   * An identity, never a credential: no token, key, or the name of where one came from. It exists
+   * so an operator can answer "which sessions share this account" without opening each of them —
+   * which, on a fleet running against a subscription, is how a limit is seen before it is hit.
+   */
+  account: NativeAccountSchema.nullable().default(null),
+  costUsd: z.number().nullable().default(null),
   /** The env file this session declares (absolute), and whether it exists right now. A declared file
    *  that is missing does not stop the session — the original decision was "raise it and shout", since
    *  a session that will not boot is worse for a supervisor than one variable short — so this is how a

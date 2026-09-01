@@ -21,8 +21,8 @@ public operation supplies new input to the exact active native turn. Changing or
 to imply steering would violate existing inter-agent delivery guarantees.
 
 [Codex App Server](https://learn.chatgpt.com/docs/app-server) exposes `turn/steer` with an exact
-expected turn ID and no model/policy overrides. T3's
-[OpenCode adapter](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Layers/OpenCodeAdapter.ts)
+expected turn ID and no model/policy overrides. the reference harness's
+OpenCode adapter
 maps active-session input through native prompt admission. That mapping is evidence to investigate,
 not proof that OpenCode offers the same atomic precondition or turn semantics as Codex.
 

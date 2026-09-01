@@ -6,7 +6,7 @@ status: done
 created: 2026-08-10
 updated: 2026-08-10
 completed: 2026-08-10 23:20 +07:00
-related: docs/backlog/inbox/2026-08-06-launch-stamp-sees-only-part-of-what-shapes-a-session.md
+related: docs/backlog/done/2026-08-06-launch-stamp-sees-only-part-of-what-shapes-a-session.md
 ---
 
 # Секрет, выдаваемый при запуске, минует штамп

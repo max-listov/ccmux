@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { ManagedPeerSchema } from '../config/schema.ts';
 
 const NativeMessageSessionSchema = z
-  .object({ runtime: z.enum(['codex', 'opencode', 'custom']), id: z.string().min(1).max(256) })
+  .object({
+    runtime: z.enum(['codex', 'opencode', 'custom', 'claude']),
+    id: z.string().min(1).max(256),
+  })
   .strict();
 
 export const MESSAGE_OPERATION_LIMITS = {

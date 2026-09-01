@@ -185,6 +185,10 @@ export function parse(
         // Full tool input for the expanded card; result output filled in by foldResults.
         input: args ? clip(JSON.stringify(args, null, 2), textLimit) : null,
         resultText: null,
+        // This provider's records carry neither an image block nor per-answer usage; saying so is
+        // the point — a reader must be able to tell "not reported here" from "zero".
+        image: null,
+        usage: null,
       });
     });
   }

@@ -7,7 +7,7 @@ tags: [chat, compatibility, ledger]
 created: 2026-08-25
 updated: 2026-08-25
 completed: 2026-08-25 21:25 +07:00
-related: docs/backlog/inbox/2026-08-25-an-address-for-an-owner-outside-the-fleet.md
+related: docs/backlog/done/2026-08-25-an-address-for-an-owner-outside-the-fleet.md
 ---
 
 # Реестр чата переживает запись, которую не понимает

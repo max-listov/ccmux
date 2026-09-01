@@ -64,6 +64,9 @@ test("a peer's parked rows are read by the same rule as this machine's", () => {
         dir: null,
         role: null,
         turnStartedAt: null,
+        context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+        account: null,
+        costUsd: null,
       },
     ],
   };

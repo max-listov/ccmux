@@ -34,6 +34,8 @@ function row(
     lifecycleError: null,
     stale: [],
     turnStartedAt: null,
+    account: null,
+    costUsd: null,
     atPrompt: null,
     state: 'idle',
     model: null,

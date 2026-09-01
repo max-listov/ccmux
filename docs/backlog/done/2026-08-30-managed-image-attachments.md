@@ -23,8 +23,8 @@ caller and execution host do not share a filesystem.
 32 KiB. Base64-embedding ordinary screenshots in that message or globally enlarging every control
 request is not an acceptable attachment design.
 
-T3 Code separates [attachment upload](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/assets/AttachmentUpload.ts)
-from [attachment identity/storage](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/attachmentStore.ts).
+the external reference harness separates attachment upload
+from attachment identity/storage.
 Its Codex adapter resolves stored images into native image input, and OpenCode maps attachments
 to native file parts. Adopt the separation, not its URLs, framework or generic-file prompt fallback.
 

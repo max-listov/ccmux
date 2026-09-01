@@ -19,9 +19,9 @@ deltas. `src/agent/opencode/projection.ts` consumes native text deltas but keeps
 `ControlNativeSnapshotSchema` and `src/agent/codex/ownedSchema.ts` describe a bounded projection,
 not a lossless transcript stream. A client cannot infer completeness from `nativeStream: true`.
 
-T3's [Codex adapter](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Layers/CodexAdapter.ts)
+the reference harness's Codex adapter
 maps native content deltas independently from item and turn lifecycle. Its
-[OpenCode adapter](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Layers/OpenCodeAdapter.ts)
+OpenCode adapter
 also correlates incremental content with native message/part identities. Reuse those principles;
 do not replace prepared fleet monitoring with full transcript scans.
 

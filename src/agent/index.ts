@@ -140,7 +140,20 @@ export function getProvider(agent: AgentKind): AgentProvider {
   return REGISTRY[agent];
 }
 
+/**
+ * The provider that serves this exact session, which is not decided by agent kind alone.
+ *
+ * A Claude session in the native execution mode has no pane of its own and no conversation JSONL at
+ * its registry uuid. Handing it the interactive provider would arm four things against a session
+ * they cannot describe: the pane scanner, the menu answerer, the transcript reader, and — worst —
+ * fork detection, which starts from a file that does not exist and would adopt an unrelated
+ * conversation, permanently mismatching the session's identity.
+ *
+ * Only that one pair is redirected. Codex in app-server mode keeps its own provider, because its
+ * transcript and pane are real; the other native runtimes were never in this registry's pane path.
+ */
 export function providerFor(session: Session): AgentProvider {
+  if (session.agent === 'claude' && session.runtime === 'native') return nativeProvider('claude');
   return REGISTRY[session.agent];
 }
 
@@ -269,6 +282,11 @@ const usedTokensCache = new MtimeCache<number | null>();
 
 /** The single most-recent message — for `list --json` lastMessage ("where it stopped").
  *  Tail-read: seq is window-relative here (display value, not a cursor). */
+/** Where this session's conversation is written, or null for a runtime that keeps none on disk. */
+export function transcriptPath(session: Session, m: MachineConfig): string | null {
+  return providerFor(session).historyFile(session, m);
+}
+
 export function lastTranscriptMessage(
   session: Session,
   m: MachineConfig,

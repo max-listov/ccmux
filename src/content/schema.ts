@@ -27,6 +27,7 @@ export const ContentKindSchema = z.enum([
   'request',
   'terminal',
 ]);
+export type ContentKind = z.infer<typeof ContentKindSchema>;
 export const ContentRecordSchema = z
   .object({
     sequence: z.number().int().nonnegative(),

@@ -6,6 +6,71 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+An optional native Claude runtime, and the control every session was missing
+
+- Add an opt-in native execution mode for Claude beside the interactive one, on the published agent
+  SDK. It is off unless a host enables it and points at an SDK; nothing changes for a host that does
+  not. The mode runs as Claude Code rather than as a bare agent loop — the product system prompt and
+  the user, project and local setting sources are requested, so `CLAUDE.md` and the operator's
+  settings apply exactly as they do in a terminal. It brings a typed stream, structured approvals
+  answerable through the control plane, interrupt, model selection, reasoning effort and images.
+- Publish what a session can run from the session that can ask. The model catalog, the slash-command
+  vocabulary and the account are written by the owner process beside its status, because only it
+  holds a connection and a reader elsewhere would have to invent the list. Effort levels are
+  published per model: some models accept five and some accept none, which no fixed list in this
+  code could have expressed.
+- Refuse a turn option against the catalog rather than against a runtime's name. The reasoning-effort
+  check was written as a branch for one runtime, so every native Claude turn carrying an effort went
+  through unvalidated. The same shape had put a runtime name in four other decisions — the model
+  catalog answered for the wrong execution mode, a fork was refused by a list of agent names, model
+  selection was refused for an entire agent, and a fixed set of effort names sat beside the catalog
+  that actually knows them. All five now ask the declared capability.
+- Give a native session the ordinary controls it lacked. A slash command runs as a turn of its own,
+  delivered through the runtime mailbox and deliberately not through the chat ledger — ledger
+  delivery frames every message with its sender attribution, and a command carrying that prefix is
+  no longer a command. The permission mode is published and settable, applied between turns, and
+  restored on restart: a session given `plan` came back up in `default` while its own record said
+  otherwise, and the drop went from a mode that asks before writing to one that asks less.
+- Read context fill from the runtime instead of parsing it out of a statusline, and carry which
+  window it was measured against — a model's hard limit and a smaller compaction window mean
+  different things at the same percentage. The fleet slice now carries the field it was dropping, so
+  a consumer watching every machine can read context fill for all of them and not only the local
+  ones.
+- Serve history, compaction and fork for the native Claude mode from the transcript the runtime
+  writes, which is the source of truth for a conversation. Compaction is the runtime's own command
+  on the path above, and its boundary is read from the record the runtime writes rather than
+  inferred from a token count dropping. Rollback stays refused: the runtime will not un-say a
+  conversation.
+- Say which session is spending whose account, across the fleet, because a limit belongs to an
+  account rather than to a machine. What travels is an identity — never a token, a key, or the name
+  of where either lives.
+- Add file checkpoints and rewind behind a per-session option, off by default. A caller can preview
+  what a rewind would restore and then perform it; a path the runtime refuses to restore is reported
+  rather than counted as success. This is the one place the project answers for the working tree and
+  not only for the conversation, which is why it is a decision somebody makes rather than a default
+  somebody discovers.
+- Expose a session's MCP servers and let one be enabled, disabled or reconnected. Their
+  configuration is not read at all: the URL, headers and any token the host put there have no
+  business in a status projection.
+- Carry an image in a transcript as an address instead of the word `[image]`. The word was a picture
+  replaced by a string nothing could turn back into one; a message now names the media type, size
+  and digest, and `ccmux transcript <name> --image <address>` returns the picture. An image that
+  cannot be fetched says which way it failed, because "unreadable" and "there was no image" call for
+  different reactions. The bytes stay off the record, so a listing keeps costing what it did.
+- Carry what an answer cost on the answer. The source reports usage on every assistant message and
+  exactly one number was taken from it; a turn's input, output and cache tokens are now on the
+  message, and a line that carries no usage reports unknown rather than zero.
+- Drive the transcript pane by the file rather than by a clock. What a reader waits for is a write to
+  the conversation, and on an interval alone the wait was up to a poll long for no reason but the
+  interval. A slower timer stays as a backstop, because a watch misses events on some filesystems and
+  a transcript that quietly stops updating is worse than a late one.
+- Keep a diagnostic from destroying the one that explains it. Diagnostics were one file per session,
+  so a generic wrapper written a moment after the real cause overwrote it and left only "requires
+  reconciliation" without saying of what. The key now includes the stage — which is what revealed why
+  a fork was being refused.
+- Stop two tests from asserting the machine's speed. Both passed alone and failed inside the full
+  suite on a busy box, which makes a green suite a coin flip rather than a signal.
+
 ## [0.39.42] — 2026-08-31
 
 Answer a startup menu once, never twice into the same pane

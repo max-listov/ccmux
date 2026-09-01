@@ -11,7 +11,7 @@ related:
   - docs/research/2026-08-28-happy-and-codexmonitor.md
   - docs/research/2026-08-28-codex-control-and-desktop-coexistence.md
   - docs/backlog/icebox/2026-08-28-happy-controlled-adoption-pilot.md
-  - docs/backlog/in-progress/2026-08-27-desktop-turn-observation-and-resident-delivery.md
+  - docs/backlog/done/2026-08-27-desktop-turn-observation-and-resident-delivery.md
 ---
 
 ## Why

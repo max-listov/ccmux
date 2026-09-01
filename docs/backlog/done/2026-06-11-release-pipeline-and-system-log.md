@@ -6,7 +6,7 @@ status: done
 created: 2026-06-11
 updated: 2026-07-14
 completed: 2026-07-14 14:16 +08:00
-related: docs/backlog/planned/2026-06-09-ccmux-v1-polish.md
+related: docs/backlog/done/2026-06-09-ccmux-v1-polish.md
 ---
 
 ## Цель

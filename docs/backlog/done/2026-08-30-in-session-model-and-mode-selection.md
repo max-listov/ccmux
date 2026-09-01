@@ -20,9 +20,9 @@ interaction mode for an existing conversation. Current launch/model stamps corre
 create-time identity and Plan selection; clients must not bypass those checks or rewrite recipes
 to obtain native in-session behavior.
 
-T3's [turn input](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/packages/contracts/src/provider.ts)
+the reference harness's turn input
 carries model selection and interaction mode, and its
-[adapter contract](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Services/ProviderAdapter.ts)
+adapter contract
 distinguishes in-session model switching from unsupported operation. Native runtime identity,
 inference provider selection, launch authority and user interaction mode are different concepts.
 

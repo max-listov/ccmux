@@ -18,6 +18,21 @@ export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
   z.object({ runtime: z.literal('custom'), model: NativeModelSelectionSchema }).strict(),
   z
     .object({
+      runtime: z.literal('claude'),
+      model: NativeModelSelectionSchema,
+      /**
+       * How hard the model should think.
+       *
+       * A bounded string, not a fixed set of names: which levels exist is a property of the model,
+       * the runtime reports it per model in the catalog, and `validateTurnOptions` refuses anything
+       * the catalog does not list. A closed enum here would be a second, staler authority beside
+       * that one — it would reject a level the runtime accepts until someone edited this line.
+       */
+      effort: z.string().min(1).max(64).optional(),
+    })
+    .strict(),
+  z
+    .object({
       runtime: z.literal('codex'),
       model: NativeModelSelectionSchema,
       mode: z.enum(['default', 'plan']),

@@ -26,6 +26,7 @@ import { promptInvocation } from '../env.ts';
 import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
 import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import type { NativeAccount } from '../runtime/projectionSchema.ts';
 import { managedRuntimeView } from '../runtime/view.ts';
 import { capturePane, listSessionsCreated } from '../tmux/tmux.ts';
 import { fmtTokens } from '../tui/format.ts';
@@ -54,6 +55,9 @@ export interface ListRow {
   state: SessionState;
   lifecycleError: string | null;
   model: string | null;
+  /** Which account this session runs on and what it has spent, for the runtimes that report it. */
+  account: NativeAccount | null;
+  costUsd: number | null;
   contextLabel: string; // human CTX column
   context: ContextInfo; // structured, for --json
   uptimeText: string;
@@ -94,6 +98,8 @@ async function buildRow(
       state: block ? 'blocked' : 'stopped',
       lifecycleError: block?.error ?? null,
       model: null,
+      account: null,
+      costUsd: null,
       contextLabel: '-',
       context: { text: null, usedTokens: null, limitTokens: null, percent: null },
       uptimeText: '—',
@@ -171,6 +177,8 @@ async function buildRow(
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
     model: prettyModel(native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m)),
+    account: native?.read.snapshot?.account ?? null,
+    costUsd: native?.read.snapshot?.spend?.totalCostUsd ?? null,
     contextLabel,
     context,
     uptimeText: uptimeSeconds === null ? '—' : humanizeDuration(uptimeSeconds),
@@ -268,6 +276,8 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     atPrompt: r.atPrompt,
     lifecycleError: r.lifecycleError,
     model: r.model,
+    account: r.account,
+    costUsd: r.costUsd,
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     stale: r.stale,

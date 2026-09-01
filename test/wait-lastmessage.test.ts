@@ -23,6 +23,8 @@ const msg = (over: Partial<TranscriptMessage>): TranscriptMessage => ({
   result: null,
   input: null,
   resultText: null,
+  image: null,
+  usage: null,
   ...over,
 });
 

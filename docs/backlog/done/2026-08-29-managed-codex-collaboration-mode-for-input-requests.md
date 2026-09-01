@@ -11,7 +11,7 @@ related:
   - docs/architecture/control-plane.md
   - docs/architecture/launch-recipe.md
   - docs/decisions/2026-08-29-managed-codex-collaboration-policy.md
-  - docs/backlog/in-progress/2026-08-29-server-owned-launch-recipes-for-managed-control-sessions.md
+  - docs/backlog/done/2026-08-29-server-owned-launch-recipes-for-managed-control-sessions.md
 ---
 
 ## Why

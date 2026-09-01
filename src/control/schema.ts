@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ControlCommandSchema } from '../agent/claude/native/commandSchema.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
 import {
   MessageAttributionSchema,
@@ -21,7 +22,13 @@ import {
 } from '../policy/reference.ts';
 import { RuntimeAppliedProfileSchema } from '../policy/runtimeProfile.ts';
 import { RuntimeCapabilitiesSchema } from '../runtime/capabilities.ts';
-import { NativePendingRequestSchema, NativeTurnSchema } from '../runtime/projectionSchema.ts';
+import {
+  NativeMcpServerSchema,
+  NativePendingRequestSchema,
+  NativeTurnSchema,
+  PermissionModeSchema,
+} from '../runtime/projectionSchema.ts';
+import { RewindResultSchema } from '../runtime/rewindSchema.ts';
 import {
   AcceptedTurnOptionsSchema,
   NativeSelectionEvidenceSchema,
@@ -125,6 +132,14 @@ export const ControlActionReceiptSchema = z
 export const ControlCreateSchema = z
   .object({
     runtime: AgentKindSchema.optional(),
+    /**
+     * Which execution mode of that agent, where it has more than one.
+     *
+     * Omitted keeps each agent's established mode, so every existing caller is unchanged. It exists
+     * because the field above names an agent family, and for Claude that no longer selects a single
+     * way to run: without this, the native mode is unreachable through the control plane entirely.
+     */
+    mode: z.enum(['tui', 'native']).optional(),
     requestId: z.uuid(),
     name: z.string().min(1).max(256).regex(SESSION_NAME_RE),
     workspace: z.string().startsWith('/').max(4_096),
@@ -278,6 +293,70 @@ export const ControlModelCatalogSchema = z
     'Catalog source must match its exact managed identity',
   );
 export type ControlModelCatalog = z.infer<typeof ControlModelCatalogSchema>;
+export const ControlCommandsReadSchema = ControlTargetSchema.strict();
+export const ControlCommandCatalogSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    /** What the runtime named, verbatim: this project does not add commands of its own. */
+    data: z.array(ControlCommandSchema).max(512),
+  })
+  .strict();
+export const ControlRunCommandSchema = ControlTargetSchema.extend({
+  /** The command's name, with or without its leading slash; an alias the runtime declared resolves. */
+  command: z.string().min(1).max(128),
+  /** Everything after the command, exactly as a person would have typed it. */
+  args: z.string().max(4_096).optional(),
+  /**
+   * Idempotency, the same way a message carries it: a retried run must not become a second turn.
+   */
+  operationId: z.uuid(),
+}).strict();
+export const ControlRunCommandReceiptSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    accepted: z.literal(true),
+    /** The turn this command became, so a caller can follow it in the session's own stream. */
+    turnId: z.string().min(1).max(256),
+    /** The exact text delivered, so a caller never has to guess how its arguments were framed. */
+    text: z.string().min(1).max(4_224),
+  })
+  .strict();
+export const ControlPermissionModeSchema = ControlTargetSchema.extend({
+  mode: PermissionModeSchema,
+}).strict();
+export const ControlPermissionModeReceiptSchema = z
+  .object({ target: ManagedPeerSchema, mode: PermissionModeSchema })
+  .strict();
+
+export const ControlRewindSchema = ControlTargetSchema.extend({
+  /** The user message to put the files back to, as the runtime's transcript identifies it. */
+  messageId: z.uuid(),
+  /** Preview only. The same code answers both, so what is previewed is what would happen. */
+  dryRun: z.boolean().default(false),
+  operationId: z.uuid(),
+}).strict();
+export const ControlRewindReceiptSchema = z
+  .object({ target: ManagedPeerSchema, dryRun: z.boolean(), result: RewindResultSchema })
+  .strict();
+
+export const ControlMcpReadSchema = ControlTargetSchema.strict();
+export const ControlMcpListSchema = z
+  .object({ target: ManagedPeerSchema, data: z.array(NativeMcpServerSchema).max(64) })
+  .strict();
+export const ControlMcpControlSchema = ControlTargetSchema.extend({
+  server: z.string().min(1).max(128),
+  action: z.enum(['enable', 'disable', 'reconnect']),
+  operationId: z.uuid(),
+}).strict();
+export const ControlMcpControlReceiptSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    server: z.string().min(1).max(128),
+    /** What the server looks like AFTER the operation, not that the request was taken. */
+    status: z.string().min(1).max(64),
+  })
+  .strict();
+
 export const ControlWaitSchema = ControlTargetSchema.extend({
   timeoutMs: z.number().int().min(1).max(60_000).default(30_000),
 }).strict();

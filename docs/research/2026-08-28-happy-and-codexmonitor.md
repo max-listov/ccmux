@@ -7,10 +7,10 @@ created: 2026-08-28
 updated: 2026-08-28
 related:
   - docs/research/2026-08-28-codex-control-and-desktop-coexistence.md
-  - docs/research/2026-07-30-t3code-analysis-ideas.md
+  - docs/research/2026-07-30-the external reference harness-analysis-ideas.md
   - docs/backlog/icebox/2026-08-28-happy-controlled-adoption-pilot.md
   - docs/backlog/done/2026-08-28-owned-codex-app-server-runtime.md
-  - docs/backlog/in-progress/2026-08-27-desktop-turn-observation-and-resident-delivery.md
+  - docs/backlog/done/2026-08-27-desktop-turn-observation-and-resident-delivery.md
 ---
 
 # Вывод
@@ -376,7 +376,7 @@ Agent SDK, `claude -p` и соответствующие third-party apps пок
 | Классический Happy | Native Codex App Server; Claude local/SDK path | Готовые mobile/web и remote messaging | Другая presence/wait семантика, relay и дополнительный lifecycle |
 | Новый Happy Desktop + Happy Agent | Provider model/access, но другой harness | Общий UI/API, persistent daemon, durable events | Native identity/tools parity и поддержка transport не гарантированы |
 | CodexMonitor | Настоящий Codex App Server | Desktop workspace UI, remote daemon | Codex-only, мартовский release, не готовый all-host live fleet |
-| T3 Code | Собственный app-server client/runtime split | Полезный образец web-архитектуры | Не мост к уже открытой официальной Desktop сессии |
+| the external reference harness | Собственный app-server client/runtime split | Полезный образец web-архитектуры | Не мост к уже открытой официальной Desktop сессии |
 
 Практический порядок:
 

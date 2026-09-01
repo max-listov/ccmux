@@ -67,6 +67,8 @@ const CreateRowSchema = z
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
+    /** The execution mode the caller asked for, where the agent offers a choice. */
+    mode: z.enum(['tui', 'native']).optional(),
     forkSource: NativeForkSourceSchema.optional(),
     status: z.enum(['pending', 'complete', 'failed']),
     threadId: z.uuid().nullable(),
@@ -152,6 +154,10 @@ export async function createControlSession(
 ) {
   const workspace = normalizeWorkspace(input.workspace);
   const runtime = input.runtime ?? 'codex';
+  // The execution mode this create will actually use, resolved once so the capability checks below
+  // ask about the session that will exist rather than about the agent family in general.
+  const mode =
+    runtime === 'codex' ? 'app-server' : runtime === 'claude' ? (input.mode ?? 'tui') : 'native';
   if (runtime !== 'codex' && runtime !== 'custom' && input.launchRecipe !== undefined)
     throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
   if (runtime !== 'codex' && (input.flags?.length ?? 0) > 0)
@@ -160,8 +166,14 @@ export async function createControlSession(
       'This runtime requires typed configuration without caller flags',
       400,
     );
-  if (runtime === 'claude' && input.modelSelection !== undefined)
-    throw new AppError('UNSUPPORTED', 'Interactive model selection is provider-owned', 409);
+  // Refused by capability, not by runtime name: the interactive mode's model is the provider's to
+  // choose, and the native mode's is a turn option this project serves. Named for the agent, this
+  // refused a fork of a native session — which must carry its source's model.
+  if (
+    input.modelSelection !== undefined &&
+    !runtimeCapabilities({ agent: runtime, runtime: mode }).modelSelection
+  )
+    throw new AppError('UNSUPPORTED', 'Model selection is provider-owned for this runtime', 409);
   if (input.modelSelection !== undefined && (input.flags?.length ?? 0) > 0)
     throw new AppError('INVALID_INPUT', 'Typed model selection cannot carry caller flags', 400);
   const resolved =
@@ -202,6 +214,9 @@ export async function createControlSession(
     ...(resolved.launchRecipe === undefined ? {} : { launchRecipe: resolved.launchRecipe }),
     ...(modelSelection === undefined ? {} : { modelSelection }),
     ...(applicationPolicy === undefined ? {} : { applicationPolicy }),
+    // Part of the canonical request, so an identical retry matches and a request for a DIFFERENT
+    // mode is a different request rather than a silent reuse of the accepted one.
+    ...(input.mode === undefined ? {} : { mode: input.mode }),
     ...(fork === undefined ? {} : { forkSource: fork.source }),
   };
   const digest = fingerprint(canonical);
@@ -273,7 +288,14 @@ export async function createControlSession(
               agent,
               flags: row.flags,
               router: false,
-              runtime: agent === 'codex' ? 'app-server' : agent === 'claude' ? 'tui' : 'native',
+              // Claude is the only agent with a choice here; everything else has one mode, and an
+              // omitted request keeps the mode each agent has always been created with.
+              runtime:
+                agent === 'codex'
+                  ? 'app-server'
+                  : agent === 'claude'
+                    ? (row.mode ?? 'tui')
+                    : 'native',
               registrationGeneration: row.generation,
               chatEnabled: true,
               ...(row.envFile === undefined ? {} : { envFile: row.envFile }),
@@ -455,7 +477,10 @@ export async function forkControlSession(
         (pendingInput !== null && pendingInput.phase !== 'accepted'))
     )
       throw new AppError('FORK_BUSY', 'Native source has accepted input pending', 409);
-    if (current.agent !== 'codex' && current.agent !== 'opencode')
+    // Asked of the declared capability, not of a list of runtime names: the capability is what the
+    // control plane answers `runtime.list` with, and a name list beside it is a second answer that
+    // goes stale the moment a runtime gains the operation.
+    if (!runtimeCapabilities(current).fork)
       throw new AppError('UNSUPPORTED', 'Native fork is unavailable for this runtime', 409);
     const sourceIdentity =
       accepted?.forkSource ??
@@ -465,7 +490,10 @@ export async function forkControlSession(
         generation: status.snapshot?.generation,
         nativeId: nativeId(current),
         turnId: status.snapshot?.turn?.id ?? null,
-        selection: readSelection(m, current)?.options,
+        // The retained store holds only a selection somebody CHANGED; a session running its
+        // admission default has none there, and reading only that store called every such session
+        // unforkable. The snapshot's own selection is what the session is actually running.
+        selection: readSelection(m, current)?.options ?? status.snapshot?.nativeSelection?.options,
       });
     if (sourceIdentity.selection === undefined)
       throw new AppError('FORK_UNAVAILABLE', 'Native source selection is unavailable', 409);
@@ -504,6 +532,13 @@ export async function forkControlSession(
         name: input.name,
         workspace: accepted?.workspace ?? current.dir,
         runtime: current.agent,
+        // The destination must run the SAME execution mode as its source: a fork of a native
+        // conversation created as an interactive session would point a pane at a conversation
+        // nothing is writing.
+        ...(current.agent === 'claude' &&
+        (current.runtime === 'native' || current.runtime === 'tui')
+          ? { mode: current.runtime }
+          : {}),
         flags: [],
         modelSelection: accepted?.modelSelection ?? sourceIdentity.selection.model,
       },

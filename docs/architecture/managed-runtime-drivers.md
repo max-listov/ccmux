@@ -32,7 +32,9 @@ archived registrations are excluded from healing and retain their history.
 
 ## Capability boundary
 
-Claude retains its interactive provider and truthful pane-based capabilities. Codex uses App Server.
+Claude has two execution modes. The default keeps its interactive provider and truthful pane-based
+capabilities; an opt-in native mode drives the same installed binary through the published agent SDK
+and reports the structured surface the other native runtimes report. Codex uses App Server.
 OpenCode uses the native SDK/API and SSE. A custom driver composes a published optional harness;
 it does not implement an inference loop, tool scheduler, product prompts or credential routing.
 Capabilities are explicit per driver. An unavailable driver or unsupported operation is rejected
@@ -196,7 +198,7 @@ forward fix instead. Never delete native history or silently relabel a row as Co
 
 ## Reference implementations
 
-[T3 Code](https://github.com/pingdotgg/t3code/tree/1f8ed54add4133ac39effceded8fc1fff12d8e03)
+the external reference harness
 separates its provider registry, owned-server lifetime and native continuation cursor. Its OpenCode
 adapter handles prompt-admission races and correlates assistant messages with native parent IDs.
 CCMux uses those ownership principles, not its UI, orchestration framework or application loop.
@@ -205,3 +207,90 @@ CCMux uses those ownership principles, not its UI, orchestration framework or ap
 provides authenticated HTTP control and structured SSE. `prompt_async` acknowledges admission, not
 completion. `message.updated` carries assistant terminal evidence; `session.status` alone does not
 prove that a particular prompt completed. Native session deletion is not CCMux archive.
+
+
+## Native Claude execution mode
+
+Opt-in and off unless the host enables it, because the mode changes which authentication a
+deployment leans on and that decision is the operator's. `claudeNativeRuntime` permits it and
+`claudeNativeSdk` names the package root of the agent SDK to run it with — a path on the host, like
+`codexBin` and `opencodeBin`, since only this project's own harness is embedded. `runtime.list`
+reports both Claude modes and separates three answers that call for three different actions:
+the CLI is not configured, the mode is not enabled here, or no SDK is present at the configured path.
+
+Dispatch is keyed on the `(agent, runtime)` pair for this one pair alone. A native row must not
+inherit the interactive provider: its pane scanner, menu answerer and transcript reader describe
+something that does not exist for it, and its fork detector would start from a missing file and adopt
+an unrelated conversation, mismatching the session's identity permanently. The native provider it
+receives instead has none of those, so the heal pass leaves it alone by construction rather than by a
+caller remembering a guard.
+
+The conversation id is **pinned**, not discovered. The runtime accepts the id a conversation should
+have, so the managed identity and the runtime's own are the same value and no pairing is stored. A
+first start names the id; later starts resume it. Both ids are excluded from external discovery, so a
+conversation this machine already drives is never offered for adoption.
+
+Tool permissions arrive as answerable requests carrying the arguments the tool would run with, and
+are answered through the same native response path the other runtimes use. They have no timeout: an
+unanswered request leaves the session visibly `waiting-approval`, which a person can act on, whereas
+a timeout that declined on its own would make a decision nobody made and record it as the operator's.
+Interrupt uses the runtime's own interrupt so the writer survives and answers `accepted` or
+`rejected`, which is what this project's interrupt contract requires.
+
+The mode runs as Claude Code rather than as a bare agent loop: the product system prompt preset and
+the user, project and local setting sources are all requested, so `CLAUDE.md` and the operator's
+settings apply exactly as they do in a terminal session. Incremental output is enabled, and the
+deltas are the transcript — the finished message and the terminal result repeat the same text, and
+recording all three wrote every answer three times.
+
+Model, effort and images are turn options here, exactly as they are for the other native runtimes.
+The catalog is published by the session owner into `models.json` beside its status file — only that
+process holds a connection, so a reader elsewhere would have to invent the list. A row's `model` is
+the alias a caller selects with, not the wire id it resolves to, because that is the value a stored
+selection carries. Effort levels are published per model from what the runtime reports: some models
+accept five levels and some accept none, and `effortAccepted` refuses a level its row does not list.
+The runtime reports no input modalities at all, so the catalog states `text` and `image` — a
+text-only claim would make the control plane refuse an image the runtime accepts. Attached images are
+resolved to base64 blocks in the owner process, where the bytes are allowed to be, and a turn whose
+images do not all resolve fails rather than quietly asking a different question.
+
+Effort is session-scoped, not per-turn: the runtime has no per-turn setter, only
+`applyFlagSettings`, so the level applies from the turn that asked for it onward.
+
+Session control is typed, not typed-in. The runtime names its own slash commands and a caller runs
+one as a turn of its own: it travels through the same runtime mailbox a message uses, and
+deliberately NOT through the chat ledger, because ledger delivery frames every message with its
+sender attribution and a slash command carrying that prefix is no longer a command. The permission
+mode a turn runs under is published and settable, applied between turns — changing it mid-turn would
+move the boundary under a tool call already judged against the old one.
+
+Context fill comes from the runtime's own measurement rather than a statusline scrape, and carries
+the window it was measured against: a model's hard limit and a smaller compaction window mean
+different things at the same percentage, and a scrape sees only one number.
+
+History, compaction and fork are the shared context operations, served here by the transcript the
+runtime writes — the source of truth for a conversation — rather than by the live content buffer,
+which is a bounded window over recent items. Compaction is the runtime's own command on the path
+above; its boundary is read from the record the runtime writes, not inferred from a token count
+dropping. Fork is the runtime's own fork, admitted once through the shared ledger; the destination
+continues the conversation the runtime created for it, so its identity is that id rather than the
+pinned generation a first-start session uses. Rollback stays refused: the runtime will not un-say a
+conversation.
+
+Which account a session runs on and what it has spent are published and travel through the fleet
+slice, because a limit belongs to an account rather than to a machine. What is carried is an
+identity — never a token, a key, or the name of where either lives.
+
+File checkpoints are off unless a session asks for them. With them on, the runtime keeps a copy of
+every file a turn modifies and a caller can preview or perform a rewind; the preview and the act are
+answered by the same code, and a path the runtime refuses to restore is reported rather than counted
+as success. This is the one place the project answers for the working tree and not only for the
+conversation, which is why it is a decision somebody makes rather than a default somebody discovers.
+
+MCP servers are readable and controllable per session: status, tool count and the runtime's own
+error sentence. Their configuration is not read at all — the URL, headers and any token the host put
+there have no business in a status projection.
+
+No dialog kinds are declared, because none can be rendered yet. The runtime reads that as "cannot
+display" and degrades the affected flows, which is honest; declaring a kind promises to render it,
+and a declared-but-unrendered dialog parks until a deadline.

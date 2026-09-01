@@ -26,6 +26,24 @@ const RemoteSession = z.object({
     .object({ text: z.string().nullable().default(null) })
     .partial()
     .optional(),
+  context: z
+    .object({
+      text: z.string().nullable(),
+      usedTokens: z.number().nullable(),
+      limitTokens: z.number().nullable(),
+      percent: z.number().nullable(),
+    })
+    .default({ text: null, usedTokens: null, limitTokens: null, percent: null }),
+  account: z
+    .object({
+      label: z.string().nullable(),
+      organization: z.string().nullable(),
+      subscription: z.string().nullable(),
+      provider: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
+  costUsd: z.number().nullable().default(null),
 });
 
 test('a local fleet row carries the directory exactly as `list --json` reports it', () => {

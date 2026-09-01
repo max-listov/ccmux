@@ -14,6 +14,8 @@ const baseItem = {
   lifecycleError: null,
   model: null,
   context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+  account: null,
+  costUsd: null,
   uptime: { text: '1m', seconds: 60 },
   stale: [],
   createdAt: null,
@@ -36,8 +38,11 @@ test('fleet renders a missing remote provider as unknown, never Claude', () => {
     running: true,
     stale: [],
     dir: '/src/agent-a',
+    account: null,
+    costUsd: null,
     role: null,
     turnStartedAt: null,
+    context: { text: null, usedTokens: null, limitTokens: null, percent: null },
     uptime: { text: '1m' },
   });
   expect(line).toContain('unknown');

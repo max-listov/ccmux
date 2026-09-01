@@ -25,6 +25,8 @@ function message(role: 'user' | 'assistant' | 'system', text: string): Transcrip
     result: null,
     input: null,
     resultText: null,
+    image: null,
+    usage: null,
   };
 }
 

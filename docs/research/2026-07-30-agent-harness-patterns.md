@@ -1,26 +1,26 @@
 ---
-title: t3code (pingdotgg/t3code) — разбор и идеи для ccmux
-description: Глубокий анализ T3 Code (agent-harness control surface для Claude/Codex/Cursor/Grok/OpenCode) — что перенять для ccmux, фокус на сессиях и персисте
+title: Agent-harness patterns — разбор и идеи для ccmux
+description: Разбор внешнего agent-harness control surface для Claude/Codex/Cursor/Grok/OpenCode — что перенять для ccmux, фокус на сессиях и персисте
 type: research
 status: active
 created: 2026-07-30
 updated: 2026-07-30
 ---
 
-# t3code → ccmux: разбор и 22 идеи
+# Внешний harness → ccmux: разбор и 22 идеи
 
-Источник: `github.com/pingdotgg/t3code` (локальный reference checkout, ~15k файлов).
+Источник: публичный сторонний agent-harness (локальный reference checkout, ~15k файлов).
 Анализ: 5 параллельных read-only агентов по подсистемам (Codex-драйв · ACP-абстракция ·
 сервер+персист · remote/транспорт · build/agent-config) + собственное чтение docs/архитектуры.
 
-## Что такое T3 Code
+## Что это за проект
 «Agent harness control surface» — рулит агентами (Claude Code, Codex, Cursor, Grok, OpenCode)
-с web/desktop(Electron)/mobile(RN). `npx t3@latest` поднимает Node-WS-сервер + web-app. Стек:
+с web/desktop(Electron)/mobile(RN). Его CLI поднимает Node-WS-сервер + web-app. Стек:
 pnpm-catalog монорепо, **effect-ts**, vite-plus (`vp`), кастомный oxlint-plugin, Rust
 `native/resource-monitor`. Прямой сосед ccmux по нише, но GUI-first и крупнее.
 
 ## ГЛАВНЫЙ тезис (архитектурный водораздел)
-**T3 НЕ скрейпит pty и НЕ парсит jsonl-файлы. Он говорит с агентами по программным протоколам**
+**он НЕ скрейпит pty и НЕ парсит jsonl-файлы. Он говорит с агентами по программным протоколам**
 и переводит их нативные события в одну каноническую event-модель:
 - **Codex** → `codex app-server` (JSON-RPC 2.0 over stdio, line-delimited).
 - **Claude** → `@anthropic-ai/claude-agent-sdk` `query()` (живой async-iterable `SDKMessage`).
@@ -37,7 +37,7 @@ per-session resume-курсор; idle-агентов **reap'ят** и ре-ре�
 ## A. Как говорим с агентом (ядро — сессии)
 
 ### 1. ⭐ Структурированный control-channel вместо pty-скрейпа — ТЕЗИС
-Всё, что ccmux реконструирует скрейпом (модель, working/idle, context%, tool-calls), у T3 приходит
+Всё, что ccmux реконструирует скрейпом (модель, working/idle, context%, tool-calls), у он приходит
 типизированными событиями протокола. Codex: `codex app-server` (реф-драйвер ~60 строк:
 `packages/effect-codex-app-server/test/examples/codex-app-server-probe.ts`; транспорт
 `.../src/protocol.ts`). Claude: SDK `query()` → `interrupt()/setModel()/getContextUsage()`
@@ -47,7 +47,7 @@ per-session resume-курсор; idle-агентов **reap'ят** и ре-ре�
 vs server→client запросы) + реестр хендлеров. `Bun.spawn` + async-iter `proc.stdout` покрывает нативно.
 
 ### 2. ⭐ Two-id модель + resume-fallback — убивает нашу codex-reconcile боль
-T3 держит СВОЙ стабильный `threadId` + codex-id в `resumeCursor` (из ответа `thread/start` и
+он держит СВОЙ стабильный `threadId` + codex-id в `resumeCursor` (из ответа `thread/start` и
 рефрешится из нотификации `thread/started`). Resume: `thread/resume`, при ошибке «not found» —
 **прозрачный fallback на `thread/start`** (`CodexSessionRuntime.ts:436-493`). Нам не надо сканить
 `~/.codex/sessions` за новейшим jsonl — id отдаёт протокол и он self-heal'ится. (Мы только что
@@ -82,7 +82,7 @@ keystrokes. Плюс sandbox/approval-policy задаётся декларати
 (`ClaudeAdapter.ts:1449-1467`) вместо нашего «новейший jsonl uuid». Устойчивее к ротации/рестарту.
 
 ### 8. Replay-idle gate на resume — нет двойной эмиссии
-На `session/load` агент переигрывает историю; T3 глушит её, пока не наступит 2с idle-gap без
+На `session/load` агент переигрывает историю; он глушит её, пока не наступит 2с idle-gap без
 replay-активности (`AcpSessionRuntime.ts:370-404,590-632`). Ровно наша проблема «resume по uuid
 переизлучает историю как live».
 
@@ -97,7 +97,7 @@ replay-активности (`AcpSessionRuntime.ts:370-404,590-632`). Ровно
 payload) — предпосылка live-web.
 
 ### 10. ⭐ Reap idle + resume-on-demand — гибрид с tmux
-T3: reaper сметает сессии idle >30мин (skip если активный turn), процесс отпускается, ре-резюм по
+он: reaper сметает сессии idle >30мин (skip если активный turn), процесс отпускается, ре-резюм по
 курсору на след. сообщении (`ProviderSessionReaper.ts` + `ProviderCommandReactor.ts:572-596`).
 ccmux УЖЕ умеет resume по фикс-uuid → возможен **гибрид**: truly-idle сессии suspend'им (освобождаем
 RAM/контекст claude-процессов), tmux-пейн держим, на входящее — ре-launch. Наш «tmux переживает
@@ -206,7 +206,7 @@ guard) → тест fetch/apply self-update офлайн. **Прямо бьёт 
 downgrade» на этапе билда, а не на флоте.
 
 ### 25. Кастомные oxlint-правила = перф/арх-инварианты как build-ошибки
-`oxlint-plugin-t3code`: `no-inline-schema-compile` (hot-path перф в lint), `no-global-process-runtime`
+их собственный lint-плагин: `no-inline-schema-compile` (hot-path перф в lint), `no-global-process-runtime`
 (один seam для host-detect). Наши TUI-инварианты из `CLAUDE.md` («спиннер тикает только при active»,
 «ChatMessage/Markdown мемоизированы», «нет непрерывных reflow-анимаций») гниют в прозе — 1-2 из них
 как oxlint-правило (~50-150 строк) превращают «комп горячий»-инциденты в build-fail.

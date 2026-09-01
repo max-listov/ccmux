@@ -118,7 +118,7 @@ host's assertion until something checks it (see the inbox task on verifying a de
 - [x] Model discovery from the endpoint — rejected here: the catalog is an owner-authorized registry,
       and a server listing a model is not authorization to use it. Verifying a declared registry
       against the endpoint is a separate diagnostic, recorded as
-      `docs/backlog/inbox/2026-08-31-verify-declared-models-against-endpoint.md`.
+      `docs/backlog/done/2026-08-31-verify-declared-models-against-endpoint.md`.
 - [x] Hostnames as endpoints — refused deliberately. Resolving one would put I/O in a schema and
       make locality a fact that can change after validation. Address literals and `localhost` cover
       a model server on the host or its own network; relaxing this later is a one-line change with a
@@ -131,5 +131,5 @@ tests pass**. The single failure is `test/external-command.test.ts` → "the rea
 larger than a pipe buffer before exiting", which times out at its 5 s budget and is unrelated to
 this change: the same input on an unmodified export of the published commit took 9.32 s against
 7.30 s here, with byte-identical output. Recorded with its measurements as
-`docs/backlog/inbox/2026-08-31-external-inventory-scan-cost.md`. It is named here rather than left
+`docs/backlog/done/2026-08-31-external-inventory-scan-cost.md`. It is named here rather than left
 implicit, because a closed task that says "green" while a suite reports a failure is a false report.

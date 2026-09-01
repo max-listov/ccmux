@@ -7,8 +7,9 @@ import {
   bestKnownRelease,
   releaseStanding,
 } from '../config/releaseCheck.ts';
-import { AgentKindSchema, ReleaseStandingSchema } from '../config/schema.ts';
+import { AgentKindSchema, ContextInfoSchema, ReleaseStandingSchema } from '../config/schema.ts';
 import { peersOf, runPeer } from '../fleet/transport.ts';
+import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { VERSION } from '../util/version.ts';
 import { collectRows, rowStateLabel } from './list.ts';
@@ -27,7 +28,7 @@ import { collectRows, rowStateLabel } from './list.ts';
  * between two servers only exists while the owner is connected — so the command still exits 0 and
  * simply marks that machine, instead of an agent reading routine degradation as an error.
  */
-const RemoteSessionSchema = z.object({
+export const RemoteSessionSchema = z.object({
   name: z.string(),
   agent: AgentKindSchema.nullable().default(null),
   state: z.string().default('?'),
@@ -57,6 +58,29 @@ const RemoteSessionSchema = z.object({
     .object({ text: z.string().nullable().default(null) })
     .partial()
     .optional(),
+  /**
+   * Context-window fill, as `list --json` already reports it locally.
+   *
+   * Dropped here before: the peer sent it and this schema did not name it, so a consumer watching
+   * the whole fleet — which must go through `fleet`, one call for every machine — could read
+   * context fill for local sessions only. The default is the "nothing measured" shape, which is
+   * also what an older peer's silence means.
+   */
+  context: ContextInfoSchema.default({
+    text: null,
+    usedTokens: null,
+    limitTokens: null,
+    percent: null,
+  }),
+  /**
+   * Which account this session runs on and what it has spent.
+   *
+   * The reason it travels: a limit belongs to an account, not to a machine, so the only place the
+   * question "which sessions share this one" can be answered is the slice that spans every machine.
+   * An older peer reports nothing, which is not the same as running on no account.
+   */
+  account: NativeAccountSchema.nullable().default(null),
+  costUsd: z.number().nullable().default(null),
 });
 const RemoteListSchema = z.object({
   version: z.string().default('?'),
@@ -121,6 +145,9 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       dir: r.session.dir,
       role: r.session.role ?? null,
       turnStartedAt: r.turnStartedAt,
+      context: r.context,
+      account: r.account,
+      costUsd: r.costUsd,
     })),
   };
   const remote = await Promise.all(
@@ -301,5 +328,42 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
     }
     if (parked > 0) console.log(`  … ${parked} archived (ccmux fleet --all)`);
   }
+  for (const line of accountLines(view.machines)) console.log(line);
   return 0; // unreachable machines are routine, never a failure exit
+}
+
+/**
+ * Who is spending on what, across every machine.
+ *
+ * A limit belongs to an account, not to a machine, so this is the only place the question can be
+ * answered — and it is printed after the machines rather than beside each session because the
+ * grouping IS the answer: one line per account, naming the sessions that share it. An account
+ * nothing reported is not listed; silence is not a group.
+ */
+export function accountLines(machines: readonly FleetMachine[]): string[] {
+  const groups = new Map<string, { sessions: string[]; cost: number; costed: boolean }>();
+  for (const fm of machines)
+    for (const session of fm.sessions) {
+      const label = session.account?.label;
+      if (!label) continue;
+      const group = groups.get(label) ?? { sessions: [], cost: 0, costed: false };
+      group.sessions.push(`${fm.machine}:${session.name}`);
+      if (session.costUsd !== null) {
+        group.cost += session.costUsd;
+        group.costed = true;
+      }
+      groups.set(label, group);
+    }
+  if (groups.size === 0) return [];
+  return [
+    'accounts',
+    ...[...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([label, group]) => {
+        // A total nobody reported is written as unknown, never as zero: zero is a claim that the
+        // sessions cost nothing, which is a different statement from having no measurement.
+        const cost = group.costed ? `$${group.cost.toFixed(2)}` : 'cost unknown';
+        return `  ${label}  ${cost}  ${group.sessions.join(' ')}`;
+      }),
+  ];
 }

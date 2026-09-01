@@ -5,7 +5,7 @@ type: task
 status: done
 created: 2026-08-06
 updated: 2026-08-25
-related: docs/backlog/inbox/2026-08-25-session-environment-becomes-a-declared-recipe.md
+related: docs/backlog/done/2026-08-25-session-environment-becomes-a-declared-recipe.md
 ---
 
 # Окружение сессии — объявляется, а не наследуется
@@ -207,7 +207,7 @@ child sees: leaked-from-dotenv
 и появилась: MCP-сервер проекта подключается благодаря унаследованному ключу. Выключить наследование
 сегодня — значит воспроизвести тот самый отказ на пяти сессиях сразу.
 
-Продолжение вынесено в `docs/backlog/inbox/2026-08-25-session-environment-becomes-a-declared-recipe.md`.
+Продолжение вынесено в `docs/backlog/done/2026-08-25-session-environment-becomes-a-declared-recipe.md`.
 
 ## Acceptance (Шаг 1)
 

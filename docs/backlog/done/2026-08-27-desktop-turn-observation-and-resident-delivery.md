@@ -294,7 +294,7 @@ separate server plus a visible conversation does not automatically connect Deskt
 
 The target is the official ChatGPT Desktop application, not a replacement client. The requested
 end state is one provider thread with one runtime, controllable through CCMux and simultaneously
-visible as live in Desktop. T3 Code's ownership of its own App Server and UI does not establish
+visible as live in Desktop. the external reference harness's ownership of its own App Server and UI does not establish
 that the official Desktop can attach to an independently launched runtime.
 
 Read-only revalidation on 2026-08-28 establishes:

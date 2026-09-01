@@ -28,12 +28,12 @@ as part of this task. Existing interactive sessions remain supported and untouch
 The supported family includes Claude Code, native Codex, native OpenCode and the custom harness.
 Claude's existing interactive lifecycle remains supported; capabilities must distinguish it from
 structured native control rather than synthesize approval/input support. Reference implementation
-research uses T3 Code's driver registry, continuation identity and structured OpenCode event adapter.
+research uses the external reference harness's driver registry, continuation identity and structured OpenCode event adapter.
 No UI framework, inference loop or product-owned tools/prompts are copied into CCMux.
 
 ## Execution sequence and state authority
 
-1. Inspect the existing registry/control contracts, current T3 Code source and the official OpenCode
+1. Inspect the existing registry/control contracts, current the external reference harness source and the official OpenCode
    server/SDK. Record native identifiers, request correlation and event-completion behavior.
 2. Define one driver boundary and explicit capabilities. Managed registration remains the identity
    authority; native session IDs and process ownership are runtime-specific continuation evidence.

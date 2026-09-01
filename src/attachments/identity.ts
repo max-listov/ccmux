@@ -1,5 +1,6 @@
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
 import { controlTarget } from '../control/target.ts';
+import { hasNativeRuntime } from '../runtime/capabilities.ts';
 import type { ChatPrincipal, MachineConfig, ManagedPeer, Session } from '../types.ts';
 import { assertAttachment } from './errors.ts';
 import type { AttachmentReference } from './reference.ts';
@@ -9,8 +10,8 @@ import type { AttachmentTransaction } from './store.ts';
 export function attachmentSession(m: MachineConfig, target: ManagedPeer, write: boolean): Session {
   const session = controlTarget(m, target);
   assertAttachment(
-    (session.agent === 'codex' && session.runtime === 'app-server') ||
-      (['opencode', 'custom'].includes(session.agent) && session.runtime === 'native'),
+    // One definition of "this session has a native runtime", rather than a copy that drifts from it.
+    hasNativeRuntime(session),
     'unsupported-runtime',
   );
   assertAttachment(session.registrationGeneration !== undefined, 'registration-required');

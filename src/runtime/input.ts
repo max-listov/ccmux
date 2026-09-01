@@ -16,6 +16,14 @@ export const RuntimeInputSchema = z
     nativeId: z.string().min(1).max(256),
     text: z.string().min(1).max(32_768),
     phase: z.enum(['queued', 'dispatching', 'accepted', 'uncertain']),
+    /**
+     * A message is framed for its recipient; a command is delivered verbatim.
+     *
+     * The distinction is load-bearing, not cosmetic: every chat-delivered message is prefixed with
+     * its sender attribution, and a slash command carrying that prefix is no longer a command — the
+     * runtime reads it as text that happens to mention one.
+     */
+    kind: z.enum(['message', 'command']).default('message'),
     images: AttachmentReferencesSchema.optional(),
     turnOptions: AcceptedTurnOptionsSchema.optional(),
     continuations: NativeContinuationsSchema.default([]),

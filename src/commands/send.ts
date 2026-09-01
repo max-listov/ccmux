@@ -30,7 +30,8 @@ export async function cmdSend(
   name = session;
   if (findSession(loadSessions(m), name)?.runtime === 'native') {
     console.error(
-      'send: this runtime has no terminal composer; use msg or the typed control service',
+      'send: this runtime has no terminal composer. Write to it with `msg`, and run a slash command ' +
+        'with the control service `command` operation (`commands` lists what it offers).',
     );
     return 1;
   }

@@ -6,7 +6,7 @@ status: done
 created: 2026-07-19
 updated: 2026-07-19
 completed: 2026-07-19 15:06 +08:00
-related: docs/backlog/inbox/2026-06-09-ccmux-live-web-mobile-client.md
+related: docs/backlog/icebox/2026-06-09-ccmux-live-web-mobile-client.md
 ---
 
 ## Зачем (мотивация владельца)

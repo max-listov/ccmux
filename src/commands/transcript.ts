@@ -1,4 +1,6 @@
-import { readTranscript } from '../agent/index.ts';
+import { existsSync, readFileSync } from 'node:fs';
+import { readImage } from '../agent/claude/transcript.ts';
+import { providerFor, readTranscript } from '../agent/index.ts';
 import { rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
@@ -18,7 +20,8 @@ const LAST_MESSAGE_WINDOW = 200; // enough lines back to find the last answer wi
 
 const USAGE =
   'usage: ccmux transcript <name> --json [--tail N] [--cursor LINE] [--before LINE --limit N]\n' +
-  "       ccmux transcript <name> --last-message        (just the agent's final answer, as text)";
+  "       ccmux transcript <name> --last-message        (just the agent's final answer, as text)\n" +
+  '       ccmux transcript <name> --image <address>     (one image, as a data URL)';
 
 // Full text, not the display clip: `--last-message` exists precisely to get the WHOLE report
 // (`list --json` already carries lastMessage, but clipped to 280 chars).
@@ -27,6 +30,8 @@ const FULL_TEXT_LIMIT = 1_000_000;
 export interface Opts {
   json: boolean;
   lastMessage: boolean;
+  /** The address a message's `image` carried; asking for the picture, not the record of it. */
+  image?: string;
   tail: number;
   cursor?: number;
   before?: number;
@@ -36,6 +41,7 @@ export interface Opts {
 export function parseOpts(args: string[]): Opts {
   let json = false;
   let lastMessage = false;
+  let image: string | undefined;
   let tail = 200;
   let cursor: number | undefined;
   let before: number | undefined;
@@ -44,6 +50,7 @@ export function parseOpts(args: string[]): Opts {
     const a = args[i];
     if (a === '--json') json = true;
     else if (a === '--last-message') lastMessage = true;
+    else if (a === '--image') image = args[++i];
     else if (a === '--tail') {
       const n = Number.parseInt(args[++i] ?? '', 10);
       if (Number.isFinite(n)) tail = n;
@@ -63,6 +70,7 @@ export function parseOpts(args: string[]): Opts {
   tail = Math.min(Math.max(tail, 1), 1000);
   if (limit !== undefined) limit = Math.min(Math.max(limit, 1), 1000);
   const opts: Opts = { json, lastMessage, tail };
+  if (image !== undefined && image !== '') opts.image = image;
   if (cursor !== undefined) opts.cursor = cursor;
   if (before !== undefined) opts.before = before;
   if (limit !== undefined) opts.limit = limit;
@@ -75,7 +83,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     return 1;
   }
   const o = parseOpts(args);
-  if (!o.json && !o.lastMessage) {
+  if (!o.json && !o.lastMessage && o.image === undefined) {
     console.log(USAGE);
     return 1;
   }
@@ -88,6 +96,23 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     console.log(`unknown session: ${name}`);
     return 1;
   }
+  // `--image`: the picture itself, by the address the message carried. Kept off the message so a
+  // listing stays cheap — `lastMessage` in `list --json` is read constantly and wants no pictures.
+  if (o.image !== undefined) {
+    const path = providerFor(s).historyFile(s, m);
+    if (!path || !existsSync(path)) {
+      console.error(`${name}: transcript file not found`);
+      return 1;
+    }
+    const found = readImage(readFileSync(path, 'utf8').split('\n'), o.image);
+    if ('unavailable' in found) {
+      console.error(`${name}: image unavailable (${found.unavailable})`);
+      return 1;
+    }
+    console.log(`data:${found.mediaType ?? 'application/octet-stream'};base64,${found.data}`);
+    return 0;
+  }
+
   // `--last-message`: the agent's final answer as plain text — the "take the report" gesture, so an
   // orchestrator doesn't have to pull a window of JSON and dig the last assistant block out of it.
   if (o.lastMessage) {

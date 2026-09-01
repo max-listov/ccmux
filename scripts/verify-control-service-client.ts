@@ -149,16 +149,21 @@ try {
       throw new Error('safe recipe contract failed');
     const nativeTarget = {...target,agent:'opencode'};
     const capabilities = {runtime:'opencode',structured:true,modelCatalog:true,modelSelection:true,approval:true,input:true,nativeStream:true,interrupt:true,resume:true,
-      imageInput:true,selectionDefaults:true,turnOptions:true,turnSteering:false,history:true,fork:true,compaction:true,rollback:false,applicationPolicy:true};
+      imageInput:true,selectionDefaults:true,turnOptions:true,turnSteering:false,history:true,fork:true,compaction:true,rollback:false,applicationPolicy:true,
+      commandCatalog:true,permissionModes:true,fileCheckpoints:false,mcpControl:false};
     const runtimeClient = createCcmuxControlServiceClient(async (url, init) => {
-      if (String(url).endsWith('/runtime.list')) return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{runtimes:[{runtime:'opencode',availability:'configured',reason:null,capabilities}]}});
+      if (String(url).endsWith('/runtime.list')) return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{runtimes:[{runtime:'opencode',mode:'native',availability:'configured',reason:null,capabilities}]}});
       const payload = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
       if (payload.runtime !== 'opencode' || payload.modelSelection.provider !== 'external') throw new Error('runtime selection lost');
       return Response.json({v:1,revision:CCMUX_CONTROL_SERVICE_REVISION,result:{requestId:payload.requestId,target:nativeTarget,workspace:'/work',registrationGeneration,duplicate:false,
         nativeSession:{runtime:'opencode',id:'ses_native',version:'1.18.20'},driverCapabilities:capabilities,modelSelection:payload.modelSelection}});
     });
     const runtimeCatalog = RuntimeCatalogSchema.parse(await runtimeClient.runtimes({}));
-    if (runtimeCatalog.runtimes[0]?.capabilities.structured !== true) throw new Error('runtime capabilities failed');
+    // Addressed by the (agent, mode) pair rather than by position: the catalog now reports one row
+    // per execution mode, so an index silently asserts about whichever row happens to come first.
+    const structuredRow = runtimeCatalog.runtimes.find((row) => row.capabilities.structured === true);
+    if (structuredRow === undefined) throw new Error('runtime capabilities failed');
+    if (runtimeCatalog.runtimes.some((row) => row.mode === undefined)) throw new Error('runtime mode missing');
     const nativeCreated = await runtimeClient.create({requestId:crypto.randomUUID(),runtime:'opencode',name:'agent-a',workspace:'/work',modelSelection:{provider:'external',model:'model-a'}});
     if (nativeCreated.nativeSession?.id !== 'ses_native' || nativeCreated.target.agent !== 'opencode') throw new Error('native identity lost');
     const reference = AttachmentReferenceSchema.parse({id:crypto.randomUUID(),digest:'b'.repeat(64),mediaType:'image/png',bytes:3,width:1,height:1});

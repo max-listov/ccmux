@@ -23,7 +23,10 @@ Remote Control/statusline и permission-mode — Claude-specific capabilities; C
   inference, tools и prompts принадлежат runtime/host configuration, не новому общему циклу CCMux.
   Capability discovery честно различает поддерживаемые операции, не обещая равенства всех адаптеров.
 - **Один provider runtime = один writer** — managed Codex поддерживает обычный TUI и opt-in
-  native App Server под существующим supervisor. В App Server режиме терминальный CLI — клиент
+  native App Server под существующим supervisor; у Claude аналогично есть opt-in native режим на
+  опубликованном agent SDK рядом с интерактивным по умолчанию. Claude — первый случай, где инвариант
+  может нарушиться по-настоящему: SDK пишет в тот же conversation store, что и интерактивный CLI,
+  поэтому managed id и id беседы пиннятся в одно значение и оба исключаются из discovery/adoption. В App Server режиме терминальный CLI — клиент
   того же writer, статусы и управление идут по native protocol. Изоляция env сохраняется на
   уровне каждой сессии. Решение: [owned native runtime](decisions/2026-08-28-owned-native-codex-runtime.md). Для thread,
   уже принадлежащего Codex App, ccmux подключается клиентом к существующему shared App Server и

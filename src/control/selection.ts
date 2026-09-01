@@ -69,7 +69,27 @@ export async function currentSelection(
     };
   if (s.agent === 'opencode') return { revision: 0, options: { runtime: 'opencode', model } };
   if (s.agent === 'custom') return { revision: 0, options: { runtime: 'custom', model } };
+  // Without this branch every control-plane message to a native Claude session is refused before it
+  // reaches the ledger: `message.send` reads the current selection for any native session first.
+  // Effort is a per-turn choice a caller makes, so the session default carries none: inventing one
+  // here would apply a thinking budget nobody asked for to every turn.
+  if (s.agent === 'claude') return { revision: 0, options: { runtime: 'claude', model } };
   throw new AppError('UNSUPPORTED', 'Native selection is unavailable', 409);
+}
+
+/**
+ * Whether the catalog row offers the requested effort.
+ *
+ * Keyed on the field, not on a runtime: written as a `runtime === 'codex'` branch it let every
+ * native Claude turn past, including a level on a model whose own row offers none. A row that lists
+ * no efforts accepts no effort — that is what a model without the parameter reports.
+ */
+export function effortAccepted(
+  row: { supportedReasoningEfforts?: readonly { reasoningEffort: string }[] | undefined },
+  effort: string | undefined,
+): boolean {
+  if (effort === undefined) return true;
+  return row.supportedReasoningEfforts?.some((item) => item.reasoningEffort === effort) === true;
 }
 
 export async function validateTurnOptions(
@@ -96,11 +116,7 @@ export async function validateTurnOptions(
   );
   if (row === undefined || (images && !row.inputModalities.includes('image')))
     throw new AppError('UNSUPPORTED', 'Requested model or input modality is unavailable', 409);
-  if (
-    options.runtime === 'codex' &&
-    options.effort !== undefined &&
-    !row.supportedReasoningEfforts?.some((item) => item.reasoningEffort === options.effort)
-  )
+  if (!effortAccepted(row, 'effort' in options ? options.effort : undefined))
     throw new AppError('UNSUPPORTED', 'Requested reasoning effort is unavailable', 409);
   if (options.runtime === 'opencode') {
     const choices = preparedOpenCodeChoices(m, s);

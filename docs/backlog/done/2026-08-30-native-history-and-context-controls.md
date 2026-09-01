@@ -21,7 +21,7 @@ related: ../done/2026-08-10-discover-and-own-external-codex-threads.md
 does not expose fork or manual compaction. Existing external CLI discovery/fork is a different
 ownership path and must not be duplicated or advertised as managed service support.
 
-T3's [adapter contract](https://github.com/pingdotgg/t3code/blob/8dcb96314c976899e4df6951fb9af03131c2a46f/apps/server/src/provider/Services/ProviderAdapter.ts)
+the reference harness's adapter contract
 provides `readThread` and rollback. The native [Codex API](https://learn.chatgpt.com/docs/app-server)
 also provides fork and compact, but marks `thread/rollback` deprecated. The
 [OpenCode API](https://opencode.ai/docs/server/) exposes messages, fork, summarize and revert.

@@ -6,8 +6,8 @@ status: active
 created: 2026-08-28
 updated: 2026-08-28
 related:
-  - docs/backlog/in-progress/2026-08-27-desktop-turn-observation-and-resident-delivery.md
-  - docs/research/2026-07-30-t3code-analysis-ideas.md
+  - docs/backlog/done/2026-08-27-desktop-turn-observation-and-resident-delivery.md
+  - docs/research/2026-07-30-the external reference harness-analysis-ideas.md
 ---
 
 # Decision summary
@@ -31,7 +31,7 @@ managed Codex TUI driver with an owned App Server driver.
 
 - **Executed:** native application reads, installed CCMux inventory on two hosts, a controlled
   shared App Server, official CLI attachment, bidirectional prompts, status reads and reconnect.
-- **Source inspected:** the installed provider's matching upstream version and T3 Code.
+- **Source inspected:** the installed provider's matching upstream version and the external reference harness.
 - **Documentation inspected only:** Happy, CodexMonitor, Claude Remote Control and authentication
   guidance. Those products were not installed or runtime-tested in this investigation.
 - **Not demonstrated:** simultaneous live attachment of the official local Desktop to the
@@ -110,11 +110,11 @@ The current external command is local-only. A fleet consumer must obtain an inde
 for each host. A 30-second reconciliation interval cannot by itself keep five-second evidence
 fresh. Session/chat feed events are not a replacement for a native external-status feed.
 
-## How T3 Code does it
+## How the external reference harness does it
 
 Inspected revision: `2fbe313096b54a3422e101ed1bcc3589f6cf371c`.
 
-T3 owns both its application interface and its backend. Its Codex adapter spawns an App Server
+the reference harness owns both its application interface and its backend. Its Codex adapter spawns an App Server
 child, communicates over stdio, starts/resumes a provider thread, and maps native turn events
 into its own session state. Its UI consumes its orchestration protocol; it does not depend on
 the official Desktop discovering its processes. Claude uses the Agent SDK adapter instead.
@@ -122,16 +122,16 @@ the official Desktop discovering its processes. Claude uses the Agent SDK adapte
 Useful patterns are separate provider adapters, request/notification handling, explicit
 approval and input requests, persisted provider resume identity, and snapshot plus sequenced
 events for UI reconnects. The choice of stdio is compatible with multiple UI clients because
-the T3 backend is the single provider client and fans out its own state.
+the the reference harness backend is the single provider client and fans out its own state.
 
-One pattern must **not** be copied into identity-pinned CCMux delivery: T3 can fall back from a
+One pattern must **not** be copied into identity-pinned CCMux delivery: the reference harness can fall back from a
 recoverable `thread/resume` error to `thread/start`. CCMux must report a failed resume rather than
 silently changing the conversation receiving a message. The earlier ideas document is not
 authorization to weaken that invariant.
 
-Sources: [provider architecture](https://github.com/pingdotgg/t3code/blob/2fbe313096b54a3422e101ed1bcc3589f6cf371c/docs/internals/providers.md),
-[Codex runtime](https://github.com/pingdotgg/t3code/blob/2fbe313096b54a3422e101ed1bcc3589f6cf371c/apps/server/src/provider/Layers/CodexSessionRuntime.ts),
-[Claude adapter](https://github.com/pingdotgg/t3code/blob/2fbe313096b54a3422e101ed1bcc3589f6cf371c/apps/server/src/provider/Layers/ClaudeAdapter.ts).
+Sources: provider architecture,
+Codex runtime,
+Claude adapter.
 
 ## Available paths
 
@@ -141,7 +141,7 @@ Sources: [provider architecture](https://github.com/pingdotgg/t3code/blob/2fbe31
 | CCMux-owned App Server; CCMux/custom UI and terminal clients | Native turn state, typed control and a stable owner-managed process boundary. CLI plus RPC coexistence is proven. | A new owned driver and lifecycle contract are still required. Official Desktop live attachment is not automatic. |
 | Official Desktop SSH-host workflow | Documented Desktop route to a remote runtime; the tested existing host exposes native state. | Qualify startup ownership, native tools, approvals and recovery before claiming CCMux owns that runtime. |
 | Experimental local Desktop external-server selector | Candidate for retaining official local Desktop and a shared writer. | Installed code exposes selectors, but the capability-preserving route has not passed testing. Do not switch the main app or disable its tools to force it. |
-| T3 Code / Happy / CodexMonitor as the interface | Existing alternative clients instead of building an entire UI immediately. | They are their own clients, not demonstrated bridges into the official Desktop's current live sessions. |
+| the external reference harness / Happy / CodexMonitor as the interface | Existing alternative clients instead of building an entire UI immediately. | They are their own clients, not demonstrated bridges into the official Desktop's current live sessions. |
 
 [Happy](https://github.com/slopus/happy) provides its own CLI wrapper and web/mobile/desktop
 clients; its README describes restarting a session into remote mode when changing control.
@@ -164,7 +164,7 @@ documents subscription and API-key authentication as different billing paths:
 Claude is not limited to terminal scraping. Its documented
 [Remote Control](https://code.claude.com/docs/en/remote-control) connects a running local CLI
 session to official web/mobile clients, with messages from either surface. This is not proof
-of simultaneous Claude Desktop attachment. T3's SDK-based Claude path is another option.
+of simultaneous Claude Desktop attachment. the reference harness's SDK-based Claude path is another option.
 
 Do not assume that an SDK automatically requires API billing. The current
 [subscription notice](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
