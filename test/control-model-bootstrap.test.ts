@@ -41,8 +41,29 @@ async function gone(pid: number, withinMs = 5_000): Promise<void> {
   );
 }
 
+/**
+ * The pid the fixture wrote, waited for rather than assumed.
+ *
+ * Same shape as `gone` below it and for the same reason: the child is spawned before the read is
+ * cancelled, but WRITING its pid is its own first act, and a cancel that arrives inside 400ms can
+ * beat it on a loaded machine. Reading the file at that instant asserts which of the two won the
+ * race, not that the process was reaped — and it failed only inside the full suite, never alone.
+ */
+async function startedPid(root: string, withinMs = 5_000): Promise<number> {
+  const path = join(root, 'fixture.pid');
+  const deadline = Date.now() + withinMs;
+  while (Date.now() < deadline) {
+    if (existsSync(path)) {
+      const text = readFileSync(path, 'utf8').trim();
+      if (text.length > 0) return Number(text);
+    }
+    await Bun.sleep(10);
+  }
+  throw new Error(`the metadata process never announced a pid within ${withinMs}ms`);
+}
+
 async function reaped(root: string) {
-  const pid = Number(readFileSync(join(root, 'fixture.pid'), 'utf8'));
+  const pid = await startedPid(root);
   await gone(pid);
   const requests = readFileSync(join(root, 'requests.jsonl'), 'utf8')
     .trim()
