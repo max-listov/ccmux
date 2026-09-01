@@ -27,6 +27,7 @@ import { loadOutbox } from '../fleet/outbox.ts';
 import { peersOf, runPeer } from '../fleet/transport.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
+import { printLine } from '../util/stdout.ts';
 
 const USAGE =
   'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
@@ -221,7 +222,7 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
   if (args.includes('--json')) {
     // Emitted THROUGH the schema, so the shape a peer parses and the shape we print are one
     // definition rather than two that can drift.
-    console.log(JSON.stringify(LogPayloadSchema.parse({ machines, rows })));
+    await printLine(JSON.stringify(LogPayloadSchema.parse({ machines, rows })));
     return 0;
   }
   // Unreachable notices go to stderr so the row stream stays pipeable on stdout.

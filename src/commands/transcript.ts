@@ -5,6 +5,7 @@ import { rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import type { TranscriptJson, TranscriptMessage } from '../types.ts';
+import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
 
 /** Newest assistant TEXT block (skipping tool calls/results and thinking) — the agent's answer. */
@@ -156,6 +157,6 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     stats: read.stats,
     messages: read.messages,
   };
-  console.log(JSON.stringify(out));
+  await printLine(JSON.stringify(out));
   return 0;
 }

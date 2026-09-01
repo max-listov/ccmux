@@ -2,6 +2,7 @@ import { prepareCustomHost } from '../agent/custom/host.ts';
 import { registrySettled, verdictLines, verifyCustomRegistry } from '../agent/custom/verify.ts';
 import { resolveControlLaunchRecipe } from '../config/launchRecipes.ts';
 import { loadMachineConfig } from '../config/machine.ts';
+import { printLine } from '../util/stdout.ts';
 
 /**
  * Check a host's declared model registry against the provider that must serve it.
@@ -39,7 +40,7 @@ export async function cmdModels(args: string[]): Promise<number> {
     return 1;
   }
   const verdict = await verifyCustomRegistry(host.config, host.credential);
-  if (json) console.log(JSON.stringify(verdict));
+  if (json) await printLine(JSON.stringify(verdict));
   else for (const line of verdictLines(verdict)) console.log(line);
   // Three outcomes, three codes: the declaration holds, the provider contradicted it, or we could
   // not look. Collapsing the last two would report a quiet server as a broken registry.

@@ -1,5 +1,4 @@
 import { once } from 'node:events';
-import { createCli } from 'stitchkit/cli';
 import { createControlClient, createControlProxy } from '../control/client.ts';
 import { VERSION } from '../util/version.ts';
 
@@ -35,6 +34,12 @@ export async function cmdControl(args: string[]): Promise<number> {
     let code = 0;
     const proxy = createControlProxy(options);
     try {
+      // Imported here rather than at module load: merely loading `stitchkit/cli` changes how this
+      // process writes to stdout, and a large answer then loses everything past 64 KiB whenever the
+      // reader is slow — measured, exactly 65536 bytes and exit 0. Every other verb in this binary
+      // shares the module graph, so an eager import made `transcript --json` truncate for a reason
+      // that had nothing to do with transcripts.
+      const { createCli } = await import('stitchkit/cli');
       await createCli({
         name: 'ccmux control',
         version: VERSION,

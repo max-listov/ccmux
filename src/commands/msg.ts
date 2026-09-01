@@ -504,7 +504,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       );
       return 0;
     }
-    return relay(result, `msg ${targetToken}`);
+    return await relay(result, `msg ${targetToken}`);
   }
 
   targetToken = route.session;

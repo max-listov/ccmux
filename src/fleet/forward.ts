@@ -51,7 +51,7 @@ export async function forwardIfRemote(
     argv,
     opts.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs },
   );
-  const code = relay(r, `${verb} ${target}`, remoteWrites(verb));
+  const code = await relay(r, `${verb} ${target}`, remoteWrites(verb));
   return { done: true, code };
 }
 

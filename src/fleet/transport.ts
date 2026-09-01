@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { MachineConfig } from '../types.ts';
 import { shellJoin } from '../util/shellQuote.ts';
 import { run, runWithInput } from '../util/spawn.ts';
+import { writeErr, writeOut } from '../util/stdout.ts';
 import { isWirePeer, runWire, wirePeers } from './wire.ts';
 
 /**
@@ -135,7 +136,7 @@ export function queuedForRetryNotice(
   );
 }
 
-export function relay(r: RemoteResult, what: string, writes = true): number {
+export async function relay(r: RemoteResult, what: string, writes = true): Promise<number> {
   if (r.transportFailed) {
     const tail = !writes
       ? ''
@@ -149,8 +150,10 @@ export function relay(r: RemoteResult, what: string, writes = true): number {
     if (r.stderr.trim() !== '') console.error(r.stderr.trimEnd());
     return 1;
   }
-  if (r.stdout !== '') process.stdout.write(r.stdout);
-  if (r.stderr !== '') process.stderr.write(r.stderr);
+  // A relayed answer is exactly the case that gets cut: it is the whole remote reply at once, and
+  // the reader on the far side of our pipe may be slower than our exit.
+  await writeOut(r.stdout);
+  await writeErr(r.stderr);
   return r.code;
 }
 

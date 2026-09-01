@@ -42,6 +42,7 @@ import type {
   TranscriptMessage,
 } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
+import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
 import { accountLines } from './accounts.ts';
 
@@ -320,7 +321,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
   };
 }
 
-function printJson(m: MachineConfig, rows: ListRow[]): void {
+async function printJson(m: MachineConfig, rows: ListRow[]): Promise<void> {
   const out: ListJson = {
     version: VERSION,
     generatedAt: new Date().toISOString(),
@@ -329,7 +330,7 @@ function printJson(m: MachineConfig, rows: ListRow[]): void {
     release: releaseStanding(m, VERSION),
     sessions: rows.map((r) => toListItem(m, r)),
   };
-  console.log(JSON.stringify(out));
+  await printLine(JSON.stringify(out));
 }
 
 /** The single data source for both the CLI table/JSON and the live TUI. `liveNames` (TUI only) =
@@ -364,7 +365,7 @@ export async function cmdList(args: string[] = []): Promise<number> {
   // `--json` is a machine's answer and stays complete: a consumer filters for itself, and a reader
   // that asked for everything must not be given a view. Only the human table folds.
   if (args.includes('--json')) {
-    printJson(m, rows);
+    await printJson(m, rows);
     return 0;
   }
   const all = args.includes('--all');

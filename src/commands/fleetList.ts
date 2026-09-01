@@ -12,6 +12,7 @@ import { peersOf, runPeer } from '../fleet/transport.ts';
 import { PlanLimitsSchema } from '../runtime/planLimits.ts';
 import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
+import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
 import { accountLines, fleetAccounts } from './accounts.ts';
 import { collectRows, rowStateLabel } from './list.ts';
@@ -325,7 +326,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
   const machines = await collectFleet(m);
   const view = fleetView(machines);
   if (args.includes('--json')) {
-    console.log(
+    await printLine(
       JSON.stringify({
         version: VERSION,
         generatedAt: new Date().toISOString(),

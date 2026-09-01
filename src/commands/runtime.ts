@@ -1,8 +1,8 @@
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
+import { printLine } from '../util/stdout.ts';
 
 export async function cmdRuntime(name: string | undefined, args: string[]): Promise<number> {
   if (!name || args.some((arg) => arg !== '--json')) {
@@ -17,7 +17,7 @@ export async function cmdRuntime(name: string | undefined, args: string[]): Prom
     return 1;
   }
   const read = readManagedRuntimeStatus(forward.m, s);
-  if (args.includes('--json')) console.log(JSON.stringify(read));
+  if (args.includes('--json')) await printLine(JSON.stringify(read));
   else
     console.log(
       `${forward.m.rcPrefix}:${s.name} ${read.snapshot?.state ?? read.status} · ${read.snapshot?.turn?.status ?? read.reason ?? 'no turn'}`,
