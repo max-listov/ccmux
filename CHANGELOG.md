@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.43.2] — 2026-09-01
+
+Group a plan by provider and account, so two runtimes on one address are two budgets
 ## [0.43.1] — 2026-09-01
 
 Keep the per-model plan windows, and name a window by its model
