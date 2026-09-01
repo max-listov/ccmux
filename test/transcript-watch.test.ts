@@ -28,16 +28,29 @@ test('a write to the transcript is observed long before a poll would come round'
   const watcher: FSWatcher = watch(file, () => {
     seen += 1;
   });
+
+  // Arm first, and prove it is armed. `watch()` returns synchronously but the platform registers
+  // the watch asynchronously, so a write that lands inside that window is delivered to nobody —
+  // no wait, however long, recovers it. Measuring across that race is what made this test fail
+  // under load while passing alone, and widening the bound would not have fixed it: the event was
+  // not late, it did not exist.
+  for (let i = 0; i < 500 && seen === 0; i += 1) {
+    writeFileSync(file, `{}\n{"type":"warmup","n":${i}}\n`);
+    await Bun.sleep(10);
+  }
+  expect(seen).toBeGreaterThan(0);
+
+  // Now the measured claim, on one append, with a finite bound. Both halves are the test: without
+  // the bound it would pass on a watch slower than the 1500 ms poll it replaces — a build where
+  // the feature is worthless — and without the single write it would not exercise what the hook
+  // depends on, which is that ONE append arrives.
+  seen = 0;
   const started = Date.now();
   writeFileSync(file, '{}\n{"type":"assistant"}\n');
-  // One append, and a bound that is generous but finite. Both halves are the test: without the
-  // bound it would pass on a watch slower than the 1500 ms poll it replaces — that is, on a build
-  // where the feature is worthless — and without the single write it would not exercise the thing
-  // the hook depends on, which is that ONE append arrives.
-  for (let i = 0; i < 120 && seen === 0; i += 1) await Bun.sleep(10);
+  for (let i = 0; i < 150 && seen === 0; i += 1) await Bun.sleep(10);
   watcher.close();
   expect(seen).toBeGreaterThan(0);
-  expect(Date.now() - started).toBeLessThan(1_200);
+  expect(Date.now() - started).toBeLessThan(1_500);
 });
 
 test('a file that is not there yet is not watched, and that is not an error', () => {

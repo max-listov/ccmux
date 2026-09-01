@@ -677,12 +677,17 @@ test('declared service reuses exact control operations, identity and admission',
     workspace: f.root,
     flags: [],
   });
+  // Wait for the first create to actually be in flight, generously: this is a precondition, not a
+  // measurement. Fifty milliseconds was enough on an idle machine and not on a loaded one, and the
+  // failure read as "concurrent create was not refused" when the truth was "there was nothing to
+  // be concurrent with yet".
   for (
     let attempt = 0;
-    attempt < 50 && f.owned.controls.mutations.getSnapshot().active === 0;
+    attempt < 5_000 && f.owned.controls.mutations.getSnapshot().active === 0;
     attempt++
   )
     await Bun.sleep(1);
+  expect(f.owned.controls.mutations.getSnapshot().active).toBeGreaterThan(0);
   await expect(
     f.remote.create({ requestId, name: 'created-a', workspace: f.root, flags: [] }),
   ).rejects.toMatchObject({ code: 'BUSY', status: 429 });
