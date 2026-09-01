@@ -89,6 +89,18 @@ test('a Codex read states the duration, and the position never implies one', () 
   expect(limits.windows.find((window) => window.key === 'codex_model:secondary')?.percent).toBe(3);
 });
 
+test('the account read answers with an envelope, and its per-model windows are not dropped', () => {
+  // What the live `account/rateLimits/read` returns: the main bucket beside a map of the scoped
+  // ones. Passing the inner bucket on lost every per-model window without failing anything.
+  const envelope = {
+    rateLimits: { limitId: 'codex', primary: CODEX_LIVE.primary },
+    rateLimitsByLimitId: CODEX_LIVE.rateLimitsByLimitId,
+  };
+  const keys = codexPlanLimits(envelope, NOW).windows.map((window) => window.key);
+  expect(keys).toContain('primary');
+  expect(keys).toContain('codex_model:primary');
+});
+
 test('the same reader takes the rollout spelling, because two readers would drift', () => {
   const rollout = {
     limit_id: 'codex',
@@ -115,6 +127,17 @@ test('a pushed event updates one window and leaves the rest of the read standing
   );
   expect(alone?.answer).toBe('known');
   expect(alone?.windows).toHaveLength(1);
+});
+
+test('a window named by its model is read by that name, not by the key beside it', () => {
+  const [scoped] = claudePlanLimits(CLAUDE_LIVE, NOW).windows.filter((w) => w.scope === 'Fable');
+  // `model scoped:Fable Fable` said one thing twice and read as two windows.
+  expect(planWindowLabel(scoped as never)).toBe('Fable');
+  // Codex names a per-model bucket instead of scoping it; the name is used the same way.
+  const codex = codexPlanLimits(CODEX_LIVE, NOW).windows.find(
+    (w) => w.key === 'codex_model:primary',
+  );
+  expect(planWindowLabel(codex as never)).toBe('5h A scoped model');
 });
 
 test('the fullest window is read first, because it is the one that stops the work', () => {

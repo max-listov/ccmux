@@ -388,11 +388,7 @@ export class OwnedCodexConnection {
         this.bounded(this.liveRpc().request('account/read', { refreshToken: false })),
         this.bounded(this.liveRpc().request('account/rateLimits/read', {})),
       ]);
-      projection.accountLimits(
-        codexAccount(account),
-        codexPlanLimits((limits as { rateLimits?: unknown } | null)?.rateLimits ?? limits, now),
-        now,
-      );
+      projection.accountLimits(codexAccount(account), codexPlanLimits(limits, now), now);
     } catch {
       // Enrichment, never a precondition: a session whose account cannot be read still runs, and
       // the previous measurement stays standing rather than being replaced by a zero.

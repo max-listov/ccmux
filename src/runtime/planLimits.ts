@@ -179,7 +179,15 @@ export function mergeRateLimitEvent(
 export function codexPlanLimits(reported: unknown, now: number): PlanLimits {
   const observedAt = new Date(now).toISOString();
   if (reported === null || typeof reported !== 'object') return unpublishedPlanLimits(now);
-  const source = reported as Record<string, unknown>;
+  const outer = reported as Record<string, unknown>;
+  // The account read answers with an envelope — the main bucket beside a map of the per-model ones
+  // — while the rollout writes the bucket alone. Unwrapping here rather than at each caller is what
+  // keeps the per-model windows: reading the inner bucket and passing that on silently drops them.
+  const inner = outer.rateLimits;
+  const source: Record<string, unknown> =
+    inner !== null && typeof inner === 'object'
+      ? { ...(inner as Record<string, unknown>), rateLimitsByLimitId: outer.rateLimitsByLimitId }
+      : outer;
   const primaryId = label(source.limitId ?? source.limit_id, 64);
   const plan = label(source.planType ?? source.plan_type, 64);
   const windows: PlanWindow[] = [];
@@ -225,18 +233,26 @@ export function planWindowMinutes(window: PlanWindow): number | null {
   return window.windowMinutes ?? NAMED_MINUTES[window.key] ?? null;
 }
 
-/** A duration a person reads at a glance: `5h`, `7d`. Falls back to the provider's own key. */
+/**
+ * What a person calls this window: `5h`, `7d`, `7d Fable`, or the name the provider gave it.
+ *
+ * The provider's raw key is the last resort rather than the basis. A window that names a model or
+ * carries a limit name is recognised by that, and repeating the key beside it — `model scoped:Fable
+ * Fable` — says one thing twice while reading as two.
+ */
 export function planWindowLabel(window: PlanWindow): string {
   const minutes = planWindowMinutes(window);
-  const named =
+  const duration =
     minutes === null
-      ? window.key.replace(/_/g, ' ')
+      ? null
       : minutes % 1440 === 0
         ? `${minutes / 1440}d`
         : minutes % 60 === 0
           ? `${minutes / 60}h`
           : `${minutes}m`;
-  return window.scope === null ? named : `${named} ${window.scope}`;
+  const name = window.scope ?? window.label;
+  if (duration !== null) return name === null ? duration : `${duration} ${name}`;
+  return name ?? window.key.replace(/_/g, ' ');
 }
 
 /**
