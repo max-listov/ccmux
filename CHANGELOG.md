@@ -6,6 +6,22 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+Two things a fleet consumer could not do, both asked for by a consumer that hit them.
+
+- `models({ runtime: "claude" })` answers without a session. The list a caller needs to choose a
+  model existed only inside a running session, and the session is created WITH the choice — a
+  circle with no way out, which sent callers off to hardcode model names. The way out is that the
+  list is not a property of a conversation at all: it is what the installed CLI and the operator's
+  settings offer, and every owner on the host is handed the same one before its first turn. The
+  host answer is the newest catalog any owner published, carrying when it was observed and whether
+  its publisher is still running. `stale` is a description, not a failure. A host that does not run
+  the mode still says so, which is a different answer from an empty list.
+- `context` in `list --json` and `fleet --json` carries `window` and `rawLimitTokens`. The runtime
+  measures both the model's ceiling and the narrower window a compaction policy imposes, and the
+  projection kept only the percentage — so a reader watching the fleet saw a number it could not
+  attribute, and the next step is inferring the ceiling from the model's NAME. A source that cannot
+  know, such as a fill scraped from a status line, reports absence rather than `model-limit`.
+
 ## [0.41.0] — 2026-09-01
 
 One mechanism where there were four, one table where there were twelve, and the task queue moves out

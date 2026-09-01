@@ -65,6 +65,9 @@ test('snapshot symlinks and FIFOs cannot turn a bounded read into an arbitrary o
 
 const dirs: string[] = [];
 test('producer inventory uses printable delimiters under a service locale', async () => {
+  // What is asserted is the parse, not the speed of spawning a shell. Under a loaded full-suite
+  // run the child lost the production deadline, and the failure read as "the delimiter is wrong".
+  process.env.CCMUX_OBSERVE_DEADLINE_MS = '15000';
   const m = fixture();
   const script = join(m.stateDir, 'inventory');
   writeFileSync(
@@ -73,7 +76,11 @@ test('producer inventory uses printable delimiters under a service locale', asyn
     { mode: 0o700 },
   );
   m.tmuxBin = script;
-  expect([...(await observedSessionInventory(m))]).toEqual([['agent-a', 123]]);
+  try {
+    expect([...(await observedSessionInventory(m))]).toEqual([['agent-a', 123]]);
+  } finally {
+    delete process.env.CCMUX_OBSERVE_DEADLINE_MS;
+  }
 });
 test('managed status distinguishes work, idle, prompt, unknown and stopped', () => {
   const m = fixture();

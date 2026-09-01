@@ -64,6 +64,8 @@ test('host catalog needs no managed row and metadata child is reaped', async () 
       machine: f.machine.rcPrefix,
       provider: 'openai',
       providerLabel: null,
+      observedAt: null,
+      freshness: null,
       runtime: 'codex',
     });
     expect(page.target).toBeUndefined();

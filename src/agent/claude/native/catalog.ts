@@ -1,18 +1,20 @@
 import { createHash } from 'node:crypto';
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { loadSessions } from '../../../config/sessions.ts';
 import type {
   ControlModel,
   ControlModelCatalog,
   ControlModelsRead,
 } from '../../../control/schema.ts';
 import { hasNativeRuntime } from '../../../runtime/modes.ts';
-
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/status.ts';
 import { readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+import { resolveAgentSdk } from './resolve.ts';
 
 /**
  * The models this host's runtime actually offers, published by the writer that can ask.
@@ -43,10 +45,50 @@ const ModelSchema = z
   })
   .strict();
 const PreparedSchema = z
-  .object({ registrationGeneration: z.uuid(), models: z.array(ModelSchema).max(128) })
+  .object({
+    registrationGeneration: z.uuid(),
+    /**
+     * When the owner asked the runtime for this list.
+     *
+     * Optional because catalogs written before this field existed are still the best answer this
+     * host has; a read falls back to the file's own timestamp rather than discarding them.
+     */
+    observedAt: z.string().max(64).optional(),
+    models: z.array(ModelSchema).max(128),
+  })
   .strict();
 const MAX_BYTES = 512 * 1024;
 const path = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m, s), 'models.json');
+
+/**
+ * One page of a catalog, and one place that decides what a page is.
+ *
+ * Both reads — the session's and the host's — answer from the same stored list, so paging them
+ * differently would give a caller two cursor vocabularies for one catalog.
+ */
+function page(
+  models: readonly ControlModel[],
+  input: ControlModelsRead,
+  source: ControlModelCatalog['source'],
+  target?: ControlModelCatalog['target'],
+): ControlModelCatalog {
+  const visible = input.includeHidden ? models : models.filter((model) => !model.hidden);
+  const digest = createHash('sha256').update(JSON.stringify(visible)).digest('hex').slice(0, 16);
+  let offset = 0;
+  if (input.cursor) {
+    const [revision, start] = input.cursor.split(':');
+    if (revision !== digest || !start || !/^\d+$/.test(start) || Number(start) > visible.length)
+      throw new AppError('INVALID_CURSOR', 'Native catalog cursor requires a fresh baseline', 409);
+    offset = Number(start);
+  }
+  const limit = input.limit ?? 64;
+  return {
+    ...(target === undefined ? {} : { target }),
+    source,
+    data: visible.slice(offset, offset + limit),
+    nextCursor: offset + limit < visible.length ? `${digest}:${offset + limit}` : null,
+  };
+}
 
 /** What the runtime reported about a model, kept to the fields a chooser needs. */
 export interface SupportedModel {
@@ -123,11 +165,87 @@ export async function writeClaudeCatalog(
   models: readonly ControlModel[],
 ): Promise<void> {
   const bytes = JSON.stringify(
-    PreparedSchema.parse({ registrationGeneration: s.registrationGeneration, models }),
+    PreparedSchema.parse({
+      registrationGeneration: s.registrationGeneration,
+      observedAt: new Date().toISOString(),
+      models,
+    }),
   );
   if (Buffer.byteLength(bytes) > MAX_BYTES)
     throw new Error('Native Claude catalog exceeds its bounded projection');
   await atomicWrite(path(m, s), bytes, 0o600);
+}
+
+/**
+ * The list this host last observed, from whichever owner published it.
+ *
+ * A caller choosing a model does so BEFORE creating the session that would carry the choice, so
+ * "ask a running session" is a circle with no way out: the list needs a session, the session needs
+ * the list. The way out is that the list is not a property of a conversation at all — it is what
+ * the installed CLI and the operator's settings offer, and every owner on this host receives the
+ * same one at startup, before its first turn.
+ *
+ * So the answer is the newest catalog any owner left behind, said to be exactly that: with when it
+ * was observed, and whether the session that published it is still running. A list from a session
+ * that has since stopped is still the best answer this host has; calling it current would be the
+ * lie, and refusing to give it at all is what sent callers off to hardcode model names.
+ */
+function hostCatalog(
+  m: MachineConfig,
+): { models: readonly ControlModel[]; observedAt: string | null; live: boolean } | null {
+  let best: { models: readonly ControlModel[]; observedAt: string | null; live: boolean } | null =
+    null;
+  for (const candidate of loadSessions(m)) {
+    if (candidate.agent !== 'claude' || !hasNativeRuntime(candidate)) continue;
+    const file = path(m, candidate);
+    const prepared = readPrivateJson(file, PreparedSchema, MAX_BYTES);
+    if (prepared === null) continue;
+    // A catalog written before the field existed still counts; its file says when it was written.
+    let observedAt = prepared.observedAt ?? null;
+    if (observedAt === null) {
+      try {
+        observedAt = statSync(file).mtime.toISOString();
+      } catch {
+        observedAt = null;
+      }
+    }
+    const live = readManagedRuntimeStatus(m, candidate).status === 'live';
+    // Newest wins, and a live publisher outranks a stopped one at the same instant: both describe
+    // the same installation, and the live one can still be asked again.
+    const better =
+      best === null ||
+      (live && !best.live) ||
+      (live === best.live && (observedAt ?? '') > (best.observedAt ?? ''));
+    if (better) best = { models: prepared.models, observedAt, live };
+  }
+  return best;
+}
+
+/**
+ * Answer without a session, or say precisely why this host cannot.
+ *
+ * Three different answers, because they call for three different actions: a host that does not run
+ * this mode at all, a host that runs it but has never had an owner publish a list, and a list.
+ * Collapsing the first two into an empty array would tell a chooser the runtime offers no models.
+ */
+function readClaudeHostModels(m: MachineConfig, input: ControlModelsRead): ControlModelCatalog {
+  if (input.launchRecipe !== undefined)
+    throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
+  if (!('path' in resolveAgentSdk(m)))
+    throw new AppError('UNSUPPORTED', 'This host does not publish a catalog for this runtime', 409);
+  const best = hostCatalog(m);
+  if (best === null)
+    // Enabled, but nobody has ever held it here. Not "no models" — nothing observed yet.
+    throw new AppError('UNAVAILABLE', 'No session on this host has published its catalog', 503);
+  return page(best.models, input, {
+    kind: 'host',
+    machine: m.rcPrefix,
+    runtime: 'claude',
+    provider: 'claude',
+    providerLabel: null,
+    observedAt: best.observedAt,
+    freshness: best.live ? 'live' : 'stale',
+  });
 }
 
 export function readClaudeModels(
@@ -135,10 +253,7 @@ export function readClaudeModels(
   input: ControlModelsRead,
   session: Session | undefined,
 ): ControlModelCatalog {
-  if (session === undefined)
-    // The list comes from a running runtime, and a host with no session has none to ask. Saying so
-    // beats returning a plausible list nobody verified.
-    throw new AppError('UNSUPPORTED', 'This runtime lists models per session', 409);
+  if (session === undefined) return readClaudeHostModels(m, input);
   if (!hasNativeRuntime(session))
     // The interactive mode has no catalog to read, and answering with the native mode's
     // unavailability would describe a runtime this session is not running. Dispatch keys on the
@@ -153,28 +268,19 @@ export function readClaudeModels(
     readManagedRuntimeStatus(m, session).status !== 'live'
   )
     throw new AppError('UNAVAILABLE', 'Native runtime catalog is unavailable', 503);
-  const visible = input.includeHidden
-    ? prepared.models
-    : prepared.models.filter((model) => !model.hidden);
-  const digest = createHash('sha256').update(JSON.stringify(visible)).digest('hex').slice(0, 16);
-  let offset = 0;
-  if (input.cursor) {
-    const [revision, start] = input.cursor.split(':');
-    if (revision !== digest || !start || !/^\d+$/.test(start) || Number(start) > visible.length)
-      throw new AppError('INVALID_CURSOR', 'Native catalog cursor requires a fresh baseline', 409);
-    offset = Number(start);
-  }
-  const limit = input.limit ?? 64;
-  return {
-    ...(input.target === undefined ? {} : { target: input.target }),
-    source: {
+  return page(
+    prepared.models,
+    input,
+    {
       kind: 'session',
       machine: m.rcPrefix,
       runtime: 'claude',
       provider: 'claude',
       providerLabel: null,
+      observedAt: prepared.observedAt ?? null,
+      // Read from the session that holds the runtime right now, so it is current by construction.
+      freshness: 'live',
     },
-    data: visible.slice(offset, offset + limit),
-    nextCursor: offset + limit < visible.length ? `${digest}:${offset + limit}` : null,
-  };
+    input.target,
+  );
 }

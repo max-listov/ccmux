@@ -72,12 +72,14 @@ export const RemoteSessionSchema = z.object({
    * context fill for local sessions only. The default is the "nothing measured" shape, which is
    * also what an older peer's silence means.
    */
-  context: ContextInfoSchema.default({
+  context: ContextInfoSchema.default(() => ({
     text: null,
     usedTokens: null,
     limitTokens: null,
     percent: null,
-  }),
+    rawLimitTokens: null,
+    window: null,
+  })),
   /**
    * Which account this session runs on and what it has spent.
    *

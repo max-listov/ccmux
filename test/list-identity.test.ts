@@ -13,7 +13,14 @@ const baseItem = {
   state: 'idle',
   lifecycleError: null,
   model: null,
-  context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+  context: {
+    text: null,
+    usedTokens: null,
+    limitTokens: null,
+    percent: null,
+    rawLimitTokens: null,
+    window: null,
+  },
   account: null,
   costUsd: null,
   uptime: { text: '1m', seconds: 60 },
@@ -43,7 +50,14 @@ test('fleet renders a missing remote provider as unknown, never Claude', () => {
     role: null,
     turnStartedAt: null,
     waitingFor: null,
-    context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+    context: {
+      text: null,
+      usedTokens: null,
+      limitTokens: null,
+      percent: null,
+      rawLimitTokens: null,
+      window: null,
+    },
     uptime: { text: '1m' },
   });
   expect(line).toContain('unknown');

@@ -306,6 +306,8 @@ test('pagination is deterministic, provider-cursored and bounded by the strict i
     machine: f.m.rcPrefix,
     provider: 'openai',
     providerLabel: null,
+    observedAt: null,
+    freshness: null,
   });
   expect(second.source).toEqual(first.source);
   expect(second.data.map((model) => model.id)).toEqual(['model-b']);
@@ -648,6 +650,8 @@ test('zod model schemas accept canonical safe shapes only', () => {
     machine: 'host-a',
     provider: 'openai',
     providerLabel: null,
+    observedAt: null,
+    freshness: null,
   };
   expect(
     ControlModelCatalogSchema.safeParse({

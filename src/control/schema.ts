@@ -276,6 +276,22 @@ export const ControlModelCatalogSchema = z
         providerLabel: z.string().max(64).nullable().default(null),
         runtime: AgentKindSchema,
         launchRecipe: LaunchRecipeMetadataSchema.optional(),
+        /**
+         * When this list was observed, for a runtime whose catalog only a running session can ask.
+         *
+         * Null where the answer is computed on the spot and the question does not arise. Where it
+         * is not null it is load-bearing: a list left behind by a session that has since stopped is
+         * still the best answer this host has, and calling it current would be the lie.
+         */
+        observedAt: z.string().max(64).nullable().default(null),
+        /**
+         * Whether the session that published this list is still running.
+         *
+         * `stale` is not a failure — it is "nobody is holding this runtime right now, and this is
+         * what it last said". A caller choosing a model before creating a session wants exactly
+         * that, and wants to know which of the two it got.
+         */
+        freshness: z.enum(['live', 'stale']).nullable().default(null),
       })
       .strict(),
     data: z.array(ControlModelSchema).max(CONTROL_MODELS_MAX_PAGE),

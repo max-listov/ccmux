@@ -904,6 +904,23 @@ export const ContextInfoSchema = z.object({
   usedTokens: z.number().nullable(),
   limitTokens: z.number().nullable(),
   percent: z.number().nullable(),
+  /**
+   * The model's own ceiling, beside the window the turn is actually judged against.
+   *
+   * Both are needed because the same percentage means two different things: against the model's
+   * limit there is room left, against a smaller compaction window the turn is about to be folded.
+   * A reader given only the percentage cannot tell which — and starts inferring the ceiling from
+   * the model's NAME, which is deriving a fact from a string when the declared one exists.
+   */
+  rawLimitTokens: z.number().nullable().default(null),
+  /**
+   * Which of the two the percentage was measured against.
+   *
+   * Null is "this source does not say" — a session whose fill is scraped from a status line has no
+   * way to know, and a peer running an older build does not report it. Neither is the same as
+   * `model-limit`, and answering with it would be inventing the half that is missing.
+   */
+  window: z.enum(['model-limit', 'compaction-window']).nullable().default(null),
 });
 
 export const ListItemSchema = z.object({

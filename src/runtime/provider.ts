@@ -37,7 +37,14 @@ export function nativeProvider(id: 'opencode' | 'custom' | 'claude'): AgentProvi
       state: 'indeterminate',
       atPrompt: null,
       contextLabel: '-',
-      context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+      context: {
+        text: null,
+        usedTokens: null,
+        limitTokens: null,
+        percent: null,
+        rawLimitTokens: null,
+        window: null,
+      },
     }),
   };
 }

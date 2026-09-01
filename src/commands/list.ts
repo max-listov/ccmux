@@ -106,7 +106,14 @@ async function buildRow(
       account: null,
       costUsd: null,
       contextLabel: '-',
-      context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+      context: {
+        text: null,
+        usedTokens: null,
+        limitTokens: null,
+        percent: null,
+        rawLimitTokens: null,
+        window: null,
+      },
       uptimeText: '—',
       stale: [],
       turnStartedAt: null, // a stopped session is not in a turn
@@ -161,12 +168,23 @@ async function buildRow(
       usedTokens: used,
       limitTokens: metrics.contextSizeTokens,
       percent: metrics.pct,
+      // Scraped from a status line, which prints one number and never says which ceiling it is:
+      // stated as unknown rather than guessed at.
+      rawLimitTokens: null,
+      window: null,
     };
   } else if (context.text === null) {
     const used = sessionUsedTokens(s, m);
     if (used !== null && used > 0) {
       contextLabel = fmtTokens(used);
-      context = { text: contextLabel, usedTokens: used, limitTokens: null, percent: null };
+      context = {
+        text: contextLabel,
+        usedTokens: used,
+        limitTokens: null,
+        percent: null,
+        rawLimitTokens: null,
+        window: null,
+      };
     }
   }
   const uptimeSeconds = startedAt === undefined ? null : Math.floor(nowSec - startedAt);

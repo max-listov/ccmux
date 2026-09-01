@@ -172,6 +172,9 @@ export async function readOpenCodeModels(
       provider: null,
       // OpenCode names its own providers; there is no separate server label behind them.
       providerLabel: null,
+      // Computed on the spot from what the host declares, so there is no observation to date.
+      observedAt: null,
+      freshness: null,
     },
     ...(prepared === null ? {} : { agents: prepared.agents }),
     data: visible.slice(offset, offset + limit),

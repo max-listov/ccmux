@@ -12,11 +12,21 @@ export function observationChildCpuUs(): number {
   return childCpuUs;
 }
 
-/** Bounded producer IO: one child at a time, 64 KiB per stream, one-second deadline. */
+/**
+ * Bounded producer IO: one child at a time, 64 KiB per stream, one-second deadline.
+ *
+ * The deadline is what keeps a hung producer from stalling an observation pass, and one second is
+ * the right size for the real one. It is overridable because a machine under enough load to make a
+ * shell take longer than that is not a machine with a hung producer — and a check that reports load
+ * as a defect is the kind that gets switched off.
+ */
+// Read per call, not at import: a value captured when the module loads cannot be overridden by
+// anything that happens afterwards, which would make the override above true only in the comment.
+const deadlineMs = (): number => Number(process.env.CCMUX_OBSERVE_DEADLINE_MS ?? 1000);
 async function invoke(argv: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   execCount++;
   const proc = Bun.spawn(argv, { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
-  const timeout = setTimeout(() => proc.kill('SIGKILL'), 1000);
+  const timeout = setTimeout(() => proc.kill('SIGKILL'), deadlineMs());
   async function read(stream: ReadableStream<Uint8Array>): Promise<string> {
     const reader = stream.getReader();
     const chunks: Uint8Array[] = [];

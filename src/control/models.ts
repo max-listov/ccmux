@@ -158,6 +158,9 @@ export async function readControlModels(
           machine: m.rcPrefix,
           provider: await nativeModelProvider(rpc),
           providerLabel: null,
+          // Computed on the spot from what the host declares, so there is no observation to date.
+          observedAt: null,
+          freshness: null,
           ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
         });
       } finally {
@@ -179,6 +182,9 @@ export async function readControlModels(
         machine: m.rcPrefix,
         provider: await nativeModelProvider(rpc),
         providerLabel: null,
+        // Computed on the spot from what the host declares, so there is no observation to date.
+        observedAt: null,
+        freshness: null,
         ...(launch.launchRecipe === undefined ? {} : { launchRecipe: launch.launchRecipe }),
       }),
     );

@@ -18,9 +18,17 @@ export function tokNum(label: string): number | null {
   return Math.round(n * mult);
 }
 
-/** Parse a context label ("120k/1.0M 12%" | "40k" | null) into structured tokens. */
+/**
+ * Parse a context label ("120k/1.0M 12%" | "40k" | null) into structured tokens.
+ *
+ * Which ceiling the label was measured against is left null on every path, and that is the honest
+ * answer rather than a gap: a status line prints one number and never says whether a compaction
+ * policy narrowed it. Filling in `model-limit` here would state something this source cannot know.
+ */
 export function parseContext(ctx: string | null): ContextInfo {
-  if (!ctx) return { text: null, usedTokens: null, limitTokens: null, percent: null };
+  const unmeasured = { rawLimitTokens: null, window: null } as const;
+  if (!ctx)
+    return { text: null, usedTokens: null, limitTokens: null, percent: null, ...unmeasured };
   const [pair, pct] = ctx.split(' ');
   if (pair?.includes('/')) {
     const [used, limit] = pair.split('/');
@@ -29,7 +37,8 @@ export function parseContext(ctx: string | null): ContextInfo {
       usedTokens: tokNum(used ?? ''),
       limitTokens: tokNum(limit ?? ''),
       percent: pct ? Number.parseInt(pct, 10) : null,
+      ...unmeasured,
     };
   }
-  return { text: ctx, usedTokens: tokNum(ctx), limitTokens: null, percent: null };
+  return { text: ctx, usedTokens: tokNum(ctx), limitTokens: null, percent: null, ...unmeasured };
 }

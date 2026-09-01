@@ -33,8 +33,17 @@ const RemoteSession = z.object({
       usedTokens: z.number().nullable(),
       limitTokens: z.number().nullable(),
       percent: z.number().nullable(),
+      rawLimitTokens: z.number().nullable().default(null),
+      window: z.enum(['model-limit', 'compaction-window']).nullable().default(null),
     })
-    .default({ text: null, usedTokens: null, limitTokens: null, percent: null }),
+    .default(() => ({
+      text: null,
+      usedTokens: null,
+      limitTokens: null,
+      percent: null,
+      rawLimitTokens: null,
+      window: null,
+    })),
   account: z
     .object({
       label: z.string().nullable(),
@@ -62,7 +71,14 @@ test('a local fleet row carries the directory exactly as `list --json` reports i
     state: 'idle',
     lifecycleError: null,
     model: null,
-    context: { text: null, usedTokens: null, limitTokens: null, percent: null },
+    context: {
+      text: null,
+      usedTokens: null,
+      limitTokens: null,
+      percent: null,
+      rawLimitTokens: null,
+      window: null,
+    },
     uptime: { text: '1m', seconds: 60 },
     createdAt: null,
     lastMessage: null,

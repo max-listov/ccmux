@@ -17,6 +17,10 @@ test('parseContext splits used/limit/percent from a full statusline label', () =
     usedTokens: 120_000,
     limitTokens: 1_000_000,
     percent: 12,
+    // A status line prints one number and never says whether a compaction policy narrowed it.
+    // Answering `model-limit` here would state what this source cannot know.
+    rawLimitTokens: null,
+    window: null,
   });
 });
 
@@ -26,6 +30,8 @@ test('parseContext handles a bare used-only label (no limit / percent)', () => {
     usedTokens: 40_000,
     limitTokens: null,
     percent: null,
+    rawLimitTokens: null,
+    window: null,
   });
 });
 
@@ -35,5 +41,7 @@ test('parseContext on null → all-null (unknown is never invented as 0)', () =>
     usedTokens: null,
     limitTokens: null,
     percent: null,
+    rawLimitTokens: null,
+    window: null,
   });
 });

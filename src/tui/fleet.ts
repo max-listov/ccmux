@@ -125,6 +125,8 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
       usedTokens: ext.usedTokens,
       limitTokens: null,
       percent: null,
+      rawLimitTokens: null,
+      window: null,
     },
     uptimeText: '—',
     uptimeSeconds: null,

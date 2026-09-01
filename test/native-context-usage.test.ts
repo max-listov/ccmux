@@ -46,6 +46,8 @@ test('a session that has measured nothing reports nothing, not zero', () => {
     usedTokens: null,
     limitTokens: null,
     percent: null,
+    rawLimitTokens: null,
+    window: null,
   });
 });
 
@@ -59,6 +61,10 @@ test('the reported shape is the one every other session reports', () => {
     usedTokens: 300_000,
     limitTokens: 1_000_000,
     percent: 30,
+    // The runtime measures both ceilings, and the projection carries both: the same percentage
+    // means "room left" against the model limit and "about to be folded" against a narrower one.
+    rawLimitTokens: 1_000_000,
+    window: 'model-limit',
   });
 });
 
@@ -68,12 +74,25 @@ test('a peer session carries its context fill through the fleet slice', async ()
   // so a consumer watching the whole fleet could read context for local sessions only.
   const parsed = RemoteSessionSchema.parse({
     name: 'agent-a',
-    context: { text: '300k/1.0M 30%', usedTokens: 300_000, limitTokens: 1_000_000, percent: 30 },
+    context: {
+      text: '300k/1.0M 30%',
+      usedTokens: 300_000,
+      limitTokens: 1_000_000,
+      percent: 30,
+      rawLimitTokens: 2_000_000,
+      window: 'compaction-window',
+    },
   });
   expect(parsed.context.percent).toBe(30);
   expect(parsed.context.text).toBe('300k/1.0M 30%');
+  // Which ceiling the peer measured against travels too: thirty percent of a compaction window is
+  // a different fact from thirty percent of the model's limit, and only the peer knows which.
+  expect(parsed.context.window).toBe('compaction-window');
+  expect(parsed.context.rawLimitTokens).toBe(2_000_000);
   // An older peer says nothing, and nothing is not zero.
   expect(RemoteSessionSchema.parse({ name: 'agent-b' }).context).toEqual({
+    rawLimitTokens: null,
+    window: null,
     text: null,
     usedTokens: null,
     limitTokens: null,

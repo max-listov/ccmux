@@ -48,11 +48,23 @@ const fmt = (tokens: number): string =>
  */
 export function nativeContextInfo(snapshot: NativeSnapshot | null | undefined): ContextInfo {
   const usage = snapshot?.contextUsage;
-  if (!usage) return { text: null, usedTokens: null, limitTokens: null, percent: null };
+  if (!usage)
+    return {
+      text: null,
+      usedTokens: null,
+      limitTokens: null,
+      percent: null,
+      rawLimitTokens: null,
+      window: null,
+    };
   return {
     text: `${fmt(usage.usedTokens)}/${fmt(usage.limitTokens)} ${usage.percent}%`,
     usedTokens: usage.usedTokens,
     limitTokens: usage.limitTokens,
     percent: usage.percent,
+    // Carried rather than dropped: the runtime measures both, and a projection that keeps only the
+    // number leaves its reader to guess which ceiling produced it.
+    rawLimitTokens: usage.rawLimitTokens,
+    window: usage.window,
   };
 }
