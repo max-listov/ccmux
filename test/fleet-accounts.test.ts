@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { accountIsEmpty, nativeAccount } from '../src/agent/claude/native/account.ts';
-import { accountLines } from '../src/commands/fleetList.ts';
+import { accountLines, fleetAccounts } from '../src/commands/fleetList.ts';
+import type { PlanLimits } from '../src/runtime/planLimits.ts';
 
 /**
  * Which session is spending whose account.
@@ -45,11 +46,34 @@ const machine = (name: string, sessions: unknown[]) =>
     behind: null,
     sessions,
   }) as never;
-const row = (name: string, label: string | null, costUsd: number | null) => ({
+const row = (
+  name: string,
+  label: string | null,
+  costUsd: number | null,
+  planLimits: PlanLimits | null = null,
+) => ({
   name,
   account:
     label === null ? null : { label, organization: null, subscription: null, provider: null },
   costUsd,
+  planLimits,
+});
+
+const NOW = Date.parse('2026-09-01T10:00:00.000Z');
+const limits = (percent: number, observedAt: string): PlanLimits => ({
+  answer: 'known',
+  plan: 'max',
+  windows: [
+    {
+      key: 'five_hour',
+      label: null,
+      percent,
+      windowMinutes: null,
+      resetsAt: '2026-09-01T12:00:00.000Z',
+      scope: null,
+    },
+  ],
+  observedAt,
 });
 
 test('sessions sharing an account are grouped across machines, with their total', () => {
@@ -62,7 +86,9 @@ test('sessions sharing an account are grouped across machines, with their total'
   ]);
   expect(lines[0]).toBe('accounts');
   expect(lines[1]).toBe('  one@example.test  $1.75  host-a:agent-a host-b:agent-c');
-  expect(lines[2]).toBe('  two@example.test  $2.00  host-a:agent-b');
+  // Nobody asked either session how full the plan is, and that is said rather than left blank.
+  expect(lines[2]).toBe('    plan limits not read');
+  expect(lines[3]).toBe('  two@example.test  $2.00  host-a:agent-b');
 });
 
 test('an unmeasured total is unknown, and a session naming no account is not a group', () => {
@@ -71,7 +97,35 @@ test('an unmeasured total is unknown, and a session naming no account is not a g
   ]);
   // Zero would claim the sessions cost nothing, which is a different statement from no measurement.
   expect(lines[1]).toBe('  one@example.test  cost unknown  host-a:agent-a');
-  expect(lines).toHaveLength(2);
+  expect(lines).toHaveLength(3);
   // Nothing reported at all prints nothing: silence is not a group.
   expect(accountLines([machine('host-a', [row('agent-a', null, null)])])).toEqual([]);
+});
+
+test('sessions on one account share ONE plan window, not one window each', () => {
+  // The model this exists against: ten sessions on one subscription drawn as ten independent
+  // budgets. The window belongs to the account, so the fleet groups on it and reports it once.
+  const [account, ...rest] = fleetAccounts([
+    machine('host-a', [
+      row('agent-a', 'one@example.test', 1, limits(50, '2026-09-01T09:00:00.000Z')),
+      row('agent-b', 'one@example.test', 2, limits(77, '2026-09-01T09:59:00.000Z')),
+    ]),
+    machine('host-b', [row('agent-c', 'one@example.test', null)]),
+  ]);
+  expect(rest).toHaveLength(0);
+  expect(account?.sessions).toEqual(['host-a:agent-a', 'host-a:agent-b', 'host-b:agent-c']);
+  // Newest, not merged: two sessions describe the SAME window, and combining two readings of one
+  // fact can show a window that has since reset beside one that has not.
+  expect(account?.limits?.windows[0]?.percent).toBe(77);
+  expect(account?.plan).toBe('max');
+  const lines = accountLines(
+    [
+      machine('host-a', [
+        row('agent-a', 'one@example.test', null, limits(77, '2026-09-01T09:59:00.000Z')),
+      ]),
+    ],
+    NOW,
+  );
+  expect(lines[1]).toBe('  one@example.test [max]  cost unknown  host-a:agent-a');
+  expect(lines[2]).toBe('    plan 5h 77% \u21bb2h');
 });

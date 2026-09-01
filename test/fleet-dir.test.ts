@@ -17,6 +17,18 @@ const RemoteSession = z.object({
   state: z.string().default('?'),
   archived: z.boolean().default(false),
   waitingFor: z.string().nullable().default(null),
+  planLimits: z.any().nullable().default(null),
+  lastMessage: z
+    .object({
+      kind: z.string().default('unknown'),
+      role: z.string().default('unknown'),
+      text: z.string().nullable().default(null),
+      toolName: z.string().nullable().default(null),
+      createdAt: z.string().nullable().default(null),
+    })
+    .loose()
+    .nullable()
+    .default(null),
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),

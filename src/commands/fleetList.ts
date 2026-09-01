@@ -9,9 +9,11 @@ import {
 } from '../config/releaseCheck.ts';
 import { AgentKindSchema, ContextInfoSchema, ReleaseStandingSchema } from '../config/schema.ts';
 import { peersOf, runPeer } from '../fleet/transport.ts';
+import { PlanLimitsSchema } from '../runtime/planLimits.ts';
 import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { VERSION } from '../util/version.ts';
+import { accountLines, fleetAccounts } from './accounts.ts';
 import { collectRows, rowStateLabel } from './list.ts';
 
 /**
@@ -60,6 +62,27 @@ export const RemoteSessionSchema = z.object({
    * required so one un-upgraded peer cannot fail the parse of every row in the fleet.
    */
   waitingFor: z.string().nullable().default(null),
+  /**
+   * Where the session stopped, as `list --json` already reports it locally.
+   *
+   * Busy is visible from the timer; WHAT it is busy with is not, and a reader watching the whole
+   * fleet only ever takes the fleet path. Null from a peer too old to report it — which is not the
+   * same as a session with nothing to show, the distinction already drawn for `turnStartedAt`.
+   *
+   * Parsed loosely on purpose: this schema names what it displays, and the transcript shape grows
+   * fields faster than a fleet of mixed builds adopts them.
+   */
+  lastMessage: z
+    .object({
+      kind: z.string().default('unknown'),
+      role: z.string().default('unknown'),
+      text: z.string().nullable().default(null),
+      toolName: z.string().nullable().default(null),
+      createdAt: z.string().nullable().default(null),
+    })
+    .loose()
+    .nullable()
+    .default(null),
   uptime: z
     .object({ text: z.string().nullable().default(null) })
     .partial()
@@ -88,6 +111,14 @@ export const RemoteSessionSchema = z.object({
    * An older peer reports nothing, which is not the same as running on no account.
    */
   account: NativeAccountSchema.nullable().default(null),
+  /**
+   * How much of that account's plan is used, as the peer measured it.
+   *
+   * It travels for the same reason `account` does, one step further: knowing which sessions share a
+   * plan is only half the question an operator asks before a limit stops the work. An older peer
+   * reports nothing, which is not the same as an account with room to spare.
+   */
+  planLimits: PlanLimitsSchema.nullable().default(null),
   costUsd: z.number().nullable().default(null),
 });
 const RemoteListSchema = z.object({
@@ -150,12 +181,14 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       running: r.running,
       uptime: { text: r.uptimeText },
       waitingFor: r.waitingFor,
+      lastMessage: r.lastMessage,
       stale: r.stale,
       dir: r.session.dir,
       role: r.session.role ?? null,
       turnStartedAt: r.turnStartedAt,
       context: r.context,
       account: r.account,
+      planLimits: r.planLimits,
       costUsd: r.costUsd,
     })),
   };
@@ -293,7 +326,14 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
   const view = fleetView(machines);
   if (args.includes('--json')) {
     console.log(
-      JSON.stringify({ version: VERSION, generatedAt: new Date().toISOString(), ...view }),
+      JSON.stringify({
+        version: VERSION,
+        generatedAt: new Date().toISOString(),
+        ...view,
+        // Aggregated here rather than left to each consumer: the grouping is the answer, and every
+        // reader recomputing it from sessions would eventually disagree about the same fleet.
+        accounts: fleetAccounts(view.machines),
+      }),
     );
     return 0;
   }
@@ -341,38 +381,5 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
   return 0; // unreachable machines are routine, never a failure exit
 }
 
-/**
- * Who is spending on what, across every machine.
- *
- * A limit belongs to an account, not to a machine, so this is the only place the question can be
- * answered — and it is printed after the machines rather than beside each session because the
- * grouping IS the answer: one line per account, naming the sessions that share it. An account
- * nothing reported is not listed; silence is not a group.
- */
-export function accountLines(machines: readonly FleetMachine[]): string[] {
-  const groups = new Map<string, { sessions: string[]; cost: number; costed: boolean }>();
-  for (const fm of machines)
-    for (const session of fm.sessions) {
-      const label = session.account?.label;
-      if (!label) continue;
-      const group = groups.get(label) ?? { sessions: [], cost: 0, costed: false };
-      group.sessions.push(`${fm.machine}:${session.name}`);
-      if (session.costUsd !== null) {
-        group.cost += session.costUsd;
-        group.costed = true;
-      }
-      groups.set(label, group);
-    }
-  if (groups.size === 0) return [];
-  return [
-    'accounts',
-    ...[...groups.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([label, group]) => {
-        // A total nobody reported is written as unknown, never as zero: zero is a claim that the
-        // sessions cost nothing, which is a different statement from having no measurement.
-        const cost = group.costed ? `$${group.cost.toFixed(2)}` : 'cost unknown';
-        return `  ${label}  ${cost}  ${group.sessions.join(' ')}`;
-      }),
-  ];
-}
+export { type FleetAccount, fleetAccounts } from './accounts.ts';
+export { accountLines };

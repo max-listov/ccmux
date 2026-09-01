@@ -20,6 +20,7 @@ const input = (over: Partial<SnapshotInput> = {}): SnapshotInput => ({
   connected: true,
   permissionMode: 'default',
   contextUsage: undefined,
+  planLimits: undefined,
   account: undefined,
   spend: undefined,
   fileCheckpoints: false,

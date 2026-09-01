@@ -2,10 +2,12 @@ import { z } from 'zod';
 import { nativeTurnState } from '../../external/turnState.ts';
 import type { ApplicationPolicyEvidence } from '../../policy/schema.ts';
 import { ApplicationPolicyEvidenceSchema } from '../../policy/schema.ts';
+import type { PlanLimits } from '../../runtime/planLimits.ts';
 import {
   NATIVE_RUNTIME_MAX_EVENTS,
   NATIVE_RUNTIME_MAX_NATIVE_ITEMS,
   NATIVE_RUNTIME_TTL_MS,
+  type NativeAccount,
   type NativeItem,
   type NativePendingRequest,
   type NativeTurn,
@@ -67,6 +69,19 @@ export class OwnedCodexProjection {
 
   snapshot(): OwnedCodexSnapshot {
     return structuredClone(this.value);
+  }
+
+  /**
+   * The account this session spends on, and how full its plan windows are.
+   *
+   * Published together because the limit belongs to the account: a percentage with no account
+   * beside it cannot be grouped, and a fleet of sessions on one plan would then be drawn as many
+   * independent windows instead of the one they actually share.
+   */
+  accountLimits(account: NativeAccount | null, limits: PlanLimits, now = Date.now()): void {
+    if (account !== null) this.value.account = account;
+    this.value.planLimits = limits;
+    this.touch(now);
   }
   selectionEvidence(evidence: NativeSelectionEvidence): void {
     this.value.nativeSelection = NativeSelectionEvidenceSchema.parse(evidence);

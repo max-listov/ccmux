@@ -65,6 +65,7 @@ test("a peer's parked rows are read by the same rule as this machine's", () => {
         role: null,
         turnStartedAt: null,
         waitingFor: null,
+        lastMessage: null,
         context: {
           text: null,
           usedTokens: null,
@@ -74,6 +75,7 @@ test("a peer's parked rows are read by the same rule as this machine's", () => {
           window: null,
         },
         account: null,
+        planLimits: null,
         costUsd: null,
       },
     ],

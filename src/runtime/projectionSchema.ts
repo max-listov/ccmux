@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ApplicationPolicyEvidenceSchema } from '../policy/reference.ts';
 import { RuntimeAppliedProfileSchema } from '../policy/runtimeProfile.ts';
 import { PermissionScopeSchema } from './permissionScope.ts';
+import { PlanLimitsSchema } from './planLimits.ts';
 import { NativeSelectionEvidenceSchema } from './selectionSchema.ts';
 
 export const NATIVE_RUNTIME_TTL_MS = 5_000;
@@ -221,6 +222,14 @@ export const NativeSnapshotSchema = z
     contextUsage: NativeContextUsageSchema.optional(),
     /** Absent on runtimes that do not name an account, which is not the same as having none. */
     account: NativeAccountSchema.optional(),
+    /**
+     * How much of the plan the ACCOUNT has used, as the runtime reports it.
+     *
+     * Absent means this build never asked; the three answers a runtime can give — a filled window,
+     * no plan limit at all, and does-not-publish — are inside the projection, because collapsing
+     * any of them into absence tells an operator the plan is fine when it may be exhausted.
+     */
+    planLimits: PlanLimitsSchema.optional(),
     spend: NativeSpendSchema.optional(),
     /**
      * Whether this session is keeping file checkpoints. Published because a rewind is only possible

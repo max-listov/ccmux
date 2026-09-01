@@ -281,6 +281,22 @@ Which account a session runs on and what it has spent are published and travel t
 slice, because a limit belongs to an account rather than to a machine. What is carried is an
 identity — never a token, a key, or the name of where either lives.
 
+How full that account's plan windows are travels beside it, in one vocabulary over two runtimes
+that agree on nothing but the percentage. Claude names its windows and leaves their length implied;
+Codex numbers them and states the length — and a measured `primary` held a WEEK, so a window carries
+its provider's own key AND the declared duration, with neither derived from the other. The set is
+open: a live answer carried buckets the published types do not declare, so known windows are read by
+name and anything else shaped like a window is carried under its own. Claude's push and its pull are
+both consumed: the pull answers "how full is it now" and the push — including the refusal itself —
+names one window and merges onto the reading rather than replacing it. Codex is asked on the account,
+not on the thread, so a session that has taken no turn can still answer.
+
+Three answers stay distinct, because collapsing any two of them tells an operator the plan is fine
+when it may be exhausted: a filled window; no plan limit at all (an API key, Bedrock, Vertex); and a
+runtime that does not publish the fact. A zero would read as an empty window in all three. The fleet
+slice groups the sessions by account and reports one window per account rather than one per session,
+since ten sessions on one plan share one budget and ten identical bars would be a wrong model.
+
 File checkpoints are off unless a session asks for them. With them on, the runtime keeps a copy of
 every file a turn modifies and a caller can preview or perform a rewind; the preview and the act are
 answered by the same code, and a path the runtime refuses to restore is reported rather than counted

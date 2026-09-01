@@ -118,6 +118,7 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     model: prettyModel(ext.lastModel),
     // A discovered thread is observed, not driven: nobody asked its runtime which account it is on.
     account: null,
+    planLimits: null,
     costUsd: null,
     contextLabel: tokens,
     context: {

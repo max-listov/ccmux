@@ -30,6 +30,7 @@ import {
 } from '../chat/originSchema.ts';
 import { ExternalTurnStateSchema } from '../external/turnSchema.ts';
 import { AgentPoliciesSchema, ApplicationPolicyMetadataSchema } from '../policy/schema.ts';
+import { PlanLimitsSchema } from '../runtime/planLimits.ts';
 import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 import {
   AcceptedTurnOptionsSchema,
@@ -981,6 +982,15 @@ export const ListItemSchema = z.object({
    * which, on a fleet running against a subscription, is how a limit is seen before it is hit.
    */
   account: NativeAccountSchema.nullable().default(null),
+  /**
+   * How much of the plan the ACCOUNT this session runs on has used.
+   *
+   * Beside `account` on purpose: the window belongs to the account, so many sessions on one plan
+   * report the same windows and a reader groups them on the label rather than drawing ten
+   * independent bars. Null means this build never asked; a runtime that HAS been asked and does not
+   * publish the fact says so inside, because "unpublished" and "nothing used" are opposite facts.
+   */
+  planLimits: PlanLimitsSchema.nullable().default(null),
   costUsd: z.number().nullable().default(null),
   /** The env file this session declares (absolute), and whether it exists right now. A declared file
    *  that is missing does not stop the session — the original decision was "raise it and shout", since

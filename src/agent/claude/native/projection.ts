@@ -1,8 +1,11 @@
 import type { ContentProducer } from '../../../content/producer.ts';
+import { mergeRateLimitEvent } from '../../../runtime/planLimits.ts';
 import type { NativeSnapshot, PermissionMode } from '../../../runtime/projectionSchema.ts';
 import { deltaText, toolBlocks } from './content.ts';
 import { initialTurn, type TurnState } from './turn.ts';
 import { nativeUsage, type SdkModelUsage, turnDelta } from './usage.ts';
+
+type RateLimitInfo = { rateLimitType?: string; utilization?: number; resetsAt?: number };
 
 /** Bounded so a long session cannot grow the published observation without limit. */
 const MAX_ITEMS = 256;
@@ -39,10 +42,26 @@ export class NativeProjection {
   contextUsage: NativeSnapshot['contextUsage'];
   /** Which account this session runs on, asked once — it does not change while a session lives. */
   account: NativeSnapshot['account'];
+  /** How full the account's plan windows are, refreshed when a turn ends and on a limit event. */
+  planLimits: NativeSnapshot['planLimits'];
   /** The session's MCP servers and their connection status, refreshed when one is acted on. */
   mcpServers: NativeSnapshot['mcpServers'];
   /** Cumulative spend, as the runtime reports it at the end of each turn. */
   spend: NativeSnapshot['spend'];
+
+  /**
+   * Keep what a `rate_limit_event` said instead of filing it as a diagnostic and losing it.
+   *
+   * The event is the only limit signal that arrives without being asked — including the `rejected`
+   * status, which IS the refusal. It names one window, so it merges onto the read rather than
+   * replacing every window with the single one the server mentioned.
+   */
+  takeRateLimit(message: { type: string }): void {
+    if (message.type !== 'rate_limit_event') return;
+    const info = (message as { rate_limit_info?: unknown }).rate_limit_info;
+    if (info === null || typeof info !== 'object') return;
+    this.planLimits = mergeRateLimitEvent(this.planLimits, info as RateLimitInfo, Date.now());
+  }
 
   record(message: { type: string }, kind: string, failed: boolean): void {
     const turnId = this.turnId ?? 'unknown';

@@ -37,6 +37,7 @@ export interface SnapshotInput {
   selection: NativeSnapshot['nativeSelection'];
   permissionMode: NativeSnapshot['permissionMode'];
   contextUsage: NativeSnapshot['contextUsage'];
+  planLimits: NativeSnapshot['planLimits'];
   account: NativeSnapshot['account'];
   spend: NativeSnapshot['spend'];
   fileCheckpoints: NativeSnapshot['fileCheckpoints'];
@@ -94,6 +95,7 @@ export function composeSnapshot(input: SnapshotInput): NativeSnapshot {
     nativeSelection: input.selection,
     permissionMode: input.permissionMode,
     contextUsage: input.contextUsage,
+    planLimits: input.planLimits,
     account: input.account,
     spend: input.spend,
     fileCheckpoints: input.fileCheckpoints,

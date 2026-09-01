@@ -27,7 +27,7 @@ import { promptInvocation } from '../env.ts';
 import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-
+import type { PlanLimits } from '../runtime/planLimits.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
 import { managedRuntimeView } from '../runtime/view.ts';
 import { capturePane, listSessionsCreated } from '../tmux/tmux.ts';
@@ -43,6 +43,7 @@ import type {
 } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
 import { VERSION } from '../util/version.ts';
+import { accountLines } from './accounts.ts';
 
 // Last pane scan per session — lets the TUI skip the `tmux capture-pane` FORK for cards that
 // aren't visible (off-screen state is invisible anyway; it refreshes the moment it scrolls in).
@@ -59,6 +60,8 @@ export interface ListRow {
   model: string | null;
   /** Which account this session runs on and what it has spent, for the runtimes that report it. */
   account: NativeAccount | null;
+  /** The account's plan windows, for the runtimes that report them. Null = never asked. */
+  planLimits: PlanLimits | null;
   costUsd: number | null;
   contextLabel: string; // human CTX column
   context: ContextInfo; // structured, for --json
@@ -104,6 +107,7 @@ async function buildRow(
       lifecycleError: block?.error ?? null,
       model: null,
       account: null,
+      planLimits: null,
       costUsd: null,
       contextLabel: '-',
       context: {
@@ -202,6 +206,7 @@ async function buildRow(
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
     model: prettyModel(native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m)),
     account: native?.read.snapshot?.account ?? null,
+    planLimits: native?.read.snapshot?.planLimits ?? null,
     costUsd: native?.read.snapshot?.spend?.totalCostUsd ?? null,
     contextLabel,
     context,
@@ -302,6 +307,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     lifecycleError: r.lifecycleError,
     model: r.model,
     account: r.account,
+    planLimits: r.planLimits,
     costUsd: r.costUsd,
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
@@ -344,6 +350,14 @@ export async function collectRows(
   );
 }
 
+/** The three fields the account grouping reads, so `list` and `fleet` answer from one implementation. */
+const fleetRowSlice = (r: ListRow) => ({
+  name: r.session.name,
+  account: r.account,
+  costUsd: r.costUsd,
+  planLimits: r.planLimits,
+});
+
 export async function cmdList(args: string[] = []): Promise<number> {
   const m = loadMachineConfig();
   const rows = await collectRows(m);
@@ -358,5 +372,12 @@ export async function cmdList(args: string[] = []): Promise<number> {
   printTable(m, shown);
   const parked = rows.length - shown.length;
   if (parked > 0) console.log(`… ${parked} archived (ccmux list --all)`);
+  // Printed after the table rather than as a column: the plan window belongs to the account, so it
+  // is one fact about several rows, and a per-row column would repeat one budget as many.
+  for (const line of accountLines(
+    [{ machine: m.rcPrefix, sessions: shown.map(fleetRowSlice) } as never],
+    Date.now(),
+  ))
+    console.log(line);
   return 0;
 }

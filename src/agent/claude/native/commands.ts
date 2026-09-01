@@ -7,6 +7,7 @@ import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/s
 import { readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+import { privateRuntimeDirectory } from '../../codex/ownedPaths.ts';
 import { type ControlCommand, ControlCommandSchema } from './commandSchema.ts';
 
 /**
@@ -56,6 +57,8 @@ export async function writeClaudeCommands(
   );
   if (Buffer.byteLength(bytes) > MAX_BYTES)
     throw new Error('Native Claude command catalog exceeds its bounded projection');
+  // Same requirement as the model catalog: the write must not be what creates the runtime root.
+  privateRuntimeDirectory(managedRuntimeRoot(m, s));
   await atomicWrite(path(m, s), bytes, 0o600);
 }
 

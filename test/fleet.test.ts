@@ -35,6 +35,7 @@ function row(
     stale: [],
     turnStartedAt: null,
     account: null,
+    planLimits: null,
     costUsd: null,
     atPrompt: null,
     waitingFor: null,

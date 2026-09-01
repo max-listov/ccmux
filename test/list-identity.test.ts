@@ -22,6 +22,7 @@ const baseItem = {
     window: null,
   },
   account: null,
+  planLimits: null,
   costUsd: null,
   uptime: { text: '1m', seconds: 60 },
   stale: [],
@@ -46,8 +47,10 @@ test('fleet renders a missing remote provider as unknown, never Claude', () => {
     stale: [],
     dir: '/src/agent-a',
     account: null,
+    planLimits: null,
     costUsd: null,
     role: null,
+    lastMessage: null,
     turnStartedAt: null,
     waitingFor: null,
     context: {

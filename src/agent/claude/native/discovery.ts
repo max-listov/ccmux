@@ -1,4 +1,6 @@
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
+import { claudePlanLimits, unpublishedPlanLimits } from '../../../runtime/planLimits.ts';
+import { seedNativeSelection } from '../../../runtime/selection.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { accountIsEmpty, nativeAccount, type ReportedAccount } from './account.ts';
 import { claudeModels, type SupportedModel, writeClaudeCatalog } from './catalog.ts';
@@ -47,6 +49,18 @@ export async function loadCatalog(d: Discovery): Promise<void> {
         source: d.session.modelSelection === undefined ? 'settings' : 'admission',
         turnId: null,
       };
+    // A chosen model is the one thing a caller cannot verify for itself: it passed a name into
+    // `create` and has no way to see what the runtime did with it. Seeding the durable selection at
+    // admission — as every other runtime already does — is what turns the receipt into evidence,
+    // and it is written only when a choice was actually made, since a default nobody asked for is
+    // not a delivery to confirm. The catalog is the check: a name the runtime does not offer is
+    // not published as accepted.
+    const requested = d.session.modelSelection;
+    if (requested !== undefined && models.some((model) => model.id === requested.model))
+      await seedNativeSelection(d.m, d.session, {
+        runtime: 'claude',
+        model: { provider: 'claude', model: requested.model },
+      });
   } catch (error) {
     // A catalog is enrichment, not a precondition: a session that cannot list models still runs.
     await d.report(error);
@@ -116,6 +130,34 @@ export async function refreshContextUsage(d: Discovery): Promise<void> {
     const reported = (await d.query?.getContextUsage?.()) as ReportedContextUsage | undefined;
     if (!reported) return;
     d.projection.contextUsage = nativeContextUsage(reported, Date.now());
+  } catch (error) {
+    await d.report(error);
+  }
+}
+
+/**
+ * Ask how much of the plan the account has used.
+ *
+ * The method's own name declares it unstable — `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`
+ * — so its absence is an answer this build must be able to give: a runtime that does not publish
+ * the fact is not a runtime with room to spare. A read that throws leaves the previous measurement
+ * standing, exactly as the context read does; a read that returns nothing publishes nothing.
+ */
+export async function refreshPlanLimits(d: Discovery): Promise<void> {
+  const query = d.query as
+    | (Query & {
+        usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: () => Promise<unknown>;
+      })
+    | null;
+  const read = query?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+  if (typeof read !== 'function') {
+    d.projection.planLimits ??= unpublishedPlanLimits(Date.now());
+    return;
+  }
+  try {
+    const reported = await read.call(query);
+    if (reported === undefined) return;
+    d.projection.planLimits = claudePlanLimits(reported, Date.now());
   } catch (error) {
     await d.report(error);
   }

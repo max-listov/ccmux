@@ -15,6 +15,7 @@ import {
 import { nativePolicySkillsAcknowledged, policySkillInputs } from '../../policy/codex.ts';
 import { applicationPolicyEvidence, verifyApplicationPolicy } from '../../policy/resolve.ts';
 import type { MaterializedPolicy } from '../../policy/schema.ts';
+import { codexPlanLimits, unpublishedPlanLimits } from '../../runtime/planLimits.ts';
 import { readSelection, seedNativeSelection } from '../../runtime/selection.ts';
 import { NativeTurnOptionsSchema } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -26,6 +27,7 @@ import {
   readCodexAppThread,
   startCodexAppTurn,
 } from './appServer.ts';
+import { codexAccount } from './ownedAccount.ts';
 import { clearNativeCommand, readNativeCommand, writeNativeReceipt } from './ownedControl.ts';
 import { emitOwnedCodexBoundary } from './ownedEvents.ts';
 import { ownedCodexThreadParams } from './ownedLaunch.ts';
@@ -36,6 +38,17 @@ import { OwnedCodexStatusWriter } from './ownedStatus.ts';
 import { rolloutReadiness } from './resume.ts';
 import type { CodexAppRpc, CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
 import { codexTextInput } from './turnInput.ts';
+
+/**
+ * The account's plan windows, pushed by the server without being asked.
+ *
+ * It carries no thread id — the fact belongs to the account, not to this conversation — so it is
+ * handled before the thread-scoped observation and never reaches the projection's event path.
+ */
+const ACCOUNT_LIMITS_EVENT = 'account/rateLimits/updated';
+
+/** A pull answers "how full is it now"; more often than this is a round trip for a constant. */
+const LIMITS_REFRESH_MS = 60_000;
 
 const OBSERVED_EVENTS = new Set([
   'thread/status/changed',
@@ -63,6 +76,7 @@ export class OwnedCodexConnection {
   private failure: Error | null = null;
   private feedSession: Session | null = null;
   private applicationPolicy: MaterializedPolicy | null = null;
+  private lastLimitsAt = 0;
   private contextCompletionSeen = 0;
   private contextCompletionApplied = 0;
   private contextPump: NativeContextPump;
@@ -87,11 +101,17 @@ export class OwnedCodexConnection {
     this.rpc = await connectOwnedCodex(this.m, this.initial, {
       signal,
       onEvent: (event) => {
-        if (
-          !this.active ||
-          (!OBSERVED_EVENTS.has(event.method) && !CODEX_CONTENT_METHODS.has(event.method))
-        )
+        if (!this.active) return;
+        if (event.method === ACCOUNT_LIMITS_EVENT) {
+          const pushed = (event.params as { rateLimits?: unknown } | null)?.rateLimits;
+          if (pushed !== undefined && this.projection !== null) {
+            this.projection.accountLimits(null, codexPlanLimits(pushed, Date.now()));
+            this.lastLimitsAt = Date.now();
+            this.publish();
+          }
           return;
+        }
+        if (!OBSERVED_EVENTS.has(event.method) && !CODEX_CONTENT_METHODS.has(event.method)) return;
         if (this.projection === null) {
           const size = Buffer.byteLength(JSON.stringify(event));
           while (this.buffered.length >= 128 || this.bufferedBytes + size > 448 * 1024) {
@@ -126,6 +146,13 @@ export class OwnedCodexConnection {
             ) {
               this.contextCompletionSeen++;
             }
+            if (
+              event.method === 'turn/completed' &&
+              Date.now() - this.lastLimitsAt >= LIMITS_REFRESH_MS
+            )
+              // The window only moves when a turn spends against it, so this is the moment the
+              // answer can have changed — and the server does not always push one.
+              void this.readAccountLimits(Date.now()).then(() => this.publish());
             if (OBSERVED_EVENTS.has(event.method) && this.projection.event(event)) {
               this.publish();
               if (this.feedSession !== null && event.method !== 'thread/status/changed') {
@@ -334,6 +361,46 @@ export class OwnedCodexConnection {
     return session;
   }
 
+  /**
+   * Ask the account how much of its plan is left.
+   *
+   * Both answers come from the account, not the thread, so a session that has taken no turn can
+   * still say how full the window is — which is the point: an operator learns about exhaustion
+   * from a refusal otherwise. A runtime that does not answer publishes the fact that it does not,
+   * because "unpublished" and "nothing used" are opposite readings of the same blank space.
+   */
+  /** A read that never answers is a read that failed; a session is not held open waiting for it. */
+  private bounded<T>(request: Promise<T>): Promise<T> {
+    return Promise.race([
+      request,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Native account read timed out')), 5_000).unref(),
+      ),
+    ]);
+  }
+
+  private async readAccountLimits(now: number): Promise<void> {
+    const projection = this.projection;
+    if (projection === null) return;
+    this.lastLimitsAt = now;
+    try {
+      const [account, limits] = await Promise.all([
+        this.bounded(this.liveRpc().request('account/read', { refreshToken: false })),
+        this.bounded(this.liveRpc().request('account/rateLimits/read', {})),
+      ]);
+      projection.accountLimits(
+        codexAccount(account),
+        codexPlanLimits((limits as { rateLimits?: unknown } | null)?.rateLimits ?? limits, now),
+        now,
+      );
+    } catch {
+      // Enrichment, never a precondition: a session whose account cannot be read still runs, and
+      // the previous measurement stays standing rather than being replaced by a zero.
+      if (projection.snapshot().planLimits === undefined)
+        projection.accountLimits(null, unpublishedPlanLimits(now), now);
+    }
+  }
+
   async refresh(session: Session): Promise<void> {
     const rpc = this.liveRpc();
     const projection = this.projection;
@@ -342,6 +409,11 @@ export class OwnedCodexConnection {
     const thread = await readCodexAppThread(rpc, session.uuid);
     this.liveRpc();
     projection.reconcile(thread.status, revision);
+    const now = Date.now();
+    // Never awaited: how full the plan is is enrichment, and a runtime slow to answer it must not
+    // hold up the status a supervisor reconnects to publish.
+    if (now - this.lastLimitsAt >= LIMITS_REFRESH_MS)
+      void this.readAccountLimits(now).then(() => this.publish());
     await this.writer.write(projection.snapshot());
   }
 

@@ -14,6 +14,7 @@ import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/s
 import { readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+import { privateRuntimeDirectory } from '../../codex/ownedPaths.ts';
 import { resolveAgentSdk } from './resolve.ts';
 
 /**
@@ -173,6 +174,10 @@ export async function writeClaudeCatalog(
   );
   if (Buffer.byteLength(bytes) > MAX_BYTES)
     throw new Error('Native Claude catalog exceeds its bounded projection');
+  // The write would create the runtime root itself, at whatever the umask allows, and every later
+  // private write into it then refuses the directory. Ordering happens to save this today; stating
+  // the requirement here is what keeps it true when the order changes.
+  privateRuntimeDirectory(managedRuntimeRoot(m, s));
   await atomicWrite(path(m, s), bytes, 0o600);
 }
 

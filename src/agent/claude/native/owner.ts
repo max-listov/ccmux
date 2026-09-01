@@ -36,6 +36,7 @@ import {
   loadCommands,
   refreshContextUsage,
   refreshMcpServers,
+  refreshPlanLimits,
 } from './discovery.ts';
 import {
   applyInterrupt,
@@ -199,6 +200,7 @@ export class ClaudeNativeOwner {
     await loadCatalog(this.discovery);
     await loadCommands(this.discovery);
     await loadAccount(this.discovery);
+    await refreshPlanLimits(this.discovery);
     await refreshMcpServers(this.discovery);
     this.serveContext(this.contextAbort.signal);
     await this.publish();
@@ -293,10 +295,15 @@ export class ClaudeNativeOwner {
         });
         if ('kind' in classified) this.projection.record(message, classified.kind, failed);
         this.projection.takeSpend(message);
+        this.projection.takeRateLimit(message);
         // Measured when a turn ends, not on every frame: this is a round trip to the runtime, and
         // the answer only changes when the conversation does.
-        if (this.projection.turn.status !== null && this.projection.turn.status !== 'inProgress')
+        if (this.projection.turn.status !== null && this.projection.turn.status !== 'inProgress') {
           await refreshContextUsage(this.discovery);
+          // The plan window moves only when a turn spends against it, so the end of a turn is the
+          // one moment the answer can have changed.
+          await refreshPlanLimits(this.discovery);
+        }
         await this.publish();
       }
       this.failure ??= new Error('Native Claude stream ended while the session was alive');
@@ -598,6 +605,7 @@ export class ClaudeNativeOwner {
         selection: this.projection.selection,
         permissionMode: this.projection.permissionMode,
         contextUsage: this.projection.contextUsage,
+        planLimits: this.projection.planLimits,
         account: this.projection.account,
         spend: this.projection.spend,
         fileCheckpoints: this.session.fileCheckpoints === true,
