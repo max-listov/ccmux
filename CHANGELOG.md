@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.43.4] — 2026-09-01
+
+Identify a plan window by its limit and length, so a pushed update cannot overwrite another window
 ## [0.43.3] — 2026-09-01
 
 Keep every plan window a pushed update is silent about
