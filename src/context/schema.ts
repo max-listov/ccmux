@@ -74,4 +74,3 @@ export type NativeHistoryPage = z.infer<typeof NativeHistoryPageSchema>;
 export type NativeHistoryEntry = z.infer<typeof NativeHistoryEntrySchema>;
 export type CompactRequest = z.infer<typeof CompactRequestSchema>;
 export type NativeForkRequest = z.infer<typeof NativeForkRequestSchema>;
-export type ContextOperation = z.infer<typeof ContextOperationSchema>;

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "rules": {},
+  "boundaries": { "uiPrimitives": [], "mcpAdapter": [], "apiPathPrefix": null },
+  "repositoryContent": {
+    "schemaVersion": 1,
+    "repositoryId": "max-listov/ccmux",
+    "role": "source",
+    "policy": "public-source",
+    "documentationRoots": ["docs"],
+    "backlogRoots": [],
+    "surfaces": [
+      { "path": "src", "classification": "deliverable" },
+      { "path": "test", "classification": "deliverable" },
+      { "path": "scripts", "classification": "deliverable" },
+      { "path": "docs", "classification": "deliverable" },
+      { "path": "README.md", "classification": "deliverable" },
+      { "path": "CHANGELOG.md", "classification": "deliverable" },
+      { "path": "CLAUDE.md", "classification": "deliverable" },
+      { "path": "package.json", "classification": "deliverable" },
+      { "path": "biome.json", "classification": "deliverable" },
+      { "path": "tsconfig.json", "classification": "deliverable" },
+      { "path": "quality.config.json", "classification": "deliverable" }
+    ]
+  }
+}

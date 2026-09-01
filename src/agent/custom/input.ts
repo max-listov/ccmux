@@ -19,7 +19,6 @@ export const CustomInputMetadataSchema = z
       .optional(),
   })
   .strict();
-export type CustomInputMetadata = z.infer<typeof CustomInputMetadataSchema>;
 
 /** Canonical history holds owner attachment identities, never paths or inline secret bytes. */
 export function customInputParts(input: Pick<RuntimeInput, 'text' | 'images'>): AgentMessagePart[] {

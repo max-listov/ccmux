@@ -6,7 +6,8 @@ import { stableJson } from '../agent/launchInputs.ts';
 import { chatAckPath, chatCursorsPath, chatLedgerPath } from '../config/paths.ts';
 import { CHAT_GENERATION, ChatCursorsSchema, ChatMessageSchema } from '../config/schema.ts';
 import { loadSessions } from '../config/sessions.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import { readSelection } from '../runtime/selection.ts';
 import type {
   ChatCursors,

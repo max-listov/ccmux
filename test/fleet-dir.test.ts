@@ -16,6 +16,7 @@ const RemoteSession = z.object({
   agent: z.enum(['claude', 'codex']).nullable().default(null),
   state: z.string().default('?'),
   archived: z.boolean().default(false),
+  waitingFor: z.string().nullable().default(null),
   model: z.string().nullable().default(null),
   running: z.boolean().default(false),
   stale: z.array(z.string()).default([]),

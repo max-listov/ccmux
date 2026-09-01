@@ -26,6 +26,38 @@ describe('public publication boundary', () => {
     expect(scanPublicationText(homePath)[0]?.rule).toBe('private-home-path');
   });
 
+  test('an address handed to a ccmux command is a private name in two halves', () => {
+    // The shape that slipped past every other rule and reached a committed document: not a path,
+    // not a frontmatter field, not a machine label — a fleet address, whose machine half and
+    // session half are both private. Placeholders survive because that is how examples are
+    // written here, and a rule that failed on them would be turned off within a day.
+    // Composed, not written: the literal would be the very shape this rule rejects, and the staged
+    // guard reads every file type — so the test would fail on itself at commit time.
+    const address = `${'build'}:${'internal'}`;
+    expect(scanPublicationText(`ccmux wait ${address} --timeout 600`).map((f) => f.rule)).toContain(
+      'fleet-address',
+    );
+    expect(scanPublicationText('ccmux msg host-b:agent-a "text"').map((f) => f.rule)).not.toContain(
+      'fleet-address',
+    );
+  });
+
+  test('the companion is forbidden by its address, not by its name', () => {
+    // The name alone is PUBLIC in this project — `ccmux-dev` is the launcher that runs the CLI
+    // from source, and it appears in the README and the architecture notes. Only the repository
+    // address means the private companion, and a rule that failed on the launcher would be
+    // switched off within a day for being wrong about correct documentation.
+    const rules = (text: string) => scanPublicationText(text).map((finding) => finding.rule);
+    // Composed rather than written: a test that spells the forbidden address out would put it in
+    // this repository, which is the leak the rule exists to prevent — and the staged guard, which
+    // reads every file type rather than Markdown alone, would then fail on its own test.
+    const address = `max-listov/${'ccmu'}${'x'}-dev`;
+    expect(rules(`the queue lives in ${address}`)).toContain('private-companion-repository');
+    expect(rules('run ccmux-dev to start from source')).toEqual([]);
+    expect(rules('`~/.local/bin/ccmux-dev` → source launcher')).toEqual([]);
+    expect(rules("mkdtempSync(join(tmpdir(), 'ccmux-dev-'))")).toEqual([]);
+  });
+
   test('deleting private text is allowed; added text is reported at its source line', () => {
     const patch = `--- a/doc.md\n+++ b/doc.md\n@@ -8,1 +8,1 @@\n-${machineLabel}\n+host-A\n`;
     expect(scanPublicationPatch(patch)).toEqual([]);

@@ -22,7 +22,15 @@ import { readNativeForkIntent } from '../context/fork.ts';
 import { policyUnavailable } from '../policy/errors.ts';
 import { verifyApplicationPolicy } from '../policy/resolve.ts';
 import type { ApplicationPolicyMetadata } from '../policy/schema.ts';
+import { runtimeAvailability } from '../runtime/availability.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { nativeDriver } from '../runtime/driver.ts';
+import {
+  hasNativeRuntime,
+  type RuntimeMode,
+  runtimeModeIsValid,
+  runtimeModes,
+} from '../runtime/modes.ts';
 import { killSessionIfGeneration } from '../tmux/tmux.ts';
 import type {
   AgentKind,
@@ -57,15 +65,27 @@ export type NativeBootstrapOperation =
   | { kind: 'adopt'; sourceThreadId: string }
   | { kind: 'fork'; sourceThreadId: string };
 
+/**
+ * The mode a created session is recorded with.
+ *
+ * Omitted means the agent's own default, except for the two that have an interactive mode: there
+ * an omitted runtime stays omitted, which is how every session of those two has always been
+ * stored. Written once because the policy check below asks the same question, and answering it a
+ * second way is how the two came to disagree.
+ */
+function storedRuntime(input: CreateManagedInput): RuntimeMode | undefined {
+  if (input.runtime !== undefined) return input.runtime as RuntimeMode;
+  const declared = runtimeModes[input.agent];
+  return declared.interactive === null ? declared.native : undefined;
+}
+
 function sessionFields(input: CreateManagedInput): Omit<Session, 'uuid'> {
   return SessionSchema.omit({ uuid: true }).parse({
     name: input.name,
     dir: input.dir,
     agent: input.agent,
     flags: input.flags,
-    runtime:
-      input.runtime ??
-      (input.agent === 'opencode' || input.agent === 'custom' ? 'native' : undefined),
+    runtime: storedRuntime(input),
     ...(input.router ? { promptModules: ['router'], chatEnabled: true } : {}),
     ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
@@ -80,10 +100,12 @@ function sessionFields(input: CreateManagedInput): Omit<Session, 'uuid'> {
 
 function verifyCreatePolicy(m: MachineConfig, input: CreateManagedInput): void {
   if (input.applicationPolicy === undefined) return;
-  const native =
-    (input.agent === 'codex' && input.runtime === 'app-server') ||
-    (input.agent === 'opencode' && (input.runtime === undefined || input.runtime === 'native'));
-  if (!native) policyUnavailable(input.applicationPolicy.id, 'native-runtime-required');
+  // Asked as a capability, not as a list of names: an application policy is something a runtime
+  // either accepts or does not, and it is already declared per runtime. Spelled out by name here,
+  // this list quietly disagreed with the declaration two files away.
+  const runtime = storedRuntime(input);
+  if (!runtimeCapabilities({ agent: input.agent, runtime }).applicationPolicy)
+    policyUnavailable(input.applicationPolicy.id, 'native-runtime-required');
   verifyApplicationPolicy(m, input.agent, input.applicationPolicy);
 }
 
@@ -247,13 +269,16 @@ export async function createManagedSession(
 ): Promise<Session> {
   verifyCreatePolicy(m, input);
   const fields = sessionFields(input);
-  if (fields.runtime === 'app-server' && fields.agent !== 'codex')
-    throw new Error('app-server runtime requires --agent codex');
-  if (fields.runtime === 'native' && fields.agent === 'claude' && !m.claudeNativeRuntime)
+  if (fields.runtime !== undefined && !runtimeModeIsValid(fields.agent, fields.runtime))
+    throw new Error(`${fields.agent} has no ${fields.runtime} runtime`);
+  // Asked of the host, not derived from the agent's name: whether a mode is enabled here is what
+  // `runtimeAvailability` answers, and it distinguishes "not enabled" from "not installed".
+  if (
+    fields.runtime !== undefined &&
+    runtimeAvailability(m, fields.agent, fields.runtime).reason === 'runtime-not-enabled'
+  )
     throw new AppError('UNAVAILABLE', 'The native Claude runtime is not enabled on this host', 409);
-  if (fields.runtime === 'native' && !['opencode', 'custom', 'claude'].includes(fields.agent))
-    throw new Error('This provider does not use the native HTTP runtime');
-  if ((fields.agent === 'opencode' || fields.agent === 'custom') && fields.runtime !== 'native')
+  if (fields.runtime === undefined && runtimeModes[fields.agent].interactive === null)
     throw new Error('This provider requires a native runtime');
   nativeDriver(fields)?.preflight(m, input.flags);
   if (fields.agent === 'custom')
@@ -265,7 +290,10 @@ export async function createManagedSession(
   ) {
     throw new Error(`'${input.name}' already exists`);
   }
-  return input.agent === 'codex' || fields.runtime === 'native'
-    ? createNativeBootstrap(m, input, { kind: 'create' })
-    : createClaude(m, input);
+  // Everything except an interactive Claude session comes up through the native bootstrap, which
+  // pins a provider continuation before the session is registered. Stated as the one exception it
+  // is, rather than as a list of the agents that are not it.
+  return fields.agent === 'claude' && !hasNativeRuntime(fields)
+    ? createClaude(m, input)
+    : createNativeBootstrap(m, input, { kind: 'create' });
 }

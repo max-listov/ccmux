@@ -5,7 +5,8 @@ import { eventsEnabledFor } from '../config/events.ts';
 import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
 import { loadSessions } from '../config/sessions.ts';
 import { observedPane, observedSessionInventory } from '../monitoring/tmux.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import { managedRuntimeView } from '../runtime/view.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { appendEvent, type EmitInput } from './feed.ts';

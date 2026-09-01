@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { forkedUuid, providerFor } from '../src/agent/index.ts';
-import { hasNativeRuntime, runtimeCapabilities } from '../src/runtime/capabilities.ts';
+import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
+import { hasNativeRuntime } from '../src/runtime/modes.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**

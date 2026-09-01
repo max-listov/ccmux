@@ -171,18 +171,6 @@ export async function sendKeysNamed(m: MachineConfig, name: string, key: string)
   return code === 0;
 }
 
-/** Insert `text` into the pane as a BRACKETED paste (so a multi-line block goes in as one unit
- *  that does NOT submit — the caller sends Enter). Payload rides stdin via `load-buffer -` (no
- *  argv length limit / escaping); `-d` drops the buffer after. Returns false if either step fails. */
-export async function pasteText(m: MachineConfig, name: string, text: string): Promise<boolean> {
-  const loaded = await runWithInput(tmuxArgv(m, 'load-buffer', '-b', 'ccmux-chat', '-'), text);
-  if (loaded.code !== 0) return false;
-  const { code } = await run(
-    tmuxArgv(m, 'paste-buffer', '-p', '-d', '-b', 'ccmux-chat', '-t', paneTarget(name)),
-  );
-  return code === 0;
-}
-
 /**
  * Load one private paste buffer for a chat delivery attempt. The random name prevents concurrent
  * recipients from replacing each other's payload while the daemon is fanning out a pass.
@@ -291,15 +279,6 @@ export async function capturePaneStyled(
     tmuxArgv(m, 'capture-pane', '-t', paneTarget(name), '-p', '-e', '-S', `-${lines}`),
   );
   return stdout;
-}
-
-/** Is a human interactively attached to this session? Chat delivery holds while true so an
- *  injected message never interleaves with someone typing in the pane (racy to detect otherwise). */
-export async function hasAttachedClient(m: MachineConfig, name: string): Promise<boolean> {
-  const { code, stdout } = await run(
-    tmuxArgv(m, 'list-clients', '-t', exactTarget(name), '-F', '#{client_name}'),
-  );
-  return code === 0 && stdout.trim() !== '';
 }
 
 /** Did an attached human touch the keyboard within the last `withinSec`? Watching a pane is harmless

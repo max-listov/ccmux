@@ -1,13 +1,14 @@
 import { AppError } from 'stitchkit';
 import { readCodexAppThread } from '../agent/codex/appServer.ts';
+import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
 import { connectOwnedCodex } from '../agent/codex/ownedRpc.ts';
 import { readOwnedCodexStatus } from '../agent/codex/ownedStatus.ts';
 import { managedPeerKey } from '../chat/identity.ts';
 import { loadCursors } from '../chat/store.ts';
 import { blockingInbound } from '../commands/wait.ts';
 import { withSessionRegistryLock } from '../config/registryLock.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
 import { isCancellableTurn, requestRuntimeInterrupt } from '../runtime/interrupt.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
 import type { MachineConfig, ManagedPeer } from '../types.ts';
 import type { ControlPublisher } from './publisher.ts';
 import { ControlWaitResultSchema } from './schema.ts';
@@ -25,7 +26,7 @@ export async function interruptControlTurn(
     const session = controlTarget(m, target);
     if (!hasNativeRuntime(session))
       throw new AppError('UNSUPPORTED', 'Native interruption is unavailable for this runtime', 409);
-    if (session.runtime === 'native') {
+    if (!isOwnedCodex(session)) {
       await requestRuntimeInterrupt(m, session, generation, turnId, signal);
       return { target, accepted: true } satisfies { target: ManagedPeer; accepted: true };
     }

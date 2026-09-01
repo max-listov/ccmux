@@ -37,6 +37,7 @@ function row(
     account: null,
     costUsd: null,
     atPrompt: null,
+    waitingFor: null,
     state: 'idle',
     model: null,
     contextLabel: '-',

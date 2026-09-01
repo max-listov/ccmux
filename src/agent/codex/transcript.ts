@@ -1,5 +1,5 @@
 import type { TranscriptMessage, TranscriptRole } from '../../types.ts';
-import { asText, clip, DEFAULT_TEXT_LIMIT, num, rec, str } from '../normalize.ts';
+import { clip, DEFAULT_TEXT_LIMIT, flattenContent, num, rec, str } from '../normalize.ts';
 import { resultSummary } from '../toolSummary.ts';
 
 // Codex transcript parser. Rollout JSONL (OpenAI Responses items). Entry shape:
@@ -89,7 +89,7 @@ function fromPayload(payload: Record<string, unknown>, textLimit: number): Pushe
     case 'function_call_output':
     case 'local_shell_call_output': {
       const out = rec(payload.output);
-      const text = cut(asText(out?.content ?? payload.output) ?? '');
+      const text = cut(flattenContent(out?.content ?? payload.output) ?? '');
       return [
         {
           role: 'tool',
@@ -161,7 +161,7 @@ export function parse(
     if ((ptype === 'function_call_output' || ptype === 'local_shell_call_output') && callId) {
       const o = rec(payload.output);
       results.set(callId, {
-        content: asText(o?.content ?? payload.output) ?? '',
+        content: flattenContent(o?.content ?? payload.output) ?? '',
         isError: o?.success === false,
       });
     }

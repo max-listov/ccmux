@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   EffortLevel,
@@ -17,46 +17,47 @@ import {
   readNativeForkIntent,
 } from '../../../context/fork.ts';
 import { applyContextCommands, NativeContextPump } from '../../../context/pump.ts';
-import { readRuntimeInput, writeRuntimeInput } from '../../../runtime/input.ts';
+import { tryNativeAdmission } from '../../../runtime/admission.ts';
 import {
-  isCancellableTurn,
-  readRuntimeInterrupt,
-  writeRuntimeInterrupt,
-} from '../../../runtime/interrupt.ts';
-import { readRuntimeMcpRequest, writeRuntimeMcpRequest } from '../../../runtime/mcpControl.ts';
-import type { NativeSnapshot, PermissionMode } from '../../../runtime/projectionSchema.ts';
-import { readRuntimeRewind, writeRuntimeRewind } from '../../../runtime/rewind.ts';
-import { RewindResultSchema } from '../../../runtime/rewindSchema.ts';
-import {
-  readRuntimeMode,
-  shouldRestoreMode,
-  writeRuntimeMode,
-} from '../../../runtime/sessionMode.ts';
+  type RuntimeInput,
+  readRuntimeInput,
+  runtimeInputPath,
+  writeRuntimeInput,
+} from '../../../runtime/input.ts';
+import type { NativeSnapshot } from '../../../runtime/projectionSchema.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+import { classifySdkMessage, isFailureResult, summarise } from './content.ts';
 import {
-  clearNativeCommand,
-  readNativeCommand,
-  readNativeReceipt,
-  writeNativeReceipt,
-} from '../../codex/ownedControl.ts';
-import { accountIsEmpty, nativeAccount, type ReportedAccount } from './account.ts';
-import { claudeModels, type SupportedModel, writeClaudeCatalog } from './catalog.ts';
-import { claudeCommands, type SupportedCommand, writeClaudeCommands } from './commands.ts';
-import { classifySdkMessage } from './content.ts';
-import { nativeContextUsage, type ReportedContextUsage } from './context.ts';
-import { nativeMcpServers, type ReportedMcpServer } from './mcp.ts';
+  type Discovery,
+  loadAccount,
+  loadCatalog,
+  loadCommands,
+  refreshContextUsage,
+  refreshMcpServers,
+} from './discovery.ts';
+import {
+  applyInterrupt,
+  applyMcpRequest,
+  applyMode,
+  applyResponse,
+  applyRewind,
+  type Mailboxes,
+  restoreMode,
+} from './mailboxes.ts';
 import {
   approvalKind,
   declaresDialogs,
   permissionResult,
   SUPPORTED_DIALOG_KINDS,
 } from './permission.ts';
+import { nativeInputDelivered } from './pickup.ts';
+import { NativeProjection } from './projection.ts';
+import { PromptQueue } from './promptQueue.ts';
 import { resolveAgentSdk } from './resolve.ts';
 import { composeSnapshot } from './snapshot.ts';
-import { advanceTurn, initialTurn, type TurnState } from './turn.ts';
-import { nativeUsage, type SdkModelUsage, turnDelta } from './usage.ts';
+import { advanceTurn } from './turn.ts';
 
 /**
  * The writer for one native Claude conversation.
@@ -72,43 +73,7 @@ import { nativeUsage, type SdkModelUsage, turnDelta } from './usage.ts';
  *   settled on every exit — answered, interrupted, or closed.
  */
 
-/** Bounded so a long session cannot grow the published observation without limit. */
-const MAX_ITEMS = 256;
-
-/** A queue the runtime pulls turns from. One long-lived session, not one process per turn. */
-class PromptQueue {
-  private waiting: ((value: IteratorResult<SDKUserMessage>) => void)[] = [];
-  private pending: SDKUserMessage[] = [];
-  private closed = false;
-
-  push(message: SDKUserMessage): void {
-    const next = this.waiting.shift();
-    if (next) next({ value: message, done: false });
-    else this.pending.push(message);
-  }
-
-  close(): void {
-    this.closed = true;
-    for (const waiter of this.waiting.splice(0)) waiter({ value: undefined as never, done: true });
-  }
-
-  iterable(): AsyncIterable<SDKUserMessage> {
-    return {
-      [Symbol.asyncIterator]: () => ({
-        next: () => {
-          const ready = this.pending.shift();
-          if (ready) return Promise.resolve({ value: ready, done: false });
-          if (this.closed) return Promise.resolve({ value: undefined as never, done: true });
-          return new Promise<IteratorResult<SDKUserMessage>>((resolve) =>
-            this.waiting.push(resolve),
-          );
-        },
-      }),
-    };
-  }
-}
-
-interface PendingApproval {
+export interface PendingApproval {
   request: NativeSnapshot['pendingRequests'][number];
   /** The REAL tool name, kept apart from the human summary — a rule keyed on prose matches nothing. */
   toolName: string;
@@ -119,24 +84,40 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class ClaudeNativeOwner {
   private writer: ManagedRuntimeStatusWriter;
-  private content: ContentProducer | null = null;
   private queue = new PromptQueue();
   private query: Query | null = null;
-  private turn: TurnState = initialTurn;
-  private turnId: string | null = null;
-  private turnStartedAt: string | null = null;
-  private items: NativeSnapshot['nativeItems'] = [];
-  private sequence = 0;
-  private connected = false;
   private dispatched: string | null = null;
   private started = false;
   private failure: unknown = null;
-  private usageSoFar: Record<string, SdkModelUsage> = {};
   private pending = new Map<string, PendingApproval>();
-  /** Item ids per turn, so a text stream coalesces instead of one item per fragment. */
-  private textItem = new Map<string, number>();
-  /** What the runtime is actually using, published so a reader never has to guess. */
-  private selection: NativeSnapshot['nativeSelection'] = null;
+  /** Everything this session publishes about itself, and the only thing that changes it. */
+  private projection = new NativeProjection();
+
+  /** What the six requests need. Assembled rather than passed piecemeal, so adding one is one line. */
+  private get mailboxes(): Mailboxes {
+    return {
+      m: this.m,
+      session: this.session,
+      query: this.query,
+      projection: this.projection,
+      discovery: this.discovery,
+      pending: this.pending,
+      publish: () => this.publish(),
+      report: this.report,
+      settleAll: (decision) => this.settleAll(decision),
+    };
+  }
+
+  /** What the five description reads need, and nothing else this owner holds. */
+  private get discovery(): Discovery {
+    return {
+      m: this.m,
+      session: this.session,
+      query: this.query,
+      projection: this.projection,
+      report: this.report,
+    };
+  }
 
   constructor(
     private m: MachineConfig,
@@ -149,24 +130,6 @@ export class ClaudeNativeOwner {
   private get startedFile(): string {
     return join(managedRuntimeRoot(this.m, this.session), 'conversation.started');
   }
-
-  /**
-   * The mode the next turn runs under. Held here because the runtime has no getter: what a session
-   * publishes must be what it last successfully applied, not what someone hoped it applied.
-   */
-  private permissionMode: PermissionMode = 'default';
-
-  /** The last context measurement the runtime gave, refreshed when a turn ends rather than per tick. */
-  private contextUsage: NativeSnapshot['contextUsage'];
-
-  /** Which account this session runs on, asked once — it does not change while a session lives. */
-  private account: NativeSnapshot['account'];
-
-  /** The session's MCP servers and their connection status, refreshed when one is acted on. */
-  private mcpServers: NativeSnapshot['mcpServers'];
-
-  /** Cumulative spend, as the runtime reports it at the end of each turn. */
-  private spend: NativeSnapshot['spend'];
 
   private contextAbort = new AbortController();
 
@@ -188,7 +151,7 @@ export class ClaudeNativeOwner {
     const generation = this.session.registrationGeneration;
     if (!generation || !this.session.nativeSession)
       throw new Error('Native Claude requires a managed registration');
-    this.content = new ContentProducer(this.m, this.session, generation);
+    this.projection.content = new ContentProducer(this.m, this.session, generation);
     this.started = existsSync(this.startedFile);
     const resolved = resolveAgentSdk(this.m);
     if ('unavailable' in resolved) throw new Error(resolved.detail);
@@ -230,13 +193,13 @@ export class ClaudeNativeOwner {
       ...(this.started ? { resume: managedId } : { sessionId: managedId }),
     } as unknown as Options;
     this.query = sdk.query({ prompt: this.queue.iterable(), options });
-    this.connected = true;
+    this.projection.connected = true;
     void this.drain();
-    await this.restoreMode();
-    await this.loadCatalog();
-    await this.loadCommands();
-    await this.loadAccount();
-    await this.refreshMcpServers();
+    await restoreMode(this.mailboxes);
+    await loadCatalog(this.discovery);
+    await loadCommands(this.discovery);
+    await loadAccount(this.discovery);
+    await refreshMcpServers(this.discovery);
     this.serveContext(this.contextAbort.signal);
     await this.publish();
   }
@@ -295,133 +258,10 @@ export class ClaudeNativeOwner {
     await atomicWrite(this.startedFile, 'started', 0o600);
   }
 
-  /**
-   * Ask the runtime what it can run, once, and leave the answer where a catalog read can find it.
-   *
-   * Only this process holds a connection, and the read runs elsewhere — so a list nobody published
-   * would have to be invented by the reader, which is exactly the kind of plausible answer this
-   * project refuses to give. A runtime that cannot answer leaves no file, and the read says
-   * unavailable rather than guessing.
-   */
-  private async loadCatalog(): Promise<void> {
-    try {
-      const supported = (await this.query?.supportedModels?.()) as SupportedModel[] | undefined;
-      if (!supported) return;
-      const chosen = this.session.modelSelection?.model ?? null;
-      const models = claudeModels(supported, chosen);
-      await writeClaudeCatalog(this.m, this.session, models);
-      const current = models.find((model) => model.isDefault) ?? models[0];
-      if (current)
-        this.selection = {
-          model: { provider: 'claude', model: current.id },
-          options: { runtime: 'claude', model: { provider: 'claude', model: current.id } },
-          source: this.session.modelSelection === undefined ? 'settings' : 'admission',
-          turnId: null,
-        };
-    } catch (error) {
-      // A catalog is enrichment, not a precondition: a session that cannot list models still runs.
-      await this.report(error);
-    }
-  }
-
-  /**
-   * Ask the runtime which slash commands it offers, and leave the answer where a read can find it.
-   *
-   * Same reason as the model catalog: the reader runs elsewhere. A session that cannot answer leaves
-   * no file, and the read says unavailable rather than offering a vocabulary nobody verified.
-   */
-  private async loadCommands(): Promise<void> {
-    try {
-      const supported = (await this.query?.supportedCommands?.()) as SupportedCommand[] | undefined;
-      if (!supported) return;
-      await writeClaudeCommands(this.m, this.session, claudeCommands(supported));
-    } catch (error) {
-      // A vocabulary is enrichment, not a precondition: a session that cannot list commands still runs.
-      await this.report(error);
-    }
-  }
-
-  /**
-   * Ask which account this session runs on.
-   *
-   * Once, at start: the answer does not change while a session lives, and asking per turn would be
-   * a round trip for a constant. A runtime that says nothing publishes nothing — an account nobody
-   * named is not an account of unknown name.
-   */
-  private async loadAccount(): Promise<void> {
-    try {
-      const reported = (await this.query?.accountInfo?.()) as ReportedAccount | undefined;
-      if (!reported) return;
-      const account = nativeAccount(reported);
-      if (!accountIsEmpty(account)) this.account = account;
-    } catch (error) {
-      await this.report(error);
-    }
-  }
-
-  /**
-   * Read the session's MCP servers and their connection status.
-   *
-   * A failed server is otherwise invisible: the only sign is a tool that quietly is not there, and
-   * a supervisor that cannot say which server failed cannot help.
-   */
-  private async refreshMcpServers(): Promise<void> {
-    try {
-      const reported = (await this.query?.mcpServerStatus?.()) as ReportedMcpServer[] | undefined;
-      if (!reported) return;
-      this.mcpServers = nativeMcpServers(reported);
-    } catch (error) {
-      await this.report(error);
-    }
-  }
-
-  /**
-   * Enable, disable or reconnect one server, then publish what it looks like afterwards.
-   *
-   * Republishing is the point: a request the runtime accepted is not a server that works, and the
-   * caller is answered from the refreshed status rather than from the acceptance.
-   */
-  private async applyMcpRequest(): Promise<void> {
-    const request = readRuntimeMcpRequest(this.m, this.session);
-    if (request === null || request.phase !== 'queued') return;
-    if (request.generation !== this.session.registrationGeneration) return;
-    try {
-      if (request.action === 'reconnect') await this.query?.reconnectMcpServer?.(request.server);
-      else await this.query?.toggleMcpServer?.(request.server, request.action === 'enable');
-      await this.refreshMcpServers();
-      await this.publish();
-      await writeRuntimeMcpRequest(this.m, this.session, { ...request, phase: 'complete' });
-    } catch (error) {
-      await writeRuntimeMcpRequest(this.m, this.session, {
-        ...request,
-        phase: 'failed',
-        reason: 'The runtime refused this MCP operation',
-      });
-      await this.report(error);
-    }
-  }
-
-  /**
-   * Ask the runtime how full its context window is.
-   *
-   * Failure is silence, not a fault: a measurement that cannot be taken leaves the previous one
-   * standing, and a session that cannot answer still runs. Publishing a zero would be worse than
-   * publishing nothing, because a zero reads as an empty window.
-   */
-  private async refreshContextUsage(): Promise<void> {
-    try {
-      const reported = (await this.query?.getContextUsage?.()) as ReportedContextUsage | undefined;
-      if (!reported) return;
-      this.contextUsage = nativeContextUsage(reported, Date.now());
-    } catch (error) {
-      await this.report(error);
-    }
-  }
-
   /** Change the model for subsequent turns, keeping the published evidence in step. */
   async selectModel(model: string, turnId: string | null): Promise<void> {
     await this.query?.setModel?.(model);
-    this.selection = {
+    this.projection.selection = {
       model: { provider: 'claude', model },
       options: { runtime: 'claude', model: { provider: 'claude', model } },
       source: 'settings',
@@ -445,27 +285,30 @@ export class ClaudeNativeOwner {
         await this.rememberConversation();
         const failed = isFailureResult(message);
         const classified = classifySdkMessage(message.type);
-        this.turn = advanceTurn(this.turn, {
+        this.projection.turn = advanceTurn(this.projection.turn, {
           step: 'message',
           message: classified,
           kind: null,
           failed,
         });
-        if ('kind' in classified) this.record(message, classified.kind, failed);
-        this.takeSpend(message);
+        if ('kind' in classified) this.projection.record(message, classified.kind, failed);
+        this.projection.takeSpend(message);
         // Measured when a turn ends, not on every frame: this is a round trip to the runtime, and
         // the answer only changes when the conversation does.
-        if (this.turn.status !== null && this.turn.status !== 'inProgress')
-          await this.refreshContextUsage();
+        if (this.projection.turn.status !== null && this.projection.turn.status !== 'inProgress')
+          await refreshContextUsage(this.discovery);
         await this.publish();
       }
       this.failure ??= new Error('Native Claude stream ended while the session was alive');
     } catch (error) {
       this.failure = error;
-      this.turn = advanceTurn(this.turn, { step: 'failed', error: String(error) });
+      this.projection.turn = advanceTurn(this.projection.turn, {
+        step: 'failed',
+        error: String(error),
+      });
       await this.report(error);
     } finally {
-      this.connected = false;
+      this.projection.connected = false;
       // Nothing will answer these now; leaving them unsettled holds the runtime's own callbacks.
       this.settleAll('cancel');
       await this.publish().catch(() => undefined);
@@ -504,125 +347,6 @@ export class ClaudeNativeOwner {
     await atomicWrite(this.startedFile, 'created\n', 0o600);
   }
 
-  private record(message: { type: string }, kind: string, failed: boolean): void {
-    const turnId = this.turnId ?? 'unknown';
-    if (kind === 'tool') {
-      this.recordTool(message, turnId);
-      return;
-    }
-    if (kind === 'terminal') {
-      this.content?.buffer.lifecycle(
-        'terminal',
-        turnId,
-        `${turnId}:end`,
-        failed ? 'failed' : 'completed',
-      );
-      this.appendItem({
-        kind: 'terminal',
-        stage: 'completed',
-        nativeId: `${turnId}:end`,
-        turnId,
-        requestId: null,
-        status: failed ? 'failed' : 'completed',
-        text: null,
-        tool: null,
-        usage: this.takeUsage(message),
-      });
-      this.content?.publish();
-      return;
-    }
-    const text =
-      message.type === 'stream_event' ? deltaText((message as { event?: unknown }).event) : null;
-    if (text === null) return;
-    // Coalesced: one item per turn's answer rather than one per fragment. The buffer appends, so a
-    // reader sees the answer grow instead of a thousand disconnected pieces.
-    const itemId = `${turnId}:text`;
-    this.content?.buffer.text('assistant', turnId, itemId, text, 'append');
-    this.content?.publish();
-    const at = this.textItem.get(itemId);
-    if (at === undefined) {
-      this.textItem.set(
-        itemId,
-        this.appendItem({
-          kind: 'assistant',
-          stage: 'updated',
-          nativeId: itemId,
-          turnId,
-          requestId: null,
-          status: null,
-          text,
-          tool: null,
-          usage: null,
-        }),
-      );
-      return;
-    }
-    const existing = this.items[at];
-    if (existing)
-      this.items[at] = { ...existing, text: `${existing.text ?? ''}${text}`.slice(-8_192) };
-  }
-
-  /** Tool use and its result, which carry no text blocks and would otherwise vanish entirely. */
-  private recordTool(message: { type: string }, turnId: string): void {
-    for (const block of toolBlocks(message)) {
-      this.content?.buffer.tool(turnId, block.callId, {
-        callId: block.callId,
-        name: block.name,
-        lifecycle: block.lifecycle,
-        outcome:
-          block.lifecycle === 'completed' ? (block.failed ? 'failed' : 'succeeded') : 'unknown',
-        exitCode: null,
-      });
-      this.appendItem({
-        kind: 'tool',
-        stage: block.lifecycle === 'completed' ? 'completed' : 'started',
-        nativeId: block.callId,
-        turnId,
-        requestId: null,
-        status: block.lifecycle,
-        text: block.detail,
-        tool: block.name,
-        usage: null,
-      });
-    }
-    this.content?.publish();
-  }
-
-  private appendItem(item: Omit<NativeSnapshot['nativeItems'][number], 'sequence' | 'at'>): number {
-    this.sequence += 1;
-    this.items.push({ ...item, sequence: this.sequence, at: new Date().toISOString() });
-    // Trimmed at the source rather than only in the view, so memory is bounded too.
-    if (this.items.length > MAX_ITEMS) {
-      const dropped = this.items.length - MAX_ITEMS;
-      this.items.splice(0, dropped);
-      for (const [key, at] of this.textItem) {
-        if (at < dropped) this.textItem.delete(key);
-        else this.textItem.set(key, at - dropped);
-      }
-    }
-    return this.items.length - 1;
-  }
-
-  /** The conversation's running cost, as the runtime states it — never derived from token counts. */
-  private takeSpend(message: unknown): void {
-    const record = message as { type?: unknown; total_cost_usd?: unknown };
-    if (record.type !== 'result' || typeof record.total_cost_usd !== 'number') return;
-    if (!Number.isFinite(record.total_cost_usd) || record.total_cost_usd < 0) return;
-    this.spend = {
-      totalCostUsd: record.total_cost_usd,
-      observedAt: new Date().toISOString(),
-    };
-  }
-
-  /** Per-turn spend, differenced against the running total the runtime keeps for the session. */
-  private takeUsage(message: unknown): NativeSnapshot['nativeItems'][number]['usage'] {
-    const record = message as { modelUsage?: Record<string, SdkModelUsage> };
-    if (record.modelUsage === undefined) return nativeUsage({ reported: false });
-    const delta = turnDelta(record.modelUsage, this.usageSoFar);
-    this.usageSoFar = record.modelUsage;
-    return nativeUsage({ reported: true, delta });
-  }
-
   /**
    * Ask the operator, and wait for their answer.
    *
@@ -638,7 +362,7 @@ export class ClaudeNativeOwner {
       rpcId: requestId,
       kind: 'approval',
       approvalKind: approvalKind(toolName),
-      turnId: this.turnId ?? 'unknown',
+      turnId: this.projection.turnId ?? 'unknown',
       itemId: requestId,
       // The arguments travel with the request; deciding without them is the same blind answer the
       // drawn menu forced.
@@ -651,168 +375,21 @@ export class ClaudeNativeOwner {
     const settled = new Promise<PermissionResult>((resolve) => {
       this.pending.set(requestId, { request, toolName, settle: resolve });
     });
-    this.turn = advanceTurn(this.turn, {
+    this.projection.turn = advanceTurn(this.projection.turn, {
       step: 'message',
       message: { kind: 'request' },
       kind: 'approval',
     });
-    this.content?.buffer.lifecycle(
+    this.projection.content?.buffer.lifecycle(
       'request',
       request.turnId,
       requestId,
       'requested',
       request.reason,
     );
-    this.content?.publish();
+    this.projection.content?.publish();
     await this.publish();
     return settled;
-  }
-
-  /** Apply one decision the control plane wrote, and acknowledge it. */
-  private async applyResponse(): Promise<void> {
-    const command = readNativeCommand(this.m, this.session.name);
-    if (!command) return;
-    const prior = readNativeReceipt(this.m, this.session.name);
-    if (prior?.operationId === command.operationId) {
-      clearNativeCommand(this.m, this.session.name);
-      return;
-    }
-    const receipt = (outcome: 'submitted' | 'rejected' | 'uncertain', reason: string | null) =>
-      writeNativeReceipt(this.m, this.session.name, {
-        operationId: command.operationId,
-        requestId: command.requestId,
-        fingerprint: command.fingerprint,
-        outcome,
-        reason,
-      });
-    const waiting = this.pending.get(command.requestId);
-    if (
-      command.generation !== this.session.registrationGeneration ||
-      !waiting ||
-      command.kind !== 'approval' ||
-      command.decision === null
-    ) {
-      // Refused rather than guessed: a response that does not match a request this runtime holds
-      // would otherwise resume some other turn, or none.
-      await receipt('rejected', 'request-identity-mismatch');
-      clearNativeCommand(this.m, this.session.name);
-      return;
-    }
-    // Written BEFORE the effect. A crash in the window then reads as uncertain, which is the truth;
-    // writing only afterwards reported an applied decision as rejected on the next start.
-    await receipt('uncertain', null);
-    this.pending.delete(command.requestId);
-    waiting.settle(permissionResult(command.decision, { toolName: waiting.toolName }));
-    this.turn = advanceTurn(this.turn, { step: 'answered' });
-    this.content?.buffer.lifecycle(
-      'request',
-      waiting.request.turnId,
-      command.requestId,
-      command.decision,
-    );
-    this.content?.publish();
-    await receipt('submitted', null);
-    clearNativeCommand(this.m, this.session.name);
-    await this.publish();
-  }
-
-  /**
-   * Cancel the running turn, leaving the runtime alive to answer for it.
-   *
-   * Outstanding permissions are settled with a cancel rather than abandoned: the runtime is holding
-   * those callbacks, and interrupting behind their backs leaves them unresolved for the life of the
-   * process while the snapshot claims the session is idle.
-   */
-  private async applyInterrupt(): Promise<void> {
-    const command = readRuntimeInterrupt(this.m, this.session);
-    if (command === null || !['queued', 'uncertain'].includes(command.phase)) return;
-    const cancellable = () =>
-      isCancellableTurn(
-        {
-          generation: this.session.registrationGeneration ?? '',
-          state: this.turn.state,
-          turn:
-            this.turnId === null || this.turn.status === null
-              ? null
-              : { id: this.turnId, status: this.turn.status, startedAt: this.turnStartedAt },
-        },
-        command.generation,
-        command.turnId,
-      );
-    if (!cancellable()) {
-      await writeRuntimeInterrupt(this.m, this.session, { ...command, phase: 'rejected' });
-      return;
-    }
-    await writeRuntimeInterrupt(this.m, this.session, { ...command, phase: 'uncertain' });
-    // Writing yields, and the turn may settle in that gap. Re-checking is what stops this cancelling
-    // whatever turn started next.
-    if (!cancellable()) {
-      await writeRuntimeInterrupt(this.m, this.session, { ...command, phase: 'rejected' });
-      return;
-    }
-    this.settleAll('cancel');
-    try {
-      await this.query?.interrupt?.();
-    } catch (error) {
-      // An interrupt that cannot be delivered is a rejected interrupt, not a dead session. Throwing
-      // here would destroy the conversation the contract promises to keep.
-      await writeRuntimeInterrupt(this.m, this.session, { ...command, phase: 'rejected' });
-      await this.report(error);
-      return;
-    }
-    this.turn = advanceTurn(this.turn, { step: 'interrupted' });
-    await writeRuntimeInterrupt(this.m, this.session, { ...command, phase: 'accepted' });
-    await this.publish();
-  }
-
-  /**
-   * Put the session back into the permission mode it was last given.
-   *
-   * A restart otherwise dropped it silently: the request file still said `accepted` while the
-   * runtime came up in `default`, and the drop went the dangerous way — from a mode that asks
-   * before writing to one that asks less. A session surviving a restart is this project's whole
-   * promise, and a setting that decides what a turn may do to a working tree is part of the session.
-   */
-  private async restoreMode(): Promise<void> {
-    const request = readRuntimeMode(this.m, this.session);
-    if (!shouldRestoreMode(request, this.session.registrationGeneration) || request === null)
-      return;
-    try {
-      await this.query?.setPermissionMode?.(request.mode);
-      this.permissionMode = request.mode;
-    } catch (error) {
-      // Reported rather than assumed: publishing a mode the runtime refused would be worse than
-      // coming up in the default one, because a reader would trust it.
-      await this.report(error);
-    }
-  }
-
-  /**
-   * Move the session to the permission mode a caller asked for.
-   *
-   * Applied between turns only. Changing it mid-turn would move the boundary under a tool call that
-   * was already judged against the old one — the approval a person gave would then be for a
-   * different question than the one being answered.
-   */
-  private async applyMode(): Promise<void> {
-    const request = readRuntimeMode(this.m, this.session);
-    if (request === null || request.phase !== 'queued') return;
-    if (request.generation !== this.session.registrationGeneration) return;
-    if (this.turn.status === 'inProgress') return;
-    try {
-      await this.query?.setPermissionMode?.(request.mode);
-    } catch (error) {
-      await writeRuntimeMode(this.m, this.session, {
-        ...request,
-        phase: 'rejected',
-        reason: 'The runtime refused this permission mode',
-      });
-      await this.report(error);
-      return;
-    }
-    this.permissionMode = request.mode;
-    await writeRuntimeMode(this.m, this.session, { ...request, phase: 'accepted', reason: null });
-    await this.publish();
   }
 
   /**
@@ -843,9 +420,9 @@ export class ClaudeNativeOwner {
    */
   private async compactTurn(signal: AbortSignal): Promise<void> {
     const nativeId = `compact-${Date.now()}`;
-    this.turnId = nativeId;
-    this.turnStartedAt = new Date().toISOString();
-    this.turn = { ...this.turn, status: 'inProgress', state: 'working' };
+    this.projection.turnId = nativeId;
+    this.projection.turnStartedAt = new Date().toISOString();
+    this.projection.turn = { ...this.projection.turn, status: 'inProgress', state: 'working' };
     this.queue.push({
       type: 'user',
       session_id: this.session.nativeSession?.id ?? '',
@@ -857,66 +434,55 @@ export class ClaudeNativeOwner {
   }
 
   private async publishContextBoundary(): Promise<void> {
-    this.content?.buffer.resetContext();
-    this.content?.publish();
-    await this.content?.writer.flushPending();
-  }
-
-  /**
-   * Put the files back, when a caller asked and the turn that touched them has ended.
-   *
-   * Between turns only, for the same reason the mode change is: restoring files under a running
-   * turn changes the tree the turn is reasoning about, halfway through.
-   */
-  private async applyRewind(): Promise<void> {
-    const request = readRuntimeRewind(this.m, this.session);
-    if (request === null || request.phase !== 'queued') return;
-    if (request.generation !== this.session.registrationGeneration) return;
-    if (this.turn.status === 'inProgress') return;
-    try {
-      const result = (await this.query?.rewindFiles?.(request.messageId, {
-        dryRun: request.dryRun,
-      })) as
-        | {
-            canRewind?: boolean;
-            error?: string;
-            filesChanged?: string[];
-            insertions?: number;
-            deletions?: number;
-            skippedLinks?: number;
-          }
-        | undefined;
-      if (!result) throw new Error('The runtime returned no rewind result');
-      await writeRuntimeRewind(this.m, this.session, {
-        ...request,
-        phase: 'complete',
-        result: RewindResultSchema.parse({
-          canRewind: result.canRewind === true,
-          error: result.error ?? null,
-          filesChanged: (result.filesChanged ?? []).slice(0, 512),
-          insertions: result.insertions ?? null,
-          deletions: result.deletions ?? null,
-          // Absent means "no refusals happened", which is a different fact from "not measured" —
-          // and only a real rewind can report it at all, so a preview leaves it null.
-          skippedLinks: request.dryRun ? null : (result.skippedLinks ?? 0),
-        }),
-      });
-    } catch (error) {
-      await writeRuntimeRewind(this.m, this.session, {
-        ...request,
-        phase: 'failed',
-        reason: 'The runtime could not rewind these files',
-      });
-      await this.report(error);
-    }
+    this.projection.content?.buffer.resetContext();
+    this.projection.content?.publish();
+    await this.projection.content?.writer.flushPending();
   }
 
   async tick(): Promise<void> {
-    await this.applyInterrupt();
-    await this.applyMode();
-    await this.applyRewind();
-    await this.applyMcpRequest();
-    await this.applyResponse();
+    await applyInterrupt(this.mailboxes);
+    await applyMode(this.mailboxes);
+    await applyRewind(this.mailboxes);
+    await applyMcpRequest(this.mailboxes);
+    await applyResponse(this.mailboxes);
+    // Pickup under the same lock the writers take, so a write cannot interleave with the
+    // read-then-write that moves a turn between phases. Attempted rather than awaited to the
+    // timeout: this process also serves the session's context operations under that same lock, and
+    // a pickup that insisted would eventually throw and take the runtime down with it. A busy tick
+    // simply leaves the turn where it is.
+    await tryNativeAdmission(this.m, this.session, () => this.pickup());
+    await this.publish();
+  }
+
+  /**
+   * Adopt a dispatch the previous process did not finish recording.
+   *
+   * `dispatching` is written before the turn is queued and `accepted` after, so a process that
+   * dies between them leaves a phase no later tick would look at again — the turn sat there and
+   * the sender waited for an acknowledgement that could never come. The runtime's own transcript
+   * decides which of the two happened; this only acts on the answer.
+   */
+  private async reconcileDispatch(input: RuntimeInput): Promise<void> {
+    if (input.nativeId === this.dispatched) return;
+    // A record written before the dispatch time was carried still knows when it was written: the
+    // mailbox file's own timestamp is that moment. Without this the whole population this fix
+    // exists for — the sessions already parked by an earlier build — would be judged undelivered
+    // and sent a second time, which is the harm the reconciliation is meant to avoid.
+    const dispatchedAt =
+      input.dispatchedAt ?? statSync(runtimeInputPath(this.m, this.session)).mtime.toISOString();
+    if (nativeInputDelivered(this.session, input, dispatchedAt)) {
+      this.dispatched = input.nativeId;
+      await writeRuntimeInput(this.m, this.session, { ...input, phase: 'accepted' });
+      return;
+    }
+    // Back to the queue rather than failed: nothing was sent, so the turn is exactly as unsent as
+    // it was before, and the next tick dispatches it normally.
+    await writeRuntimeInput(this.m, this.session, { ...input, phase: 'queued' });
+  }
+
+  private async pickup(): Promise<void> {
+    const pending = readRuntimeInput(this.m, this.session);
+    if (pending?.phase === 'dispatching') await this.reconcileDispatch(pending);
     const input = readRuntimeInput(this.m, this.session);
     if (
       input &&
@@ -924,20 +490,24 @@ export class ClaudeNativeOwner {
       input.nativeId !== this.dispatched &&
       // One turn at a time. Dispatching a second while the first runs retags its items, lets its
       // result close the wrong turn, and points an interrupt at a turn that is not running.
-      this.turn.status !== 'inProgress'
+      this.projection.turn.status !== 'inProgress'
     ) {
       this.dispatched = input.nativeId;
-      this.turnId = input.nativeId;
-      this.turnStartedAt = new Date().toISOString();
-      this.turn = { ...this.turn, status: 'inProgress', state: 'working' };
+      this.projection.turnId = input.nativeId;
+      this.projection.turnStartedAt = new Date().toISOString();
+      this.projection.turn = { ...this.projection.turn, status: 'inProgress', state: 'working' };
       // `dispatching` before the queue, `accepted` after: a crash between the two is then visible as
       // an in-flight dispatch rather than as a delivered message that never arrived.
-      await writeRuntimeInput(this.m, this.session, { ...input, phase: 'dispatching' });
+      await writeRuntimeInput(this.m, this.session, {
+        ...input,
+        phase: 'dispatching',
+        dispatchedAt: this.projection.turnStartedAt,
+      });
       const options = input.turnOptions?.options;
       if (options?.runtime === 'claude') {
         // A turn's own model and effort, applied before it is queued so they govern this turn rather
         // than the one after it.
-        if (options.model.model !== this.selection?.model.model)
+        if (options.model.model !== this.projection.selection?.model.model)
           await this.selectModel(options.model.model, input.nativeId);
         // The runtime has no per-turn effort setter: `applyFlagSettings` sets it for the rest of
         // the session on models that accept it. Applied here so the turn that asked for it is the
@@ -958,7 +528,6 @@ export class ClaudeNativeOwner {
       } as SDKUserMessage);
       await writeRuntimeInput(this.m, this.session, { ...input, phase: 'accepted' });
     }
-    await this.publish();
   }
 
   /**
@@ -1019,20 +588,20 @@ export class ClaudeNativeOwner {
           providerPid: process.pid,
           version: this.session.nativeSession?.version ?? 'unknown',
         },
-        sequence: this.sequence,
-        connected: this.connected,
-        turn: this.turn,
-        turnId: this.turnId,
-        turnStartedAt: this.turnStartedAt,
-        items: this.items,
+        sequence: this.projection.sequence,
+        connected: this.projection.connected,
+        turn: this.projection.turn,
+        turnId: this.projection.turnId,
+        turnStartedAt: this.projection.turnStartedAt,
+        items: this.projection.items,
         pending: [...this.pending.values()].map((entry) => entry.request),
-        selection: this.selection,
-        permissionMode: this.permissionMode,
-        contextUsage: this.contextUsage,
-        account: this.account,
-        spend: this.spend,
+        selection: this.projection.selection,
+        permissionMode: this.projection.permissionMode,
+        contextUsage: this.projection.contextUsage,
+        account: this.projection.account,
+        spend: this.projection.spend,
         fileCheckpoints: this.session.fileCheckpoints === true,
-        mcpServers: this.mcpServers,
+        mcpServers: this.projection.mcpServers,
         now: Date.now(),
       }),
       registrationGeneration: generation,
@@ -1045,7 +614,7 @@ export class ClaudeNativeOwner {
     await this.contextPump.close();
     this.settleAll('decline');
     this.queue.close();
-    this.connected = false;
+    this.projection.connected = false;
     try {
       // Bounded: shutdown must not hang inside the owner lock waiting on a runtime that is gone.
       await Promise.race([this.query?.interrupt?.() ?? Promise.resolve(), Bun.sleep(2_000)]);
@@ -1053,94 +622,6 @@ export class ClaudeNativeOwner {
       // Best effort at shutdown; the session is going away either way.
     }
     await this.publish().catch(() => undefined);
-    await this.content?.close().catch(() => undefined);
+    await this.projection.content?.close().catch(() => undefined);
   }
-}
-
-/** True when the runtime says the turn ended badly, rather than merely that it ended. */
-function isFailureResult(message: unknown): boolean {
-  if (typeof message !== 'object' || message === null) return false;
-  const record = message as { type?: unknown; is_error?: unknown; subtype?: unknown };
-  if (record.type !== 'result') return record.type === 'model_refusal_no_fallback';
-  return (
-    record.is_error === true || (typeof record.subtype === 'string' && record.subtype !== 'success')
-  );
-}
-
-interface ToolBlock {
-  callId: string;
-  name: string | null;
-  lifecycle: 'running' | 'completed';
-  failed: boolean;
-  detail: string | null;
-}
-
-/**
- * Tool activity, from the two shapes that carry it.
- *
- * A tool CALL rides inside the finished assistant message as a `tool_use` block, and its RESULT
- * comes back with the user role as a `tool_result` block — there is no separate result message.
- * Reading only text blocks dropped both, so a conversation showed prose with unexplained gaps where
- * the agent had spent most of its time.
- */
-function toolBlocks(message: unknown): ToolBlock[] {
-  if (typeof message !== 'object' || message === null) return [];
-  const content = (message as { message?: { content?: unknown } }).message?.content;
-  if (!Array.isArray(content)) return [];
-  const out: ToolBlock[] = [];
-  for (const raw of content) {
-    if (typeof raw !== 'object' || raw === null) continue;
-    const block = raw as {
-      type?: unknown;
-      id?: unknown;
-      name?: unknown;
-      tool_use_id?: unknown;
-      is_error?: unknown;
-      input?: unknown;
-    };
-    if (block.type === 'tool_use' && typeof block.id === 'string')
-      out.push({
-        callId: block.id,
-        name: typeof block.name === 'string' ? block.name.slice(0, 128) : null,
-        lifecycle: 'running',
-        failed: false,
-        detail: typeof block.name === 'string' ? summarise(block.name, block.input) : null,
-      });
-    if (block.type === 'tool_result' && typeof block.tool_use_id === 'string')
-      out.push({
-        callId: block.tool_use_id,
-        name: null,
-        lifecycle: 'completed',
-        failed: block.is_error === true,
-        detail: null,
-      });
-  }
-  return out;
-}
-
-/**
- * The text carried by one incremental stream event, if it carries any.
- *
- * Only `text_delta`. The stream also carries block starts and stops, message envelopes and pings;
- * treating any of them as content would append empty strings between every real fragment, and
- * treating a thinking delta as assistant text would put reasoning into the transcript as speech.
- */
-function deltaText(event: unknown): string | null {
-  if (typeof event !== 'object' || event === null) return null;
-  const record = event as { type?: unknown; delta?: unknown };
-  if (record.type !== 'content_block_delta') return null;
-  const delta = record.delta as { type?: unknown; text?: unknown } | undefined;
-  if (delta?.type !== 'text_delta' || typeof delta.text !== 'string') return null;
-  return delta.text.length > 0 ? delta.text : null;
-}
-
-/** A short, honest description of what the tool would do, for the operator deciding about it. */
-function summarise(toolName: string, input: unknown): string {
-  if (typeof input !== 'object' || input === null) return toolName;
-  const record = input as Record<string, unknown>;
-  const detail = ['command', 'file_path', 'path', 'url', 'pattern'].reduce<string | null>(
-    (found, key) => found ?? (typeof record[key] === 'string' ? (record[key] as string) : null),
-    null,
-  );
-  return detail === null ? toolName : `${toolName}: ${detail.slice(0, 400)}`;
 }

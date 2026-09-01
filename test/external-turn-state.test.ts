@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { type CodexAppRpc, connectCodexAppServer } from '../src/agent/codex/appServer.ts';
+import { connectCodexAppServer } from '../src/agent/codex/appServer.ts';
+import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import { ExternalSessionSchema } from '../src/config/schema.ts';
 import { ExternalTurnStateSchema, unknownTurnState } from '../src/external/turnSchema.ts';
 import {

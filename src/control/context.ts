@@ -5,7 +5,8 @@ import {
   readContextOperation,
   readNativeHistory,
 } from '../context/service.ts';
-import { hasNativeRuntime, runtimeCapabilities } from '../runtime/capabilities.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
 import type { MachineConfig } from '../types.ts';
 import {
   type ControlCompactSchema,

@@ -49,7 +49,6 @@ export const ChatHoldSchema = z.object({
   since: z.number().optional(),
   msgId: z.string().nullable().default(null),
 });
-export type ChatHold = z.infer<typeof ChatHoldSchema>;
 
 export const MetricsStatusSchema = z.object({
   ts: z.number(),
@@ -93,6 +92,7 @@ const lifecyclePath = (name: string): string => `${STATUS_DIR}/${safe(name)}.lif
 const chatHoldPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.chathold.json`;
 const metricsPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.metrics.json`;
 const launchPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.launch.json`;
+const waitingPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.waiting.json`;
 
 function readRaw(path: string): unknown {
   try {
@@ -186,7 +186,13 @@ export function clearChatHold(name: string): void {
 }
 
 export function clearStatus(name: string): void {
-  for (const p of [lifecyclePath(name), metricsPath(name), chatHoldPath(name), launchPath(name)]) {
+  for (const p of [
+    lifecyclePath(name),
+    metricsPath(name),
+    chatHoldPath(name),
+    launchPath(name),
+    waitingPath(name),
+  ]) {
     try {
       rmSync(p, { force: true });
     } catch {
@@ -208,4 +214,61 @@ export function writeLaunchStamp(name: string, stamp: Omit<LaunchStamp, 'ts'>): 
 
 export function readLaunchStamp(name: string): LaunchStamp | null {
   return LaunchStampSchema.safeParse(readRaw(launchPath(name))).data ?? null;
+}
+
+/**
+ * Who this session is waiting for, while it is waiting.
+ *
+ * A fifth per-session topic beside the four above, and stored the same way for the same reason:
+ * a note about a wait must never clobber a note about the turn. It is deliberately NOT in the
+ * session registry — that is the durable identity record, rewritten whole under a global lock, and
+ * `wait` is the most-invoked orchestration command there is.
+ *
+ * The record carries the pid that wrote it and a deadline, because clearing it on the way out
+ * cannot be the mechanism: `wait` is routinely SIGKILLed by a fleet restart sweep — it is built to
+ * survive exactly that — and a handler does not run then. A stale record is worse than none: it
+ * reads as a fact. This project has measured that failure once already, in lifecycle stamps left
+ * behind by turns that were killed.
+ */
+const WaitingSchema = z.object({
+  /** Where the wait points, as a fleet address. */
+  target: z.string().min(1).max(256),
+  /** When this wait began — the first observation, not the last refresh. */
+  since: z.number(),
+  /** The process doing the waiting, so a record can be checked against a living owner. */
+  pid: z.number(),
+  /** When this record stops meaning anything, refreshed while the wait runs. */
+  expiresAt: z.number(),
+});
+export type SessionWaiting = z.infer<typeof WaitingSchema>;
+
+export async function writeWaiting(name: string, value: SessionWaiting): Promise<void> {
+  try {
+    mkdirSync(STATUS_DIR, { recursive: true });
+    await atomicWrite(waitingPath(name), JSON.stringify(WaitingSchema.parse(value)));
+  } catch {
+    // best-effort: a wait must still work on a host that cannot write a note about it
+  }
+}
+
+export function clearWaiting(name: string): void {
+  try {
+    rmSync(waitingPath(name), { force: true });
+  } catch {
+    // best-effort
+  }
+}
+
+/** The wait in force, or null. A record whose writer is gone or whose deadline passed is null. */
+export function readWaiting(name: string, now = Date.now()): SessionWaiting | null {
+  const value = WaitingSchema.safeParse(readRaw(waitingPath(name))).data;
+  if (value === undefined) return null;
+  if (now >= value.expiresAt) return null;
+  try {
+    process.kill(value.pid, 0);
+  } catch (error) {
+    // EPERM means the process exists and belongs to someone else — that is alive, not gone.
+    if (!(error instanceof Error && 'code' in error && error.code === 'EPERM')) return null;
+  }
+  return value;
 }

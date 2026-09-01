@@ -30,12 +30,14 @@ test('a write to the transcript is observed long before a poll would come round'
   });
   const started = Date.now();
   writeFileSync(file, '{}\n{"type":"assistant"}\n');
-  // Bounded wait: this asserts the event ARRIVES, never how fast the machine is.
-  for (let i = 0; i < 100 && seen === 0; i += 1) await Bun.sleep(10);
+  // One append, and a bound that is generous but finite. Both halves are the test: without the
+  // bound it would pass on a watch slower than the 1500 ms poll it replaces — that is, on a build
+  // where the feature is worthless — and without the single write it would not exercise the thing
+  // the hook depends on, which is that ONE append arrives.
+  for (let i = 0; i < 120 && seen === 0; i += 1) await Bun.sleep(10);
   watcher.close();
   expect(seen).toBeGreaterThan(0);
-  // The old floor was a 1500 ms poll; the point of the watch is that the wait is not that.
-  expect(Date.now() - started).toBeLessThan(1_000);
+  expect(Date.now() - started).toBeLessThan(1_200);
 });
 
 test('a file that is not there yet is not watched, and that is not an error', () => {

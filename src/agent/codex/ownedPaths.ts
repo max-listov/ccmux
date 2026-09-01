@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { hasNativeRuntime } from '../../runtime/modes.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 
 export function isOwnedCodex(s: Pick<Session, 'agent' | 'runtime'>): boolean {
-  return s.agent === 'codex' && s.runtime === 'app-server';
+  return s.agent === 'codex' && hasNativeRuntime(s);
 }
 
 const key = (m: Pick<MachineConfig, 'stateDir'>, name: string): string =>

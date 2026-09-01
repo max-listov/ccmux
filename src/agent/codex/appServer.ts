@@ -11,8 +11,6 @@ import type { CodexAppRpc, CodexRpcOptions } from './rpc.ts';
 import { connectCodexSocket } from './socket.ts';
 import type { CodexTurnInput } from './turnInput.ts';
 
-export type { CodexAppRpc } from './rpc.ts';
-
 export const ThreadStatusSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('notLoaded') }),
   z.object({ type: z.literal('idle') }),

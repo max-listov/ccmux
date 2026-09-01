@@ -17,6 +17,14 @@ export const RuntimeInputSchema = z
     text: z.string().min(1).max(32_768),
     phase: z.enum(['queued', 'dispatching', 'accepted', 'uncertain']),
     /**
+     * When the dispatch that is still in flight began.
+     *
+     * Written with `dispatching`, and read only by whoever has to decide what an interrupted
+     * dispatch means. Without it a reconciliation can only match a turn by its words, and the same
+     * words sent twice make the older turn look like a receipt for the newer one.
+     */
+    dispatchedAt: z.string().optional(),
+    /**
      * A message is framed for its recipient; a command is delivered verbatim.
      *
      * The distinction is load-bearing, not cosmetic: every chat-delivered message is prefixed with
@@ -31,7 +39,10 @@ export const RuntimeInputSchema = z
   })
   .strict();
 export type RuntimeInput = z.infer<typeof RuntimeInputSchema>;
-const path = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m, s), 'input.json');
+/** Where a session's single input slot lives. Exported because when it was WRITTEN is evidence. */
+export const runtimeInputPath = (m: MachineConfig, s: Session) =>
+  join(managedRuntimeRoot(m, s), 'input.json');
+const path = runtimeInputPath;
 export function readRuntimeInput(m: MachineConfig, s: Session): RuntimeInput | null {
   const input = readPrivateJson(path(m, s), RuntimeInputSchema);
   if (input !== null) return input;

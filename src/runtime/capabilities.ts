@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AgentKindSchema } from '../config/schema.ts';
 import type { Session } from '../types.ts';
+import { hasNativeRuntime } from './modes.ts';
 
 export const RuntimeCapabilitiesSchema = z
   .object({
@@ -172,11 +173,4 @@ export function runtimeCapabilities(
       ...unsupportedNativeOperations,
     };
   return { ...declared };
-}
-
-export function hasNativeRuntime(session: Pick<Session, 'agent' | 'runtime'>): boolean {
-  return (
-    (session.agent === 'codex' && session.runtime === 'app-server') ||
-    (['opencode', 'custom', 'claude'].includes(session.agent) && session.runtime === 'native')
-  );
 }

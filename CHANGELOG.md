@@ -6,6 +6,58 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+Internal consistency pass, plus two defects it uncovered.
+
+**Contract changes** — this project keeps one current contract and has no installed-client
+compatibility population, so these replace rather than extend:
+
+- `permission-mode` now requires an `operationId`, like every other durable request. A repeated
+  request is one request; without it, a caller whose answer was lost restarted a mode change against
+  a session that had moved on.
+- `list --json` and `fleet --json` rows carry `waitingFor`: the session a session is waiting for,
+  while it waits. Null means "not waiting" locally and "that build does not report it" from a fleet
+  peer, the same distinction already drawn for `turnStartedAt`.
+- The codex `effort` turn option is a bounded string rather than a fixed set of names, matching the
+  claude one. Which levels exist is a property of the model and is published per model in the
+  catalog, which is what accepts or refuses one. This widens the published packed-client type.
+
+**Fixes**
+
+- A native Claude turn whose dispatch was cut short by a crash no longer parks the session forever.
+  The phase file recorded that a dispatch was in flight and nothing ever looked at it again, so the
+  turn sat unsent and its sender waited for an acknowledgement that could not come. The runtime's
+  own transcript now decides whether the turn arrived, bounded by when the dispatch began.
+- The native Claude pickup takes the admission lock that its writers already took, so a write can no
+  longer interleave with the read-then-write that moves a turn between phases.
+- A session's permission mode survives a restart across this upgrade: the record is read in the
+  shape an earlier build wrote it. Losing it would have returned a session in `plan` or
+  `acceptEdits` to `default` — a drop towards the mode that asks less.
+
+**Internal**
+
+- One durable-mailbox mechanism serves interrupt, permission mode, MCP control and rewind; one table
+  answers which execution modes each agent has; one function computes every idempotency fingerprint.
+  Fifteen unused exports and two pass-through re-exports are gone.
+
+**The task queue is no longer in this repository**
+
+- This repository is the deliverable. The project's task queue — every state, including the closed
+  work — now lives in the project's private working repository, and `docs/backlog/` and
+  `docs/research/` are gone from here. A supervisor of agent sessions accumulates a backlog made of
+  the things a public repository must not hold: machine names, session names, fleet addresses, and
+  the neighbouring project whose failure produced the task. Every one of those tasks had to be
+  anonymised on the way in, and an anonymised claim is unverifiable a year later.
+- The consequence for readers of this repository is stated rather than hidden: this tree can no
+  longer answer "why" from a task. Anything whose reasoning deserves to be public has to become a
+  decision record in `docs/decisions/` or a comment at the mechanism, and the bar on both goes up.
+- The publication guard gained two rules. One rejects an address of the form `<machine>:<session>`
+  handed to a `ccmux` command — a shape that had already reached a committed document and that no
+  structural rule caught, because it is not a path, not a frontmatter field and not a machine label.
+  The other rejects the private companion's repository address; generic placeholders and this
+  project's own public names, including the from-source launcher, stay valid.
+- `quality.config.json` declares this repository's identity, role and content classification in
+  typed form, for a reader that checks the boundary from outside.
+
 ## [0.40.0] — 2026-09-01
 
 An optional native Claude runtime, and the control every session was missing

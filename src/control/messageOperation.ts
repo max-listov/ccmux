@@ -4,7 +4,8 @@ import {
   MessageOperationResultSchema,
 } from '../chat/messageOperationSchema.ts';
 import { messagePrincipal, readMessageJournal } from '../chat/messageOperationStore.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { controlTarget } from './target.ts';
 

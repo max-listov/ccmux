@@ -37,6 +37,31 @@ the default footer. `.githooks/commit-msg` refuses them, and `.githooks/pre-comm
 content containing the maintainer's paths — a rule alone cannot hold against a default set outside
 this repository, so the check is the mechanism and the rule is only its explanation.
 
+## The backlog is not in this repository
+This is the deliverable source. The project's task queue — every state, including `done/` — lives
+in the project's private working repository, and there is exactly one of it. That repository is
+not named here, and nothing in this tree may reference it: `install`, `build`, `test` and runtime
+must all succeed on a machine where it does not exist.
+
+**Never create `docs/backlog/`, `backlog/` or any `inbox`-beside-`done` directory here**, however
+convenient it is to have the task next to the code. A second queue does not announce itself — it
+looks like ordinary tasks — and from the day it exists "where is this task" stops having one
+answer. A gate in the companion fails on it.
+
+The publication guard forbids the companion's repository ADDRESS (`<owner>/<name>`), not a bare
+name: the name that identifies it also names something public in this project, so a rule against
+the bare word would fail on documentation that is correct.
+
+To find the queue, resolve the project's canonical task root from the agent system's project
+registry. Standing in this checkout that lookup is mandatory: guessing, or falling back to a
+local directory, is how the second queue gets created.
+
+Two consequences for what lives here. This tree cannot answer "why" from a task any more, so
+anything whose reasoning deserves to be public must become an ADR in `docs/decisions/` or a
+comment at the mechanism — the bar on both goes up. And a `quality.config.json` at the root
+declares this repository's identity, role and content classification in typed form; the companion
+reads it to check that the boundary still holds.
+
 ## Release authority and completion
 Follow the current maintainer mandate and global Git/index rules. An authorized owned-project
 release includes gates, publication, rollout to owned runtimes and post-rollout verification;
@@ -50,11 +75,11 @@ does not require a runtime version bump or rollout.
 
 ### Required order: finish → document → done/ → commit → release
 1. Finish the implementation and its authorized checks.
-2. Update the affected architecture documentation and record `## Что сделано` in the existing
-   task with concrete file paths and evidence. Close acceptance checkboxes individually, only
-   when verified; never mark an unperformed check as complete.
+2. Update the affected architecture documentation and record `## Что сделано` in the task with
+   concrete file paths and evidence. Close acceptance checkboxes individually, only when
+   verified; never mark an unperformed check as complete.
 3. Once the task's acceptance is satisfied, set `status: done`, add the actual `completed`
-   timestamp and move it to `docs/backlog/done/` before committing the completed work.
+   timestamp and move it to the backlog's `done/` before committing the completed work.
 4. Only when the current mandate includes publication, commit, release and verify the owned runtimes. If acceptance
    requires post-release evidence, keep those items and the task open until that evidence exists.
 

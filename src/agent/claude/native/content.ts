@@ -1,4 +1,3 @@
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentKind } from '../../../content/schema.ts';
 
 /**
@@ -100,6 +99,90 @@ export function classifySdkMessage(type: string): Classification {
   }
 }
 
-/** Compile-time proof that the classifier is asked about the union's own discriminant. */
-export const classifyMessage = (message: Pick<SDKMessage, 'type'>): Classification =>
-  classifySdkMessage(message.type);
+/** True when the runtime says the turn ended badly, rather than merely that it ended. */
+export function isFailureResult(message: unknown): boolean {
+  if (typeof message !== 'object' || message === null) return false;
+  const record = message as { type?: unknown; is_error?: unknown; subtype?: unknown };
+  if (record.type !== 'result') return record.type === 'model_refusal_no_fallback';
+  return (
+    record.is_error === true || (typeof record.subtype === 'string' && record.subtype !== 'success')
+  );
+}
+
+export interface ToolBlock {
+  callId: string;
+  name: string | null;
+  lifecycle: 'running' | 'completed';
+  failed: boolean;
+  detail: string | null;
+}
+
+/**
+ * Tool activity, from the two shapes that carry it.
+ *
+ * A tool CALL rides inside the finished assistant message as a `tool_use` block, and its RESULT
+ * comes back with the user role as a `tool_result` block — there is no separate result message.
+ * Reading only text blocks dropped both, so a conversation showed prose with unexplained gaps where
+ * the agent had spent most of its time.
+ */
+export function toolBlocks(message: unknown): ToolBlock[] {
+  if (typeof message !== 'object' || message === null) return [];
+  const content = (message as { message?: { content?: unknown } }).message?.content;
+  if (!Array.isArray(content)) return [];
+  const out: ToolBlock[] = [];
+  for (const raw of content) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const block = raw as {
+      type?: unknown;
+      id?: unknown;
+      name?: unknown;
+      tool_use_id?: unknown;
+      is_error?: unknown;
+      input?: unknown;
+    };
+    if (block.type === 'tool_use' && typeof block.id === 'string')
+      out.push({
+        callId: block.id,
+        name: typeof block.name === 'string' ? block.name.slice(0, 128) : null,
+        lifecycle: 'running',
+        failed: false,
+        detail: typeof block.name === 'string' ? summarise(block.name, block.input) : null,
+      });
+    if (block.type === 'tool_result' && typeof block.tool_use_id === 'string')
+      out.push({
+        callId: block.tool_use_id,
+        name: null,
+        lifecycle: 'completed',
+        failed: block.is_error === true,
+        detail: null,
+      });
+  }
+  return out;
+}
+
+/**
+ * The text carried by one incremental stream event, if it carries any.
+ *
+ * Only `text_delta`. The stream also carries block starts and stops, message envelopes and pings;
+ * treating any of them as content would append empty strings between every real fragment, and
+ * treating a thinking delta as assistant text would put reasoning into the transcript as speech.
+ */
+export function deltaText(event: unknown): string | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const record = event as { type?: unknown; delta?: unknown };
+  if (record.type !== 'content_block_delta') return null;
+  const delta = record.delta as { type?: unknown; text?: unknown } | undefined;
+  if (delta?.type !== 'text_delta' || typeof delta.text !== 'string') return null;
+  return delta.text.length > 0 ? delta.text : null;
+}
+
+/** A short, honest description of what the tool would do, for the operator deciding about it. */
+export function summarise(toolName: string, input: unknown): string {
+  if (typeof input !== 'object' || input === null) return toolName;
+  const record = input as Record<string, unknown>;
+  const detail = ['command', 'file_path', 'path', 'url', 'pattern'].reduce<string | null>(
+    (found, key) => found ?? (typeof record[key] === 'string' ? (record[key] as string) : null),
+    null,
+  );
+  return detail === null ? toolName : `${toolName}: ${detail.slice(0, 400)}`;
+}

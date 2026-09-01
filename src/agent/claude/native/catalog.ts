@@ -7,7 +7,8 @@ import type {
   ControlModelCatalog,
   ControlModelsRead,
 } from '../../../control/schema.ts';
-import { hasNativeRuntime } from '../../../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../../../runtime/modes.ts';
+
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/status.ts';
 import { readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';

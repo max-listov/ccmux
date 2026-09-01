@@ -1,5 +1,5 @@
 import stringWidth from 'string-width';
-import type { AgentKind, SessionState } from '../types.ts';
+import type { AgentKind } from '../types.ts';
 
 // Shared TUI primitives — used by BOTH the inline and fullscreen views, so the look
 // stays identical and nothing is duplicated.
@@ -123,25 +123,4 @@ export function sanitize(s: string): string {
 /** Provider badge colour: claude=cyan, codex=yellow. */
 export function provColor(agent: AgentKind): 'cyan' | 'yellow' {
   return agent === 'codex' ? 'yellow' : 'cyan';
-}
-
-/** Foreground colour for a state label (undefined → terminal default). */
-export function stateColor(state: SessionState): 'green' | 'gray' | 'magenta' | 'red' | undefined {
-  if (state === 'working') return 'green';
-  if (state === 'stopped') return 'gray';
-  if (state === 'external') return 'magenta';
-  if (state === 'blocked') return 'red';
-  return undefined;
-}
-
-export function dotGlyph(state: SessionState): {
-  glyph: string;
-  color: 'green' | 'gray' | 'magenta' | 'red' | undefined;
-  dim: boolean;
-} {
-  if (state === 'working') return { glyph: '●', color: 'green', dim: false };
-  if (state === 'idle') return { glyph: '○', color: 'gray', dim: false };
-  if (state === 'external') return { glyph: '◆', color: 'magenta', dim: false };
-  if (state === 'blocked') return { glyph: '!', color: 'red', dim: false };
-  return { glyph: '·', color: undefined, dim: true };
 }

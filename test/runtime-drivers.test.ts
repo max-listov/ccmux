@@ -9,9 +9,10 @@ import { createManagedSession } from '../src/commands/create.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
 import { ControlCreateSchema, ControlModelsReadSchema } from '../src/control/schema.ts';
-import { hasNativeRuntime, runtimeCapabilities } from '../src/runtime/capabilities.ts';
+import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
 import { readRuntimeCatalog } from '../src/runtime/catalog.ts';
 import { openCodeMessageId } from '../src/runtime/input.ts';
+import { hasNativeRuntime } from '../src/runtime/modes.ts';
 import { ManagedRuntimeStatusWriter, readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
@@ -128,7 +129,9 @@ test('CLI OpenCode defaults to native mode and unsupported adoption never enters
       flags: [],
       router: false,
     }),
-  ).rejects.toThrow('does not use the native HTTP runtime');
+    // Named from the one table that knows which modes each agent has, so the refusal says which
+    // agent and which mode rather than describing a runtime family.
+  ).rejects.toThrow('codex has no native runtime');
   expect(await cmdAdopt(['opencode', crypto.randomUUID()])).toBe(1);
   expect(loadSessions(m)).toEqual([]);
 });

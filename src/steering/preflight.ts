@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ThreadStatusSchema } from '../agent/codex/appServer.ts';
+import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
 import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
 import { loadCursors, loadLedger } from '../chat/store.ts';
@@ -16,8 +17,7 @@ export function steeringTarget(m: MachineConfig, input: SteeringSelector, mutate
   const session = controlTarget(m, input.target);
   if (session.registrationGeneration !== input.registrationGeneration)
     return steeringFailure('IDENTITY_MISMATCH');
-  if (session.agent !== 'codex' || session.runtime !== 'app-server')
-    return steeringFailure('UNSUPPORTED');
+  if (!isOwnedCodex(session)) return steeringFailure('UNSUPPORTED');
   if (mutate && session.archived) return steeringFailure('UNAVAILABLE');
   return session;
 }

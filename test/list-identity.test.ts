@@ -42,6 +42,7 @@ test('fleet renders a missing remote provider as unknown, never Claude', () => {
     costUsd: null,
     role: null,
     turnStartedAt: null,
+    waitingFor: null,
     context: { text: null, usedTokens: null, limitTokens: null, percent: null },
     uptime: { text: '1m' },
   });

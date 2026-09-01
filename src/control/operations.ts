@@ -92,8 +92,6 @@ type NativeResponseInput = z.output<typeof ControlNativeResponseSchema>;
 type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
 type WaitInput = z.output<typeof ControlWaitSchema>;
 
-const detachedSignal = (): AbortSignal => new AbortController().signal;
-
 /** Caller budget for one bounded provider model-catalog read. */
 export const CONTROL_MODELS_CALL_BUDGET_MS = 5_000;
 
@@ -433,10 +431,6 @@ export function createControlOperations(
 }
 
 export type ControlOperations = ReturnType<typeof createControlOperations>['operations'];
-
-export function controlOperationSignal(signal?: AbortSignal): AbortSignal {
-  return signal ?? detachedSignal();
-}
 
 function controlRefusal(error: unknown): never {
   if (error instanceof BoundedAdmissionRefusalError) {

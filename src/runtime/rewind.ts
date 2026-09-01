@@ -1,21 +1,16 @@
-import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import type { MachineConfig, Session } from '../types.ts';
-import { atomicWrite } from '../util/atomic.ts';
+import { defineMailbox } from './mailbox.ts';
 import { type RewindResult, RewindResultSchema } from './rewindSchema.ts';
-import { managedRuntimeRoot, readManagedRuntimeStatus } from './status.ts';
-import { readPrivateJson } from './store.ts';
 
 /**
  * A request to put the files a session touched back the way they were.
  *
- * Durable between the caller and the process that holds the connection, like the mode request
- * beside it. `dryRun` is carried rather than being a separate operation because the preview and the
- * act must be judged by the same code — a preview computed differently from what it previews is
- * worse than none.
+ * `dryRun` is carried rather than being a separate operation because the preview and the act must
+ * be judged by the same code — a preview computed differently from what it previews is worse than
+ * none.
  */
-
 const RequestSchema = z
   .object({
     operationId: z.uuid(),
@@ -29,11 +24,35 @@ const RequestSchema = z
   .strict();
 export type RuntimeRewindRequest = z.infer<typeof RequestSchema>;
 
-const path = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m, s), 'rewind.json');
-export const readRuntimeRewind = (m: MachineConfig, s: Session) =>
-  readPrivateJson(path(m, s), RequestSchema);
+/**
+ * The longest wait of any mailbox: restoring a tree touches every file a turn changed, and a
+ * caller who is undoing work would rather wait than be told the runtime went quiet.
+ */
+const mailbox = defineMailbox<RuntimeRewindRequest, RewindResult>({
+  file: 'rewind',
+  schema: RequestSchema,
+  identity: (receipt) => receipt.operationId,
+  pollMs: 100,
+  deadlineMs: 60_000,
+  precondition: (snapshot) => {
+    if (snapshot.fileCheckpoints !== true)
+      throw new AppError('UNSUPPORTED', 'This session does not keep file checkpoints', 409);
+  },
+  // Answered from the receipt, unlike the mailboxes that re-read the snapshot: what a rewind did
+  // exists nowhere else. There is nothing in a published snapshot to check it against.
+  settle: (receipt) => {
+    if (receipt.phase === 'failed')
+      throw new AppError('UNAVAILABLE', receipt.reason ?? 'The rewind failed', 503);
+    // Both halves, not just the result: a result present under any other phase would be a
+    // half-written record, and answering from it would report a rewind that had not finished.
+    return receipt.phase === 'complete' ? (receipt.result ?? undefined) : undefined;
+  },
+  mismatch: () => new AppError('IDENTITY_MISMATCH', 'The rewind request was replaced', 409),
+});
+
+export const readRuntimeRewind = (m: MachineConfig, s: Session) => mailbox.read(m, s);
 export const writeRuntimeRewind = (m: MachineConfig, s: Session, value: RuntimeRewindRequest) =>
-  atomicWrite(path(m, s), JSON.stringify(RequestSchema.parse(value)), 0o600);
+  mailbox.write(m, s, value);
 
 export async function requestRuntimeRewind(
   m: MachineConfig,
@@ -41,21 +60,11 @@ export async function requestRuntimeRewind(
   input: { operationId: string; messageId: string; dryRun: boolean },
   signal: AbortSignal,
 ): Promise<RewindResult> {
-  const read = readManagedRuntimeStatus(m, s);
-  if (read.status !== 'live' || !read.snapshot)
-    throw new AppError('UNAVAILABLE', 'The native runtime is unavailable', 503);
-  if (read.snapshot.fileCheckpoints !== true)
-    throw new AppError('UNSUPPORTED', 'This session does not keep file checkpoints', 409);
-  const generation = read.snapshot.generation;
-  const prior = readRuntimeRewind(m, s);
-  // The same operation asked twice is one rewind. Repeating a real one would restore files over
-  // work done since the first, which is the opposite of undo.
-  if (prior?.operationId === input.operationId && prior.generation === generation) {
-    if (prior.phase === 'complete' && prior.result !== null) return prior.result;
-    if (prior.phase === 'failed')
-      throw new AppError('UNAVAILABLE', prior.reason ?? 'The rewind failed', 503);
-  } else
-    await writeRuntimeRewind(m, s, {
+  return mailbox.request(
+    m,
+    s,
+    input.operationId,
+    (generation) => ({
       operationId: input.operationId,
       generation,
       messageId: input.messageId,
@@ -63,17 +72,7 @@ export async function requestRuntimeRewind(
       phase: 'queued',
       result: null,
       reason: null,
-    });
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    signal.throwIfAborted();
-    const current = readRuntimeRewind(m, s);
-    if (current?.operationId !== input.operationId || current.generation !== generation)
-      throw new AppError('IDENTITY_MISMATCH', 'The rewind request was replaced', 409);
-    if (current.phase === 'failed')
-      throw new AppError('UNAVAILABLE', current.reason ?? 'The rewind failed', 503);
-    if (current.phase === 'complete' && current.result !== null) return current.result;
-    await Bun.sleep(100);
-  }
-  throw new AppError('UNAVAILABLE', 'The runtime did not answer the rewind request', 503);
+    }),
+    signal,
+  );
 }

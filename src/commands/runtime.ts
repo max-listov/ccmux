@@ -1,6 +1,7 @@
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 
 export async function cmdRuntime(name: string | undefined, args: string[]): Promise<number> {

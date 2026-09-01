@@ -160,7 +160,6 @@ export type NativeAccount = z.infer<typeof NativeAccountSchema>;
 export const NativeSpendSchema = z
   .object({ totalCostUsd: z.number().nonnegative().nullable(), observedAt: z.iso.datetime() })
   .strict();
-export type NativeSpend = z.infer<typeof NativeSpendSchema>;
 
 /**
  * One MCP server of a session, as its runtime reports it.

@@ -6,7 +6,7 @@ import { runCustomProcess } from '../agent/custom/process.ts';
 import { runOpenCodeProcess } from '../agent/opencode/process.ts';
 import { preflightOpenCode } from '../agent/opencode/server.ts';
 import type { MachineConfig, Session } from '../types.ts';
-import { hasNativeRuntime } from './capabilities.ts';
+import { hasNativeRuntime } from './modes.ts';
 
 export interface ManagedRuntimeDriver {
   preflight(machine: MachineConfig, flags: readonly string[]): void;

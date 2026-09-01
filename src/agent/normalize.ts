@@ -52,11 +52,6 @@ export function flattenContent(v: unknown): string | null {
   return String(v);
 }
 
-/** Back-compat alias — same flatten-to-markers behaviour (no raw JSON). */
-export function asText(v: unknown): string | null {
-  return flattenContent(v);
-}
-
 export function clip(s: string, limit: number): string {
   return s.length > limit ? `${s.slice(0, limit)}…` : s;
 }

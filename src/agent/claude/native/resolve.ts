@@ -42,6 +42,3 @@ export function resolveAgentSdk(m: MachineConfig): SdkResolution {
     };
   return { path: entry };
 }
-
-/** True when this host can actually start the mode, as opposed to merely permitting it. */
-export const sdkAvailable = (m: MachineConfig): boolean => 'path' in resolveAgentSdk(m);

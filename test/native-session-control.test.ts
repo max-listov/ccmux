@@ -1,11 +1,16 @@
 import { expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   claudeCommands,
   commandText,
   resolveCommand,
 } from '../src/agent/claude/native/commands.ts';
 import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
-import { shouldRestoreMode } from '../src/runtime/sessionMode.ts';
+import { readRuntimeMode, shouldRestoreMode } from '../src/runtime/sessionMode.ts';
+import { managedRuntimeRoot } from '../src/runtime/status.ts';
+import { makeMachine, makeSession } from './helpers.ts';
 
 /**
  * Slash commands and permission mode: the two ordinary controls the native mode lacked.
@@ -59,9 +64,10 @@ test('a mode a session was given is restored on restart, and only that one', () 
   const other = '44444444-4444-4444-8444-444444444444';
   const request = (over: Record<string, unknown> = {}) =>
     ({
+      operationId: '55555555-5555-4555-8555-555555555555',
       generation,
       mode: 'plan',
-      phase: 'accepted',
+      phase: 'complete',
       reason: null,
       ...over,
     }) as never;
@@ -75,4 +81,32 @@ test('a mode a session was given is restored on restart, and only that one', () 
   // `default` is where a runtime starts; restoring it would be a call that changes nothing.
   expect(shouldRestoreMode(request({ mode: 'default' }), generation)).toBe(false);
   expect(shouldRestoreMode(null, generation)).toBe(false);
+});
+
+test('a mode recorded by an earlier build is read, not discarded', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-mode-'));
+  const m = makeMachine({ stateDir: join(root, 'state') });
+  const generation = '33333333-3333-4333-8333-333333333333';
+  const s = makeSession({
+    name: 'agent-A',
+    dir: root,
+    agent: 'claude',
+    runtime: 'native',
+    registrationGeneration: generation,
+  });
+  const dir = managedRuntimeRoot(m, s);
+  mkdirSync(dir, { recursive: true });
+  // The shape written before the request carried an operation id. Refusing it would put a session
+  // that was in `plan` back into `default` on the first restart after an upgrade — a downgrade to
+  // the mode that asks less, performed by the code whose whole job is to prevent that.
+  writeFileSync(
+    join(dir, 'permission-mode.json'),
+    JSON.stringify({ generation, mode: 'plan', phase: 'accepted', reason: null }),
+    { mode: 0o600 },
+  );
+  const read = readRuntimeMode(m, s);
+  expect(read?.mode).toBe('plan');
+  expect(read?.phase).toBe('complete');
+  expect(shouldRestoreMode(read, generation)).toBe(true);
+  rmSync(root, { recursive: true, force: true });
 });

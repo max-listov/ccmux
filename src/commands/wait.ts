@@ -1,5 +1,5 @@
 import { providerFor } from '../agent/index.ts';
-import { readChatHold } from '../agent/sessionStatus.ts';
+import { clearWaiting, readChatHold, writeWaiting } from '../agent/sessionStatus.ts';
 import { chatTurnProgress, notBeforeDue, readTurnState } from '../chat/deliver.ts';
 import { holdReason } from '../chat/holdReason.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
@@ -9,7 +9,7 @@ import { type TurnWhy, WHY_TEXT } from '../chat/turnState.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { capturePaneStyled, hasSession } from '../tmux/tmux.ts';
 import type { ChatMessage, MachineConfig, Session } from '../types.ts';
@@ -157,17 +157,72 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     );
     return 1;
   }
+  const opts = parseWaitOpts(args);
+  // Declared BEFORE forwarding, and this is the whole subtlety: a cross-machine wait forwards, so
+  // from there on the polling runs on the TARGET's machine and has no idea who asked. The waiter is
+  // known only here, from the environment of the session that invoked the command — the same
+  // identity the stop hook, the status line and the inbox read. A `wait` typed by a person outside
+  // a managed pane declares nothing rather than guessing whose wait it is.
+  const waiter = process.env.CCMUX_SESSION;
+  const waiting = waiter === undefined ? null : { name: waiter, target: name, since: Date.now() };
+  if (waiting) await refreshWaiting(waiting);
+  // Refreshed on a timer rather than inside the poll loop, because a cross-machine wait forwards
+  // and its loop runs on the other machine: the record lives here, so what keeps it alive must
+  // live here too. `unref` so the process still exits the moment the wait is over.
+  const keepalive = waiting ? setInterval(() => void refreshWaiting(waiting), POLL_MS) : null;
+  keepalive?.unref?.();
+  // The fast path off a polite signal. Not the mechanism — a `wait` is routinely killed outright by
+  // a fleet restart sweep, and nothing runs then, which is what the record's own expiry is for —
+  // but Ctrl-C is common enough that leaving three seconds of a lie behind it is worth avoiding.
+  const onSignal = () => {
+    if (waiting) clearWaiting(waiting.name);
+    process.exit(130);
+  };
+  if (waiting) {
+    process.once('SIGINT', onSignal);
+    process.once('SIGTERM', onSignal);
+  }
+  try {
+    return await runWait(name, args, opts);
+  } finally {
+    if (keepalive) clearInterval(keepalive);
+    if (waiting) {
+      process.off('SIGINT', onSignal);
+      process.off('SIGTERM', onSignal);
+      clearWaiting(waiting.name);
+    }
+  }
+}
+
+/** Keep the record ahead of its own expiry while the wait runs. */
+interface WaitingDeclaration {
+  name: string;
+  target: string;
+  since: number;
+}
+const WAITING_TTL_MS = 3 * POLL_MS;
+async function refreshWaiting(w: WaitingDeclaration): Promise<void> {
+  await writeWaiting(w.name, {
+    target: w.target,
+    since: w.since,
+    pid: process.pid,
+    // Deliberately short and refreshed each pass: the record has to stop meaning anything soon
+    // after its writer stops refreshing it, because the writer is routinely killed outright.
+    expiresAt: Date.now() + WAITING_TTL_MS,
+  });
+}
+
+async function runWait(name: string, args: string[], opts: WaitOpts): Promise<number> {
   // The remote `wait` blocks for ITS OWN timeout, so the ssh deadline has to sit above it. With the
   // transport default (30s) a perfectly healthy link was killed mid-wait and reported as
   // "transport failed" for any worker that took longer — turning the primary cross-machine use case
   // into a false alarm. +30s covers connection setup and the remote's own exit.
   const fwd = await forwardIfRemote(name, 'wait', args, {
-    timeoutMs: (parseWaitOpts(args).timeoutSec + 30) * 1000,
+    timeoutMs: (opts.timeoutSec + 30) * 1000,
   });
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
-  const o = parseWaitOpts(args);
   const s = findSession(loadSessions(m), name);
   if (!s) {
     console.error(`unknown session: ${name}`);
@@ -181,7 +236,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     return 1;
   }
   const provider = providerFor(s);
-  const deadline = Date.now() + o.timeoutSec * 1000;
+  const deadline = Date.now() + opts.timeoutSec * 1000;
   let missingSince: number | null = null;
   let lastWhy: TurnWhy | null = null;
   let mailWhy: string | null = null;
@@ -201,7 +256,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       // PERSIST before it counts — and even then it is a timeout, not "no such session".
       missingSince ??= Date.now();
       if (Date.now() - missingSince >= GONE_MS) {
-        if (!o.quiet)
+        if (!opts.quiet)
           console.error(
             `${name}: gone for ${Math.round(GONE_MS / 1000)}s while waiting — not running`,
           );
@@ -220,7 +275,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       const native = readManagedRuntimeStatus(m, s, now);
       const pickup = loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))];
       if (native.status === 'live' && native.snapshot?.turn?.status === 'failed') {
-        if (!o.quiet) console.error(`${name}: native turn failed`);
+        if (!opts.quiet) console.error(`${name}: native turn failed`);
         return 2;
       }
       if (
@@ -232,10 +287,10 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
       ) {
         const status = native.snapshot.turn?.status;
         if (status === 'failed') {
-          if (!o.quiet) console.error(`${name}: native turn failed`);
+          if (!opts.quiet) console.error(`${name}: native turn failed`);
           return 2;
         }
-        if (!o.quiet)
+        if (!opts.quiet)
           console.log(
             `${name}: ${status === 'interrupted' ? SETTLED_TEXT['idle-after-interrupt'] : status === 'completed' ? SETTLED_TEXT['turn-ended'] : SETTLED_TEXT['never-spoke']}`,
           );
@@ -278,7 +333,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
         // line must not claim a turn "finished" when it was killed: the documented next step is
         // `transcript --last-message`, which would then hand back the text from BEFORE the tool
         // calls that never completed, as if it were the answer.
-        if (!o.quiet) console.log(`${name}: ${SETTLED_TEXT[ts.why]}`);
+        if (!opts.quiet) console.log(`${name}: ${SETTLED_TEXT[ts.why]}`);
         return 0;
       }
       lastWhy = ts.why;
@@ -290,14 +345,14 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
   }
   // Say WHAT it was doing. "Still working" was a guess, and a false one for a session parked at a
   // permission prompt — which now blocks the full timeout and used to be described as busy.
-  if (!o.quiet) {
+  if (!opts.quiet) {
     const why =
       lastWhy !== null
         ? WHY_TEXT[lastWhy]
         : mailWhy === null
           ? 'waiting on undelivered mail'
           : `waiting on undelivered mail — ${mailWhy}`;
-    console.error(`${name}: timed out after ${o.timeoutSec}s — ${why}`);
+    console.error(`${name}: timed out after ${opts.timeoutSec}s — ${why}`);
   }
   return 2;
 }

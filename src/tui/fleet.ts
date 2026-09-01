@@ -111,7 +111,8 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
       promptModules: [],
     },
     running,
-    atPrompt: null, // external sessions are observed, never driven — we do not read their menus
+    atPrompt: null,
+    waitingFor: null, // external sessions are observed, never driven — we do not read their menus
     state: 'external',
     lifecycleError: null,
     model: prettyModel(ext.lastModel),

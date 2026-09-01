@@ -27,6 +27,9 @@ export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
        * the runtime reports it per model in the catalog, and `validateTurnOptions` refuses anything
        * the catalog does not list. A closed enum here would be a second, staler authority beside
        * that one — it would reject a level the runtime accepts until someone edited this line.
+       *
+       * The argument holds for every runtime that publishes its levels, so the codex branch below
+       * is bounded the same way.
        */
       effort: z.string().min(1).max(64).optional(),
     })
@@ -36,9 +39,8 @@ export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
       runtime: z.literal('codex'),
       model: NativeModelSelectionSchema,
       mode: z.enum(['default', 'plan']),
-      effort: z
-        .enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
-        .optional(),
+      /** Bounded the same way, and for the same reason, as the branch above. */
+      effort: z.string().min(1).max(64).optional(),
     })
     .strict(),
   z

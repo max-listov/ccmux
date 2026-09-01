@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
+import { stableJson } from '../agent/launchInputs.ts';
 import { preparedOpenCodeChoices } from '../agent/opencode/catalog.ts';
 import { managedPeer } from '../chat/identity.ts';
 import { blockingInbound } from '../commands/wait.ts';
@@ -8,7 +9,8 @@ import { assertNoContextMutation } from '../context/store.ts';
 import { policyUnavailable } from '../policy/errors.ts';
 import { verifyApplicationPolicy } from '../policy/resolve.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import { readSelection, selectionReceipt, writeSelection } from '../runtime/selection.ts';
 import type { AcceptedTurnOptions, NativeTurnOptions } from '../runtime/selectionSchema.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
@@ -163,8 +165,12 @@ export async function updateControlSelection(
   return withNativeAdmission(m, session, async () => {
     signal.throwIfAborted();
     exactNativeTarget(m, input);
-    const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-    const prior = selectionReceipt(m, session, input.operationId, fingerprint);
+    const fingerprint = createHash('sha256').update(stableJson(input)).digest('hex');
+    // The digest this receipt would have carried before the fingerprint was computed a stable way.
+    // Bounded migration, not a second permanent path: a retry of a request made before the change
+    // must replay to the answer it already got instead of being told it conflicts with itself.
+    const legacyFingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const prior = selectionReceipt(m, session, input.operationId, [fingerprint, legacyFingerprint]);
     if (prior !== null) {
       return SelectionResultSchema.parse({
         protocol: 1,

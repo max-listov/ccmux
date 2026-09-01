@@ -1,6 +1,7 @@
 import { chatEnabledFor } from '../config/chat.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { hasNoComposer } from '../runtime/modes.ts';
 import { sendKeysLiteral, sendKeysNamed } from '../tmux/tmux.ts';
 import { preview } from '../util/preview.ts';
 
@@ -28,7 +29,8 @@ export async function cmdSend(
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
-  if (findSession(loadSessions(m), name)?.runtime === 'native') {
+  const target = findSession(loadSessions(m), name);
+  if (target !== undefined && hasNoComposer(target)) {
     console.error(
       'send: this runtime has no terminal composer. Write to it with `msg`, and run a slash command ' +
         'with the control service `command` operation (`commands` lists what it offers).',

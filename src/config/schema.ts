@@ -733,8 +733,6 @@ export const ExternalCapabilitiesSchema = z
   })
   .strict();
 
-export { ExternalTurnStateSchema } from '../external/turnSchema.ts';
-
 export const ExternalSessionSchema = z
   .object({
     key: z.string().min(1),
@@ -925,6 +923,12 @@ export const ListItemSchema = z.object({
   // opposite, unable to proceed until someone answers. Null also means "we cannot see menus on this
   // provider", which is why it is reported rather than folded into the state enum.
   atPrompt: z.string().nullable().default(null),
+  // Who this session is waiting for, while it waits. The mirror image of `atPrompt` and here for
+  // the same reason: every other signal reads a waiting session as working — it IS mid-turn, since
+  // the wait runs inside one — when what it is actually doing is holding for another session. This
+  // is the one edge a "who is holding whom" chain can be built from. Null is "not waiting", or a
+  // wait whose process is gone; it is never a claim about how long a turn has run.
+  waitingFor: z.string().nullable().default(null),
   lifecycleError: z.string().nullable(),
   model: z.string().nullable(),
   context: ContextInfoSchema,

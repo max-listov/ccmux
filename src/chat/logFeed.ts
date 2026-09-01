@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync, watch } from 'node:fs';
+import { existsSync, readFileSync, watch } from 'node:fs';
 import type { z } from 'zod';
 import { chatLedgerPath, outboxPath } from '../config/paths.ts';
 import { CHAT_GENERATION } from '../config/schema.ts';
@@ -233,17 +233,4 @@ export function followRows(
     clearInterval(timer);
     for (const w of watchers) w?.close();
   };
-}
-
-/** How large the whole log is right now, for a caller deciding whether to take a snapshot at all. */
-export function feedSize(m: MachineConfig): number {
-  let total = 0;
-  for (const p of [chatLedgerPath(m), outboxPath(m)]) {
-    try {
-      total += statSync(p).size;
-    } catch {
-      // absent — nothing to count
-    }
-  }
-  return total;
 }

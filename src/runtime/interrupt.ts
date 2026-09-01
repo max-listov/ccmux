@@ -1,11 +1,9 @@
-import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import type { OwnedCodexSnapshot } from '../agent/codex/ownedSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
-import { atomicWrite } from '../util/atomic.ts';
-import { managedRuntimeRoot, readManagedRuntimeStatus } from './status.ts';
-import { readPrivateJson } from './store.ts';
+import { defineMailbox } from './mailbox.ts';
+import { readManagedRuntimeStatus } from './status.ts';
 
 export function isCancellableTurn(
   snapshot: Pick<OwnedCodexSnapshot, 'generation' | 'state' | 'turn'>,
@@ -20,19 +18,47 @@ export function isCancellableTurn(
   );
 }
 
+/**
+ * Stop the turn that is running.
+ *
+ * Its operation is the turn: two callers asking to stop the same turn are asking for one thing, so
+ * the turn's id is what makes a retry the same request. Its phases keep a fourth value the other
+ * mailboxes do not have — `uncertain`, written by an adapter whose cancel was sent and whose
+ * acknowledgement was lost. That is neither done nor refused, and reporting it as either would tell
+ * a caller a turn stopped when nobody knows.
+ */
 const InterruptSchema = z
   .object({
-    generation: z.uuid(),
     turnId: z.string().min(1).max(256),
+    generation: z.uuid(),
     phase: z.enum(['queued', 'uncertain', 'accepted', 'rejected']),
   })
   .strict();
 export type RuntimeInterrupt = z.infer<typeof InterruptSchema>;
-const path = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m, s), 'interrupt.json');
-export const readRuntimeInterrupt = (m: MachineConfig, s: Session) =>
-  readPrivateJson(path(m, s), InterruptSchema);
+
+/**
+ * The shortest wait and the tightest poll of any mailbox: a person is holding a key down waiting
+ * for a turn to stop, and a cancel that takes five seconds to confirm has already failed them.
+ */
+const mailbox = defineMailbox<RuntimeInterrupt, true>({
+  file: 'interrupt',
+  schema: InterruptSchema,
+  identity: (receipt) => receipt.turnId,
+  pollMs: 25,
+  deadlineMs: 5_000,
+  settle: (receipt) => {
+    if (receipt.phase === 'rejected')
+      throw new AppError('TURN_MISMATCH', 'Native turn changed', 409);
+    // `uncertain` deliberately keeps polling: the adapter said it does not know, and the deadline
+    // below is what turns that into an honest 503 rather than a made-up answer.
+    return receipt.phase === 'accepted' ? true : undefined;
+  },
+  mismatch: () => new AppError('TURN_MISMATCH', 'Interrupt identity changed', 409),
+});
+
+export const readRuntimeInterrupt = (m: MachineConfig, s: Session) => mailbox.read(m, s);
 export const writeRuntimeInterrupt = (m: MachineConfig, s: Session, value: RuntimeInterrupt) =>
-  atomicWrite(path(m, s), JSON.stringify(InterruptSchema.parse(value)), 0o600);
+  mailbox.write(m, s, value);
 
 export async function requestRuntimeInterrupt(
   m: MachineConfig,
@@ -43,6 +69,9 @@ export async function requestRuntimeInterrupt(
 ): Promise<void> {
   const read = readManagedRuntimeStatus(m, s);
   const prior = readRuntimeInterrupt(m, s);
+  // Already stopped by this same request: answered without asking again. A second interrupt aimed
+  // at a turn that is no longer running would be refused as a mismatch, which is the wrong answer
+  // to "did my cancel take".
   if (
     read.status === 'live' &&
     read.snapshot?.generation === generation &&
@@ -57,18 +86,5 @@ export async function requestRuntimeInterrupt(
     !isCancellableTurn(read.snapshot, generation, turnId)
   )
     throw new AppError('TURN_MISMATCH', 'The exact active turn is unavailable', 409);
-  if (prior?.generation !== generation || prior.turnId !== turnId)
-    await writeRuntimeInterrupt(m, s, { generation, turnId, phase: 'queued' });
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    signal.throwIfAborted();
-    const receipt = readRuntimeInterrupt(m, s);
-    if (receipt?.generation !== generation || receipt.turnId !== turnId)
-      throw new AppError('TURN_MISMATCH', 'Interrupt identity changed', 409);
-    if (receipt.phase === 'accepted') return;
-    if (receipt.phase === 'rejected')
-      throw new AppError('TURN_MISMATCH', 'Native turn changed', 409);
-    await Bun.sleep(25);
-  }
-  throw new AppError('UNAVAILABLE', 'Native interrupt acknowledgement is unavailable', 503);
+  await mailbox.request(m, s, turnId, () => ({ turnId, generation, phase: 'queued' }), signal);
 }

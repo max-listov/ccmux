@@ -2,11 +2,11 @@ import { isAbsolute } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { readClaudeModels } from '../agent/claude/native/catalog.ts';
-import type { CodexAppRpc } from '../agent/codex/appServer.ts';
+
 import { nativeModelProvider, withCodexCatalogRuntime } from '../agent/codex/catalogRuntime.ts';
 import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
 import { connectOwnedCodex } from '../agent/codex/ownedRpc.ts';
-import type { CodexRpcOptions } from '../agent/codex/rpc.ts';
+import type { CodexAppRpc, CodexRpcOptions } from '../agent/codex/rpc.ts';
 import { readCustomModels } from '../agent/custom/catalog.ts';
 import { expandHome } from '../agent/launchInputs.ts';
 import { readOpenCodeModels } from '../agent/opencode/catalog.ts';

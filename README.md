@@ -679,7 +679,7 @@ ccmux fleet                                  # every managed session, with provi
 ccmux msg host-b:api "build is green"        # message a session on another machine
 ccmux wait host-b:api                        # then pick up the result
 ccmux restart host-b:api                       # lifecycle only
-ccmux msg host-b:api "read docs/backlog/in-progress/x.md"  # recorded hand-off
+ccmux msg host-b:api "read docs/architecture/peer-routing.md"  # recorded hand-off
 ccmux doctor                                 # verifies each alias really is the machine it's mapped to
 ```
 

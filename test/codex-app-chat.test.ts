@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { codexAppMessagePersisted } from '../src/agent/codex/appPickup.ts';
-import type { CodexAppRpc } from '../src/agent/codex/appServer.ts';
+import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import {
   currentCodexAppThreadId,
   deliverCodexAppMessage,

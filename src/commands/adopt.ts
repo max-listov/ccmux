@@ -59,11 +59,6 @@ export function findTranscript(m: MachineConfig, uuid: string): Transcript | nul
   return null;
 }
 
-/** Back-compat helper: just the cwd. */
-export function dirForUuid(m: MachineConfig, uuid: string): string | null {
-  return findTranscript(m, uuid)?.dir ?? null;
-}
-
 function pickName(
   sessions: Session[],
   dir: string,

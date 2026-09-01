@@ -2,12 +2,12 @@ import { z } from 'zod';
 import { codexAppMessagePersisted } from '../agent/codex/appPickup.ts';
 import {
   appThreadHoldReason,
-  type CodexAppRpc,
   connectCodexAppServer,
   readCodexAppThread,
   resumeCodexAppThread,
   startCodexAppTurn,
 } from '../agent/codex/appServer.ts';
+import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import { codexTextInput } from '../agent/codex/turnInput.ts';
 import type { ChatMessage, CodexAppPeer, MachineConfig } from '../types.ts';
 import { codexAppPeer } from './identity.ts';

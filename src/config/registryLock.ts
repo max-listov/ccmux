@@ -129,10 +129,11 @@ export async function withDirectoryLock<T>(
   lock: string,
   run: () => Promise<T>,
   label = 'directory',
+  timeoutMs = TIMEOUT_MS,
 ): Promise<T> {
   const token = randomUUID();
   mkdirSync(dirname(lock), { recursive: true });
-  const deadline = Date.now() + TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
   let last: LockVerdict = { kind: 'wait', why: 'not yet examined' };
   for (;;) {
     let created = false;
@@ -160,7 +161,7 @@ export async function withDirectoryLock<T>(
         // Say what was in the way. A bare "timed out" sent a reader looking for contention that did
         // not exist; the pid of a live holder, or the absence of one, is the first thing to know.
         const detail = last.kind === 'held' ? `held by pid ${last.pid}` : last.why;
-        throw new Error(`${label} lock timed out after ${TIMEOUT_MS}ms (${detail})`);
+        throw new Error(`${label} lock timed out after ${timeoutMs}ms (${detail})`);
       }
       await Bun.sleep(WAIT_MS);
     }

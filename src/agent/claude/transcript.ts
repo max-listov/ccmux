@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { TranscriptImage, TranscriptUsage } from '../../config/schema.ts';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../../types.ts';
-import { asText, clip, DEFAULT_TEXT_LIMIT, flattenContent, num, rec, str } from '../normalize.ts';
+import { clip, DEFAULT_TEXT_LIMIT, flattenContent, num, rec, str } from '../normalize.ts';
 import { resultSummary } from '../toolSummary.ts';
 
 // Claude Code transcript parser. Entry shape (one per JSONL line):
@@ -64,7 +64,7 @@ function textFor(item: Record<string, unknown>): string {
       );
     }
     case 'tool_result':
-      return asText(item.content) ?? '';
+      return flattenContent(item.content) ?? '';
     case 'thinking':
       return str(item.thinking) ?? '';
     case 'image':
@@ -72,7 +72,7 @@ function textFor(item: Record<string, unknown>): string {
       // back into one; the picture is now addressed on the message instead.
       return '';
     default:
-      return asText(item) ?? '';
+      return flattenContent(item) ?? '';
   }
 }
 
@@ -205,7 +205,7 @@ export function parse(
       }
       if (kind === 'tool_result' && callId) {
         results.set(callId, {
-          content: asText(item.content) ?? '',
+          content: flattenContent(item.content) ?? '',
           isError: item.is_error === true,
         });
       }

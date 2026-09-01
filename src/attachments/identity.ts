@@ -1,6 +1,7 @@
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
 import { controlTarget } from '../control/target.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import type { ChatPrincipal, MachineConfig, ManagedPeer, Session } from '../types.ts';
 import { assertAttachment } from './errors.ts';
 import type { AttachmentReference } from './reference.ts';

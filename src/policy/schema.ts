@@ -64,7 +64,6 @@ export const HostAgentPolicySchema = z.discriminatedUnion('runtime', [
 ]);
 export const AgentPoliciesSchema = z.record(IdSchema, HostAgentPolicySchema).default({});
 export type AgentPolicies = z.infer<typeof AgentPoliciesSchema>;
-export type HostAgentPolicy = z.infer<typeof HostAgentPolicySchema>;
 export type PolicySource = z.infer<typeof PolicySourceSchema>;
 
 const PrivateSourceSchema = PolicySourceSchema.extend({ body: z.string() }).strict();

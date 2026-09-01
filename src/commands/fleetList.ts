@@ -54,6 +54,12 @@ export const RemoteSessionSchema = z.object({
   // session is idle" but "that build does not report it". `version` is on the machine row beside it,
   // so a consumer can tell the two apart without guessing.
   turnStartedAt: z.string().nullable().default(null),
+  /**
+   * Who that session is waiting for. Null on a peer too old to report it, exactly as above — not
+   * "that session is waiting for nobody" but "that build does not say". Defaulted rather than
+   * required so one un-upgraded peer cannot fail the parse of every row in the fleet.
+   */
+  waitingFor: z.string().nullable().default(null),
   uptime: z
     .object({ text: z.string().nullable().default(null) })
     .partial()
@@ -141,6 +147,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       model: r.model,
       running: r.running,
       uptime: { text: r.uptimeText },
+      waitingFor: r.waitingFor,
       stale: r.stale,
       dir: r.session.dir,
       role: r.session.role ?? null,

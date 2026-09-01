@@ -54,7 +54,6 @@ export const CustomProviderSchema = z.discriminatedUnion('kind', [
     })
     .strict(),
 ]);
-export type CustomProvider = z.infer<typeof CustomProviderSchema>;
 
 /** Execution-host definition only. The public API selects the existing immutable launch recipe;
  * it never receives this configuration, source paths, executable aliases or credentials. */

@@ -5,7 +5,8 @@ import { chatOverrideLabel } from '../config/chat.ts';
 import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { findSession, loadSessions, updateSessionUuid } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import { killSession } from '../tmux/tmux.ts';
 import type { Session } from '../types.ts';
 import { log } from '../util/log.ts';
@@ -72,7 +73,7 @@ export async function cmdRenew(name: string | undefined, args: string[] = []): P
     console.log(`unknown session: ${name}`);
     return 1;
   }
-  if (hasNativeRuntime(s) || s.runtime === 'native') {
+  if (hasNativeRuntime(s)) {
     console.error(
       'Native runtimes assign continuation identities; use new for a fresh managed session or restart to resume this identity.',
     );

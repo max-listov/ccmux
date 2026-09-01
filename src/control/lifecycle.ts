@@ -44,6 +44,7 @@ import { withNativeAdmission } from '../runtime/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { recordRuntimeDiagnostic } from '../runtime/diagnostics.ts';
 import { readRuntimeInput } from '../runtime/input.ts';
+import { resolveRuntimeMode } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { killSession } from '../tmux/tmux.ts';
@@ -156,8 +157,7 @@ export async function createControlSession(
   const runtime = input.runtime ?? 'codex';
   // The execution mode this create will actually use, resolved once so the capability checks below
   // ask about the session that will exist rather than about the agent family in general.
-  const mode =
-    runtime === 'codex' ? 'app-server' : runtime === 'claude' ? (input.mode ?? 'tui') : 'native';
+  const mode = resolveRuntimeMode(runtime, input.mode);
   if (runtime !== 'codex' && runtime !== 'custom' && input.launchRecipe !== undefined)
     throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
   if (runtime !== 'codex' && (input.flags?.length ?? 0) > 0)
@@ -290,12 +290,7 @@ export async function createControlSession(
               router: false,
               // Claude is the only agent with a choice here; everything else has one mode, and an
               // omitted request keeps the mode each agent has always been created with.
-              runtime:
-                agent === 'codex'
-                  ? 'app-server'
-                  : agent === 'claude'
-                    ? (row.mode ?? 'tui')
-                    : 'native',
+              runtime: resolveRuntimeMode(agent, row.mode),
               registrationGeneration: row.generation,
               chatEnabled: true,
               ...(row.envFile === undefined ? {} : { envFile: row.envFile }),

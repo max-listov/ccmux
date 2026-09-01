@@ -15,6 +15,7 @@ import {
   readLaunchStamp,
   readLifecycle,
   readMetrics,
+  readWaiting,
   resolveLiveState,
 } from '../agent/sessionStatus.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
@@ -25,7 +26,8 @@ import { loadSessions } from '../config/sessions.ts';
 import { promptInvocation } from '../env.ts';
 import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
 import { managedRuntimeView } from '../runtime/view.ts';
 import { capturePane, listSessionsCreated } from '../tmux/tmux.ts';
@@ -73,6 +75,8 @@ export interface ListRow {
   turnStartedAt: string | null;
   /** What blocking menu this session is sitting at, if any — it cannot act until that is answered. */
   atPrompt: string | null;
+  /** The session this one is waiting for, while it waits. */
+  waitingFor: string | null;
 }
 
 /** Build one row. For a running session: scrape the pane; if it surfaces no context,
@@ -95,6 +99,7 @@ async function buildRow(
       session: s,
       running: false,
       atPrompt: null, // a stopped session is not sitting at anything
+      waitingFor: null, // nor waiting for anyone
       state: block ? 'blocked' : 'stopped',
       lifecycleError: block?.error ?? null,
       model: null,
@@ -170,6 +175,7 @@ async function buildRow(
     running: true,
     state,
     atPrompt: scan.atPrompt,
+    waitingFor: readWaiting(s.name)?.target ?? null,
     lifecycleError:
       native?.state === 'blocked'
         ? `native status unavailable: ${native.read.reason ?? native.read.snapshot?.reason ?? 'unknown'}`
@@ -274,6 +280,7 @@ function toListItem(m: MachineConfig, r: ListRow): ListItem {
     archived: r.session.archived,
     state: r.state,
     atPrompt: r.atPrompt,
+    waitingFor: r.waitingFor,
     lifecycleError: r.lifecycleError,
     model: r.model,
     account: r.account,

@@ -322,6 +322,14 @@ export const ControlRunCommandReceiptSchema = z
   })
   .strict();
 export const ControlPermissionModeSchema = ControlTargetSchema.extend({
+  /**
+   * The caller's name for this request, so a retry is the same request rather than a second one.
+   *
+   * Carried here for the same reason as on rewind and MCP control: a mode change that was applied
+   * but whose answer was lost must replay to the answer it already got, not start again against a
+   * session that has since moved on.
+   */
+  operationId: z.uuid(),
   mode: PermissionModeSchema,
 }).strict();
 export const ControlPermissionModeReceiptSchema = z

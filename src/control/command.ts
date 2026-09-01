@@ -5,9 +5,10 @@ import {
   resolveCommand,
 } from '../agent/claude/native/commands.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
-import { hasNativeRuntime, runtimeCapabilities } from '../runtime/capabilities.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { readRuntimeInput, runtimeInputId, writeRuntimeInput } from '../runtime/input.ts';
 import { requestRuntimeMcp } from '../runtime/mcpControl.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
 import type { PermissionMode } from '../runtime/projectionSchema.ts';
 import { requestRuntimeRewind } from '../runtime/rewind.ts';
 import { requestRuntimeMode } from '../runtime/sessionMode.ts';
@@ -72,13 +73,13 @@ export async function runControlCommand(
 
 export async function setControlPermissionMode(
   m: MachineConfig,
-  input: { target: ManagedPeer; mode: PermissionMode },
+  input: { target: ManagedPeer; mode: PermissionMode; operationId: string },
   signal: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
   if (!hasNativeRuntime(session))
     throw new AppError('UNSUPPORTED', 'This runtime does not expose its permission mode', 409);
-  const mode = await requestRuntimeMode(m, session, input.mode, signal);
+  const mode = await requestRuntimeMode(m, session, input, signal);
   return { target: input.target, mode };
 }
 

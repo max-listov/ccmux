@@ -12,7 +12,8 @@ import { loadSessions } from '../config/sessions.ts';
 import { promptInvocation } from '../env.ts';
 import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import {
   capturePaneStyled,
   clientTypingRecently,

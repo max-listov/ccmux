@@ -27,5 +27,5 @@ something already available for free.
 ## Do not reintroduce
 A future "show me several agents at once" request is **not** an argument for bringing this back.
 The version worth building is the interactive one, where each pane is a live agent you can type
-into — tracked separately as `ccmux panes` (`docs/backlog/inbox/`). Watching and working are
+into — tracked separately as `ccmux panes` in the project queue. Watching and working are
 different tools, and only the second one earns its keep.

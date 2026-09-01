@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { hasNativeRuntime } from '../../../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../../../runtime/modes.ts';
+
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/status.ts';
 import { readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
@@ -91,6 +91,3 @@ export function commandText(command: ControlCommand, args: string | undefined): 
   const trimmed = (args ?? '').trim();
   return trimmed.length === 0 ? `/${command.name}` : `/${command.name} ${trimmed}`;
 }
-
-export const commandDigest = (commands: readonly ControlCommand[]): string =>
-  createHash('sha256').update(JSON.stringify(commands)).digest('hex').slice(0, 16);

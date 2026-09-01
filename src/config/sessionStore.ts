@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { runtimeModeIsValid, runtimeModes } from '../runtime/modes.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { sessionsPath } from './paths.ts';
@@ -16,12 +17,11 @@ export function loadReadyRows(m: MachineConfig): Session[] {
       throw new Error('bad sessions v2 line (expected JSON with explicit agent)');
     const value: unknown = JSON.parse(line);
     const session = SessionSchema.parse(value);
-    if (session.runtime === 'app-server' && session.agent !== 'codex')
-      throw new Error('app-server runtime requires agent=codex');
-    if (
-      (session.agent === 'opencode' || session.agent === 'custom') &&
-      session.runtime !== 'native'
-    )
+    // Both halves from one table: a mode this agent does not have, and an agent that has no mode
+    // but the native one being stored without it.
+    if (session.runtime !== undefined && !runtimeModeIsValid(session.agent, session.runtime))
+      throw new Error(`${session.agent} has no ${session.runtime} runtime`);
+    if (session.runtime === undefined && runtimeModes[session.agent].interactive === null)
       throw new Error('This provider requires a native runtime');
     if (
       session.runtime === 'native' &&

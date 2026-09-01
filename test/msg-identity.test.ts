@@ -81,6 +81,9 @@ async function send(
   return { code: await processHandle.exited, stdout, stderr };
 }
 
+// Spawns a real CLI process, so its cost is the machine's rather than the assertion's. Given room
+// beyond the default budget because it lost that race under a loaded full-suite run while passing
+// alone — a timeout that reports load as a defect teaches a reader to ignore the gate.
 test('an anonymous msg invoked under ssh is delivered but loudly loses its return address', async () => {
   const { configPath, machine } = setup();
   const result = await send(configPath, 'ssh', ['worker', 'hello']);
@@ -92,7 +95,7 @@ test('an anonymous msg invoked under ssh is delivered but loudly loses its retur
   expect(result.stderr).toContain('instead of invoking remote ccmux msg through ssh');
   expect(loadLedger(machine)).toHaveLength(1);
   expect(loadLedger(machine)[0]?.from).toEqual(cliPrincipal('host-a'));
-});
+}, 20_000);
 
 test('an anonymous msg invoked through stitchwire gets the same return-address warning', async () => {
   const { configPath, machine } = setup();

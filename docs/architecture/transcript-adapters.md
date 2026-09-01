@@ -56,7 +56,7 @@ adapters остаются чистыми трансформами. `detect(lines
 ## Чтение untyped-границы без `as`
 
 Raw JSONL — внешняя нетипизированная граница (формат принадлежит агенту). Читается
-через type-guards в `normalize.ts` (`isRecord`/`str`/`rec`/`num`/`asText`) — это
+через type-guards в `normalize.ts` (`isRecord`/`str`/`rec`/`num`/`flattenContent`) — это
 разрешённое исключение «изолированный адаптер над untyped external», ноль `as`/кастов.
 
 ## Добавить новый агент

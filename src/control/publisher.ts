@@ -5,7 +5,8 @@ import { chatEnabledFor } from '../config/chat.ts';
 import { loadSessions } from '../config/sessions.ts';
 import type { MonitoringSnapshot } from '../monitoring/schema.ts';
 import { projectApplicationPolicy } from '../policy/projection.ts';
-import { hasNativeRuntime, runtimeCapabilities } from '../runtime/capabilities.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { hasNativeRuntime, runtimeModes } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig } from '../types.ts';
@@ -60,7 +61,9 @@ export class ControlPublisher {
       const expiry = new Date(Date.parse(item.observedAt) + source.maxAgeMs).toISOString();
       const row: ControlRow = {
         identity: managedPeer(m.rcPrefix, session),
-        runtime: session.runtime === 'native' ? 'native' : owned ? 'app-server' : 'cli',
+        // The mode the session runs in, from the one table that knows them; `cli` is what the
+        // control row calls an interactive mode.
+        runtime: owned ? runtimeModes[session.agent].native : 'cli',
         state:
           native === null
             ? item.state

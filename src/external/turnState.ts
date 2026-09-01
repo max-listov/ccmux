@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { type CodexAppRpc, connectCodexAppServer } from '../agent/codex/appServer.ts';
+import { connectCodexAppServer } from '../agent/codex/appServer.ts';
+import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import type { ExternalSession, MachineConfig } from '../types.ts';
 import { supportsNativeStatus } from './native-list.ts';
 import { type ExternalTurnState, unknownTurnState } from './turnSchema.ts';

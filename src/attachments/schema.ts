@@ -116,5 +116,4 @@ export type AttachmentUploadReceipt = z.infer<typeof AttachmentUploadReceiptSche
 export type AttachmentReadReceipt = z.infer<typeof AttachmentReadReceiptSchema>;
 export type AttachmentCancelReceipt = z.infer<typeof AttachmentCancelReceiptSchema>;
 export type AttachmentRecord = z.infer<typeof AttachmentRecordSchema>;
-export type AttachmentPin = z.infer<typeof AttachmentPinSchema>;
 export type AttachmentStore = z.infer<typeof AttachmentStoreSchema>;

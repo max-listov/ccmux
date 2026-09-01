@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { rcName } from '../config/machine.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import { nativeProvider } from '../runtime/provider.ts';
 import type {
   AgentKind,
@@ -153,7 +154,7 @@ export function getProvider(agent: AgentKind): AgentProvider {
  * transcript and pane are real; the other native runtimes were never in this registry's pane path.
  */
 export function providerFor(session: Session): AgentProvider {
-  if (session.agent === 'claude' && session.runtime === 'native') return nativeProvider('claude');
+  if (session.agent === 'claude' && hasNativeRuntime(session)) return nativeProvider('claude');
   return REGISTRY[session.agent];
 }
 

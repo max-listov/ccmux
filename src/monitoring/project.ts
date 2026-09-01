@@ -9,7 +9,8 @@ import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
 import { rcName } from '../config/machine.ts';
 import { lastSignOfLife, type Observed } from '../events/observe.ts';
-import { hasNativeRuntime } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
+
 import { managedRuntimeView } from '../runtime/view.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import type { MonitoringRow } from './schema.ts';
