@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-09-01
+
+An optional native Claude runtime, and the control every session was missing
+
 An optional native Claude runtime, and the control every session was missing
 
 - Add an opt-in native execution mode for Claude beside the interactive one, on the published agent
@@ -70,7 +74,6 @@ An optional native Claude runtime, and the control every session was missing
   a fork was being refused.
 - Stop two tests from asserting the machine's speed. Both passed alone and failed inside the full
   suite on a busy box, which makes a green suite a coin flip rather than a signal.
-
 ## [0.39.42] — 2026-08-31
 
 Answer a startup menu once, never twice into the same pane
