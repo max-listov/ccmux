@@ -21,14 +21,46 @@ const companion = (): RegExp => {
 };
 
 /**
- * An address of the form `<word>:<word>` handed to a ccmux command.
+ * An address of the form `<machine>:<session>`.
  *
- * A fleet address names a machine and a session, and both halves are private. This shape slipped
- * past every rule above — it is not a path, not a frontmatter field, not a machine label — and
- * reached a committed document naming a real machine and a real project. Placeholders survive
- * because they carry a hyphen: `host-b:agent-a` is how an example is written here.
+ * Both halves are private: one names a fleet machine, the other a session on it. The shape slipped
+ * past every other rule — it is not a path, not a frontmatter field, not a machine label — and
+ * reached a committed document naming a real machine and a real project.
+ *
+ * Two anchors, because the leak arrives in two shapes and an unanchored rule would drown in
+ * ordinary colons: an address handed to a `ccmux` command, and one written as code. What each
+ * anchor does NOT see is recorded in the tests beside it, measured rather than assumed.
  */
-const fleetAddress = /\bccmux\s+\w[\w-]*\s+(?!(?:host|agent|machine)-)([a-z0-9]+):([a-z0-9-]+)\b/i;
+const COMMAND_ADDRESS = /\bccmux\s+[a-z][\w-]*\s+`?([a-z0-9][\w-]*):([a-z0-9][\w.-]*)`?/i;
+const CODE_ADDRESS = /`([a-z0-9][\w-]*):([a-z0-9][\w.-]*)`/i;
+
+/**
+ * Halves that are generic by construction, and the namespaces that are not machines at all.
+ *
+ * Written as a vocabulary rather than as "anything with a hyphen": the fleet's real session names
+ * carry hyphens too, so a hyphen proves nothing. These are the words this repository's examples
+ * actually use — measured across its history — plus the module and event namespaces that share the
+ * colon and mean something else entirely.
+ */
+const PLACEHOLDER = /^(?:machine|session|name|target|peer|(?:host|agent|machine)-.*)$/i;
+const NOT_A_MACHINE = /^(?:node|bun|http|https|file|data|ccmux)$/i;
+/** `remoteControl:false` is a setting, not an address: a machine name is lowercase on this fleet. */
+const SETTING_KEY = /[A-Z]/;
+/** `autoUpdate:true`, `retries:3` — the right half of an address is a session, never a literal. */
+const NOT_A_SESSION = /^(?:true|false|null|\d+)$/i;
+
+const fleetAddress = (line: string): boolean => {
+  for (const pattern of [COMMAND_ADDRESS, CODE_ADDRESS]) {
+    const match = pattern.exec(line);
+    if (match === null) continue;
+    const [, machine = '', session = ''] = match;
+    if (NOT_A_MACHINE.test(machine) || SETTING_KEY.test(machine)) continue;
+    if (NOT_A_SESSION.test(session)) continue;
+    if (PLACEHOLDER.test(machine) || PLACEHOLDER.test(session)) continue;
+    return true;
+  }
+  return false;
+};
 
 /** Structural checks supplement review; arbitrary private prose cannot be inferred reliably. */
 export function scanPublicationText(text: string): PublicationFinding[] {
@@ -49,7 +81,7 @@ export function scanPublicationText(text: string): PublicationFinding[] {
       findings.push({ line: index + 1, rule: 'private-return-route' });
     if (forbiddenCompanion.test(line))
       findings.push({ line: index + 1, rule: 'private-companion-repository' });
-    if (fleetAddress.test(line)) findings.push({ line: index + 1, rule: 'fleet-address' });
+    if (fleetAddress(line)) findings.push({ line: index + 1, rule: 'fleet-address' });
   }
   return findings;
 }

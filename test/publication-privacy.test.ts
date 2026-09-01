@@ -26,20 +26,48 @@ describe('public publication boundary', () => {
     expect(scanPublicationText(homePath)[0]?.rule).toBe('private-home-path');
   });
 
-  test('an address handed to a ccmux command is a private name in two halves', () => {
-    // The shape that slipped past every other rule and reached a committed document: not a path,
-    // not a frontmatter field, not a machine label — a fleet address, whose machine half and
-    // session half are both private. Placeholders survive because that is how examples are
-    // written here, and a rule that failed on them would be turned off within a day.
+  test('a fleet address is caught in the two shapes it arrives in, and nowhere else', () => {
+    // Measured against this repository's own history rather than imagined: every generic example
+    // it has ever carried is below, and so is every colon-bearing token that is not an address.
+    const caught = (text: string) =>
+      scanPublicationText(text).some((finding) => finding.rule === 'fleet-address');
     // Composed, not written: the literal would be the very shape this rule rejects, and the staged
     // guard reads every file type — so the test would fail on itself at commit time.
-    const address = `${'build'}:${'internal'}`;
-    expect(scanPublicationText(`ccmux wait ${address} --timeout 600`).map((f) => f.rule)).toContain(
-      'fleet-address',
-    );
-    expect(scanPublicationText('ccmux msg host-b:agent-a "text"').map((f) => f.rule)).not.toContain(
-      'fleet-address',
-    );
+    const real = `${'build'}:${'internal'}`;
+
+    // The two anchors. A command is how an address is written to be RUN; code is how it is written
+    // to be READ, and the leak that prompted this rule was the first of those.
+    expect(caught(`ccmux wait ${real} --timeout 600`)).toBe(true);
+    expect(caught(`| build | \`${real}\` | idle |`)).toBe(true);
+
+    // Every placeholder this repository actually uses. A rule that failed on these would be turned
+    // off within a day, and the hyphen is not what makes them safe — real session names have
+    // hyphens too. The vocabulary is.
+    for (const safe of [
+      'ccmux msg host-b:api "text"',
+      'ccmux restart host-b:api',
+      'ccmux msg host-a:agent-a "x"',
+      'ccmux send host-a:router /compact',
+      'ccmux msg machine:session "x"',
+      'ccmux msg machine:name "x"',
+      'ccmux wait <machine>:<session>',
+      '`host-a:agent-b`',
+    ])
+      expect(caught(safe)).toBe(false);
+
+    // Colons that are not addresses: module namespaces and this project's own event names.
+    for (const other of [
+      '`node:fs`',
+      '`bun:sqlite`',
+      '`ccmux:turn-closed`',
+      'https://example.com/x',
+    ])
+      expect(caught(other)).toBe(false);
+
+    // The residual gap, asserted so it is a known limit rather than a belief: an address in bare
+    // prose, with neither a command nor backticks, is not seen. Widening to that shape would flag
+    // ordinary prose colons, and a noisy rule is a rule nobody keeps.
+    expect(caught(`адрес ${real} держит очередь`)).toBe(false);
   });
 
   test('the companion is forbidden by its address, not by its name', () => {
