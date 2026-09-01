@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.41.0] — 2026-09-01
+
+One mechanism where there were four, one table where there were twelve, and the task queue moves out
+
 Internal consistency pass, plus two defects it uncovered.
 
 **Contract changes** — this project keeps one current contract and has no installed-client
@@ -57,7 +61,6 @@ compatibility population, so these replace rather than extend:
   project's own public names, including the from-source launcher, stay valid.
 - `quality.config.json` declares this repository's identity, role and content classification in
   typed form, for a reader that checks the boundary from outside.
-
 ## [0.40.0] — 2026-09-01
 
 An optional native Claude runtime, and the control every session was missing
