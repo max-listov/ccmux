@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.43.6] — 2026-09-01
+
+Bound the test suite at twenty seconds so a busy machine is not a failing gate
 ## [0.43.5] — 2026-09-01
 
 Read the account when a limit moves, instead of publishing the pushed figure
