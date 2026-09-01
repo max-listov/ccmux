@@ -3,7 +3,6 @@ import {
   claudePlanLimits,
   codexPlanLimits,
   formatPlanLimits,
-  mergePlanLimits,
   mergeRateLimitEvent,
   planWindowLabel,
 } from '../src/runtime/planLimits.ts';
@@ -144,21 +143,4 @@ test('the fullest window is read first, because it is the one that stops the wor
   expect(line.startsWith('5h 77%')).toBe(true);
   expect(line).toContain('↻5h');
   expect(line).toContain('7d 63%');
-});
-
-test('a pushed update carries one limit and must not erase the ones it is silent about', () => {
-  // Measured live: after a model-scoped turn, Codex pushed only that model's windows. Replacing the
-  // set with the push made the account-wide week — the one at 91% — simply disappear.
-  const read = codexPlanLimits(CODEX_LIVE, NOW);
-  const pushed = codexPlanLimits(
-    {
-      limitId: 'codex_model',
-      limitName: 'A scoped model',
-      primary: { usedPercent: 7, windowDurationMins: 300, resetsAt: 1_788_277_655 },
-    },
-    NOW + 60_000,
-  );
-  const merged = mergePlanLimits(read, pushed);
-  expect(merged.windows.find((window) => window.key === 'codex:10080m')?.percent).toBe(91);
-  expect(merged.windows.find((window) => window.key === 'codex_model:300m')?.percent).toBe(7);
 });

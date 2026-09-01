@@ -15,11 +15,7 @@ import {
 import { nativePolicySkillsAcknowledged, policySkillInputs } from '../../policy/codex.ts';
 import { applicationPolicyEvidence, verifyApplicationPolicy } from '../../policy/resolve.ts';
 import type { MaterializedPolicy } from '../../policy/schema.ts';
-import {
-  codexPlanLimits,
-  mergePlanLimits,
-  unpublishedPlanLimits,
-} from '../../runtime/planLimits.ts';
+import { codexPlanLimits, unpublishedPlanLimits } from '../../runtime/planLimits.ts';
 import { readSelection, seedNativeSelection } from '../../runtime/selection.ts';
 import { NativeTurnOptionsSchema } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -53,6 +49,9 @@ const ACCOUNT_LIMITS_EVENT = 'account/rateLimits/updated';
 
 /** A pull answers "how full is it now"; more often than this is a round trip for a constant. */
 const LIMITS_REFRESH_MS = 60_000;
+
+/** A push says something moved, and re-reading on every one of them would be a round trip per turn. */
+const LIMITS_PUSH_MS = 5_000;
 
 const OBSERVED_EVENTS = new Set([
   'thread/status/changed',
@@ -107,20 +106,13 @@ export class OwnedCodexConnection {
       onEvent: (event) => {
         if (!this.active) return;
         if (event.method === ACCOUNT_LIMITS_EVENT) {
-          const pushed = (event.params as { rateLimits?: unknown } | null)?.rateLimits;
-          if (pushed !== undefined && this.projection !== null) {
-            // Merged, not replaced: the push carries whichever limit the last turn spent against,
-            // and every window it is silent about is still the only measurement anybody has.
-            this.projection.accountLimits(
-              null,
-              mergePlanLimits(
-                this.projection.snapshot().planLimits,
-                codexPlanLimits(pushed, Date.now()),
-              ),
-            );
-            this.lastLimitsAt = Date.now();
-            this.publish();
-          }
+          // The push is a signal that something moved, never the figure itself. Measured on a live
+          // account: it carries the limits of the model the turn ran on while labelling them with
+          // the account-wide limit id, so publishing it replaced the account's week (91%) with a
+          // model's (7%) under the same name. The account read is the one authoritative answer, so
+          // the event triggers a re-read instead of becoming data.
+          if (this.projection !== null && Date.now() - this.lastLimitsAt >= LIMITS_PUSH_MS)
+            void this.readAccountLimits(Date.now()).then(() => this.publish());
           return;
         }
         if (!OBSERVED_EVENTS.has(event.method) && !CODEX_CONTENT_METHODS.has(event.method)) return;
