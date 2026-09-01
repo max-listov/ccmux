@@ -5,6 +5,12 @@ import { join, resolve } from 'node:path';
 /**
  * An answer larger than a pipe buffer, read by someone who is not in a hurry.
  *
+ * Only the property is asserted — nothing is lost — never the defect it replaced. Whether a bare
+ * `console.log` loses the tail depends on the platform and on what else the process loaded: it does
+ * on macOS with a CLI framework in the graph, and it did not on this project's Linux runner. A test
+ * that asserted the loss passed where the bug lives and failed where it does not, which is exactly
+ * backwards.
+ *
  * This is the shape of the defect it exists against: `ccmux transcript --json` returned exactly
  * 65536 bytes of a longer document, with exit 0 and an empty stderr, so the only way to learn the
  * answer was cut was to fail parsing it. The cause is not in the command — it is that the writer
@@ -42,24 +48,6 @@ test('a large answer survives a reader that is slower than the writer', async ()
     );
     const out = await readSlowly([process.execPath, script], resolve('.'));
     expect(out.length).toBe(PAYLOAD + 1);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('the same payload through console.log is what the boundary exists to replace', async () => {
-  // Not a claim about Bun: a claim about this project's own output path. If this ever stops being
-  // true the boundary is no longer load-bearing — and it is the assertion above that must still
-  // hold either way.
-  const root = mkdtempSync(join(resolve('.'), '.large-output-'));
-  try {
-    const script = join(root, 'emit.ts');
-    writeFileSync(
-      script,
-      [`import 'stitchkit/cli';`, `console.log('x'.repeat(${PAYLOAD}));`].join('\n'),
-    );
-    const out = await readSlowly([process.execPath, script], resolve('.'));
-    expect(out.length).toBeLessThan(PAYLOAD);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
