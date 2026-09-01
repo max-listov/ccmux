@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.43.7] — 2026-09-01
+
+Keep a large JSON answer whole when the reader is slower than the writer
 ## [0.43.6] — 2026-09-01
 
 Bound the test suite at twenty seconds so a busy machine is not a failing gate
