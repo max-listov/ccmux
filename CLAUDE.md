@@ -155,6 +155,11 @@ Default to using Bun instead of Node.js.
 ## Testing
 
 Use `bun run check` for the complete local gate: Biome, TypeScript, tests and packed clients.
+Tests run with `--timeout 20000`, not Bun's 5-second default: this suite waits on real processes,
+sockets and tmux, and on a loaded machine those legitimately take seconds — five of them failed
+that way in one afternoon, none of them alone. The bound still fails a hang; it just stops being a
+statement about how busy the machine is. A test that needs the wall clock to prove something waits
+for the observable state instead, with its own bound.
 `bun run lint` checks without editing; `bun run format` formats; `bun run lint:fix` applies safe
 Biome fixes. The shared style is two spaces, 100 columns, single quotes and semicolons. Use the
 checked-in `biome.json`; do not introduce a parallel formatter or suppress whole rule groups to
