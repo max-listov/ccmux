@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.3] — 2026-09-02
+
+A rejected service result says which fields it could not read
 ## [0.49.2] — 2026-09-02
 
 A run from a checkout writes its own record, not the machine's history
