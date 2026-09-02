@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.1] — 2026-09-02
+
+The native stream frame budget comes from the wire, not from this project's constant
 ## [0.49.0] — 2026-09-02
 
 A held message publishes why, as a value and not only as a sentence
