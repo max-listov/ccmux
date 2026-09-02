@@ -1,6 +1,11 @@
 import { expect, test } from 'bun:test';
 import { z } from 'zod';
-import { type FleetMachine, fleetView, partitionParked } from '../src/commands/fleetList.ts';
+import {
+  type FleetMachine,
+  fleetView,
+  partitionParked,
+  RemoteSessionSchema,
+} from '../src/commands/fleetList.ts';
 import { rowStateLabel } from '../src/commands/list.ts';
 
 // Measured 2026-08-31: of 96 rows the fleet map printed, 61 were sessions somebody had deliberately
@@ -52,32 +57,14 @@ test("a peer's parked rows are read by the same rule as this machine's", () => {
     version: '0.39.40',
     release: null,
     behind: null,
+    // Parsed the way a peer's row is parsed, so the fixture cannot drift from the contract.
     sessions: [
-      {
+      RemoteSessionSchema.parse({
         name: 'parked',
         agent: 'codex',
         state: rowStateLabel('stopped', false, true),
         archived: true,
-        model: null,
-        running: false,
-        stale: [],
-        dir: null,
-        role: null,
-        turnStartedAt: null,
-        waitingFor: null,
-        lastMessage: null,
-        context: {
-          text: null,
-          usedTokens: null,
-          limitTokens: null,
-          percent: null,
-          rawLimitTokens: null,
-          window: null,
-        },
-        account: null,
-        planLimits: null,
-        costUsd: null,
-      },
+      }),
     ],
   };
   const view = fleetView([machine]);

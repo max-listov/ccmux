@@ -16,7 +16,7 @@
         "jpeg-js": "0.4.4",
         "pngjs": "7.0.0",
         "react": "^19.2.8",
-        "stitchkit": "0.70.5",
+        "stitchkit": "0.72.5",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -403,7 +403,7 @@
 
     "statuses": ["statuses@2.0.2", "", {}, "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw=="],
 
-    "stitchkit": ["stitchkit@0.70.5", "", { "dependencies": { "ky": "^2.0.2" }, "peerDependencies": { "@modelcontextprotocol/ext-apps": "^1.7.2", "@modelcontextprotocol/server": "^2.0.0", "@openrouter/ai-sdk-provider": "^3.0.0", "@opentelemetry/api": "^1.9.0", "@socket.io/bun-engine": "^0.1.1", "@socket.io/component-emitter": "^3.1.2", "@tanstack/react-query": ">=5", "@types/bun": "^1.3.14", "ai": "^7.0.0", "grammy": "^1.45.1", "react": ">=18", "react-query-kit": "^3.3.3", "socket.io": "^4.8.3", "socket.io-client": "^4.8.3", "srvx": "^0.12.5", "zod": "^4.4.3" }, "optionalPeers": ["@modelcontextprotocol/ext-apps", "@modelcontextprotocol/server", "@openrouter/ai-sdk-provider", "@opentelemetry/api", "@socket.io/bun-engine", "@socket.io/component-emitter", "@tanstack/react-query", "@types/bun", "ai", "grammy", "react", "react-query-kit", "socket.io", "socket.io-client", "srvx"] }, "sha512-Qr3o8Xp0JDE4v/K6MKLzh2ZUn90OIVNq1u16flUJxzOKrO8TGGWxb2tL+Ewp+DTLGXLyJtLhC6o9R/IuRxlBhQ=="],
+    "stitchkit": ["stitchkit@0.72.5", "", { "dependencies": { "ky": "^2.0.2" }, "peerDependencies": { "@modelcontextprotocol/ext-apps": "^1.7.2", "@modelcontextprotocol/server": "^2.0.0", "@openrouter/ai-sdk-provider": "^3.0.0", "@opentelemetry/api": "^1.9.0", "@socket.io/bun-engine": "^0.1.1", "@socket.io/component-emitter": "^3.1.2", "@tanstack/react-query": ">=5", "@types/bun": "^1.3.14", "ai": "^7.0.0", "grammy": "^1.45.1", "react": ">=18", "react-query-kit": "^3.3.3", "socket.io": "^4.8.3", "socket.io-client": "^4.8.3", "srvx": "^0.12.5", "zod": "^4.4.3" }, "optionalPeers": ["@modelcontextprotocol/ext-apps", "@modelcontextprotocol/server", "@openrouter/ai-sdk-provider", "@opentelemetry/api", "@socket.io/bun-engine", "@socket.io/component-emitter", "@tanstack/react-query", "@types/bun", "ai", "grammy", "react", "react-query-kit", "socket.io", "socket.io-client", "srvx"] }, "sha512-oBfbAB2Xdy6Jv8DS5bHEyO+poXWd1iEpkjGaucl5+ITVq+oad1xdbX3BQNNxW6LJIk08r46RJhDDRj/cmIUypg=="],
 
     "string-width": ["string-width@8.2.1", "", { "dependencies": { "get-east-asian-width": "^1.5.0", "strip-ansi": "^7.1.2" } }, "sha512-IIaP0g3iy9Cyy18w3M9YcaDudujEAVHKt3a3QJg1+sr/oX96TbaGUubG0hJyCjCBThFH+tFpcIyoUHUn1ogaLA=="],
 

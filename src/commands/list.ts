@@ -293,7 +293,16 @@ function envFileEntry(s: Session): { path: string; present: boolean } | null {
   return path === null ? null : { path, present: existsSync(path) };
 }
 
-function toListItem(m: MachineConfig, r: ListRow): ListItem {
+/**
+ * The row every answer about a session is made of.
+ *
+ * Exported because the fleet slice reports the SAME sessions for this machine, and it used to build
+ * its own copy with a hand-picked subset of the fields. Every field added since had to be added
+ * twice, and until the second edit a peer's sessions read as "nothing to show" rather than "not
+ * reported" — `waitingFor`, the context window, the last message and the plan limits each shipped
+ * broken that way, and three of the four were found by a consumer rather than here.
+ */
+export function toListItem(m: MachineConfig, r: ListRow): ListItem {
   return {
     name: r.session.name,
     agent: r.session.agent,

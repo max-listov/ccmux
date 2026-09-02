@@ -27,6 +27,22 @@ cwd, project name, model name, and recency are never routing keys. `ccmux list -
 `agent` field for every local session. `ccmux fleet` preserves the field from peers; if an older peer
 does not send it, the human view says `unknown` instead of silently claiming Claude.
 
+### One row, two answers
+
+`list --json` answers for THIS machine and is authoritative: it is built here, and it stays true
+when every peer is unreachable. `fleet --json` asks each peer for its own `list --json` and adds the
+envelope only it can have — machine reachability, version standing, and the account grouping, since a
+plan limit belongs to an account rather than to a machine. The commands stay separate for that
+reason: one must not depend on machines it does not own.
+
+The session ROW is a single definition. The fleet schema is derived from the local one and overrides
+only what a peer may legitimately have differently — an absent provider is `unknown` rather than
+Claude, an unknown state or message kind is read as text rather than rejecting the row, and unknown
+keys survive so a newer peer's field reaches a consumer that understands it. A field added to the
+local row with its own "not reported" default therefore travels by construction; the two-list
+arrangement that preceded this shipped four fields present locally and silently absent remotely,
+which a consumer reads as "that session has nothing to show".
+
 ## ccmux-managed plane
 
 The human selector is the exact `<machine>:<session>` address. At send time it resolves to and pins

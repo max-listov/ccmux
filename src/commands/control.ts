@@ -34,11 +34,11 @@ export async function cmdControl(args: string[]): Promise<number> {
     let code = 0;
     const proxy = createControlProxy(options);
     try {
-      // Imported here rather than at module load: merely loading `stitchkit/cli` changes how this
-      // process writes to stdout, and a large answer then loses everything past 64 KiB whenever the
-      // reader is slow — measured, exactly 65536 bytes and exit 0. Every other verb in this binary
-      // shares the module graph, so an eager import made `transcript --json` truncate for a reason
-      // that had nothing to do with transcripts.
+      // Loaded here rather than at module load: every verb in this binary shares one module graph,
+      // and a CLI framework nobody in that invocation calls is startup work for `list` and `send`
+      // alike. It arrived as a fix — loading it used to switch this process's stdout to a stream
+      // that dropped large answers past 64 KiB — and the owner has since fixed that at the root, so
+      // what remains is the ordinary reason to keep a lazy import lazy.
       const { createCli } = await import('stitchkit/cli');
       await createCli({
         name: 'ccmux control',

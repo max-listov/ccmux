@@ -9,10 +9,11 @@ import { once } from 'node:events';
  * which is the worst way to find out — so every command whose output can exceed a pipe buffer
  * writes through here.
  *
- * Measured rather than assumed: a slow reader loses the tail of a `console.log` (and of
- * `Bun.write`) whenever this process's module graph includes a CLI framework that touches stdout,
- * while `write` + `drain` delivers all of it. The condition is not something a command can know
- * about itself, which is why this is the boundary rather than a special case.
+ * Measured rather than assumed: a slow reader lost the tail of a `console.log` (and of
+ * `Bun.write`) while `write` + `drain` delivered all of it. The trigger that exposed it — a module
+ * elsewhere in the graph switching this process to a different stdout stream — has since been fixed
+ * upstream, and this stays: waiting for the pipe to drain is what a writer owes a reader that has
+ * not caught up, and no command can know how fast its consumer reads.
  */
 export async function writeOut(text: string): Promise<void> {
   await writeTo(process.stdout, text);

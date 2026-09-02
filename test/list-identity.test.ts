@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { formatFleetSession } from '../src/commands/fleetList.ts';
+import { formatFleetSession, RemoteSessionSchema } from '../src/commands/fleetList.ts';
 import { helpText } from '../src/commands/help.ts';
 import { ListItemSchema } from '../src/config/schema.ts';
 
@@ -37,32 +37,17 @@ test('list JSON requires the provider instead of inferring it', () => {
 });
 
 test('fleet renders a missing remote provider as unknown, never Claude', () => {
-  const line = formatFleetSession('host-a', {
-    name: 'agent-a',
-    agent: null,
-    state: 'idle',
-    archived: false,
-    model: null,
-    running: true,
-    stale: [],
-    dir: '/src/agent-a',
-    account: null,
-    planLimits: null,
-    costUsd: null,
-    role: null,
-    lastMessage: null,
-    turnStartedAt: null,
-    waitingFor: null,
-    context: {
-      text: null,
-      usedTokens: null,
-      limitTokens: null,
-      percent: null,
-      rawLimitTokens: null,
-      window: null,
-    },
-    uptime: { text: '1m' },
-  });
+  // Built through the peer schema: a row that reaches this function has been parsed by it.
+  const line = formatFleetSession(
+    'host-a',
+    RemoteSessionSchema.parse({
+      name: 'agent-a',
+      state: 'idle',
+      running: true,
+      dir: '/src/agent-a',
+      uptime: { text: '1m' },
+    }),
+  );
   expect(line).toContain('unknown');
   expect(line).not.toContain('claude');
 });

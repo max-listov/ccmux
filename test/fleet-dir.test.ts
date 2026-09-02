@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { z } from 'zod';
-import { type FleetMachine, fleetView } from '../src/commands/fleetList.ts';
+import { type FleetMachine, fleetView, RemoteSessionSchema } from '../src/commands/fleetList.ts';
 import { ListJsonSchema } from '../src/config/schema.ts';
 
 // A fleet consumer joins a session to a project by matching its checkout path — longest same-host
@@ -9,63 +9,23 @@ import { ListJsonSchema } from '../src/config/schema.ts';
 // field at all, the only thing left to match on is the session NAME, which a person chose and which
 // is usually the project's — the exact guess that has misrouted work on this fleet before.
 
-/** The peer answer shape, parsed the way `collectFleet` parses it. Kept here rather than importing a
- *  private schema, so the test asserts the CONTRACT and would notice it being narrowed. */
-const RemoteSession = z.object({
-  name: z.string(),
-  agent: z.enum(['claude', 'codex']).nullable().default(null),
-  state: z.string().default('?'),
-  archived: z.boolean().default(false),
-  waitingFor: z.string().nullable().default(null),
-  planLimits: z.any().nullable().default(null),
-  lastMessage: z
-    .object({
-      kind: z.string().default('unknown'),
-      role: z.string().default('unknown'),
-      text: z.string().nullable().default(null),
-      toolName: z.string().nullable().default(null),
-      createdAt: z.string().nullable().default(null),
-    })
-    .loose()
-    .nullable()
-    .default(null),
-  model: z.string().nullable().default(null),
-  running: z.boolean().default(false),
-  stale: z.array(z.string()).default([]),
-  dir: z.string().nullable().default(null),
-  role: z.string().nullable().default(null),
-  turnStartedAt: z.string().nullable().default(null),
-  uptime: z
-    .object({ text: z.string().nullable().default(null) })
-    .partial()
-    .optional(),
-  context: z
-    .object({
-      text: z.string().nullable(),
-      usedTokens: z.number().nullable(),
-      limitTokens: z.number().nullable(),
-      percent: z.number().nullable(),
-      rawLimitTokens: z.number().nullable().default(null),
-      window: z.enum(['model-limit', 'compaction-window']).nullable().default(null),
-    })
-    .default(() => ({
-      text: null,
-      usedTokens: null,
-      limitTokens: null,
-      percent: null,
-      rawLimitTokens: null,
-      window: null,
-    })),
-  account: z
-    .object({
-      label: z.string().nullable(),
-      organization: z.string().nullable(),
-      subscription: z.string().nullable(),
-      provider: z.string().nullable(),
-    })
-    .nullable()
-    .default(null),
-  costUsd: z.number().nullable().default(null),
+/**
+ * The peer answer shape is no longer restated here.
+ *
+ * It used to be mirrored so the test would notice the contract being narrowed — and the mirror
+ * itself became the narrowing: every field added to the local row had to be copied into two schemas
+ * and a fixture, and a field missing from any of them read as "that session has nothing to show".
+ * The real schema is derived from the local row now, so the property this file cares about is
+ * asserted against it directly.
+ */
+const RemoteSession = RemoteSessionSchema;
+
+test('the fleet row is the local row, so a field cannot arrive on one path and vanish on the other', () => {
+  // The drift this replaces: `waitingFor`, the context window, the last message and the plan limits
+  // each shipped present locally and absent remotely, because the two shapes were written twice.
+  const local = new Set(Object.keys(ListJsonSchema.shape.sessions.element.shape));
+  const remote = new Set(Object.keys(RemoteSessionSchema.shape));
+  expect([...local].filter((field) => !remote.has(field))).toEqual([]);
 });
 
 test('a local fleet row carries the directory exactly as `list --json` reports it', () => {

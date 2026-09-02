@@ -28,3 +28,24 @@ test('a peer session carries its last transcript entry through the fleet slice',
   // A peer that reported none says none, which is not the same as an empty message.
   expect(RemoteSessionSchema.parse({ name: 'agent-b' }).lastMessage).toBeNull();
 });
+
+test('a blocked peer session says why, and one at a menu says that instead of idle', async () => {
+  const { fleetSessionDetail, formatFleetSession } = await import('../src/commands/fleetList.ts');
+  // Both facts existed locally and were dropped on the way here. `blocked` with no reason sends a
+  // reader to the far machine to ask what the far machine already knows.
+  const blocked = RemoteSessionSchema.parse({
+    name: 'agent-a',
+    state: 'blocked',
+    lifecycleError: 'native status unavailable: disconnected',
+  });
+  expect(fleetSessionDetail(blocked)).toContain('native status unavailable');
+  // A healthy session adds no line: the map stays a map.
+  expect(fleetSessionDetail(RemoteSessionSchema.parse({ name: 'agent-b' }))).toBeNull();
+  // Sitting at a menu is the opposite of idle, and every other signal reads it as idle.
+  const waiting = RemoteSessionSchema.parse({
+    name: 'agent-c',
+    state: 'idle',
+    atPrompt: 'waiting-approval',
+  });
+  expect(formatFleetSession('host-a', waiting)).toContain('waiting-approval');
+});

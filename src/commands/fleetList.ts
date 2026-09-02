@@ -7,15 +7,19 @@ import {
   bestKnownRelease,
   releaseStanding,
 } from '../config/releaseCheck.ts';
-import { AgentKindSchema, ContextInfoSchema, ReleaseStandingSchema } from '../config/schema.ts';
+import {
+  AgentKindSchema,
+  ContextInfoSchema,
+  ListItemSchema,
+  ReleaseStandingSchema,
+  TranscriptMessageSchema,
+} from '../config/schema.ts';
 import { peersOf, runPeer } from '../fleet/transport.ts';
-import { PlanLimitsSchema } from '../runtime/planLimits.ts';
-import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
 import { accountLines, fleetAccounts } from './accounts.ts';
-import { collectRows, rowStateLabel } from './list.ts';
+import { collectRows, rowStateLabel, toListItem } from './list.ts';
 
 /**
  * `ccmux fleet` — every session on every machine of the fleet, in one view.
@@ -31,71 +35,59 @@ import { collectRows, rowStateLabel } from './list.ts';
  * between two servers only exists while the owner is connected — so the command still exits 0 and
  * simply marks that machine, instead of an agent reading routine degradation as an error.
  */
-export const RemoteSessionSchema = z.object({
-  name: z.string(),
+/**
+ * A peer's session row: the same row `list --json` produces, read leniently.
+ *
+ * Derived rather than restated. The subset that used to live here had to gain every field the local
+ * answer gained, and until it did the field was silently absent for every remote session — which
+ * reads as "nothing to show" when the truth is "this schema stopped listening". A field added to the
+ * local row with its own "not reported" default now arrives here by construction.
+ *
+ * What is overridden is only what a peer may legitimately not have, or may have differently:
+ * another box can run an older or a newer build, and one un-upgraded peer must not fail the parse of
+ * every row in the fleet. Unknown keys are kept rather than stripped, so a newer peer's field
+ * reaches a consumer that already understands it.
+ */
+export const RemoteSessionSchema = ListItemSchema.extend({
+  // Required locally, because a local answer must state the provider rather than let anyone infer
+  // it from model, cwd or name. From a peer, absence is `unknown` — never Claude, which would turn
+  // version skew into misrouting.
   agent: AgentKindSchema.nullable().default(null),
+  // A state this build does not know is still a state the peer is in: read as text, not as an enum
+  // that would reject the whole row.
   state: z.string().default('?'),
-  /** Absent on a peer running an older ccmux, where `false` reproduces the previous reading. */
-  archived: z.boolean().default(false),
-  model: z.string().nullable().default(null),
   running: z.boolean().default(false),
-  stale: z.array(z.string()).default([]),
-  /**
-   * The session's declared execution directory, carried through unchanged by fleet transport.
-   * It need not be a Git checkout and proves neither repository identity nor product membership.
-   * Several exact session identities may share it. A path prefix, dependency or harness project
-   * label is not membership authority; any explicit many-to-many product/repository catalogue
-   * belongs to the consumer. Routing uses the managed address and pinned native identity.
-   *
-   * Null from a peer too old to report it — which is a peer whose other sessions still arrive.
-   */
+  archived: z.boolean().default(false),
   dir: z.string().nullable().default(null),
-  // What that session is FOR. Shown on the address line, because a role that a reader has to go and
-  // look up is not consulted at the moment an address is chosen — which is the moment it exists for.
-  role: z.string().nullable().default(null),
-  // Absent on a peer running an older ccmux, which is exactly what `null` means here: not "that
-  // session is idle" but "that build does not report it". `version` is on the machine row beside it,
-  // so a consumer can tell the two apart without guessing.
-  turnStartedAt: z.string().nullable().default(null),
-  /**
-   * Who that session is waiting for. Null on a peer too old to report it, exactly as above — not
-   * "that session is waiting for nobody" but "that build does not say". Defaulted rather than
-   * required so one un-upgraded peer cannot fail the parse of every row in the fleet.
-   */
-  waitingFor: z.string().nullable().default(null),
-  /**
-   * Where the session stopped, as `list --json` already reports it locally.
-   *
-   * Busy is visible from the timer; WHAT it is busy with is not, and a reader watching the whole
-   * fleet only ever takes the fleet path. Null from a peer too old to report it — which is not the
-   * same as a session with nothing to show, the distinction already drawn for `turnStartedAt`.
-   *
-   * Parsed loosely on purpose: this schema names what it displays, and the transcript shape grows
-   * fields faster than a fleet of mixed builds adopts them.
-   */
-  lastMessage: z
-    .object({
-      kind: z.string().default('unknown'),
-      role: z.string().default('unknown'),
-      text: z.string().nullable().default(null),
-      toolName: z.string().nullable().default(null),
-      createdAt: z.string().nullable().default(null),
+  // Identity fields the fleet view does not address by: absent from an older peer rather than empty.
+  uuid: z.string().nullable().default(null),
+  rc: z.string().nullable().default(null),
+  lifecycleError: z.string().nullable().default(null),
+  model: z.string().nullable().default(null),
+  createdAt: z.string().nullable().default(null),
+  // Loosely on purpose: the transcript shape grows fields faster than a fleet of mixed builds
+  // adopts them, and a row is worth more than the newest field is worth rejecting it over.
+  // Every field optional and unknown keys kept: the transcript shape grows faster than a fleet of
+  // mixed builds adopts it, and a row is worth more than the newest field is worth rejecting it over.
+  lastMessage: TranscriptMessageSchema.partial()
+    .extend({
+      // Read as text, not as this build's enums: a newer peer may name a kind, a role or a status
+      // this one has never heard of, and rejecting the row would cost the whole message rather than
+      // the one word nobody here understands.
+      kind: z.string().optional(),
+      role: z.string().optional(),
+      status: z.string().nullish(),
     })
     .loose()
     .nullable()
     .default(null),
   uptime: z
-    .object({ text: z.string().nullable().default(null) })
-    .partial()
-    .optional(),
-  /**
-   * Context-window fill, as `list --json` already reports it locally.
-   *
-   * Dropped here before: the peer sent it and this schema did not name it, so a consumer watching
-   * the whole fleet — which must go through `fleet`, one call for every machine — could read
-   * context fill for local sessions only. The default is the "nothing measured" shape, which is
-   * also what an older peer's silence means.
-   */
+    .object({
+      text: z.string().nullable().default(null),
+      seconds: z.number().nullable().default(null),
+    })
+    .default(() => ({ text: null, seconds: null })),
+  // The "nothing measured" shape, which is also what an older peer's silence means.
   context: ContextInfoSchema.default(() => ({
     text: null,
     usedTokens: null,
@@ -104,24 +96,8 @@ export const RemoteSessionSchema = z.object({
     rawLimitTokens: null,
     window: null,
   })),
-  /**
-   * Which account this session runs on and what it has spent.
-   *
-   * The reason it travels: a limit belongs to an account, not to a machine, so the only place the
-   * question "which sessions share this one" can be answered is the slice that spans every machine.
-   * An older peer reports nothing, which is not the same as running on no account.
-   */
-  account: NativeAccountSchema.nullable().default(null),
-  /**
-   * How much of that account's plan is used, as the peer measured it.
-   *
-   * It travels for the same reason `account` does, one step further: knowing which sessions share a
-   * plan is only half the question an operator asks before a limit stops the work. An older peer
-   * reports nothing, which is not the same as an account with room to spare.
-   */
-  planLimits: PlanLimitsSchema.nullable().default(null),
-  costUsd: z.number().nullable().default(null),
-});
+}).loose();
+
 const RemoteListSchema = z.object({
   version: z.string().default('?'),
   rcPrefix: z.string().default('?'),
@@ -173,24 +149,13 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
     version: VERSION,
     release: releaseStanding(m, VERSION),
     behind: null, // filled by `fleetView`, which is the only place that holds the yardstick
+    // This machine's own rows, built by the same function that builds `list --json`. Two builders
+    // for one row is what made a field arrive locally and vanish remotely for a release at a time;
+    // the fleet view simply relabels the state, which is the only thing it says differently.
     sessions: local.map((r) => ({
-      name: r.session.name,
-      agent: r.session.agent,
+      ...toListItem(m, r),
       state: rowStateLabel(r.state, r.running, r.session.archived),
-      archived: r.session.archived,
-      model: r.model,
-      running: r.running,
-      uptime: { text: r.uptimeText },
-      waitingFor: r.waitingFor,
-      lastMessage: r.lastMessage,
-      stale: r.stale,
-      dir: r.session.dir,
-      role: r.session.role ?? null,
-      turnStartedAt: r.turnStartedAt,
-      context: r.context,
-      account: r.account,
-      planLimits: r.planLimits,
-      costUsd: r.costUsd,
+      uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     })),
   };
   const remote = await Promise.all(
@@ -301,7 +266,21 @@ export function formatFleetSession(
   // The role rides on the ADDRESS line, not in a column of its own, because it is part of the answer
   // to "which of these do I write to" — and the line above is the one people copy from.
   const role = session.role === null ? '' : `  ${ROLE_SIGIL}${session.role}`;
-  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(session.state, 9)} ${pad(session.model ?? '-', 11)} ${pad(session.uptime?.text ?? '', 7)}${role}${restart}`;
+  // A session sitting at a menu reads as idle from every other signal — still pane, no tool running
+  // — when it is the opposite: unable to proceed until somebody answers. It travels now, so it is
+  // shown, in the state column where a reader is already looking.
+  const state = session.atPrompt === null ? session.state : session.atPrompt;
+  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(state, 13)} ${pad(session.model ?? '-', 11)} ${pad(session.uptime?.text ?? '', 7)}${role}${restart}`;
+}
+
+/**
+ * Why a session is blocked, on the line under it.
+ *
+ * `blocked` alone sends a reader to the machine to find out; the peer already knows and now says so.
+ * Empty for every healthy session, so the map stays a map.
+ */
+export function fleetSessionDetail(session: z.infer<typeof RemoteSessionSchema>): string | null {
+  return session.lifecycleError === null ? null : `      ${session.lifecycleError}`;
 }
 
 /**
@@ -374,7 +353,9 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
       // Full address on every line — the thing you copy into `ccmux msg` without guessing.
       // A session that a restart would change is flagged right here, so "who is still on the old
       // prompt" is readable across the fleet instead of remembered.
-      console.log(formatFleetSession(fm.machine, s));
+      await printLine(formatFleetSession(fm.machine, s));
+      const detail = fleetSessionDetail(s);
+      if (detail !== null) await printLine(detail);
     }
     if (parked > 0) console.log(`  … ${parked} archived (ccmux fleet --all)`);
   }
