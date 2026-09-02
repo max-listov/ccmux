@@ -110,3 +110,40 @@ test('archive is exact, idempotent and keeps the canonical registry identity', a
     archiveControlSession(m, { ...target, threadId: crypto.randomUUID() }),
   ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
 });
+
+test('a retry of a create that already finished is answered, not refused as busy', async () => {
+  const { settledCreateRequest } = await import('../src/control/lifecycle.ts');
+  const { mkdirSync, writeFileSync, mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-create-receipt-'));
+  try {
+    const m = makeMachine({ stateDir: root });
+    const requestId = '55555555-5555-4555-8555-555555555555';
+    mkdirSync(join(root, 'control'), { recursive: true });
+    const row = {
+      requestId,
+      fingerprint: 'f'.repeat(64),
+      generation: '77777777-7777-4777-8777-777777777777',
+      name: 'agent-a',
+      workspace: '/src/agent-a',
+      flags: [],
+      threadId: null,
+      error: null,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const path = join(root, 'control', 'create-requests.json');
+    // Still running: two runs of one create are a race, so a retry must still queue behind it.
+    writeFileSync(path, JSON.stringify([row]), { mode: 0o600 });
+    expect(settledCreateRequest(m, requestId)).toBe(false);
+    // Finished: the receipt is durable evidence, and answering from it does no work — which is what
+    // lets the retry skip an admission slot instead of being told BUSY about a session that exists.
+    writeFileSync(path, JSON.stringify([{ ...row, status: 'complete' }]), { mode: 0o600 });
+    expect(settledCreateRequest(m, requestId)).toBe(true);
+    expect(settledCreateRequest(m, '66666666-6666-4666-8666-666666666666')).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

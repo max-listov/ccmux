@@ -56,7 +56,12 @@ import type {
 } from './contextSchema.ts';
 import { readControlDirectory } from './directories.ts';
 import type { ControlDirectoryReadSchema } from './directorySchema.ts';
-import { archiveControlSession, createControlSession, forkControlSession } from './lifecycle.ts';
+import {
+  archiveControlSession,
+  createControlSession,
+  forkControlSession,
+  settledCreateRequest,
+} from './lifecycle.ts';
 import { acceptControlMessage } from './message.ts';
 import { readMessageOperation } from './messageOperation.ts';
 import { readControlModels } from './models.ts';
@@ -303,16 +308,29 @@ export function createControlOperations(
       return row;
     },
     create: (input: CreateInput, signal?: AbortSignal) =>
-      mutations
-        .run(
-          `create:${input.requestId}`,
-          ({ signal: admitted }) =>
-            dependencies.createManagedSession === undefined
-              ? createControlSession(m, input, admitted)
-              : createControlSession(m, input, admitted, dependencies.createManagedSession),
-          { ...(signal ? { signal } : {}), timeoutMs: 60_000 },
-        )
-        .catch(controlRefusal),
+      // A retry of a create that already completed is answered from its receipt, outside the
+      // admission: it performs no work, and refusing it for concurrency told the caller "busy"
+      // about a session that already exists.
+      settledCreateRequest(m, input.requestId)
+        ? (dependencies.createManagedSession === undefined
+            ? createControlSession(m, input, signal ?? new AbortController().signal)
+            : createControlSession(
+                m,
+                input,
+                signal ?? new AbortController().signal,
+                dependencies.createManagedSession,
+              )
+          ).catch(controlRefusal)
+        : mutations
+            .run(
+              `create:${input.requestId}`,
+              ({ signal: admitted }) =>
+                dependencies.createManagedSession === undefined
+                  ? createControlSession(m, input, admitted)
+                  : createControlSession(m, input, admitted, dependencies.createManagedSession),
+              { ...(signal ? { signal } : {}), timeoutMs: 60_000 },
+            )
+            .catch(controlRefusal),
     archive: (input: TargetInput, signal?: AbortSignal) =>
       mutations
         .run(

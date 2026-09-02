@@ -145,6 +145,20 @@ function matchingSession(m: MachineConfig, row: CreateRow): Session | null {
   );
 }
 
+/**
+ * A create that already finished, by the id the caller retries with.
+ *
+ * The receipt is durable and settled, so answering from it does no work — which is what lets a retry
+ * skip the per-request admission slot instead of being refused for concurrency. Measured on a live
+ * consumer: the first attempt's answer was lost to a transport timeout while the session was
+ * created anyway, and the two retries carrying the SAME request id came back BUSY — leaving a caller
+ * that cannot tell "still running" from "already done", which is the one thing an idempotent retry
+ * exists to tell it. `pending` deliberately does not qualify: two runs of one create are a race.
+ */
+export function settledCreateRequest(m: MachineConfig, requestId: string): boolean {
+  return load(m).some((row) => row.requestId === requestId && row.status === 'complete');
+}
+
 export async function createControlSession(
   m: MachineConfig,
   input: CreateInput,
