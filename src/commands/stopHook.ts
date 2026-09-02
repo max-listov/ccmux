@@ -1,3 +1,4 @@
+import { coalesce } from '../chat/deliver.ts';
 import { formatChatInjection } from '../chat/format.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
 import { replyRouteToSender } from '../chat/replyRoute.ts';
@@ -6,7 +7,7 @@ import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { promptInvocation } from '../env.ts';
-import type { ChatMessage } from '../types.ts';
+import { writeOut } from '../util/stdout.ts';
 
 /**
  * `ccmux stop-hook` — the Claude Code **Stop hook** for a managed session. It fires ONLY when the
@@ -52,20 +53,13 @@ export async function cmdStopHook(): Promise<number> {
     // id — the single source of truth for conditional delivery, shared with the daemon; the daemon
     // stays the sole writer of the cursors file). A defer message may also carry notBefore (a delayed
     // dispatch) — respect it here too, so end-of-turn never delivers a not-yet-due message.
-    const acked = loadAckedIds(m);
-    const now = Date.now();
-    const due = (iso: string | null) =>
-      iso === null || !Number.isFinite(Date.parse(iso)) || now >= Date.parse(iso);
-    const pending = loadLedger(m).filter(
-      (msg): msg is ChatMessage =>
-        msg !== null &&
-        msg.to.kind === 'managed' &&
-        managedPeerKey(msg.to) === recipientKey &&
-        msg.defer &&
-        !acked.has(msg.id) &&
-        due(msg.notBefore),
-    );
-    if (pending.length === 0) return 0; // no deferred mail → let the turn end cleanly
+    // The SAME selection the daemon makes, from the same function. Two paths delivering one mailbox
+    // by two rules is two answers to "what is waiting for me", and the difference showed as the
+    // bound: the daemon has always capped a batch, this one took everything pending and joined it.
+    // A dozen letters make a reason larger than a hook payload can carry, which is not a delivery —
+    // it is a hook whose output the agent cannot parse.
+    const pending = coalesce(loadLedger(m), recipientKey, loadAckedIds(m), Date.now());
+    if (pending.length === 0) return 0; // nothing waiting → let the turn end cleanly
 
     // Record acks FIRST (durable, fail-closed) so neither this hook nor the daemon re-delivers.
     for (const msg of pending) appendAck(m, msg.id, 'hook', recipient);
@@ -80,7 +74,11 @@ export async function cmdStopHook(): Promise<number> {
         }),
       )
       .join('\n\n');
-    process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+    // Through the draining writer, like every other large answer this tool produces. A bare
+    // `process.stdout.write` ends the process with bytes still queued once the payload passes a
+    // pipe buffer, and half a JSON object is not a smaller message — it is one the agent reports as
+    // invalid hook output, with no sign of which letters it was carrying.
+    await writeOut(JSON.stringify({ decision: 'block', reason }));
     return 0;
   } catch {
     // Fail-open: never break the session's ability to stop over a chat problem.

@@ -96,3 +96,29 @@ test('a NON-deferred message is not drained by the hook (daemon delivers those)'
   expect(await runHook(cfgPath, 'worker')).toBe('');
   expect(loadAckedIds(m).size).toBe(0);
 });
+
+test('a mailbox larger than one turn is delivered bounded, and only what is delivered is acked', async () => {
+  // The failure this replaces: the hook took every pending letter and joined them, so a busy
+  // mailbox produced a payload past a pipe buffer, the process ended with bytes still queued, and
+  // the agent reported invalid hook output. Half a JSON object is not a smaller delivery — and the
+  // letters were already acked, so nothing would ever deliver them again.
+  const { cfgPath, m, uuid } = setup(true);
+  const bodies = Array.from({ length: 12 }, (_, i) => `letter ${i} ${'x'.repeat(20_000)}`);
+  for (const body of bodies) appendMessage(m, deferMsg(uuid, body));
+
+  const out = await runHook(cfgPath, 'worker');
+  const parsed = JSON.parse(out) as { decision: string; reason: string };
+  expect(parsed.decision).toBe('block');
+
+  // Bounded like the daemon's batch, because it is the daemon's batch: one selection, one bound.
+  const delivered = bodies.filter((body) => parsed.reason.includes(body.slice(0, 20)));
+  expect(delivered.length).toBeGreaterThan(0);
+  expect(delivered.length).toBeLessThan(bodies.length);
+  // The invariant that makes truncation unrecoverable if it is broken: a letter is acked only if it
+  // went out. Acking more than was delivered loses mail with no trace.
+  expect(loadAckedIds(m).size).toBe(delivered.length);
+
+  // And the rest is still waiting, so the next boundary carries it.
+  const next = await runHook(cfgPath, 'worker');
+  expect(JSON.parse(next)).toMatchObject({ decision: 'block' });
+});
