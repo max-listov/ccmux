@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.3] — 2026-09-02
+
+Tell every letter behind a gate what the gate is
 ## [0.47.2] — 2026-09-02
 
 Name the fields a refused request got wrong
