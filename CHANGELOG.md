@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.48.1] — 2026-09-02
+
+The native stream frame budget is measured on the line a consumer reads
 ## [0.48.0] — 2026-09-02
 
 A supervisor that gives up on itself is not self-healing
