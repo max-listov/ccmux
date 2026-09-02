@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.12] — 2026-09-02
+
+A full batch cuts an agent's letter, not a person's
 ## [0.49.11] — 2026-09-02
 
 The Stop hook delivers a bounded batch through a writer that drains
