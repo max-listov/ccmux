@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.1] — 2026-09-02
+
+Say what a live session leaves behind when its directory moves
 ## [0.47.0] — 2026-09-02
 
 Carry the conversation with the directory; stop calling a whole answer a fragment
