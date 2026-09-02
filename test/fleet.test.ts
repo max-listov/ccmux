@@ -54,6 +54,7 @@ function row(
     uptimeSeconds: 3600,
     createdAt,
     lastMessage: null,
+    letters: { total: 0, lastAt: null },
     lastActivityMs,
   };
 }

@@ -999,6 +999,19 @@ export const ListItemSchema = z.object({
   envFile: z.object({ path: z.string(), present: z.boolean() }).nullable().default(null),
   createdAt: z.string().nullable(),
   lastMessage: TranscriptMessageSchema.nullable(),
+  /**
+   * How many letters this session has exchanged, from the machine's whole exchange record.
+   *
+   * The count exists because a consumer cannot derive it: what a consumer can reach is a WINDOW of
+   * the log, and a count taken over a window is the size of the window. Measured on one machine over
+   * two minutes it read 65, then 70, then 13, then 7 — moving with each snapshot rather than with
+   * the conversation. `{ total: 0, lastAt: null }` is a session that has never exchanged one; a peer
+   * too old to report the field is null, which is "did not say" rather than "none".
+   */
+  letters: z
+    .object({ total: z.number().int().nonnegative(), lastAt: z.string().nullable() })
+    .nullable()
+    .default(null),
 });
 
 /**

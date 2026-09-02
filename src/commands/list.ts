@@ -18,6 +18,9 @@ import {
   readWaiting,
   resolveLiveState,
 } from '../agent/sessionStatus.ts';
+import { localRows } from '../chat/fleetLog.ts';
+import { letterCounts, NO_LETTERS, type SessionLetters } from '../chat/letters.ts';
+import { loadLedger } from '../chat/store.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
 import { loadMachineConfig, rcName } from '../config/machine.ts';
@@ -26,6 +29,8 @@ import { loadSessions } from '../config/sessions.ts';
 import { promptInvocation } from '../env.ts';
 import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
+import { loadOutboxAcked } from '../fleet/flush.ts';
+import { loadOutbox } from '../fleet/outbox.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import type { PlanLimits } from '../runtime/planLimits.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
@@ -70,6 +75,8 @@ export interface ListRow {
   uptimeSeconds: number | null;
   createdAt: string | null;
   lastMessage: TranscriptMessage | null;
+  /** How many letters this session has exchanged, over the machine's whole record. */
+  letters: SessionLetters;
   lastActivityMs: number | null; // transcript file mtime — "conversation moved" (any instance)
   // What a restart WOULD change for this session ("chat" / "mode" / "modules" / "config").
   // Empty = up to date, or launched before stamping existed (unknown is never shown as stale).
@@ -92,6 +99,7 @@ async function buildRow(
   startedAt: number | undefined,
   nowSec: number,
   shouldCapture: boolean,
+  letters: ReadonlyMap<string, SessionLetters>,
 ): Promise<ListRow> {
   const lastMessage = lastTranscriptMessage(s, m); // works running or stopped
   const activity = lastActivityMs(s, m);
@@ -125,6 +133,7 @@ async function buildRow(
       uptimeSeconds: null,
       createdAt: null,
       lastMessage,
+      letters: letters.get(s.name) ?? NO_LETTERS,
       lastActivityMs: activity,
     };
   }
@@ -218,6 +227,7 @@ async function buildRow(
     uptimeSeconds,
     createdAt: startedAt === undefined ? null : new Date(startedAt * 1000).toISOString(),
     lastMessage,
+    letters: letters.get(s.name) ?? NO_LETTERS,
     lastActivityMs: activity,
   };
 }
@@ -304,6 +314,7 @@ function envFileEntry(s: Session): { path: string; present: boolean } | null {
  */
 export function toListItem(m: MachineConfig, r: ListRow): ListItem {
   return {
+    letters: r.letters,
     name: r.session.name,
     agent: r.session.agent,
     dir: r.session.dir,
@@ -353,9 +364,22 @@ export async function collectRows(
   const nowSec = Date.now() / 1000;
   const sessions = loadSessions(m);
   const liveNames = opts?.liveNames;
+  // One pass for the whole machine, from the same two sources `chat log` prints: the ledger for what
+  // arrived and the outbox for what was sent. Per row it would be one pass per session.
+  const letters = letterCounts(
+    localRows(m.rcPrefix, loadLedger(m), loadOutbox(m), loadOutboxAcked(m)),
+    m.rcPrefix,
+  );
   return Promise.all(
     sessions.map((s) =>
-      buildRow(m, s, created.get(s.name), nowSec, liveNames === undefined || liveNames.has(s.name)),
+      buildRow(
+        m,
+        s,
+        created.get(s.name),
+        nowSec,
+        liveNames === undefined || liveNames.has(s.name),
+        letters,
+      ),
     ),
   );
 }

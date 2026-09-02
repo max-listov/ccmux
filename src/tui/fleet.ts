@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import { prettyModel } from '../agent/format.ts';
+import { NO_LETTERS } from '../chat/letters.ts';
 import type { ListRow } from '../commands/list.ts';
 import { externalSessionKey, managedSessionKey } from '../external/keys.ts';
 import type { DiscoveredSession } from './discover.ts';
@@ -138,6 +139,9 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     // working.
     turnStartedAt: null,
     stale: [],
+    // A thread ccmux does not manage exchanges no letters through it, which is a fact rather
+    // than a gap: zero here means none, and it is the same shape a managed row carries.
+    letters: NO_LETTERS,
     lastActivityMs: ext.lastActivityMs,
   };
 }
