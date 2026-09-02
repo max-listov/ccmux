@@ -27,6 +27,8 @@ test('metrics roundtrip', async () => {
     contextSizeTokens: 1_000_000,
     model: 'Opus 5',
     costUsd: 1.2,
+    renders: 1,
+    rendersSince: 7,
   });
   expect(readMetrics(NAME)?.pct).toBe(12);
 });
@@ -111,6 +113,8 @@ test('clearStatus drops BOTH files (stopped session shows no stale state)', asyn
     contextSizeTokens: null,
     model: null,
     costUsd: null,
+    renders: 1,
+    rendersSince: 7,
   });
   clearStatus(NAME);
   expect(readLifecycle(NAME)).toBeNull();

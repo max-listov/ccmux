@@ -138,6 +138,7 @@ Each row carries:
 | state | working, idle, prompt, stopped, blocked, or unknown |
 | model | Raw provider transcript model ID, or null |
 | contextPercent | Hook metrics, then pane context; unknown is null, never invented zero |
+| statusLineRendersPerMinute | How often the agent asks this session's status line to render, over a rolling five-minute window; null until a window exists. Counted where the tee already writes, because the process is too short-lived for a sampler to count |
 | uptimeSeconds | Age of the observed tmux session at observation, or null |
 | lastActivityAt | Transcript file modification time, or null |
 | turnStartedAt | Lifecycle start of the current working turn, or null |

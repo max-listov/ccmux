@@ -1,50 +1,22 @@
 #!/usr/bin/env bun
-import { cmdValidateAttachment } from './attachments/decoderCommand.ts';
-import { cmdAdopt } from './commands/adopt.ts';
-import { cmdBootstrap } from './commands/bootstrap.ts';
-import { cmdChat } from './commands/chat.ts';
-import { cmdCompletions } from './commands/completions.ts';
-import { cmdControl } from './commands/control.ts';
-import { cmdControlNativeStream } from './commands/controlNativeStream.ts';
-import { cmdDaemon } from './commands/daemon.ts';
-import { cmdDir } from './commands/dir.ts';
-import { cmdDoctor } from './commands/doctor.ts';
-import { cmdEnsure } from './commands/ensure.ts';
-import { cmdEnvFile } from './commands/envFile.ts';
-import { cmdEvents } from './commands/events.ts';
-import { cmdExternal } from './commands/external.ts';
-import { cmdFleet } from './commands/fleetList.ts';
 import { COMMANDS, cmdHelp } from './commands/help.ts';
-import { cmdHookStatus } from './commands/hookStatus.ts';
-import { cmdInbox } from './commands/inbox.ts';
-import { cmdInstall, cmdUninstall } from './commands/install.ts';
-import { cmdRestart, cmdRestartWorker, cmdStart, cmdStop } from './commands/lifecycle.ts';
-import { cmdList } from './commands/list.ts';
-import { cmdLogs } from './commands/logs.ts';
-import { cmdMode } from './commands/mode.ts';
-import { cmdModels } from './commands/models.ts';
-import { cmdMsg, cmdReceiveChat, cmdResolveCodexApp } from './commands/msg.ts';
-import { cmdNew } from './commands/new.ts';
-import { cmdRelay } from './commands/relay.ts';
-import { cmdRenew } from './commands/renew.ts';
-import { cmdRestartAll, cmdRestartAllWorker } from './commands/restartAll.ts';
 import { retiredNotice } from './commands/retired.ts';
-import { cmdRm } from './commands/rm.ts';
-import { cmdRole } from './commands/role.ts';
-import { cmdRouter } from './commands/router.ts';
-import { cmdRun } from './commands/run.ts';
-import { cmdRuntime } from './commands/runtime.ts';
-import { cmdSend } from './commands/send.ts';
-import { cmdStatus } from './commands/status.ts';
-import { cmdStatusLine } from './commands/statusLine.ts';
-import { cmdStopHook } from './commands/stopHook.ts';
-import { cmdTranscript } from './commands/transcript.ts';
-import { cmdUpdate } from './commands/update.ts';
-import { cmdWait } from './commands/wait.ts';
 import { VERSION } from './util/version.ts';
 
-/** Lazy-load the TUI (ink/react) only when actually launching it — keeps every plain
- *  CLI command (list/transcript/daemon/…) free of the React runtime on startup. */
+/**
+ * Every command is loaded at its case, not at the top of this file.
+ *
+ * The bundle is one file and is parsed whole either way; what a static import adds is EVALUATION —
+ * the whole product's module graph runs before the verb is even read. That is paid by the two hooks
+ * and the status-line tee, which Claude runs on every turn and on every transcript event: measured
+ * at 208 ms of CPU to do about a millisecond of work, against 43 ms for the same work with nothing
+ * else evaluated. Seventeen sessions on one machine turn that into a constant background load.
+ *
+ * So the rule is the whole dispatch, not an exception for the heavy ones. An exception invites the
+ * question "is this one heavy enough", and the honest answer is that nobody knows: `list` reaches
+ * the registry, `msg` reaches the chat ledger, and either can grow a dependency next week without
+ * anyone noticing it landed on the hook path. The TUI was already lazy for exactly this reason.
+ */
 async function launchTui(fullscreen: boolean): Promise<number> {
   const { runTui } = await import('./tui/run.tsx');
   return runTui(fullscreen);
@@ -87,15 +59,15 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
   }
   switch (verb) {
     case 'control':
-      return cmdControl(rest);
+      return (await import('./commands/control.ts')).cmdControl(rest);
     case 'runtime':
-      return cmdRuntime(rest[0], rest.slice(1));
+      return (await import('./commands/runtime.ts')).cmdRuntime(rest[0], rest.slice(1));
     case 'status':
-      return cmdStatus(rest);
+      return (await import('./commands/status.ts')).cmdStatus(rest);
     case 'list':
     case 'ls':
     case 'l':
-      return cmdList(rest);
+      return (await import('./commands/list.ts')).cmdList(rest);
     case 'new': {
       const { positionals, flags } = splitDashDash(rest);
       const router = positionals.includes('--router');
@@ -110,7 +82,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       if (envIndex >= 0) consumed.add(envIndex).add(envIndex + 1);
       if (runtimeIndex >= 0) consumed.add(runtimeIndex).add(runtimeIndex + 1);
       const pos = positionals.filter((a, index) => a !== '--router' && !consumed.has(index));
-      return cmdNew(pos[0], pos[1], flags, {
+      return (await import('./commands/new.ts')).cmdNew(pos[0], pos[1], flags, {
         router,
         ...(agent === undefined ? {} : { agent }),
         ...(envFile === undefined ? {} : { envFile }),
@@ -120,90 +92,92 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     case 'rm':
     case 'remove': {
       const { name, force } = nameForce(rest);
-      return cmdRm(name, force);
+      return (await import('./commands/rm.ts')).cmdRm(name, force);
     }
     case 'start':
-      return cmdStart(rest[0]);
+      return (await import('./commands/lifecycle.ts')).cmdStart(rest[0]);
     case 'stop': {
       const { name, force } = nameForce(rest);
-      return cmdStop(name, force);
+      return (await import('./commands/lifecycle.ts')).cmdStop(name, force);
     }
     case 'restart':
-      return rest.includes('--all') ? cmdRestartAll(rest) : cmdRestart(rest);
+      return rest.includes('--all')
+        ? (await import('./commands/restartAll.ts')).cmdRestartAll(rest)
+        : (await import('./commands/lifecycle.ts')).cmdRestart(rest);
     case 'renew':
-      return cmdRenew(rest[0], rest.slice(1));
+      return (await import('./commands/renew.ts')).cmdRenew(rest[0], rest.slice(1));
     case 'mode':
-      return cmdMode(rest[0], rest[1]);
+      return (await import('./commands/mode.ts')).cmdMode(rest[0], rest[1]);
     case 'env-file':
-      return cmdEnvFile(rest);
+      return (await import('./commands/envFile.ts')).cmdEnvFile(rest);
     case 'dir':
-      return cmdDir(rest);
+      return (await import('./commands/dir.ts')).cmdDir(rest);
     case 'role':
-      return cmdRole(rest);
+      return (await import('./commands/role.ts')).cmdRole(rest);
     case 'relay':
-      return cmdRelay(rest);
+      return (await import('./commands/relay.ts')).cmdRelay(rest);
     case 'events':
-      return cmdEvents(rest);
+      return (await import('./commands/events.ts')).cmdEvents(rest);
     case 'send':
-      return cmdSend(rest[0], rest.slice(1));
+      return (await import('./commands/send.ts')).cmdSend(rest[0], rest.slice(1));
     case 'msg':
-      return cmdMsg(rest);
+      return (await import('./commands/msg.ts')).cmdMsg(rest);
     case '_chat-receive-v2':
-      return cmdReceiveChat();
+      return (await import('./commands/msg.ts')).cmdReceiveChat();
     case '_codex-app-resolve':
-      return cmdResolveCodexApp(rest);
+      return (await import('./commands/msg.ts')).cmdResolveCodexApp(rest);
     case 'inbox':
-      return cmdInbox(rest);
+      return (await import('./commands/inbox.ts')).cmdInbox(rest);
     case 'chat':
-      return cmdChat(rest);
+      return (await import('./commands/chat.ts')).cmdChat(rest);
     case 'router':
-      return cmdRouter(rest);
+      return (await import('./commands/router.ts')).cmdRouter(rest);
     case 'logs':
-      return cmdLogs(rest[0], rest.slice(1));
+      return (await import('./commands/logs.ts')).cmdLogs(rest[0], rest.slice(1));
     case 'transcript':
-      return cmdTranscript(rest[0], rest.slice(1));
+      return (await import('./commands/transcript.ts')).cmdTranscript(rest[0], rest.slice(1));
     case 'wait':
-      return cmdWait(rest[0], rest.slice(1));
+      return (await import('./commands/wait.ts')).cmdWait(rest[0], rest.slice(1));
     case 'models':
-      return cmdModels(rest);
+      return (await import('./commands/models.ts')).cmdModels(rest);
     case 'doctor':
-      return cmdDoctor(rest);
+      return (await import('./commands/doctor.ts')).cmdDoctor(rest);
     case 'fleet':
-      return cmdFleet(rest);
+      return (await import('./commands/fleetList.ts')).cmdFleet(rest);
     case 'external':
-      return cmdExternal(rest);
+      return (await import('./commands/external.ts')).cmdExternal(rest);
     case 'completions':
-      return cmdCompletions(rest);
+      return (await import('./commands/completions.ts')).cmdCompletions(rest);
     case 'ensure':
-      return cmdEnsure();
+      return (await import('./commands/ensure.ts')).cmdEnsure();
     case 'update':
-      return cmdUpdate(rest);
+      return (await import('./commands/update.ts')).cmdUpdate(rest);
     case 'adopt':
-      return cmdAdopt(rest);
+      return (await import('./commands/adopt.ts')).cmdAdopt(rest);
     case 'install':
-      return cmdInstall(rest);
+      return (await import('./commands/install.ts')).cmdInstall(rest);
     case 'uninstall':
-      return cmdUninstall();
+      return (await import('./commands/install.ts')).cmdUninstall();
     case 'daemon':
-      return cmdDaemon(); // never returns
+      return (await import('./commands/daemon.ts')).cmdDaemon(); // never returns
     case '_attachment-validate':
-      return cmdValidateAttachment();
+      return (await import('./attachments/decoderCommand.ts')).cmdValidateAttachment();
     case '_run':
-      return cmdRun(rest[0]); // hidden: in-session relaunch loop (tmux invokes this)
+      return (await import('./commands/run.ts')).cmdRun(rest[0]); // hidden: in-session relaunch loop (tmux invokes this)
     case '_bootstrap':
-      return cmdBootstrap(rest[0]); // hidden: pending Codex first-launch transaction
+      return (await import('./commands/bootstrap.ts')).cmdBootstrap(rest[0]); // hidden: pending Codex first-launch transaction
     case '_restart-worker':
-      return cmdRestartWorker(rest[0]); // hidden: detached restart helper
+      return (await import('./commands/lifecycle.ts')).cmdRestartWorker(rest[0]); // hidden: detached restart helper
     case '_restart-all-worker':
-      return cmdRestartAllWorker(); // hidden: detached fleet-sweep driver (restart --all)
+      return (await import('./commands/restartAll.ts')).cmdRestartAllWorker(); // hidden: detached fleet-sweep driver (restart --all)
     case 'stop-hook':
-      return cmdStopHook(); // hidden: Claude Stop-hook — injects deferred chat mail at end-of-turn
+      return (await import('./commands/stopHook.ts')).cmdStopHook(); // hidden: Claude Stop-hook — injects deferred chat mail at end-of-turn
     case 'hook-status':
-      return cmdHookStatus(); // hidden: Claude lifecycle hooks → working/idle status file
+      return (await import('./commands/hookStatus.ts')).cmdHookStatus(); // hidden: Claude lifecycle hooks → working/idle status file
     case 'status-line':
-      return cmdStatusLine(); // hidden: Claude statusLine tee → context% metrics + render original
+      return (await import('./commands/statusLine.ts')).cmdStatusLine(); // hidden: Claude statusLine tee → context% metrics + render original
     case 'control-native-stream':
-      return cmdControlNativeStream();
+      return (await import('./commands/controlNativeStream.ts')).cmdControlNativeStream();
     case 'version':
     case '-v':
     case '--version':

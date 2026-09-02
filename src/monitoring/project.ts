@@ -4,7 +4,12 @@ import {
   providerFor,
   sessionModel,
 } from '../agent/index.ts';
-import { readLifecycle, readMetrics, resolveLiveState } from '../agent/sessionStatus.ts';
+import {
+  readLifecycle,
+  readMetrics,
+  renderRate,
+  resolveLiveState,
+} from '../agent/sessionStatus.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
 import { rcName } from '../config/machine.ts';
@@ -79,6 +84,7 @@ export function projectMonitoringRow(
       ? (native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m))
       : null,
     contextPercent: running && pct !== null && pct >= 0 && pct <= 100 ? pct : null,
+    statusLineRendersPerMinute: renderRate([metrics], now)?.perMinute ?? null,
     uptimeSeconds: startedAt === undefined ? null : Math.max(0, Math.floor(now / 1000 - startedAt)),
     lastActivityAt: activity === null ? null : new Date(activity).toISOString(),
     turnStartedAt:

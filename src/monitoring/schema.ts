@@ -20,6 +20,15 @@ export const MonitoringRowSchema = z
     state: z.enum(['working', 'idle', 'prompt', 'stopped', 'blocked', 'unknown']),
     model: z.string().max(512).nullable(),
     contextPercent: z.number().min(0).max(100).nullable(),
+    /**
+     * How many times a minute this session's status line is being rendered.
+     *
+     * The statusLine command runs per session on every transcript event, which makes it the most
+     * frequent thing this tool causes a machine to do, and until it was counted its cost was argued
+     * from a `ps` sample — an instrument that cannot see a process shorter than its own interval.
+     * Null when the session has not reported a window yet, which is not the same as zero.
+     */
+    statusLineRendersPerMinute: z.number().nonnegative().nullable(),
     uptimeSeconds: z.number().nonnegative().nullable(),
     lastActivityAt: z.iso.datetime().nullable(),
     turnStartedAt: z.iso.datetime().nullable(),

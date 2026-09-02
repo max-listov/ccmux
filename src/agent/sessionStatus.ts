@@ -61,6 +61,21 @@ export const MetricsStatusSchema = z.object({
   contextSizeTokens: z.number().nullable(), // context_window.context_window_size
   model: z.string().nullable(), // model.display_name
   costUsd: z.number().nullable(),
+  /**
+   * How often the agent asks for this line, counted where it is already writing.
+   *
+   * The statusLine command runs on every transcript event, per session, and nothing recorded how
+   * often that is — so its cost was argued from a `ps` sample, which cannot see a process shorter
+   * than its own interval and counted the sampling shell as a hit. This is the same write that was
+   * happening anyway plus two numbers, and it makes the rate a reading instead of an estimate.
+   *
+   * Defaulted, because records written before the counter existed carry neither field, and a
+   * missing count must read as "not measured yet" rather than as zero renders.
+   */
+  renders: z.number().default(0),
+  /** Start of the window `renders` covers. Rolled forward so the rate describes recent behaviour:
+   *  a session alive for two days would otherwise average its bursts into nothing. */
+  rendersSince: z.number().default(0),
 });
 export type MetricsStatus = z.infer<typeof MetricsStatusSchema>;
 
@@ -138,6 +153,32 @@ export async function closeLifecycleTurn(
   endedMs: number,
 ): Promise<void> {
   await writeLifecycle(name, closedTurnRecord(previous, endedMs));
+}
+
+/**
+ * How often the fleet's statusLine is being asked to render, per minute, right now.
+ *
+ * Measured where the writes already happen rather than by watching processes: a `ps` sample cannot
+ * see a process shorter than its own interval, and the obvious filter for one matches the sampling
+ * command itself — a first attempt here reported 395 launches a minute, nearly all of them its own
+ * `grep`. Each session contributes its own count over its own window, and `now` rather than the
+ * last write closes the window, so a session that has gone quiet decays instead of holding its
+ * old rate. Records with no window yet say nothing, which is not the same as saying zero.
+ */
+export function renderRate(
+  records: readonly (MetricsStatus | null)[],
+  now: number,
+): { perMinute: number; sessions: number } | null {
+  let perMinute = 0;
+  let sessions = 0;
+  for (const record of records) {
+    if (record === null || record.renders < 1) continue;
+    const span = now - record.rendersSince;
+    if (span <= 0) continue;
+    perMinute += (record.renders * 60_000) / span;
+    sessions += 1;
+  }
+  return sessions === 0 ? null : { perMinute, sessions };
 }
 
 export async function writeMetrics(name: string, data: MetricsStatus): Promise<void> {

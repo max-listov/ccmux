@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
-import { type MetricsStatus, writeMetrics } from '../agent/sessionStatus.ts';
+import { type MetricsStatus, readMetrics, writeMetrics } from '../agent/sessionStatus.ts';
 
 /**
  * `ccmux status-line` — the injected Claude Code statusLine command for a managed session. Claude
@@ -41,7 +41,30 @@ export function extractMetrics(raw: string, now: number): MetricsStatus | null {
     contextSizeTokens: cw?.context_window_size ?? null,
     model: j.model?.display_name ?? j.model?.id ?? null,
     costUsd: j.cost?.total_cost_usd ?? null,
+    renders: 1,
+    rendersSince: now,
   };
+}
+
+/** How long a render count describes. Rolled forward at this age so the rate answers "how often is
+ *  this happening now" — a session alive for two days would otherwise average its bursts away. */
+export const RENDER_WINDOW_MS = 5 * 60_000;
+
+/**
+ * Carry the render count forward, starting a new window when the old one is stale.
+ *
+ * Pure, and separate from the write, because the number it produces is the one `status` reports as
+ * a rate: a counter that quietly restarted, or one that never rolled and so reports a two-day
+ * average as "now", is a wrong quantity that looks exactly like a right one.
+ */
+export function countRender(previous: MetricsStatus | null, next: MetricsStatus): MetricsStatus {
+  if (
+    previous === null ||
+    previous.renders < 1 ||
+    next.ts - previous.rendersSince > RENDER_WINDOW_MS
+  )
+    return { ...next, renders: 1, rendersSince: previous?.ts ?? next.ts };
+  return { ...next, renders: previous.renders + 1, rendersSince: previous.rendersSince };
 }
 
 /** The user's real statusLine command, resolved with Claude's file precedence (project → local →
@@ -100,7 +123,7 @@ export async function cmdStatusLine(): Promise<number> {
     // Capture metrics (best-effort — never let a write failure suppress the visual statusline).
     if (self !== undefined && self !== '' && metrics !== null) {
       try {
-        await writeMetrics(self, metrics);
+        await writeMetrics(self, countRender(readMetrics(self), metrics));
       } catch {
         // metrics are best-effort
       }
