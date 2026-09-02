@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.5] — 2026-09-02
+
+Answer a retried create from its receipt instead of calling it busy
 ## [0.47.4] — 2026-09-02
 
 Stop waiting for a lock nobody is waiting for
