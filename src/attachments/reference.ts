@@ -14,7 +14,17 @@ export const ATTACHMENT_LIMITS = {
   targetUploads: 8,
   records: 1024,
   pins: 4096,
-  decodeDeadlineMs: 5000,
+  /**
+   * The bound exists to stop a decoder that never returns, not to make one fast — so it is set
+   * where a hang is unmistakable rather than where a busy machine looks like one.
+   *
+   * Nearly all of this is process startup, not decoding. Measured on a loaded host: 1.3s to 3.2s
+   * for a one-pixel PNG, against the previous five-second bound — a margin of about one and a half,
+   * and a machine can be busier than that. Past it a perfectly good image is refused as
+   * unavailable, and the caller is told nothing that would let them tell "too busy" from "not an
+   * image". Thirty seconds is nowhere near a legitimate decode and still ends a hang.
+   */
+  decodeDeadlineMs: 30_000,
 };
 
 export const AttachmentMediaTypeSchema = z.enum(['image/png', 'image/jpeg']);
