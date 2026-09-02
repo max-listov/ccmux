@@ -1,5 +1,9 @@
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
-import { claudePlanLimits, unpublishedPlanLimits } from '../../../runtime/planLimits.ts';
+import {
+  claudePlanLimits,
+  planLimitsReadFailed,
+  unpublishedPlanLimits,
+} from '../../../runtime/planLimits.ts';
 import { seedNativeSelection } from '../../../runtime/selection.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { accountIsEmpty, nativeAccount, type ReportedAccount } from './account.ts';
@@ -159,6 +163,14 @@ export async function refreshPlanLimits(d: Discovery): Promise<void> {
     if (reported === undefined) return;
     d.projection.planLimits = claudePlanLimits(reported, Date.now());
   } catch (error) {
+    // The previous measurement stands — a zero would be a claim nobody made — but it stops standing
+    // SILENTLY. Without this, "nobody has spent since" and "we have not been able to ask" are the
+    // same picture from outside, and they call for opposite reactions.
+    d.projection.planLimits = planLimitsReadFailed(
+      d.projection.planLimits,
+      Date.now(),
+      String(error),
+    );
     await d.report(error);
   }
 }

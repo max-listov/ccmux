@@ -1,5 +1,37 @@
-import { formatPlanLimits, type PlanLimits } from '../runtime/planLimits.ts';
+import {
+  formatPlanLimits,
+  PLAN_LIMITS_MAX_AGE_MS,
+  type PlanLimits,
+  type PlanWindow,
+  planWindowExpired,
+} from '../runtime/planLimits.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
+
+/**
+ * The limits as a RESPONSE carries them: the stored sample plus what is only true at read time.
+ *
+ * `expired` and `stale` are computed when the answer is serialized and never stored, because a
+ * stored one is wrong the moment the clock moves past it. They exist so a consumer does not have to
+ * derive them: every consumer doing that arithmetic separately is how one of them ends up drawing a
+ * ninety-minute-old 100 % as the present, which is exactly what happened.
+ */
+export interface ProjectedPlanLimits extends Omit<PlanLimits, 'windows'> {
+  /** The sample is older than a sample is allowed to be. */
+  stale: boolean;
+  windows: (PlanWindow & { expired: boolean })[];
+}
+
+function projectLimits(limits: PlanLimits | null, now: number): ProjectedPlanLimits | null {
+  if (limits === null) return null;
+  return {
+    ...limits,
+    stale: now - Date.parse(limits.observedAt) >= PLAN_LIMITS_MAX_AGE_MS,
+    windows: limits.windows.map((window) => ({
+      ...window,
+      expired: planWindowExpired(window, now),
+    })),
+  };
+}
 
 /** The fields the grouping reads from a session, whether it came from this machine or a peer. */
 export interface AccountSession {
@@ -40,10 +72,13 @@ export interface FleetAccount {
    * would combine two readings of one fact and could show a window that has since reset beside one
    * that has not. Null means no session on this account has ever been asked.
    */
-  limits: PlanLimits | null;
+  limits: ProjectedPlanLimits | null;
 }
 
-export function fleetAccounts(machines: readonly AccountMachine[]): FleetAccount[] {
+export function fleetAccounts(
+  machines: readonly AccountMachine[],
+  now = Date.now(),
+): FleetAccount[] {
   const groups = new Map<string, FleetAccount & { costed: boolean }>();
   for (const fm of machines)
     for (const session of fm.sessions) {
@@ -71,7 +106,7 @@ export function fleetAccounts(machines: readonly AccountMachine[]): FleetAccount
       }
       const limits = session.planLimits ?? null;
       if (limits !== null && (group.limits === null || limits.observedAt > group.limits.observedAt))
-        group.limits = limits;
+        group.limits = projectLimits(limits, now);
       group.plan ??= limits?.plan ?? null;
       groups.set(key, group);
     }
@@ -81,7 +116,7 @@ export function fleetAccounts(machines: readonly AccountMachine[]): FleetAccount
 }
 
 export function accountLines(machines: readonly AccountMachine[], now = Date.now()): string[] {
-  const accounts = fleetAccounts(machines);
+  const accounts = fleetAccounts(machines, now);
   if (accounts.length === 0) return [];
   return [
     'accounts',

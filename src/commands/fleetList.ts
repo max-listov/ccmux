@@ -334,7 +334,9 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
         ...view,
         // Aggregated here rather than left to each consumer: the grouping is the answer, and every
         // reader recomputing it from sessions would eventually disagree about the same fleet.
-        accounts: fleetAccounts(view.machines),
+        // `now` is the response's own clock: whether a window has ended and whether a sample is
+        // stale are true at READ time, so they are computed here and never stored.
+        accounts: fleetAccounts(view.machines, Date.now()),
       }),
     );
     return 0;

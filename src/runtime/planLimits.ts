@@ -43,9 +43,60 @@ export const PlanLimitsSchema = z
     plan: z.string().min(1).max(64).nullable(),
     windows: z.array(PlanWindowSchema).max(32),
     observedAt: z.iso.datetime(),
+    /**
+     * Why the last attempt to refresh this sample did not replace it.
+     *
+     * A failed read leaves the previous measurement standing, which is right — a zero would be a
+     * claim nobody made. But standing silently makes "nobody has spent since" and "we have not been
+     * able to ask" the same picture, and they call for opposite reactions. Null is a sample that
+     * was refreshed the last time it was asked. Defaulted, because records written before this
+     * field existed carry no attempt at all.
+     */
+    error: z.string().max(160).nullable().default(null),
   })
   .strict();
 export type PlanLimits = z.infer<typeof PlanLimitsSchema>;
+
+/** How long a sample may stand before it is asked again, whichever runtime produced it. */
+export const PLAN_LIMITS_MAX_AGE_MS = 5 * 60_000;
+
+/**
+ * A window stops describing the present when its own interval ends — a clock event, not a spend.
+ *
+ * Both runtimes' refresh paths were written around the opposite belief, in the same words: "the
+ * window only moves when a turn spends against it, so the end of a turn is the one moment the
+ * answer can have changed". A reset moves it too, and so does a sibling session on the same
+ * account. Measured: a five-hour window that reset at 06:29Z was still being served as 100 % full
+ * at 08:05Z, while the runtime's own display said 36 %.
+ */
+export function planWindowExpired(window: PlanWindow, now: number): boolean {
+  return window.resetsAt !== null && Date.parse(window.resetsAt) <= now;
+}
+
+/**
+ * Whether a sample should be read again: it is old, or one of its windows has ended.
+ *
+ * `unpublished` is not due — the runtime does not report the fact, and asking again cannot change
+ * that. `no-plan-limit` is not due either: a session with no plan window does not grow one.
+ */
+export function planLimitsDue(limits: PlanLimits | null | undefined, now: number): boolean {
+  if (limits === null || limits === undefined) return true;
+  if (limits.answer !== 'known') return false;
+  if (now - Date.parse(limits.observedAt) >= PLAN_LIMITS_MAX_AGE_MS) return true;
+  return limits.windows.some((window) => planWindowExpired(window, now));
+}
+
+/** The same sample, carrying the reason its refresh failed. Never invents or clears a measurement. */
+export function planLimitsReadFailed(
+  limits: PlanLimits | null | undefined,
+  now: number,
+  reason: string,
+): PlanLimits {
+  const error = reason.slice(0, 160);
+  return limits === null || limits === undefined
+    ? { ...unpublishedPlanLimits(now), error }
+    : { ...limits, error };
+}
 
 const iso = (at: string | number | null | undefined): string | null => {
   if (typeof at === 'string') {
@@ -105,6 +156,7 @@ export function unpublishedPlanLimits(now: number): PlanLimits {
     plan: null,
     windows: [],
     observedAt: new Date(now).toISOString(),
+    error: null,
   };
 }
 
@@ -121,7 +173,7 @@ export function claudePlanLimits(reported: unknown, now: number): PlanLimits {
   const source = reported as Record<string, unknown>;
   const plan = label(source.subscription_type, 64);
   if (source.rate_limits_available === false)
-    return { answer: 'no-plan-limit', plan, windows: [], observedAt };
+    return { answer: 'no-plan-limit', plan, windows: [], observedAt, error: null };
   const limits = source.rate_limits;
   if (limits === null || typeof limits !== 'object') return unpublishedPlanLimits(now);
   const windows: PlanWindow[] = [];
@@ -142,7 +194,7 @@ export function claudePlanLimits(reported: unknown, now: number): PlanLimits {
     const window = readWindow(key, raw);
     if (window) windows.push(window);
   }
-  return { answer: 'known', plan, windows: windows.slice(0, 32), observedAt };
+  return { answer: 'known', plan, windows: windows.slice(0, 32), observedAt, error: null };
 }
 
 /**
@@ -166,6 +218,7 @@ export function mergeRateLimitEvent(
     plan: base.plan,
     windows: [...base.windows.filter((w) => w.key !== window.key), window].slice(0, 32),
     observedAt: new Date(now).toISOString(),
+    error: null,
   };
 }
 
@@ -222,7 +275,7 @@ export function codexPlanLimits(reported: unknown, now: number): PlanLimits {
       push(id, bucket as Record<string, unknown>);
     }
   if (windows.length === 0) return unpublishedPlanLimits(now);
-  return { answer: 'known', plan, windows: windows.slice(0, 32), observedAt };
+  return { answer: 'known', plan, windows: windows.slice(0, 32), observedAt, error: null };
 }
 
 /** Known window names, for the providers that name a window instead of stating its length. */
@@ -276,19 +329,42 @@ export function planWindowLabel(window: PlanWindow): string {
  */
 export function formatPlanLimits(limits: PlanLimits | null, now: number): string {
   if (limits === null) return 'limits not read';
-  if (limits.answer === 'no-plan-limit') return 'no plan limit';
-  if (limits.answer === 'unpublished') return 'limits unpublished';
-  if (limits.windows.length === 0) return 'no windows reported';
-  return [...limits.windows]
-    .sort((a, b) => b.percent - a.percent)
-    .map((window) => {
-      const resets =
-        window.resetsAt === null ? '' : ` ↻${humanizeUntil(Date.parse(window.resetsAt) - now)}`;
-      return `${planWindowLabel(window)} ${Math.round(window.percent)}%${resets}`;
-    })
-    .join(' · ');
+  const failed = limits.error === null ? '' : ` · read failed: ${limits.error}`;
+  if (limits.answer === 'no-plan-limit') return `no plan limit${failed}`;
+  if (limits.answer === 'unpublished') return `limits unpublished${failed}`;
+  if (limits.windows.length === 0) return `no windows reported${failed}`;
+  // How old the reading is, said in words, once it is old enough for the difference to matter. A
+  // percentage carries no date on it, and a bar drawn from a ninety-minute-old sample looks exactly
+  // like one drawn a second ago.
+  const age = now - Date.parse(limits.observedAt);
+  const stale = age >= PLAN_LIMITS_MAX_AGE_MS ? `${ago(age, 'measured')} · ` : '';
+  return (
+    stale +
+    [...limits.windows]
+      .sort((a, b) => b.percent - a.percent)
+      .map((window) => {
+        // A window past its own reset says nothing about the interval running now. Printing its
+        // last percentage would be answering a question about the present with a measurement of
+        // the past — and the number it printed was 100 %, in red, for ninety minutes.
+        if (planWindowExpired(window, now))
+          return `${planWindowLabel(window)} ${ago(now - Date.parse(window.resetsAt ?? ''), 'window ended')}, not re-read`;
+        const resets =
+          window.resetsAt === null ? '' : ` ↻${humanizeUntil(Date.parse(window.resetsAt) - now)}`;
+        return `${planWindowLabel(window)} ${Math.round(window.percent)}%${resets}`;
+      })
+      .join(' · ') +
+    failed
+  );
 }
 
+/** How long ago something happened, in words — with the degenerate case worded rather than
+ *  arithmetic: `humanizeUntil` answers "now" for a zero duration, and "now ago" is not English. */
+const ago = (ms: number, what: string): string => {
+  const spoken = humanizeUntil(ms);
+  return spoken === 'now' ? `${what} just now` : `${what} ${spoken} ago`;
+};
+
+/** A duration in words. Used both for "until" and for "ago", so it never carries a direction. */
 const humanizeUntil = (ms: number): string => {
   if (!Number.isFinite(ms) || ms <= 0) return 'now';
   const minutes = Math.round(ms / 60_000);

@@ -74,6 +74,7 @@ const limits = (percent: number, observedAt: string): PlanLimits => ({
     },
   ],
   observedAt,
+  error: null,
 });
 
 test('sessions sharing an account are grouped across machines, with their total', () => {
@@ -162,4 +163,33 @@ test('one address on two providers is two plans, never one row showing the last 
     NOW,
   );
   expect(lines[1]).toBe('  one@example.test (chatgpt) [max]  cost unknown  host-a:agent-a');
+});
+
+test('the JSON answer states what is only true at read time, so a consumer need not use a clock', () => {
+  // A sample whose five-hour window ended an hour before this response was generated. Every
+  // consumer deriving that from `resetsAt` and its own clock is one more place it can be got
+  // wrong — and one of them drew a ninety-minute-old 100 % as the present, in red.
+  const stale = limits(100, new Date(NOW - 90 * 60_000).toISOString());
+  const [account] = fleetAccounts(
+    [machine('host-a', [row('agent-a', 'one@example.test', 1, stale)])],
+    Date.parse('2026-09-01T13:00:00.000Z'),
+  );
+  expect(account?.limits?.stale).toBe(true);
+  expect(account?.limits?.windows[0]?.expired).toBe(true);
+  // The stored sample is unchanged underneath: the projection says what is true now, it does not
+  // rewrite what was measured then.
+  expect(account?.limits?.windows[0]?.percent).toBe(100);
+  expect(account?.limits?.observedAt).toBe(stale.observedAt);
+
+  // The negative half, same data read while the window is still running.
+  const [fresh] = fleetAccounts(
+    [
+      machine('host-a', [
+        row('agent-a', 'one@example.test', 1, limits(100, new Date(NOW).toISOString())),
+      ]),
+    ],
+    NOW,
+  );
+  expect(fresh?.limits?.stale).toBe(false);
+  expect(fresh?.limits?.windows[0]?.expired).toBe(false);
 });

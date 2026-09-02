@@ -15,7 +15,7 @@ import {
 import { nativePolicySkillsAcknowledged, policySkillInputs } from '../../policy/codex.ts';
 import { applicationPolicyEvidence, verifyApplicationPolicy } from '../../policy/resolve.ts';
 import type { MaterializedPolicy } from '../../policy/schema.ts';
-import { codexPlanLimits, unpublishedPlanLimits } from '../../runtime/planLimits.ts';
+import { codexPlanLimits, planLimitsDue, planLimitsReadFailed } from '../../runtime/planLimits.ts';
 import { readSelection, seedNativeSelection } from '../../runtime/selection.ts';
 import { NativeTurnOptionsSchema } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -154,8 +154,8 @@ export class OwnedCodexConnection {
               event.method === 'turn/completed' &&
               Date.now() - this.lastLimitsAt >= LIMITS_REFRESH_MS
             )
-              // The window only moves when a turn spends against it, so this is the moment the
-              // answer can have changed — and the server does not always push one.
+              // A turn is one of the moments the answer can have changed — the other is the clock,
+              // which the periodic refresh covers. The server does not always push either.
               void this.readAccountLimits(Date.now()).then(() => this.publish());
             if (OBSERVED_EVENTS.has(event.method) && this.projection.event(event)) {
               this.publish();
@@ -393,11 +393,16 @@ export class OwnedCodexConnection {
         this.bounded(this.liveRpc().request('account/rateLimits/read', {})),
       ]);
       projection.accountLimits(codexAccount(account), codexPlanLimits(limits, now), now);
-    } catch {
+    } catch (error) {
       // Enrichment, never a precondition: a session whose account cannot be read still runs, and
-      // the previous measurement stays standing rather than being replaced by a zero.
-      if (projection.snapshot().planLimits === undefined)
-        projection.accountLimits(null, unpublishedPlanLimits(now), now);
+      // the previous measurement stays standing rather than being replaced by a zero. It does not
+      // stand SILENTLY, though — an unrefreshed sample and an unspent window look identical from
+      // outside, and only one of them is a reason to go and look.
+      projection.accountLimits(
+        null,
+        planLimitsReadFailed(projection.snapshot().planLimits, now, String(error)),
+        now,
+      );
     }
   }
 
@@ -411,8 +416,13 @@ export class OwnedCodexConnection {
     projection.reconcile(thread.status, revision);
     const now = Date.now();
     // Never awaited: how full the plan is is enrichment, and a runtime slow to answer it must not
-    // hold up the status a supervisor reconnects to publish.
-    if (now - this.lastLimitsAt >= LIMITS_REFRESH_MS)
+    // hold up the status a supervisor reconnects to publish. Due, not merely old: a window that has
+    // reached its own `resetsAt` is describing an interval that has ended, and the throttle below
+    // would otherwise serve it for another minute as if it were current.
+    if (
+      now - this.lastLimitsAt >= LIMITS_REFRESH_MS ||
+      planLimitsDue(projection.snapshot().planLimits, now)
+    )
       void this.readAccountLimits(now).then(() => this.publish());
     await this.writer.write(projection.snapshot());
   }

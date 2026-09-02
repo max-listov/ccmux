@@ -24,10 +24,15 @@ import {
   runtimeInputPath,
   writeRuntimeInput,
 } from '../../../runtime/input.ts';
+import { planLimitsDue } from '../../../runtime/planLimits.ts';
 import type { NativeSnapshot } from '../../../runtime/projectionSchema.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+
+/** How often the sample is CHECKED, not how often it is read: `planLimitsDue` decides the read. */
+const PLAN_LIMITS_TICK_MS = 15_000;
+
 import { classifySdkMessage, isFailureResult, summarise } from './content.ts';
 import {
   type Discovery,
@@ -203,7 +208,32 @@ export class ClaudeNativeOwner {
     await refreshPlanLimits(this.discovery);
     await refreshMcpServers(this.discovery);
     this.serveContext(this.contextAbort.signal);
+    this.serveLimits(this.contextAbort.signal);
     await this.publish();
+  }
+
+  /**
+   * Ask again when the sample has stopped describing the present.
+   *
+   * The end of a turn is not the only moment the answer can change, which is what the refresh at
+   * the end of `drain` assumed. A window RESETS on a clock, and a sibling session on the same
+   * account spends against the same window — so between two turns of this session the number can
+   * move both ways. Measured: a five-hour window that reset at 06:29Z was served as 100 % full at
+   * 08:05Z while the runtime's own display read 36 %, and the session had been working throughout.
+   *
+   * The check is cheap and the read is not, so the tick is frequent and `planLimitsDue` decides:
+   * an unexpired sample younger than its maximum age costs one comparison.
+   */
+  private serveLimits(signal: AbortSignal): void {
+    void (async () => {
+      while (!signal.aborted) {
+        await Bun.sleep(PLAN_LIMITS_TICK_MS);
+        if (signal.aborted) break;
+        if (!planLimitsDue(this.projection.planLimits, Date.now())) continue;
+        await refreshPlanLimits(this.discovery);
+        await this.publish();
+      }
+    })();
   }
 
   /**
@@ -300,8 +330,8 @@ export class ClaudeNativeOwner {
         // the answer only changes when the conversation does.
         if (this.projection.turn.status !== null && this.projection.turn.status !== 'inProgress') {
           await refreshContextUsage(this.discovery);
-          // The plan window moves only when a turn spends against it, so the end of a turn is the
-          // one moment the answer can have changed.
+          // A turn is one of the moments the answer can have changed; the other is the clock, and
+          // a sibling session on the same account. `serveLimits` covers those.
           await refreshPlanLimits(this.discovery);
         }
         await this.publish();

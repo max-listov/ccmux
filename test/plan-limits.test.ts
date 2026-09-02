@@ -4,6 +4,11 @@ import {
   codexPlanLimits,
   formatPlanLimits,
   mergeRateLimitEvent,
+  PLAN_LIMITS_MAX_AGE_MS,
+  type PlanLimits,
+  planLimitsDue,
+  planLimitsReadFailed,
+  planWindowExpired,
   planWindowLabel,
 } from '../src/runtime/planLimits.ts';
 
@@ -143,4 +148,79 @@ test('the fullest window is read first, because it is the one that stops the wor
   expect(line.startsWith('5h 77%')).toBe(true);
   expect(line).toContain('↻5h');
   expect(line).toContain('7d 63%');
+});
+
+const sample = (overrides: Partial<PlanLimits> = {}): PlanLimits => ({
+  answer: 'known',
+  plan: 'max',
+  windows: [
+    {
+      key: 'five_hour',
+      label: null,
+      percent: 100,
+      windowMinutes: 300,
+      resetsAt: new Date(NOW + 60_000).toISOString(),
+      scope: null,
+    },
+  ],
+  observedAt: new Date(NOW).toISOString(),
+  error: null,
+  ...overrides,
+});
+
+test('a window is over when its own reset has passed, not when a turn ends', () => {
+  const limits = sample();
+  const window = limits.windows[0] as NonNullable<(typeof limits.windows)[0]>;
+  expect(planWindowExpired(window, NOW)).toBe(false);
+  expect(planWindowExpired(window, NOW + 61_000)).toBe(true);
+  // The measured case: a sample taken half a second ago whose window has already ended. Age alone
+  // calls it fresh, which is how 100 % stood for ninety minutes past a reset.
+  const justTaken = sample({ observedAt: new Date(NOW + 60_500).toISOString() });
+  expect(NOW + 61_000 - Date.parse(justTaken.observedAt)).toBeLessThan(PLAN_LIMITS_MAX_AGE_MS);
+  expect(planLimitsDue(justTaken, NOW + 61_000)).toBe(true);
+});
+
+test('an old sample is due, and an answer that cannot change is not', () => {
+  expect(planLimitsDue(sample(), NOW + 1_000)).toBe(false);
+  expect(planLimitsDue(sample(), NOW + PLAN_LIMITS_MAX_AGE_MS)).toBe(true);
+  expect(planLimitsDue(null, NOW)).toBe(true);
+  // Asking again cannot turn "this runtime does not report the fact" into a number, and a session
+  // with no plan window does not grow one. Polling either would be a round trip per tick forever.
+  expect(planLimitsDue(sample({ answer: 'unpublished', windows: [] }), NOW + 86_400_000)).toBe(
+    false,
+  );
+  expect(planLimitsDue(sample({ answer: 'no-plan-limit', windows: [] }), NOW + 86_400_000)).toBe(
+    false,
+  );
+});
+
+test('a failed read keeps the measurement and says the read failed', () => {
+  const failed = planLimitsReadFailed(sample(), NOW + 1_000, 'Error: usage read timed out');
+  // The number is not replaced by a zero — nobody measured a zero.
+  expect(failed.windows[0]?.percent).toBe(100);
+  expect(failed.observedAt).toBe(sample().observedAt);
+  expect(failed.error).toContain('timed out');
+  expect(formatPlanLimits(failed, NOW + 1_000)).toContain('read failed');
+  // With no previous sample there is nothing to keep, and the reason still travels.
+  expect(planLimitsReadFailed(null, NOW, 'Error: boom')).toMatchObject({
+    answer: 'unpublished',
+    error: 'Error: boom',
+  });
+});
+
+test('an expired window is not printed as a current percentage', () => {
+  const line = formatPlanLimits(sample(), NOW + 3_660_000);
+  // The percentage of an interval that has ended answers a question nobody asked. It was printed in
+  // red as 100 % for ninety minutes while the runtime's own display read 36 %.
+  expect(line).not.toContain('100%');
+  expect(line).toContain('window ended');
+  expect(line).toContain('not re-read');
+  // And the age of the reading is said in words once it is old enough to matter.
+  expect(line).toContain('measured');
+});
+
+test('a fresh sample prints neither an age nor an ended window', () => {
+  // The negative control: everything above must be absent when there is nothing to report.
+  const line = formatPlanLimits(sample(), NOW + 1_000);
+  expect(line).toBe('5h 100% ↻1m');
 });
