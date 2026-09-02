@@ -1028,6 +1028,10 @@ export const ReleaseStandingSchema = z.object({
   /** Did that last attempt succeed? `false` with a non-null `latest` means "this is what we knew,
    *  and we can no longer reach the feed to confirm it". */
   ok: z.boolean().default(true),
+  /** Has the ASKING stopped? True when the last attempt is far older than this machine's own check
+   *  interval — nothing is looking any more, whatever the last look returned. Computed here because
+   *  only this machine knows its interval; `false` from a peer too old to report it. */
+  checksOverdue: z.boolean().default(false),
 });
 
 export const ListJsonSchema = z.object({

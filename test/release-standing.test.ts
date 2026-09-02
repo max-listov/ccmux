@@ -1,6 +1,13 @@
 import { expect, test } from 'bun:test';
-import { type FleetMachine, fleetView } from '../src/commands/fleetList.ts';
-import { behindBy, bestKnownRelease } from '../src/config/releaseCheck.ts';
+import { mkdtempSync } from 'node:fs';
+import { type FleetMachine, fleetView, machineStanding } from '../src/commands/fleetList.ts';
+import {
+  behindBy,
+  bestKnownRelease,
+  releaseStanding,
+  writeReleaseCheck,
+} from '../src/config/releaseCheck.ts';
+import { makeMachine } from './helpers.ts';
 
 // A fleet view could show which version each machine RUNS and nothing about whether that is the
 // right one — the other half came from a person reading the releases page and comparing by eye.
@@ -18,7 +25,14 @@ const machine = (
   ok: true,
   error: null,
   version: current,
-  release: { current, latest, latestAt: null, checkedAt: '2026-08-25T10:00:00.000Z', ok },
+  release: {
+    current,
+    latest,
+    latestAt: null,
+    checkedAt: '2026-08-25T10:00:00.000Z',
+    ok,
+    checksOverdue: false,
+  },
   behind: null,
   sessions: [],
 });
@@ -117,9 +131,71 @@ test('the publication date rides along, so lag can be read in time rather than i
       latestAt: '2026-08-25T14:42:18Z',
       checkedAt: 'x',
       ok: true,
+      checksOverdue: false,
     },
   };
   expect(fleetView([withDate, machine('host-b', '0.30.0', '0.30.0', false)]).latestAt).toBe(
     '2026-08-25T14:42:18Z',
   );
+});
+
+test('a check that stopped happening is not the same as one that came back behind', async () => {
+  const stateDir = mkdtempSync('/tmp/ccmux-overdue-');
+  const m = makeMachine({ stateDir, autoUpdate: true, updateCheckInterval: 300 });
+  const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
+
+  // Never checked: `latest: null` already says "we do not know". Saying it twice helps nobody.
+  expect(releaseStanding(m, '0.47.0').checksOverdue).toBe(false);
+
+  // A check that happened a moment ago, and one that is merely late. Neither is news: a tick can
+  // slip for reasons that fix themselves, and a marker firing on those trains people to ignore it.
+  await writeReleaseCheck(m, { version: '0.47.9', releasedAt: null, checkedAt: ago(30), ok: true });
+  expect(releaseStanding(m, '0.47.0').checksOverdue).toBe(false);
+  await writeReleaseCheck(m, {
+    version: '0.47.9',
+    releasedAt: null,
+    checkedAt: ago(900),
+    ok: true,
+  });
+  expect(releaseStanding(m, '0.47.0').checksOverdue).toBe(false);
+
+  // Four rounds past due, and the last attempt SUCCEEDED — which is exactly the case that used to
+  // read as healthy. `ok` and `latest` say the last look worked; nothing says the looking stopped.
+  await writeReleaseCheck(m, {
+    version: '0.47.9',
+    releasedAt: null,
+    checkedAt: ago(7_200),
+    ok: true,
+  });
+  const stopped = releaseStanding(m, '0.47.0');
+  expect(stopped.checksOverdue).toBe(true);
+  expect(stopped.ok).toBe(true);
+  expect(stopped.latest).toBe('0.47.9');
+
+  // A machine that never checks on purpose is not a machine whose checking died.
+  const manual = makeMachine({ stateDir, autoUpdate: false, updateCheckInterval: 300 });
+  expect(releaseStanding(manual, '0.47.0').checksOverdue).toBe(false);
+});
+
+test('a machine that stopped checking says so instead of looking mildly behind', () => {
+  const behind = machine('host-a', '0.47.0', '0.47.9');
+  const view = fleetView([behind]);
+  const row = view.machines[0];
+  if (row === undefined) throw new Error('fixture produced no machine');
+  expect(machineStanding(row)).toContain('behind');
+
+  // Same version gap, same successful last check — and the supervisor is gone. The mild reading
+  // must not win here: it is the one that let a fleet run unsupervised without saying anything.
+  const stopped = fleetView([
+    {
+      ...behind,
+      release: { ...(behind.release ?? null), checksOverdue: true } as NonNullable<
+        FleetMachine['release']
+      >,
+    },
+  ]).machines[0];
+  if (stopped === undefined) throw new Error('fixture produced no machine');
+  expect(stopped.behind).not.toBeNull();
+  expect(machineStanding(stopped)).toContain('nothing has checked since');
+  expect(machineStanding(stopped)).not.toContain('behind');
 });

@@ -131,5 +131,30 @@ export function releaseStanding(m: MachineConfig, current: string): ReleaseStand
     // (no `releaseUrl`). `latest: null` is what says "we do not know"; this field is about the
     // health of the asking.
     ok: check?.ok ?? true,
+    // A fourth state, and the one that hid a supervisor being dead for two hours: the last check
+    // SUCCEEDED, so `ok` is true and `latest` is a real version — and nothing has asked since,
+    // because the process whose job that is stopped running. The machine then reads as "a patch
+    // behind", which is mild and self-correcting, when it is neither. Only this machine knows how
+    // often it is supposed to look, so only this machine can say the looking has stopped.
+    checksOverdue: checksOverdue(m, check),
   };
+}
+
+/**
+ * Four missed rounds, not one. A tick can be late for reasons that fix themselves — a slow fetch, a
+ * busy host, a restart mid-interval — and a marker that fires on those teaches people to ignore it,
+ * which costs more than the marker is worth. Four is comfortably past any of them and still well
+ * inside the window where a stopped supervisor matters.
+ *
+ * A machine that never checks on purpose (`autoUpdate` off) is not overdue, and neither is one that
+ * has never checked at all: that is `latest: null` already saying "we do not know", and saying it
+ * twice in different words helps nobody.
+ */
+const OVERDUE_ROUNDS = 4;
+
+function checksOverdue(m: MachineConfig, check: ReleaseCheck | null): boolean {
+  if (!m.autoUpdate || check === null) return false;
+  const last = Date.parse(check.checkedAt);
+  if (Number.isNaN(last)) return false;
+  return Date.now() - last > m.updateCheckInterval * 1000 * OVERDUE_ROUNDS;
 }

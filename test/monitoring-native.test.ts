@@ -46,11 +46,22 @@ async function fixture() {
 test('public native API: 100 sequential and 100 concurrent reads reuse one published observation', async () => {
   const { snapshot } = await fixture();
   const before = observationExecCount();
-  for (let i = 0; i < 100; i++) expect((await readMonitoringStatus()).snapshot).toEqual(snapshot);
+  // Assert on status and reason together with the snapshot, never on the snapshot alone. Five
+  // different outcomes hand back `null` here — missing, invalid, oversized, expired, producer
+  // stopped — and a bare `toEqual(snapshot)` prints all five as the same thirty-eight-line diff
+  // against `null`, which names none of them. A failure has to say WHICH, or the next reader
+  // starts by guessing, and a guess about the cause is where the wrong fix comes from.
+  const live = (read: Awaited<ReturnType<typeof readMonitoringStatus>>) => ({
+    status: read.status,
+    reason: read.reason,
+    snapshot: read.snapshot,
+  });
+  const expected = { status: 'live' as const, reason: null, snapshot };
+  for (let i = 0; i < 100; i++) expect(live(await readMonitoringStatus())).toEqual(expected);
   const reads = await Promise.all(
     Array.from({ length: 100 }, () => readMonitoringStatus({ timeoutMs: 1000 })),
   );
-  for (const read of reads) expect(read.snapshot).toEqual(snapshot);
+  for (const read of reads) expect(live(read)).toEqual(expected);
   expect(observationExecCount()).toBe(before);
   // Callers cannot corrupt the shared result delivered to other callers.
   if (reads[0]?.snapshot) reads[0].snapshot.sessions.length = 0;

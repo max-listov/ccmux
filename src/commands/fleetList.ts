@@ -279,6 +279,28 @@ export function formatFleetSession(
  * `blocked` alone sends a reader to the machine to find out; the peer already knows and now says so.
  * Empty for every healthy session, so the map stays a map.
  */
+/**
+ * The one line under a machine's version, and which of four states it names: behind, current,
+ * nobody has been able to check, and nobody is checking any more.
+ *
+ * The last one comes FIRST because it is the same evidence read two ways, and "behind" is the
+ * reassuring reading. A machine whose supervisor died keeps its state files, so it keeps reporting
+ * a version and a successful last check; all that happens is that it drifts a patch behind and
+ * stays there. That is indistinguishable from a machine mid-update — except that one fixes itself
+ * in minutes and the other never does, because the process that would fix it is the process that is
+ * gone. Drawn as "a patch behind", a fleet ran unsupervised for two hours and the view said
+ * something mild the whole time.
+ */
+export function machineStanding(fm: FleetMachine): string {
+  if (fm.release?.checksOverdue === true) {
+    const at = fm.release.checkedAt?.slice(0, 16).replace('T', ' ') ?? 'unknown';
+    return `  ⟵ nothing has checked since ${at} — is its daemon running?`;
+  }
+  if (fm.behind !== null) return `  ⟵ ${fm.behind} behind`;
+  if (fm.release === null || fm.release.latest === null) return '  (release unknown here)';
+  return fm.release.ok ? '' : '  (cannot reach the release feed — this is what it knew)';
+}
+
 export function fleetSessionDetail(session: z.infer<typeof RemoteSessionSchema>): string | null {
   return session.lifecycleError === null ? null : `      ${session.lifecycleError}`;
 }
@@ -337,16 +359,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
       console.log(`${label}: ${fm.error}`);
       continue;
     }
-    // Three states, and the third is the one a bare version number hides: behind, current, or
-    // nobody has been able to check — which must never be drawn as current.
-    const standing =
-      fm.behind !== null
-        ? `  ⟵ ${fm.behind} behind`
-        : fm.release === null || fm.release.latest === null
-          ? '  (release unknown here)'
-          : fm.release.ok
-            ? ''
-            : '  (cannot reach the release feed — this is what it knew)';
+    const standing = machineStanding(fm);
     console.log(`${label}  [ccmux ${fm.version}]${standing}`);
     const { shown, parked } = partitionParked(fm.sessions, args.includes('--all'));
     for (const s of shown) {
