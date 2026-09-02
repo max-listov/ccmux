@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.4] — 2026-09-02
+
+A pending request too large for the wire sheds instead of killing the stream
 ## [0.49.3] — 2026-09-02
 
 A rejected service result says which fields it could not read
