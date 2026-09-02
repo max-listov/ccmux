@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.48.0] — 2026-09-02
+
+A supervisor that gives up on itself is not self-healing
 ## [0.47.9] — 2026-09-02
 
 A machine that stopped checking says so, and a zombie counts as exited
