@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.45.0] — 2026-09-02
+
+Move a session's registered directory without recreating it
 ## [0.44.0] — 2026-09-02
 
 One session row for list and fleet, so a field cannot arrive on one path and vanish on the other
