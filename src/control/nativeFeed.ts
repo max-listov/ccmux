@@ -50,6 +50,9 @@ function nativeFrame(
     observedAt: snapshot.observedAt,
     expiresAt: snapshot.expiresAt,
     pending: snapshot.pendingRequests.map(({ rpcId: _rpcId, ...pending }) => pending),
+    // The daemon carries every request the runtime is blocked on. Shedding happens at the wire,
+    // where a budget exists; here there is nothing to omit and nothing to claim was omitted.
+    omittedPending: 0,
     ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
     selection: readSelection(m, session),
     nativeSelection: snapshot.nativeSelection ?? null,

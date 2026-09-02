@@ -408,6 +408,27 @@ generation or retained-window miss returns the canonical `generation` or `gap` r
 Cancellation aborts the local subscription and closes both Unix transports. No workspace path,
 provider credential, arbitrary executable, shell text or consumer-owned parser crosses this API.
 
+The frame budget belongs to the wire, not to this project: the transport buffers the producer's
+NDJSON at twice its chunk bound and separately refuses a framed chunk whose `data` exceeds that
+bound, and both the schema maximum and the default of that knob are 32 KiB. Frames are therefore
+measured against 32 KiB of `data` inside a 64 KiB line, and the measurement is taken on the
+serialized line rather than on the payload — `data` is JSON inside a JSON string, so content
+carrying code is escaped twice over.
+
+A snapshot larger than that has an honest smaller form and is sent in it: oldest records go first,
+then baseline entries, both counted into `omittedRecords`; pending requests go last and only when
+nothing observational remains, counted into `omittedPending`, because they are the one part of the
+frame a human can act on. Shedding pending frees budget, so content is searched again afterwards
+rather than staying shed for a reason that no longer applies. A single approval prompt at its schema
+maximum is larger than the whole budget, so this path is reachable from legal data alone.
+
+When identity or fixed metadata alone exceeds the budget there is no honest smaller frame, and the
+producer refuses rather than emitting a line no consumer can parse. Refusals are one stderr object,
+`{ error, retryable }`: `FRAME_UNREPRESENTABLE` and `INPUT_TOO_LARGE` are `retryable: false` because
+a reconnect returns to exactly the same input, and `STREAM_UNAVAILABLE` is `retryable: true`. An
+oversized frame does not degrade a consumer — it ends its stream, and the reconnect that follows
+fetches the same line again.
+
 # Bounds and freshness
 
 - One existing observation pass every 2 seconds; subscribers create no provider connection,
@@ -422,7 +443,8 @@ provider credential, arbitrary executable, shell text or consumer-owned parser c
   latest notice per reader. Native content replays only its bounded retained window; generation
   changes or gaps explicitly reset it. Provider history is a separate bounded native read.
 - At most 32 subscribers (including active resident waits); framework output buffering is at most
-  16 framed items per connection. Frames are capped at 512 KiB + 1 KiB, heartbeats every 2 seconds.
+  16 framed items per connection. Native stream frames are capped at 64 KiB of line carrying at most
+  32 KiB of payload — the transport's bound, not this project's — heartbeats every 2 seconds.
   Unix transport applies physical socket backpressure; no cumulative lifetime cap on a stream.
 - Mutations: 8 concurrent globally, 1 per target, at most 256 active target keys, no queue.
   Waits: 16 concurrent, deadline at most 60 seconds. Provider model reads: 4 concurrent with a

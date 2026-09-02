@@ -129,6 +129,25 @@ export function readControlNativeStreamCursor(
 }
 
 /**
+ * Nothing left to shed and still over the budget: there is no honest smaller frame to send.
+ *
+ * Named on its own because the two ways a producer can fail want opposite answers from a consumer.
+ * A stream that could not be opened is worth another attempt; a frame whose fixed fields alone
+ * exceed the wire is not, and a retry returns to exactly the same line. Carries sizes only — no
+ * thread content ever leaves through an error path.
+ */
+export class NativeStreamFrameUnrepresentable extends Error {
+  readonly bytes: number;
+  constructor(bytes: number) {
+    super(
+      `native stream frame is ${bytes} bytes with nothing left to shed, over the ${CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES}-byte budget`,
+    );
+    this.name = 'NativeStreamFrameUnrepresentable';
+    this.bytes = bytes;
+  }
+}
+
+/**
  * A frame that fits the budget the consumer enforces, shedding observation until it does.
  *
  * The snapshot is an observation cache, and `omittedRecords` is how it already says "there was more
@@ -137,9 +156,11 @@ export function readControlNativeStreamCursor(
  * kills the stream, and the reconnect that follows fetches the same line again.
  *
  * Oldest records go first, then baseline entries, each counted into `omittedRecords` — the same
- * order and the same accounting the buffer uses when it sheds under its own bounds. Sizes are
- * measured rather than predicted: how much a record costs on the wire depends on what its text
- * contains, and the escaping ratio is not a constant to multiply by.
+ * order and the same accounting the buffer uses when it sheds under its own bounds. Pending
+ * requests are shed last and only when nothing observational is left, because they are the one part
+ * of the frame a human can act on. Sizes are measured rather than predicted: how much a record
+ * costs on the wire depends on what its text contains, and the escaping ratio is not a constant to
+ * multiply by.
  */
 export function controlNativeStreamFrame(snapshot: unknown) {
   const native = ControlNativeSnapshotSchema.parse(snapshot);
@@ -150,61 +171,95 @@ export function controlNativeStreamFrame(snapshot: unknown) {
   const build = (
     records: typeof native.records,
     baseline: typeof native.baseline,
-    omittedRecords: number,
+    pending: typeof native.pending,
   ) => ({
     channel: 'data' as const,
-    data: JSON.stringify({ ...native, records, baseline, omittedRecords }),
+    data: JSON.stringify({
+      ...native,
+      records,
+      baseline,
+      pending,
+      omittedRecords:
+        native.omittedRecords +
+        (native.records.length - records.length) +
+        (native.baseline.length - baseline.length),
+      omittedPending: native.omittedPending + (native.pending.length - pending.length),
+    }),
     cursor,
   });
 
-  // How many of the newest entries fit, found by halving rather than by dropping one at a time.
-  // The frame only shrinks as entries are removed, so the answer is monotonic and a binary search
-  // is exact — and the difference is not academic: shedding singly cost 4.5 SECONDS on a
-  // two-megabyte snapshot, because each step re-serializes the whole thing. Nine measurements
-  // instead of four hundred and twenty-four.
-  const fits = (records: typeof native.records, baseline: typeof native.baseline) => {
-    const candidate = build(
-      records,
-      baseline,
-      native.omittedRecords + (native.records.length - records.length),
-    );
-    // Both ceilings, because the transport applies both and a frame can clear one alone.
+  // Both ceilings, because the transport applies both and a frame can clear one alone.
+  const fits = (
+    records: typeof native.records,
+    baseline: typeof native.baseline,
+    pending: typeof native.pending,
+  ) => {
+    const candidate = build(records, baseline, pending);
     return (
       controlNativeStreamFrameBytes(candidate) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES &&
       new TextEncoder().encode(candidate.data).byteLength <= CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES
     );
   };
   const keepNewest = <T>(items: readonly T[], count: number) => items.slice(items.length - count);
+  const keepOldest = <T>(items: readonly T[], count: number) => items.slice(0, count);
 
-  let records = native.records;
-  let baseline = native.baseline;
-  if (!fits(records, baseline)) {
+  // How many entries fit, found by halving rather than by dropping one at a time. The frame only
+  // shrinks as entries are removed, so the answer is monotonic and a binary search is exact — and
+  // the difference is not academic: shedding singly cost 4.5 SECONDS on a two-megabyte snapshot,
+  // because each step re-serializes the whole thing. Nine measurements instead of four hundred and
+  // twenty-four. Zero is returned without being probed; the caller checks the result.
+  const largestFitting = (length: number, probe: (count: number) => boolean) => {
     let low = 0;
-    let high = records.length;
+    let high = length;
     while (low < high) {
       const middle = Math.ceil((low + high) / 2);
-      if (fits(keepNewest(native.records, middle), baseline)) low = middle;
+      if (probe(middle)) low = middle;
       else high = middle - 1;
     }
-    records = keepNewest(native.records, low);
-    if (low === 0 && !fits(records, baseline)) {
-      let lowBaseline = 0;
-      let highBaseline = baseline.length;
-      while (lowBaseline < highBaseline) {
-        const middle = Math.ceil((lowBaseline + highBaseline) / 2);
-        if (fits(records, keepNewest(native.baseline, middle))) lowBaseline = middle;
-        else highBaseline = middle - 1;
-      }
-      baseline = keepNewest(native.baseline, lowBaseline);
-    }
+    return low;
+  };
+
+  const shedObservation = (pending: typeof native.pending) => {
+    if (fits(native.records, native.baseline, pending))
+      return { records: native.records, baseline: native.baseline };
+    const records = keepNewest(
+      native.records,
+      largestFitting(native.records.length, (count) =>
+        fits(keepNewest(native.records, count), native.baseline, pending),
+      ),
+    );
+    if (records.length > 0) return { records, baseline: native.baseline };
+    const baseline = keepNewest(
+      native.baseline,
+      largestFitting(native.baseline.length, (count) =>
+        fits(records, keepNewest(native.baseline, count), pending),
+      ),
+    );
+    return { records, baseline };
+  };
+
+  let pending = native.pending;
+  let { records, baseline } = shedObservation(pending);
+  if (!fits(records, baseline, pending)) {
+    // Nothing observational is left and the frame is still over: what does not fit is the pending
+    // list itself. Drop the newest requests and keep the oldest — the runtime blocks on the
+    // earliest — then search again, so whatever content the freed budget now allows comes back
+    // rather than staying shed for a reason that no longer applies.
+    pending = keepOldest(
+      native.pending,
+      largestFitting(native.pending.length, (count) =>
+        fits([], [], keepOldest(native.pending, count)),
+      ),
+    );
+    ({ records, baseline } = shedObservation(pending));
   }
-  // Everything shed is counted, and only what was actually shed. If nothing observational is left
-  // and the fixed fields alone are over budget there is no honest smaller frame to send, so the
-  // schema refuses rather than emitting one that would end the consumer's stream.
-  const shed = native.records.length - records.length + (native.baseline.length - baseline.length);
-  return ControlNativeStreamFrameSchema.parse(
-    build(records, baseline, native.omittedRecords + shed),
-  );
+  if (!fits(records, baseline, pending))
+    // The size of the frame that could not be reduced further — not of the empty one, which is a
+    // different quantity and would name a number nothing in this path ever measured.
+    throw new NativeStreamFrameUnrepresentable(
+      controlNativeStreamFrameBytes(build(records, baseline, pending)),
+    );
+  return ControlNativeStreamFrameSchema.parse(build(records, baseline, pending));
 }
 
 export const CcmuxNativeStreamProfileSchema = z

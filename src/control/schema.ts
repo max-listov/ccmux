@@ -187,6 +187,17 @@ export const ControlNativeSnapshotSchema = ContentReadSchema.extend({
   observedAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
   pending: z.array(NativePendingRequestSchema.omit({ rpcId: true })).max(16),
+  /**
+   * How many pending requests exist that this snapshot does not carry.
+   *
+   * A pending request is bounded but not small: four questions of thirty-two options each is a
+   * legal approval prompt and is larger on its own than a native stream frame is allowed to be. The
+   * daemon never sheds one — it reads what the runtime asked — but the stream producer must, and
+   * without a count the shed would be a lie: an empty `pending` reads as "the session is asking
+   * nothing" while it sits blocked on a question. This says the difference out loud, the same way
+   * `omittedRecords` does for content.
+   */
+  omittedPending: z.number().int().nonnegative(),
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   selection: AcceptedTurnOptionsSchema.nullable(),
   nativeSelection: NativeSelectionEvidenceSchema.nullable(),

@@ -5,6 +5,7 @@ import {
   CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
   ControlNativeStreamRequestSchema,
   controlNativeStreamFrame,
+  NativeStreamFrameUnrepresentable,
   readControlNativeStreamCursor,
 } from '../control/nativeStreamContract.ts';
 import type { ControlNativeSnapshot } from '../control/schema.ts';
@@ -39,6 +40,23 @@ async function boundedStdin(maxBytes: number): Promise<string> {
 async function writeFrame(snapshot: ControlNativeSnapshot): Promise<void> {
   const line = `${JSON.stringify(controlNativeStreamFrame(snapshot))}\n`;
   if (!process.stdout.write(line)) await once(process.stdout, 'drain');
+}
+
+/**
+ * Why the refusal says whether repeating it can help.
+ *
+ * A consumer reconnects on a dead stream, and that is right for a stream that could not be opened.
+ * It is wrong for a frame the wire cannot carry: the reconnect fetches the same line and dies on
+ * it again, forever, showing the human a conversation that is merely "queued" while the session
+ * behind it answers normally. One such loop ran for twenty-two hours. Nothing here can stop a
+ * consumer from retrying, but it can stop being silent about which of the two this is.
+ */
+export function streamRefusal(error: unknown): { error: string; retryable: boolean } {
+  if (error instanceof NativeStreamFrameUnrepresentable)
+    return { error: 'FRAME_UNREPRESENTABLE', retryable: false };
+  if (error instanceof Error && error.message.includes('byte budget'))
+    return { error: 'INPUT_TOO_LARGE', retryable: false };
+  return { error: 'STREAM_UNAVAILABLE', retryable: true };
 }
 
 /** Fixed stdin contract + stable cursor; no caller argv, path, credential or provider process. */
@@ -81,11 +99,7 @@ export async function cmdControlNativeStream(): Promise<number> {
     return 0;
   } catch (error) {
     if (abort.signal.aborted) return 0;
-    const code =
-      error instanceof Error && error.message.includes('byte budget')
-        ? 'INPUT_TOO_LARGE'
-        : 'STREAM_UNAVAILABLE';
-    process.stderr.write(`${JSON.stringify({ error: code })}\n`);
+    process.stderr.write(`${JSON.stringify(streamRefusal(error))}\n`);
     return 1;
   } finally {
     abort.abort();
