@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.6] — 2026-09-02
+
+A plan window ends on the clock, and an ended one is not served as current
 ## [0.49.5] — 2026-09-02
 
 Every command loads at its case, and the status line's own cost is counted
