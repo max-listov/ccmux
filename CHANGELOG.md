@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.7] — 2026-09-02
+
+A transcript read costs its window, not the whole file
 ## [0.49.6] — 2026-09-02
 
 A plan window ends on the clock, and an ended one is not served as current
