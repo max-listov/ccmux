@@ -373,6 +373,14 @@ virtual routing metadata and the descriptor. It grants nothing and opens no conn
 operator owns the private ingress socket path, node binding, credentials and exact
 service/revision/operation/effect grants.
 
+`transcript.read` answers a bounded window of a session's conversation — the newest `tail`,
+everything after a `cursor`, or a page `before` a line — with the same builder and the same cursor
+the `transcript` command uses, so a consumer pages through one conversation rather than two views of
+it. It exists because a consumer watching several conversations was paying a process launch per
+question; the read itself costs its window rather than the file (see the transcript index), and this
+removes what was left. The window is bounded in the request schema, so an over-large ask is refused
+by name instead of by a transport size error after the work is done.
+
 The descriptor declares the current operations and their individual byte/deadline budgets. A remote wait is capped
 at 25 seconds inside a 30-second service deadline. Service delivery is never retried by the owner
 client. If transport delivery is unknown, the caller retains that uncertainty. An idempotent

@@ -66,6 +66,8 @@ import {
   ControlRunCommandSchema,
   ControlSnapshotSchema,
   ControlTargetSchema,
+  ControlTranscriptReadSchema,
+  ControlTranscriptResultSchema,
   ControlWaitResultSchema,
   ControlWaitSchema,
 } from './schema.ts';
@@ -103,6 +105,15 @@ export const controlContract = defineContract(
       input: MessageOperationReadSchema,
       output: MessageOperationResultSchema,
       idempotent: true,
+    },
+    transcript: {
+      method: 'POST',
+      path: '/transcript',
+      desc: 'Read a bounded transcript window with the cursor a caller pages by',
+      input: ControlTranscriptReadSchema,
+      output: ControlTranscriptResultSchema,
+      idempotent: true,
+      timeout: 7_000,
     },
     history: {
       method: 'POST',

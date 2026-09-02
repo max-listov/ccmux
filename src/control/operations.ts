@@ -82,11 +82,13 @@ import type {
   ControlRewindSchema,
   ControlRunCommandSchema,
   ControlTargetSchema,
+  ControlTranscriptReadSchema,
   ControlWaitSchema,
 } from './schema.ts';
 import { readControlSelection, updateControlSelection } from './selection.ts';
 import type { SelectionReadSchema, SelectionUpdateSchema } from './selectionSchema.ts';
 import { controlTarget } from './target.ts';
+import { readControlTranscript } from './transcript.ts';
 
 type TargetInput = z.output<typeof ControlTargetSchema>;
 type CreateInput = z.output<typeof ControlCreateSchema>;
@@ -168,6 +170,13 @@ export function createControlOperations(
       input: z.output<typeof MessageOperationReadSchema>,
       principal: ChatPrincipal,
     ) => readMessageOperation(m, ChatPrincipalSchema.parse(principal), input),
+    transcript: (input: z.output<typeof ControlTranscriptReadSchema>, signal?: AbortSignal) =>
+      reads
+        .run(undefined, () => Promise.resolve(readControlTranscript(m, input)), {
+          ...(signal ? { signal } : {}),
+          timeoutMs: 6_000,
+        })
+        .catch(controlRefusal),
     history: (input: z.output<typeof ControlHistoryReadSchema>, signal?: AbortSignal) =>
       reads
         .run(undefined, ({ signal: admitted }) => readControlHistory(m, input, admitted), {

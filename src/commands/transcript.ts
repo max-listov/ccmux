@@ -4,7 +4,7 @@ import { providerFor, readTranscript } from '../agent/index.ts';
 import { rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import type { TranscriptJson, TranscriptMessage } from '../types.ts';
+import type { MachineConfig, Session, TranscriptJson, TranscriptMessage } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
 
@@ -126,14 +126,38 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     console.log(last);
     return 0;
   }
-  const readOpts: { tail: number; cursor?: number; before?: number; limit?: number } = {
-    tail: o.tail,
-  };
+  const readOpts: TranscriptWindow = { tail: o.tail };
   if (o.cursor !== undefined) readOpts.cursor = o.cursor;
   if (o.before !== undefined) readOpts.before = o.before;
   if (o.limit !== undefined) readOpts.limit = o.limit;
-  const read = readTranscript(s, m, readOpts);
-  const out: TranscriptJson = {
+  await printLine(JSON.stringify(transcriptJson(m, s, readOpts)));
+  return 0;
+}
+
+/** What a caller asks for: the newest `tail`, everything after a `cursor`, or a page `before` a
+ *  line. The same three the command line accepts, because they are the same question. */
+export interface TranscriptWindow {
+  tail: number;
+  cursor?: number;
+  before?: number;
+  limit?: number;
+  textLimit?: number;
+}
+
+/**
+ * One session's transcript window as the published answer.
+ *
+ * Built here for both the command and the control service, because two builders of the same answer
+ * drift — and this one carries the cursor a consumer hands back, so a drift between them would be a
+ * consumer paging through a slightly different conversation depending on how it asked.
+ */
+export function transcriptJson(
+  m: MachineConfig,
+  s: Session,
+  window: TranscriptWindow,
+): TranscriptJson {
+  const read = readTranscript(s, m, window);
+  return {
     version: VERSION,
     generatedAt: new Date().toISOString(),
     session: { name: s.name, uuid: s.uuid, rc: rcName(m, s.name), dir: s.dir, machine: m.rcPrefix },
@@ -157,6 +181,4 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     stats: read.stats,
     messages: read.messages,
   };
-  await printLine(JSON.stringify(out));
-  return 0;
 }

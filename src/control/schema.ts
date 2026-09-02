@@ -14,6 +14,7 @@ import {
   ModelSelectionSchema,
   NativeSessionSchema,
   SESSION_NAME_RE,
+  TranscriptJsonSchema,
 } from '../config/schema.ts';
 import { ContentCursorSchema, ContentReadSchema } from '../content/schema.ts';
 import {
@@ -179,6 +180,28 @@ export const ControlArchiveReceiptSchema = z
   })
   .strict();
 export type ControlArchiveReceipt = z.infer<typeof ControlArchiveReceiptSchema>;
+/**
+ * A transcript window asked for over the control plane.
+ *
+ * The same three questions the command line accepts — the newest `tail`, everything after a
+ * `cursor`, a page `before` a line — because they are the same question, and a second vocabulary
+ * for it would mean two ways to page through one conversation.
+ *
+ * Bounded here rather than downstream: this answer travels a response budget, and a caller asking
+ * for two thousand messages at full text would be refused by the transport with a size error that
+ * says nothing about what to ask for instead.
+ */
+export const ControlTranscriptReadSchema = ControlTargetSchema.extend({
+  tail: z.number().int().min(1).max(200).default(120),
+  cursor: z.number().int().nonnegative().nullable().default(null),
+  before: z.number().int().positive().nullable().default(null),
+  limit: z.number().int().min(1).max(200).nullable().default(null),
+  textLimit: z.number().int().min(1).max(8_192).nullable().default(null),
+}).strict();
+export const ControlTranscriptResultSchema = TranscriptJsonSchema.extend(
+  ControlTargetSchema.shape,
+).strict();
+
 export const ControlNativeCursorSchema = ContentCursorSchema;
 export const ControlNativeReadSchema = ControlTargetSchema.extend({
   cursor: ControlNativeCursorSchema.nullable().default(null),

@@ -28,6 +28,7 @@ export function controlServices(
     externalCapabilities: ({ input, signal }) => operations.externalCapabilities(input, signal),
     messageOperation: ({ input, principal }) =>
       operations.messageOperation(input, ChatPrincipalSchema.parse(principal)),
+    transcript: ({ input, signal }) => operations.transcript(input, signal),
     history: ({ input, signal }) => operations.history(input, signal),
     compact: ({ input, signal }) => operations.compact(input, signal),
     contextOperation: ({ input }) => operations.contextOperation(input),

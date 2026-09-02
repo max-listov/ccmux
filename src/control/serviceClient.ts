@@ -53,6 +53,8 @@ import {
   ControlNativeSnapshotSchema,
   ControlRowSchema,
   ControlTargetSchema,
+  ControlTranscriptReadSchema,
+  ControlTranscriptResultSchema,
   ControlWaitResultSchema,
 } from './schema.ts';
 import {
@@ -157,6 +159,16 @@ export const ccmuxControlServiceContract = defineContract(
       output: serviceReply(MessageOperationResultSchema),
       idempotent: true,
       meta: { effect: controlServiceEffects['message.operation'] },
+    },
+    transcript: {
+      method: 'POST',
+      path: '/transcript.read',
+      desc: 'Read a bounded transcript window with the cursor a caller pages by',
+      input: ControlTranscriptReadSchema,
+      output: serviceReply(ControlTranscriptResultSchema),
+      idempotent: true,
+      timeout: 7_000,
+      meta: { effect: controlServiceEffects['transcript.read'] },
     },
     history: {
       method: 'POST',

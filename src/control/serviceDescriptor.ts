@@ -93,6 +93,14 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
       limits: { requestBytes: 16 * 1024, responseBytes: 384 * 1024, timeoutMs: 7000 },
     },
     {
+      id: 'transcript.read',
+      effect: controlServiceEffects['transcript.read'],
+      // A request is a target and four numbers; an answer is a bounded window of messages, and the
+      // input schema caps it at two hundred at eight kilobytes of text — which is the ceiling this
+      // budget has to hold, not a guess about typical size.
+      limits: { requestBytes: 4 * 1024, responseBytes: 384 * 1024, timeoutMs: 7000 },
+    },
+    {
       id: 'context.compact',
       effect: controlServiceEffects['context.compact'],
       limits: { requestBytes: 8192, responseBytes: 8192, timeoutMs: 5000 },
