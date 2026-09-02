@@ -5,7 +5,7 @@ test('msg --help and the arg-error usage share ONE source (all flags visible)', 
   const help = helpText('msg') ?? '';
   const usage = usageLine('msg');
   // the exact 0.1.16 defect: --help must no longer hide the flags the error text showed
-  for (const flag of ['--task', '--defer', '--after', '--on-behalf-of', 'cancel']) {
+  for (const flag of ['--task', '--interrupt', '--after', '--on-behalf-of', 'cancel']) {
     expect(help).toContain(flag);
     expect(usage).toContain(flag);
   }

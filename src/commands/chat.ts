@@ -283,7 +283,7 @@ export async function cmdChat(args: string[]): Promise<number> {
     console.log(`${name}: chat ${state} — applies on: ccmux restart ${name}`);
     if (sub === 'on' || (sub === 'default' && m.chatEnabled)) {
       console.log(
-        `  then: ccmux msg ${name} "…" --task <name>   ·   --defer waits for its turn to end`,
+        `  then: ccmux msg ${name} "…" --task <name>   ·   mail waits for its turn to end`,
       );
       console.log(`  restarting the whole fleet at once: ccmux restart --all`);
     }

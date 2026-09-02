@@ -34,7 +34,12 @@ export function buildEnvelope(
     notification: to.kind === 'owner' || to.kind === 'external' ? 'owner' : 'conversation',
     body,
     task: opts?.task ?? null,
-    defer: opts?.defer ?? false,
+    // Waiting for the turn boundary is the DEFAULT, not a sender's courtesy. Typed input reaches a
+    // working agent as steering: it lands inside the turn and redirects it, so a peer's routine
+    // message — a status, an answer, a question — cut across work nobody asked it to interrupt.
+    // Whether an interruption is warranted is not the sender's to judge from the outside; it is
+    // opt-in (`--interrupt`), and the recipient's own turn boundary is the default arrival time.
+    defer: opts?.defer ?? true,
     onBehalfOf: opts?.onBehalfOf ?? null,
     notBefore: opts?.notBefore ?? null,
   });

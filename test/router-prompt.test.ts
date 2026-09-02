@@ -20,7 +20,10 @@ test('the router protocol pins its load-bearing clauses (versioned + testable)',
   });
   const p = proto ?? '';
   expect(p).toContain('ROUTER MODE');
-  expect(p).toContain('ccmux msg <target> --defer --on-behalf-of owner'); // the ONLY delivery path
+  expect(p).toContain('ccmux msg <target> --on-behalf-of owner'); // the ONLY delivery path
+  // Arrival at the turn boundary is the default now, so the router must not be taught a flag for it
+  // — a prompt naming a flag that no longer exists teaches an error and gets one back.
+  expect(p).not.toContain('--defer');
   expect(p).toContain('when done, report back'); // reply footer
   expect(p).toContain('done-criterion'); // objective validation
   expect(p).toMatch(/at most twice/i); // retry cap

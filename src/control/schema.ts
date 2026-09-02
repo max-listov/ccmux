@@ -100,7 +100,12 @@ export const ControlMessageSchema = ControlTargetSchema.extend({
   body: z.string().trim().max(16_384).default(''),
   images: AttachmentReferencesSchema.default([]),
   options: NativeTurnOptionsSchema.optional(),
-  defer: z.boolean().default(false),
+  /**
+   * Wait for the recipient's turn boundary. TRUE by default: typed input reaches a working agent as
+   * steering — it lands inside the turn and redirects it — so a routine message would cut across
+   * work nobody asked it to interrupt. Set false only to break in deliberately.
+   */
+  defer: z.boolean().default(true),
   notBefore: z.iso.datetime().nullable().default(null),
   task: z.string().max(256).nullable().default(null),
 })

@@ -120,19 +120,19 @@ test('dedup replace only fires with a --task — same target, no task, keeps bot
   ).toBe(2);
 });
 
-test('--after + --defer prints the trap note but still sends', async () => {
+test('--after + --interrupt prints the trap note but still sends', async () => {
   const { cfgPath, m } = setup();
   const { code, out } = await runMsg(cfgPath, 'router', [
     'worker',
     '--after',
     '600',
-    '--defer',
+    '--interrupt',
     '--task',
     't3',
     'both',
   ]);
   expect(code).toBe(0);
-  expect(out).toContain('--after with --defer');
+  expect(out).toContain('--after with --interrupt');
   expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't3' }).length).toBe(1);
 });
 

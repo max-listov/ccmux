@@ -50,7 +50,16 @@ The human selector is the exact `<machine>:<session>` address. At send time it r
 endpoint, so reusing a name cannot redirect mail. A bare session name means the current machine only.
 ccmux owns the registry, tmux persistence, daemon self-heal, transcript adapter, wait state, and
 managed routing identity for these sessions. Both Claude and Codex expose provider-owned structured
-pane inspection. Claude keeps its verified queue-while-working behavior. Codex delivers only through
+pane inspection.
+
+**Mail arrives at the recipient's turn boundary.** Typed input reaches a working Claude session as
+steering: it lands inside the running turn and redirects it, so a peer's routine message — a status,
+an answer, a question — cut across work nobody had asked it to interrupt. Whether an interruption is
+warranted is not the sender's to judge from outside the recipient's work, so it is opt-in
+(`msg --interrupt`) and the boundary is the default arrival time. A session that is already between
+turns receives at once: waiting is a property of the recipient's state, not a delay. The Stop hook
+delivers at the instant a turn ends, so the wait costs a moment rather than a poll interval, and
+`inbox` names the gate a held letter is waiting on. Codex delivers only through
 a structurally proven idle composer; working, queued input, partial input, selection/approval menus,
 startup, reconnect, and unknown frames all hold fail-closed with an explicit reason. Pane input is
 gated across the final inspection and one atomic paste+submit command queue, so a client keystroke

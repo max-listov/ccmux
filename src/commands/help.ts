@@ -104,8 +104,8 @@ export const COMMANDS: HelpEntry[] = [
   },
   {
     verb: 'msg',
-    args: '<to|machine:to|app/UUID|machine:app/UUID|owner> <text...> [--to-agent claude|codex|opencode] [--to-thread UUID] [--task X] [--defer] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>',
-    desc: "chat a managed session, an exact Codex App thread, or 'owner'; --to-agent/--to-thread pin replies; --defer holds until turn end, --after N is a timer",
+    args: '<to|machine:to|app/UUID|machine:app/UUID|owner> <text...> [--to-agent claude|codex|opencode] [--to-thread UUID] [--task X] [--interrupt] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>',
+    desc: "chat a managed session, an exact Codex App thread, or 'owner'; --to-agent/--to-thread pin replies; mail ARRIVES AT THE RECIPIENT'S TURN BOUNDARY by default (an idle session gets it at once) — --interrupt breaks into a running turn instead, --after N is a timer",
     note: "sender is automatic and verified: managed session, exact App thread, or 'cli'",
     example:
       "ccmux msg dev:app/4e117aea-… 'build is green' --to-agent codex --to-thread 4e117aea-…",

@@ -19,7 +19,7 @@ import type { ChatMessage, MachineConfig, Session } from '../types.ts';
  * The point is to replace "poll `ccmux list` in a loop and eyeball it": a script (or a person, or an
  * orchestrating agent) can just wait for the agent to be done.
  *
- * "Done" is the one condition deferred-chat delivery uses (`turnState`), so `wait` and `msg --defer`
+ * "Done" is the one condition deferred-chat delivery uses (`turnState`), so `wait` and chat delivery
  * can never disagree about what "between turns" means. It covers the case a turn-ended test alone
  * cannot: a turn that was KILLED (restart or interrupt mid-work) never produces the ending it would
  * be waiting for, so `wait` used to run to its timeout on a session that was plainly idle. Both

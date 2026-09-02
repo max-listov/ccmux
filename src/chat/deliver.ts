@@ -59,6 +59,15 @@ import { assistantEndedCurrentTurn, type TurnState, turnState, WHY_TEXT } from '
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
 const MAX_PER_PASS = 20;
 
+/**
+ * How many waiting letters are handed over at once, and how much text that may be.
+ *
+ * Bounded because a session that was busy for an hour must not come back to a wall: the rest stay
+ * queued and arrive at the next boundary, which is the same promise repeated rather than a new one.
+ */
+const MAX_BATCH = 8;
+const MAX_BATCH_BYTES = 16_000;
+
 // Loop/rate guard: hold delivery once a recipient has received more than this many messages within
 // the rolling window. A runaway A→B→A ping-pong inflates BOTH sides' inbound rate → both pause →
 // the loop breaks. Generous for a "phone call" channel; a genuine burst just spreads over time.
@@ -86,17 +95,26 @@ export function recentInboundCount(
 async function deliverToPane(
   m: MachineConfig,
   name: string,
-  msg: ChatMessage,
+  batch: readonly ChatMessage[],
   provider: AgentProvider,
   beforeSubmit: () => Promise<void>,
 ): Promise<{ submitted: boolean; hold: string | null }> {
-  // Whether a reply would actually reach the sender is asked of the SAME resolver `msg` delivers
-  // with — never re-derived here from one transport's map, which is how a live wire route came to be
-  // announced as "no route back" while it was carrying mail.
-  const text = formatChatInjection(msg, {
-    cli: promptInvocation(),
-    reply: replyRouteToSender(m, msg.from),
-  });
+  // Whether a reply would actually reach the sender is asked of the SAME resolver each message
+  // delivers with — never re-derived here from one transport's map, which is how a live wire route
+  // came to be announced as "no route back" while it was carrying mail.
+  //
+  // Several letters that waited out one turn arrive as ONE turn. Two peers writing to a busy session
+  // used to produce two injections, and the second landed inside the turn the first had just
+  // started — the recipient was interrupted by its own mail. Each keeps its own header, so who wrote
+  // what and how to answer each of them is unchanged; only the number of turns is.
+  const text = batch
+    .map((msg) =>
+      formatChatInjection(msg, {
+        cli: promptInvocation(),
+        reply: replyRouteToSender(m, msg.from),
+      }),
+    )
+    .join('\n\n');
   const buffer = await loadPasteBuffer(m, text);
   if (buffer === null) return { submitted: false, hold: null };
   let inputDisabled = false;
@@ -113,7 +131,9 @@ async function deliverToPane(
       };
     }
     await beforeSubmit();
-    const submitted = await submitPasteBuffer(m, name, buffer, msg.id);
+    // The first letter's id is the submission's identity: it is the one the pickup proof and the
+    // hold record are keyed on, and a batch is delivered or not delivered as a whole.
+    const submitted = await submitPasteBuffer(m, name, buffer, batch[0]?.id ?? name);
     if (submitted) inputDisabled = false; // submit's first queued command re-enabled the pane
     return { submitted, hold: null };
   } finally {
@@ -245,6 +265,32 @@ export function armTranscriptPickup(
   }
 }
 
+/**
+ * Every letter now waiting for this recipient's boundary, in the order they were written.
+ *
+ * The first one is what the gates above were decided on; these are the others that would otherwise
+ * each cost the recipient a separate turn — and the second of them would land INSIDE the turn the
+ * first had just started, which is the interruption this whole path exists to avoid.
+ */
+export function coalesce(
+  ledger: readonly LedgerSlot[],
+  recipientKey: string,
+  acked: ReadonlySet<string>,
+  now: number,
+): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  let bytes = 0;
+  for (const msg of ledger) {
+    if (msg === null || msg.to.kind !== 'managed' || managedPeerKey(msg.to) !== recipientKey)
+      continue;
+    if (!isConditional(msg) || acked.has(msg.id) || !notBeforeDue(msg, now)) continue;
+    bytes += Buffer.byteLength(msg.body);
+    if (out.length >= MAX_BATCH || (out.length > 0 && bytes > MAX_BATCH_BYTES)) break;
+    out.push(msg);
+  }
+  return out;
+}
+
 /** A message is CONDITIONAL — delivered off the in-order cursor, tracked by id — when it is deferred
  *  or carries a notBefore. Everything else is IMMEDIATE and flows through the monotonic cursor. This
  *  split is what lets a future-dated watchdog (or a held defer) NOT head-of-line-block an immediate
@@ -326,7 +372,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
           continue;
         const activeMessage = ledger.find((slot) => slot?.id === activePickup.messageId);
         if (activeMessage === null || activeMessage === undefined) continue;
-        const retry = await deliverToPane(m, s.name, activeMessage, provider, async () => {});
+        const retry = await deliverToPane(m, s.name, [activeMessage], provider, async () => {});
         if (!retry.submitted) {
           if (retry.hold !== null) await writeChatHold(s.name, activeMessage.id, retry.hold);
           continue;
@@ -450,7 +496,14 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     if (isConditional(pick.msg) && loadAckedIds(m).has(pick.msg.id)) continue;
 
     const transcriptPickup = provider.chatPickup === 'transcript';
-    const delivery = await deliverToPane(m, s.name, pick.msg, provider, async () => {
+    // Everything else that has been waiting for this same boundary travels with it. Not on the
+    // transcript-pickup path: there delivery is proved by one message id appearing in the
+    // transcript, and a batch has no single id to prove.
+    const batch =
+      isConditional(pick.msg) && !transcriptPickup
+        ? coalesce(ledger, recipientKey, acked, now)
+        : [pick.msg];
+    const delivery = await deliverToPane(m, s.name, batch, provider, async () => {
       if (!transcriptPickup) return;
       armTranscriptPickup(cursors, recipientKey, pick, new Date(now).toISOString());
       await saveCursors(m, cursors);
@@ -470,7 +523,9 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
       // Cursor + exact barrier were persisted together before the atomic pane submission. Completion
       // clears the barrier only after transcript answer + structural settle.
     } else if (isConditional(pick.msg)) {
-      appendAck(m, pick.msg.id, 'daemon', recipient); // off-cursor; dedup vs the Stop hook
+      // Every letter in the batch was typed, so every one of them is acked. Acking only the first
+      // would deliver the rest a second time on the next pass.
+      for (const msg of batch) appendAck(m, msg.id, 'daemon', recipient); // dedup vs the Stop hook
     } else {
       cursors.delivered[recipientKey] = pick.idx + 1;
       // mark read so `ccmux inbox` won't re-show a pushed message

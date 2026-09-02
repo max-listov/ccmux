@@ -68,13 +68,7 @@ async function runMsg(
 
 test('a router session MAY relay --on-behalf-of owner', async () => {
   const { cfgPath, m } = setup();
-  const code = await runMsg(cfgPath, 'router', [
-    'worker',
-    '--defer',
-    '--on-behalf-of',
-    'owner',
-    'do X',
-  ]);
+  const code = await runMsg(cfgPath, 'router', ['worker', '--on-behalf-of', 'owner', 'do X']);
   expect(code).toBe(0);
   const led = loadLedger(m);
   expect(led.at(-1)).toMatchObject({

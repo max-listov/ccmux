@@ -311,7 +311,8 @@ export async function cmdReceiveChat(
 export async function cmdMsg(args: string[], transport?: RemoteTransport | null): Promise<number> {
   const positionals: string[] = [];
   let task: string | null = null;
-  let defer = false;
+  // Deferred unless the sender explicitly asks to break in: see `buildEnvelope`.
+  let defer = true;
   let onBehalfOf: string | null = null;
   let afterSec: number | null = null;
   let expectedAgent: AgentKind | null = null;
@@ -319,7 +320,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   for (let index = 0; index < args.length; index++) {
     const value = args[index];
     if (value === '--task') task = args[++index] ?? null;
-    else if (value === '--defer') defer = true;
+    else if (value === '--interrupt') defer = false;
     else if (value === '--on-behalf-of') onBehalfOf = args[++index] ?? null;
     else if (value === '--to-agent') {
       const parsed = AgentKindSchema.safeParse(args[++index]);
@@ -392,9 +393,9 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     }
   }
   const notBefore = afterSec === null ? null : new Date(Date.now() + afterSec * 1000).toISOString();
-  if (afterSec !== null && defer) {
+  if (afterSec !== null && !defer) {
     console.log(
-      "msg: note — --after with --defer only arrives at the recipient's next turn boundary; a self-watchdog should use bare --after",
+      'msg: note — --after with --interrupt fires into whatever the recipient is doing when it comes due',
     );
   }
   if (targetToken === OWNER) {
@@ -404,7 +405,8 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     }
     appendMessage(
       machine,
-      buildEnvelope(from, ownerTarget(), body, { task, defer, onBehalfOf, notBefore }),
+      // The owner has no turn to wait for, so the default deferral is meaningless here.
+      buildEnvelope(from, ownerTarget(), body, { task, defer: false, onBehalfOf, notBefore }),
     );
     warnAboutAnonymousRemote(from, senderTransport);
     console.log(`sent ${principalLabel(from)} → owner: ${preview(body)}`);
@@ -416,9 +418,9 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.error('msg: an owner outside the fleet has no provider/thread');
       return 1;
     }
-    if (defer || notBefore !== null) {
+    if (notBefore !== null) {
       console.error(
-        'msg: --defer/--after wait for a turn boundary; there is no turn on the other side of a human',
+        'msg: --after waits for a turn boundary; there is no turn on the other side of a human',
       );
       return 1;
     }
@@ -452,8 +454,11 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     return 1;
   }
   if (route.kind === 'remote') {
-    if (defer || notBefore !== null) {
-      console.error('msg: --defer/--after are local-only');
+    // A delay is timed against THIS machine's clock and delivered by THIS machine's daemon, neither
+    // of which owns the recipient. Waiting for a turn boundary is different: it travels in the
+    // envelope and the peer's own daemon applies it, which is why only the delay is refused.
+    if (notBefore !== null) {
+      console.error('msg: --after is local-only');
       return 1;
     }
     const resolved = isCodexAppToken(route.session)
@@ -468,7 +473,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.error(`msg: ${mismatch}`);
       return 1;
     }
-    const envelope = buildEnvelope(from, resolved, body, { task, onBehalfOf });
+    const envelope = buildEnvelope(from, resolved, body, { task, defer, onBehalfOf });
     const result = await runPeer(
       machine,
       route.machine,
@@ -528,7 +533,11 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.error(`msg: ${mismatch}`);
       return 1;
     }
-    if ((defer || notBefore !== null) && task !== null) {
+    // Replace-on-task belongs to TIMERS, not to ordinary mail. A re-armed watchdog means "forget the
+    // previous alarm"; two letters under one task name do not mean "forget the first one". Now that
+    // waiting for a turn boundary is the default, keying this on deferral would silently eat a
+    // message whose only sin was arriving while the recipient was busy.
+    if (notBefore !== null && task !== null) {
       const prior = pendingConditional(loadLedger(machine), loadAckedIds(machine), {
         from,
         to: target,
