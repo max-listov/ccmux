@@ -29,126 +29,140 @@ export async function acceptControlMessage(
   const input = ControlMessageSchema.parse(request);
   const target = controlTarget(m, input.target);
   const accept = () =>
-    withSessionRegistryLock(m, async () => {
-      signal.throwIfAborted();
-      const session = controlTarget(m, input.target);
-      if (
-        input.registrationGeneration !== undefined &&
-        input.registrationGeneration !== session.registrationGeneration
-      )
-        throw new AppError(
-          'IDENTITY_MISMATCH',
-          'The exact managed registration is unavailable',
-          409,
-        );
-      const notification = input.notification ?? 'conversation';
-      const origin = admitMessageOrigin(m, from, input.origin, notification);
-      if (!chatEnabledFor(session, m) || !supportsManagedInput(session)) {
-        throw new AppError('CHAT_DISABLED', 'Target cannot receive managed messages', 409);
-      }
-      const fingerprint = createHash('sha256').update(stableJson(input)).digest('hex');
-      const prior = loadLedger(m).find((item) => item?.id === input.messageId);
-      if (prior) {
+    withSessionRegistryLock(
+      m,
+      async () => {
+        signal.throwIfAborted();
+        const session = controlTarget(m, input.target);
         if (
-          !samePrincipal(prior.from, from) ||
-          !sameTarget(prior.to, input.target) ||
-          prior.body !== input.body ||
-          prior.defer !== input.defer ||
-          prior.notBefore !== input.notBefore ||
-          prior.task !== input.task ||
-          prior.onBehalfOf !== null ||
-          (prior.origin !== undefined && stableJson(prior.origin) !== stableJson(origin)) ||
-          (prior.notification !== undefined && prior.notification !== notification) ||
-          (prior.controlFingerprint !== undefined
-            ? prior.controlFingerprint !== fingerprint
-            : input.images.length > 0 || input.options !== undefined)
-        ) {
+          input.registrationGeneration !== undefined &&
+          input.registrationGeneration !== session.registrationGeneration
+        )
           throw new AppError(
-            'IDEMPOTENCY_CONFLICT',
-            'Message ID already belongs to a different request',
+            'IDENTITY_MISMATCH',
+            'The exact managed registration is unavailable',
             409,
           );
+        const notification = input.notification ?? 'conversation';
+        const origin = admitMessageOrigin(m, from, input.origin, notification);
+        if (!chatEnabledFor(session, m) || !supportsManagedInput(session)) {
+          throw new AppError('CHAT_DISABLED', 'Target cannot receive managed messages', 409);
         }
-        if (hasNativeRuntime(session)) advanceMessageOperation(m, session, prior.id, 'queued');
-        return {
-          messageId: prior.id,
-          origin: prior.origin ?? unknownMessageOrigin(),
-          notification: prior.notification ?? 'conversation',
-          registrationGeneration: prior.registrationGeneration ?? null,
-          accepted: true as const,
-          duplicate: true,
-          turnOptions: prior.turnOptions ?? null,
-        };
-      }
-      if (!hasNativeRuntime(session) && (input.images.length > 0 || input.options !== undefined))
-        throw new AppError('UNSUPPORTED', 'This runtime cannot accept structured turn input', 409);
-      // A declared capability nobody checks is worse than no capability: images were admitted for
-      // every native runtime, pinned, receipted as accepted, and then dropped by a runtime that
-      // never reads them. The caller saw success and the model never saw the image.
-      if (input.images.length > 0 && !runtimeCapabilities(session).imageInput)
-        throw new AppError('UNSUPPORTED', 'This runtime cannot accept image input', 409);
-      if (hasNativeRuntime(session)) assertNoContextMutation(m, session);
-      const selection = hasNativeRuntime(session)
-        ? await currentSelection(m, session, signal)
-        : undefined;
-      const turnOptions =
-        selection === undefined
-          ? undefined
-          : { revision: selection.revision, options: input.options ?? selection.options };
-      if (turnOptions !== undefined)
-        await validateTurnOptions(m, session, turnOptions.options, signal, input.images.length > 0);
-      const envelope = {
-        ...buildEnvelope(from, input.target, input.body, {
-          defer: input.defer,
-          notBefore: input.notBefore,
-          task: input.task,
-        }),
-        id: input.messageId,
-        origin,
-        notification,
-        ...(session.registrationGeneration === undefined
-          ? {}
-          : { registrationGeneration: session.registrationGeneration }),
-        controlFingerprint: fingerprint,
-        ...(turnOptions === undefined ? {} : { turnOptions }),
-        ...(input.images.length === 0 ? {} : { images: input.images }),
-      };
-      signal.throwIfAborted();
-      const append = async () => {
-        if (hasNativeRuntime(session))
-          prepareMessageOperation(m, session, from, input.messageId, fingerprint);
-        const appended = await appendMessageOnce(m, envelope, signal);
-        if (appended && hasNativeRuntime(session))
-          advanceMessageOperation(m, session, input.messageId, 'queued');
-        return appended;
-      };
-      const appended =
-        input.images.length === 0
-          ? await append()
-          : await withPinnedAttachments(
-              m,
-              from,
-              input.target,
-              input.messageId,
-              input.images,
-              append,
-              signal,
+        const fingerprint = createHash('sha256').update(stableJson(input)).digest('hex');
+        const prior = loadLedger(m).find((item) => item?.id === input.messageId);
+        if (prior) {
+          if (
+            !samePrincipal(prior.from, from) ||
+            !sameTarget(prior.to, input.target) ||
+            prior.body !== input.body ||
+            prior.defer !== input.defer ||
+            prior.notBefore !== input.notBefore ||
+            prior.task !== input.task ||
+            prior.onBehalfOf !== null ||
+            (prior.origin !== undefined && stableJson(prior.origin) !== stableJson(origin)) ||
+            (prior.notification !== undefined && prior.notification !== notification) ||
+            (prior.controlFingerprint !== undefined
+              ? prior.controlFingerprint !== fingerprint
+              : input.images.length > 0 || input.options !== undefined)
+          ) {
+            throw new AppError(
+              'IDEMPOTENCY_CONFLICT',
+              'Message ID already belongs to a different request',
+              409,
             );
-      if (!appended)
-        throw new AppError(
-          'IDEMPOTENCY_CONFLICT',
-          'Message identity changed during acceptance; reconcile before retry',
-          409,
-        );
-      return {
-        messageId: envelope.id,
-        origin,
-        notification,
-        registrationGeneration: envelope.registrationGeneration ?? null,
-        accepted: true as const,
-        duplicate: false,
-        turnOptions: envelope.turnOptions ?? null,
-      };
-    });
+          }
+          if (hasNativeRuntime(session)) advanceMessageOperation(m, session, prior.id, 'queued');
+          return {
+            messageId: prior.id,
+            origin: prior.origin ?? unknownMessageOrigin(),
+            notification: prior.notification ?? 'conversation',
+            registrationGeneration: prior.registrationGeneration ?? null,
+            accepted: true as const,
+            duplicate: true,
+            turnOptions: prior.turnOptions ?? null,
+          };
+        }
+        if (!hasNativeRuntime(session) && (input.images.length > 0 || input.options !== undefined))
+          throw new AppError(
+            'UNSUPPORTED',
+            'This runtime cannot accept structured turn input',
+            409,
+          );
+        // A declared capability nobody checks is worse than no capability: images were admitted for
+        // every native runtime, pinned, receipted as accepted, and then dropped by a runtime that
+        // never reads them. The caller saw success and the model never saw the image.
+        if (input.images.length > 0 && !runtimeCapabilities(session).imageInput)
+          throw new AppError('UNSUPPORTED', 'This runtime cannot accept image input', 409);
+        if (hasNativeRuntime(session)) assertNoContextMutation(m, session);
+        const selection = hasNativeRuntime(session)
+          ? await currentSelection(m, session, signal)
+          : undefined;
+        const turnOptions =
+          selection === undefined
+            ? undefined
+            : { revision: selection.revision, options: input.options ?? selection.options };
+        if (turnOptions !== undefined)
+          await validateTurnOptions(
+            m,
+            session,
+            turnOptions.options,
+            signal,
+            input.images.length > 0,
+          );
+        const envelope = {
+          ...buildEnvelope(from, input.target, input.body, {
+            defer: input.defer,
+            notBefore: input.notBefore,
+            task: input.task,
+          }),
+          id: input.messageId,
+          origin,
+          notification,
+          ...(session.registrationGeneration === undefined
+            ? {}
+            : { registrationGeneration: session.registrationGeneration }),
+          controlFingerprint: fingerprint,
+          ...(turnOptions === undefined ? {} : { turnOptions }),
+          ...(input.images.length === 0 ? {} : { images: input.images }),
+        };
+        signal.throwIfAborted();
+        const append = async () => {
+          if (hasNativeRuntime(session))
+            prepareMessageOperation(m, session, from, input.messageId, fingerprint);
+          const appended = await appendMessageOnce(m, envelope, signal);
+          if (appended && hasNativeRuntime(session))
+            advanceMessageOperation(m, session, input.messageId, 'queued');
+          return appended;
+        };
+        const appended =
+          input.images.length === 0
+            ? await append()
+            : await withPinnedAttachments(
+                m,
+                from,
+                input.target,
+                input.messageId,
+                input.images,
+                append,
+                signal,
+              );
+        if (!appended)
+          throw new AppError(
+            'IDEMPOTENCY_CONFLICT',
+            'Message identity changed during acceptance; reconcile before retry',
+            409,
+          );
+        return {
+          messageId: envelope.id,
+          origin,
+          notification,
+          registrationGeneration: envelope.registrationGeneration ?? null,
+          accepted: true as const,
+          duplicate: false,
+          turnOptions: envelope.turnOptions ?? null,
+        };
+      },
+      signal,
+    );
   return hasNativeRuntime(target) ? withNativeAdmission(m, target, accept) : accept();
 }

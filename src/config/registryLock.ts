@@ -120,8 +120,9 @@ function inspectAndReap(lock: string): LockVerdict {
 export async function withSessionRegistryLock<T>(
   m: MachineConfig,
   run: () => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
-  return withDirectoryLock(sessionRegistryLockPath(m), run, 'session registry');
+  return withDirectoryLock(sessionRegistryLockPath(m), run, 'session registry', TIMEOUT_MS, signal);
 }
 
 /** The same owner-aware exclusion for a fixed, caller-owned filesystem resource. */
@@ -130,12 +131,22 @@ export async function withDirectoryLock<T>(
   run: () => Promise<T>,
   label = 'directory',
   timeoutMs = TIMEOUT_MS,
+  /**
+   * The caller's cancellation, honoured WHILE WAITING for the lock.
+   *
+   * Without it a cancelled operation waits out the full timeout and only then unwinds: measured on
+   * the control plane, the caller was told its request was aborted in milliseconds while the work
+   * sat in this loop for ten seconds, holding its admission slot — so the next legitimate request
+   * for that same session queued behind a request nobody was waiting for any more.
+   */
+  signal?: AbortSignal,
 ): Promise<T> {
   const token = randomUUID();
   mkdirSync(dirname(lock), { recursive: true });
   const deadline = Date.now() + timeoutMs;
   let last: LockVerdict = { kind: 'wait', why: 'not yet examined' };
   for (;;) {
+    signal?.throwIfAborted();
     let created = false;
     try {
       mkdirSync(lock, { mode: 0o700 });

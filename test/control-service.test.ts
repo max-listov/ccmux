@@ -939,3 +939,33 @@ test('a malformed request names the fields, so it cannot be read as a refusal', 
   expect(failure.message).toContain('target.');
   expect(failure.message).not.toContain('agent-a');
 });
+
+test('a cancelled operation stops waiting for the lock instead of holding its slot', async () => {
+  const { withDirectoryLock } = await import('../src/config/registryLock.ts');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(await import('node:os').then((os) => os.tmpdir()), 'ccmux-lock-'));
+  try {
+    const lock = join(root, 'lock');
+    const held = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const holder = withDirectoryLock(lock, async () => {
+      held.resolve();
+      await release.promise;
+    });
+    await held.promise;
+    const stop = new AbortController();
+    const started = Date.now();
+    // Measured on the control plane: the caller was told its request was aborted in milliseconds
+    // while the work sat here for the full ten-second timeout, holding its admission slot — so the
+    // next legitimate request for that session queued behind one nobody was waiting for.
+    const waiter = withDirectoryLock(lock, async () => 'ran anyway', 'probe', 10_000, stop.signal);
+    setTimeout(() => stop.abort(), 100);
+    await expect(waiter).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(3_000);
+    release.resolve();
+    await holder;
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
