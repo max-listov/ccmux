@@ -37,14 +37,14 @@ async function start(threadId: string, text: string): Promise<void> {
 }
 
 async function snapshot(label: string) {
-  const process = Bun.spawn(['ccmux', 'external', '--json'], { stdout: 'pipe', stderr: 'pipe' });
-  const timer = setTimeout(() => process.kill(), 30_000);
+  const child = Bun.spawn(['ccmux', 'external', '--json'], { stdout: 'pipe', stderr: 'pipe' });
+  const timer = setTimeout(() => child.kill(), 30_000);
   try {
     const [out, err] = await Promise.all([
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
     ]);
-    if ((await process.exited) !== 0) throw new Error(`inventory command failed: ${err}`);
+    if ((await child.exited) !== 0) throw new Error(`inventory command failed: ${err}`);
     const inventory = ExternalInventoryJsonSchema.parse(JSON.parse(out));
     if (inventory.version !== VERSION)
       throw new Error('installed CLI version does not match checkout');

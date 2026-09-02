@@ -122,6 +122,29 @@ async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvid
  *  - P0-3: "fast failure" is judged by ELAPSED TIME, not exit code — the agent may
  *    exit 0 even on a resume error.
  */
+/**
+ * What actually went wrong, when the spawn error names the wrong thing.
+ *
+ * `posix_spawn` reports a missing WORKING DIRECTORY as ENOENT naming the EXECUTABLE, so the failure
+ * arrives blaming a binary that is present and runnable. Chasing that costs real time: the symlink,
+ * its target, the ELF header and a manual run all check out, because none of them is what is
+ * missing. Measured on a live session whose registered directory had been deleted — four probes
+ * before the right question got asked.
+ *
+ * Only ENOENT is reinterpreted, and only when the directory is genuinely absent. Any other failure
+ * keeps its own text: a message that confidently explains the wrong cause is worse than one that
+ * merely repeats what the system said.
+ */
+export function spawnFailureReason(
+  error: unknown,
+  name: string,
+  dir: string,
+  dirExists: boolean,
+): string {
+  if (!String(error).includes('ENOENT') || dirExists) return String(error);
+  return `its working directory does not exist: ${dir} — set one that does with \`ccmux dir ${name} <path>\``;
+}
+
 export async function cmdRun(name: string | undefined): Promise<number> {
   if (!name) {
     log.error({ msg: '_run requires a session name' });
@@ -289,10 +312,11 @@ export async function superviseReady(
       await proc.exited;
     } catch (e) {
       crashed = true;
-      log.error({ msg: 'agent spawn failed', name, agent: provider.id, err: String(e) });
+      const reason = spawnFailureReason(e, name, s.dir, existsSync(s.dir));
+      log.error({ msg: 'agent spawn failed', name, agent: provider.id, err: reason });
       // The one case where the pane would otherwise be blank: no agent ever started, so nothing
       // else will explain the emptiness to whoever attaches. A plain sentence, never JSON.
-      console.error(`ccmux: could not start ${provider.id} — ${String(e)}`);
+      console.error(`ccmux: could not start ${provider.id} — ${reason}`);
     }
 
     const elapsed = Date.now() - startedAt;

@@ -23,6 +23,7 @@ import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { hasExited } from './process-state.ts';
 
 export function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -247,14 +248,11 @@ export async function nativeImageProbe(
       await until(
         'all isolated processes exited',
         async () =>
-          [...pids].every((pid) => {
-            try {
-              process.kill(pid, 0);
-              return false;
-            } catch {
-              return true;
-            }
-          }),
+          // Not the signal probe: this script is the parent of what it just killed, and a child
+          // whose parent has not reaped it stays in the table answering that probe successfully.
+          // The wait would then run to its deadline and fail saying the processes survived cleanup,
+          // which is the opposite of what happened.
+          [...pids].every((pid) => hasExited(pid)),
         15_000,
       );
       check(

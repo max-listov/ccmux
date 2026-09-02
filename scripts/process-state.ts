@@ -15,6 +15,17 @@ import { readFileSync } from 'node:fs';
  * fallback cannot be the signal probe. A helper that fell back to `kill` was zombie-aware on one
  * platform and blind on the other, while reading as though it handled the case everywhere.
  */
+/**
+ * Cold paths only. Measured on macOS: this costs 2.67ms against 0.00029ms for `kill(pid, 0)` —
+ * roughly nine thousand times more — because there is no `/proc` and the state has to come from
+ * `ps`. That is nothing in a wait that runs a few times a second, and unacceptable in something a
+ * read path calls; the monitoring liveness check runs on every read, and a suite that reads two
+ * hundred times would pay half a second for it.
+ *
+ * Where a probe is hot, the signal test stays — and then whether a zombie is reachable there has to
+ * be answered rather than assumed: it is only reachable while the process is a CHILD of something
+ * that is not reaping it.
+ */
 export function processState(pid: number): string {
   try {
     if (process.platform === 'linux') {

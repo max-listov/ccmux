@@ -59,7 +59,7 @@ type PendingRequest = {
 };
 
 function startClient(codexHome: string) {
-  const process = Bun.spawn(['env', `CODEX_HOME=${codexHome}`, 'codex', 'app-server', '--stdio'], {
+  const child = Bun.spawn(['env', `CODEX_HOME=${codexHome}`, 'codex', 'app-server', '--stdio'], {
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -79,7 +79,7 @@ function startClient(codexHome: string) {
   const stdoutDone = (async () => {
     try {
       const decoder = new TextDecoder();
-      for await (const chunk of process.stdout) {
+      for await (const chunk of child.stdout) {
         stdoutBuffer += decoder.decode(chunk, { stream: true });
         while (true) {
           const newline = stdoutBuffer.indexOf('\n');
@@ -114,12 +114,11 @@ function startClient(codexHome: string) {
 
   const stderrDone = (async () => {
     const decoder = new TextDecoder();
-    for await (const chunk of process.stderr)
-      stderrBuffer += decoder.decode(chunk, { stream: true });
+    for await (const chunk of child.stderr) stderrBuffer += decoder.decode(chunk, { stream: true });
   })();
 
   function send(message: object): void {
-    process.stdin.write(`${JSON.stringify(message)}\n`);
+    child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
   function request(method: string, params: object = {}): Promise<unknown> {
@@ -146,22 +145,22 @@ function startClient(codexHome: string) {
   }
 
   async function waitForExit(timeoutMs: number): Promise<number | null> {
-    return Promise.race([process.exited, Bun.sleep(timeoutMs).then(() => null)]);
+    return Promise.race([child.exited, Bun.sleep(timeoutMs).then(() => null)]);
   }
 
   async function forceBoundedExit(): Promise<number> {
     try {
-      process.kill('SIGTERM');
+      child.kill('SIGTERM');
     } catch {
-      // The process may have already exited between the guard and kill.
+      // The child may have already exited between the guard and kill.
     }
     const terminatedCode = await waitForExit(3_000);
     if (terminatedCode !== null) return terminatedCode;
 
     try {
-      process.kill('SIGKILL');
+      child.kill('SIGKILL');
     } catch {
-      // The process may have exited after the timeout.
+      // The child may have exited after the timeout.
     }
     const killedCode = await waitForExit(3_000);
     if (killedCode === null) throw new Error('app-server did not exit after SIGKILL');
@@ -170,7 +169,7 @@ function startClient(codexHome: string) {
 
   async function stop(): Promise<void> {
     if (stopped) return;
-    process.stdin.end();
+    child.stdin.end();
     const gracefulCode = await waitForExit(5_000);
     const exitCode = gracefulCode ?? (await forceBoundedExit());
     await Promise.all([stdoutDone, stderrDone]);

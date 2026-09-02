@@ -53,7 +53,7 @@ export async function withCodexCatalogRuntime<T>(
   let drain: Promise<void> | undefined;
   let diagnostic = Buffer.alloc(0);
   try {
-    const process = Bun.spawn(
+    const spawned = Bun.spawn(
       [m.codexBin, 'app-server', '--listen', `unix://${socket}`, ...flags],
       {
         cwd,
@@ -64,16 +64,16 @@ export async function withCodexCatalogRuntime<T>(
         stderr: 'pipe',
       },
     );
-    child = process;
+    child = spawned;
     // Keep only a bounded private tail. Provider output never enters public responses or stderr logs.
     drain = (async () => {
-      for await (const bytes of process.stderr)
+      for await (const bytes of spawned.stderr)
         diagnostic = Buffer.concat([diagnostic, bytes]).subarray(-16_384);
     })();
     while (!existsSync(socket)) {
       signal.throwIfAborted();
-      if (process.exitCode !== null)
-        throw new Error(`Catalog runtime exited (${process.exitCode})`);
+      if (spawned.exitCode !== null)
+        throw new Error(`Catalog runtime exited (${spawned.exitCode})`);
       await Bun.sleep(20);
     }
     rpc = await connectCodexSocket(socket, { signal, maxMessageBytes: 2 * 1024 * 1024 });
