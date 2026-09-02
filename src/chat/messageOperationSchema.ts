@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ManagedPeerSchema } from '../config/schema.ts';
+import { ChatHoldKindSchema } from './holdKind.ts';
 
 const NativeMessageSessionSchema = z
   .object({
@@ -56,6 +57,29 @@ export const MessageOperationEvidenceSchema = z
     pendingApprovals: z.array(NativePendingApprovalSchema).max(16).default([]),
     observedAt: z.iso.datetime(),
     expiresAt: z.iso.datetime().nullable(),
+    /**
+     * Why this is still waiting, when the daemon is holding it and said so.
+     *
+     * `queued` alone answers "not yet" and nothing else, and the two situations behind it want
+     * opposite things from whoever is watching: a recipient sitting in a selection menu needs a
+     * person, and one mid-turn needs only time. A consumer with just `queued` shows the same words
+     * for both — one conversation displayed that way for twenty-two hours while its session was
+     * working normally.
+     *
+     * `kind` is the value to branch on and `text` the sentence to show; `heldForMs` counts from the
+     * FIRST hold of this same letter, so "how long has this been stuck" is a fact rather than an
+     * inference. Null means the daemon is not currently holding it — which is not the same as
+     * moving, and is why this is nullable rather than defaulted to something reassuring.
+     */
+    hold: z
+      .object({
+        kind: ChatHoldKindSchema,
+        text: z.string().max(512),
+        heldForMs: z.number().int().nonnegative(),
+      })
+      .strict()
+      .nullable()
+      .default(null),
   })
   .strict()
   .refine(

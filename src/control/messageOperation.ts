@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { readChatHold } from '../agent/sessionStatus.ts';
 import {
   MessageOperationReadSchema,
   MessageOperationResultSchema,
@@ -31,6 +32,8 @@ export function readMessageOperation(
     if (!journal || !record) return unavailable();
     if (record.expiresAt !== null && Date.parse(record.expiresAt) <= now)
       return MessageOperationResultSchema.parse({ ...input, outcome: 'expired', evidence: null });
+    // A small local read, no provider call and no pane capture: this path stays bounded metadata.
+    const hold = readChatHold(s.name);
     return MessageOperationResultSchema.parse({
       ...input,
       outcome: 'available',
@@ -42,6 +45,14 @@ export function readMessageOperation(
         pendingApprovals: record.pendingApprovals,
         observedAt: record.observedAt,
         expiresAt: record.expiresAt,
+        // Only about THIS letter. The daemon keeps one hold per recipient — the message it last
+        // tried — so stamping that reason onto any waiting letter would confidently explain one
+        // letter with another letter's evidence. A hold about something else is not evidence here,
+        // and null says "not currently held", never "moving".
+        hold:
+          hold !== null && hold.msgId === input.messageId
+            ? { kind: hold.kind, text: hold.reason.slice(0, 512), heldForMs: hold.heldForMs }
+            : null,
       },
     });
   } catch {

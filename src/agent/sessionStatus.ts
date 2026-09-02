@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { z } from 'zod';
+import { type ChatHoldKind, ChatHoldKindSchema } from '../chat/holdKind.ts';
 import type { TurnState } from '../chat/turnState.ts';
 import { STATUS_DIR } from '../config/paths.ts';
 import { atomicWrite } from '../util/atomic.ts';
@@ -40,8 +41,12 @@ export type LifecycleStatus = z.infer<typeof LifecycleStatusSchema>;
 // `msgId` is what keeps the reason ATTACHED to the message it describes: the daemon holds on ONE
 // picked message per recipient, so stamping that reason under every unread letter would confidently
 // label a deferred one "a human is typing" when the hold was about something else entirely.
+
+export type { ChatHoldKind } from '../chat/holdKind.ts';
 export const ChatHoldSchema = z.object({
   reason: z.string(),
+  /** Defaulted, because records written before this field existed carry only the prose. */
+  kind: ChatHoldKindSchema.default('other'),
   ts: z.number(),
   /** When the daemon FIRST held this same message. A hold is rewritten every pass, so `ts` only ever
    *  says "a moment ago" — which is true and useless: it is the same answer after three seconds and
@@ -149,7 +154,12 @@ export async function writeMetrics(name: string, data: MetricsStatus): Promise<v
 /** Best-effort, like every other status write here: this is bookkeeping ABOUT a delivery pass, and
  *  a failed note must never abort the pass itself (which would skip the remaining recipients and
  *  their cursor save). */
-export async function writeChatHold(name: string, msgId: string, reason: string): Promise<void> {
+export async function writeChatHold(
+  name: string,
+  msgId: string,
+  reason: string,
+  kind: ChatHoldKind = 'other',
+): Promise<void> {
   try {
     mkdirSync(STATUS_DIR, { recursive: true });
     const now = Date.now();
@@ -159,7 +169,7 @@ export async function writeChatHold(name: string, msgId: string, reason: string)
     const previous = ChatHoldSchema.safeParse(readRaw(chatHoldPath(name))).data;
     const since =
       previous !== undefined && previous.msgId === msgId ? (previous.since ?? previous.ts) : now;
-    await atomicWrite(chatHoldPath(name), JSON.stringify({ reason, ts: now, since, msgId }));
+    await atomicWrite(chatHoldPath(name), JSON.stringify({ reason, kind, ts: now, since, msgId }));
   } catch {
     // best-effort diagnostics
   }
@@ -168,12 +178,17 @@ export async function writeChatHold(name: string, msgId: string, reason: string)
 export function readChatHold(
   name: string,
   maxAgeMs = 15_000,
-): { reason: string; msgId: string | null; heldForMs: number } | null {
+): { reason: string; kind: ChatHoldKind; msgId: string | null; heldForMs: number } | null {
   const h = ChatHoldSchema.safeParse(readRaw(chatHoldPath(name))).data;
   if (h === undefined) return null;
   const now = Date.now();
   return now - h.ts <= maxAgeMs
-    ? { reason: h.reason, msgId: h.msgId, heldForMs: Math.max(0, now - (h.since ?? h.ts)) }
+    ? {
+        reason: h.reason,
+        kind: h.kind,
+        msgId: h.msgId,
+        heldForMs: Math.max(0, now - (h.since ?? h.ts)),
+      }
     : null;
 }
 

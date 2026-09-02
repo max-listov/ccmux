@@ -1,12 +1,18 @@
 import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
 import {
   type AgentProvider,
+  type ChatPaneState,
   lastActivityMs,
   lastTranscriptMessage,
   providerFor,
   readTranscript,
 } from '../agent/index.ts';
-import { clearChatHold, readLifecycle, writeChatHold } from '../agent/sessionStatus.ts';
+import {
+  type ChatHoldKind,
+  clearChatHold,
+  readLifecycle,
+  writeChatHold,
+} from '../agent/sessionStatus.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadSessions } from '../config/sessions.ts';
 import { promptInvocation } from '../env.ts';
@@ -55,6 +61,15 @@ import {
 } from './store.ts';
 import { assistantEndedCurrentTurn, type TurnState, turnState, WHY_TEXT } from './turnState.ts';
 
+/**
+ * The pane state, as the kind a consumer reads. `deliverable` and `unknown` are not holds — the
+ * first is not a refusal at all, and the second says the inspection could not tell, which is
+ * exactly what `other` means here: the text is all there is.
+ */
+function holdKindOf(state: ChatPaneState): ChatHoldKind {
+  return state === 'deliverable' || state === 'unknown' ? 'other' : state;
+}
+
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
 const MAX_PER_PASS = 20;
@@ -98,7 +113,7 @@ async function deliverToPane(
   batch: readonly ChatMessage[],
   provider: AgentProvider,
   beforeSubmit: () => Promise<void>,
-): Promise<{ submitted: boolean; hold: string | null }> {
+): Promise<{ submitted: boolean; hold: string | null; holdKind: ChatHoldKind }> {
   // Whether a reply would actually reach the sender is asked of the SAME resolver each message
   // delivers with — never re-derived here from one transport's map, which is how a live wire route
   // came to be announced as "no route back" while it was carrying mail.
@@ -116,11 +131,11 @@ async function deliverToPane(
     )
     .join('\n\n');
   const buffer = await loadPasteBuffer(m, text);
-  if (buffer === null) return { submitted: false, hold: null };
+  if (buffer === null) return { submitted: false, hold: null, holdKind: 'other' };
   let inputDisabled = false;
   try {
     inputDisabled = await setPaneInputEnabled(m, name, false);
-    if (!inputDisabled) return { submitted: false, hold: null };
+    if (!inputDisabled) return { submitted: false, hold: null, holdKind: 'other' };
     // This is the authoritative sample: client input is already gated and cannot change the
     // composer between classification and the paste+Enter command queue.
     const inspection = provider.inspectChatPane?.(await capturePaneStyled(m, name, 40));
@@ -128,6 +143,10 @@ async function deliverToPane(
       return {
         submitted: false,
         hold: inspection?.reason ?? 'this provider cannot receive managed chat',
+        // No inspection at all is not an unknown pane state — it is a provider that cannot take
+        // managed chat, and calling that `other` would hide a permanent refusal among transient
+        // ones. It has no pane kind, so it keeps the text and says the text is all there is.
+        holdKind: inspection === undefined ? 'other' : holdKindOf(inspection.state),
       };
     }
     await beforeSubmit();
@@ -135,7 +154,7 @@ async function deliverToPane(
     // hold record are keyed on, and a batch is delivered or not delivered as a whole.
     const submitted = await submitPasteBuffer(m, name, buffer, batch[0]?.id ?? name);
     if (submitted) inputDisabled = false; // submit's first queued command re-enabled the pane
-    return { submitted, hold: null };
+    return { submitted, hold: null, holdKind: 'other' };
   } finally {
     if (inputDisabled) await setPaneInputEnabled(m, name, true);
     await deletePasteBuffer(m, buffer);
@@ -374,7 +393,8 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         if (activeMessage === null || activeMessage === undefined) continue;
         const retry = await deliverToPane(m, s.name, [activeMessage], provider, async () => {});
         if (!retry.submitted) {
-          if (retry.hold !== null) await writeChatHold(s.name, activeMessage.id, retry.hold);
+          if (retry.hold !== null)
+            await writeChatHold(s.name, activeMessage.id, retry.hold, retry.holdKind);
           continue;
         }
         clearChatHold(s.name);
@@ -448,6 +468,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         s.name,
         pick.msg.id,
         `rate limit — this recipient got more than ${RATE_MAX_INBOUND} messages in the last minute, delivery resumes as the burst subsides`,
+        'rate-limited',
       );
       continue; // hold; retries once the burst subsides
     }
@@ -456,7 +477,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const styled = await capturePaneStyled(m, s.name, 40);
     const inspection = provider.inspectChatPane(styled);
     if (inspection.state !== 'deliverable') {
-      await writeChatHold(s.name, pick.msg.id, inspection.reason);
+      await writeChatHold(s.name, pick.msg.id, inspection.reason, holdKindOf(inspection.state));
       continue;
     }
     // WATCHING a session must not block its chat — only actively TYPING does. Injection appends a
@@ -470,7 +491,12 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         to: s.name,
         from: principalLabel(pick.msg.from),
       });
-      await writeChatHold(s.name, pick.msg.id, 'a human typed in that pane a moment ago');
+      await writeChatHold(
+        s.name,
+        pick.msg.id,
+        'a human typed in that pane a moment ago',
+        'human-typing',
+      );
       continue;
     }
     const ts = readTurnState(m, s, provider, styled, now);
@@ -478,7 +504,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     // types, so a keystroke swallowed by a half-drawn pane is a letter marked delivered and never
     // seen. Immediate and time-delayed mail were just as losable there.
     if (ts.why === 'not-drawn') {
-      await writeChatHold(s.name, pick.msg.id, WHY_TEXT[ts.why]);
+      await writeChatHold(s.name, pick.msg.id, WHY_TEXT[ts.why], 'not-drawn');
       continue;
     }
     // A DEFERRED message additionally waits for the target to be between turns. A notBefore-only
