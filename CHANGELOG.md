@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.8] — 2026-09-02
+
+A session says how many letters it has exchanged
 ## [0.49.7] — 2026-09-02
 
 A transcript read costs its window, not the whole file
