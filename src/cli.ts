@@ -7,6 +7,7 @@ import { cmdCompletions } from './commands/completions.ts';
 import { cmdControl } from './commands/control.ts';
 import { cmdControlNativeStream } from './commands/controlNativeStream.ts';
 import { cmdDaemon } from './commands/daemon.ts';
+import { cmdDir } from './commands/dir.ts';
 import { cmdDoctor } from './commands/doctor.ts';
 import { cmdEnsure } from './commands/ensure.ts';
 import { cmdEnvFile } from './commands/envFile.ts';
@@ -135,6 +136,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return cmdMode(rest[0], rest[1]);
     case 'env-file':
       return cmdEnvFile(rest);
+    case 'dir':
+      return cmdDir(rest);
     case 'role':
       return cmdRole(rest);
     case 'relay':

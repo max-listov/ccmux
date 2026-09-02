@@ -45,6 +45,14 @@ export const LaunchStampSchema = z.object({
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
   applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
+  /**
+   * The directory this launch ran in.
+   *
+   * Not derivable from argv: the cwd is given to tmux, not to the agent, so a session whose declared
+   * directory changed would otherwise look identical to one that never moved. `null` is a stamp
+   * written before this field — unknown, never stale, the same doctrine as the rest.
+   */
+  dir: z.string().nullable().default(null),
   ts: z.number(),
 });
 export type LaunchStamp = z.infer<typeof LaunchStampSchema>;
@@ -91,6 +99,7 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
     // private text and an MCP table holds credentials, so the stamp keeps a fingerprint and nothing
     // that could be read back out of it.
     inputs: digestMap(launchInputsFor(s, m)),
+    dir: s.dir,
     permissionMode: s.permissionMode ?? m.permissionMode,
     chatEnabled: chatEnabledFor(s, m),
     promptModules: [...s.promptModules].sort(),
@@ -141,6 +150,11 @@ export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, '
       if (stamp.inputs[reason] !== now.inputs?.[reason] && !out.includes(reason)) out.push(reason);
     }
   }
+  // Where a restart would put it. A moved checkout leaves the session registered on a path that may
+  // still EXIST — a parent folder that kept the old name is the case that hides — so the honest
+  // signal is that the declared directory differs from the one this session was launched in, not
+  // that some path is missing.
+  if (stamp.dir !== null && stamp.dir !== now.dir) out.push('dir');
   if (stamp.chatEnabled !== now.chatEnabled) out.push('chat');
   if (stamp.permissionMode !== now.permissionMode) out.push('mode');
   // Sorted on BOTH sides, not just when written: a stamp on disk may predate the sorting, and

@@ -74,6 +74,26 @@ export async function setSessionPermissionMode(
   });
 }
 
+/**
+ * Move a session's registered directory. Returns false if the name wasn't present.
+ *
+ * Only the named session changes: sharing a directory is a normal arrangement — two agents on one
+ * checkout — and moving one of them must not move the other. Applies to the next launch; a running
+ * agent's working directory belongs to its process.
+ */
+export async function setSessionDir(m: MachineConfig, name: string, dir: string): Promise<boolean> {
+  return withSessionRegistryLock(m, async () => {
+    await recoverPromotionsUnlocked(m);
+    const current = loadSessions(m);
+    if (!findSession(current, name)) return false;
+    await writeSessionsUnlocked(
+      m,
+      current.map((s) => (s.name === name ? { ...s, dir } : s)),
+    );
+    return true;
+  });
+}
+
 /** Toggle a session's inter-agent chat opt-in. Returns false if the name wasn't present.
  *  Effective immediately (the store re-reads sessions on every send/deliver) — not a launch flag. */
 /** `enabled === undefined` CLEARS the override so the session inherits the machine default —

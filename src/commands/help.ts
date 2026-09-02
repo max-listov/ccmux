@@ -67,6 +67,12 @@ export const COMMANDS: HelpEntry[] = [
     example: 'ccmux env-file cc-api .env',
   },
   {
+    verb: 'dir',
+    args: '<name|machine:name> <path> | <name> (read) | (no args to list)',
+    desc: "move a session's registered directory without losing its conversation — the checkout moved, the session should not be recreated to follow it. Applies on the next start, because a running agent's cwd belongs to its process; `list` marks it 'dir' until then",
+    example: 'ccmux dir cc-api /Users/u/work/api/src',
+  },
+  {
     verb: 'role',
     args: '<name|machine:name> <role|--none> | (no args to list)',
     desc: 'declare what a session is FOR, and address it by that: ccmux msg <machine>:@<role>. Applies at once — no restart. A role matching two sessions REFUSES the address and shows both, rather than silently picking one',

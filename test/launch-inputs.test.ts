@@ -180,6 +180,7 @@ const stamp = (over: Partial<LaunchStamp> = {}): LaunchStamp => ({
   hash: 'h',
   permissionMode: 'auto',
   chatEnabled: true,
+  dir: '/src/agent-a',
   promptModules: [],
   envKeys: [],
   inputs: { rules: 'r1', mcp: 'm1', env: null },

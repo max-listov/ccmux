@@ -130,6 +130,7 @@ const stamp = (inputs: LaunchStamp['inputs']): LaunchStamp => ({
   version: '0',
   hash: 'h',
   permissionMode: 'auto',
+  dir: '/src/agent-a',
   chatEnabled: true,
   promptModules: [],
   envKeys: [],
