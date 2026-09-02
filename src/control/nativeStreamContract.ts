@@ -52,19 +52,34 @@ export const ControlNativeStreamCursorSchema = ControlNativeStreamCursorTokenSch
   },
 );
 
+/**
+ * The bytes a consumer actually reads: the serialized frame plus the newline that delimits it.
+ *
+ * This is the quantity the budget was always about, and it is NOT the size of `data`. `data` is
+ * itself JSON, so serializing the frame escapes it a second time — every quote and backslash inside
+ * grows again — and content carrying code or JSON is escaped twice over. Measured on a payload
+ * exactly at the budget: 525_312 bytes of `data` became a 605_332-byte line, 80_020 over.
+ */
+export function controlNativeStreamFrameBytes(frame: unknown): number {
+  return new TextEncoder().encode(`${JSON.stringify(frame)}\n`).byteLength;
+}
+
 export const ControlNativeStreamFrameSchema = z
   .object({
     channel: z.literal('data'),
-    data: z
-      .string()
-      .refine(
-        (value) =>
-          new TextEncoder().encode(value).byteLength <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
-        'native stream frame exceeds byte budget',
-      ),
+    data: z.string(),
     cursor: ControlNativeStreamCursorTokenSchema,
   })
-  .strict();
+  .strict()
+  // Checked on the LINE, not on `data`. Checking the payload and enforcing on the wire is one
+  // number answering two different questions, and the gap between them is where a frame nobody
+  // could parse got through: the consumer's framed reader hit its buffer bound, died, reconnected,
+  // received the same line and died again — a retry loop that cannot converge, because a retry
+  // makes nothing smaller. A conversation showed as queued for twenty-two hours behind it.
+  .refine(
+    (frame) => controlNativeStreamFrameBytes(frame) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
+    'native stream frame exceeds byte budget',
+  );
 
 export function encodeControlNativeStreamCursor(
   target: z.output<typeof ManagedPeerSchema>,
@@ -90,16 +105,75 @@ export function readControlNativeStreamCursor(
   return parsed.cursor;
 }
 
+/**
+ * A frame that fits the budget the consumer enforces, shedding observation until it does.
+ *
+ * The snapshot is an observation cache, and `omittedRecords` is how it already says "there was more
+ * than this". So an oversized frame has an honest smaller form, and sending it is strictly better
+ * than sending one that cannot be read: a frame over the bound does not degrade the consumer, it
+ * kills the stream, and the reconnect that follows fetches the same line again.
+ *
+ * Oldest records go first, then baseline entries, each counted into `omittedRecords` — the same
+ * order and the same accounting the buffer uses when it sheds under its own bounds. Sizes are
+ * measured rather than predicted: how much a record costs on the wire depends on what its text
+ * contains, and the escaping ratio is not a constant to multiply by.
+ */
 export function controlNativeStreamFrame(snapshot: unknown) {
   const native = ControlNativeSnapshotSchema.parse(snapshot);
-  return ControlNativeStreamFrameSchema.parse({
-    channel: 'data',
-    data: JSON.stringify(native),
-    cursor: encodeControlNativeStreamCursor(native.target, {
-      generation: native.generation,
-      sequence: native.sequence,
-    }),
+  const cursor = encodeControlNativeStreamCursor(native.target, {
+    generation: native.generation,
+    sequence: native.sequence,
   });
+  const build = (
+    records: typeof native.records,
+    baseline: typeof native.baseline,
+    omittedRecords: number,
+  ) => ({
+    channel: 'data' as const,
+    data: JSON.stringify({ ...native, records, baseline, omittedRecords }),
+    cursor,
+  });
+
+  // How many of the newest entries fit, found by halving rather than by dropping one at a time.
+  // The frame only shrinks as entries are removed, so the answer is monotonic and a binary search
+  // is exact — and the difference is not academic: shedding singly cost 4.5 SECONDS on a
+  // two-megabyte snapshot, because each step re-serializes the whole thing. Nine measurements
+  // instead of four hundred and twenty-four.
+  const fits = (records: typeof native.records, baseline: typeof native.baseline) =>
+    controlNativeStreamFrameBytes(
+      build(records, baseline, native.omittedRecords + (native.records.length - records.length)),
+    ) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES;
+  const keepNewest = <T>(items: readonly T[], count: number) => items.slice(items.length - count);
+
+  let records = native.records;
+  let baseline = native.baseline;
+  if (!fits(records, baseline)) {
+    let low = 0;
+    let high = records.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (fits(keepNewest(native.records, middle), baseline)) low = middle;
+      else high = middle - 1;
+    }
+    records = keepNewest(native.records, low);
+    if (low === 0 && !fits(records, baseline)) {
+      let lowBaseline = 0;
+      let highBaseline = baseline.length;
+      while (lowBaseline < highBaseline) {
+        const middle = Math.ceil((lowBaseline + highBaseline) / 2);
+        if (fits(records, keepNewest(native.baseline, middle))) lowBaseline = middle;
+        else highBaseline = middle - 1;
+      }
+      baseline = keepNewest(native.baseline, lowBaseline);
+    }
+  }
+  // Everything shed is counted, and only what was actually shed. If nothing observational is left
+  // and the fixed fields alone are over budget there is no honest smaller frame to send, so the
+  // schema refuses rather than emitting one that would end the consumer's stream.
+  const shed = native.records.length - records.length + (native.baseline.length - baseline.length);
+  return ControlNativeStreamFrameSchema.parse(
+    build(records, baseline, native.omittedRecords + shed),
+  );
 }
 
 export const CcmuxNativeStreamProfileSchema = z
