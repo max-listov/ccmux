@@ -923,3 +923,19 @@ test('native stream cursor binds target and source adapter resumes, heartbeats a
   ).toThrow('another target');
   expect(managedPeerKey(initialSnapshot.target)).toBe(managedPeerKey(f.target));
 }, 15_000);
+
+test('a malformed request names the fields, so it cannot be read as a refusal', async () => {
+  const { createCcmuxControlServiceClient } = await import('../src/control/serviceClient.ts');
+  // The transport is never reached: the client refuses the shape before sending, which is the
+  // point — a caller learns what is wrong with its request rather than what a server thought of it.
+  const client = createCcmuxControlServiceClient(async () => new Response('{}'));
+  // A truncated target and a missing permission arrive as the same word to a consumer that sees
+  // only the code — one of them spent a minute looking for a grant it already had. The fields are
+  // named; their values never are, because a value can carry someone's message body.
+  const failure = (await client.selection
+    .withOptions({ target: { machine: 'host-a', session: 'agent-a' } } as never, {})
+    .catch((error: unknown) => error)) as { code?: string; message?: string };
+  expect(failure.code).toBe('INVALID_INPUT');
+  expect(failure.message).toContain('target.');
+  expect(failure.message).not.toContain('agent-a');
+});

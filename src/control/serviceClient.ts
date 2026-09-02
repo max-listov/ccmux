@@ -374,10 +374,24 @@ export function createCcmuxControlServiceClient(fetch: ClientFetch, timeoutMs = 
       try {
         decoded = JSON.parse(body);
       } catch {
-        throw new ApiError('INVALID_INPUT');
+        throw new ApiError('INVALID_INPUT', 0, undefined, 'request body is not JSON');
       }
       const parsed = controlServiceInputs[operation].safeParse(decoded);
-      if (!parsed.success) throw new ApiError('INVALID_INPUT');
+      if (!parsed.success)
+        // The FIELDS, never their values: a caller that sent the wrong shape needs to know which
+        // part of it, and a value can carry someone's message body. Bare `INVALID_INPUT` reads like
+        // a refusal rather than a malformed request — a consumer sending a truncated target spent a
+        // minute looking for a missing permission, because the code alone cannot tell those apart.
+        throw new ApiError(
+          'INVALID_INPUT',
+          0,
+          undefined,
+          `these fields are wrong or missing: ${[
+            ...new Set(parsed.error.issues.map((issue) => issue.path.join('.') || '(root)')),
+          ]
+            .slice(0, 12)
+            .join(', ')}`,
+        );
       return fetch(url, { ...init, body: JSON.stringify(parsed.data) });
     },
   });
