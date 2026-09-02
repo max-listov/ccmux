@@ -392,9 +392,28 @@ export function createCcmuxControlServiceClient(fetch: ClientFetch, timeoutMs = 
       // The schema the CONTRACT declares for this endpoint — the very one this client is about to
       // speak, not a second index of the same fact. `input` is optional on an endpoint, so an
       // operation that declares none has nothing to refuse.
-      const parsed = (contractInput(operation) ?? controlServiceInputs[operation]).safeParse(
-        decoded,
-      );
+      //
+      // `safeParse` does not always answer: a schema runs caller code inside the parse — a
+      // `preprocess`, or a `refine` predicate — and such code can THROW rather than return a
+      // verdict. A gate that crashes instead of refusing is worse than no gate: the caller gets an
+      // exception with no code and no field. So an unanswerable schema is treated as one that had
+      // nothing to say, and the server keeps the last word it always had. Reported by the contract
+      // framework's owner, who measured it on the very idiom their own guide recommends.
+      //
+      // No test stages it, because nothing here throws today, and that is measured rather than
+      // assumed: walking all twenty-eight input schemas finds no `preprocess` and no type that
+      // loses itself across JSON, and the seven predicates it does find read fields the base schema
+      // has already parsed. They are also the reason the guard exists — a predicate is the one
+      // place in this contract where a future author can put code that throws, and it will not look
+      // like a decision about this gate when they do.
+      const schema = contractInput(operation) ?? controlServiceInputs[operation];
+      const parsed = ((): z.ZodSafeParseResult<unknown> => {
+        try {
+          return schema.safeParse(decoded);
+        } catch {
+          return { success: true, data: decoded };
+        }
+      })();
       if (!parsed.success)
         // The FIELDS, never their values: a caller that sent the wrong shape needs to know which
         // part of it, and a value can carry someone's message body. Bare `INVALID_INPUT` reads like
