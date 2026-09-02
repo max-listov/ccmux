@@ -10,6 +10,7 @@ import {
   report,
   until,
 } from './native-image-steering-fixture.ts';
+import { hasExited } from './process-state.ts';
 
 export async function customCoding(p: NativeImageProbe, receipt: ControlCreateReceipt) {
   const { target, registrationGeneration } = receipt;
@@ -169,15 +170,9 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
         .evidence?.state === 'interrupted',
   );
   const pid = Number(await readFile(marker, 'utf8'));
-  await until('cancelled child exited', async () => {
-    try {
-      process.kill(pid, 0);
-      return false;
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return true;
-      throw error;
-    }
-  });
+  // A cancelled child that exits under a parent which is not reaping it becomes a zombie, and the
+  // signal probe reports a zombie as running — so this wait watches the state, not the signal.
+  await until('cancelled child exited', async () => hasExited(pid));
   check(!(await Bun.file(effect).exists()), 'Cancelled command produced a late effect');
   report('custom-coding-pass', {
     read: true,

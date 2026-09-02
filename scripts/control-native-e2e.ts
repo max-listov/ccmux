@@ -13,6 +13,7 @@ import { controlSocket } from '../src/control/path.ts';
 import { readMonitoringStatus } from '../src/monitoring/read.ts';
 import { killSession, newSession } from '../src/tmux/tmux.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
+import { hasExited } from './process-state.ts';
 
 const config = process.argv[2];
 if (!config || !basename(dirname(config)).startsWith('ccmux-owned-probe-'))
@@ -221,14 +222,11 @@ try {
     process.kill(daemonPid, 'SIGTERM');
     await until(
       'old daemon exited',
-      () => {
-        try {
-          process.kill(daemonPid, 0);
-          return false;
-        } catch {
-          return true;
-        }
-      },
+      // Not `kill(pid, 0)`: this script is the daemon's parent and is not reaping it, so a daemon
+      // that exits becomes a zombie here — still in the process table, still answering the signal
+      // probe. The wait would then run to its deadline and fail acceptance with a line naming the
+      // state that had in fact been reached.
+      () => hasExited(daemonPid),
       10_000,
     );
     await observer;

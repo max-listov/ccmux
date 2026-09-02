@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { createAgentCodingTools } from 'stitchkit/agent-runtime/coding-tools';
 import { z } from 'zod';
 import { invoke, output, refused } from './custom-tool-observation';
+import { processState as sharedProcessState } from './process-state.ts';
 
 // Optional explicit packed-consumer module for qualifying the upstream mount separately.
 const mountSpecifier = process.argv[2] ?? 'stitchkit/tools';
@@ -188,26 +189,7 @@ async function cancellation() {
     .positive()
     .parse(await readFile(started, 'utf8'));
   const cancelledAt = performance.now();
-  const processState = () => {
-    try {
-      if (process.platform === 'linux') {
-        const stat = readFileSync(`/proc/${descendantPid}/stat`, 'utf8');
-        const state = /\)\s+([A-Z])\s/.exec(stat)?.[1];
-        if (!state) throw new Error('Descendant process state is unreadable');
-        return state;
-      }
-      process.kill(descendantPid, 0);
-      return 'present';
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        'code' in error &&
-        ['ENOENT', 'ESRCH'].includes(String(error.code))
-      )
-        return 'absent';
-      throw error;
-    }
-  };
+  const processState = () => sharedProcessState(descendantPid);
   const beforeCancellation = processState();
   if (['absent', 'Z', 'X'].includes(beforeCancellation))
     throw new Error('Descendant was not executing before cancellation');
