@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.5] — 2026-09-02
+
+Every command loads at its case, and the status line's own cost is counted
 ## [0.49.4] — 2026-09-02
 
 A pending request too large for the wire sheds instead of killing the stream
