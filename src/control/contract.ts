@@ -49,6 +49,8 @@ import {
   ControlMcpControlSchema,
   ControlMcpListSchema,
   ControlMcpReadSchema,
+  ControlMessageCancelReceiptSchema,
+  ControlMessageCancelSchema,
   ControlMessageReceiptSchema,
   ControlMessageSchema,
   ControlModelCatalogSchema,
@@ -97,6 +99,14 @@ export const controlContract = defineContract(
       output: ExternalContentCapabilitiesSchema,
       idempotent: true,
       timeout: 7_000,
+    },
+    messageCancel: {
+      method: 'POST',
+      path: '/message/cancel',
+      desc: 'Withdraw one accepted letter of the caller that has not been delivered',
+      input: ControlMessageCancelSchema,
+      output: ControlMessageCancelReceiptSchema,
+      idempotent: true,
     },
     messageOperation: {
       method: 'POST',

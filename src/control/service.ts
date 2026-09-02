@@ -26,6 +26,8 @@ export function controlServices(
   const service = implement(controlContract, {
     externalHistory: ({ input, signal }) => operations.externalHistory(input, signal),
     externalCapabilities: ({ input, signal }) => operations.externalCapabilities(input, signal),
+    messageCancel: ({ input, principal }) =>
+      operations.messageCancel(input, ChatPrincipalSchema.parse(principal)),
     messageOperation: ({ input, principal }) =>
       operations.messageOperation(input, ChatPrincipalSchema.parse(principal)),
     transcript: ({ input, signal }) => operations.transcript(input, signal),

@@ -54,23 +54,37 @@ export function chatPaths(m: MachineConfig): { ledger: string; cursors: string }
 // a message is injected exactly once. The daemon stays the SOLE writer of `cursors`; the hook only
 // ever touches the ack-log.
 
-/** Set of message ids already delivered (defer channel). Lenient: a corrupt line is skipped, not
- *  thrown — the hook must never wedge a session's ability to stop over a bad ack line. */
-export function loadAckedIds(m: MachineConfig): Set<string> {
+/** What became of a conditional message: it reached the pane, or it never will. Both suppress
+ *  delivery identically, which is why they share a log — but they are opposite answers to "where is
+ *  my message", and only one of them means someone read it. */
+export type AckOutcome = 'delivered' | 'cancelled';
+
+/** Every acked id with what happened to it. Lenient: a corrupt line is skipped, not thrown — the
+ *  hook must never wedge a session's ability to stop over a bad ack line. A later line wins, so a
+ *  cancel racing a delivery settles on whichever actually happened last. */
+export function loadAcks(m: MachineConfig): Map<string, AckOutcome> {
   const p = chatAckPath(m);
-  const ids = new Set<string>();
-  if (!existsSync(p)) return ids;
+  const acks = new Map<string, AckOutcome>();
+  if (!existsSync(p)) return acks;
   for (const raw of readFileSync(p, 'utf8').split('\n')) {
     const line = raw.trim();
     if (line === '') continue;
     try {
       const o: unknown = JSON.parse(line);
-      if (o && typeof o === 'object' && 'id' in o && typeof o.id === 'string') ids.add(o.id);
+      if (o && typeof o === 'object' && 'id' in o && typeof o.id === 'string')
+        acks.set(o.id, 'by' in o && o.by === 'cancel' ? 'cancelled' : 'delivered');
     } catch {
       // skip — best-effort dedup log, not authoritative history
     }
   }
-  return ids;
+  return acks;
+}
+
+/** Set of message ids already resolved (defer channel), delivered or cancelled alike — which is
+ *  what every delivery gate needs to know. Derived from the one reader above rather than parsed a
+ *  second time, so the two can never disagree about which ids are in the log. */
+export function loadAckedIds(m: MachineConfig): Set<string> {
+  return new Set(loadAcks(m).keys());
 }
 
 /** Record a conditional-message resolution in the ack-log. `by`:

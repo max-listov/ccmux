@@ -63,6 +63,7 @@ import {
   settledCreateRequest,
 } from './lifecycle.ts';
 import { acceptControlMessage } from './message.ts';
+import { cancelControlMessage } from './messageCancel.ts';
 import { readMessageOperation } from './messageOperation.ts';
 import { readControlModels } from './models.ts';
 import { interruptControlTurn, waitControlSession } from './native.ts';
@@ -74,6 +75,7 @@ import type {
   ControlInterruptSchema,
   ControlMcpControlSchema,
   ControlMcpReadSchema,
+  ControlMessageCancelSchema,
   ControlMessageSchema,
   ControlModelsReadSchema,
   ControlNativeReadSchema,
@@ -166,6 +168,8 @@ export function createControlOperations(
           },
         )
         .catch(controlRefusal),
+    messageCancel: (input: z.output<typeof ControlMessageCancelSchema>, principal: ChatPrincipal) =>
+      cancelControlMessage(m, input, ChatPrincipalSchema.parse(principal)),
     messageOperation: (
       input: z.output<typeof MessageOperationReadSchema>,
       principal: ChatPrincipal,

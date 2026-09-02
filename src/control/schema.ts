@@ -128,6 +128,34 @@ export const ControlMessageReceiptSchema = z
     turnOptions: AcceptedTurnOptionsSchema.nullable(),
   })
   .strict();
+/**
+ * Take back a letter that was accepted but has not been delivered.
+ *
+ * The mechanism existed — a cancel tombstone in the ack log — and only the command line could reach
+ * it, so a consumer could not withdraw what it had itself queued. Its "stop" button answered
+ * "nothing to stop" while a letter sat waiting for a turn boundary, which is the wrong answer with
+ * confidence.
+ *
+ * By id, and only the caller's own: cancelling a letter another party sent would be reaching into
+ * someone else's conversation.
+ */
+export const ControlMessageCancelSchema = z.object({ messageId: z.uuid() }).strict();
+export const ControlMessageCancelReceiptSchema = z
+  .object({
+    messageId: z.uuid(),
+    /**
+     * Four answers, kept apart because they call for different things from a caller.
+     *
+     * `cancelled` — it will not be delivered. `delivered` — too late, the recipient has it, and a
+     * caller that renders this as "cancelled" is telling its user the opposite of what happened.
+     * `unknown` — no such letter on this machine. `not-yours` — it exists and belongs to someone
+     * else; said plainly rather than disguised as `unknown`, which would make a permissions answer
+     * look like a missing one.
+     */
+    outcome: z.enum(['cancelled', 'delivered', 'unknown', 'not-yours']),
+  })
+  .strict();
+
 export const ControlInterruptSchema = ControlTargetSchema.extend({
   generation: z.uuid(),
   turnId: z.string().min(1).max(256),

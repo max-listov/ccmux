@@ -373,6 +373,16 @@ virtual routing metadata and the descriptor. It grants nothing and opens no conn
 operator owns the private ingress socket path, node binding, credentials and exact
 service/revision/operation/effect grants.
 
+`message.cancel` withdraws one letter the caller itself queued and that has not been delivered. The
+mechanism was already there — a cancel tombstone in the ack log — reachable only from the command
+line, so a consumer's stop button answered "nothing to stop" about a letter it had sent and that was
+sitting waiting for a turn boundary. By id, and only the caller's own. Its four outcomes stay apart
+because they ask different things of a caller: `cancelled` will not arrive, `delivered` already has,
+`unknown` is no such letter here, and `not-yours` is one that exists and belongs to someone else —
+said plainly rather than disguised as `unknown`, which would make a permissions answer look like a
+missing one. An immediate letter answers `delivered`: it is delivered off the in-order cursor and
+never waits, so there is no interval in which to take it back.
+
 `transcript.read` answers a bounded window of a session's conversation — the newest `tail`,
 everything after a `cursor`, or a page `before` a line — with the same builder and the same cursor
 the `transcript` command uses, so a consumer pages through one conversation rather than two views of

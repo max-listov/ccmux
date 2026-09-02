@@ -93,6 +93,12 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
       limits: { requestBytes: 16 * 1024, responseBytes: 384 * 1024, timeoutMs: 7000 },
     },
     {
+      id: 'message.cancel',
+      effect: controlServiceEffects['message.cancel'],
+      // One uuid in, one enum out. Nothing about this grows with the conversation.
+      limits: { requestBytes: 1024, responseBytes: 1024, timeoutMs: 7000 },
+    },
+    {
       id: 'transcript.read',
       effect: controlServiceEffects['transcript.read'],
       // A request is a target and four numbers; an answer is a bounded window of messages, and the
