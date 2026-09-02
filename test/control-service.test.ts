@@ -969,3 +969,19 @@ test('a cancelled operation stops waiting for the lock instead of holding its sl
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('the contract and the catalog are two indexes over one set of schemas', async () => {
+  const { ccmuxControlServiceContract } = await import('../src/control/serviceClient.ts');
+  const { controlServiceInputs } = await import('../src/control/serviceCatalog.ts');
+  // Both exist for good reasons — the ingress dispatches by operation id, the client speaks the
+  // contract — but an endpoint added to one and not the other is a wire whose two ends disagree
+  // about what may be sent. Same object, not merely same shape: a copy would drift silently.
+  for (const endpoint of Object.values(ccmuxControlServiceContract.endpoints)) {
+    const operation = endpoint.path.slice(1) as keyof typeof controlServiceInputs;
+    expect(controlServiceInputs[operation]).toBeDefined();
+    if (endpoint.input !== undefined) expect(endpoint.input).toBe(controlServiceInputs[operation]);
+  }
+  expect(Object.keys(controlServiceInputs).length).toBe(
+    Object.values(ccmuxControlServiceContract.endpoints).length,
+  );
+});

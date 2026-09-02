@@ -71,6 +71,19 @@ import {
 } from './serviceCatalog.ts';
 import { serviceOperation } from './serviceDescriptor.ts';
 
+/**
+ * The declared input of the endpoint that serves this operation.
+ *
+ * Keyed by the wire path, because that is what the operation id IS — the contract and the catalog
+ * are two indexes over one set of schemas, and reading the contract here keeps the pre-flight check
+ * spoken in the same language as the request it guards.
+ */
+function contractInput(operation: string): z.ZodType | null {
+  for (const endpoint of Object.values(ccmuxControlServiceContract.endpoints))
+    if (endpoint.path.slice(1) === operation) return (endpoint.input ?? null) as z.ZodType | null;
+  return null;
+}
+
 function serviceReply<T>(result: z.ZodType<T>) {
   return ControlServiceReplyEnvelopeSchema.transform((envelope, ctx): T => {
     const parsed = result.safeParse(envelope.result);
@@ -376,7 +389,12 @@ export function createCcmuxControlServiceClient(fetch: ClientFetch, timeoutMs = 
       } catch {
         throw new ApiError('INVALID_INPUT', 0, undefined, 'request body is not JSON');
       }
-      const parsed = controlServiceInputs[operation].safeParse(decoded);
+      // The schema the CONTRACT declares for this endpoint — the very one this client is about to
+      // speak, not a second index of the same fact. `input` is optional on an endpoint, so an
+      // operation that declares none has nothing to refuse.
+      const parsed = (contractInput(operation) ?? controlServiceInputs[operation]).safeParse(
+        decoded,
+      );
       if (!parsed.success)
         // The FIELDS, never their values: a caller that sent the wrong shape needs to know which
         // part of it, and a value can carry someone's message body. Bare `INVALID_INPUT` reads like
