@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parseNDJSON } from 'stitchkit';
 import { createApplication, managedServerResource } from 'stitchkit/application';
@@ -693,11 +694,23 @@ test('declared service reuses exact control operations, identity and admission',
   // same request id is answered from it — a caller whose first answer was lost to a transport must
   // be able to tell "already done" from "still running", and BUSY says neither. The receipt is read
   // here rather than assumed, because the work can finish while the admission slot is still counted.
-  const { settledCreateRequest } = await import('../src/control/lifecycle.ts');
-  const settledBeforeRetry = settledCreateRequest(f.machine, requestId);
-  const retry = f.remote.create({ requestId, name: 'created-a', workspace: f.root, flags: [] });
-  if (settledBeforeRetry) expect((await retry).duplicate).toBe(true);
-  else await expect(retry).rejects.toMatchObject({ code: 'BUSY', status: 429 });
+  //
+  // Which of the two is owed cannot be pinned from out here. Reading the receipt first and then
+  // asserting on that reading is a race with a slow name: the work can settle in the gap between
+  // the read and the retry, and then the test demands BUSY from a request that is correctly
+  // answered from a complete receipt. It failed exactly that way on a loaded machine.
+  //
+  // So the assertion is what holds in BOTH cases and is not vacuous: a retry of a request id
+  // already in flight is answered truthfully — refused as BUSY, or answered from the receipt — and
+  // never any third thing. That it never produces a SECOND creation is carried by `createCalls()`
+  // below, and the settled case is pinned deterministically there too, after the first create has
+  // certainly finished.
+  const retry = await f.remote
+    .create({ requestId, name: 'created-a', workspace: f.root, flags: [] })
+    .then((value) => ({ kind: 'answered' as const, value }))
+    .catch((error: unknown) => ({ kind: 'refused' as const, error }));
+  if (retry.kind === 'refused') expect(retry.error).toMatchObject({ code: 'BUSY', status: 429 });
+  else expect(retry.value.duplicate).toBe(true);
   const created = await firstCreate;
   const duplicate = await f.remote.create({
     requestId,
@@ -991,4 +1004,57 @@ test('the contract and the catalog are two indexes over one set of schemas', asy
   expect(Object.keys(controlServiceInputs).length).toBe(
     Object.values(ccmuxControlServiceContract.endpoints).length,
   );
+});
+
+test('a retry is owed an answer from the receipt only once that receipt is complete', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-create-receipt-'));
+  const m = makeMachine({ stateDir });
+  const { settledCreateRequest } = await import('../src/control/lifecycle.ts');
+  const path = join(stateDir, 'control', 'create-requests.json');
+  const id = '11111111-1111-4111-8111-111111111111';
+  const other = '22222222-2222-4222-8222-222222222222';
+  const row = (requestId: string, status: 'pending' | 'complete' | 'failed') => ({
+    requestId,
+    fingerprint: 'f'.repeat(64),
+    generation: '33333333-3333-4333-8333-333333333333',
+    name: 'created-a',
+    workspace: '/workspace',
+    flags: [],
+    status,
+    threadId: null,
+    error: null,
+    createdAt: '2026-09-02T00:00:00.000Z',
+    updatedAt: '2026-09-02T00:00:00.000Z',
+  });
+  const write = async (rows: unknown[]) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(rows), { mode: 0o600 });
+  };
+
+  try {
+    // No store at all: nothing to answer from. This must not read as "already done".
+    expect(settledCreateRequest(m, id)).toBe(false);
+
+    // In flight. `pending` deliberately does not qualify — two runs of one create are a race, and
+    // answering from an unfinished receipt would report a session that may still fail to exist.
+    await write([row(id, 'pending')]);
+    expect(settledCreateRequest(m, id)).toBe(false);
+
+    // Failed is settled but has nothing to hand back: the caller's create did not happen.
+    await write([row(id, 'failed')]);
+    expect(settledCreateRequest(m, id)).toBe(false);
+
+    // Complete: this is the case the whole thing exists for. A caller whose first answer was lost
+    // to a transport must be able to tell "already done" from "still running", and BUSY says
+    // neither.
+    await write([row(id, 'complete')]);
+    expect(settledCreateRequest(m, id)).toBe(true);
+
+    // And by the id the caller retries with, not by any complete row that happens to be there.
+    expect(settledCreateRequest(m, other)).toBe(false);
+    await write([row(other, 'complete'), row(id, 'pending')]);
+    expect(settledCreateRequest(m, id)).toBe(false);
+  } finally {
+    rmSync(stateDir, { recursive: true, force: true });
+  }
 });
