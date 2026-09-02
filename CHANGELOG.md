@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.0] — 2026-09-02
+
+Carry the conversation with the directory; stop calling a whole answer a fragment
 ## [0.46.0] — 2026-09-02
 
 Mail waits for the recipient's turn boundary, and several letters arrive as one
