@@ -7,7 +7,11 @@ import { prepareMessageOperation, readMessageJournal } from '../src/chat/message
 import { deliverNativeRuntimePending } from '../src/chat/nativeRuntime.ts';
 import { ChatCursorsSchema } from '../src/config/schema.ts';
 import { writeSessionsUnlocked } from '../src/config/sessions.ts';
-import { captureNativeStderr, recordRuntimeDiagnostic } from '../src/runtime/diagnostics.ts';
+import {
+  captureNativeStderr,
+  readRuntimeDiagnostics,
+  recordRuntimeDiagnostic,
+} from '../src/runtime/diagnostics.ts';
 import { readRuntimeInput, writeRuntimeInput } from '../src/runtime/input.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/status.ts';
 import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
@@ -213,4 +217,44 @@ test('native diagnostic capture is bounded and written only to a private owner f
   );
   expect(statSync(file).mode & 0o777).toBe(0o600);
   expect(readFileSync(file, 'utf8')).toContain('secret-like-fixture');
+});
+
+test('a recorded diagnostic is reachable by the session name an operator has', async () => {
+  const stateDir = mkdtempSync('/tmp/ccmux-diagnostic-read-');
+  const m = makeMachine({ stateDir });
+
+  // Nothing recorded is its own answer, and it must not be confused with the other two below.
+  expect(await readRuntimeDiagnostics(m, 'agent-a')).toEqual({ matched: [], unattributed: 0 });
+
+  await recordRuntimeDiagnostic(m, 'agent-a', 'claude-native-runtime', new Error('child is gone'));
+  await recordRuntimeDiagnostic(m, 'agent-a', 'model-catalog', new Error('catalog refused'));
+  await recordRuntimeDiagnostic(m, 'agent-b', 'claude-native-runtime', new Error('not yours'));
+
+  const mine = await readRuntimeDiagnostics(m, 'agent-a');
+  expect(mine.matched).toHaveLength(2);
+  expect(mine.matched.map((entry) => entry.stage).sort()).toEqual([
+    'claude-native-runtime',
+    'model-catalog',
+  ]);
+  expect(mine.matched.map((entry) => entry.detail).join('\n')).toContain('child is gone');
+  // A neighbour's evidence is a neighbour's: the read must not widen to whatever is on disk.
+  expect(JSON.stringify(mine.matched)).not.toContain('not yours');
+  expect(mine.unattributed).toBe(0);
+
+  // A record written before the session name was stored is COUNTED, never claimed — reporting it
+  // as "nothing recorded" would answer "there is no evidence" to "I could not read it".
+  const root = join(stateDir, 'native-diagnostics');
+  const [first] = readdirSync(root).filter((entry) => entry.endsWith('.json'));
+  if (first === undefined) throw new Error('fixture wrote no diagnostic');
+  const legacy: Record<string, unknown> = JSON.parse(readFileSync(join(root, first), 'utf8'));
+  delete legacy.name;
+  writeFileSync(join(root, 'legacy.json'), JSON.stringify(legacy));
+
+  const withLegacy = await readRuntimeDiagnostics(m, 'agent-a');
+  expect(withLegacy.unattributed).toBe(1);
+  expect(withLegacy.matched).toHaveLength(2);
+  expect(await readRuntimeDiagnostics(m, 'agent-never-existed')).toEqual({
+    matched: [],
+    unattributed: 1,
+  });
 });

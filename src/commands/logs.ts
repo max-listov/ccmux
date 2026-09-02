@@ -1,5 +1,6 @@
 import { forwardIfRemote } from '../fleet/forward.ts';
-import { capturePane } from '../tmux/tmux.ts';
+import { readRuntimeDiagnostics } from '../runtime/diagnostics.ts';
+import { capturePane, hasSession } from '../tmux/tmux.ts';
 
 export async function cmdLogs(name: string | undefined, args: string[]): Promise<number> {
   if (!name) {
@@ -15,13 +16,47 @@ export async function cmdLogs(name: string | undefined, args: string[]): Promise
   const json = args.includes('--json');
   const lineArg = args.find((a) => /^\d+$/.test(a));
   const lines = lineArg ? Number.parseInt(lineArg, 10) : 100;
-  const text = await capturePane(m, name, lines);
+  // A session whose runtime failed has no pane left to capture, and that is exactly the moment its
+  // logs are asked for. Printing nothing then answers "the pane was empty" to the question "why did
+  // this die" — two facts that look identical and mean opposite things. The recorded diagnostic is
+  // the answer, it is on this machine already, and until now nothing could reach it: the files are
+  // named by a hash of session and stage, and the stage was never printed anywhere.
+  const alive = await hasSession(m, name);
+  const text = alive ? await capturePane(m, name, lines) : '';
+  const diagnostics = alive
+    ? { matched: [], unattributed: 0 }
+    : await readRuntimeDiagnostics(m, name);
   if (json) {
     console.log(
-      JSON.stringify({ session: name, capturedAt: new Date().toISOString(), lines, text }),
+      JSON.stringify({
+        session: name,
+        capturedAt: new Date().toISOString(),
+        lines,
+        running: alive,
+        text,
+        diagnostics: diagnostics.matched,
+        unattributedDiagnostics: diagnostics.unattributed,
+      }),
     );
-  } else {
+    return 0;
+  }
+  if (alive) {
     process.stdout.write(text);
+    return 0;
+  }
+  process.stdout.write(`${name} has no live pane — nothing to capture.\n`);
+  if (diagnostics.matched.length === 0) {
+    process.stdout.write(
+      diagnostics.unattributed === 0
+        ? 'No runtime diagnostic was recorded for it.\n'
+        : `No runtime diagnostic names it. ${diagnostics.unattributed} were recorded before the session name was stored; which session each belongs to is not recoverable.\n`,
+    );
+    return 0;
+  }
+  for (const entry of diagnostics.matched) {
+    process.stdout.write(`\n${entry.at} · ${entry.stage}\n${entry.detail.trimEnd()}\n`);
+    if (entry.stderr !== null && entry.stderr.trim() !== '')
+      process.stdout.write(`stderr:\n${entry.stderr.trimEnd()}\n`);
   }
   return 0;
 }

@@ -86,7 +86,9 @@ export async function runClaudeNativeProcess(
       } catch (error) {
         await recordRuntimeDiagnostic(m, session.name, 'claude-native-runtime', error);
         log.error({ msg: 'managed native Claude runtime failed', name: session.name });
-        throw new Error('Native Claude runtime failed; owner diagnostic recorded');
+        throw new Error(
+          `Native Claude runtime failed; run \`ccmux logs ${session.name}\` for the cause`,
+        );
       } finally {
         try {
           await owner.close();

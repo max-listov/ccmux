@@ -101,7 +101,7 @@ export async function runOpenCodeProcess(
         });
         if (admitted && server?.child.exitCode !== null)
           throw new ManagedRuntimeExit('OpenCode provider exited');
-        throw new Error('Native runtime failed; owner diagnostic recorded');
+        throw new Error(`Native runtime failed; run \`ccmux logs ${initial.name}\` for the cause`);
       } finally {
         abort.abort();
         await connection?.close('stopped');

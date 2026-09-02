@@ -68,7 +68,7 @@ export async function runCustomProcess(
       } catch (error) {
         await recordRuntimeDiagnostic(m, session.name, 'custom-runtime', error);
         log.error({ msg: 'managed Custom runtime failed', name: session.name });
-        throw new Error('Custom runtime failed; owner diagnostic recorded');
+        throw new Error(`Custom runtime failed; run \`ccmux logs ${session.name}\` for the cause`);
       } finally {
         try {
           await owner.close();
