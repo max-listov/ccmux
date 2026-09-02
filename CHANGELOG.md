@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.9] — 2026-09-02
+
+A transcript window can be read over the control service
 ## [0.49.8] — 2026-09-02
 
 A session says how many letters it has exchanged
