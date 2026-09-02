@@ -377,11 +377,33 @@ test('the real daemon owns observation across restart but never stops its extern
             params: { threadId: UUID, status: { type: 'idle' } },
           }),
         );
-        expect(
-          (await next).value.sessions.find(
-            (s: { identity: { threadId: string } }) => s.identity.threadId === UUID,
-          )?.turnState.state,
-        ).toBe('idle');
+        // Read frames until the change shows, rather than demanding it in the very next one. The
+        // stream emits a frame for any reason it has, so a refresh generated before the publish
+        // landed can sit ahead of the one being waited for — and then the assertion reports the
+        // state as never having changed, when it changed one frame later. It failed exactly that
+        // way on a loaded machine, reading "working" where the sequence was correct.
+        const stateOf = (frame: { value: { sessions: unknown[] } }) =>
+          (
+            frame.value.sessions as {
+              identity: { threadId: string };
+              turnState: { state: string };
+            }[]
+          ).find((s) => s.identity.threadId === UUID)?.turnState.state;
+        //
+        // Bounded in time as well as in frames, so that a change which never arrives fails saying
+        // what it saw instead of hanging to the suite's own deadline — a timeout names the clock,
+        // and the clock is not what is being asserted.
+        const deadline = Date.now() + 10_000;
+        let seen = stateOf(await next);
+        for (let n = 0; n < 20 && seen !== 'idle' && Date.now() < deadline; n++) {
+          const frame = await Promise.race([
+            stream.next(),
+            Bun.sleep(Math.max(0, deadline - Date.now())).then(() => null),
+          ]);
+          if (frame === null) break;
+          seen = stateOf(frame);
+        }
+        expect(seen).toBe('idle');
         abort.abort();
         await stream.return?.();
       } finally {
