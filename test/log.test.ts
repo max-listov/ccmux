@@ -6,7 +6,11 @@ import { join } from 'node:path';
 // A fresh process resolves the real logger's state path before any module can cache it.
 // Changing an environment variable around a cached dynamic import cannot isolate filesystem IO.
 const sandbox = mkdtempSync(join(tmpdir(), 'ccmux-log-'));
-const LOG_FILE = join(sandbox, 'ccmux.log');
+// Asked of the logger rather than guessed. This file used to carry its own copy of the naming rule
+// — `join(sandbox, 'ccmux.log')` — and the day the product started separating a checkout's record
+// from the machine's, five tests failed on a second copy of a fact that had exactly one owner. The
+// subject here is thresholds, format and rotation; where the file is belongs to the logger.
+const LOG_FILE = logFilePath();
 let threshold = 'info';
 const setLogLevel = (level: string) => {
   threshold = level;
@@ -37,7 +41,39 @@ function emit(level: string, fields: Record<string, unknown>): void {
     },
   );
   expect(child.exitCode).toBe(0);
+  // Still checked, because a child writing somewhere else would make every assertion below read a
+  // file nobody wrote — and an empty read is indistinguishable from a threshold that dropped it.
   expect(child.stdout.toString().trim()).toBe(LOG_FILE);
+}
+
+/** Where the logger writes, under this sandbox — from the logger itself, in a child that resolves
+ *  it the same way every other run does. */
+function logFilePath(): string {
+  const child = Bun.spawnSync(
+    [
+      process.execPath,
+      '-e',
+      [
+        'const { LOG_FILE } = await import(process.env.CCMUX_TEST_LOGGER);',
+        'console.log(LOG_FILE);',
+      ].join('\n'),
+    ],
+    {
+      env: {
+        ...process.env,
+        CCMUX_STATE_DIR: sandbox,
+        CCMUX_TEST_LOGGER: new URL('../src/util/log.ts', import.meta.url).href,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  const path = child.stdout.toString().trim();
+  if (child.exitCode !== 0 || !path.startsWith(sandbox))
+    throw new Error(
+      `logger did not report a path under the sandbox: ${path || child.stderr.toString()}`,
+    );
+  return path;
 }
 const log = {
   debug: (fields: Record<string, unknown>) => emit('debug', fields),

@@ -75,7 +75,19 @@ export const BOOT_ATTEMPTS = join(STATE_DIR, 'boot-attempts');
 /** Per-session structured status (agent hooks + statusLine tee): lifecycle, metrics, chat holds and
  *  launch stamps — so `list`/TUI read authoritative state instead of scraping the pane. */
 export const STATUS_DIR = join(STATE_DIR, 'status');
-export const LOG_FILE = join(STATE_DIR, 'ccmux.log');
+/**
+ * The machine's own record, and a run from a source checkout does not belong in it.
+ *
+ * State stays shared — a checkout run must see the real registry, sessions and locks — but the LOG
+ * is a narrative of what happened on this machine, and a test suite is a different narrative.
+ * Measured on a developer's machine: 16_199 of 18_724 records came from checkout runs, 86.5% of the
+ * file. Every question answered from that log was answered about the wrong population, and counting
+ * anything in it silently mixed a suite's fixtures with the daemon's history — the same defect as
+ * any other quantity that answers about something other than what was asked.
+ *
+ * `ccmux logs` and `doctor` resolve this same constant, so a checkout reads what a checkout wrote.
+ */
+export const LOG_FILE = join(STATE_DIR, IS_DEV ? 'ccmux.dev.log' : 'ccmux.log');
 
 /**
  * The state files a given MachineConfig points at.
