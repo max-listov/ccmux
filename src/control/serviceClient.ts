@@ -84,11 +84,42 @@ function contractInput(operation: string): z.ZodType | null {
   return null;
 }
 
+/**
+ * The field names one parse failure is about.
+ *
+ * Usually the issue's own path. The exception is an unrecognized key on a strict object, which is
+ * how a client older than the daemon fails: the path stops at the OBJECT, and the names that were
+ * not expected sit in the issue instead. Reporting only the path there says "evidence" where the
+ * answer is "evidence.hold" — enough to know something is wrong, not enough to know it is a version
+ * behind. These are keys the schema declined, so they are names and never values.
+ */
+export function issueFields(issue: z.core.$ZodIssue): string[] {
+  const at = issue.path.map(String);
+  if (issue.code === 'unrecognized_keys')
+    return issue.keys.map((key) => [...at, key].join('.') || key);
+  return [at.join('.') || '(root)'];
+}
+
 function serviceReply<T>(result: z.ZodType<T>) {
   return ControlServiceReplyEnvelopeSchema.transform((envelope, ctx): T => {
     const parsed = result.safeParse(envelope.result);
     if (!parsed.success) {
-      ctx.addIssue({ code: 'custom', message: 'owner service returned an invalid result' });
+      // WHICH fields did not match. The parse knows exactly — path, code, what was expected — and
+      // this used to throw all of it away for one sentence with an empty path. A consumer then
+      // could not tell "your client is older than this daemon" from "the service is broken", which
+      // is the difference between updating a package and filing a defect: one of them cost a
+      // round trip through a person to answer a question this code already had in hand.
+      //
+      // The FIELDS, never their values, exactly as on the request side: a value can carry someone's
+      // message body, and a mismatch is identified by where it is, not by what was there.
+      ctx.addIssue({
+        code: 'custom',
+        message: `owner service returned a result this client cannot read; these fields did not match: ${[
+          ...new Set(parsed.error.issues.flatMap(issueFields)),
+        ]
+          .slice(0, 12)
+          .join(', ')}`,
+      });
       return z.NEVER;
     }
     return parsed.data;
