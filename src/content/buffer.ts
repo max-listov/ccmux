@@ -92,8 +92,13 @@ export class ContentBuffer {
       return;
     if (!text.length && !complete && operation === 'append') return;
     const revision = operation === 'replace' ? (prior?.revision ?? 0) + 1 : (prior?.revision ?? 1);
-    const prefixKnown = operation === 'replace' || prior?.prefixKnown === true;
     let offset = operation === 'append' ? (prior?.totalBytes ?? 0) : 0;
+    // An append at byte zero IS the beginning of that item: nothing precedes it, so its prefix is
+    // known. Only `replace` used to say so, and a runtime that streams its answer as deltas —
+    // native Claude does — therefore marked every item as starting mid-text. A consumer reading
+    // that flag honestly then prefixed EVERY answer with "the beginning is unavailable", including
+    // four-character ones where nothing could have been omitted.
+    const prefixKnown = operation === 'replace' || offset === 0 || prior?.prefixKnown === true;
     const chunks = textChunks(text, CONTENT_EVENT_BYTES);
     if (!chunks.length) chunks.push('');
     for (let i = 0; i < chunks.length; i++) {
@@ -124,13 +129,18 @@ export class ContentBuffer {
     const record = this.value.records.at(-1);
     if (record === undefined) return;
     this.states.delete(key);
+    const dropped = offset - Buffer.byteLength(tail.text);
     this.states.set(key, {
       ...record,
       operation: 'replace',
       text: tail.text,
-      offsetBytes: offset - Buffer.byteLength(tail.text),
+      offsetBytes: dropped,
       totalBytes: offset,
-      omittedBytes: offset - Buffer.byteLength(tail.text),
+      omittedBytes: dropped,
+      // The kept tail carries the item's start only while nothing was dropped from it. The events
+      // above answer "does this record begin the item"; this answers "does what a late reader gets
+      // begin it", and a bounded window is exactly where those two part company.
+      prefixKnown: prefixKnown && dropped === 0,
       complete: complete && prefixKnown && offset === Buffer.byteLength(tail.text),
     });
     this.rememberPosition({ ...record, complete });

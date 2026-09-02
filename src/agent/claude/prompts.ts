@@ -33,12 +33,25 @@ const DECLARED_LINE = 'pre-approves';
  *  live menu is always at the bottom, and a numbered list in scrollback is not a prompt. */
 const MENU_CURSOR_RE = /❯\s*\d+\.\s/;
 
+/**
+ * The same menus render their footer even when the options carry no numbers.
+ *
+ * Measured on a real trust prompt: the options were `❯ No, exit` / `Yes, I trust this folder` with
+ * no digits at all, so the cursor pattern above missed it — and the composer detector then read the
+ * cursor line as a half-typed message and held delivery with "that pane has unsent text in its
+ * composer". A reader sent looking for a composer they can clear finds a modal dialog instead, which
+ * is the one thing that sentence cannot be. The footer is rendered by the menu itself and appears
+ * nowhere else, so it identifies the state without guessing at option shapes.
+ */
+const MENU_FOOTER_RE = /Enter to confirm\s*·\s*Esc to cancel/;
+
 export function paneTail(paneText: string, lines = 20): string {
   return paneText.split('\n').slice(-lines).join('\n');
 }
 
 export function atInteractiveMenu(paneText: string): boolean {
-  return MENU_CURSOR_RE.test(paneTail(paneText));
+  const tail = paneTail(paneText);
+  return MENU_CURSOR_RE.test(tail) || MENU_FOOTER_RE.test(tail);
 }
 
 /** Which menu is up, if any. `unrecognised` is a real answer, not a failure: an unknown menu still

@@ -1,8 +1,10 @@
-import { existsSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
+import { dirname, isAbsolute } from 'node:path';
+import { getProvider } from '../agent/index.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { findSession, loadSessions, setSessionDir } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { printLine } from '../util/stdout.ts';
 
@@ -69,15 +71,40 @@ export async function cmdDir(args: string[]): Promise<number> {
   }
 
   const previous = session.dir;
+  // The conversation moves with the session, because that is what the command promises.
+  //
+  // A provider that keeps history under a path DERIVED from the project directory — Claude does,
+  // one file per conversation under an encoded copy of the cwd — leaves that file behind when the
+  // directory changes. The session then refuses to start, correctly and loudly, and the operator is
+  // told to move a file by hand: which makes "without losing its conversation" true only for
+  // someone who reads the refusal and knows what to do with it.
+  //
+  // Nothing is guessed. The move happens only when the source exists and the destination does not;
+  // anything else is left exactly as it is, and the refusal at start remains the honest fallback.
+  const carried = conversationCarry(
+    getProvider(session.agent),
+    session,
+    { ...session, dir: path },
+    m,
+  );
+  if (carried?.blocked != null) {
+    console.error(`dir: ${carried.blocked}`);
+    return 1;
+  }
   if (!(await setSessionDir(m, name, path))) {
     console.error(`dir: no such session '${name}'`);
     return 1;
+  }
+  if (carried?.moved) {
+    mkdirSync(dirname(carried.to), { recursive: true });
+    renameSync(carried.from, carried.to);
   }
   log.info({ msg: 'session directory declared', name });
   // Sessions sharing a directory are a normal arrangement — two agents on one checkout — and only
   // the named one moves. Saying which others stayed is cheaper than the operator discovering it.
   const sharing = sessions.filter((s) => s.name !== name && s.dir === previous).map((s) => s.name);
   await printLine(`${name}: ${previous} → ${path}`);
+  if (carried?.moved) await printLine(`  conversation carried: ${carried.to}`);
   await printLine(
     `  applies on the next start — a running agent's cwd belongs to its process: ccmux restart ${name}`,
   );
@@ -103,4 +130,32 @@ async function listDirs(): Promise<number> {
     await printLine(`${s.name.padEnd(width)}  ${s.dir}${gone}`);
   }
   return 0;
+}
+
+/**
+ * Where this session's conversation would live before and after the move, when that is knowable.
+ *
+ * Null when the provider does not keep history at a directory-derived path — nothing to carry, and
+ * inventing a move would be worse than leaving it. `blocked` is the one case that must not proceed
+ * silently: a file already sitting at the destination is somebody else's conversation or an earlier
+ * copy of this one, and choosing between them is not a decision a directory change gets to make.
+ */
+export function conversationCarry(
+  provider: ReturnType<typeof getProvider>,
+  before: Session,
+  after: Session,
+  m: MachineConfig,
+): { from: string; to: string; moved: boolean; blocked: string | null } | null {
+  const from = provider.historyFile(before, m);
+  const to = provider.historyFile(after, m);
+  if (from === null || to === null || from === to) return null;
+  if (!existsSync(from)) return { from, to, moved: false, blocked: null };
+  if (existsSync(to))
+    return {
+      from,
+      to,
+      moved: false,
+      blocked: `a conversation already exists at ${to} — move or remove it first; nothing has changed`,
+    };
+  return { from, to, moved: true, blocked: null };
 }
