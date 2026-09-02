@@ -4,6 +4,7 @@ import { getProvider } from '../agent/index.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { findSession, loadSessions, setSessionDir } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { hasSession } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { printLine } from '../util/stdout.ts';
@@ -108,6 +109,14 @@ export async function cmdDir(args: string[]): Promise<number> {
   await printLine(
     `  applies on the next start — a running agent's cwd belongs to its process: ccmux restart ${name}`,
   );
+  // Said only when there is something to keep writing. A live agent goes on appending at the OLD
+  // location until it restarts, which quietly arms the next move: the file it writes there is
+  // exactly what a move BACK would refuse to overwrite — a session blocked by its own leftovers,
+  // with nothing in the message to explain it. Measured by the session that asked for this command.
+  if (carried?.moved && (await hasSession(m, name)))
+    await printLine(
+      `  until that restart it keeps writing at ${carried.from} — move it back only after restarting, or that file will be in the way`,
+    );
   if (sharing.length > 0)
     await printLine(`  still registered at ${previous}: ${sharing.join(', ')}`);
   return 0;
