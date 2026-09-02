@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.2] — 2026-09-02
+
+Name the fields a refused request got wrong
 ## [0.47.1] — 2026-09-02
 
 Say what a live session leaves behind when its directory moves
