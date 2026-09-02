@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.44.0] — 2026-09-02
+
+One session row for list and fleet, so a field cannot arrive on one path and vanish on the other
 ## [0.43.8] — 2026-09-01
 
 Keep a large JSON answer whole when the reader is slower than the writer
