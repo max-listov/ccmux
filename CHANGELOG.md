@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.46.0] — 2026-09-02
+
+Mail waits for the recipient's turn boundary, and several letters arrive as one
 ## [0.45.0] — 2026-09-02
 
 Move a session's registered directory without recreating it
