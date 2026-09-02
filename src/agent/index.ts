@@ -12,10 +12,11 @@ import type {
   TranscriptStats,
 } from '../types.ts';
 import { MtimeCache } from '../util/mtimeCache.ts';
-import { readLines, readTailLines, readTailUntil } from '../util/readLines.ts';
+import { readTailLines, readTailUntil } from '../util/readLines.ts';
 import { claudeProvider } from './claude/index.ts';
 import { codexProvider } from './codex/index.ts';
 import type { LaunchInput } from './launchInputs.ts';
+import { EMPTY_STATS, indexTranscript } from './transcriptIndex.ts';
 
 // Format sniff lives in its own light module (normalize-only deps) so the public library seam can
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
@@ -100,12 +101,15 @@ export interface AgentProvider {
     takenUuids: ReadonlySet<string>,
   ): string | null;
   // transcript (raw JSONL → shared contract). endLine bounds the upper edge of the window
-  // for backward pagination; omit to parse through the end of the file.
+  // for backward pagination; omit to parse through the end of the file. `baseLine` is the absolute
+  // line number of `lines[0]`: the array may be a WINDOW of the file rather than all of it, and
+  // every `seq` this returns is a cursor the caller can hand back to `--cursor`.
   parse(
     lines: string[],
     startLine: number,
     textLimit?: number,
     endLine?: number,
+    baseLine?: number,
   ): TranscriptMessage[];
   usedTokens(lines: string[]): number | null;
   // The conversation's CURRENT model, read from history (source of truth), or null if not yet
@@ -167,18 +171,17 @@ export function supportsManagedInput(session: Session): boolean {
 const LAST_MESSAGE_WINDOW = 120;
 const LAST_MESSAGE_TEXT_LIMIT = 280;
 
-const EMPTY_STATS: TranscriptStats = {
-  messages: 0,
-  user: 0,
-  assistant: 0,
-  toolCalls: 0,
-  thinking: 0,
-};
-const statsCache = new MtimeCache<TranscriptStats>();
-
-/** Whole-session composition, counted by re-parsing the full JSONL. Cached by mtime, so an idle
- *  session costs nothing and an active one recomputes only when it actually moves. */
-function computeStats(provider: AgentProvider, lines: string[]): TranscriptStats {
+/** Whole-session composition, kept as a running total by the transcript index. It used to be
+ *  recomputed by re-parsing the whole file behind an in-memory mtime cache — in a process that
+ *  handles one command and exits, so the cache never once hit and every call paid the full pass. */
+/**
+ * What a batch of lines adds to the totals.
+ *
+ * Counted over a slice rather than the file, because the index feeds each new line here exactly
+ * once and keeps the running sum. The four counters survive being cut into batches: a tool_result
+ * separated from its call is folded into none of them either way, so a boundary changes no number.
+ */
+function countStats(provider: AgentProvider, lines: string[]): TranscriptStats {
   let user = 0;
   let assistant = 0;
   let toolCalls = 0;
@@ -239,8 +242,8 @@ export function readTranscript(
       stats: EMPTY_STATS,
     };
   }
-  const lines = readLines(path);
-  const total = lines.length;
+  const index = indexTranscript(path, provider.id, (batch) => countStats(provider, batch));
+  const total = index?.totalLines ?? 0;
   let start: number;
   let endLine: number | undefined;
   if (opts.before !== undefined && Number.isFinite(opts.before)) {
@@ -253,8 +256,11 @@ export function readTranscript(
     start = total > opts.tail ? total - opts.tail + 1 : 1;
   }
   start = Math.max(1, start);
-  const messages = provider.parse(lines, start, opts.textLimit, endLine);
-  const stats = statsCache.get(path, () => computeStats(provider, lines)) ?? EMPTY_STATS;
+  // Only the window is read, and it is read knowing where it starts — which is the whole reason the
+  // index exists. `seq` stays the absolute line number a `--cursor` is expressed in.
+  const window = index?.read(start, endLine ?? total) ?? [];
+  const messages = provider.parse(window, start, opts.textLimit, endLine, start);
+  const stats = index?.stats ?? EMPTY_STATS;
   let mtimeMs: number | null = null;
   try {
     mtimeMs = Math.floor(statSync(path).mtimeMs);

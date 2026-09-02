@@ -171,16 +171,21 @@ export function parse(
   startLine: number,
   textLimit: number = DEFAULT_TEXT_LIMIT,
   endLine?: number,
+  baseLine = 1,
 ): TranscriptMessage[] {
   const out: TranscriptMessage[] = [];
   const callInput = new Map<string, Record<string, unknown> | null>(); // call-id → tool_use input
   const callName = new Map<string, string>(); // call-id → tool name
   const results = new Map<string, RawResult>(); // call-id → raw tool_result
-  const end = endLine !== undefined ? Math.min(lines.length, endLine) : lines.length;
-  for (let i = Math.max(0, startLine - 1); i < end; i++) {
+  // `lines[0]` is absolute line `baseLine`: the window may be a slice of the file rather than all
+  // of it, and `seq` is a CURSOR — `transcript --cursor` hands it back and expects the same line.
+  const lastLine = baseLine + lines.length - 1;
+  const end = endLine !== undefined ? Math.min(lastLine, endLine) : lastLine;
+  for (let line = Math.max(baseLine, startLine); line <= end; line++) {
+    const i = line - baseLine;
     const raw = lines[i];
     if (!raw || raw.trim() === '') continue;
-    const seq = i + 1;
+    const seq = line;
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
