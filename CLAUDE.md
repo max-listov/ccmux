@@ -160,6 +160,21 @@ sockets and tmux, and on a loaded machine those legitimately take seconds — fi
 that way in one afternoon, none of them alone. The bound still fails a hang; it just stops being a
 statement about how busy the machine is. A test that needs the wall clock to prove something waits
 for the observable state instead, with its own bound.
+A control is not "did it go red". Falsify the thing under test, then check that the RED IS THE ONE
+YOU ARE RELYING ON — the same test, and failing for the reason you meant. Both halves have cost real
+time here. A control has passed because the budget it set was refused by a config schema, so both
+runs failed on the same unrelated thing; another reddened a neighbouring test, because the mutation
+landed on the first of several identical lines. And a green control is the quieter failure: a test
+that cannot fail on the behaviour it guards reads exactly like one that guards it, so run the
+mutation before writing the acceptance, not after.
+
+**A quantity named wrongly is indistinguishable from a right answer by looking at the answer.** Three
+defects here were one shape: a budget checked on a payload and enforced on the serialized line; that
+same budget taken from this project's own constant while the wire under it allowed eight times less;
+a helper whose two probes ran in the order that made the common case expensive. None was found by
+re-reading. Each was found by someone measuring the same thing with a different instrument — which
+is the argument for asking, not for being careful.
+
 `bun run lint` checks without editing; `bun run format` formats; `bun run lint:fix` applies safe
 Biome fixes. The shared style is two spaces, 100 columns, single quotes and semicolons. Use the
 checked-in `biome.json`; do not introduce a parallel formatter or suppress whole rule groups to
