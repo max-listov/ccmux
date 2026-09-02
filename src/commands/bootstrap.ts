@@ -23,6 +23,27 @@ import { superviseReady } from './run.ts';
 
 const POLL_MS = 50;
 
+/**
+ * Why the correlation loop gave up, once its budget is spent. Two different facts can land in the
+ * same instant — the budget ran out, and the child died — and the loop announces whichever it
+ * noticed first. On a loaded host that is always the deadline: a sleep overshoots, the last
+ * iteration eats what is left of the budget, and a child that crashed gets reported as a slow one.
+ *
+ * The two answers ask opposite things of whoever reads the block. A timeout points at host load or
+ * a writer that would not admit us; a crash points at the child's own stderr, where the answer
+ * already is. So the exit status decides, not whatever the loop happened to see, and it is read
+ * before `kill` — after it, every child looks like one that exited on its own.
+ */
+export function exhaustedBudgetReason(
+  kind: 'create' | 'fork' | 'adopt',
+  exitCode: number | null,
+): string {
+  if (exitCode === null) return `Codex ${kind} admission/correlation timed out`;
+  return kind === 'adopt'
+    ? 'Codex resume admission was rejected by the active writer or child exited'
+    : `Codex ${kind} child exited before writing session_meta`;
+}
+
 async function block(generation: string, error: string): Promise<number> {
   const m = loadMachineConfig();
   const pending = loadPendingSessions(m).find((item) => item.generation === generation);
@@ -173,8 +194,9 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
     await Bun.sleep(POLL_MS);
   }
   if (!readyUuid) {
+    const reason = exhaustedBudgetReason(operation.kind, proc.exitCode);
     proc.kill();
-    return block(generation, `Codex ${operation.kind} admission/correlation timed out`);
+    return block(generation, reason);
   }
   try {
     await promotePendingSession(m, generation, readyUuid);

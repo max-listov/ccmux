@@ -8,7 +8,7 @@ the GitHub Release with that section as the notes.
 
 ## [0.47.7] — 2026-09-02
 
-A schema that cannot answer is treated as having nothing to say
+A schema that cannot answer is treated as having nothing to say, and a child that crashed is named as crashed
 ## [0.47.6] — 2026-09-02
 
 Check a request against the contract the client speaks

@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Glob } from 'bun';
+import { exhaustedBudgetReason } from '../src/commands/bootstrap.ts';
 import { lifecycleBlockPath } from '../src/config/paths.ts';
 import { loadPendingSessions, reservePendingSession } from '../src/config/pendingSessions.ts';
 import { MachineConfigSchema, PendingSessionSchema } from '../src/config/schema.ts';
@@ -98,6 +99,9 @@ async function runFailure(mode: FailureMode): Promise<void> {
           ? 'correlation timed out'
           : 'refusing ambiguous promotion',
     );
+    // A crash must never be announced as a timeout, whatever the budget did — see the test that
+    // exhausts the budget first.
+    if (mode === 'crash') expect(output).not.toContain('correlation timed out');
     expect(loadSessions(machine)).toEqual([]);
     expect(loadPendingSessions(machine)).toEqual([]);
     expect(await hasSession(machine, 'agent-a')).toBe(false);
@@ -210,3 +214,27 @@ test(
   },
   INTEGRATION_TIMEOUT_MS,
 );
+
+/**
+ * Which fact the correlation loop reports once its budget is spent. This is a decision, not a race,
+ * so it is tested as one: staging the race itself would need the child to die inside a specific
+ * fifty-millisecond window, and a test that can only pass by being lucky asserts nothing. The
+ * ordering it stands in for is real and was measured on a loaded machine — the deadline was noticed
+ * first and a crashed child was announced as a timeout.
+ */
+test('a spent budget reports the exit status, not whichever fact the loop saw first', () => {
+  expect(exhaustedBudgetReason('create', null)).toContain('correlation timed out');
+  expect(exhaustedBudgetReason('fork', null)).toContain('correlation timed out');
+  expect(exhaustedBudgetReason('adopt', null)).toContain('correlation timed out');
+
+  // A child that is already gone is named as gone, whatever the clock did.
+  expect(exhaustedBudgetReason('create', 17)).toContain('exited before writing session_meta');
+  expect(exhaustedBudgetReason('fork', 1)).toContain('exited before writing session_meta');
+  expect(exhaustedBudgetReason('create', 0)).toContain('exited before writing session_meta');
+  for (const kind of ['create', 'fork', 'adopt'] as const)
+    expect(exhaustedBudgetReason(kind, 17)).not.toContain('correlation timed out');
+
+  // Adoption never wrote a session_meta to miss: its child was asking an existing writer for
+  // admission, so the block says that instead.
+  expect(exhaustedBudgetReason('adopt', 17)).toContain('rejected by the active writer');
+});
