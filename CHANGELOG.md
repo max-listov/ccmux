@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.4] — 2026-09-02
+
+Stop waiting for a lock nobody is waiting for
 ## [0.47.3] — 2026-09-02
 
 Tell every letter behind a gate what the gate is
