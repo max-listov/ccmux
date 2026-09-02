@@ -688,9 +688,16 @@ test('declared service reuses exact control operations, identity and admission',
   )
     await Bun.sleep(1);
   expect(f.owned.controls.mutations.getSnapshot().active).toBeGreaterThan(0);
-  await expect(
-    f.remote.create({ requestId, name: 'created-a', workspace: f.root, flags: [] }),
-  ).rejects.toMatchObject({ code: 'BUSY', status: 429 });
+  // Two truthful answers, and which one is owed depends on the RECEIPT, not on the clock. While the
+  // create is unsettled a second one is a race and is refused; once the receipt is complete the
+  // same request id is answered from it — a caller whose first answer was lost to a transport must
+  // be able to tell "already done" from "still running", and BUSY says neither. The receipt is read
+  // here rather than assumed, because the work can finish while the admission slot is still counted.
+  const { settledCreateRequest } = await import('../src/control/lifecycle.ts');
+  const settledBeforeRetry = settledCreateRequest(f.machine, requestId);
+  const retry = f.remote.create({ requestId, name: 'created-a', workspace: f.root, flags: [] });
+  if (settledBeforeRetry) expect((await retry).duplicate).toBe(true);
+  else await expect(retry).rejects.toMatchObject({ code: 'BUSY', status: 429 });
   const created = await firstCreate;
   const duplicate = await f.remote.create({
     requestId,
