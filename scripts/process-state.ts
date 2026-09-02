@@ -16,15 +16,19 @@ import { readFileSync } from 'node:fs';
  * platform and blind on the other, while reading as though it handled the case everywhere.
  */
 /**
- * Cold paths only. Measured on macOS: this costs 2.67ms against 0.00029ms for `kill(pid, 0)` —
- * roughly nine thousand times more — because there is no `/proc` and the state has to come from
- * `ps`. That is nothing in a wait that runs a few times a second, and unacceptable in something a
- * read path calls; the monitoring liveness check runs on every read, and a suite that reads two
- * hundred times would pay half a second for it.
+ * On macOS there is no `/proc`, so the state comes from `ps` — measured at 2.67ms against 0.00029ms
+ * for the bare signal probe. The signal is therefore asked first, and a pid that is truly gone
+ * never reaches `ps` at all.
  *
- * Where a probe is hot, the signal test stays — and then whether a zombie is reachable there has to
- * be answered rather than assumed: it is only reachable while the process is a CHILD of something
- * that is not reaping it.
+ * That ordering moves the axis, and the axis is NOT "is this path hot". It is whether the probe
+ * usually finds the process ALIVE. A loop waiting for something to exit pays the full price only
+ * while it has not exited — a bounded number of times — and then answers for nothing. A liveness
+ * check on a process that is normally alive pays it on every single call: the monitoring read does
+ * that per read, and a suite doing two hundred reads would buy half a second of `ps`.
+ *
+ * Where a probe is on the alive-usually side, the bare signal test stays — and then whether a
+ * zombie is reachable there has to be answered rather than assumed: it is only reachable while the
+ * process is a CHILD of something that is not reaping it.
  */
 export function processState(pid: number): string {
   try {
@@ -34,6 +38,18 @@ export function processState(pid: number): string {
       if (!state) throw new Error(`Process ${pid} state is unreadable`);
       return state;
     }
+    // Ask the signal FIRST, and only then pay for `ps`. A pid that is truly gone answers here for
+    // nothing, and that is the answer a wait-for-exit loop asks for over and over — so the
+    // expensive path is taken only while the process still exists, which is the bounded case.
+    // ESRCH is the only "gone": EPERM means it exists and belongs to someone else.
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && String(error.code) === 'ESRCH')
+        return 'absent';
+    }
+    // It is in the table. That is precisely when a corpse is indistinguishable from a runner, and
+    // the only thing that tells them apart is the state.
     const ps = Bun.spawnSync(['ps', '-o', 'state=', '-p', String(pid)]);
     const state = ps.stdout.toString().trim().charAt(0);
     return state === '' ? 'absent' : state;

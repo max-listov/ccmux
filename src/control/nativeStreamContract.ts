@@ -1,16 +1,31 @@
 import { z } from 'zod';
 import { managedPeerKey } from '../chat/identity.ts';
 import { ManagedPeerSchema } from '../config/schema.ts';
-import {
-  CONTROL_MAX_BYTES,
-  ControlNativeCursorSchema,
-  ControlNativeSnapshotSchema,
-} from './schema.ts';
+import { ControlNativeCursorSchema, ControlNativeSnapshotSchema } from './schema.ts';
 
 export const CCMUX_NATIVE_STREAM_PROFILE = 'ccmux-native';
 export const CCMUX_NATIVE_STREAM_COMMAND = 'control-native-stream';
 export const CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES = 4096;
-export const CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES = CONTROL_MAX_BYTES + 1024;
+/**
+ * What the wire under this stream actually allows, and it is TWO ceilings on two quantities.
+ *
+ * The transport reads the producer's NDJSON with a parser bounded at `maxChunkBytes * 2`, and
+ * separately refuses any framed chunk whose `data` exceeds `maxChunkBytes`. That knob is the
+ * broker's, its schema maximum is 32 KiB, and its default is the same 32 KiB — so no deployment can
+ * raise it. Read from the transport's source, not inferred from its behaviour.
+ *
+ * The budget here used to be derived from this project's own `CONTROL_MAX_BYTES` — 513 KiB, eight
+ * times what the wire carries. Sizing the frame against it produced frames that satisfied our
+ * contract and died on the wire, and the earlier fix made that worse in an instructive way: it
+ * corrected the QUANTITY being measured (the line, not the payload) while keeping the wrong LIMIT,
+ * which is the same defect one level up. A number has to come from whoever enforces it.
+ *
+ * A broker configured BELOW the default would still refuse us, and nothing on this side can see
+ * that value. Then the refusal is the transport's and names its own ceiling; there is no honest way
+ * to pre-empt a limit we cannot read.
+ */
+export const CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES = 32 * 1024;
+export const CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES = CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES * 2;
 export const CCMUX_NATIVE_STREAM_HEARTBEAT_MS = 2000;
 
 const ControlNativeStreamCursorPayloadSchema = z
@@ -78,7 +93,15 @@ export const ControlNativeStreamFrameSchema = z
   // makes nothing smaller. A conversation showed as queued for twenty-two hours behind it.
   .refine(
     (frame) => controlNativeStreamFrameBytes(frame) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
-    'native stream frame exceeds byte budget',
+    'native stream frame exceeds the line budget',
+  )
+  // And the payload separately, because the transport checks it separately. Two ceilings on two
+  // quantities is not redundancy: the line is what the parser buffers, `data` is what the chunk
+  // check measures, and a frame can satisfy either one alone.
+  .refine(
+    (frame) =>
+      new TextEncoder().encode(frame.data).byteLength <= CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
+    'native stream payload exceeds the chunk budget',
   );
 
 export function encodeControlNativeStreamCursor(
@@ -139,10 +162,18 @@ export function controlNativeStreamFrame(snapshot: unknown) {
   // is exact — and the difference is not academic: shedding singly cost 4.5 SECONDS on a
   // two-megabyte snapshot, because each step re-serializes the whole thing. Nine measurements
   // instead of four hundred and twenty-four.
-  const fits = (records: typeof native.records, baseline: typeof native.baseline) =>
-    controlNativeStreamFrameBytes(
-      build(records, baseline, native.omittedRecords + (native.records.length - records.length)),
-    ) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES;
+  const fits = (records: typeof native.records, baseline: typeof native.baseline) => {
+    const candidate = build(
+      records,
+      baseline,
+      native.omittedRecords + (native.records.length - records.length),
+    );
+    // Both ceilings, because the transport applies both and a frame can clear one alone.
+    return (
+      controlNativeStreamFrameBytes(candidate) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES &&
+      new TextEncoder().encode(candidate.data).byteLength <= CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES
+    );
+  };
   const keepNewest = <T>(items: readonly T[], count: number) => items.slice(items.length - count);
 
   let records = native.records;

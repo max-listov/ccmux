@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import {
+  CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
   CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
   controlNativeStreamFrame,
   controlNativeStreamFrameBytes,
@@ -68,24 +69,24 @@ test('the frame budget is measured on the line a consumer reads, not on the payl
   // The two quantities the one number was asked to answer. `data` is itself JSON, so serializing
   // the frame escapes it a second time — the line is always larger, and by how much depends on what
   // the text contains.
-  const value = snapshot(200, 400);
+  const value = snapshot(20, 100);
   const payload = new TextEncoder().encode(JSON.stringify(value)).byteLength;
   expect(rawLineBytes(value)).toBeGreaterThan(payload);
 });
 
 test('an ordinary snapshot passes through whole', () => {
-  const value = snapshot(20, 200);
+  const value = snapshot(4, 60);
   expect(rawLineBytes(value)).toBeLessThanOrEqual(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
   const frame = controlNativeStreamFrame(value);
   const sent = JSON.parse(frame.data) as { records: unknown[]; omittedRecords: number };
-  expect(sent.records).toHaveLength(20);
+  expect(sent.records).toHaveLength(4);
   // Nothing was shed, so nothing is counted as shed. A shed count invented for a shed that did not
   // happen is the same lie as any other invented number.
   expect(sent.omittedRecords).toBe(0);
 });
 
 test('a snapshot too large for the line is shed until it fits, and says how much', () => {
-  const value = snapshot(512, 3_000, 7);
+  const value = snapshot(512, 300, 7);
   // The fixture has to actually reach the condition: a probe that never crosses the budget would
   // report success without exercising anything. This threw during development, twice.
   expect(rawLineBytes(value)).toBeGreaterThan(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
@@ -113,8 +114,35 @@ test('shedding is found by halving, not by dropping one at a time', () => {
   // Not a preference. Dropping singly re-serializes the whole snapshot each step and cost 4.5
   // seconds on a two-megabyte frame — on a path that emits frames continuously. This bound is
   // generous enough not to fail on a loaded machine and far below what the linear form took.
-  const value = snapshot(512, 3_000);
+  const value = snapshot(512, 300);
   const started = performance.now();
   controlNativeStreamFrame(value);
   expect(performance.now() - started).toBeLessThan(1_500);
+});
+
+test("the budget comes from the wire under it, not from this project's own constant", () => {
+  // Read from the transport's source rather than inferred: it buffers the producer's NDJSON at
+  // `maxChunkBytes * 2` and separately refuses a framed chunk whose `data` exceeds `maxChunkBytes`.
+  // That knob's schema maximum and its default are both 32 KiB, so no deployment carries more.
+  expect(CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES).toBe(32 * 1024);
+  expect(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBe(2 * CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES);
+
+  // The earlier value was this project's own 513 KiB — eight times what the wire carries — and a
+  // frame sized against it satisfied the contract and died on the wire. This pins the relationship
+  // so the number cannot drift back to one nobody on the wire enforces.
+  expect(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBeLessThan(512 * 1024);
+});
+
+test('both ceilings are enforced, because the transport applies both', () => {
+  const value = snapshot(512, 300);
+  const frame = controlNativeStreamFrame(value);
+  // The line, which is what the parser buffers.
+  expect(controlNativeStreamFrameBytes(frame)).toBeLessThanOrEqual(
+    CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
+  );
+  // And the payload, which the chunk check measures separately. A frame can clear one alone, so
+  // clearing one is not evidence about the other.
+  expect(new TextEncoder().encode(frame.data).byteLength).toBeLessThanOrEqual(
+    CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
+  );
 });
