@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { bootArgv } from '../config/paths.ts';
 import { HOME, PLATFORM, UID } from '../env.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { log } from '../util/log.ts';
 import { run } from '../util/spawn.ts';
 import { type BootContext, renderLaunchdPlist, renderSystemdUnit } from './render.ts';
 
@@ -61,6 +62,50 @@ export async function installBoot(m: MachineConfig): Promise<void> {
     await run(['systemctl', 'enable', '--now', m.bootLabel]);
     console.log(`wrote ${unit} and enabled systemd ${m.bootLabel}`);
   }
+}
+
+/**
+ * Bring the installed boot unit up to the definition this version renders, when the two differ.
+ *
+ * Without this a change to the boot policy cannot reach a machine at all: the unit is written by
+ * `ccmux install` and, once, by the bundle migration — an ordinary release rolls out the code and
+ * leaves the unit exactly as it was. So the daemon's restart policy on every already-installed
+ * machine is whatever version installed it, and a fix to that policy ships to nobody.
+ *
+ * Written only when the content differs, so an unchanged machine does no I/O and no reload, and the
+ * running daemon is never bounced for it — the next start is what needs the new definition, and
+ * bouncing a healthy supervisor to hurry that up trades the problem for a worse one.
+ */
+/**
+ * Should the installed boot unit be rewritten? Two rules, and each is a decision someone could
+ * reasonably get backwards, so they are named here rather than left inside the I/O.
+ *
+ * `null` means no unit is installed on this machine — and that is NOT an invitation to write one.
+ * Installing is a deliberate act; a daemon that quietly creates a boot unit nobody asked for is
+ * worse than one that leaves an uninstalled machine alone.
+ *
+ * Identical content means nothing to do: no write, no reload, nothing logged. Convergence runs on
+ * every daemon start, so the unchanged case is the common one and it must cost nothing.
+ */
+export function bootUnitNeedsWrite(current: string | null, rendered: string): boolean {
+  return current !== null && current !== rendered;
+}
+
+export async function convergeBootUnit(m: MachineConfig): Promise<boolean> {
+  const ctx = context(m);
+  const path = isMac ? launchdPlistPath(m.bootLabel) : systemdUnitPath(m.bootLabel);
+  const rendered = isMac ? renderLaunchdPlist(ctx) : renderSystemdUnit(ctx);
+  let current: string | null = null;
+  try {
+    current = readFileSync(path, 'utf8');
+  } catch {
+    current = null;
+  }
+  if (!bootUnitNeedsWrite(current, rendered)) return false;
+  await atomicWrite(path, rendered);
+  if (!isMac) await run(['systemctl', 'daemon-reload']);
+  log.info({ msg: 'boot unit converged to this version', path });
+  return true;
 }
 
 /** Write the boot unit WITHOUT touching the running daemon. Used by the bundle migration: the

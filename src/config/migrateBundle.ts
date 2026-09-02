@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { writeBootUnitOnly } from '../boot/install.ts';
+import { convergeBootUnit, writeBootUnitOnly } from '../boot/install.ts';
 import { IS_DEV, SHIM_PATH } from '../env.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
@@ -103,6 +103,14 @@ export async function convergeBundleLocation(m: MachineConfig): Promise<BundleMi
     } catch (e) {
       log.warn({ msg: 'installed PATH shim could not be converged', err: String(e) });
     }
+  }
+  // And the boot unit, for the same reason and on the same terms. A release rolls out code; without
+  // this it never rolls out the definition that decides whether the daemon comes back at all, so a
+  // fix to the restart policy would ship to every machine and take effect on none.
+  try {
+    await convergeBootUnit(m);
+  } catch (e) {
+    log.warn({ msg: 'boot unit could not be converged to this version', err: String(e) });
   }
   return moved;
 }

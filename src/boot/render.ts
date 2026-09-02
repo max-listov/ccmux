@@ -21,9 +21,19 @@ export function renderSystemdUnit(ctx: BootContext): string {
 Description=ccmux — persistent self-healing Claude Code tmux fleet
 After=network-online.target
 Wants=network-online.target
-# backstop against a genuine crash-loop (config self-test already exits 0 on bad config)
-StartLimitIntervalSec=60
-StartLimitBurst=5
+# A backstop against a genuine crash-loop, sized so that NOTHING the daemon does on purpose can
+# trip it. The daemon restarts itself after applying an update, and a tripped start limit is
+# terminal: systemd stops trying, leaves the unit failed, and the supervisor stays dead until a
+# person happens to look. Two machines spent two hours that way when an update bounce landed
+# alongside an unrelated systemd re-exec and the six starts that followed exhausted a budget of
+# five per minute.
+#
+# A deliberate bounce happens at most once per update check (five minutes apart), so two per window
+# is the ceiling. A real crash-loop exits at once and needs twenty restarts to trip — five minutes
+# at this delay, comfortably inside the window. The macOS side never gives up at all; the daemon
+# being permanently killable on one platform and not the other was the asymmetry, not the policy.
+StartLimitIntervalSec=600
+StartLimitBurst=20
 
 [Service]
 Type=simple
@@ -32,8 +42,15 @@ Environment=HOME=${ctx.home}
 Environment=CCMUX_CONFIG=${ctx.configPath}
 Environment=PATH=${ctx.pathEnv}
 ExecStart=${execStart(ctx)}
-Restart=on-failure
-RestartSec=3
+# Restart=always, not on-failure: 143 is declared a success below, and on-failure would then
+# leave the daemon down after its own update bounce — the one restart it asks for by name.
+Restart=always
+RestartSec=15
+# 143 is the daemon shutting down when asked: its own post-update bounce, or a systemctl restart.
+# Without this every ordinary restart is journalled as "Failed with result 'exit-code'", so the unit
+# reports a failure each time it does exactly what it was built to do, and the one line an operator
+# reads first is trained to mean nothing.
+SuccessExitStatus=143
 # the daemon is a supervisor — its tmux sessions OUTLIVE it. KillMode=process kills ONLY the
 # daemon pid on stop/restart; without it systemd default (control-group) SIGTERMs the whole
 # cgroup — including every spawned tmux session — so systemctl restart / ccmux update would
