@@ -93,16 +93,26 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
       };
     }
   }
-  // Only for the message the daemon was actually holding. A reason recorded about a different letter
-  // is not evidence about this one.
+  // The gate the daemon recorded belongs to the RECIPIENT, not to one letter: a selection menu, a
+  // human mid-keystroke, an unpainted pane, a turn still running — none of them are properties of
+  // the envelope that happened to be first in the queue. Reporting it for that one letter and
+  // falling back to "no live reason on record (the daemon has not picked it up yet, or is not
+  // running)" for the next three replaced a true reason with a plausible false one: measured on a
+  // session sitting at a trust dialog, letter one named the menu and letters two through four sent
+  // the reader to check the daemon. So the reason is used for every letter waiting behind it, and
+  // says which of the two it is.
   const hold = ctx.daemonHold;
-  if (hold != null && hold.reason !== '' && (hold.msgId === null || hold.msgId === msg.id)) {
+  if (hold != null && hold.reason !== '') {
     const held = hold.heldForMs ?? 0;
-    if (held < STALLED_HOLD_MS) return { kind: 'live', text: hold.reason };
+    const mine = hold.msgId === null || hold.msgId === msg.id;
+    // Named rather than blended: "this letter is held because…" and "the recipient is held, and
+    // this letter is behind it" are different sentences, and only the first is about the envelope.
+    const reason = mine ? hold.reason : `ahead of it: ${hold.reason}`;
+    if (held < STALLED_HOLD_MS) return { kind: 'live', text: reason };
     // The same reason, plus the one fact that changes what a reader should do about it.
     return {
       kind: 'live',
-      text: `held for ${humanizeDuration(Math.round(held / 1000))} — ${hold.reason}`,
+      text: `held for ${humanizeDuration(Math.round(held / 1000))} — ${reason}`,
     };
   }
   // Deliberately does NOT assert that a turn is in progress. This branch is reached whenever the

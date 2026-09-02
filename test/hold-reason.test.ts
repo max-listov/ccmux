@@ -67,9 +67,13 @@ test("the daemon's live reason wins over the generic ones", () => {
   expect(r.kind).toBe('live');
 });
 
-test('a live reason is only claimed for the message it was actually recorded about', () => {
-  // The daemon holds on ONE picked message per recipient; stamping that reason under every unread
-  // letter would confidently mislabel the others (a deferred one told "a human is typing").
+test("a gate recorded about another letter is reported as the recipient's, not as this letter's", () => {
+  // Two failures are available here and they are opposite. Stamping the reason under every letter
+  // as if it were about that letter mislabels them; refusing to report it at all replaces a true
+  // reason with a plausible false one — measured on a session at a trust dialog, where letter one
+  // named the menu and letters two through four said the daemon might not be running, sending the
+  // reader to check a daemon that had just printed the real reason. The gate belongs to the
+  // RECIPIENT: it travels, and it says which of the two it is.
   const hold = { reason: 'a human is typing in that pane right now', msgId: 'other' };
   const r = holdReason(msg({ id: 'm1', defer: true }), {
     recipient: enabled,
@@ -78,7 +82,18 @@ test('a live reason is only claimed for the message it was actually recorded abo
     nowMs: 0,
     daemonHold: hold,
   });
-  expect(r.kind).toBe('awaiting-turn-end');
+  expect(r.kind).toBe('live');
+  expect(r.text).toBe('ahead of it: a human is typing in that pane right now');
+  // And a letter the gate WAS recorded about still reads as its own, with no borrowed wording.
+  expect(
+    holdReason(msg({ id: 'other', defer: true }), {
+      recipient: enabled,
+      chatEnabled: true,
+      running: true,
+      nowMs: 0,
+      daemonHold: hold,
+    }).text,
+  ).toBe('a human is typing in that pane right now');
 });
 
 test("a recipient whose agent cannot receive chat is told so — never 'queued'", () => {

@@ -69,16 +69,21 @@ test('the threshold is minutes, not seconds — a person pauses between keystrok
   expect(holdReason(msg, ctx(msg, STALLED_HOLD_MS + 1)).text).toContain('held for');
 });
 
-test('a reason recorded about ANOTHER letter is not evidence about this one', () => {
-  // Two messages queued for one recipient: the daemon holds on one, and the other must not inherit
-  // its explanation.
+test("a reason recorded about ANOTHER letter is reported as the recipient's gate, not as this one's", () => {
+  // Two messages queued for one recipient. The gate the daemon recorded — a menu, a keystroke, an
+  // unpainted pane — belongs to the RECIPIENT, so it is true for the letter behind it too; what it
+  // must not do is read as a fact about THIS envelope. Withholding it entirely was the other
+  // failure and the costlier one: the fallback text says the daemon may not be running, which sends
+  // a reader to check a daemon that had just recorded the real reason.
   const msg = letter();
   const out = holdReason(msg, {
     ...ctx(msg, 11 * 3_600_000),
     daemonHold: { reason: 'something else', msgId: randomUUID(), heldForMs: 11 * 3_600_000 },
   });
-  expect(out.kind).toBe('pending');
-  expect(out.text).not.toContain('something else');
+  expect(out.kind).toBe('live');
+  expect(out.text).toContain('ahead of it: something else');
+  // Age still travels with it: an eleven-hour hold reads differently from a three-second one.
+  expect(out.text).toContain('held for');
 });
 
 test('the composer hold no longer claims someone is typing RIGHT NOW', () => {
