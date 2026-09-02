@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.11] — 2026-09-02
+
+The Stop hook delivers a bounded batch through a writer that drains
 ## [0.49.10] — 2026-09-02
 
 A letter that has not been delivered can be withdrawn
