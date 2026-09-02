@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.6] — 2026-09-02
+
+Check a request against the contract the client speaks
 ## [0.47.5] — 2026-09-02
 
 Answer a retried create from its receipt instead of calling it busy
