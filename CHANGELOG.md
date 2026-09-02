@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.47.8] — 2026-09-02
+
+A recorded diagnostic is reachable by the name an operator has
 ## [0.47.7] — 2026-09-02
 
 A schema that cannot answer is treated as having nothing to say, and a child that crashed is named as crashed
