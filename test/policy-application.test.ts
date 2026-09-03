@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { composePolicyDeveloperInstructions, policySkillInputs } from '../src/policy/codex.ts';
 import { selectOpenCodePolicyAgent } from '../src/policy/opencode.ts';
+import { projectApplicationPolicy } from '../src/policy/projection.ts';
 import {
   applicationPolicyEvidence,
   resolveApplicationPolicy,
@@ -225,7 +226,7 @@ test('composition has aggregate limits and no duplicate source IDs or ambiguous 
   expect(() => resolveApplicationPolicy(f.host, 'codex', ref)).toThrow(unavailable);
 });
 
-test('desired/applied/unavailable projection excludes private materialization and error output stays generic', () => {
+test('desired/applied/unavailable projection excludes private materialization and a refusal names its condition', () => {
   const f = fixture();
   const secret = 'fixture-private-instruction-do-not-project';
   const definition = f.host.agentPolicies[ref.id];
@@ -247,7 +248,10 @@ test('desired/applied/unavailable projection excludes private materialization an
   } catch (error) {
     expect(error).toBeInstanceOf(Error);
     if (!(error instanceof Error)) throw error;
-    expect(error.message).toBe(unavailable);
+    // Generic was never the property worth guarding — private was. The message names the condition
+    // by its bounded code, which is what a consumer needs and what this project may publish, and
+    // still carries no source text and no path.
+    expect(error.message).toBe(`${unavailable}: source-digest-mismatch`);
     expect(JSON.stringify(error)).not.toContain(secret);
     expect(JSON.stringify(error)).not.toContain(f.root);
   }
@@ -302,16 +306,61 @@ test('OpenCode selects a canonical native agent without exposing or replacing it
   expect(JSON.stringify(applicationPolicyEvidence(policy, 'applied'))).not.toContain(
     'fixture-private-value',
   );
-  for (const candidate of [
-    { ...agent, prompt: 'different' },
-    { ...agent, hidden: true },
-    { ...agent, mode: 'subagent' },
-    { ...agent, name: 'different' },
-  ])
-    expect(() => selectOpenCodePolicyAgent(policy, [candidate])).toThrow(unavailable);
-  expect(() => selectOpenCodePolicyAgent(policy, [agent, agent])).toThrow(unavailable);
-  expect(() => selectOpenCodePolicyAgent(policy, {})).toThrow(unavailable);
+  // Each refusal by its own name. Asserted against the generic sentence, this loop passed whichever
+  // of the four conditions fired — which is the same blindness the consumer had: a directory named
+  // `agents/` where the runtime reads `agent/` produced the same word as a changed prompt.
+  const refusals: [unknown, string][] = [
+    [[{ ...agent, prompt: 'different' }], 'native-agent-source-mismatch'],
+    [[{ ...agent, hidden: true }], 'native-agent-selection-unavailable'],
+    [[{ ...agent, mode: 'subagent' }], 'native-agent-selection-unavailable'],
+    [[{ ...agent, name: 'different' }], 'native-agent-selection-unavailable'],
+    [[agent, agent], 'native-agent-selection-unavailable'],
+    [{}, 'native-agent-inventory-unavailable'],
+    [
+      [{ ...agent, permission: [{ permission: 'bash', pattern: '*', action: 'allow' }] }],
+      'native-tool-denial-not-enforced',
+    ],
+  ];
+  for (const [inventory, reason] of refusals) {
+    logged.mockClear();
+    expect(() => selectOpenCodePolicyAgent(policy, inventory)).toThrow(`${unavailable}: ${reason}`);
+    // And the same code in the daemon's own journal, so it is readable without a consumer.
+    expect(JSON.stringify(logged.mock.calls)).toContain(reason);
+  }
   expect(() => composePolicyDeveloperInstructions(policy, 'supervisor')).toThrow(unavailable);
+});
+
+test('an unavailable policy travels with its reason, and an available one carries none', () => {
+  const f = fixture();
+  const policy = resolveApplicationPolicy(f.host, 'codex', ref);
+  // What a consumer reads. `state` alone is a word with a dozen repairs behind it, and the one it
+  // needs was known here at the moment of the refusal.
+  expect(projectApplicationPolicy(policy.metadata, 'live', undefined)).toEqual({
+    policy: policy.metadata,
+    state: 'desired',
+  });
+  expect(projectApplicationPolicy(policy.metadata, 'unavailable', undefined, 'stopped')).toEqual({
+    policy: policy.metadata,
+    state: 'unavailable',
+    reason: 'stopped',
+  });
+  // A runtime that is not live and says nothing about why still names the availability itself,
+  // rather than publishing a state with no reason at all.
+  expect(projectApplicationPolicy(policy.metadata, 'stale', undefined, null).reason).toBe('stale');
+  // A publisher's own reason survives the projection: this is the one that carries
+  // `native-agent-selection-unavailable` out to the caller.
+  expect(
+    projectApplicationPolicy(
+      policy.metadata,
+      'live',
+      applicationPolicyEvidence(policy, 'unavailable', 'native-agent-selection-unavailable'),
+    ),
+  ).toEqual({
+    policy: policy.metadata,
+    state: 'unavailable',
+    reason: 'native-agent-selection-unavailable',
+  });
+  expect(applicationPolicyEvidence(policy, 'applied').reason).toBeUndefined();
 });
 
 test('OpenCode denies all-resource grant exceptions and never appends allow to a host ceiling', () => {

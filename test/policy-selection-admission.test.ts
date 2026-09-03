@@ -129,7 +129,9 @@ test('message admission refuses another catalog agent before appending policy-in
     ),
   ).rejects.toMatchObject({
     code: 'APPLICATION_POLICY_UNAVAILABLE',
-    message: 'Application policy is unavailable',
+    // The condition, not just the state: a caller cannot read this tree, and `unavailable` alone
+    // stands for a dozen different repairs.
+    message: 'Application policy is unavailable: native-agent-selection-conflicts-with-policy',
   });
   expect(loadLedger(f.m)).toEqual([]);
   expect(readFileSync(f.selectionPath, 'utf8')).toBe(before);
@@ -146,7 +148,7 @@ test('selection admission refuses a conflicting policy agent without journaling 
   };
   await expect(updateControlSelection(f.m, input, f.signal)).rejects.toMatchObject({
     code: 'APPLICATION_POLICY_UNAVAILABLE',
-    message: 'Application policy is unavailable',
+    message: 'Application policy is unavailable: native-agent-selection-conflicts-with-policy',
   });
   expect(readFileSync(f.selectionPath, 'utf8')).toBe(before);
   expect(loadLedger(f.m)).toEqual([]);

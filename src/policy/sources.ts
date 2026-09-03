@@ -85,7 +85,9 @@ export function readPolicySource(
     if (body.includes('\0')) policyUnavailable(policyId, 'invalid-source-text');
     return body;
   } catch (error) {
-    if (error instanceof Error && error.message === 'Application policy is unavailable')
+    // Matched by prefix, because the message now carries the code that named the condition: an
+    // equality check here would re-wrap an already precise refusal as `source-unavailable`.
+    if (error instanceof Error && error.message.startsWith('Application policy is unavailable'))
       throw error;
     return policyUnavailable(policyId, 'source-unavailable');
   } finally {

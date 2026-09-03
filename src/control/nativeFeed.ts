@@ -65,6 +65,7 @@ function nativeFrame(
             session.applicationPolicy,
             read.status,
             snapshot.applicationPolicy,
+            read.reason,
           ),
         }),
     ...(snapshot.nativeSession === undefined ? {} : { nativeSession: snapshot.nativeSession }),

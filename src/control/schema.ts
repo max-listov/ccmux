@@ -522,7 +522,13 @@ export function currentControlSnapshot(
       row.availability = current.status === 'unavailable' ? 'unavailable' : 'stale';
       row.state = 'unknown';
       row.reason = current.reason ?? 'observation-expired';
-      if (row.applicationPolicy !== undefined) row.applicationPolicy.state = 'unavailable';
+      if (row.applicationPolicy !== undefined) {
+        row.applicationPolicy.state = 'unavailable';
+        // Expiry is a reason too, and it is the one a reader is least likely to guess: the policy
+        // was proved once and the proof aged out, which is not the same repair as a policy that
+        // never applied.
+        row.applicationPolicy.reason = row.reason;
+      }
       delete row.nativeProfile;
     }
   }

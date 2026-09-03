@@ -264,8 +264,10 @@ export class OwnedCodexProjection {
     this.value.connected = false;
     this.value.state = 'unknown';
     this.value.reason = reason;
-    if (this.value.applicationPolicy !== undefined)
+    if (this.value.applicationPolicy !== undefined) {
       this.value.applicationPolicy.state = 'unavailable';
+      this.value.applicationPolicy.reason = reason;
+    }
     this.value.expiresAt = new Date(now).toISOString();
     this.append('unavailable', now);
   }

@@ -43,7 +43,11 @@ policy-switch operation. Existing managed/native identities and accepted operati
 when a required policy becomes unavailable.
 
 Evidence progresses `desired → applied` only after native acknowledgement. Failed validation or
-native acknowledgement produces `unavailable`; a historical applied receipt is not proof that a
+native acknowledgement produces `unavailable`, and that state always travels with the bounded code
+that caused it — in the evidence and in the refusal a caller receives. The code is publishable for
+the same reason the metadata is: it names a condition, never a source, a path or a native error, and
+without it `unavailable` stands for a dozen different repairs that only this tree can tell apart.
+A reason is present on no other state; a historical applied receipt is not proof that a
 new process has applied policy. On restart the adapter revalidates sources and native capabilities,
 then obtains fresh native acknowledgement for the same managed/native identity. The domain evidence
 projector does not perform that acknowledgement: the native adapter owns the transition.

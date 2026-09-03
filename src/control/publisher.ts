@@ -93,6 +93,7 @@ export class ControlPublisher {
                 session.applicationPolicy,
                 native?.status ?? 'unavailable',
                 native?.snapshot?.applicationPolicy,
+                native?.reason,
               ),
             }),
         capabilities: {

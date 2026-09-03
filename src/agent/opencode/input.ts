@@ -72,7 +72,12 @@ async function applyLocked(
     } catch (error) {
       if (input.phase === 'accepted') {
         if (policy !== undefined)
-          projection.policyEvidence(applicationPolicyEvidence(policy, 'unavailable'));
+          // Named for what is known here: the accepted input was not acknowledged, so the policy
+          // is no longer provable. A refusal that came from policy verification itself carries its
+          // own code out with the error.
+          projection.policyEvidence(
+            applicationPolicyEvidence(policy, 'unavailable', 'native-input-not-acknowledged'),
+          );
         throw error;
       }
       if (input.phase !== 'uncertain') {

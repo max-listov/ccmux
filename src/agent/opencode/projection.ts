@@ -130,8 +130,12 @@ export class OpenCodeProjection {
     this.touch('turn-start');
   }
   unavailable(reason: string): void {
-    if (this.value.applicationPolicy !== undefined)
+    if (this.value.applicationPolicy !== undefined) {
       this.value.applicationPolicy.state = 'unavailable';
+      // The same reason the session carries: what stopped the runtime is what stopped the policy
+      // being provable, and a state published without it is the half a reader cannot act on.
+      this.value.applicationPolicy.reason = reason;
+    }
     this.value.connected = false;
     this.value.state = 'unknown';
     this.value.reason = reason;

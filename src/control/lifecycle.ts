@@ -430,6 +430,7 @@ export async function createControlSession(
                 row.applicationPolicy,
                 native?.status ?? 'unavailable',
                 native?.snapshot?.applicationPolicy,
+                native?.reason,
               ),
             }),
         ...(session.nativeSession === undefined ? {} : { nativeSession: session.nativeSession }),

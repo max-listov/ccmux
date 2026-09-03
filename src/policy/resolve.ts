@@ -109,10 +109,20 @@ export function verifyApplicationPolicy(
   return resolved;
 }
 
-/** Project only safe metadata. `applied` is emitted by the adapter after native acknowledgement. */
+/**
+ * Project only safe metadata. `applied` is emitted by the adapter after native acknowledgement.
+ *
+ * An `unavailable` state is emitted with the code that caused it: the state alone sends a reader
+ * who cannot see this tree looking for which of a dozen conditions it was.
+ */
 export function applicationPolicyEvidence(
   policy: MaterializedPolicy,
   state: ApplicationPolicyEvidence['state'],
+  reason?: string,
 ): ApplicationPolicyEvidence {
-  return ApplicationPolicyEvidenceSchema.parse({ policy: policy.metadata, state });
+  return ApplicationPolicyEvidenceSchema.parse({
+    policy: policy.metadata,
+    state,
+    ...(state === 'unavailable' ? { reason: reason ?? 'unavailable' } : {}),
+  });
 }
