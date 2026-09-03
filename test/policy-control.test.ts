@@ -382,7 +382,12 @@ test('OpenCode native policy selection survives exact receipt reconciliation wit
     expect(readRuntimeInput(f.m, s)?.phase).toBe('accepted');
     expect(invalidReceipt.snapshot().applicationPolicy?.state).toBe('unavailable');
     writeFileSync(f.source.path, 'Changed source');
-    await expect(runOpenCodeProcess(f.m, s)).rejects.toThrow('Application policy is unavailable');
+    // With the code, not just the sentence: this is the refusal that reaches the lifecycle block of
+    // a session whose runtime never started, and the block's message is the only channel the code
+    // has out of a dead worker.
+    await expect(runOpenCodeProcess(f.m, s)).rejects.toThrow(
+      'Application policy is unavailable: source-digest-mismatch',
+    );
     expect(posts).toBe(1);
   } finally {
     await server.stop(true);
@@ -442,7 +447,7 @@ test('non-native policy and mismatched OpenCode source refuse before reservation
         true,
         new AbortController().signal,
       ),
-    ).rejects.toThrow('Application policy is unavailable');
+    ).rejects.toThrow('Application policy is unavailable: native-agent-source-mismatch');
     expect(creates).toBe(0);
     expect(existsSync(join(managedRuntimeRoot(f.m, s), 'admission.json'))).toBe(false);
   } finally {

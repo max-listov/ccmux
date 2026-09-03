@@ -3,6 +3,7 @@ import { rotateChatCredential } from '../../chat/auth.ts';
 import { withDirectoryLock } from '../../config/registryLock.ts';
 import { loadSessions } from '../../config/sessions.ts';
 import { promptInvocation } from '../../env.ts';
+import { policyUnavailableReason } from '../../policy/errors.ts';
 import { verifyApplicationPolicy } from '../../policy/resolve.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { ManagedRuntimeExit } from '../../runtime/exit.ts';
@@ -15,6 +16,19 @@ import { writeLaunchStamp } from '../sessionStatus.ts';
 import { admitOpenCode } from './admission.ts';
 import { OpenCodeConnection } from './connection.ts';
 import { startOpenCodeServer } from './server.ts';
+
+/**
+ * What a dead worker is allowed to say about why it died.
+ *
+ * A policy refusal keeps its own sentence: the code in it is bounded and publishable, and it is the
+ * only thing that says WHICH condition failed — the message is also the only channel that code has
+ * out of this process, because the lifecycle block is text. Everything else becomes a pointer at
+ * the logs, because everything else can carry a native error or a path.
+ */
+export function nativeRuntimeFailure(error: unknown, name: string): Error {
+  if (error instanceof Error && policyUnavailableReason(error.message) !== undefined) return error;
+  return new Error(`Native runtime failed; run \`ccmux logs ${name}\` for the cause`);
+}
 
 export async function runOpenCodeProcess(
   m: MachineConfig,
@@ -101,7 +115,7 @@ export async function runOpenCodeProcess(
         });
         if (admitted && server?.child.exitCode !== null)
           throw new ManagedRuntimeExit('OpenCode provider exited');
-        throw new Error(`Native runtime failed; run \`ccmux logs ${initial.name}\` for the cause`);
+        throw nativeRuntimeFailure(error, initial.name);
       } finally {
         abort.abort();
         await connection?.close('stopped');

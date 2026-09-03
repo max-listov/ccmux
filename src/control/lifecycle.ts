@@ -35,7 +35,7 @@ import {
 } from '../context/fork.ts';
 import { type NativeForkRequest, NativeForkRequestSchema } from '../context/schema.ts';
 import { assertNoContextMutation, nativeId } from '../context/store.ts';
-import { projectApplicationPolicy } from '../policy/projection.ts';
+import { blockedPolicyReason, projectApplicationPolicy } from '../policy/projection.ts';
 import { resolveApplicationPolicy, verifyApplicationPolicy } from '../policy/resolve.ts';
 import {
   type ApplicationPolicyMetadata,
@@ -430,7 +430,9 @@ export async function createControlSession(
                 row.applicationPolicy,
                 native?.status ?? 'unavailable',
                 native?.snapshot?.applicationPolicy,
-                native?.reason,
+                native?.status === 'live'
+                  ? native.reason
+                  : (blockedPolicyReason(m, session) ?? native?.reason),
               ),
             }),
         ...(session.nativeSession === undefined ? {} : { nativeSession: session.nativeSession }),

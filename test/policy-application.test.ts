@@ -10,9 +10,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { nativeRuntimeFailure } from '../src/agent/opencode/process.ts';
+import { writeLifecycleBlock } from '../src/config/lifecycleBlocks.ts';
+import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { composePolicyDeveloperInstructions, policySkillInputs } from '../src/policy/codex.ts';
 import { selectOpenCodePolicyAgent } from '../src/policy/opencode.ts';
-import { projectApplicationPolicy } from '../src/policy/projection.ts';
+import { blockedPolicyReason, projectApplicationPolicy } from '../src/policy/projection.ts';
 import {
   applicationPolicyEvidence,
   resolveApplicationPolicy,
@@ -25,6 +28,7 @@ import {
 } from '../src/policy/schema.ts';
 import { MAX_POLICY_SOURCE_BYTES, policySha256 } from '../src/policy/sources.ts';
 import { log } from '../src/util/log.ts';
+import { makeMachine, makeSession } from './helpers.ts';
 
 const roots: string[] = [];
 const logged = spyOn(log, 'error').mockImplementation(() => {});
@@ -328,6 +332,62 @@ test('OpenCode selects a canonical native agent without exposing or replacing it
     expect(JSON.stringify(logged.mock.calls)).toContain(reason);
   }
   expect(() => composePolicyDeveloperInstructions(policy, 'supervisor')).toThrow(unavailable);
+});
+
+test('a session blocked by its policy reports the condition, not the availability word', async () => {
+  // The path the reporting consumer actually took, and the one the first version of this fix did
+  // not cover: a policy refusal at admission kills the runtime before it publishes anything, so
+  // there is no snapshot to carry the reason, and the availability word for a session that never
+  // started is `unavailable` — a tautology in the one field a caller reads. What survives the dead
+  // worker is the lifecycle block's message, and the code travels in it.
+  const stateDir = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-policy-block-')));
+  roots.push(stateDir);
+  const m = makeMachine({ stateDir });
+  const session = makeSession({
+    name: 'agent-A',
+    agent: 'opencode',
+    runtime: 'native',
+    registrationGeneration: crypto.randomUUID(),
+    nativeSession: { runtime: 'opencode', id: 'ses_fixture', version: '1.18.25' },
+  });
+  await writeSessionsUnlocked(m, [session]);
+  await writeLifecycleBlock(m, {
+    name: session.name,
+    agent: 'opencode',
+    uuid: session.uuid,
+    generation: session.registrationGeneration,
+    error: 'Application policy is unavailable: native-agent-selection-unavailable',
+    at: new Date().toISOString(),
+  });
+  expect(blockedPolicyReason(m, session)).toBe('native-agent-selection-unavailable');
+  // Only a policy refusal is read out of that message: everything else a dead worker reports can
+  // carry a native error or a path, and none of it may be published as a bounded code.
+  await writeLifecycleBlock(m, {
+    name: session.name,
+    agent: 'opencode',
+    uuid: session.uuid,
+    generation: session.registrationGeneration,
+    error: 'Native runtime failed; run `ccmux logs agent-A` for the cause',
+    at: new Date().toISOString(),
+  });
+  expect(blockedPolicyReason(m, session)).toBeUndefined();
+});
+
+test('a dead worker publishes a policy code and nothing else about why it died', () => {
+  // The block's message is the only channel a code has out of a worker that never started, and
+  // everything else a runtime failure carries — a native error, a path, a stack — must not travel
+  // that way. Both halves in one place, because the branch is one line and the risk is all of it.
+  const policy = new Error('Application policy is unavailable: native-agent-selection-unavailable');
+  expect(nativeRuntimeFailure(policy, 'agent-A')).toBe(policy);
+  const native = new Error("ENOENT: no such file or directory, open '/Users/u/secret/agent.md'");
+  const generic = nativeRuntimeFailure(native, 'agent-A');
+  expect(generic.message).toBe('Native runtime failed; run `ccmux logs agent-A` for the cause');
+  expect(generic.message).not.toContain('/Users/u');
+  // A message that only looks like one: the code must match the published charset, or it is text.
+  expect(
+    nativeRuntimeFailure(new Error('Application policy is unavailable: /Users/u/x'), 'agent-A')
+      .message,
+  ).not.toContain('/Users/u');
 });
 
 test('an unavailable policy travels with its reason, and an available one carries none', () => {

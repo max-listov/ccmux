@@ -10,7 +10,7 @@ import { readMessageJournal } from '../chat/messageOperationStore.ts';
 import type { ManagedPeerSchema } from '../config/schema.ts';
 import { readContent, subscribeContent } from '../content/read.ts';
 import type { ContentRead } from '../content/schema.ts';
-import { projectApplicationPolicy } from '../policy/projection.ts';
+import { blockedPolicyReason, projectApplicationPolicy } from '../policy/projection.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
@@ -65,7 +65,7 @@ function nativeFrame(
             session.applicationPolicy,
             read.status,
             snapshot.applicationPolicy,
-            read.reason,
+            read.status === 'live' ? read.reason : (blockedPolicyReason(m, session) ?? read.reason),
           ),
         }),
     ...(snapshot.nativeSession === undefined ? {} : { nativeSession: snapshot.nativeSession }),

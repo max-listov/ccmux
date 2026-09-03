@@ -4,7 +4,7 @@ import { managedPeer } from '../chat/identity.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadSessions } from '../config/sessions.ts';
 import type { MonitoringSnapshot } from '../monitoring/schema.ts';
-import { projectApplicationPolicy } from '../policy/projection.ts';
+import { blockedPolicyReason, projectApplicationPolicy } from '../policy/projection.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { hasNativeRuntime, runtimeModes } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
@@ -93,7 +93,13 @@ export class ControlPublisher {
                 session.applicationPolicy,
                 native?.status ?? 'unavailable',
                 native?.snapshot?.applicationPolicy,
-                native?.reason,
+                // The policy's own code first: a runtime that never started because of its policy
+                // reports `unavailable`, which names the state and not one of a dozen repairs.
+                // Read only when the runtime is not live — a reason is ignored for a live one, and
+                // this is a per-row file read on the publish path.
+                native?.status === 'live'
+                  ? native.reason
+                  : (blockedPolicyReason(m, session) ?? native?.reason),
               ),
             }),
         capabilities: {
