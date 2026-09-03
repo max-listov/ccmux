@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.53.1] — 2026-09-03
+
+The policy code survives a worker that died on its policy
 ## [0.53.0] — 2026-09-03
 
 An unavailable policy says which condition failed
