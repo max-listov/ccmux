@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.50.0] — 2026-09-03
+
+A Custom session performs its owner's operations
 ## [0.49.16] — 2026-09-03
 
 A recipe declares the tool names the session actually gets
