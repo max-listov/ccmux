@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.53.0] — 2026-09-03
+
+An unavailable policy says which condition failed
 ## [0.52.1] — 2026-09-03
 
 A command a person can type is a command help names
