@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.14] — 2026-09-03
+
+A refusal names the model it refused
 ## [0.49.13] — 2026-09-03
 
 A model key is judged by the catalog, not by a character shape
