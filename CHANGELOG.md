@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.53.2] — 2026-09-03
+
+A removal's exit code answers whether the session was removed
 ## [0.53.1] — 2026-09-03
 
 The policy code survives a worker that died on its policy
