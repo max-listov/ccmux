@@ -97,6 +97,33 @@ The existing environment resolver is reused; provider and signing keys are not c
 command environments. Only explicit host environment names and the existing scoped chat identity
 are passed to commands. The service does not expose executable aliases as a caller shell gateway.
 
+A recipe may also name contract services whose operations become tools of the session. Custom exists
+to run this system's own loop on a machine that is not the consumer's, so a session that can read
+and write files and perform none of its owner's operations is only half the runtime. The recipe
+names an executable on the host; `src/agent/custom/services.ts` spawns it and speaks MCP over its
+stdio, and the tool list with its JSON Schemas arrives by handshake. Two properties decided that
+form over reading a document or importing a module: no third-party code enters the supervisor
+process, which holds every session's approval secret and provider credential, and no schema is
+written down twice, so there is no second place for one to go stale. The trust boundary is the one
+`executables` already draws — a child process the host declared. Those children belong to the
+session: they are closed with it and with a composition that fails, because a supervisor that leaves
+them behind is the orphan case this project already knows.
+
+Admission is the recipe's alone: an operation the server offers and the recipe does not name is
+never mounted, so widening a session's reach is a recipe change and a new digest rather than a
+change on the far side. The child receives only the environment name the recipe declared for it,
+never this process's own. That credential is read while the recipe is prepared, so a missing key
+fails there instead of arriving as a service refusal attributed to whichever turn called first. The
+mounted set passes the same tool fence and prompt-schema budget as the coding tools. The converter
+reads strings, numbers, booleans, string enums, arrays and nested objects; anything else is refused
+by name and the session refuses to start, because a guessed input schema is a tool the model calls
+wrongly forever with nothing pointing back at the cause.
+
+The names a recipe may declare for coding tools are the names the harness composes — one set, not
+two. `run_command` requires a declared executable and `read_resource` a declared resource, and both
+are checked where the recipe is accepted so a recipe that cannot run earns no digest and never
+reports `configured`.
+
 The host also names which adapter serves that registry. `openrouter` reaches the aggregator and
 requires its credential; `local` reaches an OpenAI-compatible model server on this host or its own
 network, and its credential is optional because the common local servers accept requests without

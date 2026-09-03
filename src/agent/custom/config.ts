@@ -70,6 +70,47 @@ export const CustomProviderSchema = z.discriminatedUnion('kind', [
     .strict(),
 ]);
 
+/**
+ * A contract service whose operations this host mounts as tools of a Custom session.
+ *
+ * Custom exists to run this system's own loop on a machine that is not the consumer's, and without
+ * this a session could read and write files and perform not one operation of the party that started
+ * it. The seam was never missing — `mountAgent` takes services — what was missing is where the
+ * operation SHAPES come from, because the service runs elsewhere. They arrive by handshake: ccmux
+ * spawns the declared executable and speaks MCP over its stdio, so no schema is written down twice
+ * and nothing of the far side's code runs inside the supervisor.
+ */
+const CustomServiceSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
+    /**
+     * The executable this host runs to serve the operations, absolute like every other one here.
+     *
+     * A child process rather than an address or a module, and that is the whole security argument:
+     * the supervisor holds every session's approval secret and provider credential, so third-party
+     * code must not enter it. This is the boundary `executables` already draws.
+     */
+    command: z.string().startsWith('/').max(4096),
+    args: z.array(z.string().max(4096)).max(16).default([]),
+    credentialEnv: EnvironmentNameSchema.optional(),
+    /**
+     * The operations this recipe admits, by tool name.
+     *
+     * Admission is the recipe's alone, exactly as for coding tools: an operation the server offers
+     * and this list omits is never mounted, so widening what a session can reach stays a recipe
+     * change and a new digest rather than a change on the far side.
+     */
+    tools: z
+      // A dot is part of the name, not decoration: a contract server names its tools
+      // `prefix.operation`, and a charset copied from the coding-tool names rejected every one of
+      // them. The recipe declares what the server offers, verbatim — renaming here would be this
+      // side inventing a second name for one thing.
+      .array(z.string().regex(/^[a-z0-9][a-z0-9._-]{0,127}$/))
+      .min(1)
+      .max(32),
+  })
+  .strict();
+
 /** Execution-host definition only. The public API selects the existing immutable launch recipe;
  * it never receives this configuration, source paths, executable aliases or credentials. */
 export const CustomLaunchConfigSchema = z
@@ -96,8 +137,13 @@ export const CustomLaunchConfigSchema = z
         }).strict(),
       )
       .max(32),
-    tools: z.array(CustomToolNameSchema).max(7),
-    approvalTools: z.array(CustomToolNameSchema).max(7),
+    // Bounded by the list itself. Written as a literal it was a third authority on the same set and
+    // went stale the moment the set grew: at seven, a recipe naming all nine was refused by a number.
+    tools: z.array(CustomToolNameSchema).max(CustomToolNameSchema.options.length),
+    approvalTools: z.array(CustomToolNameSchema).max(CustomToolNameSchema.options.length),
+    // Defaulted, not required: every recipe that predates services declares none, and a host that
+    // mounts no service is the ordinary case rather than a misconfiguration.
+    services: z.array(CustomServiceSchema).max(8).default([]),
     approvalSecretEnv: EnvironmentNameSchema,
     executables: z.record(
       z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/),
@@ -162,3 +208,4 @@ export const CustomLaunchConfigSchema = z
       ctx.addIssue({ code: 'custom', message: 'Resources require trusted roots' });
   });
 export type CustomLaunchConfig = z.infer<typeof CustomLaunchConfigSchema>;
+export type CustomService = z.infer<typeof CustomServiceSchema>;

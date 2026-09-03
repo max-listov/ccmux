@@ -36,7 +36,13 @@ export function readManagedRuntimeStatus(
     NATIVE_RUNTIME_MAX_BYTES,
   );
   if (snapshot === null)
-    return { protocol: 1, status: 'unavailable', reason: 'unavailable', snapshot: null };
+    return {
+      protocol: 1,
+      status: 'unavailable',
+      reason: 'unavailable',
+      snapshot: null,
+      retained: null,
+    };
   if (
     snapshot.provider !== s.agent ||
     snapshot.machine !== m.rcPrefix ||
@@ -46,7 +52,13 @@ export function readManagedRuntimeStatus(
     snapshot.nativeSession?.id !== s.nativeSession?.id ||
     snapshot.nativeSession?.runtime !== s.agent
   )
-    return { protocol: 1, status: 'unavailable', reason: 'identity-mismatch', snapshot: null };
+    return {
+      protocol: 1,
+      status: 'unavailable',
+      reason: 'identity-mismatch',
+      snapshot: null,
+      retained: null,
+    };
   return validateRuntimeLiveness(snapshot, now);
 }
 
@@ -55,7 +67,15 @@ function validateRuntimeLiveness(
   now: number,
 ): ManagedRuntimeRead {
   const lease = readRuntimeLease(snapshot, now, NATIVE_RUNTIME_TTL_MS);
-  return { protocol: 1, ...lease, snapshot: lease.status === 'live' ? snapshot : null };
+  const live = lease.status === 'live';
+  return {
+    protocol: 1,
+    ...lease,
+    snapshot: live ? snapshot : null,
+    // The state goes, the identity stays. Everything a stale projection could lie about is dropped
+    // above; which account this session was signed into is not one of those things.
+    retained: live ? null : { account: snapshot.account ?? null },
+  };
 }
 
 export class ManagedRuntimeStatusWriter {

@@ -215,7 +215,9 @@ async function buildRow(
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
     model: prettyModel(native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m)),
-    account: native?.read.snapshot?.account ?? null,
+    // The live answer first, then the one kept from before it stopped: a blocked session still ran
+    // on an account, and dropping the row made a consumer's plan bar read as "no plan".
+    account: native?.read.snapshot?.account ?? native?.read.retained?.account ?? null,
     planLimits: native?.read.snapshot?.planLimits ?? null,
     costUsd: native?.read.snapshot?.spend?.totalCostUsd ?? null,
     contextLabel,

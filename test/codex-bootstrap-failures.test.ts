@@ -76,7 +76,11 @@ async function runFailure(mode: FailureMode): Promise<void> {
     bootLabel: 'ccmux-probe.service',
     remoteControl: false,
     autoUpdate: false,
-    codexCorrelationTimeoutMs: 1_500,
+    // Short only where the timeout IS the subject. The other two modes stage a specific failure —
+    // a crashed child, two ambiguous markers — and a budget that expires first makes the CLI report
+    // "correlation timed out" instead, so the assertion fails on the clock rather than on the
+    // behaviour. Both did, under deliberate load, on a tree where nothing else was wrong.
+    codexCorrelationTimeoutMs: mode === 'timeout' ? 1_500 : 30_000,
   });
   writeFileSync(configPath, `${JSON.stringify(machine)}\n`);
   const env: Record<string, string> = {};

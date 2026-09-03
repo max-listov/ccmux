@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { NativeProjection } from '../src/agent/claude/native/projection.ts';
 import { nativeUsage, type SdkModelUsage, turnDelta } from '../src/agent/claude/native/usage.ts';
 
 const usage = (over: Partial<SdkModelUsage> = {}): SdkModelUsage => ({
@@ -62,4 +63,30 @@ test('cache reads and cache writes are one cached figure', () => {
     delta: usage({ cacheReadInputTokens: 40, cacheCreationInputTokens: 60 }),
   });
   expect(mapped?.cachedInputTokens).toBe(100);
+});
+
+test('a completed turn reports its spend as a usage record, like every other runtime', () => {
+  // The numbers were never missing on this runtime — they rode on the terminal item, which is not
+  // where a consumer scanning for `usage` records looks. Five threads therefore read as free rather
+  // than unreported, and "free" is indistinguishable from "not measured" on a spend bar.
+  const projection = new NativeProjection();
+  projection.turnId = 'turn-1';
+  projection.record(
+    {
+      type: 'result',
+      modelUsage: { 'claude-x': { inputTokens: 10, outputTokens: 4 } },
+    } as never,
+    'terminal',
+    false,
+  );
+  const usage = projection.items.filter((item) => item.kind === 'usage');
+  expect(usage).toHaveLength(1);
+  expect(usage[0]?.turnId).toBe('turn-1');
+  expect(usage[0]?.usage?.inputTokens).toBe(10);
+  expect(usage[0]?.usage?.outputTokens).toBe(4);
+  // And exactly once: the terminal record no longer carries the same figure, because one number
+  // written in two places is two authorities on it.
+  const terminal = projection.items.filter((item) => item.kind === 'terminal');
+  expect(terminal).toHaveLength(1);
+  expect(terminal[0]?.usage).toBeNull();
 });

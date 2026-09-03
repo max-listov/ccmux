@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, statSync, unlinkSync } from 'node:fs';
+import { statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   EffortLevel,
@@ -62,6 +62,7 @@ import { nativeInputDelivered } from './pickup.ts';
 import { NativeProjection } from './projection.ts';
 import { PromptQueue } from './promptQueue.ts';
 import { resolveAgentSdk } from './resolve.ts';
+import { resumesConversation } from './resume.ts';
 import { composeSnapshot } from './snapshot.ts';
 import { advanceTurn } from './turn.ts';
 
@@ -158,7 +159,7 @@ export class ClaudeNativeOwner {
     if (!generation || !this.session.nativeSession)
       throw new Error('Native Claude requires a managed registration');
     this.projection.content = new ContentProducer(this.m, this.session, generation);
-    this.started = existsSync(this.startedFile);
+    this.started = resumesConversation(this.m, this.session, this.startedFile);
     const resolved = resolveAgentSdk(this.m);
     if ('unavailable' in resolved) throw new Error(resolved.detail);
     // A runtime path from host configuration — which is also why no bundler can see it and no host

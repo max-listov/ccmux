@@ -26,9 +26,13 @@ export function prepareCustomHost(
   if (!config) throw new AppError('UNAVAILABLE', 'Custom runtime is unavailable', 409);
   const environment = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
   const credentialEnv = config.provider.credentialEnv;
+  const serviceCredentialEnvs = config.services.flatMap((service) =>
+    service.credentialEnv === undefined ? [] : [service.credentialEnv],
+  );
   const names = [
     ...(credentialEnv === undefined ? [] : [credentialEnv]),
     config.approvalSecretEnv,
+    ...serviceCredentialEnvs,
     ...config.commandEnvironment,
   ];
   if (environment.refused.length || names.some(isReservedEnvKey))
@@ -42,6 +46,16 @@ export function prepareCustomHost(
   const approvalSecret = environment.env[config.approvalSecretEnv];
   if (!approvalSecret || Buffer.byteLength(approvalSecret) < 32)
     throw new Error('Custom execution credentials are unavailable or invalid');
+  // Read here for the same reason the provider's is: a service that declares a key and does not
+  // receive it must fail while the recipe is being prepared, not as a refusal from the service
+  // attributed to whichever turn happened to call it first.
+  const serviceCredentials: Record<string, string> = {};
+  for (const service of config.services) {
+    if (service.credentialEnv === undefined) continue;
+    const value = environment.env[service.credentialEnv];
+    if (!value) throw new Error('Custom execution credentials are unavailable or invalid');
+    serviceCredentials[service.id] = value;
+  }
   const commandEnvironment: Record<string, string> = {};
   for (const name of config.commandEnvironment) {
     const value = environment.env[name];
@@ -60,7 +74,14 @@ export function prepareCustomHost(
     if (bytes > MAX_POLICY_BYTES) throw new Error('Custom resources exceed the composition budget');
     return { ...source, body };
   });
-  return { config, credential, approvalSecret, commandEnvironment, resources };
+  return {
+    config,
+    credential,
+    approvalSecret,
+    commandEnvironment,
+    resources,
+    serviceCredentials,
+  };
 }
 export type PreparedCustomHost = ReturnType<typeof prepareCustomHost>;
 

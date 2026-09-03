@@ -43,6 +43,7 @@
     "@ai-sdk/openai-compatible": "3.0.41",
     "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@opencode-ai/sdk": "1.18.20",
     "@openrouter/ai-sdk-provider": "3.0.0",

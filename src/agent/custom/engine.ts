@@ -15,7 +15,7 @@ import {
   createHeadlessAgentHarness,
 } from 'stitchkit/agent-runtime/harness';
 import { createBunSqliteAgentRuntimeStore } from 'stitchkit/agent-runtime/sqlite/bun';
-import { mountAgent } from 'stitchkit/tools';
+import { mountAgent, type RuntimeToolDefinition } from 'stitchkit/tools';
 import { z } from 'zod';
 import type { Session } from '../../types.ts';
 import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
@@ -24,6 +24,7 @@ import type { PreparedCustomHost } from './host.ts';
 import { CustomInputMetadataSchema } from './input.ts';
 import { customLanguageModelProvider } from './provider.ts';
 import { prepareCustomResources } from './resources.ts';
+import { type MountedService, mountCustomService } from './services.ts';
 
 /** The supervisor holds its existing owner lock before entering here. This is composition of the
  * public engine/store, not a second execution coordinator or a second conversation ledger. */
@@ -94,16 +95,42 @@ export async function openCustomEngine(input: {
       maxReadBytes: 64 * 1024,
     },
   });
-  const tools = [...coding, ...resources.runtimeTools].filter((tool) =>
-    host.config.tools.some((name) => name === tool.name),
+  // Service operations are admitted by the recipe exactly as coding tools are: the service decides
+  // what it publishes, the recipe decides what this session may call, and an operation the recipe
+  // does not name is never built. The read happens once, here beside the rest of the composition,
+  // so an unreachable service fails the session at startup rather than at whichever turn calls it.
+  const mounted: RuntimeToolDefinition[] = [];
+  const unreadable: string[] = [];
+  const services: MountedService[] = [];
+  const closeServices = async () => {
+    for (const entry of services.splice(0))
+      await entry.close().catch((error: unknown) => input.onError(error));
+  };
+  try {
+    for (const row of host.config.services) {
+      const service = await mountCustomService(row, host.serviceCredentials[row.id]);
+      services.push(service);
+      mounted.push(...service.tools);
+      for (const item of service.refused) unreadable.push(`${item.name} (${item.reason})`);
+    }
+  } catch (error) {
+    await closeServices();
+    throw error;
+  }
+  const declared = [...host.config.tools, ...host.config.services.flatMap((row) => row.tools)];
+  const tools = [...coding, ...resources.runtimeTools, ...mounted].filter((tool) =>
+    declared.some((name) => name === tool.name),
   );
-  const missing = host.config.tools.filter((name) => !tools.some((tool) => tool.name === name));
+  const missing = declared.filter((name) => !tools.some((tool) => tool.name === name));
   if (missing.length > 0)
     // Naming them, because the message a consumer actually received was CREATE_FAILED with this
     // sentence in the owner's journal — enough to know something was incomplete and not enough to
-    // know what. The recipe check refuses these earlier now; this stays as the last word.
+    // know what. A refused operation says why separately: "the recipe named it and the service
+    // publishes it" and "the recipe named it and its shape could not be read" are different repairs.
     throw new Error(
-      `Custom tool composition is missing: ${[...new Set(missing)].sort().join(', ')}`,
+      `Custom tool composition is missing: ${[...new Set(missing)].sort().join(', ')}${
+        unreadable.length === 0 ? '' : `; unreadable operations: ${unreadable.sort().join(', ')}`
+      }`,
     );
   const context = z.object({ registration: z.literal(registration) }).strict();
   const sqlite = createBunSqliteAgentRuntimeStore({ filename });
@@ -191,11 +218,15 @@ export async function openCustomEngine(input: {
       async close() {
         const result = await harness.close({ forceTimeoutMs: 5000 });
         if (!result.settled) throw new Error('Custom engine shutdown did not settle');
+        // The service children outlive nothing: they were spawned for this session's composition
+        // and a supervisor that leaves them behind is the orphan case this project already knows.
+        await closeServices();
         await observe.close();
         await sqlite.close();
       },
     };
   } catch (error) {
+    await closeServices();
     await observe.close();
     await sqlite.close();
     throw error;
