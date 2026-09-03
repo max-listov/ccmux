@@ -34,9 +34,16 @@ function fakeCodex(
       : mode === 'timeout'
         ? ['sleep 30']
         : [
-            `mkdir -p "${codexSessionsDir}/probe"`,
-            `printf '{"type":"session_meta","payload":{"id":"11111111-1111-4111-8111-111111111111","originator":"%s"}}\\n' "$CODEX_INTERNAL_ORIGINATOR_OVERRIDE" > "${codexSessionsDir}/probe/rollout-a-11111111-1111-4111-8111-111111111111.jsonl"`,
-            `printf '{"type":"session_meta","payload":{"id":"22222222-2222-4222-8222-222222222222","originator":"%s"}}\\n' "$CODEX_INTERNAL_ORIGINATOR_OVERRIDE" > "${codexSessionsDir}/probe/rollout-b-22222222-2222-4222-8222-222222222222.jsonl"`,
+            // Both markers must become visible in ONE step. Written straight into the sessions
+            // directory they appear one after the other, and a reader landing between them sees a
+            // single unambiguous candidate and promotes it — the ambiguity this case is about
+            // simply is not there yet. That window is small enough to pass alone and to fail on a
+            // loaded machine, which is the worst kind of test: it reddens by luck. Staging both
+            // files and renaming the directory in closes it without a wall-clock delay.
+            `mkdir -p "${codexSessionsDir}/probe.staging"`,
+            `printf '{"type":"session_meta","payload":{"id":"11111111-1111-4111-8111-111111111111","originator":"%s"}}\\n' "$CODEX_INTERNAL_ORIGINATOR_OVERRIDE" > "${codexSessionsDir}/probe.staging/rollout-a-11111111-1111-4111-8111-111111111111.jsonl"`,
+            `printf '{"type":"session_meta","payload":{"id":"22222222-2222-4222-8222-222222222222","originator":"%s"}}\\n' "$CODEX_INTERNAL_ORIGINATOR_OVERRIDE" > "${codexSessionsDir}/probe.staging/rollout-b-22222222-2222-4222-8222-222222222222.jsonl"`,
+            `mv "${codexSessionsDir}/probe.staging" "${codexSessionsDir}/probe"`,
             'sleep 30',
           ];
   writeFileSync(path, `${[...common, ...behavior].join('\n')}\n`);
