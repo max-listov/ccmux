@@ -114,7 +114,10 @@ export function observeCodexContent(
         data.turnId,
         `${data.turnId}:usage`,
         'updated',
-        JSON.stringify(data.tokenUsage.total),
+        // The scope is declared rather than left to be inferred from the shape. A consumer reading
+        // these across runtimes had to guess whether a number covered the session, the run or the
+        // last message — and guessing wrong turns one turn's 1083 tokens into a session total.
+        JSON.stringify({ scope: 'session', ...data.tokenUsage.total }),
       );
   }
 }

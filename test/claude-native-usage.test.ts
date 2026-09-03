@@ -65,28 +65,36 @@ test('cache reads and cache writes are one cached figure', () => {
   expect(mapped?.cachedInputTokens).toBe(100);
 });
 
-test('a completed turn reports its spend as a usage record, like every other runtime', () => {
-  // The numbers were never missing on this runtime — they rode on the terminal item, which is not
-  // where a consumer scanning for `usage` records looks. Five threads therefore read as free rather
-  // than unreported, and "free" is indistinguishable from "not measured" on a spend bar.
+test('a completed turn reports its spend into the content stream, like every other runtime', () => {
+  // The numbers were never missing on this runtime — they rode on a projection nobody scans for
+  // cost, so five threads read as free rather than unreported. This asserts the surface consumers
+  // actually read, at the item id the other runtimes use, with the accounting scope declared: a
+  // per-turn figure taken for a session total is wrong by every previous turn.
+  // A recorder rather than a real buffer: what must be true is that the projection CALLS lifecycle
+  // with the record the other runtimes emit, and the argument shape is pinned by the compiler
+  // against the buffer's own signature.
+  const calls: unknown[][] = [];
   const projection = new NativeProjection();
   projection.turnId = 'turn-1';
+  projection.content = {
+    buffer: { lifecycle: (...args: unknown[]) => calls.push(args) },
+    publish: () => undefined,
+  } as never;
   projection.record(
-    {
-      type: 'result',
-      modelUsage: { 'claude-x': { inputTokens: 10, outputTokens: 4 } },
-    } as never,
+    { type: 'result', modelUsage: { 'claude-x': { inputTokens: 10, outputTokens: 4 } } } as never,
     'terminal',
     false,
   );
-  const usage = projection.items.filter((item) => item.kind === 'usage');
+  const usage = calls.filter((call) => call[0] === 'usage');
   expect(usage).toHaveLength(1);
-  expect(usage[0]?.turnId).toBe('turn-1');
-  expect(usage[0]?.usage?.inputTokens).toBe(10);
-  expect(usage[0]?.usage?.outputTokens).toBe(4);
-  // And exactly once: the terminal record no longer carries the same figure, because one number
-  // written in two places is two authorities on it.
-  const terminal = projection.items.filter((item) => item.kind === 'terminal');
-  expect(terminal).toHaveLength(1);
-  expect(terminal[0]?.usage).toBeNull();
+  expect(usage[0]?.[1]).toBe('turn-1');
+  expect(usage[0]?.[2]).toBe('turn-1:usage');
+  expect(JSON.parse(String(usage[0]?.[4]))).toMatchObject({
+    scope: 'run',
+    inputTokens: 10,
+    outputTokens: 4,
+  });
+  // And the terminal record no longer carries the same figure: one number in two places is two
+  // authorities on it.
+  expect(projection.items.filter((item) => item.kind === 'terminal')[0]?.usage).toBeNull();
 });

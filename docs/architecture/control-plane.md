@@ -82,6 +82,7 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `watchExternal` / `watch-external` | GET `/control-events/external` | External absolute snapshots, separate from managed rows |
 | `watchNative` / `watch-native` | POST `/control-events/native` | Cursored native item frames with explicit resync |
 | `selection` / `select` | POST `/control/selection` / `/control/selection/update` | Revisioned defaults, compare-and-swap between turns |
+| `permissionRead` / `permissionUpdate` | POST `/control/permission` / `/control/permission/update` | Observed permission mode with its observation time; replacement checks the observed value |
 | `attachmentBegin/Chunk/Finalize/Cancel/Read` | POST `/control/attachment/<operation>` | Bounded authenticated PNG/JPEG transfer and preview |
 | `steer` / `steeringOperation` | POST `/control/turn/steer` / `/control/turn/steering-operation` | Exact active-turn input and durable receipt |
 | `messageOperation` | POST `/control/message/operation` | Caller-scoped retained message UUID → exact native turn/outcome |
@@ -137,6 +138,22 @@ and native snapshots may carry only that safe metadata. Recipe fields, paths, en
 values never cross the control boundary. Recipe-less create omits the field and keeps the existing
 behavior. The rationale and failure model are recorded in
 [server-owned control launch recipes](../decisions/2026-08-29-server-owned-control-launch-recipes.md).
+
+The permission mode is read and replaced by a pair of operations, because a capability declared and
+served by nothing is a promise: `runtime.list` reported `permissionModes` while the plane had no
+operation for it. The runtime owns the value and there is no register beside it. Replacement carries
+`expectedMode`, not a revision — a revision would version our own record of intent, while the thing
+a caller must not do blindly is overwrite a mode changed somewhere other than through us, and only a
+comparison against the observed value catches that. `native` is null while the runtime is not live,
+because not knowing the mode is a different answer from running without one, and the receipt reports
+the mode read back afterwards rather than the one requested. `supported` reports the modes the
+runtime accepts rather than assuming a set.
+
+The spend of a completed turn is a `usage` record in the content stream, at item id
+`<turnId>:usage`, its numbers a JSON body — one place for every runtime, because that is the surface
+consumers read. The body declares its `scope`: `run` for Claude native and Custom, `session` for
+Codex, `last-assistant-message` for OpenCode. Declared rather than inferred from the shape of the
+numbers, since a per-turn figure read as a session total is wrong by every previous turn.
 
 `modelSelection: { provider, model }` is separate from the launch recipe. One authenticated host
 profile can launch different catalog models without one recipe per model. Typed selection refuses

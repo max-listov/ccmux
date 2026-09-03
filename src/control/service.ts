@@ -68,6 +68,8 @@ export function controlServices(
     mcpControl: ({ input, signal }) => operations.mcpControl(input, signal),
     rewind: ({ input, signal }) => operations.rewind(input, signal),
     command: ({ input, signal }) => operations.command(input, signal),
+    permissionRead: ({ input }) => operations.permissionRead(input),
+    permissionUpdate: ({ input, signal }) => operations.permissionUpdate(input, signal),
     permissionMode: ({ input, signal }) => operations.permissionMode(input, signal),
     models: ({ input, signal }) => operations.models(input, signal),
     respond: ({ input, signal }) => operations.respond(input, signal),

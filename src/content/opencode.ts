@@ -41,7 +41,7 @@ export class OpenCodeContentObserver {
           turn,
           `${message.id}:usage`,
           'updated',
-          JSON.stringify(message.tokens),
+          JSON.stringify({ scope: 'last-assistant-message', ...message.tokens }),
         );
       this.buffer.lifecycle('terminal', turn, message.id, outcome);
     }

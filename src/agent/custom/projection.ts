@@ -1,3 +1,4 @@
+import type { AgentRunMetrics } from 'stitchkit/agent-runtime';
 import {
   type AgentMessage,
   type AgentRuntimeEvent,
@@ -23,6 +24,37 @@ export function customTerminal(reason: string): 'completed' | 'interrupted' | 'f
 }
 
 /** Observation only. Canonical runs and requests stay in the Harness SQLite store. */
+
+/**
+ * The spend of one completed run, in the body every runtime writes into the content stream.
+ *
+ * `scope` is declared rather than left to be read off the shape of the numbers: this figure covers
+ * ONE run, and a consumer that took it for a session total — which is what the codex-shaped body
+ * means — would be wrong by every earlier turn.
+ *
+ * Price appears only when a provider named one. A local server reports none, and writing zero there
+ * would turn "nobody said" into "it cost nothing", which is the fabrication the token counts here
+ * already refuse: an absent count stays absent rather than becoming a confident zero.
+ */
+export function customUsageBody(
+  usage: AgentRunMetrics['usage'] | undefined,
+): Record<string, unknown> | null {
+  if (usage === undefined) return null;
+  const input = usage.inputTokens.value ?? null;
+  const output = usage.outputTokens.value ?? null;
+  return {
+    scope: 'run',
+    totalTokens: input === null || output === null ? null : input + output,
+    inputTokens: input,
+    outputTokens: output,
+    cachedInputTokens: usage.cacheReadTokens?.value ?? null,
+    reasoningOutputTokens: usage.reasoningTokens?.value ?? null,
+    ...(usage.cost?.value === undefined
+      ? {}
+      : { costValue: usage.cost.value, costCurrency: usage.cost.currency ?? null }),
+  };
+}
+
 export class CustomProjection {
   private value: ManagedRuntimeSnapshot;
   private cursor: AgentRuntimeEventCursor = {};
@@ -192,6 +224,20 @@ export class CustomProjection {
         // Request extraction and correlation happen from the canonical store before ready().
         this.value.state = 'unknown';
         this.value.reason = 'awaiting-canonical-terminal';
+        // Spend goes to the CONTENT stream, which is where consumers read it — it was already
+        // recorded in the session projection, a surface nobody scans for cost, so a turn that cost
+        // real tokens read as free. Same record shape and item id as the other runtimes, and the
+        // scope is declared because this figure is ONE RUN's: read as a session total it would be
+        // wrong by every previous turn.
+        const body = customUsageBody(event.metrics?.usage);
+        if (body !== null)
+          this.content.lifecycle(
+            'usage',
+            event.runId,
+            `${event.runId}:usage`,
+            'updated',
+            JSON.stringify(body),
+          );
         this.content.lifecycle('terminal', event.runId, event.runId, status);
         this.touch('turn-end');
       }

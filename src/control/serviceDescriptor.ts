@@ -142,6 +142,16 @@ export const ccmuxControlServiceDescriptor = ControlServiceDescriptorSchema.pars
       limits: { requestBytes: 16 * 1024, responseBytes: 16 * 1024, timeoutMs: 10_000 },
     },
     {
+      id: 'permission.read',
+      effect: controlServiceEffects['permission.read'],
+      limits: { requestBytes: 8192, responseBytes: 16 * 1024, timeoutMs: 5000 },
+    },
+    {
+      id: 'permission.update',
+      effect: controlServiceEffects['permission.update'],
+      limits: { requestBytes: 8192, responseBytes: 16 * 1024, timeoutMs: 15_000 },
+    },
+    {
       id: 'attachment.begin',
       effect: controlServiceEffects['attachment.begin'],
       limits: { requestBytes: 8192, responseBytes: 4096, timeoutMs: 10_000 },

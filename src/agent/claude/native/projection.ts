@@ -87,21 +87,20 @@ export class NativeProjection {
         tool: null,
         usage: null,
       });
-      // Its own record, the way the other three runtimes report it. The numbers were never missing
-      // here — they rode on the terminal item, where a consumer scanning for `usage` records does
-      // not look, so a turn on this runtime read as free rather than unreported. One shape across
-      // runtimes is the point; carrying it in two places would be two authorities on one number.
-      this.appendItem({
-        kind: 'usage',
-        stage: 'updated',
-        nativeId: `${turnId}:usage`,
-        turnId,
-        requestId: null,
-        status: null,
-        text: null,
-        tool: null,
-        usage: this.takeUsage(message),
-      });
+      // Into the CONTENT stream, which is the surface consumers actually read — the numbers were
+      // never missing here, they rode on the terminal item of a projection nobody scans for spend,
+      // so a turn on this runtime read as free rather than unreported. Same record shape and same
+      // item id as the other runtimes, with the accounting scope declared: this figure is one
+      // turn's, differenced against the runtime's running total.
+      const spent = this.takeUsage(message);
+      if (spent !== null)
+        this.content?.buffer.lifecycle(
+          'usage',
+          turnId,
+          `${turnId}:usage`,
+          'updated',
+          JSON.stringify({ scope: 'run', ...spent }),
+        );
       this.content?.publish();
       return;
     }

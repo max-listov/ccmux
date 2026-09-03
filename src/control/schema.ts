@@ -419,6 +419,45 @@ export const ControlPermissionModeReceiptSchema = z
   .object({ target: ManagedPeerSchema, mode: PermissionModeSchema })
   .strict();
 
+/**
+ * Reading and replacing the permission mode of a live session.
+ *
+ * The runtime owns this value — we ask it and we ask it to change, and there is no register of our
+ * own beside it. A revisioned copy was written and removed before it shipped: it would have
+ * versioned our own record of intent while the thing a caller must not do blindly is overwrite a
+ * mode changed somewhere else, which only a comparison against the OBSERVED value catches.
+ */
+export const ControlPermissionReadSchema = ControlTargetSchema.extend({
+  registrationGeneration: z.uuid(),
+}).strict();
+export const ControlPermissionResultSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    /** What the runtime reports, and when it was seen. Null while it is not live: not knowing is
+     * a different answer from running without a mode. */
+    native: z
+      .object({ mode: PermissionModeSchema, observedAt: z.string().max(64) })
+      .strict()
+      .nullable(),
+    /** What this runtime accepts, reported rather than assumed: the sets differ per runtime. */
+    supported: z.array(PermissionModeSchema).max(16),
+  })
+  .strict();
+export const ControlPermissionUpdateSchema = ControlTargetSchema.extend({
+  registrationGeneration: z.uuid(),
+  operationId: z.uuid(),
+  /**
+   * The mode the caller believes this session is in, checked against what the runtime reports.
+   *
+   * Not a revision, and deliberately: a counter of our own would version OUR record of intent and
+   * would not notice the case a caller actually needs protection from — the mode changed somewhere
+   * other than through us. Comparing against the observed value is the check that catches it, and
+   * it is founded on something we genuinely know rather than on a number we made up.
+   */
+  expectedMode: PermissionModeSchema,
+  mode: PermissionModeSchema,
+}).strict();
+
 export const ControlRewindSchema = ControlTargetSchema.extend({
   /** The user message to put the files back to, as the runtime's transcript identifies it. */
   messageId: z.uuid(),

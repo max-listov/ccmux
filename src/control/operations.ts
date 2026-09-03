@@ -68,6 +68,7 @@ import { readMessageOperation } from './messageOperation.ts';
 import { readControlModels } from './models.ts';
 import { interruptControlTurn, waitControlSession } from './native.ts';
 import { readControlNative, respondControlNative } from './nativeFeed.ts';
+import { readControlPermission, updateControlPermission } from './permission.ts';
 import type { ControlPublisher } from './publisher.ts';
 import type {
   ControlCommandsReadSchema,
@@ -81,6 +82,8 @@ import type {
   ControlNativeReadSchema,
   ControlNativeResponseSchema,
   ControlPermissionModeSchema,
+  ControlPermissionReadSchema,
+  ControlPermissionUpdateSchema,
   ControlRewindSchema,
   ControlRunCommandSchema,
   ControlTargetSchema,
@@ -413,6 +416,19 @@ export function createControlOperations(
           input.target.session,
           ({ signal: admitted }) => runControlCommand(m, input, admitted),
           { ...(signal ? { signal } : {}), timeoutMs: 10_000 },
+        )
+        .catch(controlRefusal),
+    permissionRead: (input: z.output<typeof ControlPermissionReadSchema>) =>
+      readControlPermission(m, input),
+    permissionUpdate: (
+      input: z.output<typeof ControlPermissionUpdateSchema>,
+      signal?: AbortSignal,
+    ) =>
+      mutations
+        .run(
+          input.target.session,
+          ({ signal: admitted }) => updateControlPermission(m, input, admitted),
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
         )
         .catch(controlRefusal),
     permissionMode: (input: z.output<typeof ControlPermissionModeSchema>, signal?: AbortSignal) =>
