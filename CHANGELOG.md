@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.15] — 2026-09-03
+
+A create is refused for a model the host never published
 ## [0.49.14] — 2026-09-03
 
 A refusal names the model it refused
