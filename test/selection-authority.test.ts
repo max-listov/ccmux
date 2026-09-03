@@ -2,6 +2,7 @@ import { afterAll, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { claudeModels } from '../src/agent/claude/native/catalog.ts';
 import { effortAccepted } from '../src/control/selection.ts';
 import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
 import { selectionReceipt, writeSelection } from '../src/runtime/selection.ts';
@@ -38,16 +39,33 @@ test('a codex effort is judged by the catalog, not by a list in the schema', () 
   expect(effortAccepted({}, undefined)).toBe(true);
 });
 
-test('a model key is judged by the catalog, not by a character shape in the schema', () => {
-  // The runtime publishes these three keys itself — they are the 1M-context rows of its own
-  // catalog, and a shape rule here refused them before the catalog check ever ran. The host then
-  // offered a model its own admission rejected, and the caller was told its input was malformed.
-  for (const model of ['opus[1m]', 'claude-fable-5[1m]', 'claude-fable-5-1[1m]']) {
+test('every key the catalog publishes is one the admission accepts', () => {
+  // Driven through the publisher itself rather than a list of names, because the defect was never
+  // about a particular name: the catalog mapper and the admission schema were two authorities on
+  // the same value, and any key the runtime invents next lands in the same gap. The corpus carries
+  // the shapes the runtimes actually report — bracketed context variants, `~vendor/x-latest`
+  // aliases, `:free` tiers, and the bare aliases a person types — so a character rule reintroduced
+  // in the schema reddens here without anyone editing this list to match today's catalog.
+  const published = claudeModels(
+    [
+      { value: 'default' },
+      { value: 'sonnet' },
+      { value: 'haiku' },
+      { value: 'opus[1m]', displayName: 'Opus (1M context)' },
+      { value: 'claude-fable-5[1m]', displayName: 'Fable' },
+      { value: 'claude-fable-5-1[1m]', displayName: 'Fable' },
+      { value: '~anthropic/claude-opus-latest' },
+      { value: 'inclusionai/ling-3.0-flash-fin:free' },
+    ],
+    'sonnet',
+  );
+  expect(published).toHaveLength(8);
+  for (const row of published) {
     const options = NativeTurnOptionsSchema.parse({
       runtime: 'claude',
-      model: { provider: 'claude', model },
+      model: { provider: row.provider, model: row.model ?? row.id },
     });
-    expect(options.model.model).toBe(model);
+    expect(options.model.model).toBe(row.model ?? row.id);
   }
   // What stays refused is what no catalog key carries and what would corrupt an argv or a log
   // line: whitespace, control bytes, an empty key and anything past the bound.

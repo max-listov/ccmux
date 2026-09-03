@@ -12,7 +12,11 @@ import { withNativeAdmission } from '../runtime/admission.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 
 import { readSelection, selectionReceipt, writeSelection } from '../runtime/selection.ts';
-import type { AcceptedTurnOptions, NativeTurnOptions } from '../runtime/selectionSchema.ts';
+import {
+  type AcceptedTurnOptions,
+  modelSelectionLabel,
+  type NativeTurnOptions,
+} from '../runtime/selectionSchema.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { readControlModels } from './models.ts';
@@ -116,10 +120,16 @@ export async function validateTurnOptions(
       (item.model ?? item.id) === options.model.model &&
       (item.provider ?? 'openai') === options.model.provider,
   );
-  if (row === undefined || (images && !row.inputModalities.includes('image')))
-    throw new AppError('UNSUPPORTED', 'Requested model or input modality is unavailable', 409);
+  // Two different answers, told apart: the catalog does not offer this key at all, or it offers it
+  // and the row takes no image. One message for both sent a caller checking its request shape when
+  // the request was fine and the model was simply the wrong one.
+  const label = modelSelectionLabel(options.model);
+  if (row === undefined)
+    throw new AppError('UNSUPPORTED', `Model ${label} is absent from this runtime's catalog`, 409);
+  if (images && !row.inputModalities.includes('image'))
+    throw new AppError('UNSUPPORTED', `Model ${label} does not accept image input`, 409);
   if (!effortAccepted(row, 'effort' in options ? options.effort : undefined))
-    throw new AppError('UNSUPPORTED', 'Requested reasoning effort is unavailable', 409);
+    throw new AppError('UNSUPPORTED', `Model ${label} does not offer the requested effort`, 409);
   if (options.runtime === 'opencode') {
     const choices = preparedOpenCodeChoices(m, s);
     if (

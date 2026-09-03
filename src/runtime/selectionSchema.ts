@@ -35,6 +35,19 @@ export const NativeModelSelectionSchema = z
       .refine(printableKey, 'Model key must not contain whitespace or control characters'),
   })
   .strict();
+
+/**
+ * How a refusal names the model it refused.
+ *
+ * A refusal that named only the field — "modelSelection.model is wrong or missing" — sent a
+ * consumer looking for a malformed request twice, because nothing in it said which value was
+ * rejected. The value is safe to say: it is the key the caller just sent and the catalog already
+ * publishes. What stays unsaid is everything behind it — recipe, endpoint, credential — which this
+ * echo never touches.
+ */
+export const modelSelectionLabel = (selection: { provider: string; model: string }): string =>
+  `${selection.provider}/${selection.model}`;
+
 export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
   z.object({ runtime: z.literal('custom'), model: NativeModelSelectionSchema }).strict(),
   z

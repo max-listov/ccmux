@@ -39,9 +39,10 @@ OpenCode uses the native SDK/API and SSE. A custom driver composes a published o
 it does not implement an inference loop, tool scheduler, product prompts or credential routing.
 Capabilities are explicit per driver. An unavailable driver or unsupported operation is rejected
 before registry mutation. Cross-machine transport dispatches the same typed control operations.
-Custom is configured only when the execution host defines a Custom launch recipe. The working-tree
-adapter composes `stitchkit@0.70.1`; it is not yet released because sequential signed approvals hit
-a reproduced upstream history defect. Configuration availability is not release acceptance.
+Custom ships in the installed CLI and is configured only when the execution host defines a Custom
+launch recipe. So `custom` reporting `unavailable` in `runtime.list` means this host has no recipe,
+never that the runtime is missing or unreleased — the two states read alike from outside and are
+told apart only here. The composed harness version lives in the manifest, not in this prose.
 
 Prepared native projections are bounded in bytes, events and requests, leased by observation time
 and tied to producer liveness. Native identifiers, selected model/provider and runtime version are

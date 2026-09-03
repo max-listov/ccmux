@@ -134,11 +134,13 @@ test('an unsupported selection is refused before anything is submitted to a prov
   const { host } = await localFixture();
   expect(customModel(host.config, { ...LOCAL_MODEL })).toMatchObject({ contextWindow: 8192 });
   // Same model name, different provider: this is the reroute the runtime must not perform silently.
+  // The refusal names the pair it refused, so the two cases below are told apart by reading it —
+  // a message that said only "unavailable" left the caller guessing which half was wrong.
   expect(() =>
     customModel(host.config, { provider: 'openrouter', model: 'local/fixture' }),
-  ).toThrow('unavailable');
+  ).toThrow('Model openrouter/local/fixture is not one this host declares');
   expect(() => customModel(host.config, { provider: 'local', model: 'local/absent' })).toThrow(
-    'unavailable',
+    'Model local/local/absent is not one this host declares',
   );
 });
 

@@ -11,6 +11,7 @@ import {
 } from '../../control/schema.ts';
 import { HOME } from '../../env.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
+import { modelSelectionLabel } from '../../runtime/selectionSchema.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../runtime/status.ts';
 import { readPrivateJson } from '../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -137,7 +138,7 @@ export async function validateOpenCodeSelection(
   )
     throw new AppError(
       'MODEL_UNAVAILABLE',
-      'The selected model is unavailable for this runtime',
+      `Model ${modelSelectionLabel(selection)} is unavailable for this runtime`,
       409,
     );
 }

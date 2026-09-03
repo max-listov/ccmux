@@ -2,6 +2,7 @@ import { accessSync, constants, realpathSync, statSync } from 'node:fs';
 import { AppError } from 'stitchkit';
 import { resolveControlLaunchRecipe } from '../../config/launchRecipes.ts';
 import { MAX_POLICY_BYTES, readPolicySource } from '../../policy/sources.ts';
+import { modelSelectionLabel } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { stableJson } from '../launchInputs.ts';
 import { isReservedEnvKey, sessionEnvRecipe } from '../sessionEnv.ts';
@@ -74,6 +75,11 @@ export function customModel(config: CustomLaunchConfig, selection: Session['mode
     ({ selection: candidate }) =>
       candidate.provider === selected.provider && candidate.model === selected.model,
   );
-  if (!model) throw new AppError('UNSUPPORTED', 'Requested model is unavailable', 409);
+  if (!model)
+    throw new AppError(
+      'UNSUPPORTED',
+      `Model ${modelSelectionLabel(selected)} is not one this host declares`,
+      409,
+    );
   return model;
 }

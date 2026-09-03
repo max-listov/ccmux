@@ -148,7 +148,12 @@ test('model validation cannot create a provider or infer an unsupported selectio
       { provider: 'openai', model: 'model-a' },
       AbortSignal.timeout(1_000),
     ),
-  ).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE', message: 'Selected model is unavailable' });
+    // The refusal names the value it refused: a message that said only which FIELD was wrong sent
+    // a consumer looking for a malformed request twice, when the request was fine.
+  ).rejects.toMatchObject({
+    code: 'MODEL_UNAVAILABLE',
+    message: 'Model openai/model-a is unavailable',
+  });
 });
 
 test('a loaded provider mismatch is refused before collaboration discovery or turn submission', async () => {

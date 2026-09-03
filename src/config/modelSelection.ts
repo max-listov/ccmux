@@ -1,6 +1,7 @@
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { nativeModelProvider, withCodexCatalogRuntime } from '../agent/codex/catalogRuntime.ts';
+import { modelSelectionLabel } from '../runtime/selectionSchema.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import type { ResolvedControlLaunch } from './launchRecipes.ts';
@@ -44,6 +45,12 @@ export async function validateModelSelection(
     });
   } catch (error) {
     log.error({ msg: 'managed model selection refused', selection, reason: String(error) });
-    throw new AppError('MODEL_UNAVAILABLE', 'Selected model is unavailable', 409);
+    // The key is the caller's own input and the catalog publishes it, so naming it discloses
+    // nothing; the reason stays owner-side because it can name host launch configuration.
+    throw new AppError(
+      'MODEL_UNAVAILABLE',
+      `Model ${modelSelectionLabel(selection)} is unavailable`,
+      409,
+    );
   }
 }
