@@ -73,12 +73,16 @@ test('runtime journals separate writers and expose bounded admission pressure', 
     );
     expect(daemon.getStatus().refusals['item-capacity']).toBeGreaterThan(0);
     expect(worker.submit(event()).outcome).toBe('accepted');
-    expect((await daemon.close({ timeoutMs: 1000 })).outcome).toBe('closed');
+    // This queue was filled to capacity two lines up, so the close has a full drain to do and the
+    // budget is a bound on a HANG, not a claim about how fast this machine writes. At one second it
+    // was the latter: it drains in a fraction of that idle and timed out during a release, failing
+    // on load rather than on behaviour. The suite's own 20s timeout remains the ceiling.
+    expect((await daemon.close({ timeoutMs: 10_000 })).outcome).toBe('closed');
     expect(daemon.submit(event())).toEqual({ outcome: 'refused', reason: 'closed' });
     expect(worker.submit(event()).outcome).toBe('accepted');
   } finally {
-    await daemon.close({ timeoutMs: 1000 });
-    await worker.close({ timeoutMs: 1000 });
+    await daemon.close({ timeoutMs: 10_000 });
+    await worker.close({ timeoutMs: 10_000 });
   }
 });
 
