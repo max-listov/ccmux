@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.51.1] — 2026-09-03
+
+A declared service operation is a declared tool name everywhere
 ## [0.51.0] — 2026-09-03
 
 Spend reaches the surface consumers read, and a permission mode can be changed
