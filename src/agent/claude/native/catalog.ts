@@ -19,6 +19,7 @@ import { readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
 import { privateRuntimeDirectory } from '../../codex/ownedPaths.ts';
+import { probeClaudeModels } from './hostProbe.ts';
 import { resolveAgentSdk } from './resolve.ts';
 
 /**
@@ -257,36 +258,67 @@ export function validateClaudeSelection(m: MachineConfig, selection: NativeModel
 /**
  * Answer without a session, or say precisely why this host cannot.
  *
- * Three different answers, because they call for three different actions: a host that does not run
- * this mode at all, a host that runs it but has never had an owner publish a list, and a list.
- * Collapsing the first two into an empty array would tell a chooser the runtime offers no models.
+ * Three answers, because they call for three different actions: a host that does not run this mode
+ * at all, a list some owner published, and — on a host that has never held the runtime — the list
+ * asked of the installation itself. That third case used to be a refusal, and it closed a circle a
+ * caller could not leave from inside the protocol: choosing a model precedes the create that would
+ * produce the first publisher, so the first session on a fresh host could only be started by a
+ * command typed on the machine. Collapsing any of them into an empty array would tell a chooser the
+ * runtime offers no models, which is a different and false statement.
  */
-function readClaudeHostModels(m: MachineConfig, input: ControlModelsRead): ControlModelCatalog {
+async function readClaudeHostModels(
+  m: MachineConfig,
+  input: ControlModelsRead,
+  signal: AbortSignal,
+): Promise<ControlModelCatalog> {
   if (input.launchRecipe !== undefined)
     throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
   if (!('path' in resolveAgentSdk(m)))
     throw new AppError('UNSUPPORTED', 'This host does not publish a catalog for this runtime', 409);
   const best = hostCatalog(m);
-  if (best === null)
-    // Enabled, but nobody has ever held it here. Not "no models" — nothing observed yet.
-    throw new AppError('UNAVAILABLE', 'No session on this host has published its catalog', 503);
-  return page(best.models, input, {
+  if (best !== null)
+    return page(best.models, input, {
+      kind: 'host',
+      machine: m.rcPrefix,
+      runtime: 'claude',
+      provider: 'claude',
+      providerLabel: null,
+      observedAt: best.observedAt,
+      freshness: best.live ? 'live' : 'stale',
+    });
+  let probed: Awaited<ReturnType<typeof probeClaudeModels>>;
+  try {
+    probed = await probeClaudeModels(m, signal);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    // The state AND the action, because the caller is the one who has to do something about it: a
+    // sentence reporting only that nothing has been observed here is what sent people to the
+    // machine to type a command they were never told.
+    throw new AppError(
+      'UNAVAILABLE',
+      `No session on this host has published its catalog and the runtime could not be asked directly (${error instanceof Error ? error.message : String(error)}); start one session on this host to publish it: ccmux new <name> <dir> --agent claude --runtime native`,
+      503,
+    );
+  }
+  return page(probed.models, input, {
     kind: 'host',
     machine: m.rcPrefix,
     runtime: 'claude',
     provider: 'claude',
     providerLabel: null,
-    observedAt: best.observedAt,
-    freshness: best.live ? 'live' : 'stale',
+    observedAt: probed.observedAt,
+    // Asked of this installation just now, with no session between the answer and the runtime.
+    freshness: 'live',
   });
 }
 
-export function readClaudeModels(
+export async function readClaudeModels(
   m: MachineConfig,
   input: ControlModelsRead,
   session: Session | undefined,
-): ControlModelCatalog {
-  if (session === undefined) return readClaudeHostModels(m, input);
+  signal: AbortSignal,
+): Promise<ControlModelCatalog> {
+  if (session === undefined) return await readClaudeHostModels(m, input, signal);
   if (!hasNativeRuntime(session))
     // The interactive mode has no catalog to read, and answering with the native mode's
     // unavailability would describe a runtime this session is not running. Dispatch keys on the

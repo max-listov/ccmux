@@ -278,7 +278,14 @@ recording all three wrote every answer three times.
 
 Model, effort and images are turn options here, exactly as they are for the other native runtimes.
 The catalog is published by the session owner into `models.json` beside its status file — only that
-process holds a connection, so a reader elsewhere would have to invent the list. A row's `model` is
+process holds a connection, so a reader elsewhere would have to invent the list. A host that has
+never held the runtime is asked directly instead: the read opens a connection whose prompt never
+yields, requests the model list, and closes it, so no conversation is created and nothing is sent.
+Without that, choosing a model — which precedes the create that would produce the first publisher —
+closed a circle that could only be left by a command typed on the machine. The probe answers in
+seconds, is taken once at a time and reused for minutes, and a published catalog is always preferred
+to it. When it cannot be taken, the refusal names the command that publishes one, because a host
+with no runtime to ask leaves the caller with something to do rather than something to know. A row's `model` is
 the alias a caller selects with, not the wire id it resolves to, because that is the value a stored
 selection carries. Effort levels are published per model from what the runtime reports: some models
 accept five levels and some accept none, and `effortAccepted` refuses a level its row does not list.

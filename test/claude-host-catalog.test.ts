@@ -32,12 +32,35 @@ const model = {
   serviceTiers: [],
 };
 
-async function host(options: { sdk: boolean; publish: boolean; observedAt?: string }) {
+/** A stdout-less stand-in for the vendor SDK: a real module, imported the way the real one is. */
+const FAKE_SDK = `
+export function query({ prompt, options }) {
+  const calls = [];
+  globalThis.__probeCalls ??= [];
+  globalThis.__probeCalls.push({ cwd: options.cwd, bin: options.pathToClaudeCodeExecutable });
+  return {
+    supportedModels: async () => [
+      { value: 'sonnet', displayName: 'Sonnet', description: 'd', resolvedModel: 'claude-sonnet-5' },
+      { value: 'opus[1m]', displayName: 'Opus', supportsEffort: true, supportedEffortLevels: ['low'] },
+    ],
+    return: () => {
+      globalThis.__probeClosed = (globalThis.__probeClosed ?? 0) + 1;
+    },
+  };
+}
+`;
+
+async function host(options: {
+  sdk: boolean;
+  publish: boolean;
+  observedAt?: string;
+  sdkSource?: string;
+}) {
   const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-host-catalog-'));
   roots.push(stateDir);
   const sdk = join(stateDir, 'sdk');
   mkdirSync(sdk, { recursive: true });
-  if (options.sdk) writeFileSync(join(sdk, 'sdk.mjs'), 'export {};');
+  if (options.sdk) writeFileSync(join(sdk, 'sdk.mjs'), options.sdkSource ?? 'export {};');
   const m = makeMachine({
     stateDir,
     claudeNativeRuntime: true,
@@ -68,11 +91,12 @@ async function host(options: { sdk: boolean; publish: boolean; observedAt?: stri
 }
 
 const read = ControlModelsReadSchema.parse({ runtime: 'claude' });
+const signal = () => new AbortController().signal;
 
 test('a host answers with the list its last owner published, and says it is not live', async () => {
   const observedAt = '2026-09-01T10:00:00.000Z';
   const { m } = await host({ sdk: true, publish: true, observedAt });
-  const page = readClaudeModels(m, read, undefined);
+  const page = await readClaudeModels(m, read, undefined, signal());
   expect(page.data.map((row) => row.model)).toEqual(['sonnet']);
   expect(page.source.kind).toBe('host');
   expect(page.source.observedAt).toBe(observedAt);
@@ -83,7 +107,7 @@ test('a host answers with the list its last owner published, and says it is not 
 
 test('a catalog written before the field existed is dated by its file, not discarded', async () => {
   const { m } = await host({ sdk: true, publish: true });
-  const page = readClaudeModels(m, read, undefined);
+  const page = await readClaudeModels(m, read, undefined, signal());
   expect(page.data).toHaveLength(1);
   expect(page.source.observedAt).not.toBeNull();
 });
@@ -92,12 +116,57 @@ test('a host that does not run this mode says so, rather than answering with not
   const { m } = await host({ sdk: false, publish: true });
   // Three different answers because they call for three different actions. An empty array would
   // tell a chooser the runtime offers no models, which is a different and false statement.
-  expect(() => readClaudeModels(m, read, undefined)).toThrow('does not publish a catalog');
+  await expect(readClaudeModels(m, read, undefined, signal())).rejects.toThrow(
+    'does not publish a catalog',
+  );
 });
 
-test('a host that runs it but has never held it says nothing has been observed', async () => {
+test('a host that has never held it asks the installation itself, without a conversation', async () => {
+  // The circle this breaks: choosing a model precedes the create that would produce the first
+  // publisher, so a fresh host could only be started by a command typed on the machine. The list
+  // was never a property of a conversation — the runtime answers it on a connection given no turn.
+  const { m } = await host({ sdk: true, publish: false, sdkSource: FAKE_SDK });
+  const page = await readClaudeModels(m, read, undefined, signal());
+  expect(page.data.map((row) => row.model)).toEqual(['sonnet', 'opus[1m]']);
+  expect(page.source.kind).toBe('host');
+  expect(page.source.freshness).toBe('live');
+  expect(page.source.observedAt).not.toBeNull();
+  // Closed in a `finally`: a supervisor that leaves a runtime child behind is the orphan case this
+  // project already knows, and this one is started by a read that answers in seconds.
+  expect((globalThis as { __probeClosed?: number }).__probeClosed).toBeGreaterThanOrEqual(1);
+});
+
+test('a host whose runtime cannot be asked names the action, not just the state', async () => {
   const { m } = await host({ sdk: true, publish: false });
-  expect(() => readClaudeModels(m, read, undefined)).toThrow('has published its catalog');
+  // A sentence reporting only that nothing has been observed here is what sent people to the
+  // machine to type a command nobody had told them.
+  const failure = readClaudeModels(m, read, undefined, signal());
+  await expect(failure).rejects.toThrow('No session on this host has published its catalog');
+  await expect(failure).rejects.toThrow('ccmux new <name> <dir> --agent claude --runtime native');
+});
+
+test('two reads of the same host start one child, not one each', async () => {
+  // A chooser that opens a catalog asks more than once — pages, a refresh, a second panel — and
+  // every one of those would otherwise spawn the runtime again for an answer that describes an
+  // installation rather than a moment.
+  const { m } = await host({ sdk: true, publish: false, sdkSource: FAKE_SDK });
+  const calls = () => ((globalThis as { __probeCalls?: unknown[] }).__probeCalls ?? []).length;
+  const before = calls();
+  const [first, second] = await Promise.all([
+    readClaudeModels(m, read, undefined, signal()),
+    readClaudeModels(m, read, undefined, signal()),
+  ]);
+  await readClaudeModels(m, read, undefined, signal());
+  expect(first.data).toEqual(second.data);
+  expect(calls() - before).toBe(1);
+});
+
+test('a published catalog is preferred to a probe: the host is not asked at all', async () => {
+  const { m } = await host({ sdk: true, publish: true, sdkSource: FAKE_SDK });
+  const before = ((globalThis as { __probeCalls?: unknown[] }).__probeCalls ?? []).length;
+  const page = await readClaudeModels(m, read, undefined, signal());
+  expect(page.data.map((row) => row.model)).toEqual(['sonnet']);
+  expect(((globalThis as { __probeCalls?: unknown[] }).__probeCalls ?? []).length).toBe(before);
 });
 
 test('a create is refused for a model this host never published, and told which one', async () => {

@@ -139,7 +139,7 @@ export async function readControlModels(
     const runtime = target?.agent ?? input.runtime ?? 'codex';
     if (runtime === 'opencode') return await readOpenCodeModels(m, input, target, signal);
     if (runtime === 'custom') return readCustomModels(m, input, target);
-    if (runtime === 'claude') return readClaudeModels(m, input, target);
+    if (runtime === 'claude') return await readClaudeModels(m, input, target, signal);
     if (runtime !== 'codex')
       throw new AppError('UNSUPPORTED', 'This runtime does not expose a model catalog', 409);
     if (input.target !== undefined) {
