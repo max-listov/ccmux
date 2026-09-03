@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.52.0] — 2026-09-03
+
+A host publishes its first native catalog without a session
 ## [0.51.1] — 2026-09-03
 
 A declared service operation is a declared tool name everywhere
