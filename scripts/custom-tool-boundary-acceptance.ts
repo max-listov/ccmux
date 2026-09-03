@@ -54,9 +54,9 @@ async function fileBoundary() {
   }
   const traversal = await invoke(tools, 'read_file', { path: '../outside/source.txt' });
   record('traversal-refused', refused(traversal), { traversal });
-  const stale = await invoke(tools, 'apply_patch', {
+  const stale = await invoke(tools, 'edit_file', {
     path: 'nested/source.txt',
-    baseSha256: digest('not-original'),
+    expectedSha256: digest('not-original'),
     oldText: 'original',
     newText: 'changed',
     dryRun: false,
@@ -117,9 +117,9 @@ async function patchBoundary() {
       },
     }),
   });
-  const pending = invoke(tools, 'apply_patch', {
+  const pending = invoke(tools, 'edit_file', {
     path: 'nested/source.txt',
-    baseSha256: digest('same-content'),
+    expectedSha256: digest('same-content'),
     oldText: 'same-content',
     newText: 'mutated',
     dryRun: false,

@@ -97,8 +97,14 @@ export async function openCustomEngine(input: {
   const tools = [...coding, ...resources.runtimeTools].filter((tool) =>
     host.config.tools.some((name) => name === tool.name),
   );
-  if (tools.length !== new Set(host.config.tools).size)
-    throw new Error('Custom tool composition is incomplete');
+  const missing = host.config.tools.filter((name) => !tools.some((tool) => tool.name === name));
+  if (missing.length > 0)
+    // Naming them, because the message a consumer actually received was CREATE_FAILED with this
+    // sentence in the owner's journal — enough to know something was incomplete and not enough to
+    // know what. The recipe check refuses these earlier now; this stays as the last word.
+    throw new Error(
+      `Custom tool composition is missing: ${[...new Set(missing)].sort().join(', ')}`,
+    );
   const context = z.object({ registration: z.literal(registration) }).strict();
   const sqlite = createBunSqliteAgentRuntimeStore({ filename });
   const observe = createAgentObservability({

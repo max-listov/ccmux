@@ -53,13 +53,13 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
   await atomicWrite(path, 'before', 0o600);
   const digest = createHash('sha256').update('before').digest('hex');
   const messageId = await send(
-    `Perform this isolated coding verification in order, using the actual tools: read_file coding.txt; search_files query coding, mode path; apply_patch coding.txt with baseSha256 ${digest}, oldText before, newText after, dryRun false; run_command executable runner args ["--no-env-file","-e","console.log(123)"]; then run_command executable runner args ["--no-env-file","-e","process.exit(7)"]. Exit 7 is intentional: do not retry or fix it. Finally say DONE. No other effects or messages.`,
+    `Perform this isolated coding verification in order, using the actual tools: read_file coding.txt; search_files query coding, mode path; edit_file coding.txt with expectedSha256 ${digest}, oldText before, newText after, dryRun false; run_command executable runner args ["--no-env-file","-e","console.log(123)"]; then run_command executable runner args ["--no-env-file","-e","process.exit(7)"]. Exit 7 is intentional: do not retry or fix it. Finally say DONE. No other effects or messages.`,
   );
   await complete(messageId);
   check((await readFile(path, 'utf8')) === 'after', 'Guarded patch effect differs');
   const native = await p.service.native({ target });
   const tools = native.baseline.flatMap((item) => (item.tool ? [item.tool] : []));
-  for (const name of ['read_file', 'search_files', 'apply_patch'])
+  for (const name of ['read_file', 'search_files', 'edit_file'])
     check(
       tools.some((tool) => tool.name === name && tool.outcome === 'succeeded'),
       `Missing real ${name}`,

@@ -83,7 +83,12 @@ test.skipIf(!Bun.which('tmux'))(
     async function waitFor(
       matches: (snapshot: MonitoringSnapshot) => boolean,
     ): Promise<MonitoringSnapshot> {
-      const deadline = Date.now() + 6000;
+      // Bounds a hang, not the machine. Six seconds was the latter: every one of these conditions
+      // is observed in milliseconds idle, but two of the waits follow a real daemon being spawned —
+      // one of them right after a SIGKILL — and a loaded machine takes longer than that to bring a
+      // process up and have it publish its first snapshot. It failed exactly there during a gate.
+      // The test's own 30s ceiling below still catches a wait that never settles.
+      const deadline = Date.now() + 15_000;
       while (Date.now() < deadline) {
         const result = await readNativeStatus({ timeoutMs: 1000 });
         if (result.snapshot !== null && matches(result.snapshot)) return result.snapshot;

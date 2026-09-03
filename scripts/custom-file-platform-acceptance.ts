@@ -75,15 +75,15 @@ try {
   });
   const written = await readFile(join(root, 'created.txt'), 'utf8').catch(() => undefined);
   record('write_file', write.kind === 'returned' && written === 'created', write);
-  const patch = await invoke(tools, 'apply_patch', {
+  const patch = await invoke(tools, 'edit_file', {
     path: 'file.txt',
-    baseSha256: createHash('sha256').update(text).digest('hex'),
+    expectedSha256: createHash('sha256').update(text).digest('hex'),
     oldText: text,
     newText: 'patched',
     dryRun: false,
   });
   record(
-    'apply_patch',
+    'edit_file',
     patch.kind === 'returned' && (await readFile(join(root, 'file.txt'), 'utf8')) === 'patched',
     patch,
   );

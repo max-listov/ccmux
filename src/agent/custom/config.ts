@@ -4,11 +4,26 @@ import { NativeModelSelectionSchema } from '../../runtime/selectionSchema.ts';
 import { ENDPOINT_REFUSAL_TEXT, parseLocalEndpoint } from './endpoint.ts';
 
 const EnvironmentNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+/**
+ * The names a recipe may declare — and they are the names the composed session actually gets.
+ *
+ * This list and the harness's own were two authorities on one set, and they disagreed both ways.
+ * `apply_patch` could be declared and was never built, so a recipe naming it passed validation,
+ * received a digest, reported `configured`, and then killed its session at startup; `edit_file`,
+ * `glob` and `list_directory` were built and could not be declared, so a Custom session had no way
+ * to edit a file at all — `write_file` rewrites it whole.
+ *
+ * A literal union is kept rather than derived from the harness, because the names are types
+ * everywhere else in this tree. What keeps it honest is `composableToolNames` below and the test
+ * that compares the two sets: the next divergence reddens there instead of in a consumer's session.
+ */
 export const CustomToolNameSchema = z.enum([
   'read_file',
   'write_file',
+  'edit_file',
   'search_files',
-  'apply_patch',
+  'glob',
+  'list_directory',
   'run_command',
   'read_output',
   'read_resource',
@@ -95,6 +110,21 @@ export const CustomLaunchConfigSchema = z
     for (const values of [value.tools, value.approvalTools, value.commandEnvironment])
       if (new Set(values).size !== values.length)
         ctx.addIssue({ code: 'custom', message: 'Host capability lists must be unique' });
+    // Two of the names are only composed when this same config supplies what they are made of, so a
+    // recipe can name them and still get a session that cannot build them. Refused HERE, where the
+    // recipe is accepted, rather than at startup: a recipe that cannot run should not earn a digest
+    // and report `configured`, and the failure a consumer saw was CREATE_FAILED with the reason left
+    // in the owner's journal. `tools.test.ts` pins both conditions against the harness itself.
+    for (const [name, missing, needs] of [
+      ['run_command', Object.keys(value.executables).length === 0, 'a declared executable'],
+      ['read_resource', value.resources.length === 0, 'a declared resource'],
+    ] as const)
+      if (value.tools.includes(name) && missing)
+        ctx.addIssue({
+          code: 'custom',
+          message: `Tool ${name} needs ${needs} in this recipe`,
+          path: ['tools'],
+        });
     if (
       value.commandEnvironment.some(
         (name) => name === value.provider.credentialEnv || name === value.approvalSecretEnv,
