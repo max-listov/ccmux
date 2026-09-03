@@ -3,6 +3,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { validateClaudeSelection } from '../agent/claude/native/catalog.ts';
 import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { stableJson } from '../agent/launchInputs.ts';
@@ -242,6 +243,7 @@ export async function createControlSession(
       await validateOpenCodeSelection(m, workspace, input.modelSelection, signal);
     else if (runtime === 'codex')
       await validateSelection(m, resolved, workspace, input.modelSelection, signal);
+    else if (runtime === 'claude') validateClaudeSelection(m, input.modelSelection);
   }
   privateRuntimeDirectory(dirname(storeLockPath(m)));
   return withDirectoryLock(

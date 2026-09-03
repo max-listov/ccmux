@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readClaudeModels } from '../src/agent/claude/native/catalog.ts';
+import { readClaudeModels, validateClaudeSelection } from '../src/agent/claude/native/catalog.ts';
 import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { ControlModelsReadSchema } from '../src/control/schema.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
@@ -98,4 +98,23 @@ test('a host that does not run this mode says so, rather than answering with not
 test('a host that runs it but has never held it says nothing has been observed', async () => {
   const { m } = await host({ sdk: true, publish: false });
   expect(() => readClaudeModels(m, read, undefined)).toThrow('has published its catalog');
+});
+
+test('a create is refused for a model this host never published, and told which one', async () => {
+  const { m } = await host({ sdk: true, publish: true });
+  // The published key passes untouched, brackets and all — the catalog decides, nothing else.
+  expect(() => validateClaudeSelection(m, { provider: 'claude', model: 'sonnet' })).not.toThrow();
+  expect(() =>
+    validateClaudeSelection(m, { provider: 'claude', model: 'no-such-model[9q]' }),
+  ).toThrow("Model claude/no-such-model[9q] is absent from this host's catalog");
+});
+
+test('a host that has published nothing cannot judge a selection, and does not pretend to', async () => {
+  // Three outcomes, not two: no owner has ever asked this runtime here, so the honest answer is
+  // "cannot tell" and the runtime refuses at admission. A refusal here would make the first native
+  // session on a fresh host impossible — a rejection built out of an unread file.
+  const { m } = await host({ sdk: true, publish: false });
+  expect(() =>
+    validateClaudeSelection(m, { provider: 'claude', model: 'no-such-model[9q]' }),
+  ).not.toThrow();
 });

@@ -10,6 +10,10 @@ import type {
   ControlModelsRead,
 } from '../../../control/schema.ts';
 import { hasNativeRuntime } from '../../../runtime/modes.ts';
+import {
+  modelSelectionLabel,
+  type NativeModelSelection,
+} from '../../../runtime/selectionSchema.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/status.ts';
 import { readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
@@ -224,6 +228,30 @@ function hostCatalog(
     if (better) best = { models: prepared.models, observedAt, live };
   }
   return best;
+}
+
+/**
+ * Refuse a create whose model this host's catalog does not offer.
+ *
+ * The other two native runtimes check their catalog before a create receipt; this one checked
+ * nothing, so a key that exists nowhere produced a registered session that only failed at its first
+ * turn — the caller got a receipt for a session that could never answer. The character rule the
+ * schema used to carry hid half of that: it refused bracketed keys the catalog publishes and
+ * accepted any well-shaped name the catalog never heard of, which is the wrong half of the job.
+ *
+ * A host with no published catalog is NOT a refusal. Nothing here observed the runtime, so the
+ * honest answer is "cannot judge", and the runtime itself refuses the key at admission. Turning an
+ * unread catalog into a rejection would make the first native session on a fresh host impossible.
+ */
+export function validateClaudeSelection(m: MachineConfig, selection: NativeModelSelection): void {
+  const best = hostCatalog(m);
+  if (best === null) return;
+  if (!best.models.some((row) => (row.model ?? row.id) === selection.model))
+    throw new AppError(
+      'MODEL_UNAVAILABLE',
+      `Model ${modelSelectionLabel(selection)} is absent from this host's catalog`,
+      409,
+    );
 }
 
 /**
