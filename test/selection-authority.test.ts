@@ -38,6 +38,32 @@ test('a codex effort is judged by the catalog, not by a list in the schema', () 
   expect(effortAccepted({}, undefined)).toBe(true);
 });
 
+test('a model key is judged by the catalog, not by a character shape in the schema', () => {
+  // The runtime publishes these three keys itself — they are the 1M-context rows of its own
+  // catalog, and a shape rule here refused them before the catalog check ever ran. The host then
+  // offered a model its own admission rejected, and the caller was told its input was malformed.
+  for (const model of ['opus[1m]', 'claude-fable-5[1m]', 'claude-fable-5-1[1m]']) {
+    const options = NativeTurnOptionsSchema.parse({
+      runtime: 'claude',
+      model: { provider: 'claude', model },
+    });
+    expect(options.model.model).toBe(model);
+  }
+  // What stays refused is what no catalog key carries and what would corrupt an argv or a log
+  // line: whitespace, control bytes, an empty key and anything past the bound.
+  for (const model of [
+    'opus 1m',
+    'opus\t1m',
+    `opus${String.fromCharCode(7)}1m`,
+    '',
+    'x'.repeat(257),
+  ]) {
+    expect(() =>
+      NativeTurnOptionsSchema.parse({ runtime: 'claude', model: { provider: 'claude', model } }),
+    ).toThrow();
+  }
+});
+
 test('a receipt written before the digest changed still replays instead of conflicting', async () => {
   const root = mkdtempSync(join(tmpdir(), 'ccmux-receipt-'));
   roots.push(root);

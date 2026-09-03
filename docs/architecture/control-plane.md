@@ -142,6 +142,9 @@ behavior. The rationale and failure model are recorded in
 profile can launch different catalog models without one recipe per model. Typed selection refuses
 caller flags; the selected provider must match effective native host configuration. OpenAI model
 selection is checked against the native catalog before a create receipt or registry mutation.
+The catalog is the only authority on which model keys exist: `modelSelection.model` is bounded and
+refuses whitespace and control characters, never a character allowlist — an allowlist is a second,
+staler authority that refuses keys the runtime itself publishes.
 Validation is a bounded metadata read, not a conversation. The selection is included in the create
 fingerprint, durable session, launch stamp and immutable create receipt. A same-ID retry
 with another selection is `IDEMPOTENCY_CONFLICT`; an accepted identical retry reconciles without

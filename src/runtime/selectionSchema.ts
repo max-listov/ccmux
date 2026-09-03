@@ -1,5 +1,26 @@
 import { z } from 'zod';
 
+/**
+ * What a model key may NOT contain, rather than what it may.
+ *
+ * Which keys exist is a property of the runtime: it publishes the catalog, and `validateTurnOptions`
+ * already refuses any key that catalog does not list. A character allowlist here is a second and
+ * staler authority beside that one, and it was wrong — the Claude runtime publishes `opus[1m]` and
+ * the two `[1m]` Fable rows, and this field refused them before the catalog check ever ran. The
+ * host offered a model its own admission then rejected as malformed input.
+ *
+ * The bound stays, and so does the refusal of whitespace and control bytes: no catalog key carries
+ * either, and the value is copied into argv and into log lines where they would corrupt the record.
+ * Provider is not the same case — that word is ours, written by the adapter, not reported.
+ */
+const printableKey = (value: string): boolean => {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f)) return false;
+  }
+  return true;
+};
+
 export const NativeModelSelectionSchema = z
   .object({
     provider: z
@@ -11,7 +32,7 @@ export const NativeModelSelectionSchema = z
       .string()
       .min(1)
       .max(256)
-      .regex(/^[a-zA-Z0-9~][a-zA-Z0-9._:/+~-]*$/),
+      .refine(printableKey, 'Model key must not contain whitespace or control characters'),
   })
   .strict();
 export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
