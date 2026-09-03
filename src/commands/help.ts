@@ -122,6 +122,12 @@ export const COMMANDS: HelpEntry[] = [
     desc: "the exchange log — what arrived AND what this machine sent elsewhere (including sends that never left); --fleet merges every machine's log into one time-ordered stream; per-session enable (default off)",
     example: 'ccmux chat log --fleet -n 50',
   },
+  {
+    verb: 'router',
+    args: '<on <name> | off <name>>',
+    desc: 'promote or demote a session to router mode (the autonomous-manager protocol): `on` adds the protocol module and enables chat, `off` removes it and leaves chat as it is; launch-time, so it applies on the next restart',
+    example: 'ccmux router on <name>',
+  },
   { verb: 'logs', args: '<name> [lines]', desc: "print a session's pane buffer" },
   {
     verb: 'transcript',
@@ -134,6 +140,12 @@ export const COMMANDS: HelpEntry[] = [
     args: '<name|machine:name> [--timeout N] [--quiet]',
     desc: 'block until the session is between turns — exit 0 settled (the line says whether it finished or was interrupted), 2 timed out, 1 unknown/stopped; no polling loops, works without chat',
     example: 'ccmux wait cc-api && ccmux transcript cc-api --last-message',
+  },
+  {
+    verb: 'models',
+    args: '<launch-recipe-id> [--json]',
+    desc: "check a Custom recipe's declared model registry against the provider that must serve it: per model, whether the provider serves that id and whether a published context window contradicts the declared one; a diagnostic, never a startup dependency — exit 0 settled, 2 contradicted, 1 could not look",
+    example: 'ccmux models <launch-recipe-id>',
   },
   {
     verb: 'doctor',

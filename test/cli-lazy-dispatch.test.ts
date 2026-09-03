@@ -44,3 +44,39 @@ test('every dispatched command is reached through a dynamic import', () => {
     .map((match) => match[2] as string);
   expect(eagerCalls).toEqual([]);
 });
+
+/**
+ * A command a person can type is a command `ccmux help` names.
+ *
+ * `models` and `router` both existed, dispatched and worked, and appeared in neither the help list
+ * nor the shell completions that are generated from it — one of them referenced by name in an
+ * architecture document, which is how it was found at all. Nothing pointed at the omission,
+ * because nothing compares the two lists; a new verb is a case in one file and an entry in
+ * another, and only the first is needed to make it run.
+ *
+ * The exceptions are stated rather than derived: an alias is documented under its canonical verb, a
+ * flag is not a verb, and the four entry points below are invoked by the supervisor and the harness
+ * rather than typed by anyone. Adding a verb now forces that choice instead of leaving it to be
+ * noticed later.
+ */
+test('every verb a person can type is in the help list', async () => {
+  const { COMMANDS } = await import('../src/commands/help.ts');
+  const documented = new Set(COMMANDS.map((entry) => entry.verb));
+  const ALIASES = new Map([
+    ['ls', 'list'],
+    ['l', 'list'],
+    ['remove', 'rm'],
+  ]);
+  const INTERNAL = new Set(['daemon', 'stop-hook', 'hook-status', 'status-line']);
+  const cases = [...ENTRY.matchAll(/case '([a-z0-9:-]+)':/g)].map((match) => match[1] as string);
+  expect(cases.length).toBeGreaterThan(30);
+  const missing = cases.filter(
+    (verb) =>
+      !documented.has(verb) && !INTERNAL.has(verb) && !ALIASES.has(verb) && !verb.startsWith('-'),
+  );
+  expect(missing).toEqual([]);
+  // An alias is only exempt while the verb it stands for is documented.
+  expect([...ALIASES.values()].filter((verb) => !documented.has(verb))).toEqual([]);
+  // And the list does not name commands that do not exist: `ccmux help` is read as an inventory.
+  expect(COMMANDS.map((entry) => entry.verb).filter((verb) => !cases.includes(verb))).toEqual([]);
+});
