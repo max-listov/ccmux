@@ -1,7 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { mountCustomService } from '../src/agent/custom/services.ts';
+import { clearServiceFixtures, stdioService as server, TASKS } from './service-fixture.ts';
 
 /**
  * A Custom session performing its owner's operations, mounted from a real child process.
@@ -12,56 +11,11 @@ import { mountCustomService } from '../src/agent/custom/services.ts';
  * hand-written fixture would only prove it mounts the shape I imagined.
  */
 
-const roots: string[] = [];
 const open: { close(): Promise<void> }[] = [];
 afterEach(async () => {
   for (const entry of open.splice(0)) await entry.close().catch(() => undefined);
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  clearServiceFixtures();
 });
-
-const bun = Bun.which('bun');
-if (!bun) throw new Error('bun is required for the service mount tests');
-
-/** Write a stdio MCP server exposing one contract, and return the executable and args to run it. */
-function server(source: string): { command: string; args: string[] } {
-  // Inside the tree on purpose: the child resolves `stitchkit` the way any real service would, from
-  // the checkout's own modules. Written to the system temp directory it cannot resolve anything and
-  // dies during the handshake, which reads as a protocol failure and is a missing dependency.
-  const root = mkdtempSync(join(import.meta.dir, 'service-fixture-'));
-  roots.push(root);
-  const path = join(root, 'server.ts');
-  writeFileSync(path, source);
-  return { command: bun as string, args: [path] };
-}
-
-const TASKS = `
-import { defineContract } from 'stitchkit';
-import { implement } from 'stitchkit/server';
-import { createStdioMcpServer } from 'stitchkit/tools';
-import { z } from 'zod';
-
-const contract = defineContract({ prefix: '/tasks' }, {
-  claim: {
-    method: 'POST', path: '/claim', desc: 'Claim a task',
-    input: z.object({ id: z.string(), force: z.boolean().optional(), tags: z.array(z.string()).optional() }),
-    output: z.object({ ok: z.boolean(), saw: z.string(), key: z.string() }),
-  },
-  drop: {
-    method: 'POST', path: '/drop', desc: 'Drop a task',
-    input: z.object({ id: z.string() }),
-    output: z.object({ ok: z.boolean() }),
-  },
-});
-const service = implement(contract, {
-  claim: async ({ input }) => ({ ok: true, saw: input.id, key: process.env.TASKS_KEY ?? 'absent' }),
-  drop: async () => ({ ok: true }),
-});
-await createStdioMcpServer({
-  serverInfo: { name: 'tasks', version: '1.0.0' },
-  services: [service],
-  auth: undefined,
-});
-`;
 
 test('a recipe mounts the operations it names and only those', async () => {
   const mounted = await mountCustomService(

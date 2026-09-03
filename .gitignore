@@ -45,3 +45,6 @@ machine.json
 
 # local agent memory / scratch — never versioned
 .remember/
+
+# stdio service fixtures written by tests at run time
+test/service-fixtures/

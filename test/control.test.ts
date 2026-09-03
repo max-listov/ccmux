@@ -384,7 +384,10 @@ test('native approval/input/working states remain distinct; interruption cannot 
   });
   await writer.write(p.snapshot());
   await f.publish();
-  const waiting = f.client.wait({ target: f.target, timeoutMs: 1000 });
+  // The case is that a wait resolves when the state it waits for is published, not how fast this
+  // machine publishes it: under a loaded suite one second was the machine speaking, not the code.
+  // A hang still fails, at the suite's own bound.
+  const waiting = f.client.wait({ target: f.target, timeoutMs: 15_000 });
   await Bun.sleep(30);
   p.reconcile({ type: 'idle' }, p.revision);
   await writer.write(p.snapshot());

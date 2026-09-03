@@ -20,6 +20,7 @@ import { z } from 'zod';
 import type { Session } from '../../types.ts';
 import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
 import { customArtifactStore } from './artifacts.ts';
+import { declaredCustomToolNames } from './config.ts';
 import type { PreparedCustomHost } from './host.ts';
 import { CustomInputMetadataSchema } from './input.ts';
 import { customLanguageModelProvider } from './provider.ts';
@@ -117,7 +118,7 @@ export async function openCustomEngine(input: {
     await closeServices();
     throw error;
   }
-  const declared = [...host.config.tools, ...host.config.services.flatMap((row) => row.tools)];
+  const declared = declaredCustomToolNames(host.config);
   const tools = [...coding, ...resources.runtimeTools, ...mounted].filter((tool) =>
     declared.some((name) => name === tool.name),
   );

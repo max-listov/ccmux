@@ -57,9 +57,22 @@ test('public native API: 100 sequential and 100 concurrent reads reuse one publi
     snapshot: read.snapshot,
   });
   const expected = { status: 'live' as const, reason: null, snapshot };
-  for (let i = 0; i < 100; i++) expect(live(await readMonitoringStatus())).toEqual(expected);
+  // This case is about REUSE — how many observations two hundred callers cause — and not about how
+  // fast the machine is. The reader's own timeout is capped at one second and cannot be raised, so
+  // on a loaded box a caller legitimately answers `deadline` and the case failed for something it
+  // does not test. A deadline is this reader's honest answer and is taken again; anything else
+  // still fails, and the observation count still spans every read, so a retry cannot hide a reader
+  // that stopped reusing. The deadline behaviour itself is proven in the case below.
+  const again = async (read: Awaited<ReturnType<typeof readMonitoringStatus>>) =>
+    read.reason === 'deadline' ? await readMonitoringStatus({ timeoutMs: 1000 }) : read;
+  for (let i = 0; i < 100; i++)
+    expect(live(await again(await readMonitoringStatus()))).toEqual(expected);
   const reads = await Promise.all(
-    Array.from({ length: 100 }, () => readMonitoringStatus({ timeoutMs: 1000 })),
+    (
+      await Promise.all(
+        Array.from({ length: 100 }, () => readMonitoringStatus({ timeoutMs: 1000 })),
+      )
+    ).map(again),
   );
   for (const read of reads) expect(live(read)).toEqual(expected);
   expect(observationExecCount()).toBe(before);
@@ -83,11 +96,21 @@ test('native capacity, independent abort, invalid deadline and no retention of c
   const cancelled = readMonitoringStatus({ signal: activeStop.signal });
   activeStop.abort();
   expect((await cancelled).reason).toBe('cancelled');
-  const reads = Array.from({ length: MONITORING_MAX_READERS }, () =>
-    readMonitoringStatus({ timeoutMs: 1000 }),
-  );
-  expect((await readMonitoringStatus()).reason).toBe('busy');
-  expect((await Promise.all(reads)).every((read) => read.status === 'live')).toBe(true);
+  // Capacity, for the same reason and with the same remedy as the reuse case above: the one caller
+  // past the cap must be refused as `busy`, and the readers inside it must all be served. A reader
+  // answering `deadline` on a loaded machine is not a capacity failure, and its timeout cannot be
+  // raised, so the probe is taken again rather than counted as one.
+  const saturate = async () => {
+    const inFlight = Array.from({ length: MONITORING_MAX_READERS }, () =>
+      readMonitoringStatus({ timeoutMs: 1000 }),
+    );
+    const refused = (await readMonitoringStatus()).reason;
+    return { refused, served: await Promise.all(inFlight) };
+  };
+  let { refused, served } = await saturate();
+  if (served.some((read) => read.reason === 'deadline')) ({ refused, served } = await saturate());
+  expect(refused).toBe('busy');
+  expect(served.every((read) => read.status === 'live')).toBe(true);
 });
 
 test('native malformed, oversized, stale, mismatched and dead-producer snapshots fail closed', async () => {

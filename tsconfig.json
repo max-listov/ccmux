@@ -26,5 +26,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // Written by a test at run time and removed after it; a run killed midway leaves one
+  // behind, and a leftover fixture must not be able to fail the typecheck for everyone.
+  "exclude": ["test/service-fixtures"]
 }

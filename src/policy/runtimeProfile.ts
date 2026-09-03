@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_DECLARED_CUSTOM_TOOLS } from '../agent/custom/config.ts';
 import { NativeModelSelectionSchema } from '../runtime/selectionSchema.ts';
 import { PolicyDigestSchema, PolicyIdSchema } from './reference.ts';
 
@@ -12,7 +13,10 @@ export const RuntimeAppliedProfileSchema = z
     model: NativeModelSelectionSchema,
     /** The host's name for the server that answered, when it declared one. Never part of identity. */
     providerLabel: z.string().max(64).nullable().default(null),
-    tools: z.array(PolicyIdSchema).max(16),
+    // Bounded by what a recipe can declare, not by a number of its own. Written as 16 it was sized
+    // against coding tools alone, so a recipe declaring services could compose a session whose
+    // observed profile this schema then refused — the reported defect one layer further along.
+    tools: z.array(PolicyIdSchema).max(MAX_DECLARED_CUSTOM_TOOLS),
     resources: z
       .array(
         z

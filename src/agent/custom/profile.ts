@@ -5,6 +5,7 @@ import { RuntimeAppliedProfileSchema } from '../../policy/runtimeProfile.ts';
 import { readPrivateJson } from '../../runtime/store.ts';
 import type { Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
+import { declaredCustomToolNames } from './config.ts';
 import type { openCustomEngine } from './engine.ts';
 import type { PreparedCustomHost } from './host.ts';
 import { customProviderLabel } from './host.ts';
@@ -19,13 +20,17 @@ export class CustomProfile {
     private host: PreparedCustomHost,
   ) {}
   async applied(event: AgentHarnessProfileEvent) {
+    // The same expression composition admitted the session with, not a second reading of the
+    // recipe: a service operation is declared in `services[].tools` and is as much a declared name
+    // as a coding tool. Checking `tools` alone made every recipe with a service fail here.
+    const declared = declaredCustomToolNames(this.host.config);
     if (
       event.conversationId !== this.session.nativeSession?.id ||
       !this.host.config.models.some(
         ({ selection }) =>
           selection.provider === event.model.provider && selection.model === event.model.modelId,
       ) ||
-      event.toolNames.some((name) => !this.host.config.tools.some((tool) => tool === name)) ||
+      event.toolNames.some((name) => !declared.some((tool) => tool === name)) ||
       event.diagnostics.length > 0
     )
       throw new Error('Native applied profile differs from its host authority');
@@ -63,7 +68,10 @@ export class CustomProfile {
     return profile;
   }
   async read(engine: Awaited<ReturnType<typeof openCustomEngine>>) {
-    const saved = readPrivateJson(join(this.root, 'profile.json'), StoredProfileSchema, 16 * 1024);
+    // Sized for the largest profile this schema admits — every declared name at its full length,
+    // plus the resources — rather than for the profiles seen so far. Oversize reads back as null
+    // here, which is not a refusal but a silent «no retained profile».
+    const saved = readPrivateJson(join(this.root, 'profile.json'), StoredProfileSchema, 64 * 1024);
     if (!saved) return null;
     if (
       saved.registration !== this.session.registrationGeneration ||

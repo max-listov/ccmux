@@ -122,7 +122,12 @@ wrongly forever with nothing pointing back at the cause.
 The names a recipe may declare for coding tools are the names the harness composes — one set, not
 two. `run_command` requires a declared executable and `read_resource` a declared resource, and both
 are checked where the recipe is accepted so a recipe that cannot run earns no digest and never
-reports `configured`.
+reports `configured`. Coding tools and service operations are declared in different fields and are
+one set from there on: `declaredCustomToolNames` is what composition admits a session with and what
+the applied-profile check measures the observed profile against, and the bound on the retained
+profile is that set's size rather than a number of its own. A second reading of the recipe on either
+path is a copy that can disagree, and a check that admits fewer names than composition kills a
+session the recipe schema accepted.
 
 The host also names which adapter serves that registry. `openrouter` reaches the aggregator and
 requires its credential; `local` reaches an OpenAI-compatible model server on this host or its own

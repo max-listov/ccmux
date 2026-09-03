@@ -70,6 +70,33 @@ export const CustomProviderSchema = z.discriminatedUnion('kind', [
     .strict(),
 ]);
 
+const MAX_SERVICES = 8;
+const MAX_SERVICE_TOOLS = 32;
+
+/**
+ * Every tool name one recipe declares — coding tools and service operations, in one expression.
+ *
+ * The two lists are configured apart because they are configured by different things, and that is
+ * precisely why this exists rather than each reader assembling its own union. Composition admitted
+ * both while the applied-profile check knew only `tools`, so a recipe declaring any service was
+ * accepted, earned a digest, reported `configured` — and its session died on its first profile
+ * event with «Native applied profile differs from its host authority». One set, two copies, and
+ * they disagreed; the same shape this file already carries a note about, one field up.
+ */
+export function declaredCustomToolNames(config: CustomLaunchConfig): string[] {
+  return [...config.tools, ...config.services.flatMap((service) => service.tools)];
+}
+
+/**
+ * The most names a valid recipe can declare, for the readers that must bound that set.
+ *
+ * Derived rather than written down: a literal here would be the third authority on this set, and
+ * this file records what happened the last two times one went stale. A downstream bound smaller
+ * than this rejects a recipe the schema accepted, which is the same defect one layer along.
+ */
+export const MAX_DECLARED_CUSTOM_TOOLS =
+  CustomToolNameSchema.options.length + MAX_SERVICES * MAX_SERVICE_TOOLS;
+
 /**
  * A contract service whose operations this host mounts as tools of a Custom session.
  *
@@ -107,7 +134,7 @@ const CustomServiceSchema = z
       // side inventing a second name for one thing.
       .array(z.string().regex(/^[a-z0-9][a-z0-9._-]{0,127}$/))
       .min(1)
-      .max(32),
+      .max(MAX_SERVICE_TOOLS),
   })
   .strict();
 
@@ -143,7 +170,7 @@ export const CustomLaunchConfigSchema = z
     approvalTools: z.array(CustomToolNameSchema).max(CustomToolNameSchema.options.length),
     // Defaulted, not required: every recipe that predates services declares none, and a host that
     // mounts no service is the ordinary case rather than a misconfiguration.
-    services: z.array(CustomServiceSchema).max(8).default([]),
+    services: z.array(CustomServiceSchema).max(MAX_SERVICES).default([]),
     approvalSecretEnv: EnvironmentNameSchema,
     executables: z.record(
       z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/),
