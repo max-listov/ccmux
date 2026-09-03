@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.49.13] — 2026-09-03
+
+A model key is judged by the catalog, not by a character shape
 ## [0.49.12] — 2026-09-02
 
 A full batch cuts an agent's letter, not a person's
