@@ -572,6 +572,6 @@ export async function archiveControlSession(
   const result = await archiveSessionExact(m, target.session, target.threadId);
   if (result === 'missing')
     throw new AppError('IDENTITY_MISMATCH', 'Managed identity changed or disappeared', 409);
-  const stopped = await killSession(m, target.session);
+  const { killed: stopped } = await killSession(m, target.session);
   return { target, archived: true as const, duplicate: result === 'duplicate', stopped };
 }

@@ -3,7 +3,14 @@ import { loadMachineConfig, rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { SELF_ARGV, SELF_ARGV_NO_ENV_FILE } from '../env.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import { hasSession, killSession, newSession, setOption, setPaneOption } from '../tmux/tmux.ts';
+import {
+  hasSession,
+  killSession,
+  lingeringNotice,
+  newSession,
+  setOption,
+  setPaneOption,
+} from '../tmux/tmux.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { runDetached } from '../util/spawn.ts';
@@ -78,9 +85,12 @@ export async function cmdStop(name: string | undefined, force = false): Promise<
   const { session, m } = fwd;
   name = session;
   if (refusesSelf('stop', name, force)) return 1;
-  const ok = await killSession(m, name);
-  if (ok) log.info({ msg: 'session stopped', name });
-  console.log(ok ? `stopped ${name}` : `${name} not running`);
+  const { killed, lingering } = await killSession(m, name);
+  if (killed) log.info({ msg: 'session stopped', name });
+  console.log(killed ? `stopped ${name}` : `${name} not running`);
+  // Said, not thrown: the session IS down, and a process group that outlived it is a fact an
+  // operator can act on rather than a failure of the command that reports it.
+  if (lingering !== null) console.log(lingeringNotice(lingering, name));
   return 0;
 }
 

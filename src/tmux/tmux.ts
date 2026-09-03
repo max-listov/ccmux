@@ -93,10 +93,36 @@ export async function killSessionIfGeneration(
   );
   if (result.code !== 0 || result.stdout.trim() !== `CCMUX_BOOTSTRAP_GENERATION=${generation}`)
     return false;
-  return killSession(m, name);
+  return (await killSession(m, name)).killed;
 }
 
-export async function killSession(m: MachineConfig, name: string): Promise<boolean> {
+/**
+ * What killing a session actually did, as two facts rather than one.
+ *
+ * `killed` is whether tmux took the session down. `lingering` is a process group that outlived it —
+ * a real thing to report and NOT a failure of the kill, which is what conflating them made it: the
+ * straggler threw, the throw escaped the caller, and `ccmux rm` printed a slice of its own bundled
+ * source and exited non-zero having successfully removed the session. A caller that must answer
+ * "is it gone" got the opposite of the truth from the exit code, and the reason was in a stack
+ * trace rather than in a sentence.
+ */
+export interface KillOutcome {
+  killed: boolean;
+  lingering: number | null;
+}
+
+/** One sentence for the straggler, so every command that can meet it says the same thing. */
+export function lingeringNotice(processGroup: number, name: string): string {
+  return `warning: process group ${processGroup} from ${name} is still running`;
+}
+
+export async function killSession(
+  m: MachineConfig,
+  name: string,
+  // Injectable so the straggler branch can be driven in a test without waiting out the real bound;
+  // the production value is the one every caller gets.
+  lingerDeadlineMs = 5_000,
+): Promise<KillOutcome> {
   const pane = await run(
     tmuxArgv(m, 'display-message', '-p', '-t', paneTarget(name), '#{pane_pid}'),
   );
@@ -115,7 +141,7 @@ export async function killSession(m: MachineConfig, name: string): Promise<boole
   // stopped/removed session never shows a stale live state; a restart re-writes them via SessionStart.
   clearStatus(name);
   if (code === 0 && processGroup !== null) {
-    const deadline = Date.now() + 5_000;
+    const deadline = Date.now() + lingerDeadlineMs;
     while (Date.now() < deadline) {
       const ps = Bun.spawnSync(['ps', '-axo', 'pgid='], { stdout: 'pipe', stderr: 'ignore' });
       const alive =
@@ -124,12 +150,12 @@ export async function killSession(m: MachineConfig, name: string): Promise<boole
           .toString()
           .split('\n')
           .some((line) => Number.parseInt(line.trim(), 10) === processGroup);
-      if (!alive) return true;
+      if (!alive) return { killed: true, lingering: null };
       await Bun.sleep(50);
     }
-    throw new Error(`managed process group ${processGroup} did not exit after stopping ${name}`);
+    return { killed: true, lingering: processGroup };
   }
-  return code === 0;
+  return { killed: code === 0, lingering: null };
 }
 
 export async function setOption(

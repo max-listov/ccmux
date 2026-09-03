@@ -201,7 +201,33 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
   }
 }
 
-// Let Bun drain stdout/stderr before exiting. `process.exit()` can discard a large JSON response
-// while a pipeline is still reading it; assigning the code preserves command failures without
-// terminating the event loop ahead of its pending writes.
-process.exitCode = await dispatch(Bun.argv[2], Bun.argv.slice(3));
+/**
+ * A command that throws says one sentence, not a slice of its own bundle.
+ *
+ * An uncaught throw here is printed by the runtime with a source excerpt from the built file —
+ * line numbers in the forty-thousands and a fragment of an unrelated helper — landing where a
+ * person is waiting for a cause. It also loses the one fact a caller needs, because a thrown
+ * command and a refused one become the same non-zero. The cause is not discarded: the full error
+ * and its stack go to the log file, which is where this project keeps its own internals.
+ */
+try {
+  // Let Bun drain stdout/stderr before exiting. `process.exit()` can discard a large JSON response
+  // while a pipeline is still reading it; assigning the code preserves command failures without
+  // terminating the event loop ahead of its pending writes.
+  process.exitCode = await dispatch(Bun.argv[2], Bun.argv.slice(3));
+} catch (error) {
+  // Loaded here and not at the top: this file evaluates nothing eagerly, because the two Claude
+  // hooks and the status-line tee run it on every turn. A failure has already cost more than an
+  // import.
+  const { log } = await import('./util/log.ts');
+  log.error({
+    msg: 'command failed',
+    command: Bun.argv[2] ?? null,
+    err:
+      error instanceof Error
+        ? `${error.name}: ${error.message}\n${error.stack ?? ''}`
+        : String(error),
+  });
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}

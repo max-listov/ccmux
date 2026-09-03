@@ -2,7 +2,7 @@ import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { sessionsPath } from '../config/paths.ts';
 import { removeSession } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import { killSession } from '../tmux/tmux.ts';
+import { killSession, lingeringNotice } from '../tmux/tmux.ts';
 import { log } from '../util/log.ts';
 import { refusesSelf } from './guard.ts';
 
@@ -21,7 +21,7 @@ export async function cmdRm(name: string | undefined, force = false): Promise<nu
     console.log(`'${name}' not in ${sessionsPath(m)}`);
     return 1;
   }
-  await killSession(m, name);
+  const { lingering } = await killSession(m, name);
   // A block outlives nothing: it describes a session that no longer exists. Leaving the file behind
   // means a later session of the same name inherits a verdict passed on someone else — harmless
   // today only because neither its generation nor its uuid could match.
@@ -29,5 +29,8 @@ export async function cmdRm(name: string | undefined, force = false): Promise<nu
   log.info({ msg: 'session removed', name });
   console.log(`stopped ${name}`);
   console.log(`removed ${name} from ${sessionsPath(m)} (jsonl history kept on disk)`);
+  // Zero means removed, and it means only that. A straggler process group is reported on its own
+  // line: the removal happened, so a caller that reads the code must not be told otherwise.
+  if (lingering !== null) console.log(lingeringNotice(lingering, name));
   return 0;
 }
