@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.53.3] — 2026-09-04
+
+A name this machine does not have is never success
 ## [0.53.2] — 2026-09-03
 
 A removal's exit code answers whether the session was removed
