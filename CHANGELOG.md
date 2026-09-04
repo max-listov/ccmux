@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.53.6] — 2026-09-04
+
+Current public dependencies with Stitchkit 0.80 support
 ## [0.53.5] — 2026-09-04
 
 A generation belongs to a connection, not to an attempt
