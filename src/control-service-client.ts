@@ -187,6 +187,13 @@ export {
   ExternalContentTargetSchema,
 } from './external/contentSchema.ts';
 export {
+  type RemoteTransportRequest,
+  RemoteTransportRequestSchema,
+  type RemoteTransportResult,
+  RemoteTransportResultSchema,
+  remoteTransportContract,
+} from './fleet/remoteTransportContract.ts';
+export {
   ApplicationPolicyEvidenceSchema,
   ApplicationPolicyMetadataSchema,
   ApplicationPolicyReferenceSchema,
