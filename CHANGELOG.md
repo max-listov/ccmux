@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.0] — 2026-09-04
+
+Injected remote transport boundary
 ## [0.54.1] — 2026-09-04
 
 Generic injected remote transport contract
