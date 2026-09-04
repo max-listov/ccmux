@@ -6,9 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.2] — 2026-09-04
+
+Preserve realtime delivery through coalesced filesystem events
+
 - Detect command changes even when macOS coalesces their filesystem notification under a
   neighbouring lock filename. Realtime mailbox delivery no longer waits for reconciliation.
-
 ## [0.55.1] — 2026-09-04
 
 Reduce idle native supervisor work and preserve recipe continuations
