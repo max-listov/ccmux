@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.53.5] — 2026-09-04
+
+A generation belongs to a connection, not to an attempt
 ## [0.53.4] — 2026-09-04
 
 A machine that is down no longer costs the others their answer
