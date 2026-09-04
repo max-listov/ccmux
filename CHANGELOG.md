@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.53.4] — 2026-09-04
+
+A machine that is down no longer costs the others their answer
 ## [0.53.3] — 2026-09-04
 
 A name this machine does not have is never success
