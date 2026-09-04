@@ -260,6 +260,18 @@ an instant `Permission denied (publickey)`, depending on how far ssh gets. Respo
 tells you nothing. The only reliable answer comes from the check above with all three overrides, plus
 looking at the socket itself — whether the path resolves and whether an agent answers on it.
 
+### Дозвон и выполнение — разные пределы
+
+Хоп, который обязан состояться (сообщение, проброшенная команда), ждёт установления связи десять
+секунд: медленное рукопожатие — всё-таки рукопожатие. Веерный опрос флота (`fleet`) ждёт три: он
+спрашивает все машины разом, у него есть ячейка «сейчас недостижима», и ждать полный дозвон одной
+лежащей машины — значит отнять свежесть у всех остальных строк. Замерено на чёрной дыре в маршруте:
+10.1 с против 3.2 с, при живом флоте 1.5 с.
+
+Урезается ИМЕННО дозвон, а не общий предел выполнения. Машина, которая приняла соединение и
+перечисляет много сессий, отвечает — а не отсутствует; общий короткий предел нарисовал бы занятую
+машину мёртвой, и это ложь хуже медленного ответа.
+
 ### A hop that fails is not a message that was lost
 
 Both transports flap. A cross-machine `msg` writes its envelope to the outbox **before** the hop is

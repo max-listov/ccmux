@@ -26,11 +26,25 @@ import { isWirePeer, runWire, wirePeers } from './wire.ts';
 //    `ControlMaster auto` + `ControlPersist`), the backgrounded master would inherit our stdout/stderr
 //    and the pipe would never see EOF: every cold connection would hang until the kill deadline. `no`
 //    still REUSES an existing master (fast path kept), it just never becomes one.
-const SSH_OPTS = [
+/**
+ * How long ssh may spend DIALING, as distinct from how long the remote command may run.
+ *
+ * Ten seconds is the right budget for a hop that must succeed — a message, a forwarded command —
+ * because a slow handshake is still a handshake. It is the wrong budget for a fan-out that asks
+ * every machine at once and can print a row saying "not reachable right now": there the caller
+ * waits out the dial of the one machine that is down before seeing the ones that are up.
+ *
+ * Separating the two bounds is what keeps the fast answer honest. Shortening the WHOLE deadline
+ * would draw a reachable-but-busy machine as unreachable, which is a worse lie than a slow answer;
+ * a machine that has not accepted a connection in a few seconds is genuinely not reachable now.
+ */
+const CONNECT_TIMEOUT_SECONDS = 10;
+
+const sshOpts = (connectTimeoutSeconds: number) => [
   '-o',
   'BatchMode=yes',
   '-o',
-  'ConnectTimeout=10',
+  `ConnectTimeout=${connectTimeoutSeconds}`,
   '-o',
   'ControlMaster=no',
   '-o',
@@ -76,10 +90,15 @@ export interface RemoteResult {
 export async function runRemote(
   alias: string,
   argv: string[],
-  opts?: { stdin?: string; timeoutMs?: number },
+  opts?: { stdin?: string; timeoutMs?: number; connectTimeoutSeconds?: number },
 ): Promise<RemoteResult> {
   const cmd = shellJoin(argv);
-  const full = ['ssh', ...SSH_OPTS, alias, cmd];
+  const full = [
+    'ssh',
+    ...sshOpts(opts?.connectTimeoutSeconds ?? CONNECT_TIMEOUT_SECONDS),
+    alias,
+    cmd,
+  ];
   const timeoutMs = opts?.timeoutMs ?? 30_000;
   const r =
     opts?.stdin !== undefined
@@ -179,7 +198,7 @@ export function runPeer(
   machine: string,
   alias: string | null,
   argv: string[],
-  opts?: { stdin?: string; timeoutMs?: number },
+  opts?: { stdin?: string; timeoutMs?: number; connectTimeoutSeconds?: number },
 ): Promise<RemoteResult> {
   if (isWirePeer(m, machine)) return runWire(m, machine, argv, opts);
   if (alias === null) {

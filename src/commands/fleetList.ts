@@ -161,7 +161,14 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
   const remote = await Promise.all(
     peersOf(m).map(async ({ machine, alias, via }): Promise<FleetMachine> => {
       const r = await runPeer(m, machine, alias, ['ccmux', 'list', '--json'], {
+        // The execution budget stays generous — a busy machine listing many sessions is answering,
+        // not absent. The DIAL is what gets cut: this view asks every machine at once and has a
+        // cell for "not reachable right now", so waiting out one machine's full connect attempt
+        // costs every other row its freshness. Measured with one machine down: eleven seconds to a
+        // complete answer whose data was ready in two, and a consumer with a twelve-second bound
+        // lost the whole inventory on the toss of a coin.
         timeoutMs: 20_000,
+        connectTimeoutSeconds: 3,
       });
       const label = via === 'wire' ? 'wire' : alias;
       if (r.transportFailed) {
