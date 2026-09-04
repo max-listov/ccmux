@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
 import { managedPeer } from '../src/chat/identity.ts';
@@ -9,6 +9,35 @@ import { readContent, subscribeContent } from '../src/content/read.ts';
 import { contentPath } from '../src/content/store.ts';
 import { subscribeControlNative } from '../src/control/nativeFeed.ts';
 import { makeMachine, makeSession } from './helpers.ts';
+
+test('idle content does not rewrite files; omissions and closure still publish', async () => {
+  const root = mkdtempSync('/tmp/ccmux-content-idle-');
+  const m = makeMachine({ stateDir: root });
+  const s = makeSession();
+  const producer = new ContentProducer(m, s, crypto.randomUUID());
+  try {
+    producer.buffer.text('assistant', 'turn', 'item', 'done', 'replace', true);
+    producer.publish();
+    await producer.writer.flushPending();
+    const path = contentPath(m, s);
+    const before = statSync(path);
+    for (let i = 0; i < 20; i++) {
+      producer.publish();
+      await producer.writer.flushPending();
+    }
+    expect(statSync(path).ino).toBe(before.ino);
+    expect(statSync(path).mtimeMs).toBe(before.mtimeMs);
+    producer.buffer.noteOmitted(1);
+    producer.publish();
+    await producer.writer.flushPending();
+    expect(JSON.parse(readFileSync(path, 'utf8')).omittedRecords).toBe(1);
+    await producer.close();
+    expect(JSON.parse(readFileSync(path, 'utf8')).status).toBe('unavailable');
+  } finally {
+    await producer.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 async function deadline<T>(promise: Promise<T>, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;

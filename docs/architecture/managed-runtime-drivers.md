@@ -347,6 +347,12 @@ MCP servers are readable and controllable per session: status, tool count and th
 error sentence. Their configuration is not read at all — the URL, headers and any token the host put
 there have no business in a status projection.
 
+Custom and native Claude command loops watch their input mailboxes and registry files. Notifications
+received during a tick are retained for the next pass; shutdown releases a waiting loop immediately.
+A one-second reconciliation covers missing filesystem notifications. Atomic command replacements
+also match their temporary sibling events on macOS. Status, content and lock writes cannot wake
+their own producer. Provider event streams still publish directly, without waiting for this loop.
+
 No dialog kinds are declared, because none can be rendered yet. The runtime reads that as "cannot
 display" and degrades the affected flows, which is honest; declaring a kind promises to render it,
 and a declared-but-unrendered dialog parks until a deadline.

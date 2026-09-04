@@ -4,6 +4,7 @@ import { loadSessions } from '../../../config/sessions.ts';
 import { promptInvocation } from '../../../env.ts';
 import { recordRuntimeDiagnostic } from '../../../runtime/diagnostics.ts';
 import { managedRuntimeRoot } from '../../../runtime/status.ts';
+import { nativeRuntimeWake } from '../../../runtime/wake.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { log } from '../../../util/log.ts';
 import { privateRuntimeDirectory } from '../../codex/ownedPaths.ts';
@@ -48,6 +49,7 @@ export async function runClaudeNativeProcess(
       if (session.nativeSession?.runtime !== 'claude')
         throw new Error('Native Claude continuation identity differs');
       const abort = new AbortController();
+      const wake = nativeRuntimeWake(m, session, abort.signal);
       const stop = () => abort.abort();
       const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGHUP'];
       for (const signal of signals) process.once(signal, stop);
@@ -81,7 +83,7 @@ export async function runClaudeNativeProcess(
           const failure = owner.failed;
           if (failure !== null) throw failure;
           await owner.tick();
-          await Bun.sleep(200);
+          await wake.wait();
         }
       } catch (error) {
         await recordRuntimeDiagnostic(m, session.name, 'claude-native-runtime', error);
@@ -90,6 +92,7 @@ export async function runClaudeNativeProcess(
           `Native Claude runtime failed; run \`ccmux logs ${session.name}\` for the cause`,
         );
       } finally {
+        wake.close();
         try {
           await owner.close();
         } finally {

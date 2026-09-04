@@ -1,3 +1,4 @@
+import { verifyManagedLaunchRecipe } from '../config/launchRecipes.ts';
 import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { loadMachineConfig, rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
@@ -115,8 +116,17 @@ export async function cmdRestart(args: string[]): Promise<number> {
   // detached worker that failed silently into /dev/null, and still returned 0 — "restarted!" while
   // nothing happened. Over ssh that lie becomes an initiator waiting forever for a task that was
   // never started; it is the same silent-miss class fleet addressing exists to remove.
-  if (!findSession(loadSessions(m), name)) {
+  const session = findSession(loadSessions(m), name);
+  if (!session) {
     console.error(`unknown session: ${name}`);
+    return 1;
+  }
+  // Refuse a known impossible continuation while the existing owner is still alive.
+  // Launch revalidates again; this preflight cannot authorize a later changed configuration.
+  try {
+    verifyManagedLaunchRecipe(m, session);
+  } catch (error) {
+    console.error(`cannot restart ${name}: ${String(error)}`);
     return 1;
   }
   await killSession(m, name);

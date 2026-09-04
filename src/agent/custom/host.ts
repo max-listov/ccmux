@@ -15,7 +15,14 @@ export function prepareCustomHost(
   const accepted = session.launchRecipe;
   if (!accepted)
     throw new AppError('UNAVAILABLE', 'Custom runtime requires a host launch recipe', 409);
-  const launch = resolveControlLaunchRecipe(m, session.dir, accepted, [], 'custom');
+  const launch = resolveControlLaunchRecipe(
+    m,
+    session.dir,
+    accepted,
+    [],
+    'custom',
+    accepted.digest,
+  );
   if (
     stableJson(launch.launchRecipe) !== stableJson(accepted) ||
     launch.envFile !== session.envFile ||

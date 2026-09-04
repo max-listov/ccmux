@@ -23,7 +23,11 @@ export type ResolvedControlLaunch = {
   launchRecipe?: LaunchRecipeMetadata;
 };
 
-function recipeDigest(recipe: MachineLaunchRecipe): string {
+function recipeDigest(recipe: MachineLaunchRecipe, beforeServices = false): string {
+  const custom = recipe.custom === undefined ? undefined : { ...recipe.custom };
+  // Before service composition existed, an unchanged recipe had no empty services field.
+  // Only that exact historical representation is eligible; nonempty services stay pinned.
+  if (beforeServices && custom?.services.length === 0) Reflect.deleteProperty(custom, 'services');
   const canonical = {
     revision: recipe.revision,
     ...(recipe.envFile === undefined ? {} : { envFile: recipe.envFile }),
@@ -33,7 +37,7 @@ function recipeDigest(recipe: MachineLaunchRecipe): string {
     ...(recipe.collaborationMode === undefined
       ? {}
       : { collaborationMode: recipe.collaborationMode }),
-    ...(recipe.custom === undefined ? {} : { custom: recipe.custom }),
+    ...(custom === undefined ? {} : { custom }),
   };
   return createHash('sha256').update(stableJson(canonical)).digest('hex');
 }
@@ -117,6 +121,7 @@ export function resolveControlLaunchRecipe(
   reference: LaunchRecipeReference | undefined,
   callerFlags: readonly string[],
   runtime: 'codex' | 'custom' = 'codex',
+  acceptedDigest?: string,
 ): ResolvedControlLaunch {
   if (reference === undefined) return { flags: [...callerFlags] };
   if (callerFlags.length > 0)
@@ -134,7 +139,12 @@ export function resolveControlLaunchRecipe(
   const launchRecipe: LaunchRecipeMetadata = {
     id: reference.id,
     revision: recipe.revision,
-    digest: recipeDigest(recipe),
+    digest:
+      acceptedDigest !== undefined &&
+      recipe.custom?.services.length === 0 &&
+      acceptedDigest === recipeDigest(recipe, true)
+        ? acceptedDigest
+        : recipeDigest(recipe),
     capabilities: [...new Set(recipe.capabilities)].sort(),
     ...(recipe.collaborationMode === undefined
       ? {}
@@ -162,6 +172,7 @@ export function verifyManagedLaunchRecipe(
     { id: session.launchRecipe.id, revision: session.launchRecipe.revision },
     [],
     session.agent === 'custom' ? 'custom' : 'codex',
+    session.launchRecipe.digest,
   );
   if (
     resolved.launchRecipe?.digest !== session.launchRecipe.digest ||

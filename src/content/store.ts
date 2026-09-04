@@ -31,10 +31,13 @@ export class ContentWriter {
   }
   offer(snapshot: () => ContentSnapshot): void {
     if (this.closed) return;
-    if (this.error !== null)
-      throw new Error('Native content publication failed', { cause: this.error });
+    this.assertHealthy();
     this.next = snapshot;
     if (this.writing === null) this.schedule();
+  }
+  assertHealthy(): void {
+    if (this.error !== null)
+      throw new Error('Native content publication failed', { cause: this.error });
   }
   private schedule(): void {
     this.timer ??= setTimeout(() => {

@@ -20,6 +20,7 @@ const protectedItem = (item: ContentRecord) => item.kind === 'request' || item.k
 
 /** The bounded buffer is an observation cache, never native conversation history. */
 export class ContentBuffer {
+  revision = 0;
   private value: ContentSnapshot;
   private states = new Map<string, ContentRecord>();
   private pendingSurrogates = new Map<string, string>();
@@ -45,12 +46,15 @@ export class ContentBuffer {
     return structuredClone(this.value);
   }
   noteOmitted(records: number): void {
+    if (records !== 0) this.revision++;
     this.value.omittedRecords += records;
   }
   unavailable(): void {
+    if (this.value.status !== 'unavailable') this.revision++;
     this.value.status = 'unavailable';
   }
   resetContext(): void {
+    this.revision++;
     this.value.contextBoundary = ++this.value.sequence;
     this.value.droppedThrough = this.value.sequence;
     this.value.omittedRecords += this.value.records.length;
@@ -227,6 +231,7 @@ export class ContentBuffer {
     }
   }
   private push(input: Omit<ContentRecord, 'sequence' | 'at'>): ContentRecord {
+    this.revision++;
     const record = { ...input, sequence: ++this.value.sequence, at: new Date().toISOString() };
     this.value.records.push(record);
     this.replayBytes += sizeOf(record) + 1;

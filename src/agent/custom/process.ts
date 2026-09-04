@@ -6,6 +6,7 @@ import { promptInvocation } from '../../env.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { seedNativeSelection } from '../../runtime/selection.ts';
 import { managedRuntimeRoot } from '../../runtime/status.ts';
+import { nativeRuntimeWake } from '../../runtime/wake.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { log } from '../../util/log.ts';
 import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
@@ -42,6 +43,7 @@ export async function runCustomProcess(
       const model = customModel(host.config, session.modelSelection).selection;
       await seedNativeSelection(m, session, { runtime: 'custom', model });
       const abort = new AbortController();
+      const wake = nativeRuntimeWake(m, session, abort.signal);
       const stop = () => abort.abort();
       const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGHUP'];
       for (const signal of signals) process.once(signal, stop);
@@ -63,13 +65,14 @@ export async function runCustomProcess(
           )
             throw new Error('Custom registration changed while its writer was alive');
           await owner.tick();
-          await Bun.sleep(100);
+          await wake.wait();
         }
       } catch (error) {
         await recordRuntimeDiagnostic(m, session.name, 'custom-runtime', error);
         log.error({ msg: 'managed Custom runtime failed', name: session.name });
         throw new Error(`Custom runtime failed; run \`ccmux logs ${session.name}\` for the cause`);
       } finally {
+        wake.close();
         try {
           await owner.close();
         } finally {
