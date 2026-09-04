@@ -45,7 +45,7 @@ let frames = 0;
 async function matches(states: string[]): Promise<void> {
   const until = Date.now() + 55_000;
   while (Date.now() < until) {
-    const snapshot = currentExternalStatus(await client.external());
+    const snapshot = currentExternalStatus(await client['external.list']());
     if (
       threads.every(
         (id, n) =>
@@ -63,7 +63,7 @@ try {
     await observer.refresh();
     timer = setInterval(() => void observer.refresh(), 2000);
   }
-  const first = await client.external();
+  const first = await client['external.list']();
   if (first.status !== 'live' || first.version !== VERSION)
     throw new Error('live installed/candidate version does not match checkout');
   const stream = await client.watchExternal.withOptions({ signal: abort.signal });
@@ -121,7 +121,7 @@ try {
   // A separate consumer must see the same current identities without another provider writer.
   const reconnect = createControlClient(source ? { socket: controlSocket(ipc) } : {});
   try {
-    const snapshot = await reconnect.external();
+    const snapshot = await reconnect['external.list']();
     if (
       !threads.every((id) =>
         snapshot.sessions.some((s) => s.identity.threadId === id && s.turnState.state === 'idle'),

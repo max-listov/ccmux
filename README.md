@@ -88,7 +88,7 @@ operators install its exact descriptor and native stream profile together. See
 [native content and turn controls](docs/architecture/native-content-and-turn-controls.md) for
 capabilities, limits, selection semantics and runnable examples.
 
-`client.runtimes({})` discovers configured runtimes and explicit capabilities. Public create accepts
+`client['runtime.list']({})` discovers configured runtimes and explicit capabilities. Public create accepts
 `runtime` independently from `modelSelection: { provider, model }`; omitted runtime remains Codex.
 `models({ runtime: "opencode" })` reads the host's configured native provider catalog before a chat.
 OpenCode requires an existing authenticated native installation (1.18.20 or newer). It stores its

@@ -302,7 +302,7 @@ test('declared message operation is caller-scoped and correlates identical-text 
   const read = { ...first, registrationGeneration };
   const selector = { target: read.target, messageId: read.messageId, registrationGeneration };
   expect((await f.remote.messageOperation(selector)).evidence?.state).toBe('queued');
-  expect((await f.local.messageOperation(selector)).outcome).toBe('unavailable');
+  expect((await f.local['message.operation'](selector)).outcome).toBe('unavailable');
   advanceMessageOperation(f.machine, f.session, first.messageId, 'completed', 'turn-exact');
   const result = await f.remote.messageOperation(selector);
   expect(result.evidence).toMatchObject({ state: 'completed', turnId: 'turn-exact' });
@@ -412,7 +412,7 @@ test('current declared service exposes revisioned selection and image upload wit
     bytes.subarray(0, ATTACHMENT_LIMITS.chunkBytes),
   );
   await expect(
-    f.local.attachmentRead({ target: f.target, reference, offset: 0 }),
+    f.local['attachment.read']({ target: f.target, reference, offset: 0 }),
   ).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE' });
   const messageId = crypto.randomUUID();
   expect(await f.remote.message({ target: f.target, messageId, images: [reference] })).toEqual({
@@ -473,7 +473,7 @@ test('application attribution is host-bound, generation-pinned, durable and part
   await expect(
     f.remote.message({ ...input, origin: { ...input.origin, channelId: 'wrong' } }),
   ).rejects.toMatchObject({ code: 'ORIGIN_REFUSED' });
-  await expect(f.local.message(input)).rejects.toMatchObject({ code: 'ORIGIN_REFUSED' });
+  await expect(f.local['message.send'](input)).rejects.toMatchObject({ code: 'ORIGIN_REFUSED' });
   await expect(f.remote.message({ ...input, notification: 'owner' })).rejects.toMatchObject({
     code: 'ORIGIN_REFUSED',
   });
@@ -631,9 +631,11 @@ test('accepted historical machine input and image pins survive the ingress cutov
 
 test('declared service reuses exact control operations, identity and admission', async () => {
   const f = await fixture();
-  expect(await f.remote.get({ target: f.target })).toEqual(await f.local.get({ target: f.target }));
+  expect(await f.remote.get({ target: f.target })).toEqual(
+    await f.local['session.get']({ target: f.target }),
+  );
   expect(await f.remote.native({ target: f.target, cursor: null })).toEqual(
-    await f.local.native({ target: f.target, cursor: null }),
+    await f.local['native.read']({ target: f.target, cursor: null }),
   );
   const messageId = crypto.randomUUID();
   expect(await f.remote.message({ target: f.target, messageId, body: 'service message' })).toEqual({
@@ -908,7 +910,9 @@ test('native stream cursor binds target and source adapter resumes, heartbeats a
 
   f.native.reconcile({ type: 'idle' }, f.native.revision, Date.now() - NATIVE_RUNTIME_TTL_MS - 1);
   await f.writer.write(f.native.snapshot());
-  await expect(f.local.native({ target: f.target })).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+  await expect(f.local['native.read']({ target: f.target })).rejects.toMatchObject({
+    code: 'UNAVAILABLE',
+  });
   const resumed = await run(initial.cursor);
   const resumedFrames = parseNDJSON<unknown>(new Response(resumed.stdout), {
     maxLineBytes: 2 * 1024 * 1024,

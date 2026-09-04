@@ -87,6 +87,7 @@ export {
   ControlHistoryResultSchema,
   PublicContextOperationSchema,
 } from './control/contextSchema.ts';
+export { controlContract } from './control/contract.ts';
 export {
   type ControlDirectoryRead,
   ControlDirectoryReadSchema,
@@ -170,6 +171,10 @@ export {
   createCcmuxControlServiceClient,
   serviceOperation,
 } from './control/serviceDescriptor.ts';
+export {
+  CCMUX_CONTROL_CALLER_HEADER,
+  ControlTransportCallerSchema,
+} from './control/transportBoundary.ts';
 export {
   EXTERNAL_CONTENT_LIMITS,
   ExternalContentCapabilitiesSchema,

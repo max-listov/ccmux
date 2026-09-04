@@ -296,14 +296,14 @@ try {
 Create and follow an owned workspace without polling provider history:
 
 ```ts
-const catalog = await client.models({}); // no conversation required
+const catalog = await client['model.list']({}); // no conversation required
 const choice = catalog.data.find((model) => model.isDefault);
 if (!choice) throw new Error("No model available");
-const created = await client.create({
+const created = await client['session.create']({
   requestId: crypto.randomUUID(), name: "worker", workspace: "/absolute/workspace", flags: [],
   modelSelection: { provider: catalog.source.provider, model: choice.model ?? choice.id },
 });
-const native = await client.native({ target: created.target, cursor: null });
+const native = await client['native.read']({ target: created.target, cursor: null });
 const feed = await client.watchNative.withOptions({
   target: created.target, cursor: { generation: native.generation, sequence: native.sequence },
 }, { signal: stop.signal });
@@ -312,7 +312,7 @@ const feed = await client.watchNative.withOptions({
 Selecting a host recipe sends only its safe immutable reference:
 
 ```ts
-const created = await client.create({
+const created = await client['session.create']({
   requestId: crypto.randomUUID(),
   name: "worker",
   workspace: "/absolute/workspace",
@@ -538,7 +538,7 @@ still means durable queue acceptance only. Persist the create receipt's target/g
 message UUID, then read the operation without replaying a mutation:
 
 ```ts
-const operation = await client.messageOperation({ target, registrationGeneration, messageId });
+const operation = await client['message.operation']({ target, registrationGeneration, messageId });
 if (operation.outcome === 'available' && operation.evidence?.state === 'completed') {
   // Join native content/history by this exact turnId, never by text or sequence order.
   const turnId = operation.evidence.turnId;

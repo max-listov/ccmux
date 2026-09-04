@@ -104,7 +104,7 @@ try {
   const created = await remote.create({ requestId, name, workspace, flags });
   target = created.target;
   const retried = await remote.create({ requestId, name, workspace, flags });
-  const localRetry = await local.create({ requestId, name, workspace, flags });
+  const localRetry = await local['session.create']({ requestId, name, workspace, flags });
   if (
     created.duplicate ||
     !retried.duplicate ||
@@ -115,11 +115,14 @@ try {
     throw new Error('create receipt did not reconcile one managed identity');
 
   const preparedDeadline = Date.now() + 15_000;
-  let localRow: Awaited<ReturnType<typeof local.get>> | null = null;
+  let localRow: Awaited<ReturnType<(typeof local)['session.get']>> | null = null;
   let serviceRow: Awaited<ReturnType<typeof remote.get>> | null = null;
   while ((localRow === null || serviceRow === null) && Date.now() < preparedDeadline) {
     try {
-      [localRow, serviceRow] = await Promise.all([local.get({ target }), remote.get({ target })]);
+      [localRow, serviceRow] = await Promise.all([
+        local['session.get']({ target }),
+        remote.get({ target }),
+      ]);
     } catch {
       await Bun.sleep(250);
     }
@@ -169,7 +172,7 @@ try {
 
   const archive = await remote.archive({ target });
   archived = archive.archived;
-  const snapshot = await local.list();
+  const snapshot = await local['session.list']();
   console.log(
     JSON.stringify({
       ok: true,

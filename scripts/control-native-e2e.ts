@@ -72,8 +72,9 @@ async function until(
   }
 }
 async function settled(target: typeof targetA) {
-  let result = await client.wait({ target, timeoutMs: 60_000 });
-  if (result.outcome === 'timeout') result = await client.wait({ target, timeoutMs: 60_000 });
+  let result = await client['session.wait']({ target, timeoutMs: 60_000 });
+  if (result.outcome === 'timeout')
+    result = await client['session.wait']({ target, timeoutMs: 60_000 });
   check(
     ['completed', 'interrupted', 'idle'].includes(result.outcome),
     `Not settled: ${JSON.stringify(result)}`,
@@ -86,11 +87,11 @@ async function roundTrip(label: string) {
   const request = `Authorized isolated communication test ${token}. Invoke exactly ${invocation} msg ${targetB.machine}:${targetB.session} --to-agent codex --to-thread ${targetB.threadId} with this body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by ccmux. Do not message anyone else.' Do not reuse CLI paths from earlier history. When B_TO_A arrives finish with RECEIVED, without sending another message. Do not change files or do unrelated work.`;
   const messageId = crypto.randomUUID();
   check(
-    (await client.message({ target: targetA, messageId, body: request })).accepted,
+    (await client['message.send']({ target: targetA, messageId, body: request })).accepted,
     'Not accepted',
   );
   check(
-    (await client.message({ target: targetA, messageId, body: request })).duplicate,
+    (await client['message.send']({ target: targetA, messageId, body: request })).duplicate,
     'Duplicate was not recognized',
   );
   await until(label, () => {
@@ -114,7 +115,7 @@ async function roundTrip(label: string) {
 }
 
 try {
-  const baseline = await client.list();
+  const baseline = await client['session.list']();
   check(
     baseline.status === 'live' &&
       baseline.sessions.some((s) => s.identity.threadId === a.uuid) &&
@@ -134,26 +135,26 @@ try {
   })();
   try {
     await roundTrip('control-A-B-A');
-    await client.message({
+    await client['message.send']({
       target: targetA,
       messageId: crypto.randomUUID(),
       body: 'Run sleep 15, then reply BUSY_DONE only. This is an isolated delivery test; do not change files or contact anyone.',
     });
-    let busy = await client.get({ target: targetA });
+    let busy = await client['session.get']({ target: targetA });
     await until('busy turn before deferred control message', async () => {
-      busy = await client.get({ target: targetA });
+      busy = await client['session.get']({ target: targetA });
       return busy.state === 'working' && busy.turn?.status === 'inProgress';
     });
     check(busy.turn, 'No busy turn identity');
     const deferredId = crypto.randomUUID();
-    await client.message({
+    await client['message.send']({
       target: targetA,
       messageId: deferredId,
       body: 'Reply CONTROL_DEFERRED_DONE only.',
       defer: true,
     });
     check(
-      (await client.wait({ target: targetA, timeoutMs: 1000 })).outcome === 'timeout',
+      (await client['session.wait']({ target: targetA, timeoutMs: 1000 })).outcome === 'timeout',
       'Busy wait settled before deferred delivery',
     );
     check(
@@ -173,21 +174,21 @@ try {
     progress('control-busy-defer-wait', { busyTurn: busy.turn.id, deferredId });
 
     const busyMessage = crypto.randomUUID();
-    await client.message({
+    await client['message.send']({
       target: targetA,
       messageId: busyMessage,
       body: 'Run sleep 30, then reply TIMING_DONE only. This is an isolated interruption test; do not change files or contact anyone.',
     });
-    let active = await client.get({ target: targetA });
+    let active = await client['session.get']({ target: targetA });
     await until('working turn via control stream', async () => {
-      active = await client.get({ target: targetA });
+      active = await client['session.get']({ target: targetA });
       return active.state === 'working' && active.turn?.status === 'inProgress';
     });
     check(active.turn, 'No native turn identity');
     const interruptedTurn = active.turn.id;
-    await client.interrupt({
+    await client['turn.interrupt']({
       target: targetA,
-      generation: (await client.native({ target: targetA })).generation,
+      generation: (await client['native.read']({ target: targetA })).generation,
       turnId: interruptedTurn,
     });
     check(
@@ -195,7 +196,7 @@ try {
       'Interruption reported as normal completion',
     );
     const recoveryId = crypto.randomUUID();
-    await client.message({
+    await client['message.send']({
       target: targetA,
       messageId: recoveryId,
       body: 'Reply CONTROL_INTERRUPTION_RECOVERED only.',
@@ -250,7 +251,7 @@ try {
       'fresh control generation',
       async () => {
         try {
-          const fresh = await client.list();
+          const fresh = await client['session.list']();
           return fresh.status === 'live' && fresh.generation !== baseline.generation;
         } catch {
           return false;
@@ -268,7 +269,7 @@ try {
       before: before.map((s) => s && { threadId: s.threadId, providerPid: s.providerPid }),
       after: after.map((s) => s && { threadId: s.threadId, providerPid: s.providerPid }),
     });
-    await client.start({ target: targetA }); // existing runtime: idempotent, no second writer
+    await client['session.start']({ target: targetA }); // existing runtime: idempotent, no second writer
     check(
       readOwnedCodexStatus(m, a).snapshot?.providerPid === after[0]?.providerPid,
       'Start duplicated a running provider',

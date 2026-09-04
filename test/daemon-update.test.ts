@@ -95,7 +95,7 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         try {
-          return await client.list();
+          return await client['session.list']();
         } catch {}
         await Bun.sleep(20);
       }

@@ -214,7 +214,7 @@ try {
     'prepared baseline',
     async () => {
       try {
-        return (await local.list()).status === 'live';
+        return (await local['session.list']()).status === 'live';
       } catch {
         return false;
       }
@@ -497,7 +497,7 @@ try {
       new Set(providers.map((row) => row.pid)).size === providers.length,
     'Native writer count is not exact',
   );
-  const generation = (await local.list()).generation;
+  const generation = (await local['session.list']()).generation;
   daemon.kill('SIGTERM');
   await daemon.exited;
   daemon = spawnDaemon();
@@ -505,7 +505,7 @@ try {
     'daemon replacement',
     async () => {
       try {
-        return (await local.list()).generation !== generation;
+        return (await local['session.list']()).generation !== generation;
       } catch {
         return false;
       }

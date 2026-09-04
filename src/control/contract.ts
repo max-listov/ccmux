@@ -85,7 +85,7 @@ import {
 export const controlContract = defineContract(
   { prefix: 'control', scope: 'local' },
   {
-    externalHistory: {
+    'external.history': {
       method: 'POST',
       path: '/external/history',
       desc: 'Read bounded external authored text without writer mutation',
@@ -94,7 +94,7 @@ export const controlContract = defineContract(
       idempotent: true,
       timeout: 7_000,
     },
-    externalCapabilities: {
+    'external.capabilities': {
       method: 'POST',
       path: '/external/capabilities',
       desc: 'Read exact external content and control eligibility',
@@ -103,7 +103,7 @@ export const controlContract = defineContract(
       idempotent: true,
       timeout: 7_000,
     },
-    messageCancel: {
+    'message.cancel': {
       method: 'POST',
       path: '/message/cancel',
       desc: 'Withdraw one accepted letter of the caller that has not been delivered',
@@ -111,7 +111,7 @@ export const controlContract = defineContract(
       output: ControlMessageCancelReceiptSchema,
       idempotent: true,
     },
-    messageOperation: {
+    'message.operation': {
       method: 'POST',
       path: '/message/operation',
       desc: 'Read retained exact message-to-native-turn evidence without resubmission',
@@ -119,7 +119,7 @@ export const controlContract = defineContract(
       output: MessageOperationResultSchema,
       idempotent: true,
     },
-    transcript: {
+    'transcript.read': {
       method: 'POST',
       path: '/transcript',
       desc: 'Read a bounded transcript window with the cursor a caller pages by',
@@ -128,7 +128,7 @@ export const controlContract = defineContract(
       idempotent: true,
       timeout: 7_000,
     },
-    history: {
+    'history.read': {
       method: 'POST',
       path: '/history',
       desc: 'Read a bounded native history page through its existing owner',
@@ -137,7 +137,7 @@ export const controlContract = defineContract(
       idempotent: true,
       timeout: 7_000,
     },
-    compact: {
+    'context.compact': {
       method: 'POST',
       path: '/context/compact',
       desc: 'Accept an exact idle native compaction operation',
@@ -145,7 +145,7 @@ export const controlContract = defineContract(
       output: ControlContextOperationResultSchema,
       idempotent: true,
     },
-    contextOperation: {
+    'context.operation': {
       method: 'POST',
       path: '/context/operation',
       desc: 'Read durable native compaction completion evidence',
@@ -153,16 +153,16 @@ export const controlContract = defineContract(
       output: ControlContextOperationResultSchema,
       idempotent: true,
     },
-    fork: {
+    'session.fork': {
       method: 'POST',
       path: '/fork',
       desc: 'Fork one idle native conversation without changing its source',
       input: NativeForkRequestSchema,
       output: ControlCreateReceiptSchema,
       idempotent: true,
-      timeout: 65_000,
+      timeout: 30_000,
     },
-    steer: {
+    'turn.steer': {
       method: 'POST',
       path: '/turn/steer',
       desc: 'Submit content to an exact active native turn',
@@ -171,7 +171,7 @@ export const controlContract = defineContract(
       idempotent: true,
       timeout: 15_000,
     },
-    steeringOperation: {
+    'turn.steering-operation': {
       method: 'POST',
       path: '/turn/steering-operation',
       desc: 'Read exact steering acceptance without resubmission',
@@ -179,7 +179,7 @@ export const controlContract = defineContract(
       output: SteeringReadResultSchema,
       idempotent: true,
     },
-    selection: {
+    'selection.read': {
       method: 'POST',
       path: '/selection',
       desc: "Read the exact session's revisioned native turn defaults",
@@ -187,7 +187,7 @@ export const controlContract = defineContract(
       output: SelectionResultSchema,
       idempotent: true,
     },
-    select: {
+    'selection.update': {
       method: 'POST',
       path: '/selection/update',
       desc: 'Change native turn defaults between turns with revision CAS',
@@ -195,7 +195,7 @@ export const controlContract = defineContract(
       output: SelectionResultSchema,
       idempotent: true,
     },
-    attachmentBegin: {
+    'attachment.begin': {
       method: 'POST',
       path: '/attachment/begin',
       desc: 'Reserve one bounded image upload for an exact target',
@@ -203,7 +203,7 @@ export const controlContract = defineContract(
       output: AttachmentUploadReceiptSchema,
       idempotent: true,
     },
-    attachmentChunk: {
+    'attachment.chunk': {
       method: 'POST',
       path: '/attachment/chunk',
       desc: 'Append one authenticated bounded image chunk',
@@ -211,7 +211,7 @@ export const controlContract = defineContract(
       output: AttachmentUploadReceiptSchema,
       idempotent: true,
     },
-    attachmentFinalize: {
+    'attachment.finalize': {
       method: 'POST',
       path: '/attachment/finalize',
       desc: 'Verify complete image bytes and return an immutable reference',
@@ -219,7 +219,7 @@ export const controlContract = defineContract(
       output: AttachmentReferenceSchema,
       idempotent: true,
     },
-    attachmentCancel: {
+    'attachment.cancel': {
       method: 'POST',
       path: '/attachment/cancel',
       desc: 'Cancel an unretained image upload',
@@ -227,7 +227,7 @@ export const controlContract = defineContract(
       output: AttachmentCancelReceiptSchema,
       idempotent: true,
     },
-    attachmentRead: {
+    'attachment.read': {
       method: 'POST',
       path: '/attachment/read',
       desc: 'Read one authorized preview chunk; never expose owner paths',
@@ -235,7 +235,7 @@ export const controlContract = defineContract(
       output: AttachmentReadReceiptSchema,
       idempotent: true,
     },
-    runtimes: {
+    'runtime.list': {
       method: 'POST',
       path: '/runtimes',
       desc: 'Discover configured execution runtimes and explicit capabilities',
@@ -245,7 +245,7 @@ export const controlContract = defineContract(
       input: RuntimeCatalogInputSchema,
       output: RuntimeCatalogSchema,
     },
-    directories: {
+    'directory.list': {
       method: 'POST',
       path: '/directories',
       desc: 'List directory names without following symlinks',
@@ -255,23 +255,23 @@ export const controlContract = defineContract(
       input: ControlDirectoryReadSchema,
       output: ControlDirectoryResultSchema,
     },
-    list: {
-      method: 'GET',
+    'session.list': {
+      method: 'POST',
       path: '/sessions',
       desc: 'Read the prepared managed-session snapshot',
       toolName: 'sessions',
       expose: ['HTTP', 'CLI', 'MCP'],
       output: ControlSnapshotSchema,
     },
-    external: {
-      method: 'GET',
+    'external.list': {
+      method: 'POST',
       path: '/external',
       desc: 'Read prepared external native thread states; does not adopt or start threads',
       toolName: 'external',
       expose: ['HTTP', 'CLI', 'MCP'],
       output: ExternalStatusSnapshotSchema,
     },
-    get: {
+    'session.get': {
       method: 'POST',
       path: '/session',
       desc: 'Read one exact managed session',
@@ -281,7 +281,7 @@ export const controlContract = defineContract(
       input: ControlTargetSchema,
       output: ControlRowSchema,
     },
-    create: {
+    'session.create': {
       method: 'POST',
       path: '/create',
       desc: 'Idempotently create one workspace-scoped managed runtime session',
@@ -290,9 +290,9 @@ export const controlContract = defineContract(
       idempotent: true,
       input: ControlCreateSchema,
       output: ControlCreateReceiptSchema,
-      timeout: 65_000,
+      timeout: 30_000,
     },
-    archive: {
+    'session.archive': {
       method: 'POST',
       path: '/archive',
       desc: 'Archive and stop one exact managed identity without deleting provider history',
@@ -302,7 +302,7 @@ export const controlContract = defineContract(
       input: ControlTargetSchema,
       output: ControlArchiveReceiptSchema,
     },
-    message: {
+    'message.send': {
       method: 'POST',
       path: '/message',
       desc: 'Accept an identity-pinned message into durable chat; acceptance is not completion',
@@ -312,7 +312,7 @@ export const controlContract = defineContract(
       input: ControlMessageSchema,
       output: ControlMessageReceiptSchema,
     },
-    start: {
+    'session.start': {
       method: 'POST',
       path: '/start',
       desc: 'Start an existing registered session without changing its identity',
@@ -321,7 +321,7 @@ export const controlContract = defineContract(
       input: ControlTargetSchema,
       output: ControlActionReceiptSchema,
     },
-    interrupt: {
+    'turn.interrupt': {
       method: 'POST',
       path: '/interrupt',
       desc: 'Interrupt the exact active native turn; never answer an approval or input request',
@@ -330,7 +330,7 @@ export const controlContract = defineContract(
       input: ControlInterruptSchema,
       output: ControlActionReceiptSchema,
     },
-    native: {
+    'native.read': {
       method: 'POST',
       path: '/native',
       desc: 'Read a bounded native item snapshot after an optional cursor',
@@ -340,7 +340,7 @@ export const controlContract = defineContract(
       input: ControlNativeReadSchema,
       output: ControlNativeSnapshotSchema,
     },
-    models: {
+    'model.list': {
       method: 'POST',
       path: '/models',
       desc: 'Read the connected App Server model catalog after an optional cursor; provider-owned and read-only',
@@ -351,7 +351,7 @@ export const controlContract = defineContract(
       input: ControlModelsReadSchema,
       output: ControlModelCatalogSchema,
     },
-    commands: {
+    'command.list': {
       method: 'POST',
       path: '/commands',
       desc: 'Read the slash commands this session runtime offers',
@@ -361,7 +361,7 @@ export const controlContract = defineContract(
       input: ControlCommandsReadSchema,
       output: ControlCommandCatalogSchema,
     },
-    command: {
+    'command.run': {
       method: 'POST',
       path: '/command',
       desc: 'Run one slash command the runtime offers, as a turn of its own',
@@ -371,7 +371,7 @@ export const controlContract = defineContract(
       input: ControlRunCommandSchema,
       output: ControlRunCommandReceiptSchema,
     },
-    permissionMode: {
+    'permission.mode': {
       method: 'POST',
       path: '/permission-mode',
       desc: 'Set the permission mode the session runs its next turns under',
@@ -381,7 +381,7 @@ export const controlContract = defineContract(
       input: ControlPermissionModeSchema,
       output: ControlPermissionModeReceiptSchema,
     },
-    permissionRead: {
+    'permission.read': {
       method: 'POST',
       path: '/permission',
       desc: 'Read the permission mode accepted for future turns and the one observed natively',
@@ -391,7 +391,7 @@ export const controlContract = defineContract(
       input: ControlPermissionReadSchema,
       output: ControlPermissionResultSchema,
     },
-    permissionUpdate: {
+    'permission.update': {
       method: 'POST',
       path: '/permission/update',
       desc: 'Replace the accepted permission mode, refusing a stale expected revision',
@@ -401,7 +401,7 @@ export const controlContract = defineContract(
       input: ControlPermissionUpdateSchema,
       output: ControlPermissionResultSchema,
     },
-    mcpServers: {
+    'mcp.list': {
       method: 'POST',
       path: '/mcp',
       desc: 'Read the MCP servers of a session and each one connection status',
@@ -411,7 +411,7 @@ export const controlContract = defineContract(
       input: ControlMcpReadSchema,
       output: ControlMcpListSchema,
     },
-    mcpControl: {
+    'mcp.control': {
       method: 'POST',
       path: '/mcp/control',
       desc: 'Enable, disable or reconnect one MCP server of a session',
@@ -422,18 +422,18 @@ export const controlContract = defineContract(
       input: ControlMcpControlSchema,
       output: ControlMcpControlReceiptSchema,
     },
-    rewind: {
+    'session.rewind': {
       method: 'POST',
       path: '/rewind',
       desc: 'Preview or perform a rewind of the files a session modified',
       toolName: 'rewind_files',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
-      timeout: 60_000,
+      timeout: 30_000,
       input: ControlRewindSchema,
       output: ControlRewindReceiptSchema,
     },
-    respond: {
+    'native.respond': {
       method: 'POST',
       path: '/native/respond',
       desc: 'Answer one exact current native approval or input request',
@@ -443,7 +443,7 @@ export const controlContract = defineContract(
       input: ControlNativeResponseSchema,
       output: ControlNativeResponseReceiptSchema,
     },
-    wait: {
+    'session.wait': {
       method: 'POST',
       path: '/wait',
       desc: 'Wait for a native session between turns, including pending chat pickup',

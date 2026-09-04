@@ -208,7 +208,7 @@ try {
     'empty source-daemon baseline',
     async () => {
       try {
-        return (await local.list()).status === 'live';
+        return (await local['session.list']()).status === 'live';
       } catch {
         return false;
       }
@@ -310,7 +310,7 @@ try {
     ({ session }) =>
       readManagedRuntimeStatus(m, session).snapshot ?? fail('Missing restart baseline'),
   );
-  const daemonGeneration = (await local.list()).generation;
+  const daemonGeneration = (await local['session.list']()).generation;
   daemon.kill('SIGTERM');
   await daemon.exited;
   await local.close();
@@ -327,7 +327,7 @@ try {
     'new source daemon',
     async () => {
       try {
-        const now = await local.list();
+        const now = await local['session.list']();
         return now.status === 'live' && now.generation !== daemonGeneration;
       } catch {
         return false;

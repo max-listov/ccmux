@@ -24,56 +24,56 @@ export function controlServices(
     dependencies,
   );
   const service = implement(controlContract, {
-    externalHistory: ({ input, signal }) => operations.externalHistory(input, signal),
-    externalCapabilities: ({ input, signal }) => operations.externalCapabilities(input, signal),
-    messageCancel: ({ input, principal }) =>
+    'external.history': ({ input, signal }) => operations.externalHistory(input, signal),
+    'external.capabilities': ({ input, signal }) => operations.externalCapabilities(input, signal),
+    'message.cancel': ({ input, principal }) =>
       operations.messageCancel(input, ChatPrincipalSchema.parse(principal)),
-    messageOperation: ({ input, principal }) =>
+    'message.operation': ({ input, principal }) =>
       operations.messageOperation(input, ChatPrincipalSchema.parse(principal)),
-    transcript: ({ input, signal }) => operations.transcript(input, signal),
-    history: ({ input, signal }) => operations.history(input, signal),
-    compact: ({ input, signal }) => operations.compact(input, signal),
-    contextOperation: ({ input }) => operations.contextOperation(input),
-    fork: ({ input, signal }) => operations.fork(input, signal),
-    steer: ({ input, signal, principal }) =>
+    'transcript.read': ({ input, signal }) => operations.transcript(input, signal),
+    'history.read': ({ input, signal }) => operations.history(input, signal),
+    'context.compact': ({ input, signal }) => operations.compact(input, signal),
+    'context.operation': ({ input }) => operations.contextOperation(input),
+    'session.fork': ({ input, signal }) => operations.fork(input, signal),
+    'turn.steer': ({ input, signal, principal }) =>
       operations.steer(input, ChatPrincipalSchema.parse(principal), signal),
-    steeringOperation: ({ input, signal, principal }) =>
+    'turn.steering-operation': ({ input, signal, principal }) =>
       operations.steeringOperation(input, ChatPrincipalSchema.parse(principal), signal),
-    selection: ({ input, signal }) => operations.selection(input, signal),
-    select: ({ input, signal }) => operations.select(input, signal),
-    attachmentBegin: ({ input, signal, principal }) =>
+    'selection.read': ({ input, signal }) => operations.selection(input, signal),
+    'selection.update': ({ input, signal }) => operations.select(input, signal),
+    'attachment.begin': ({ input, signal, principal }) =>
       operations.attachmentBegin(input, ChatPrincipalSchema.parse(principal), signal),
-    attachmentChunk: ({ input, signal, principal }) =>
+    'attachment.chunk': ({ input, signal, principal }) =>
       operations.attachmentChunk(input, ChatPrincipalSchema.parse(principal), signal),
-    attachmentFinalize: ({ input, signal, principal }) =>
+    'attachment.finalize': ({ input, signal, principal }) =>
       operations.attachmentFinalize(input, ChatPrincipalSchema.parse(principal), signal),
-    attachmentCancel: ({ input, signal, principal }) =>
+    'attachment.cancel': ({ input, signal, principal }) =>
       operations.attachmentCancel(input, ChatPrincipalSchema.parse(principal), signal),
-    attachmentRead: ({ input, signal, principal }) =>
+    'attachment.read': ({ input, signal, principal }) =>
       operations.attachmentRead(input, ChatPrincipalSchema.parse(principal), signal),
-    runtimes: operations.runtimes,
-    directories: ({ input, signal }) => operations.directories(input, signal),
-    list: operations.list,
-    external: operations.external,
-    get: ({ input }) => operations.get(input),
-    create: ({ input, signal }) => operations.create(input, signal),
-    archive: ({ input, signal }) => operations.archive(input, signal),
-    message: ({ input, signal, principal }) =>
+    'runtime.list': operations.runtimes,
+    'directory.list': ({ input, signal }) => operations.directories(input, signal),
+    'session.list': operations.list,
+    'external.list': operations.external,
+    'session.get': ({ input }) => operations.get(input),
+    'session.create': ({ input, signal }) => operations.create(input, signal),
+    'session.archive': ({ input, signal }) => operations.archive(input, signal),
+    'message.send': ({ input, signal, principal }) =>
       operations.message(input, ChatPrincipalSchema.parse(principal), signal),
-    start: ({ input, signal }) => operations.start(input, signal),
-    interrupt: ({ input, signal }) => operations.interrupt(input, signal),
-    native: ({ input }) => operations.native(input),
-    commands: ({ input }) => operations.commands(input),
-    mcpServers: ({ input }) => operations.mcpServers(input),
-    mcpControl: ({ input, signal }) => operations.mcpControl(input, signal),
-    rewind: ({ input, signal }) => operations.rewind(input, signal),
-    command: ({ input, signal }) => operations.command(input, signal),
-    permissionRead: ({ input }) => operations.permissionRead(input),
-    permissionUpdate: ({ input, signal }) => operations.permissionUpdate(input, signal),
-    permissionMode: ({ input, signal }) => operations.permissionMode(input, signal),
-    models: ({ input, signal }) => operations.models(input, signal),
-    respond: ({ input, signal }) => operations.respond(input, signal),
-    wait: ({ input, signal }) => operations.wait(input, signal),
+    'session.start': ({ input, signal }) => operations.start(input, signal),
+    'turn.interrupt': ({ input, signal }) => operations.interrupt(input, signal),
+    'native.read': ({ input }) => operations.native(input),
+    'command.list': ({ input }) => operations.commands(input),
+    'mcp.list': ({ input }) => operations.mcpServers(input),
+    'mcp.control': ({ input, signal }) => operations.mcpControl(input, signal),
+    'session.rewind': ({ input, signal }) => operations.rewind(input, signal),
+    'command.run': ({ input, signal }) => operations.command(input, signal),
+    'permission.read': ({ input }) => operations.permissionRead(input),
+    'permission.update': ({ input, signal }) => operations.permissionUpdate(input, signal),
+    'permission.mode': ({ input, signal }) => operations.permissionMode(input, signal),
+    'model.list': ({ input, signal }) => operations.models(input, signal),
+    'native.respond': ({ input, signal }) => operations.respond(input, signal),
+    'session.wait': ({ input, signal }) => operations.wait(input, signal),
   });
   const events = implement(controlEventsContract, {
     watch: ({ signal }) => publisher.subscribe(signal),

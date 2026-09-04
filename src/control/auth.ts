@@ -6,11 +6,20 @@ import { chatEnabledFor } from '../config/chat.ts';
 import { ChatPrincipalSchema } from '../config/schema.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
+import { CCMUX_CONTROL_CALLER_HEADER, ControlTransportCallerSchema } from './transportBoundary.ts';
 
 /** The socket authenticates the local OS user; a managed claim additionally needs its capability. */
 export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrincipal {
   const sessionName = headers.get('x-ccmux-session');
   const credential = headers.get('authorization');
+  const transportCaller = headers.get(CCMUX_CONTROL_CALLER_HEADER);
+  if (transportCaller !== null) {
+    if (sessionName !== null || credential !== null)
+      throw new AppError('UNAUTHORIZED', 'Conflicting local caller credentials', 401);
+    const parsed = ControlTransportCallerSchema.safeParse(transportCaller);
+    if (!parsed.success) throw new AppError('UNAUTHORIZED', 'Invalid local transport caller', 401);
+    return servicePrincipal(parsed.data, 'declared-service');
+  }
   if (sessionName === null && credential === null) return servicePrincipal(m.rcPrefix, 'local');
   if (sessionName === null || credential === null || !credential.startsWith('Bearer ')) {
     throw new AppError('UNAUTHORIZED', 'Invalid managed caller credentials', 401);

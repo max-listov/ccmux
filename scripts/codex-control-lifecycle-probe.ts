@@ -38,13 +38,13 @@ async function until(label: string, predicate: () => boolean | Promise<boolean>,
 }
 
 try {
-  const first = await client.create({
+  const first = await client['session.create']({
     requestId,
     name,
     workspace: root,
     flags: ['--sandbox', 'workspace-write', '--ask-for-approval', 'on-request', '--no-alt-screen'],
   });
-  const retry = await client.create({
+  const retry = await client['session.create']({
     requestId,
     name,
     workspace: root,
@@ -74,12 +74,12 @@ try {
     'Created identity has no live provider writer or history',
   );
 
-  const archived = await client.archive({ target: first.target });
+  const archived = await client['session.archive']({ target: first.target });
   check(
     archived.archived && !archived.duplicate && archived.stopped,
     'First archive did not stop the owned runtime',
   );
-  const archivedAgain = await client.archive({ target: first.target });
+  const archivedAgain = await client['session.archive']({ target: first.target });
   check(archivedAgain.duplicate, 'Archive retry was not idempotent');
   await until('archived tmux stopped', async () => !(await hasSession(m, name)), 10_000);
   const retained = loadSessions(m).find((row) => row.name === name);

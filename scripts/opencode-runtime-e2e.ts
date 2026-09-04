@@ -126,7 +126,7 @@ try {
     'prepared empty baseline',
     async () => {
       try {
-        return (await local.list()).status === 'live';
+        return (await local['session.list']()).status === 'live';
       } catch {
         return false;
       }
@@ -160,7 +160,7 @@ try {
   await until(
     'native live baseline',
     async () =>
-      (await local.list()).sessions.some(
+      (await local['session.list']()).sessions.some(
         (row) => row.identity.threadId === target.threadId && row.availability === 'live',
       ),
     20_000,
@@ -228,7 +228,7 @@ try {
   });
   await verifyOpenCodeActions(service, target);
   const peer = await verifyRuntimeCoexistence(m, service, target, join(root, 'workspace'));
-  const baseline = await local.list();
+  const baseline = await local['session.list']();
   const before = [session, peer].map((row) => readManagedRuntimeStatus(m, row).snapshot);
   check(
     before.every((row) => row !== null),
@@ -249,7 +249,7 @@ try {
     'replacement daemon',
     async () => {
       try {
-        const fresh = await local.list();
+        const fresh = await local['session.list']();
         return fresh.status === 'live' && fresh.generation !== baseline.generation;
       } catch {
         return false;

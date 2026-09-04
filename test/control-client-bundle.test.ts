@@ -31,9 +31,9 @@ test('published control asset discovers IPC without provider binaries and stream
       if(api.CONTROL_CLIENT_VERSION !== ${JSON.stringify(VERSION)}) throw Error("version");
       const client = api.createControlClient();
       try {
-        const reads = await Promise.all(Array.from({length:100},()=>client.list()));
+        const reads = await Promise.all(Array.from({length:100},()=>client['session.list']()));
         if(!reads.every(r=>r.machine==="host-a"&&r.status==="unavailable")) throw Error("snapshot");
-        const external = await Promise.all(Array.from({length:100},()=>client.external()));
+        const external = await Promise.all(Array.from({length:100},()=>client['external.list']()));
         if(!external.every(r=>api.ExternalStatusSnapshotSchema.parse(r).reason==="observation-pending")) throw Error("external snapshot");
         for (const watch of [client.watch, client.watchExternal]) for (let round = 0; round <= ${CONTROL_MAX_READERS}; round++) {
           const abort = new AbortController();

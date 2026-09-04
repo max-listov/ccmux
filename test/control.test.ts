@@ -25,6 +25,7 @@ import {
   currentControlSnapshot,
 } from '../src/control/schema.ts';
 import { createControlServer } from '../src/control/server.ts';
+import { CCMUX_CONTROL_CALLER_HEADER } from '../src/control/transportBoundary.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { observationExecCount } from '../src/monitoring/tmux.ts';
@@ -89,10 +90,10 @@ test('Unix HTTP, CLI and peer-free tools share contract output and auth; no publ
   expect(f.owned.server.port).toBe(0);
   expect(statSync(f.socket).mode & 0o777).toBe(0o600);
   expect(statSync(join(f.m.stateDir, 'control')).mode & 0o777).toBe(0o700);
-  const read = await f.client.list();
+  const read = await f.client['session.list']();
   expect(read.status).toBe('live');
   expect(read.sessions[0]?.identity).toEqual(f.target);
-  expect(await f.client.get({ target: f.target })).toMatchObject({ identity: f.target });
+  expect(await f.client['session.get']({ target: f.target })).toMatchObject({ identity: f.target });
   const proxy = createControlProxy({ socket: f.socket });
   const invoker = createToolInvoker(proxy, { transport: 'MCP' });
   expect(await invoker.invokeOrThrow('sessions', {})).toEqual(read);
@@ -137,28 +138,50 @@ test('authorization precedes body handling, managed credentials rotate, and exac
   expect(invalid.status).toBe(401);
   const credential = rotateChatCredential(f.m, f.s);
   const managed = createControlClient({ socket: f.socket, session: f.s.name, credential });
-  expect((await managed.list()).status).toBe('live');
+  expect((await managed['session.list']()).status).toBe('live');
   rotateChatCredential(f.m, f.s);
-  await expect(managed.list()).rejects.toMatchObject({ code: 'UNAUTHORIZED', status: 401 });
+  await expect(managed['session.list']()).rejects.toMatchObject({
+    code: 'UNAUTHORIZED',
+    status: 401,
+  });
   for (const target of [
     { ...f.target, threadId: crypto.randomUUID() },
     { ...f.target, machine: 'host-b' },
     { ...f.target, agent: 'codex' as const },
   ]) {
-    await expect(f.client.get({ target })).rejects.toMatchObject({
+    await expect(f.client['session.get']({ target })).rejects.toMatchObject({
       code: 'IDENTITY_MISMATCH',
       status: 409,
     });
-    await expect(f.client.start({ target })).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
+    await expect(f.client['session.start']({ target })).rejects.toMatchObject({
+      code: 'IDENTITY_MISMATCH',
+    });
     await expect(
-      f.client.message({ target, messageId: crypto.randomUUID(), body: 'must not land' }),
+      f.client['message.send']({ target, messageId: crypto.randomUUID(), body: 'must not land' }),
     ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
   }
   expect(loadLedger(f.m)).toEqual([]);
+  const transported = await fetch('http://ccmux.local/control/sessions', {
+    unix: f.socket,
+    method: 'POST',
+    headers: { [CCMUX_CONTROL_CALLER_HEADER]: 'host-b' },
+  });
+  expect(transported.status).toBe(200);
+  const conflicting = await fetch('http://ccmux.local/control/sessions', {
+    unix: f.socket,
+    method: 'POST',
+    headers: {
+      [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
+      'x-ccmux-session': f.s.name,
+      authorization: 'Bearer wrong',
+    },
+  });
+  expect(conflicting.status).toBe(401);
   expect(
     (
       await fetch('http://ccmux.local/control/sessions', {
         unix: f.socket,
+        method: 'POST',
         headers: { origin: 'http://example.invalid' },
       })
     ).status,
@@ -176,7 +199,7 @@ test('message acceptance is durable, identity-authenticated and idempotent witho
     defer: true,
     task: 'sample-task',
   };
-  expect(await client.message(input)).toEqual({
+  expect(await client['message.send'](input)).toEqual({
     accepted: true,
     duplicate: false,
     messageId: input.messageId,
@@ -185,7 +208,7 @@ test('message acceptance is durable, identity-authenticated and idempotent witho
     notification: 'conversation',
     registrationGeneration: f.s.registrationGeneration ?? null,
   });
-  expect(await client.message(input)).toEqual({
+  expect(await client['message.send'](input)).toEqual({
     accepted: true,
     duplicate: true,
     messageId: input.messageId,
@@ -194,10 +217,12 @@ test('message acceptance is durable, identity-authenticated and idempotent witho
     notification: 'conversation',
     registrationGeneration: f.s.registrationGeneration ?? null,
   });
-  await expect(client.message({ ...input, body: 'different' })).rejects.toMatchObject({
+  await expect(client['message.send']({ ...input, body: 'different' })).rejects.toMatchObject({
     code: 'IDEMPOTENCY_CONFLICT',
   });
-  await expect(f.client.message(input)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  await expect(f.client['message.send'](input)).rejects.toMatchObject({
+    code: 'IDEMPOTENCY_CONFLICT',
+  });
   expect(loadLedger(f.m)).toHaveLength(1);
   expect(loadLedger(f.m)[0]).toMatchObject({
     from: f.target,
@@ -205,18 +230,21 @@ test('message acceptance is durable, identity-authenticated and idempotent witho
     body: input.body,
     defer: true,
   });
-  expect(JSON.stringify(await f.client.list())).not.toContain(input.body);
+  expect(JSON.stringify(await f.client['session.list']())).not.toContain(input.body);
   const busy = f.owned.controls.mutations.acquire(f.s.name);
   expect(busy.outcome).toBe('leased');
   try {
     await expect(
-      client.message({ ...input, messageId: crypto.randomUUID() }),
+      client['message.send']({ ...input, messageId: crypto.randomUUID() }),
     ).rejects.toMatchObject({ code: 'BUSY', status: 429 });
   } finally {
     if (busy.outcome === 'leased') busy.lease.release();
   }
   f.owned.controls.mutations.stopAdmission();
-  await expect(client.message(input)).rejects.toMatchObject({ code: 'UNAVAILABLE', status: 503 });
+  await expect(client['message.send'](input)).rejects.toMatchObject({
+    code: 'UNAVAILABLE',
+    status: 503,
+  });
 });
 
 test('100 reads and resident subscribers reuse the producer; baseline, cancel and reconnect are real socket operations', async () => {
@@ -227,7 +255,7 @@ test('100 reads and resident subscribers reuse the producer; baseline, cancel an
     controllers.map((c) => f.client.watch.withOptions({ signal: c.signal })),
   );
   for (const stream of streams) expect((await stream.next()).value).toEqual(f.p.read());
-  const reads = await Promise.all(Array.from({ length: 100 }, () => f.client.list()));
+  const reads = await Promise.all(Array.from({ length: 100 }, () => f.client['session.list']()));
   expect(reads.every((s) => s.sequence === f.p.read().sequence)).toBe(true);
   expect(observationExecCount()).toBe(before);
   const pending = streams.map((stream) => stream.next());
@@ -333,7 +361,7 @@ test('oversize bodies refuse early and cancelled lock waiters cannot append late
   await entered.promise;
   const stop = new AbortController();
   try {
-    const request = f.client.message.withOptions(
+    const request = f.client['message.send'].withOptions(
       { target: f.target, messageId: crypto.randomUUID(), body: 'must never append' },
       { signal: stop.signal },
     );
@@ -368,15 +396,17 @@ test('native approval/input/working states remain distinct; interruption cannot 
     });
     await writer.write(p.snapshot());
     await f.publish();
-    expect((await f.client.get({ target: f.target })).state).toBe(state);
+    expect((await f.client['session.get']({ target: f.target })).state).toBe(state);
     await expect(
-      f.client.interrupt({
+      f.client['turn.interrupt']({
         target: f.target,
         generation: crypto.randomUUID(),
         turnId: 'unrelated',
       }),
     ).rejects.toMatchObject({ code: 'TURN_MISMATCH' });
-    expect((await f.client.wait({ target: f.target, timeoutMs: 20 })).outcome).toBe('timeout');
+    expect((await f.client['session.wait']({ target: f.target, timeoutMs: 20 })).outcome).toBe(
+      'timeout',
+    );
   }
   p.event({
     method: 'thread/status/changed',
@@ -387,13 +417,13 @@ test('native approval/input/working states remain distinct; interruption cannot 
   // The case is that a wait resolves when the state it waits for is published, not how fast this
   // machine publishes it: under a loaded suite one second was the machine speaking, not the code.
   // A hang still fails, at the suite's own bound.
-  const waiting = f.client.wait({ target: f.target, timeoutMs: 15_000 });
+  const waiting = f.client['session.wait']({ target: f.target, timeoutMs: 15_000 });
   await Bun.sleep(30);
   p.reconcile({ type: 'idle' }, p.revision);
   await writer.write(p.snapshot());
   await f.publish();
   expect((await waiting).outcome).toBe('idle');
-  await f.client.message({
+  await f.client['message.send']({
     target: f.target,
     messageId: crypto.randomUUID(),
     body: 'pending pickup',
@@ -402,7 +432,9 @@ test('native approval/input/working states remain distinct; interruption cannot 
   cursors.read[managedPeerKey(f.target)] = loadLedger(f.m).length;
   await saveCursors(f.m, cursors);
   expect(blockingInbound(f.m, f.s, Date.now())).toHaveLength(1);
-  expect((await f.client.wait({ target: f.target, timeoutMs: 20 })).outcome).toBe('timeout');
+  expect((await f.client['session.wait']({ target: f.target, timeoutMs: 20 })).outcome).toBe(
+    'timeout',
+  );
   const retained = f.p.read();
   const stale = currentControlSnapshot(retained, Date.parse(retained.expiresAt) + 1);
   expect(stale).toMatchObject({
@@ -470,7 +502,7 @@ test('native feed is bounded, cursored and exact responses expose submission unc
   await publishContent();
   await writer.write(p.snapshot());
   await f.publish();
-  const baseline = await f.client.native({ target: f.target, cursor: null });
+  const baseline = await f.client['native.read']({ target: f.target, cursor: null });
   expect(baseline).toMatchObject({
     reset: 'initial',
     pending: [{ requestId: 's:approval-a', kind: 'approval' }],
@@ -479,14 +511,14 @@ test('native feed is bounded, cursored and exact responses expose submission unc
   expect(JSON.stringify(baseline)).not.toContain('private');
   expect(JSON.stringify(baseline)).not.toContain('rpcId');
   const cursor = { generation: baseline.generation, sequence: baseline.sequence };
-  expect(await f.client.native({ target: f.target, cursor })).toMatchObject({
+  expect(await f.client['native.read']({ target: f.target, cursor })).toMatchObject({
     reset: null,
     records: [],
     baseline: [],
   });
   expect(
     (
-      await f.client.native({
+      await f.client['native.read']({
         target: f.target,
         cursor: { generation: crypto.randomUUID(), sequence: 0 },
       })
@@ -518,7 +550,7 @@ test('native feed is bounded, cursored and exact responses expose submission unc
   await stream.return?.();
 
   const operationId = crypto.randomUUID();
-  const response = f.client.respond({
+  const response = f.client['native.respond']({
     target: f.target,
     operationId,
     generation: baseline.generation,
@@ -546,7 +578,7 @@ test('native feed is bounded, cursored and exact responses expose submission unc
   await writer.write(p.snapshot());
   await f.publish();
   expect(
-    await f.client.respond({
+    await f.client['native.respond']({
       target: f.target,
       operationId,
       generation: baseline.generation,
@@ -557,7 +589,7 @@ test('native feed is bounded, cursored and exact responses expose submission unc
     }),
   ).toEqual({ operationId, requestId: 's:approval-a', outcome: 'submitted' });
   await expect(
-    f.client.respond({
+    f.client['native.respond']({
       target: { ...f.target, threadId: crypto.randomUUID() },
       operationId,
       generation: baseline.generation,
@@ -568,7 +600,7 @@ test('native feed is bounded, cursored and exact responses expose submission unc
     }),
   ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
   await expect(
-    f.client.respond({
+    f.client['native.respond']({
       target: f.target,
       operationId,
       generation: baseline.generation,
@@ -579,7 +611,7 @@ test('native feed is bounded, cursored and exact responses expose submission unc
     }),
   ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
   await expect(
-    f.client.respond({
+    f.client['native.respond']({
       target: f.target,
       operationId: crypto.randomUUID(),
       generation: baseline.generation,
@@ -599,8 +631,10 @@ test('wait never returns a cached idle observation from before the call', async 
   await writer.write(p.snapshot());
   await f.publish();
   await Bun.sleep(5);
-  expect((await f.client.wait({ target: f.target, timeoutMs: 30 })).outcome).toBe('timeout');
-  const pending = f.client.wait({ target: f.target, timeoutMs: 500 });
+  expect((await f.client['session.wait']({ target: f.target, timeoutMs: 30 })).outcome).toBe(
+    'timeout',
+  );
+  const pending = f.client['session.wait']({ target: f.target, timeoutMs: 500 });
   await Bun.sleep(20);
   p.event({
     method: 'turn/started',

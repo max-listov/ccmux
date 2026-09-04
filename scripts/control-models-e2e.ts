@@ -27,7 +27,7 @@ try {
   owned = createControlServer(m, publisher);
   client = createControlClient({ socket: controlSocket(m) });
   check(loadSessions(m).length === 0, 'Registry is not empty before discovery');
-  const first = await client.models({ runtime: 'codex', limit: 2 });
+  const first = await client['model.list']({ runtime: 'codex', limit: 2 });
   check(
     first.target === undefined && first.source.kind === 'host' && first.source.runtime === 'codex',
     'Host catalog invented a target',
@@ -37,7 +37,11 @@ try {
     typeof first.nextCursor === 'string' && first.nextCursor.length > 0,
     'Provider page did not continue',
   );
-  const second = await client.models({ runtime: 'codex', cursor: first.nextCursor, limit: 2 });
+  const second = await client['model.list']({
+    runtime: 'codex',
+    cursor: first.nextCursor,
+    limit: 2,
+  });
   check(
     JSON.stringify(second.source) === JSON.stringify(first.source),
     'Runtime source changed between pages',
@@ -48,7 +52,7 @@ try {
     'Pagination repeated a model',
   );
 
-  const full = await client.models({});
+  const full = await client['model.list']({});
   check(full.source.runtime === 'codex', 'Default runtime identity is absent');
   check(full.nextCursor === null, 'Full page still reported a continuation cursor');
   check(full.data.length >= 4, 'Full catalog smaller than its own pagination');
@@ -70,7 +74,7 @@ try {
     full.data.every((model) => Object.keys(model).every((key) => safeKeys.includes(key))),
     'Unsafe provider fields crossed the boundary',
   );
-  const hidden = await client.models({ includeHidden: true });
+  const hidden = await client['model.list']({ includeHidden: true });
   check(loadSessions(m).length === 0, 'Discovery created a managed conversation');
   check(hidden.data.length >= full.data.length, 'includeHidden returned fewer models');
   const wire = JSON.stringify(hidden);

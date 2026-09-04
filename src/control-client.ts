@@ -133,6 +133,10 @@ export {
   SelectionUpdateSchema,
 } from './control/selectionSchema.ts';
 export {
+  CCMUX_CONTROL_CALLER_HEADER,
+  ControlTransportCallerSchema,
+} from './control/transportBoundary.ts';
+export {
   currentExternalStatus,
   type ExternalStatusRow,
   ExternalStatusRowSchema,

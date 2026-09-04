@@ -117,7 +117,7 @@ test('resident HTTP reads and subscriptions share one provider connection withou
   const f = await fixture();
   await writeSessionsUnlocked(f.machine, [makeSession({ agent: 'codex', uuid: OTHER })]);
   await f.observer.refresh();
-  const initial = await f.client.external();
+  const initial = await f.client['external.list']();
   expect(ExternalStatusSnapshotSchema.parse(initial).status).toBe('live');
   expect(initial.sessions).toHaveLength(1);
   expect(initial.sessions[0]).toMatchObject({
@@ -128,7 +128,7 @@ test('resident HTTP reads and subscriptions share one provider connection withou
   expect(JSON.stringify(initial)).not.toContain('private body');
   expect(JSON.stringify(initial)).not.toContain('secret');
   const requests = f.state.requests;
-  const reads = await Promise.all(Array.from({ length: 100 }, () => f.client.external()));
+  const reads = await Promise.all(Array.from({ length: 100 }, () => f.client['external.list']()));
   expect(reads.every((r) => r.sequence === initial.sequence)).toBe(true);
   const abort = new AbortController();
   const stream = await f.client.watchExternal.withOptions({ signal: abort.signal });
@@ -352,10 +352,10 @@ test('the real daemon owns observation across restart but never stops its extern
         client = createControlClient({ socket: controlSocket(machine), timeoutMs: 1000 });
       const log = new Response(daemon.stderr).text();
       try {
-        let live: Awaited<ReturnType<typeof client.external>> | undefined;
+        let live: Awaited<ReturnType<(typeof client)['external.list']>> | undefined;
         for (let n = 0; n < 100; n++) {
           try {
-            const result = await client.external();
+            const result = await client['external.list']();
             if (result.status === 'live') {
               live = result;
               break;

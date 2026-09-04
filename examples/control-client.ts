@@ -4,8 +4,13 @@ import { createControlClient } from 'ccmux/control-client';
 export async function createAndWatch(workspace: string, requestId: string, signal: AbortSignal) {
   const client = createControlClient();
   try {
-    const created = await client.create({ requestId, name: 'worker', workspace, flags: [] });
-    const baseline = await client.native({ target: created.target, cursor: null });
+    const created = await client['session.create']({
+      requestId,
+      name: 'worker',
+      workspace,
+      flags: [],
+    });
+    const baseline = await client['native.read']({ target: created.target, cursor: null });
     const stream = await client.watchNative.withOptions(
       {
         target: created.target,

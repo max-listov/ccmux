@@ -260,7 +260,7 @@ test('real local and declared-service readers share one nonmutating external ope
   const before = await readFile(p.path, 'utf8');
   const page = await service.externalHistory({ target: p.target });
   expect(page.entries[0]?.text).toBe('live transcript');
-  expect((await local.externalHistory({ target: p.target })).revision).toBe(page.revision);
+  expect((await local['external.history']({ target: p.target })).revision).toBe(page.revision);
   expect((await service.externalCapabilities({ target: p.target })).control.message.supported).toBe(
     false,
   );
@@ -269,12 +269,12 @@ test('real local and declared-service readers share one nonmutating external ope
   await expect(service.externalHistory({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
-  await expect(local.externalCapabilities({ target: p.target })).rejects.toMatchObject({
+  await expect(local['external.capabilities']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
   expect(await service.runtimes({})).toBeDefined();
   current = { ...p.m, codexSessionsDir: p.root };
-  await expect(local.externalHistory({ target: p.target })).rejects.toMatchObject({
+  await expect(local['external.history']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
   current = p.m;

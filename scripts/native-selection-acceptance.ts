@@ -389,7 +389,7 @@ try {
     'empty source service baseline',
     async () => {
       try {
-        return (await local.list()).status === 'live';
+        return (await local['session.list']()).status === 'live';
       } catch {
         return false;
       }
@@ -495,7 +495,7 @@ try {
     );
     await change(receipt, b);
   }
-  const oldGeneration = (await local.list()).generation;
+  const oldGeneration = (await local['session.list']()).generation;
   const providers = accepted.map(({ receipt }) => {
     const session = loadSessions(m).find((row) => row.uuid === receipt.target.threadId);
     check(session, 'Missing restart registration');
@@ -512,7 +512,7 @@ try {
     'new daemon generation',
     async () => {
       try {
-        const now = await local.list();
+        const now = await local['session.list']();
         return now.status === 'live' && now.generation !== oldGeneration;
       } catch {
         return false;

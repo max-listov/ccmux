@@ -51,7 +51,7 @@ request identity gate approval/input responses. A stale response must not resolv
 
 ## Public use and limits
 
-`client.runtimes({})` / declared-service `runtime.list` returns runtime availability and capabilities.
+`client['runtime.list']({})` / declared-service `runtime.list` returns runtime availability and capabilities.
 `configured` means an owner binary is configured, not that its account or every model is ready;
 admission checks the actual native version and protocol. `create({ runtime: "opencode", requestId,
 name, workspace, modelSelection: { provider, model } })` uses the same create/message/native/respond/

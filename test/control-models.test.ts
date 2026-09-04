@@ -257,7 +257,7 @@ const invoke = (f: Awaited<ReturnType<typeof fixture>>, body: unknown) =>
 
 test('model catalog is a bounded provider-owned read that forwards only safe metadata', async () => {
   const f = await fixture();
-  const read = await f.client.models({ target: f.target, runtime: 'codex' });
+  const read = await f.client['model.list']({ target: f.target, runtime: 'codex' });
   expect(read.source.runtime).toBe('codex');
   expect(read.target).toEqual(f.target);
   expect(read.data.map((model) => model.id)).toEqual(['model-a', 'model-b']);
@@ -326,7 +326,7 @@ test('pagination is deterministic, provider-cursored and bounded by the strict i
 
 test('includeHidden is forwarded and hidden models stay marked', async () => {
   const f = await fixture();
-  const read = await f.client.models({ target: f.target, includeHidden: true });
+  const read = await f.client['model.list']({ target: f.target, includeHidden: true });
   expect(read.data.map((model) => [model.id, model.hidden])).toEqual([
     ['model-a', false],
     ['model-b', false],
@@ -381,7 +381,7 @@ test('unknown identities fail closed before any provider contact', async () => {
     { ...f.target, machine: 'host-b' },
     { ...f.target, agent: 'claude' as const },
   ]) {
-    await expect(f.client.models({ target })).rejects.toMatchObject({
+    await expect(f.client['model.list']({ target })).rejects.toMatchObject({
       code: 'IDENTITY_MISMATCH',
       status: 409,
     });
@@ -401,7 +401,7 @@ test('explicit runtime mismatch refuses before dispatch even with a valid target
     await expect(f.remote.models({ target: f.target, runtime })).rejects.toMatchObject({
       code: 'IDENTITY_MISMATCH',
     });
-    await expect(f.client.models({ target: f.target, runtime })).rejects.toMatchObject({
+    await expect(f.client['model.list']({ target: f.target, runtime })).rejects.toMatchObject({
       code: 'IDENTITY_MISMATCH',
     });
   }
@@ -411,7 +411,7 @@ test('explicit runtime mismatch refuses before dispatch even with a valid target
 test('non-owned runtimes have no model catalog', async () => {
   const f = await fixture({ extraClaudeSession: true });
   assert(f.claudeTarget);
-  await expect(f.client.models({ target: f.claudeTarget })).rejects.toMatchObject({
+  await expect(f.client['model.list']({ target: f.claudeTarget })).rejects.toMatchObject({
     code: 'UNSUPPORTED',
     status: 409,
   });
@@ -421,23 +421,23 @@ test('non-owned runtimes have no model catalog', async () => {
 test('malformed and oversized provider payloads fail closed without partial catalogs', async () => {
   const f = await fixture();
   f.provider.set('malformed');
-  await expect(f.client.models({ target: f.target })).rejects.toMatchObject({
+  await expect(f.client['model.list']({ target: f.target })).rejects.toMatchObject({
     code: 'UNAVAILABLE',
     status: 503,
   });
   f.provider.set('oversize');
-  await expect(f.client.models({ target: f.target })).rejects.toMatchObject({
+  await expect(f.client['model.list']({ target: f.target })).rejects.toMatchObject({
     code: 'UNAVAILABLE',
     status: 503,
   });
   f.provider.set('ok');
-  expect((await f.client.models({ target: f.target })).data).toHaveLength(2);
+  expect((await f.client['model.list']({ target: f.target })).data).toHaveLength(2);
 });
 
 test('provider failures fail closed instead of substituting a local catalog', async () => {
   const f = await fixture();
   f.provider.set('error');
-  await expect(f.client.models({ target: f.target })).rejects.toMatchObject({
+  await expect(f.client['model.list']({ target: f.target })).rejects.toMatchObject({
     code: 'UNAVAILABLE',
     status: 503,
   });
@@ -446,7 +446,7 @@ test('provider failures fail closed instead of substituting a local catalog', as
     status: 503,
   });
   f.provider.disconnect();
-  await expect(f.client.models({ target: f.target })).rejects.toMatchObject({
+  await expect(f.client['model.list']({ target: f.target })).rejects.toMatchObject({
     code: 'UNAVAILABLE',
     status: 503,
   });
@@ -588,7 +588,7 @@ test('declared service dispatch keeps the envelope, effect metadata and response
     payload: JSON.stringify({ target: f.target }),
   };
   const reply = await (await invoke(f, envelope)).json();
-  const local = await f.client.models({ target: f.target });
+  const local = await f.client['model.list']({ target: f.target });
   expect(reply).toEqual({ v: 1, revision: CCMUX_CONTROL_SERVICE_REVISION, result: local });
   expect((await invoke(f, { ...envelope, operation: 'unknown.op' })).status).toBe(400);
   expect(
@@ -598,7 +598,7 @@ test('declared service dispatch keeps the envelope, effect metadata and response
   expect((await invoke(f, { ...envelope, revision: 'obsolete' })).status).toBe(400);
 
   f.provider.set('oversize-page');
-  expect(JSON.stringify(await f.client.models({ target: f.target })).length).toBeGreaterThan(
+  expect(JSON.stringify(await f.client['model.list']({ target: f.target })).length).toBeGreaterThan(
     256 * 1024,
   );
   await expect(f.remote.models({ target: f.target })).rejects.toMatchObject({
@@ -611,7 +611,7 @@ test('reads admission bounds provider connections; cancellation and deadline rel
   const f = await fixture();
   f.provider.set('hang');
   const stop = new AbortController();
-  const cancelled = f.client.models
+  const cancelled = f.client['model.list']
     .withOptions({ target: f.target }, { signal: stop.signal })
     .catch((error: unknown) => error);
   await Bun.sleep(50);
@@ -621,18 +621,18 @@ test('reads admission bounds provider connections; cancellation and deadline rel
   expect(f.owned.controls.reads.getSnapshot().active).toBe(0);
   const leases = Array.from({ length: 4 }, () => f.owned.controls.reads.acquire());
   expect(leases.every((lease) => lease.outcome === 'leased')).toBe(true);
-  const rejected = f.client.models({ target: f.target }).catch((error: unknown) => error);
+  const rejected = f.client['model.list']({ target: f.target }).catch((error: unknown) => error);
   await Bun.sleep(50);
   expect(await rejected).toMatchObject({ code: 'BUSY', status: 429 });
   for (const lease of leases) if (lease.outcome === 'leased') lease.lease.release();
-  await expect(f.client.models({ target: f.target })).rejects.toMatchObject({
+  await expect(f.client['model.list']({ target: f.target })).rejects.toMatchObject({
     code: 'TIMEOUT',
     status: 504,
   });
   for (let i = 0; i < 100 && f.owned.controls.reads.getSnapshot().active; i++) await Bun.sleep(20);
   expect(f.owned.controls.reads.getSnapshot().active).toBe(0);
   f.provider.set('ok');
-  expect((await f.client.models({ target: f.target })).data).toHaveLength(2);
+  expect((await f.client['model.list']({ target: f.target })).data).toHaveLength(2);
 }, 20_000);
 
 test('zod model schemas accept canonical safe shapes only', () => {

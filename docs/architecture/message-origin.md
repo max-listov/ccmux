@@ -48,7 +48,7 @@ changing a binding cannot silently reattribute accepted work.
 # Admission and durable identity
 
 ```ts
-await client.message({
+await client['message.send']({
   target: created.target,
   registrationGeneration: created.registrationGeneration,
   messageId: crypto.randomUUID(),

@@ -121,7 +121,7 @@ progress('partial-input', { preserved: true, completedAfterClear: true, threadId
 
 let rpc = await connectOwnedCodex(m, session);
 try {
-  const nativeBeforeApproval = await client.native({ target, cursor: null });
+  const nativeBeforeApproval = await client['native.read']({ target, cursor: null });
   const approvalTurn = await startCodexAppTurn(
     rpc,
     session.uuid,
@@ -143,7 +143,7 @@ try {
     'Approval was bypassed',
   );
   check(loadCursors(m).pickups[key] === undefined, 'Approval gate claimed pickup');
-  const approvalFrame = await client.native({
+  const approvalFrame = await client['native.read']({
     target,
     cursor: {
       generation: nativeBeforeApproval.generation,
@@ -157,7 +157,7 @@ try {
   check(approval.decisions.includes('accept'), 'Exact native approval decision is unavailable');
   await expectCode(
     () =>
-      client.respond({
+      client['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: crypto.randomUUID(),
@@ -169,7 +169,7 @@ try {
     'STALE_REQUEST',
   );
   const approvalOperation = crypto.randomUUID();
-  const approvalReceipt = await client.respond({
+  const approvalReceipt = await client['native.respond']({
     target,
     operationId: approvalOperation,
     generation: approvalFrame.generation,
@@ -181,7 +181,7 @@ try {
   check(approvalReceipt.outcome === 'submitted', 'Approval response remained uncertain');
   check(
     (
-      await client.respond({
+      await client['native.respond']({
         target,
         operationId: approvalOperation,
         generation: approvalFrame.generation,
@@ -195,7 +195,7 @@ try {
   );
   await expectCode(
     () =>
-      client.respond({
+      client['native.respond']({
         target,
         operationId: approvalOperation,
         generation: approvalFrame.generation,
@@ -207,7 +207,7 @@ try {
     'IDEMPOTENCY_CONFLICT',
   );
   await command(['wait', session.name, '--timeout', '120']);
-  const nativeAfterApproval = await client.native({
+  const nativeAfterApproval = await client['native.read']({
     target,
     cursor: {
       generation: nativeBeforeApproval.generation,
@@ -280,7 +280,7 @@ try {
     loadSessions(m).find((s) => s.name === session.name)?.uuid === session.uuid,
     'Restart changed identity',
   );
-  const nativeAfterRestart = await client.native({
+  const nativeAfterRestart = await client['native.read']({
     target,
     cursor: {
       generation: nativeBeforeApproval.generation,
@@ -368,14 +368,14 @@ try {
     current()?.turn?.id === response.turn.id && current()?.state === 'waiting-input',
     'Input request was bypassed',
   );
-  const inputFrame = await client.native({ target, cursor: null });
+  const inputFrame = await client['native.read']({ target, cursor: null });
   const input = inputFrame.pending.find(
     (request) => request.kind === 'input' && request.turnId === response.turn.id,
   );
   check(input && input.questions.length > 0, 'Exact native input request is unavailable');
   await expectCode(
     () =>
-      client.respond({
+      client['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: inputFrame.generation,
@@ -392,7 +392,7 @@ try {
   const answers = Object.fromEntries(
     input.questions.map((question) => [question.id, [question.options?.[0]?.label ?? 'Red']]),
   );
-  const inputReceipt = await client.respond({
+  const inputReceipt = await client['native.respond']({
     target,
     operationId: inputOperation,
     generation: inputFrame.generation,
