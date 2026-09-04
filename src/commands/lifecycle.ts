@@ -85,6 +85,14 @@ export async function cmdStop(name: string | undefined, force = false): Promise<
   const { session, m } = fwd;
   name = session;
   if (refusesSelf('stop', name, force)) return 1;
+  // The ADDRESS is checked before the state, and the two answers stay apart. Without this a typo
+  // printed "not running" and exited zero — the most common mistake answered as success, which is
+  // the same lie `restart` was taught to stop telling and `stop` went on telling beside it. A
+  // session that exists and is already down is still zero: that is the state, and it is honest.
+  if (!findSession(loadSessions(m), name)) {
+    console.error(`unknown session: ${name}`);
+    return 1;
+  }
   const { killed, lingering } = await killSession(m, name);
   if (killed) log.info({ msg: 'session stopped', name });
   console.log(killed ? `stopped ${name}` : `${name} not running`);

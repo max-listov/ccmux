@@ -1,3 +1,4 @@
+import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { readRuntimeDiagnostics } from '../runtime/diagnostics.ts';
 import { capturePane, hasSession } from '../tmux/tmux.ts';
@@ -13,6 +14,12 @@ export async function cmdLogs(name: string | undefined, args: string[]): Promise
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
+  // A name this machine does not have is a miss by address, not an empty capture: "nothing to
+  // capture" is true of a stopped session and false of a typo, and both exited zero.
+  if (!findSession(loadSessions(m), name)) {
+    console.error(`unknown session: ${name}`);
+    return 1;
+  }
   const json = args.includes('--json');
   const lineArg = args.find((a) => /^\d+$/.test(a));
   const lines = lineArg ? Number.parseInt(lineArg, 10) : 100;

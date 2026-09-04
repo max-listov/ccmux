@@ -30,7 +30,15 @@ export async function cmdSend(
   const { session, m } = fwd;
   name = session;
   const target = findSession(loadSessions(m), name);
-  if (target !== undefined && hasNoComposer(target)) {
+  // The address first, and from the registry rather than from tmux. Without this the verdict was
+  // right by accident: an unknown name fell through to typing into a pane that does not exist, and
+  // only tmux's own failure produced the non-zero — under the message "not running?", which blames
+  // the session's state for what is a miss by address.
+  if (target === undefined) {
+    console.error(`unknown session: ${name}`);
+    return 1;
+  }
+  if (hasNoComposer(target)) {
     console.error(
       'send: this runtime has no terminal composer. Write to it with `msg`, and run a slash command ' +
         'with the control service `command` operation (`commands` lists what it offers).',
