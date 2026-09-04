@@ -2,7 +2,7 @@
 import { join, resolve } from 'node:path';
 import type { ContentRecord } from '../src/content/schema.ts';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
-import { createCcmuxControlServiceClient } from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import {
   check,
@@ -13,21 +13,21 @@ import {
 } from './native-image-steering-fixture.ts';
 
 const modulePath = process.argv[3];
-const makeClient: typeof createCcmuxControlServiceClient =
+const makeClient: typeof createInjectedControlClient =
   modulePath === undefined
-    ? createCcmuxControlServiceClient
-    : (await import(resolve(modulePath))).createCcmuxControlServiceClient;
+    ? createInjectedControlClient
+    : (await import(resolve(modulePath))).createInjectedControlClient;
 const cli = process.argv[2];
 const p = await nativeImageProbe({ ...(cli === undefined ? {} : { cli }), makeClient });
 
 async function ready(receipt: ControlCreateReceipt, previousGeneration?: string) {
   await until('native tool fixture ready', async () => {
     try {
-      const native = await p.service.native({ target: receipt.target });
+      const native = await p.service['native.read']({ target: receipt.target });
       return (
         native.status === 'live' &&
         native.generation !== previousGeneration &&
-        (await p.service.get({ target: receipt.target })).state === 'idle'
+        (await p.service['session.get']({ target: receipt.target })).state === 'idle'
       );
     } catch {
       return false;
@@ -37,11 +37,11 @@ async function ready(receipt: ControlCreateReceipt, previousGeneration?: string)
 async function prove(receipt: ControlCreateReceipt) {
   const { target, registrationGeneration } = receipt;
   await ready(receipt);
-  let cursor = await p.service.native({ target });
+  let cursor = await p.service['native.read']({ target });
   const records = new Map<string, ContentRecord>();
   const answered = new Set<string>();
   const messageId = crypto.randomUUID();
-  await p.service.message({
+  await p.service['message.send']({
     target,
     messageId,
     body: "Run exactly two separate shell tool calls, sequentially: first `printf 'TOOL_OK\\n'`, then `sh -c 'exit 7'`. Do not combine them into one tool call. The nonzero exit is deliberate: do not retry, repair, or suppress it. Use no other tools. After both tool calls finish, reply TOOL_PROBE_DONE.",
@@ -50,7 +50,7 @@ async function prove(receipt: ControlCreateReceipt) {
       : {}),
   });
   await until('two native shell outcomes', async () => {
-    const frame = await p.service.native({
+    const frame = await p.service['native.read']({
       target,
       cursor: { generation: cursor.generation, sequence: cursor.sequence },
     });
@@ -65,7 +65,7 @@ async function prove(receipt: ControlCreateReceipt) {
         'Unexpected native fixture request',
       );
       if (answered.has(request.requestId)) continue;
-      await p.service.respond({
+      await p.service['native.respond']({
         target,
         generation: frame.generation,
         operationId: crypto.randomUUID(),
@@ -75,7 +75,7 @@ async function prove(receipt: ControlCreateReceipt) {
       });
       answered.add(request.requestId);
     }
-    const operation = await p.service.messageOperation({
+    const operation = await p.service['message.operation']({
       target,
       registrationGeneration,
       messageId,
@@ -86,7 +86,11 @@ async function prove(receipt: ControlCreateReceipt) {
     );
     return operation.evidence?.state === 'completed';
   });
-  const operation = await p.service.messageOperation({ target, registrationGeneration, messageId });
+  const operation = await p.service['message.operation']({
+    target,
+    registrationGeneration,
+    messageId,
+  });
   const turnId = operation.evidence?.turnId;
   check(turnId, 'Fixture message has no exact native turn');
   const tools = [...records.values()].filter((record) => record.turnId === turnId);
@@ -112,8 +116,8 @@ async function prove(receipt: ControlCreateReceipt) {
     'Failing native tool outcome missing',
   );
   const reconnect = p.client('probe-client');
-  const frame = await reconnect.native({ target });
-  const history = await reconnect.history({ target, registrationGeneration, limit: 64 });
+  const frame = await reconnect['native.read']({ target });
+  const history = await reconnect['history.read']({ target, registrationGeneration, limit: 64 });
   for (const tool of tools) {
     const match = (entry: { turnId: string | null; itemId: string }) =>
       entry.turnId === tool.turnId && entry.itemId === tool.itemId;
@@ -150,7 +154,7 @@ try {
           );
     check(selected, 'Configured native tool fixture model unavailable');
     receipts.push(
-      await p.service.create({
+      await p.service['session.create']({
         runtime,
         requestId: crypto.randomUUID(),
         name: `tool-${runtime}`,
@@ -167,7 +171,7 @@ try {
   await p.restartDaemon();
   for (const { receipt, tools } of proofs) {
     const { target, registrationGeneration } = receipt;
-    const before = await p.service.native({ target });
+    const before = await p.service['native.read']({ target });
     for (const tool of tools)
       check(
         JSON.stringify(
@@ -178,11 +182,11 @@ try {
         'Daemon restart changed tool observation',
       );
     await killSession(p.machine, target.session);
-    await p.service.start({ target });
+    await p.service['session.start']({ target });
     await ready(receipt, before.generation);
     const history = await p
       .client('probe-client')
-      .history({ target, registrationGeneration, limit: 64 });
+      ['history.read']({ target, registrationGeneration, limit: 64 });
     for (const tool of tools)
       check(
         JSON.stringify(

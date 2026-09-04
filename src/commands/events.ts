@@ -71,7 +71,7 @@ export function framedLine(event: SessionEvent): string {
  * take here — there is no error to notice, only events that quietly do not exist for the consumer —
  * and it is why the resume promise (`stableCursor`) cannot be declared until this is read.
  */
-const RESUME_CURSOR_ENV = 'STITCHWIRE_STREAM_CURSOR';
+const RESUME_CURSOR_ENV = 'CCMUX_REMOTE_STREAM_CURSOR';
 
 /**
  * Which instant to resume from. An explicit `--since` wins: it is a person asking a deliberate

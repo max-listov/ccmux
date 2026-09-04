@@ -14,12 +14,9 @@ import { ControlPublisher } from '../src/control/publisher.ts';
 import { ControlModelCatalogSchema, ControlModelsReadSchema } from '../src/control/schema.ts';
 import { createControlServer } from '../src/control/server.ts';
 import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+  CCMUX_CONTROL_CALLER_HEADER,
+  createInjectedControlClient,
+} from '../src/control/transportBoundary.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { makeMachine, makeSession } from './helpers.ts';
@@ -223,37 +220,18 @@ async function fixture(options: { extraClaudeSession?: boolean } = {}) {
     provider,
     target: managedPeer(m.rcPrefix, s),
     claudeTarget: sessions[1] ? managedPeer(m.rcPrefix, sessions[1]) : null,
-    remote: createCcmuxControlServiceClient(async (url, init) => {
-      const route = new URL(String(url));
-      const operation = ControlServiceOperationSchema.parse(
-        route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-      );
-      const payload = typeof init?.body === 'string' ? init.body : '{}';
-      return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
+    remote: createInjectedControlClient((url, init) =>
+      fetch(String(url), {
         unix: socket,
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          v: 1,
-          id: crypto.randomUUID(),
-          caller: 'host-b',
-          service: 'ccmux.control',
-          revision: CCMUX_CONTROL_SERVICE_REVISION,
-          operation,
-          payload,
-        }),
-      });
-    }),
+        ...init,
+        headers: {
+          ...Object.fromEntries(new Headers(init?.headers)),
+          [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
+        },
+      }),
+    ),
   };
 }
-
-const invoke = (f: Awaited<ReturnType<typeof fixture>>, body: unknown) =>
-  fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-    unix: f.socket,
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
 
 test('model catalog is a bounded provider-owned read that forwards only safe metadata', async () => {
   const f = await fixture();
@@ -291,10 +269,10 @@ test('model catalog is a bounded provider-owned read that forwards only safe met
 
 test('pagination is deterministic, provider-cursored and bounded by the strict input schema', async () => {
   const f = await fixture();
-  const first = await f.remote.models({ target: f.target, runtime: 'codex', limit: 1 });
+  const first = await f.remote['model.list']({ target: f.target, runtime: 'codex', limit: 1 });
   expect(first.data.map((model) => model.id)).toEqual(['model-a']);
   expect(first.nextCursor).toBe('1');
-  const second = await f.remote.models({
+  const second = await f.remote['model.list']({
     target: f.target,
     runtime: 'codex',
     cursor: first.nextCursor,
@@ -355,17 +333,17 @@ test('exact session runtime cannot borrow another socket or relabel a custom pro
   ]);
   const customProvider = fakeAppServer(ownedCodexSocket(f.m, custom.name), 'custom');
   try {
-    const page = await f.remote.models({ target: managedPeer(f.m.rcPrefix, other) });
+    const page = await f.remote['model.list']({ target: managedPeer(f.m.rcPrefix, other) });
     expect(page.data.map((row) => row.id)).toEqual(['unique-model']);
     expect(f.provider.requests).toEqual([]);
     expect(page.source.kind).toBe('session');
     await expect(
-      f.remote.models({ target: managedPeer(f.m.rcPrefix, custom) }),
+      f.remote['model.list']({ target: managedPeer(f.m.rcPrefix, custom) }),
     ).rejects.toMatchObject({ code: 'UNSUPPORTED' });
     expect(customProvider.requests).toEqual([]);
     otherProvider.close();
     await expect(
-      f.remote.models({ target: managedPeer(f.m.rcPrefix, other) }),
+      f.remote['model.list']({ target: managedPeer(f.m.rcPrefix, other) }),
     ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
     expect(f.provider.requests).toEqual([]);
   } finally {
@@ -385,7 +363,7 @@ test('unknown identities fail closed before any provider contact', async () => {
       code: 'IDENTITY_MISMATCH',
       status: 409,
     });
-    await expect(f.remote.models({ target })).rejects.toMatchObject({
+    await expect(f.remote['model.list']({ target })).rejects.toMatchObject({
       code: 'IDENTITY_MISMATCH',
       status: 409,
     });
@@ -398,7 +376,7 @@ test('explicit runtime mismatch refuses before dispatch even with a valid target
   for (const runtime of ['opencode', 'custom', 'claude'] satisfies Array<
     'opencode' | 'custom' | 'claude'
   >) {
-    await expect(f.remote.models({ target: f.target, runtime })).rejects.toMatchObject({
+    await expect(f.remote['model.list']({ target: f.target, runtime })).rejects.toMatchObject({
       code: 'IDENTITY_MISMATCH',
     });
     await expect(f.client['model.list']({ target: f.target, runtime })).rejects.toMatchObject({
@@ -441,7 +419,7 @@ test('provider failures fail closed instead of substituting a local catalog', as
     code: 'UNAVAILABLE',
     status: 503,
   });
-  await expect(f.remote.models({ target: f.target })).rejects.toMatchObject({
+  await expect(f.remote['model.list']({ target: f.target })).rejects.toMatchObject({
     code: 'UNAVAILABLE',
     status: 503,
   });
@@ -574,37 +552,6 @@ test('handler bounds drop provider extras, honor optional efforts and reject ove
       connectHanging,
     ),
   ).rejects.toMatchObject({ code: 'UNAVAILABLE', status: 503 });
-});
-
-test('declared service dispatch keeps the envelope, effect metadata and response budget for model.list', async () => {
-  const f = await fixture();
-  const envelope = {
-    v: 1,
-    id: crypto.randomUUID(),
-    caller: 'host-b',
-    service: 'ccmux.control',
-    revision: CCMUX_CONTROL_SERVICE_REVISION,
-    operation: 'model.list',
-    payload: JSON.stringify({ target: f.target }),
-  };
-  const reply = await (await invoke(f, envelope)).json();
-  const local = await f.client['model.list']({ target: f.target });
-  expect(reply).toEqual({ v: 1, revision: CCMUX_CONTROL_SERVICE_REVISION, result: local });
-  expect((await invoke(f, { ...envelope, operation: 'unknown.op' })).status).toBe(400);
-  expect(
-    (await invoke(f, { ...envelope, payload: JSON.stringify({ target: f.target, limit: 65 }) }))
-      .status,
-  ).toBe(400);
-  expect((await invoke(f, { ...envelope, revision: 'obsolete' })).status).toBe(400);
-
-  f.provider.set('oversize-page');
-  expect(JSON.stringify(await f.client['model.list']({ target: f.target })).length).toBeGreaterThan(
-    256 * 1024,
-  );
-  await expect(f.remote.models({ target: f.target })).rejects.toMatchObject({
-    code: 'RESPONSE_TOO_LARGE',
-    status: 500,
-  });
 });
 
 test('reads admission bounds provider connections; cancellation and deadline release the caller', async () => {

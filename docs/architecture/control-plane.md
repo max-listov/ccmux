@@ -411,19 +411,18 @@ question; the read itself costs its window rather than the file (see the transcr
 removes what was left. The window is bounded in the request schema, so an over-large ask is refused
 by name instead of by a transport size error after the work is done.
 
-The descriptor declares the current operations and their individual byte/deadline budgets. A remote wait is capped
-at 25 seconds inside a 30-second service deadline. Service delivery is never retried by the owner
-client. If transport delivery is unknown, the caller retains that uncertainty. An idempotent
+The public `controlContract` declares the current operations and their individual deadlines. A remote
+wait is capped at 25 seconds inside a 30-second service deadline. Transport integration and descriptor
+generation belong outside this repository. Delivery is never retried by the owner client. If transport
+delivery is unknown, the caller retains that uncertainty. An idempotent
 `session.create` may deliberately retry the same immutable `requestId`: the durable create receipt
 reconciles one registration generation and one writer. Other mutations require their own exact
 idempotency identity or an authoritative read before any caller-selected retry.
 
-Revision 2 effects are dot-delimited authorization identifiers. Operation metadata, typed client
-and `descriptor.json` read the same owner mapping in `src/control/serviceCatalog.ts`. Every service,
-operation and effect identifier satisfies `^[a-z0-9][a-z0-9._-]*$`. Operators consume the current
-descriptor unchanged and explicitly grant the operations needed, including separate attachment,
-selection, history/context, fork and steering effects. Obsolete descriptors are refused, not
-translated into another compatibility path.
+Operation IDs are dot-delimited authorization identifiers and satisfy
+`^[a-z0-9][a-z0-9._-]*$`. The published client is generated directly from `controlContract` and accepts
+an injected fetch implementation. There is no second operation catalog, descriptor copy or legacy
+translation path inside CCMux.
 
 Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
 created with `createCcmuxNativeStreamProfile(<absolute standard ccmux executable>)`. The standard
@@ -446,7 +445,7 @@ generation or retained-window miss returns the canonical `generation` or `gap` r
 Cancellation aborts the local subscription and closes both Unix transports. No workspace path,
 provider credential, arbitrary executable, shell text or consumer-owned parser crosses this API.
 
-The frame budget belongs to the wire, not to this project: the transport buffers the producer's
+The frame budget belongs to the remote transport, not to this project: the transport buffers the producer's
 NDJSON at twice its chunk bound and separately refuses a framed chunk whose `data` exceeds that
 bound, and both the schema maximum and the default of that knob are 32 KiB. Frames are therefore
 measured against 32 KiB of `data` inside a 64 KiB line, and the measurement is taken on the
@@ -495,16 +494,11 @@ fetches the same line again.
   call retains its admission lease until its underlying operation really settles; retries must
   reconcile an immutable message ID. Capacity refusal is `BUSY`/429; draining is 503.
 
-The optional local fleet door uses the existing public Stitchkit Unix transport directly. Unary
-replies have a 52 MiB cumulative ceiling, 64 KiB header ceiling, 8 MiB request ceiling, one owned
-connection per call and a deadline that includes body completion. Cancellation, malformed framing,
-oversize and stalled bodies close the socket before returning. The door protocol remains parsed by
-CCMux so additive fields, version refusal, command exit, truncation and policy/request/capacity
-outcomes retain their existing meaning. The single reader in `src/fleet/wireProtocol.ts` requires
-door2 version, ID, timestamp, sender, integer code, both streams, failure, refusal, retry hint,
-detail and truncation. Additive keys are ignored; missing fields, unknown enum values and
-contradictory refusal/retry fields cannot become success. There is no private client artifact in
-the public install, daemon start, automatic arbitrary-command replay or SSH fallback.
+The optional remote fleet boundary is a public Stitchkit contract over an injected local Unix
+transport. CCMux submits a peer, argv, stdin and deadline and consumes a normalized command result.
+Provider framing, credentials, node bindings and broker behavior remain outside this repository.
+There is no provider SDK, copied protocol, descriptor or fallback implementation in the public
+install. A configured remote peer never silently falls back to SSH.
 
 `RemoteResult.delivery` is independent of command exit: `not-sent` requires local pre-dispatch
 evidence or a structured pre-execution refusal; timeout, malformed reply and after-dispatch loss

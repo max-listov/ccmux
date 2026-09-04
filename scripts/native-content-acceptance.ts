@@ -67,12 +67,12 @@ async function run(
 ) {
   await until('idle before content run', async () => {
     try {
-      return (await p.service.get({ target })).state === 'idle';
+      return (await p.service['session.get']({ target })).state === 'idle';
     } catch {
       return false;
     }
   });
-  const before = await p.service.native({ target });
+  const before = await p.service['native.read']({ target });
   const client = createControlClient({ socket: controlSocket(p.machine) });
   const abort = new AbortController();
   const started = performance.now(),
@@ -138,7 +138,7 @@ async function run(
     }
   });
   try {
-    await p.service.message({
+    await p.service['message.send']({
       target,
       messageId: crypto.randomUUID(),
       body: 'Output exactly 220 separate numbered lines. Each line must contain its number followed by: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. Print every line literally, no omissions, ellipses, code, tools or commentary. This measures streamed text; do not summarize or abbreviate.',
@@ -147,13 +147,13 @@ async function run(
       'all content readers observed completion',
       async () => {
         if (readerError !== null) throw readerError;
-        const waited = await p.service.wait({ target, timeoutMs: 500 });
+        const waited = await p.service['session.wait']({ target, timeoutMs: 500 });
         check(waited.outcome !== 'failed', 'Native content turn failed');
         return stats.every((stat) => stat.terminal) && waited.outcome === 'completed';
       },
       240_000,
     );
-    const history = await p.service.history({ target, registrationGeneration, limit: 8 });
+    const history = await p.service['history.read']({ target, registrationGeneration, limit: 8 });
     const final = history.entries.find((row) => row.kind === 'assistant');
     check(final?.text, 'Native final text missing');
     for (const stat of stats) {
@@ -212,7 +212,7 @@ try {
         : row.provider === 'openrouter' && row.id === 'google/gemini-2.5-flash',
     );
     check(model, 'Configured content model unavailable');
-    const created = await p.service.create({
+    const created = await p.service['session.create']({
       runtime,
       requestId: crypto.randomUUID(),
       name: `${runtime}-content`,

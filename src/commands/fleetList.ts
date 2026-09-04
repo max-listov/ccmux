@@ -170,7 +170,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
         timeoutMs: 20_000,
         connectTimeoutSeconds: 3,
       });
-      const label = via === 'wire' ? 'wire' : alias;
+      const label = via === 'remote' ? 'remote' : alias;
       if (r.transportFailed) {
         return {
           machine,
@@ -350,7 +350,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
   }
   if (machines.length === 1) {
     console.log(
-      '(no peers configured in machine.json — add a "fleet" map or "wire.peers" — showing this machine only)',
+      '(no peers configured in machine.json — add a "fleet" map or "remoteTransport.peers" — showing this machine only)',
     );
   }
   if (view.latest !== null)
@@ -361,8 +361,8 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
     const label =
       fm.alias === null
         ? `${fm.machine} (this machine)`
-        : fm.alias === 'wire'
-          ? `${fm.machine} via wire`
+        : fm.alias === 'remote'
+          ? `${fm.machine} via remote adapter`
           : `${fm.machine} → ${fm.alias}`;
     if (!fm.ok) {
       console.log(`${label}: ${fm.error}`);

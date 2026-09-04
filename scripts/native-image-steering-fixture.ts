@@ -12,17 +12,12 @@ import { loadSessions } from '../src/config/sessions.ts';
 import { ControlNativeStreamFrameSchema } from '../src/control/nativeStreamContract.ts';
 import { controlSocket } from '../src/control/path.ts';
 import type { ControlModel } from '../src/control/schema.ts';
-import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { localControlFetch } from './control-client.ts';
 import { hasExited } from './process-state.ts';
 
 export function check(value: unknown, message: string): asserts value {
@@ -103,7 +98,7 @@ export function nearLimitImage(): Buffer {
 export async function nativeImageProbe(
   options: {
     cli?: string;
-    makeClient?: typeof createCcmuxControlServiceClient;
+    makeClient?: typeof createInjectedControlClient;
     configure?: (root: string, machine: ReturnType<typeof loadMachineConfig>) => Promise<void>;
   } = {},
 ) {
@@ -118,7 +113,7 @@ export async function nativeImageProbe(
     rcPrefix: 'probe',
     tmuxSocket: `ccmux-image-${crypto.randomUUID().slice(0, 8)}`,
     fleet: {},
-    wire: { peers: [] },
+    remoteTransport: { peers: [] },
     telegram: undefined,
     externalInventory: false,
     remoteControl: false,
@@ -170,33 +165,16 @@ export async function nativeImageProbe(
     });
   let daemon = spawn();
   const client = (caller: string) =>
-    (options.makeClient ?? createCcmuxControlServiceClient)(async (url, init) => {
-      const operation = ControlServiceOperationSchema.parse(
-        new URL(String(url)).pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-      );
-      return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-        unix: controlSocket(machine),
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        ...(init?.signal ? { signal: init.signal } : {}),
-        body: JSON.stringify({
-          v: 1,
-          id: crypto.randomUUID(),
-          caller,
-          service: 'ccmux.control',
-          revision: CCMUX_CONTROL_SERVICE_REVISION,
-          operation,
-          payload: typeof init?.body === 'string' ? init.body : '{}',
-        }),
-      });
-    });
+    (options.makeClient ?? createInjectedControlClient)(
+      localControlFetch(controlSocket(machine), caller),
+    );
   const service = client('probe-client');
   const ready = () =>
     until(
       'isolated service',
       async () => {
         try {
-          await service.runtimes({});
+          await service['runtime.list']({});
           return true;
         } catch {
           return false;
@@ -235,7 +213,7 @@ export async function nativeImageProbe(
       try {
         for (const session of sessions) {
           try {
-            await service.archive({ target: managedPeer(machine.rcPrefix, session) });
+            await service['session.archive']({ target: managedPeer(machine.rcPrefix, session) });
           } catch {
             archiveFailures++;
           }
@@ -278,17 +256,17 @@ export async function uploadImage(
 ) {
   const selector = { target, uploadId: crypto.randomUUID() };
   const request = { ...selector, mediaType, totalBytes: bytes.length, digest: sha(bytes) };
-  await p.service.attachmentBegin(request);
-  await p.service.attachmentBegin(request);
+  await p.service['attachment.begin'](request);
+  await p.service['attachment.begin'](request);
   for (let offset = 0; offset < bytes.length; offset += ATTACHMENT_LIMITS.chunkBytes)
-    await p.service.attachmentChunk({
+    await p.service['attachment.chunk']({
       ...selector,
       offset,
       data: bytes.subarray(offset, offset + ATTACHMENT_LIMITS.chunkBytes).toString('base64'),
     });
-  const reference = await p.service.attachmentFinalize(selector);
+  const reference = await p.service['attachment.finalize'](selector);
   check(
-    (await p.service.attachmentFinalize(selector)).digest === reference.digest,
+    (await p.service['attachment.finalize'](selector)).digest === reference.digest,
     'Finalize identity changed',
   );
   await previewImage(p, target, reference, bytes);
@@ -303,7 +281,7 @@ export async function previewImage(
   const chunks: Buffer[] = [];
   let offset = 0;
   do {
-    const chunk = await p.service.attachmentRead({ target, reference, offset });
+    const chunk = await p.service['attachment.read']({ target, reference, offset });
     chunks.push(Buffer.from(chunk.data, 'base64'));
     offset = chunk.nextOffset;
     if (chunk.complete) break;
@@ -318,7 +296,11 @@ export async function modelCatalog(
   const rows: ControlModel[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 64; page++) {
-    const result = await p.service.models({ runtime, ...(target ? { target } : {}), cursor });
+    const result = await p.service['model.list']({
+      runtime,
+      ...(target ? { target } : {}),
+      cursor,
+    });
     rows.push(...result.data);
     cursor = result.nextCursor;
     if (cursor === null) return rows;

@@ -10,17 +10,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { controlSocket } from '../src/control/path.ts';
-import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import type { AgentPolicies } from '../src/policy/schema.ts';
 import { policySha256 } from '../src/policy/sources.ts';
 import type { MachineConfig } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { localControlFetch } from './control-client.ts';
 
 export function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -148,31 +143,7 @@ export async function createPolicyFixture() {
 }
 
 export function policyService(m: MachineConfig, inspect: (value: unknown) => void) {
-  return createCcmuxControlServiceClient(async (url, init) => {
-    const route = new URL(String(url));
-    const operation = ControlServiceOperationSchema.parse(
-      route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-    );
-    const payload = typeof init?.body === 'string' ? init.body : '{}';
-    inspect(payload);
-    const response = await fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-      unix: controlSocket(m),
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      ...(init?.signal === undefined ? {} : { signal: init.signal }),
-      body: JSON.stringify({
-        v: 1,
-        id: crypto.randomUUID(),
-        caller: 'policy-client',
-        service: 'ccmux.control',
-        revision: CCMUX_CONTROL_SERVICE_REVISION,
-        operation,
-        payload,
-      }),
-    });
-    inspect(await response.clone().text());
-    return response;
-  });
+  return createInjectedControlClient(localControlFetch(controlSocket(m), 'policy-client', inspect));
 }
 
 export function spawnCount(root: string, runtime: 'codex' | 'opencode') {

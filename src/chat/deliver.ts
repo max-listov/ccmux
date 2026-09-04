@@ -115,7 +115,7 @@ async function deliverToPane(
   beforeSubmit: () => Promise<void>,
 ): Promise<{ submitted: boolean; hold: string | null; holdKind: ChatHoldKind }> {
   // Whether a reply would actually reach the sender is asked of the SAME resolver each message
-  // delivers with — never re-derived here from one transport's map, which is how a live wire route
+  // delivers with — never re-derived here from one transport's map, which is how a live remote route
   // came to be announced as "no route back" while it was carrying mail.
   //
   // Several letters that waited out one turn arrive as ONE turn. Two peers writing to a busy session

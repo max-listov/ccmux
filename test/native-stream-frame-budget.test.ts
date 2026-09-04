@@ -20,7 +20,7 @@ const target = {
 } as const;
 
 // Text that is escaped twice over — it is JSON, inside a JSON string, inside a JSON line. This is
-// what real thread content looks like when it carries code, and it is why the wire size cannot be
+// what real thread content looks like when it carries code, and it is why the remote transport size cannot be
 // predicted from the payload size by multiplying.
 const nasty = (size: number) =>
   JSON.stringify({ code: 'const x = "a\\b"; // "quoted"', more: 'y'.repeat(size) });
@@ -125,16 +125,16 @@ test('shedding is found by halving, not by dropping one at a time', () => {
   expect(performance.now() - started).toBeLessThan(1_500);
 });
 
-test("the budget comes from the wire under it, not from this project's own constant", () => {
+test("the budget comes from the remote transport under it, not from this project's own constant", () => {
   // Read from the transport's source rather than inferred: it buffers the producer's NDJSON at
   // `maxChunkBytes * 2` and separately refuses a framed chunk whose `data` exceeds `maxChunkBytes`.
   // That knob's schema maximum and its default are both 32 KiB, so no deployment carries more.
   expect(CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES).toBe(32 * 1024);
   expect(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBe(2 * CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES);
 
-  // The earlier value was this project's own 513 KiB — eight times what the wire carries — and a
-  // frame sized against it satisfied the contract and died on the wire. This pins the relationship
-  // so the number cannot drift back to one nobody on the wire enforces.
+  // The earlier value was this project's own 513 KiB — eight times what the remote transport carries — and a
+  // frame sized against it satisfied the contract and died on the remote transport. This pins the relationship
+  // so the number cannot drift back to one nobody on the remote transport enforces.
   expect(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBeLessThan(512 * 1024);
 });
 
@@ -244,7 +244,7 @@ test('a frame with nothing left to shed is refused, not emitted', () => {
 
 test('a refusal says whether repeating it can help', () => {
   // The two failures want opposite answers from a consumer. A stream that could not be opened is
-  // worth another attempt; a frame the wire cannot carry is not — the reconnect fetches the same
+  // worth another attempt; a frame the remote transport cannot carry is not — the reconnect fetches the same
   // line and dies on it again. That loop showed a live conversation as merely queued for
   // twenty-two hours, and nothing in the failure said which of the two it was.
   expect(streamRefusal(new NativeStreamFrameUnrepresentable(1))).toEqual({

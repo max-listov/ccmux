@@ -17,12 +17,9 @@ import { controlSocket } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
 import { createControlServer } from '../src/control/server.ts';
 import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+  CCMUX_CONTROL_CALLER_HEADER,
+  createInjectedControlClient,
+} from '../src/control/transportBoundary.ts';
 import { readExternalContent, readExternalContentCapabilities } from '../src/external/content.ts';
 import {
   ExternalContentReadSchema,
@@ -238,45 +235,36 @@ test('real local and declared-service readers share one nonmutating external ope
     publisher.close();
     await owned.observability.close();
   });
-  const service = createCcmuxControlServiceClient(async (url, init) => {
-    const operation = ControlServiceOperationSchema.parse(
-      new URL(String(url)).pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-    );
-    return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
+  const service = createInjectedControlClient((url, init) =>
+    fetch(String(url), {
       unix: controlSocket(p.m),
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        v: 1,
-        id: crypto.randomUUID(),
-        caller: 'host-b',
-        service: 'ccmux.control',
-        revision: CCMUX_CONTROL_SERVICE_REVISION,
-        operation,
-        payload: init?.body,
-      }),
-    });
-  });
+      ...init,
+      headers: {
+        ...Object.fromEntries(new Headers(init?.headers)),
+        [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
+      },
+    }),
+  );
   const before = await readFile(p.path, 'utf8');
-  const page = await service.externalHistory({ target: p.target });
+  const page = await service['external.history']({ target: p.target });
   expect(page.entries[0]?.text).toBe('live transcript');
   expect((await local['external.history']({ target: p.target })).revision).toBe(page.revision);
-  expect((await service.externalCapabilities({ target: p.target })).control.message.supported).toBe(
-    false,
-  );
+  expect(
+    (await service['external.capabilities']({ target: p.target })).control.message.supported,
+  ).toBe(false);
   expect(await readFile(p.path, 'utf8')).toBe(before);
   current = { ...p.m, externalInventory: false };
-  await expect(service.externalHistory({ target: p.target })).rejects.toMatchObject({
+  await expect(service['external.history']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
   await expect(local['external.capabilities']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
-  expect(await service.runtimes({})).toBeDefined();
+  expect(await service['runtime.list']({})).toBeDefined();
   current = { ...p.m, codexSessionsDir: p.root };
   await expect(local['external.history']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
   current = p.m;
-  expect((await service.externalHistory({ target: p.target })).outcome).toBe('available');
+  expect((await service['external.history']({ target: p.target })).outcome).toBe('available');
 });

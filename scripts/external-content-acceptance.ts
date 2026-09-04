@@ -26,8 +26,8 @@ const p = await nativeImageProbe({
   },
 });
 try {
-  const capabilities = await p.service.externalCapabilities({ target });
-  const page = await p.service.externalHistory({ target, limit: 16 });
+  const capabilities = await p.service['external.capabilities']({ target });
+  const page = await p.service['external.history']({ target, limit: 16 });
   check(
     page.outcome === 'available' && page.entries.length > 0,
     'Existing external history is unavailable',

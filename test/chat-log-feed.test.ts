@@ -190,7 +190,7 @@ test('an oversized record is REPLACED with a named refusal, never cut', () => {
 
 test('the cap counts BYTES, so a long Unicode body is bounded by what the transport carries', () => {
   // Characters are not bytes: an emoji body a third the character count of an ASCII one can be the
-  // same size on the wire, and a cap that counted characters would let it through.
+  // same size on the remote transport, and a cap that counted characters would let it through.
   const emoji = '🙂'.repeat(MAX_FRAME_BYTES / 2); // 4 bytes each — well past the cap
   const row = {
     ...rowFromLedgerRecord('host-a', null),

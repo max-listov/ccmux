@@ -109,8 +109,8 @@ async function runPreflight(m: MachineConfig): Promise<void> {
  */
 export async function flushOutbox(m: MachineConfig): Promise<void> {
   // Routable at all? Asked through the SAME resolver a send uses, so a machine reachable only over
-  // the wire counts. Reading `fleet` alone here was a silent mail loss: on a fleet whose laptop is
-  // wire-only by design, every retry to it found no ssh alias and settled the letter as delivered.
+  // the remote transport counts. Reading `fleet` alone here was a silent mail loss: on a fleet whose laptop is
+  // remote-only by design, every retry to it found no ssh alias and settled the letter as delivered.
   if (peersOf(m).length === 0) return;
   let candidates: Outbound[] = [];
   try {
@@ -127,7 +127,7 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
     const route = routeFor(`${target.machine}:${target.session}`, m);
     if (route.kind !== 'remote') {
       // Genuinely unaddressable from here — the machine is in neither map, or the label now resolves
-      // to this box. Settle it so we stop looking. NOT the same as "no ssh alias": a wire-only peer
+      // to this box. Settle it so we stop looking. NOT the same as "no ssh alias": a remote-only peer
       // has no alias and is perfectly reachable, and treating the two alike is what threw mail away.
       appendOutboxAck(m, rec.envelope.id);
       log.warn({

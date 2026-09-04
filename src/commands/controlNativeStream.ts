@@ -46,7 +46,7 @@ async function writeFrame(snapshot: ControlNativeSnapshot): Promise<void> {
  * Why the refusal says whether repeating it can help.
  *
  * A consumer reconnects on a dead stream, and that is right for a stream that could not be opened.
- * It is wrong for a frame the wire cannot carry: the reconnect fetches the same line and dies on
+ * It is wrong for a frame the remote transport cannot carry: the reconnect fetches the same line and dies on
  * it again, forever, showing the human a conversation that is merely "queued" while the session
  * behind it answers normally. One such loop ran for twenty-two hours. Nothing here can stop a
  * consumer from retrying, but it can stop being silent about which of the two this is.

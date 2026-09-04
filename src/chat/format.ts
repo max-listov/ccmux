@@ -35,7 +35,7 @@ export function formatChatInjection(
   // absence of knowledge printed as a fact.
   //
   // The unreachable branch always carries the RESOLVER'S reason, never a bare verdict. Cost of the
-  // bare version: a machine with a live wire route to the sender was told "no route back", followed
+  // bare version: a machine with a live remote route to the sender was told "no route back", followed
   // the pinned instruction, and answered the human instead — while the peer-to-peer hop was working
   // that same minute. A stated cause is checkable; "no route" is only believable.
   const reply =

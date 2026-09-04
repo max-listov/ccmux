@@ -189,9 +189,9 @@ and the choice is per direction in `machine.json`:
 | Transport | Use it for | Configured by |
 |---|---|---|
 | ssh | machines that can address each other | `fleet: { <machine>: <alias> }` |
-| stitchwire | a machine with no stable address — it dials out and keeps the link | `wire: { peers: [<machine>] }` |
+| injected remote adapter | a machine with no stable address — it dials out and keeps the link | `remoteTransport: { peers: [<machine>] }` |
 
-A machine in `wire.peers` is reached over the wire even when it also has an ssh alias, so the wire is
+A machine in `remoteTransport.peers` is reached over the remote transport even when it also has an ssh alias, so the remote transport is
 adoptable one direction at a time.
 
 Two things are worth knowing before diagnosing a route:

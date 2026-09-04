@@ -6,16 +6,11 @@ import { loadMachineConfig } from '../src/config/machine.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 import { createControlClient } from '../src/control/client.ts';
 import { controlSocket } from '../src/control/path.ts';
-import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { localControlFetch } from './control-client.ts';
 import { verifyOpenCodeActions } from './opencode-actions-e2e.ts';
 import { verifyRuntimeCoexistence } from './runtime-coexistence-e2e.ts';
 import { verifyRuntimeConfidentiality } from './runtime-confidentiality-e2e.ts';
@@ -100,27 +95,7 @@ const spawnDaemon = () =>
   });
 let daemon = spawnDaemon();
 const local = createControlClient({ socket: controlSocket(m) });
-const service = createCcmuxControlServiceClient(async (url, init) => {
-  const route = new URL(String(url));
-  const operation = ControlServiceOperationSchema.parse(
-    route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-  );
-  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-    unix: controlSocket(m),
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    ...(init?.signal === undefined ? {} : { signal: init.signal }),
-    body: JSON.stringify({
-      v: 1,
-      id: crypto.randomUUID(),
-      caller: 'probe-client',
-      service: 'ccmux.control',
-      revision: CCMUX_CONTROL_SERVICE_REVISION,
-      operation,
-      payload: typeof init?.body === 'string' ? init.body : '{}',
-    }),
-  });
-});
+const service = createInjectedControlClient(localControlFetch(controlSocket(m), 'probe-client'));
 try {
   await until(
     'prepared empty baseline',
@@ -134,7 +109,7 @@ try {
     15_000,
   );
   check(loadSessions(m).length === 0, 'Probe registry is not empty');
-  const catalog = await service.runtimes({});
+  const catalog = await service['runtime.list']({});
   check(
     catalog.runtimes.some((row) => row.runtime === 'opencode' && row.availability === 'configured'),
     'OpenCode runtime is not discoverable',
@@ -149,9 +124,9 @@ try {
     name: 'native-agent',
     workspace: join(root, 'workspace'),
     modelSelection: { provider: 'openrouter', model: 'z-ai/glm-5.3-flash' },
-  } satisfies Parameters<typeof service.create>[0];
-  const receipt = await service.create(create);
-  const retry = await service.create(create);
+  } satisfies Parameters<(typeof service)['session.create']>[0];
+  const receipt = await service['session.create'](create);
+  const retry = await service['session.create'](create);
   check(
     retry.duplicate && retry.target.threadId === receipt.target.threadId,
     'Create retry changed identity',
@@ -177,18 +152,18 @@ try {
   const messageId = crypto.randomUUID();
   const body =
     'This is an isolated runtime acceptance test. Use the shell tool to run pwd, printf CCMUX_NATIVE_TOOL_OK, and append exactly one line with the text effect to effect.txt in this workspace. Also run: test -n "$NATIVE_RUNTIME_PROBE_SECRET" && printf CHECKED > env-check.txt . Do not print the variable value. Do not edit other files, contact other agents, or print environment variables. Reply NATIVE_DONE afterwards.';
-  await service.message({ target, messageId, body });
+  await service['message.send']({ target, messageId, body });
   check(
-    (await service.message({ target, messageId, body })).duplicate,
+    (await service['message.send']({ target, messageId, body })).duplicate,
     'Message retry was not idempotent',
   );
   let approvals = 0;
   await until('first native tool turn', async () => {
-    const frame = await service.native({ target });
+    const frame = await service['native.read']({ target });
     const pending = frame.pending[0];
     if (pending?.kind === 'approval') {
       approvals++;
-      await service.respond({
+      await service['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: frame.generation,
@@ -197,11 +172,11 @@ try {
         decision: 'accept',
       });
     }
-    const result = await service.wait({ target, timeoutMs: 1_000 });
+    const result = await service['session.wait']({ target, timeoutMs: 1_000 });
     if (result.outcome === 'failed') throw new Error('Native model turn failed');
     return result.outcome === 'completed';
   });
-  const frame = await service.native({ target });
+  const frame = await service['native.read']({ target });
   const content = [...frame.baseline, ...frame.records];
   check(
     content.some((item) => item.kind === 'tool' && item.status === 'completed'),
@@ -212,7 +187,7 @@ try {
     'No native terminal evidence',
   );
   check(
-    (await service.get({ target })).model === create.modelSelection.model,
+    (await service['session.get']({ target })).model === create.modelSelection.model,
     'Selected native model was not preserved',
   );
   check(approvals > 0, 'No real native approval was observed');
@@ -224,7 +199,7 @@ try {
   report('native-tool-turn', {
     kinds: [...new Set(content.map((item) => item.kind))],
     approvals,
-    model: (await service.get({ target })).model,
+    model: (await service['session.get']({ target })).model,
   });
   await verifyOpenCodeActions(service, target);
   const peer = await verifyRuntimeCoexistence(m, service, target, join(root, 'workspace'));
@@ -262,11 +237,11 @@ try {
     providers: after.map((row) => row?.provider),
   });
   await killSession(m, session.name);
-  await service.start({ target });
+  await service['session.start']({ target });
   await until(
     'same identity after restart',
     async () => {
-      const row = await service.get({ target });
+      const row = await service['session.get']({ target });
       const snapshot = readManagedRuntimeStatus(m, session).snapshot;
       return (
         row.availability === 'live' &&
@@ -284,17 +259,18 @@ try {
     readFileSync(join(root, 'workspace', 'effect.txt'), 'utf8').trim() === 'effect',
     'Restart replayed tool side effects',
   );
-  await service.message({
+  await service['message.send']({
     target,
     messageId: crypto.randomUUID(),
     body: 'Reply RESUMED_OK only. Do not use tools.',
   });
   await until(
     'resumed native turn',
-    async () => (await service.wait({ target, timeoutMs: 1_000 })).outcome === 'completed',
+    async () =>
+      (await service['session.wait']({ target, timeoutMs: 1_000 })).outcome === 'completed',
   );
   report('restart-resume', { managedId: target.threadId, nativeId: receipt.nativeSession?.id });
-  await service.archive({ target });
+  await service['session.archive']({ target });
   const archived = loadSessions(m).find((row) => row.uuid === target.threadId);
   check(
     archived?.archived && archived.nativeSession?.id === receipt.nativeSession?.id,

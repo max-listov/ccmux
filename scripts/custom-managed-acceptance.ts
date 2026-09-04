@@ -84,7 +84,7 @@ const p = await nativeImageProbe({
 });
 report('custom-fixture', { root: p.root });
 try {
-  const catalog = await p.service.models({
+  const catalog = await p.service['model.list']({
     runtime: 'custom',
     launchRecipe: { id: 'custom', revision: 'one' },
   });
@@ -99,13 +99,13 @@ try {
     workspace: join(p.root, 'custom'),
     launchRecipe: { id: 'custom', revision: 'one' },
     flags: [],
-  } satisfies Parameters<typeof p.service.create>[0];
-  const receipt = await p.service.create(create);
-  check((await p.service.create(create)).duplicate, 'Create retry did not reconcile');
+  } satisfies Parameters<(typeof p.service)['session.create']>[0];
+  const receipt = await p.service['session.create'](create);
+  check((await p.service['session.create'](create)).duplicate, 'Create retry did not reconcile');
   const target = receipt.target;
   await until('Custom ready', async () => {
     try {
-      return (await p.service.get({ target })).state === 'idle';
+      return (await p.service['session.get']({ target })).state === 'idle';
     } catch {
       return false;
     }
@@ -116,14 +116,14 @@ try {
     messageId: crypto.randomUUID(),
     body: 'Use write_file to create proof.txt with the exact content PROOF_ONCE, overwrite false. Then respond DONE. Do not run commands or send any messages.',
   };
-  await p.service.message(message);
-  check((await p.service.message(message)).duplicate, 'Message retry duplicated');
+  await p.service['message.send'](message);
+  check((await p.service['message.send'](message)).duplicate, 'Message retry duplicated');
   await until('Custom real signed approval', async () => {
-    const frame = await p.service.native({ target }).catch((error) => {
+    const frame = await p.service['native.read']({ target }).catch((error) => {
       if (error instanceof Error && 'code' in error && error.code === 'UNAVAILABLE') return null;
       throw error;
     });
-    const status = await p.service.messageOperation({
+    const status = await p.service['message.operation']({
       target,
       registrationGeneration: receipt.registrationGeneration,
       messageId: message.messageId,
@@ -132,18 +132,18 @@ try {
     return (frame?.pending.length ?? 0) > 0;
   });
   check(!(await Bun.file(join(p.root, 'custom/proof.txt')).exists()), 'Tool ran before approval');
-  const before = await p.service.native({ target });
+  const before = await p.service['native.read']({ target });
   await killSession(p.machine, target.session);
-  await p.service.start({ target });
+  await p.service['session.start']({ target });
   await until('Custom approval after restart', async () => {
     try {
-      const frame = await p.service.native({ target });
+      const frame = await p.service['native.read']({ target });
       return frame.generation !== before.generation && frame.pending.length > 0;
     } catch {
       return false;
     }
   });
-  const frame = await p.service.native({ target });
+  const frame = await p.service['native.read']({ target });
   check(
     frame.nativeProfile?.model.model === model,
     'Native applied model proof is absent after restart',
@@ -152,7 +152,7 @@ try {
   check(request, 'Pending approval disappeared');
   await refusal(
     () =>
-      p.service.respond({
+      p.service['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: before.generation,
@@ -169,14 +169,14 @@ try {
     requestId: request.requestId,
     kind: 'approval',
     decision: 'accept',
-  } satisfies Parameters<typeof p.service.respond>[0];
-  await p.service.respond(answer);
+  } satisfies Parameters<(typeof p.service)['native.respond']>[0];
+  await p.service['native.respond'](answer);
   await refusal(
-    () => p.service.respond({ ...answer, decision: 'decline' }),
+    () => p.service['native.respond']({ ...answer, decision: 'decline' }),
     'IDEMPOTENCY_CONFLICT',
   );
   await until('Custom approval continuation terminal', async () => {
-    const result = await p.service.messageOperation({
+    const result = await p.service['message.operation']({
       target,
       registrationGeneration: receipt.registrationGeneration,
       messageId: message.messageId,
@@ -184,7 +184,7 @@ try {
     check(result.evidence?.state !== 'failed', 'Custom successor failed');
     return result.evidence?.state === 'completed';
   });
-  const correlated = await p.service.messageOperation({
+  const correlated = await p.service['message.operation']({
     target,
     registrationGeneration: receipt.registrationGeneration,
     messageId: message.messageId,
@@ -195,11 +195,14 @@ try {
     (await readFile(join(p.root, 'custom/proof.txt'), 'utf8')) === 'PROOF_ONCE',
     'Real file effect differs',
   );
-  await p.service.respond(answer);
+  await p.service['native.respond'](answer);
   await p.restartDaemon();
-  check((await p.service.create(create)).duplicate, 'Daemon restart changed registration');
-  const native = await p.service.native({ target });
-  const history = await p.service.history({
+  check(
+    (await p.service['session.create'](create)).duplicate,
+    'Daemon restart changed registration',
+  );
+  const native = await p.service['native.read']({ target });
+  const history = await p.service['history.read']({
     target,
     registrationGeneration: receipt.registrationGeneration,
     limit: 32,
@@ -216,11 +219,11 @@ try {
       images: [reference],
       body: 'Inspect the attached image. State the color and shape of the left object and then of the right object, in English. No tools.',
       options: { runtime: 'custom', model: { provider: 'openrouter', model: visionModel } },
-    } satisfies Parameters<typeof p.service.message>[0];
-    await p.service.message(imageMessage);
-    check((await p.service.message(imageMessage)).duplicate, 'Image retry duplicated');
+    } satisfies Parameters<(typeof p.service)['message.send']>[0];
+    await p.service['message.send'](imageMessage);
+    check((await p.service['message.send'](imageMessage)).duplicate, 'Image retry duplicated');
     await until('real Custom vision terminal', async () => {
-      const result = await p.service.messageOperation({
+      const result = await p.service['message.operation']({
         target,
         registrationGeneration: receipt.registrationGeneration,
         messageId: imageMessage.messageId,
@@ -228,7 +231,7 @@ try {
       check(result.evidence?.state !== 'failed', 'Vision provider failed');
       return result.evidence?.state === 'completed';
     });
-    const after = await p.service.history({
+    const after = await p.service['history.read']({
       target,
       registrationGeneration: receipt.registrationGeneration,
       limit: 32,
@@ -244,7 +247,7 @@ try {
       ),
       'Canonical history lost image',
     );
-    const observed = await p.service.native({ target });
+    const observed = await p.service['native.read']({ target });
     check(observed.nativeProfile?.model.model === visionModel, 'Actual vision model proof differs');
     report('custom-vision-pass', { model: visionModel, image: reference.digest, text });
   }

@@ -22,11 +22,11 @@ import {
   uploadImage,
 } from './native-image-steering-fixture.ts';
 
-type Created = Awaited<ReturnType<NativeImageProbe['service']['create']>>;
+type Created = Awaited<ReturnType<NativeImageProbe['service']['session.create']>>;
 async function idle(p: NativeImageProbe, target: ManagedPeer) {
   await until('native idle', async () => {
     try {
-      return (await p.service.get({ target })).state === 'idle';
+      return (await p.service['session.get']({ target })).state === 'idle';
     } catch {
       return false;
     }
@@ -37,17 +37,17 @@ async function completed(
   target: ManagedPeer,
   before: { generation: string; sequence: number },
 ) {
-  const records: Awaited<ReturnType<typeof p.service.native>>['records'] = [];
+  const records: Awaited<ReturnType<(typeof p.service)['native.read']>>['records'] = [];
   let cursor = before;
   await until('native completion', async () => {
-    const frame = await p.service.native({ target, cursor });
+    const frame = await p.service['native.read']({ target, cursor });
     check(
       !JSON.stringify(frame).includes('data:image/'),
       'Inline image bytes leaked into content stream',
     );
     records.push(...frame.baseline, ...frame.records);
     cursor = { generation: frame.generation, sequence: frame.sequence };
-    const waited = await p.service.wait({ target, timeoutMs: 500 });
+    const waited = await p.service['session.wait']({ target, timeoutMs: 500 });
     check(waited.outcome !== 'failed', 'Native model failed');
     return (
       waited.outcome === 'completed' &&
@@ -64,17 +64,20 @@ async function orderedImages(
   created: Created,
   references: AttachmentReference[],
 ) {
-  const before = await p.service.native({ target: created.target });
+  const before = await p.service['native.read']({ target: created.target });
   const request = {
     target: created.target,
     messageId: crypto.randomUUID(),
     images: references,
     body: "Inspect the two images attached to this message. In attachment order, write one numbered line per image describing the left object's color and shape, then the right object's color and shape. Use English. No tools, other messages or follow-up questions.",
   };
-  await p.service.message(request);
-  check((await p.service.message(request)).duplicate, 'Multiple-image retry changed identity');
+  await p.service['message.send'](request);
+  check(
+    (await p.service['message.send'](request)).duplicate,
+    'Multiple-image retry changed identity',
+  );
   await refusal(
-    () => p.service.message({ ...request, images: [...references].reverse() }),
+    () => p.service['message.send']({ ...request, images: [...references].reverse() }),
     'IDEMPOTENCY_CONFLICT',
   );
   const answer = await completed(p, created.target, {
@@ -94,12 +97,12 @@ async function orderedImages(
     ),
     'Multiple-image semantic order differs from attachment order',
   );
-  const history = await p.service.history({
+  const history = await p.service['history.read']({
     target: created.target,
     registrationGeneration: created.registrationGeneration,
     limit: 32,
   });
-  const current = await p.service.get({ target: created.target });
+  const current = await p.service['session.get']({ target: created.target });
   check(current.turn, 'Multiple-image native turn missing');
   const historyImages = history.entries
     .filter((row) => row.turnId === current.turn?.id)
@@ -136,7 +139,7 @@ async function vision(p: NativeImageProbe, created: Created) {
   ];
   const answers: string[] = [];
   for (const [index, reference] of references.entries()) {
-    const before = await p.service.native({ target });
+    const before = await p.service['native.read']({ target });
     const request = {
       target,
       messageId: crypto.randomUUID(),
@@ -146,8 +149,11 @@ async function vision(p: NativeImageProbe, created: Created) {
           ? "For this image and each image I send next, report only the left object's color and shape followed by the right object's color and shape, in English. Inspect the actual pixels. No tools, other messages or follow-up questions."
           : '',
     };
-    await p.service.message(request);
-    check((await p.service.message(request)).duplicate, 'Image message retry changed identity');
+    await p.service['message.send'](request);
+    check(
+      (await p.service['message.send'](request)).duplicate,
+      'Image message retry changed identity',
+    );
     answers.push(
       await completed(p, target, { generation: before.generation, sequence: before.sequence }),
     );
@@ -162,7 +168,7 @@ async function vision(p: NativeImageProbe, created: Created) {
   );
   await orderedImages(p, created, references);
   await orderedImages(p, created, [...references].reverse());
-  const history = await p.service.history({ target, registrationGeneration, limit: 32 });
+  const history = await p.service['history.read']({ target, registrationGeneration, limit: 32 });
   check(
     references.every((ref) =>
       history.entries.some((row) => row.images.some((image) => image.digest === ref.digest)),
@@ -212,8 +218,8 @@ async function largeImage(
   try {
     const bytes = nearLimitImage(),
       reference = await uploadImage(p, created.target, bytes, 'image/png');
-    const before = await p.service.native({ target: created.target });
-    await p.service.message({
+    const before = await p.service['native.read']({ target: created.target });
+    await p.service['message.send']({
       target: created.target,
       messageId: crypto.randomUUID(),
       images: [reference],
@@ -223,7 +229,7 @@ async function largeImage(
       generation: before.generation,
       sequence: before.sequence,
     });
-    const history = await p.service.history({
+    const history = await p.service['history.read']({
       target: created.target,
       registrationGeneration: created.registrationGeneration,
       limit: 64,
@@ -257,18 +263,18 @@ async function largeImage(
 async function steering(p: NativeImageProbe, created: Created, image: AttachmentReference) {
   const { target, registrationGeneration } = created;
   await idle(p, target);
-  const baseline = await p.service.native({ target });
-  await p.service.message({
+  const baseline = await p.service['native.read']({ target });
+  await p.service['message.send']({
     target,
     messageId: crypto.randomUUID(),
     body: 'Use the shell tool once to run sleep 12, then reply ORIGINAL_MARKER. This is a bounded concurrency test. Do not edit files or contact other sessions.',
   });
-  let frame = await p.service.native({ target });
+  let frame = await p.service['native.read']({ target });
   await until('active native tool', async () => {
-    frame = await p.service.native({ target });
+    frame = await p.service['native.read']({ target });
     return frame.baseline.some((row) => row.kind === 'tool' && row.status === 'started');
   });
-  const active = await p.service.get({ target });
+  const active = await p.service['session.get']({ target });
   check(active.turn?.status === 'inProgress', 'No active steer target');
   const input = {
     target,
@@ -279,7 +285,7 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
     body: 'Correction: after the tool returns, reply STEERED_MARKER instead of the original marker. Do not launch any further tools.',
   };
   const queuedId = crypto.randomUUID();
-  await p.service.message({
+  await p.service['message.send']({
     target,
     messageId: queuedId,
     body: 'Report the colors and shapes only, in English. No tools.',
@@ -287,13 +293,13 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
     defer: true,
   });
   await refusal(
-    () => p.service.steer({ ...input, generation: crypto.randomUUID() }),
+    () => p.service['turn.steer']({ ...input, generation: crypto.randomUUID() }),
     'IDENTITY_MISMATCH',
   );
-  const receipt = await p.service.steer(input);
+  const receipt = await p.service['turn.steer'](input);
   check(receipt.state === 'submitted', 'Native steer acceptance unresolved');
   check(
-    (await p.service.steer(input)).clientUserMessageId === receipt.clientUserMessageId,
+    (await p.service['turn.steer'](input)).clientUserMessageId === receipt.clientUserMessageId,
     'Steer duplicate identity changed',
   );
   const answer = await completed(p, target, {
@@ -301,7 +307,7 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
     sequence: baseline.sequence,
   });
   check(answer.includes('STEERED_MARKER'), 'Original native turn ignored steering');
-  const history = await p.service.history({ target, registrationGeneration, limit: 32 });
+  const history = await p.service['history.read']({ target, registrationGeneration, limit: 32 });
   check(
     history.entries.some(
       (row) =>
@@ -313,7 +319,7 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
   );
   check(
     (
-      await p.service.steeringOperation({
+      await p.service['turn.steering-operation']({
         target,
         registrationGeneration,
         operationId: input.operationId,
@@ -321,22 +327,22 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
     ).operation?.state === 'submitted',
     'Steering receipt unavailable',
   );
-  const beforeQuestion = await p.service.native({ target });
-  await p.service.message({
+  const beforeQuestion = await p.service['native.read']({ target });
+  await p.service['message.send']({
     target,
     messageId: crypto.randomUUID(),
     body: 'Ask one native request_user_input question with exactly two choices Red and Blue. Wait for the answer and then say ANSWERED_MARKER. No other tools.',
   });
-  let pendingFrame = await p.service.native({ target });
+  let pendingFrame = await p.service['native.read']({ target });
   await until('native pending input', async () => {
-    pendingFrame = await p.service.native({ target });
+    pendingFrame = await p.service['native.read']({ target });
     return pendingFrame.pending.some((row) => row.kind === 'input');
   });
   const pending = pendingFrame.pending.find((row) => row.kind === 'input');
   check(pending, 'Pending input vanished');
   await refusal(
     () =>
-      p.service.steer({
+      p.service['turn.steer']({
         ...input,
         generation: pendingFrame.generation,
         expectedTurnId: pending.turnId,
@@ -344,7 +350,7 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
       }),
     'BUSY',
   );
-  await p.service.respond({
+  await p.service['native.respond']({
     target,
     generation: pendingFrame.generation,
     operationId: crypto.randomUUID(),
@@ -383,7 +389,7 @@ async function restart(
   const before = readManagedRuntimeStatus(p.machine, session).snapshot;
   check(before, 'Restart baseline missing');
   await killSession(p.machine, session.name);
-  await p.service.start({ target: created.target });
+  await p.service['session.start']({ target: created.target });
   await until('provider restart', async () => {
     const next = readManagedRuntimeStatus(p.machine, session).snapshot;
     return next !== null && next.generation !== before.generation && next.state === 'idle';
@@ -394,7 +400,7 @@ async function restart(
     after.nativeSession?.id === before.nativeSession?.id,
     'Restart changed provider continuation',
   );
-  const history = await p.service.history({
+  const history = await p.service['history.read']({
     target: created.target,
     registrationGeneration: created.registrationGeneration,
     limit: 64,
@@ -448,9 +454,9 @@ try {
           : { provider: 'openrouter', model: openModel.model ?? openModel.id },
       ...(runtime === 'codex' ? { launchRecipe: { id: 'native', revision: '1' } } : {}),
     };
-    const receipt = await p.service.create(request);
+    const receipt = await p.service['session.create'](request);
     created.push(receipt);
-    const retry = await p.service.create(request);
+    const retry = await p.service['session.create'](request);
     check(
       retry.duplicate && retry.target.threadId === receipt.target.threadId,
       'Create duplicate spawned another writer',
@@ -477,13 +483,13 @@ try {
   const codexImages = await vision(p, codex),
     openImages = await vision(p, opencode);
   await largeImage(p, opencode, openImages);
-  const openFrame = await p.service.native({ target: opencode.target }),
-    openRow = await p.service.get({ target: opencode.target });
+  const openFrame = await p.service['native.read']({ target: opencode.target }),
+    openRow = await p.service['session.get']({ target: opencode.target });
   const openTurn = openRow.turn;
   check(openTurn, 'Native OpenCode turn evidence missing');
   await refusal(
     () =>
-      p.service.steer({
+      p.service['turn.steer']({
         target: opencode.target,
         registrationGeneration: opencode.registrationGeneration,
         generation: openFrame.generation,
@@ -502,7 +508,7 @@ try {
   const before = loadLedger(p.machine).length;
   await refusal(
     () =>
-      p.service.message({
+      p.service['message.send']({
         target: opencode.target,
         messageId: crypto.randomUUID(),
         body: 'Describe this image.',

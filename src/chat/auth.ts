@@ -43,12 +43,9 @@ export function hasChatCredential(
  * process tree is. Ancestry is kernel truth — a process cannot choose its own parent — which is why
  * this check is worth its cost and why nothing here reads a variable the caller controls.
  *
- * Two transports qualify, on the same footing:
- *  - **sshd** — the OS authenticated the connection before anything ran.
- *  - **the stitchwire agent** — the daemon that authenticated to the broker with THIS machine's
- *    token, and executes only what this machine's own allowlist names. It exists because ssh cannot
- *    reach a machine with no address, which is every laptop; the connection direction differs, the
- *    strength of the evidence does not.
+ * Two transports qualify, on the same footing: sshd, whose connection was authenticated by the OS,
+ * and one deployment-declared adapter ancestor. The provider identity stays in machine config and
+ * never becomes source-level protocol knowledge.
  *
  * The walk reads the tree, it does not shell out per level. Measured before this shape existed: a
  * `ps` per ancestor cost ~7ms on macOS and **~104ms on Linux**, paid synchronously on every inbound
@@ -56,40 +53,40 @@ export function hasChatCredential(
  * spawns. Depth was never the problem (two levels), the spawns were. Caching would not have helped:
  * the receiver is a fresh process per message, so there is nothing to cache across.
  */
-export type RemoteTransport = 'ssh' | 'wire';
+export type RemoteTransport = 'ssh' | 'remote';
 
-export function remoteTransportAncestor(startPid = process.ppid): RemoteTransport | null {
+export function remoteTransportAncestor(
+  m: Pick<MachineConfig, 'remoteTransport'>,
+  startPid = process.ppid,
+): RemoteTransport | null {
   const parentOf = PLATFORM === 'linux' ? procParent : psParent;
   let pid = startPid;
   for (let depth = 0; depth < 16 && pid > 1; depth++) {
     const entry = parentOf(pid);
     if (entry === null) return null;
     if (entry.command === 'sshd' || entry.command.startsWith('sshd:')) return 'ssh';
-    if (isStitchwireAgent(entry.args)) return 'wire';
+    if (isTrustedRemoteAncestor(entry.args, m.remoteTransport?.trustedAncestor)) return 'remote';
     if (!Number.isInteger(entry.parent) || entry.parent <= 0 || entry.parent === pid) return null;
     pid = entry.parent;
   }
   return null;
 }
 
-/** Kept as the historical name and shape — every existing caller and test asks a boolean question. */
-export function hasSshdAncestor(startPid = process.ppid): boolean {
-  return remoteTransportAncestor(startPid) !== null;
+export function hasAuthenticatedRemoteAncestor(
+  m: Pick<MachineConfig, 'remoteTransport'>,
+  startPid = process.ppid,
+): boolean {
+  return remoteTransportAncestor(m, startPid) !== null;
 }
 
-/**
- * Is this ancestor the stitchwire agent?
- *
- * Matched on the full command line rather than on `comm`, because the agent is launched as
- * `bun /path/stitchwire agent` and its `comm` is therefore `bun` — a name shared with half the
- * fleet. Both tokens are required: the binary, and the `agent` verb. `stitchwire call …` is a
- * CALLER, never a receiver, and must not confer admission on anything descending from it.
- */
-export function isStitchwireAgent(args: string): boolean {
-  if (args === '') return false;
+/** Match deployment-owned receiver identity without embedding a provider name or path. */
+export function isTrustedRemoteAncestor(
+  args: string,
+  trusted: { executable: string; argument: string } | undefined,
+): boolean {
+  if (args === '' || trusted === undefined) return false;
   const tokens = args.split(/\s+/);
-  const hasBinary = tokens.some((t) => t === 'stitchwire' || t.endsWith('/stitchwire'));
-  return hasBinary && tokens.includes('agent');
+  return tokens.includes(trusted.executable) && tokens.includes(trusted.argument);
 }
 
 export interface ProcEntry {

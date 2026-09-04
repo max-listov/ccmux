@@ -14,12 +14,12 @@ export async function customResident(p: NativeImageProbe, receipt: ControlCreate
   const database = join(managedRuntimeRoot(p.machine, session), 'conversation.sqlite');
   const before = await stat(database);
   const beforeWal = await stat(`${database}-wal`).catch(() => null);
-  const frame = await p.service.native({ target: receipt.target });
+  const frame = await p.service['native.read']({ target: receipt.target });
   check(frame.baseline.length > 0, 'Read proof needs nonempty native content');
   const latencies: number[] = [];
   const read = async () => {
     const start = performance.now();
-    const row = await p.service.get({ target: receipt.target });
+    const row = await p.service['session.get']({ target: receipt.target });
     check(row.availability === 'live', 'Prepared reader lost its producer');
     latencies.push(performance.now() - start);
   };
@@ -58,7 +58,7 @@ export async function customResident(p: NativeImageProbe, receipt: ControlCreate
     before.mtimeMs === after.mtimeMs && beforeWal?.mtimeMs === afterWal?.mtimeMs,
     'Prepared reads mutated canonical history',
   );
-  const final = await p.service.native({ target: receipt.target });
+  const final = await p.service['native.read']({ target: receipt.target });
   check(
     final.nativeProfile?.turnId === frame.nativeProfile?.turnId,
     'Resident window started another model run',

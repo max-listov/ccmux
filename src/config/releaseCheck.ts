@@ -119,7 +119,7 @@ export function bestKnownRelease(seen: readonly (string | null)[]): string | nul
 }
 
 /** The release standing of this machine, as the JSON contract reports it. The shape lives in the
- *  schema, like every other wire shape — there is one definition, not two that can drift. */
+ *  schema, like every other transport shape — there is one definition, not two that can drift. */
 export function releaseStanding(m: MachineConfig, current: string): ReleaseStanding {
   const check = readReleaseCheck(m);
   return {

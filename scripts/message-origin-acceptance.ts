@@ -44,7 +44,7 @@ try {
     models.find((row) => row.id === 'gpt-5.6-luna' && row.inputModalities.includes('image')) ??
     models.find((row) => row.inputModalities.includes('image'));
   check(model, 'No native image model');
-  const created = await p.service.create({
+  const created = await p.service['session.create']({
     requestId: crypto.randomUUID(),
     name: 'origin-probe',
     workspace: join(p.root, 'codex'),
@@ -55,7 +55,7 @@ try {
   });
   await until('native idle positive baseline', async () => {
     try {
-      return (await p.service.get({ target: created.target })).state === 'idle';
+      return (await p.service['session.get']({ target: created.target })).state === 'idle';
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'UNAVAILABLE') return false;
       throw error;
@@ -79,15 +79,15 @@ try {
   const origin = input.origin;
   check(origin, 'Missing attribution');
   await refusal(
-    () => p.service.message({ ...input, origin: { ...origin, applicationId: 'forged' } }),
+    () => p.service['message.send']({ ...input, origin: { ...origin, applicationId: 'forged' } }),
     'ORIGIN_REFUSED',
   );
   await refusal(
-    () => p.service.message({ ...input, registrationGeneration: crypto.randomUUID() }),
+    () => p.service['message.send']({ ...input, registrationGeneration: crypto.randomUUID() }),
     'IDENTITY_MISMATCH',
   );
   check(loadLedger(p.machine).length === 0, 'Refusal appended input');
-  const receipt = await p.service.message(input);
+  const receipt = await p.service['message.send'](input);
   check(
     receipt.origin.ingress === 'service' &&
       receipt.origin.actor === 'human' &&
@@ -95,9 +95,9 @@ try {
       receipt.notification === 'conversation',
     'Incorrect origin receipt',
   );
-  check((await p.service.message(input)).duplicate, 'Retry duplicated input');
+  check((await p.service['message.send'](input)).duplicate, 'Retry duplicated input');
   await refusal(
-    () => p.service.message({ ...input, notification: 'owner' }),
+    () => p.service['message.send']({ ...input, notification: 'owner' }),
     'IDEMPOTENCY_CONFLICT',
   );
   // Keep a real native reader open during replacement; the server must cancel its source.
@@ -183,20 +183,20 @@ try {
     await nativeClient.close();
   }
   // Accepted input and retained image survive replacement at any pickup phase.
-  check((await p.service.message(input)).duplicate, 'Restart changed accepted identity');
+  check((await p.service['message.send'](input)).duplicate, 'Restart changed accepted identity');
   const selector = {
     target: created.target,
     registrationGeneration: created.registrationGeneration,
     messageId: input.messageId,
   };
   await until('exact correlated native completion', async () => {
-    const result = await p.service.messageOperation(selector);
+    const result = await p.service['message.operation'](selector);
     check(result.evidence?.state !== 'failed', 'Native turn failed');
     return result.evidence?.state === 'completed';
   });
-  const operation = await p.service.messageOperation(selector);
+  const operation = await p.service['message.operation'](selector);
   check(operation.evidence?.turnId, 'No exact native turn');
-  const history = await p.service.history({
+  const history = await p.service['history.read']({
     target: created.target,
     registrationGeneration: created.registrationGeneration,
     limit: 32,

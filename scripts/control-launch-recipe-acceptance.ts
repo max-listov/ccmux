@@ -6,14 +6,9 @@ import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 import { controlSocket } from '../src/control/path.ts';
-import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { hasSession, killSession, newSession } from '../src/tmux/tmux.ts';
+import { localControlFetch } from './control-client.ts';
 
 const configArgument = process.argv[2];
 if (
@@ -154,28 +149,11 @@ await writeMachine(activeMachine);
 await restartDaemon(activeMachine);
 
 const payloads: string[] = [];
-const remote = createCcmuxControlServiceClient(async (url, init) => {
-  const route = new URL(String(url));
-  const operation = ControlServiceOperationSchema.parse(
-    route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-  );
-  const payload = typeof init?.body === 'string' ? init.body : '{}';
-  payloads.push(payload);
-  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-    unix: controlSocket(activeMachine),
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      v: 1,
-      id: crypto.randomUUID(),
-      caller: activeMachine.rcPrefix,
-      service: 'ccmux.control',
-      revision: CCMUX_CONTROL_SERVICE_REVISION,
-      operation,
-      payload,
-    }),
-  });
-});
+const remote = createInjectedControlClient(
+  localControlFetch(controlSocket(activeMachine), activeMachine.rcPrefix, (value) => {
+    if (typeof value === 'string') payloads.push(value);
+  }),
+);
 
 async function expectCode(run: () => Promise<unknown>, code: string): Promise<void> {
   try {
@@ -190,7 +168,7 @@ async function expectCode(run: () => Promise<unknown>, code: string): Promise<vo
   throw new Error(`Expected ${code}, call succeeded`);
 }
 
-let target: Awaited<ReturnType<typeof remote.create>>['target'] | null = null;
+let target: Awaited<ReturnType<(typeof remote)['session.create']>>['target'] | null = null;
 let archived = false;
 try {
   const createInput = {
@@ -200,9 +178,9 @@ try {
     flags: [],
     launchRecipe: { id: recipeId, revision },
   };
-  const created = await remote.create(createInput);
+  const created = await remote['session.create'](createInput);
   target = created.target;
-  const retried = await remote.create(createInput);
+  const retried = await remote['session.create'](createInput);
   check(!created.duplicate && retried.duplicate, 'same request did not reconcile as one create');
   check(
     JSON.stringify(created.target) === JSON.stringify(retried.target),
@@ -228,15 +206,15 @@ try {
   );
   const before = readOwnedCodexStatus(activeMachine, session).snapshot;
   check(before !== null, 'recipe session has no native baseline');
-  let row: Awaited<ReturnType<typeof remote.get>> | null = null;
-  let native: Awaited<ReturnType<typeof remote.native>> | null = null;
+  let row: Awaited<ReturnType<(typeof remote)['session.get']>> | null = null;
+  let native: Awaited<ReturnType<(typeof remote)['native.read']>> | null = null;
   await waitFor(
     'recipe control projection',
     async () => {
       try {
         [row, native] = await Promise.all([
-          remote.get({ target: created.target }),
-          remote.native({ target: created.target, cursor: null }),
+          remote['session.get']({ target: created.target }),
+          remote['native.read']({ target: created.target, cursor: null }),
         ]);
         return true;
       } catch {
@@ -277,12 +255,12 @@ try {
   const after = readOwnedCodexStatus(activeMachine, session).snapshot;
   check(after?.threadId === session.uuid, 'recipe restart changed provider identity');
   check(
-    (await remote.get({ target })).launchRecipe?.digest === created.launchRecipe.digest,
+    (await remote['session.get']({ target })).launchRecipe?.digest === created.launchRecipe.digest,
     'recipe restart changed safe metadata',
   );
 
   await restartDaemon(activeMachine);
-  const daemonRetry = await remote.create(createInput);
+  const daemonRetry = await remote['session.create'](createInput);
   check(
     daemonRetry.duplicate && JSON.stringify(daemonRetry.target) === JSON.stringify(target),
     'daemon restart did not reconcile the accepted identity',
@@ -296,7 +274,7 @@ try {
   const unknownName = `unknown-${crypto.randomUUID().slice(0, 8)}`;
   await expectCode(
     () =>
-      remote.create({
+      remote['session.create']({
         requestId: crypto.randomUUID(),
         name: unknownName,
         workspace: root,
@@ -322,7 +300,7 @@ try {
   });
   await writeMachine(activeMachine);
   await restartDaemon(activeMachine);
-  await expectCode(() => remote.create(createInput), 'IDEMPOTENCY_CONFLICT');
+  await expectCode(() => remote['session.create'](createInput), 'IDEMPOTENCY_CONFLICT');
   check(
     loadSessions(activeMachine).find((item) => item.name === sessionName)?.uuid === session.uuid,
     'changed recipe altered accepted identity',
@@ -331,7 +309,7 @@ try {
   activeMachine = MachineConfigSchema.parse({ ...activeMachine, launchRecipes: {} });
   await writeMachine(activeMachine);
   await restartDaemon(activeMachine);
-  await expectCode(() => remote.create(createInput), 'LAUNCH_RECIPE_UNAVAILABLE');
+  await expectCode(() => remote['session.create'](createInput), 'LAUNCH_RECIPE_UNAVAILABLE');
 
   activeMachine = MachineConfigSchema.parse({
     ...activeMachine,
@@ -339,7 +317,7 @@ try {
   });
   await writeMachine(activeMachine);
   await restartDaemon(activeMachine);
-  const archive = await remote.archive({ target });
+  const archive = await remote['session.archive']({ target });
   archived = archive.archived;
   check(archived, 'recipe session archive failed');
   check(
@@ -365,5 +343,5 @@ try {
     }),
   );
 } finally {
-  if (target !== null && !archived) await remote.archive({ target }).catch(() => {});
+  if (target !== null && !archived) await remote['session.archive']({ target }).catch(() => {});
 }

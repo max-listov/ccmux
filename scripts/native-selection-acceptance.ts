@@ -2,6 +2,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { ApiError } from 'stitchkit';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 import { createControlClient } from '../src/control/client.ts';
@@ -12,7 +13,6 @@ import type {
   ControlModel,
   ControlNativeSnapshot,
 } from '../src/control/schema.ts';
-import { ApiError } from '../src/control/serviceDescriptor.ts';
 import { type NativeTurnOptions, NativeTurnOptionsSchema } from '../src/runtime/selectionSchema.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
@@ -129,7 +129,7 @@ async function refused(code: string, operation: () => Promise<unknown>) {
 async function ready(target: ManagedPeer) {
   await until('native ready', async () => {
     try {
-      const row = await service.get({ target });
+      const row = await service['session.get']({ target });
       return row.availability === 'live' && row.state === 'idle';
     } catch (error) {
       if (error instanceof ApiError && error.code === 'UNAVAILABLE') return false;
@@ -141,7 +141,7 @@ async function catalog(runtime: 'codex' | 'opencode') {
   const rows: ControlModel[] = [];
   let cursor: string | null = null;
   do {
-    const page = await service.models({ runtime, cursor });
+    const page = await service['model.list']({ runtime, cursor });
     rows.push(...page.data);
     cursor = page.nextCursor;
   } while (cursor !== null);
@@ -175,24 +175,27 @@ function options(
 }
 async function change(receipt: ControlCreateReceipt, next: NativeTurnOptions) {
   await ready(receipt.target);
-  const current = (await service.selection(selectionTarget(receipt))).current;
+  const current = (await service['selection.read'](selectionTarget(receipt))).current;
   const input = {
     ...selectionTarget(receipt),
     operationId: crypto.randomUUID(),
     expectedRevision: current.revision,
     options: next,
   };
-  const result = await service.select(input);
+  const result = await service['selection.update'](input);
   check(
     result.current.revision === current.revision + 1 && same(result.current.options, next),
     'Default selection was not accepted exactly',
   );
-  check(same(await service.select(input), result), 'Selection retry changed its result');
+  check(
+    same(await service['selection.update'](input), result),
+    'Selection retry changed its result',
+  );
   await refused('REVISION_CONFLICT', () =>
-    service.select({ ...input, operationId: crypto.randomUUID() }),
+    service['selection.update']({ ...input, operationId: crypto.randomUUID() }),
   );
   await refused('IDEMPOTENCY_CONFLICT', () =>
-    service.select({ ...input, expectedRevision: result.current.revision }),
+    service['selection.update']({ ...input, expectedRevision: result.current.revision }),
   );
   return result.current;
 }
@@ -204,11 +207,11 @@ async function expectEvidence(
 ) {
   let proof: ControlNativeSnapshot | undefined;
   await until('native terminal selection evidence', async () => {
-    const frame = await service.native({
+    const frame = await service['native.read']({
       target: receipt.target,
       cursor: { generation: before.generation, sequence: before.sequence },
     });
-    const row = await service.get({ target: receipt.target });
+    const row = await service['session.get']({ target: receipt.target });
     check(
       row.turn?.status !== 'failed' && row.turn?.status !== 'interrupted',
       'Native selection turn failed',
@@ -246,7 +249,7 @@ async function expectEvidence(
   });
   check(proof, 'No native selection proof');
   await until('completed native turn settles after delivery receipt', async () => {
-    const settled = await service.wait({ target: receipt.target, timeoutMs: 1000 });
+    const settled = await service['session.wait']({ target: receipt.target, timeoutMs: 1000 });
     check(
       settled.outcome !== 'failed' && settled.outcome !== 'interrupted',
       'Completed native turn failed while settling',
@@ -272,28 +275,28 @@ async function turn(
   busy = false,
 ) {
   await ready(receipt.target);
-  const before = await service.native({ target: receipt.target });
+  const before = await service['native.read']({ target: receipt.target });
   const marker = `SELECTION_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
-  const defaults = (await service.selection(selectionTarget(receipt))).current;
+  const defaults = (await service['selection.read'](selectionTarget(receipt))).current;
   const message = {
     target: receipt.target,
     messageId: crypto.randomUUID(),
     body: `Reply exactly ${marker}. Do not use tools or edit files.`,
     ...(override === undefined ? {} : { options: override }),
   };
-  const sent = await service.message(message);
+  const sent = await service['message.send'](message);
   check(
     same(sent.turnOptions, { revision: defaults.revision, options: expected }),
     'Message did not pin accepted options',
   );
-  check((await service.message(message)).duplicate, 'Message retry was not idempotent');
+  check((await service['message.send'](message)).duplicate, 'Message retry was not idempotent');
   if (busy) {
     await until(
       'positive native busy turn',
-      async () => (await service.get({ target: receipt.target })).state === 'working',
+      async () => (await service['session.get']({ target: receipt.target })).state === 'working',
     );
     await refused('BUSY', () =>
-      service.select({
+      service['selection.update']({
         ...selectionTarget(receipt),
         operationId: crypto.randomUUID(),
         expectedRevision: defaults.revision,
@@ -303,7 +306,7 @@ async function turn(
   }
   await expectEvidence(receipt, expected, before, marker);
   check(
-    same((await service.selection(selectionTarget(receipt))).current, defaults),
+    same((await service['selection.read'](selectionTarget(receipt))).current, defaults),
     'Per-turn dispatch changed session defaults',
   );
 }
@@ -313,22 +316,22 @@ async function pending(
   kind: 'input' | 'approval',
 ) {
   await ready(receipt.target);
-  const before = await service.native({ target: receipt.target });
+  const before = await service['native.read']({ target: receipt.target });
   const marker = `RESPONSE_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const body =
     kind === 'approval'
       ? `Use the bash tool exactly once to execute sleep 5; printf selection-probe. Wait for permission. Then reply exactly ${marker}.`
       : `Use the native ${receipt.target.agent === 'codex' ? 'request_user_input' : 'question'} tool exactly once to ask me to choose Red or Blue. Wait for my answer, then reply exactly ${marker}. Do not use any other tools or edit files.`;
-  await service.message({ target: receipt.target, messageId: crypto.randomUUID(), body });
+  await service['message.send']({ target: receipt.target, messageId: crypto.randomUUID(), body });
   let frame: ControlNativeSnapshot | undefined;
   await until(`native ${kind} pending`, async () => {
-    const read = await service.native({ target: receipt.target });
+    const read = await service['native.read']({ target: receipt.target });
     if (read.pending.some((item) => item.kind === kind)) {
       frame = read;
       return true;
     }
     check(
-      (await service.get({ target: receipt.target })).turn?.status !== 'failed',
+      (await service['session.get']({ target: receipt.target })).turn?.status !== 'failed',
       'Pending probe turn failed',
     );
     return false;
@@ -336,16 +339,16 @@ async function pending(
   check(frame, 'Pending frame is absent');
   const request = frame.pending.find((item) => item.kind === kind);
   check(request, 'Exact pending request is absent');
-  const current = (await service.selection(selectionTarget(receipt))).current;
+  const current = (await service['selection.read'](selectionTarget(receipt))).current;
   await refused('BUSY', () =>
-    service.select({
+    service['selection.update']({
       ...selectionTarget(receipt),
       operationId: crypto.randomUUID(),
       expectedRevision: current.revision,
       options: selected,
     }),
   );
-  await service.respond({
+  await service['native.respond']({
     target: receipt.target,
     operationId: crypto.randomUUID(),
     generation: frame.generation,
@@ -365,10 +368,10 @@ async function pending(
   if (kind === 'approval') {
     await until(
       'positive native approved tool busy turn',
-      async () => (await service.get({ target: receipt.target })).state === 'working',
+      async () => (await service['session.get']({ target: receipt.target })).state === 'working',
     );
     await refused('BUSY', () =>
-      service.select({
+      service['selection.update']({
         ...selectionTarget(receipt),
         operationId: crypto.randomUUID(),
         expectedRevision: current.revision,
@@ -428,15 +431,21 @@ try {
       workspace: join(root, runtime),
       modelSelection: a.model,
     };
-    const receipt = await service.create(request);
+    const receipt = await service['session.create'](request);
     accepted.push({ request, receipt, latest: b });
-    check((await service.create(request)).duplicate, 'Create retry did not reuse managed identity');
-    await turn(receipt, (await service.selection(selectionTarget(receipt))).current.options);
+    check(
+      (await service['session.create'](request)).duplicate,
+      'Create retry did not reuse managed identity',
+    );
+    await turn(
+      receipt,
+      (await service['selection.read'](selectionTarget(receipt))).current.options,
+    );
     await change(receipt, b);
     await turn(receipt, b, undefined, runtime === 'codex');
     await turn(receipt, a, a);
     await turn(receipt, b);
-    const delayedBefore = await service.native({ target: receipt.target });
+    const delayedBefore = await service['native.read']({ target: receipt.target });
     const delayedMarker = `DELAYED_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const delayed = {
       target: receipt.target,
@@ -444,19 +453,19 @@ try {
       notBefore: new Date(Date.now() + 8_000).toISOString(),
       body: `Reply exactly ${delayedMarker}. Do not use tools or edit files.`,
     };
-    const pinned = await service.message(delayed);
+    const pinned = await service['message.send'](delayed);
     check(
       same(pinned.turnOptions?.options, b),
       'Delayed message was not pinned to current defaults',
     );
     await change(receipt, a);
     check(
-      same((await service.message(delayed)).turnOptions, pinned.turnOptions),
+      same((await service['message.send'](delayed)).turnOptions, pinned.turnOptions),
       'Delayed retry changed pinned options',
     );
     await expectEvidence(receipt, b, delayedBefore, delayedMarker);
     check(
-      same((await service.selection(selectionTarget(receipt))).current.options, a),
+      same((await service['selection.read'](selectionTarget(receipt))).current.options, a),
       'Delayed dispatch rolled back current defaults',
     );
     report('delayed-options', {
@@ -476,9 +485,9 @@ try {
       await pending(receipt, a, 'input');
       await pending(receipt, a, 'approval');
     }
-    const current = (await service.selection(selectionTarget(receipt))).current;
+    const current = (await service['selection.read'](selectionTarget(receipt))).current;
     await refused('UNSUPPORTED', () =>
-      service.select({
+      service['selection.update']({
         ...selectionTarget(receipt),
         operationId: crypto.randomUUID(),
         expectedRevision: current.revision,
@@ -486,7 +495,7 @@ try {
       }),
     );
     await refused('UNSUPPORTED', () =>
-      service.select({
+      service['selection.update']({
         ...selectionTarget(receipt),
         operationId: crypto.randomUUID(),
         expectedRevision: current.revision,
@@ -529,16 +538,16 @@ try {
         prior.snapshot.providerPid,
       'Daemon restart replaced a provider writer',
     );
-    const defaults = (await service.selection(selectionTarget(entry.receipt))).current;
+    const defaults = (await service['selection.read'](selectionTarget(entry.receipt))).current;
     check(same(defaults.options, entry.latest), 'Daemon restart lost latest defaults');
     await killSession(m, prior.session.name);
-    await service.start({ target: entry.receipt.target });
+    await service['session.start']({ target: entry.receipt.target });
     await until(
       'provider epoch replacement',
       async () => {
         try {
           return (
-            (await service.native({ target: entry.receipt.target })).generation !==
+            (await service['native.read']({ target: entry.receipt.target })).generation !==
             prior.snapshot.generation
           );
         } catch {
@@ -554,7 +563,7 @@ try {
         resumed?.nativeSession?.id === prior.session.nativeSession?.id,
       'Provider restart changed managed/native identity',
     );
-    const retry = await service.create(entry.request);
+    const retry = await service['session.create'](entry.request);
     check(
       retry.duplicate &&
         same(retry.modelSelection, entry.request.modelSelection) &&
@@ -562,11 +571,11 @@ try {
       'Late create receipt lost immutable selection',
     );
     check(
-      same((await service.selection(selectionTarget(entry.receipt))).current, defaults),
+      same((await service['selection.read'](selectionTarget(entry.receipt))).current, defaults),
       'Late create retry rolled back latest defaults',
     );
     await turn(entry.receipt, entry.latest);
-    await service.archive({ target: entry.receipt.target });
+    await service['session.archive']({ target: entry.receipt.target });
     report('restart', {
       runtime: entry.receipt.target.agent,
       targetHash: hash(prior.session.uuid),
@@ -596,7 +605,7 @@ try {
   process.exitCode = 1;
 } finally {
   for (const entry of accepted)
-    await service.archive({ target: entry.receipt.target }).catch(() => {});
+    await service['session.archive']({ target: entry.receipt.target }).catch(() => {});
   for (const name of await listSessionNames(m)) await killSession(m, name).catch(() => {});
   daemon.kill('SIGTERM');
   await daemon.exited;

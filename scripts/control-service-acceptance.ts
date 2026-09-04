@@ -9,14 +9,9 @@ import {
   createCcmuxNativeStreamProfile,
 } from '../src/control/nativeStreamContract.ts';
 import { controlSocket } from '../src/control/path.ts';
-import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import type { ManagedPeer } from '../src/types.ts';
+import { localControlFetch } from './control-client.ts';
 
 const workspace = Bun.argv[2];
 if (!workspace?.startsWith('/'))
@@ -30,26 +25,7 @@ const executable = resolvedExecutable;
 const machine = loadMachineConfig();
 const socket = controlSocket(machine);
 const local = createControlClient({ socket });
-const remote = createCcmuxControlServiceClient(async (url, init) => {
-  const route = new URL(String(url));
-  const operation = ControlServiceOperationSchema.parse(
-    route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-  );
-  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-    unix: socket,
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      v: 1,
-      id: crypto.randomUUID(),
-      caller: machine.rcPrefix,
-      service: 'ccmux.control',
-      revision: CCMUX_CONTROL_SERVICE_REVISION,
-      operation,
-      payload: typeof init?.body === 'string' ? init.body : '{}',
-    }),
-  });
-});
+const remote = createInjectedControlClient(localControlFetch(socket, machine.rcPrefix));
 
 const hash = (value: string): string =>
   createHash('sha256').update(value).digest('hex').slice(0, 16);
@@ -101,9 +77,9 @@ try {
   // Keep the real acceptance lane independent from account-level model-switch
   // notices: this is still the ordinary no-recipe create path.
   const flags = ['-m', 'gpt-5.6-luna'];
-  const created = await remote.create({ requestId, name, workspace, flags });
+  const created = await remote['session.create']({ requestId, name, workspace, flags });
   target = created.target;
-  const retried = await remote.create({ requestId, name, workspace, flags });
+  const retried = await remote['session.create']({ requestId, name, workspace, flags });
   const localRetry = await local['session.create']({ requestId, name, workspace, flags });
   if (
     created.duplicate ||
@@ -116,12 +92,12 @@ try {
 
   const preparedDeadline = Date.now() + 15_000;
   let localRow: Awaited<ReturnType<(typeof local)['session.get']>> | null = null;
-  let serviceRow: Awaited<ReturnType<typeof remote.get>> | null = null;
+  let serviceRow: Awaited<ReturnType<(typeof remote)['session.get']>> | null = null;
   while ((localRow === null || serviceRow === null) && Date.now() < preparedDeadline) {
     try {
       [localRow, serviceRow] = await Promise.all([
         local['session.get']({ target }),
-        remote.get({ target }),
+        remote['session.get']({ target }),
       ]);
     } catch {
       await Bun.sleep(250);
@@ -133,7 +109,7 @@ try {
     throw new Error('local and declared-service reads diverged');
 
   const messageId = crypto.randomUUID();
-  const accepted = await remote.message({
+  const accepted = await remote['message.send']({
     target,
     messageId,
     body: 'Reply exactly with CCMUX_SERVICE_READY and nothing else.',
@@ -144,14 +120,14 @@ try {
 
   const deadline = Date.now() + 120_000;
   let waitOutcome = 'timeout';
-  let native = await remote.native({ target, cursor: null });
+  let native = await remote['native.read']({ target, cursor: null });
   let responseSeen = native.baseline.some(
     (item) => item.kind === 'assistant' && item.text?.includes('CCMUX_SERVICE_READY'),
   );
   while (!responseSeen && Date.now() < deadline) {
-    const waited = await remote.wait({ target, timeoutMs: 25_000 });
+    const waited = await remote['session.wait']({ target, timeoutMs: 25_000 });
     waitOutcome = waited.outcome;
-    native = await remote.native({ target, cursor: null });
+    native = await remote['native.read']({ target, cursor: null });
     responseSeen = native.baseline.some(
       (item) => item.kind === 'assistant' && item.text?.includes('CCMUX_SERVICE_READY'),
     );
@@ -170,7 +146,7 @@ try {
   )
     throw new Error('native stream resume did not preserve cursor semantics');
 
-  const archive = await remote.archive({ target });
+  const archive = await remote['session.archive']({ target });
   archived = archive.archived;
   const snapshot = await local['session.list']();
   console.log(
@@ -202,6 +178,6 @@ try {
     }),
   );
 } finally {
-  if (target !== null && !archived) await remote.archive({ target }).catch(() => {});
+  if (target !== null && !archived) await remote['session.archive']({ target }).catch(() => {});
   await local.close();
 }

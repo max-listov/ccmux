@@ -286,7 +286,7 @@ closed a circle that could only be left by a command typed on the machine. The p
 seconds, is taken once at a time and reused for minutes, and a published catalog is always preferred
 to it. When it cannot be taken, the refusal names the command that publishes one, because a host
 with no runtime to ask leaves the caller with something to do rather than something to know. A row's `model` is
-the alias a caller selects with, not the wire id it resolves to, because that is the value a stored
+the alias a caller selects with, not the remote transport id it resolves to, because that is the value a stored
 selection carries. Effort levels are published per model from what the runtime reports: some models
 accept five levels and some accept none, and `effortAccepted` refuses a level its row does not list.
 The runtime reports no input modalities at all, so the catalog states `text` and `image` — a

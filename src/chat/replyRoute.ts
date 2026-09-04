@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { routeFor } from '../fleet/address.ts';
-import { isWirePeer, wireSocketPath } from '../fleet/wire.ts';
+import { isRemotePeer, remoteAdapterSocketPath } from '../fleet/remoteAdapter.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { codexAppAddress } from './identity.ts';
 
@@ -20,12 +20,12 @@ export type ReplyRoute = { replyable: true } | { replyable: false; reason: strin
  * point of this module existing.
  *
  * The bug it closes: the reply hint used to consult `fleet` (the ssh map) directly and nothing else,
- * so every machine reached over the wire — the transport that exists precisely for peers ssh cannot
+ * so every machine reached over the remote transport — the transport that exists precisely for peers ssh cannot
  * address — was declared unreachable while `ccmux msg <machine>:<session>` from that same box
  * delivered instantly. Asking the resolver means a direction that moves onto a new transport moves
  * the hint with it, and no second source of truth can drift from the first.
  *
- * The one thing checked beyond routing is the local end of the wire: `msg` resolves the exact remote
+ * The one thing checked beyond routing is the local end of the remote transport: `msg` resolves the exact remote
  * peer BEFORE queueing anything, so with no agent socket here the reply command would exit 1 rather
  * than queue for retry — and a command that errors is worse than none. Deliberately a file-existence
  * check, never a probe: this runs on the daemon's delivery cadence, and a timeout-shaped question
@@ -37,17 +37,17 @@ export function replyRouteFor(m: MachineConfig, machine: string, session: string
   const route = routeFor(`${machine}:${session}`, m);
   if (route.kind === 'error') return { replyable: false, reason: route.message };
   if (route.kind === 'local') return { replyable: true };
-  if (isWirePeer(m, route.machine)) {
-    const socket = wireSocketPath(m);
+  if (isRemotePeer(m, route.machine)) {
+    const socket = remoteAdapterSocketPath(m);
     if (socket === null)
       return {
         replyable: false,
-        reason: 'no stitchwire agent socket path is known here (HOME is unset)',
+        reason: 'no remote adapter socket path is known here (HOME is unset)',
       };
     if (!existsSync(socket))
       return {
         replyable: false,
-        reason: `the stitchwire agent is not running here — no socket at ${socket}`,
+        reason: `the remote adapter is not running here — no socket at ${socket}`,
       };
   }
   return { replyable: true };

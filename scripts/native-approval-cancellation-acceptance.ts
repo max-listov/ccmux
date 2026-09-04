@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
-import { createCcmuxControlServiceClient } from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
 import {
   check,
@@ -14,10 +14,10 @@ import {
 } from './native-image-steering-fixture.ts';
 
 const modulePath = process.argv[3];
-const makeClient: typeof createCcmuxControlServiceClient =
+const makeClient: typeof createInjectedControlClient =
   modulePath === undefined
-    ? createCcmuxControlServiceClient
-    : (await import(resolve(modulePath))).createCcmuxControlServiceClient;
+    ? createInjectedControlClient
+    : (await import(resolve(modulePath))).createInjectedControlClient;
 const cli = process.argv[2];
 const p = await nativeImageProbe({ ...(cli === undefined ? {} : { cli }), makeClient });
 
@@ -43,20 +43,20 @@ async function cancel(receipt: ControlCreateReceipt, body: string, file?: string
   await until('native approval fixture ready', async () => {
     try {
       return (
-        (await p.service.native({ target })).status === 'live' &&
-        (await p.service.get({ target })).state === 'idle'
+        (await p.service['native.read']({ target })).status === 'live' &&
+        (await p.service['session.get']({ target })).state === 'idle'
       );
     } catch {
       return false;
     }
   });
   const messageId = crypto.randomUUID();
-  await p.service.message({ target, messageId, body });
-  let native = await p.service.native({ target });
+  await p.service['message.send']({ target, messageId, body });
+  let native = await p.service['native.read']({ target });
   await until('native suspended request', async () => {
-    native = await p.service.native({ target });
+    native = await p.service['native.read']({ target });
     if (native.status === 'live' && native.pending.length === 1) return true;
-    const operation = await p.service.messageOperation({
+    const operation = await p.service['message.operation']({
       target,
       registrationGeneration,
       messageId,
@@ -96,29 +96,34 @@ async function cancel(receipt: ControlCreateReceipt, body: string, file?: string
   } else check(request.kind === 'input', 'Expected native input request');
   const input = { target, generation: native.generation, turnId: request.turnId };
   await refusal(
-    () => p.service.interrupt({ ...input, generation: crypto.randomUUID() }),
+    () => p.service['turn.interrupt']({ ...input, generation: crypto.randomUUID() }),
     'TURN_MISMATCH',
   );
-  await refusal(() => p.service.interrupt({ ...input, turnId: 'stale-turn' }), 'TURN_MISMATCH');
+  await refusal(
+    () => p.service['turn.interrupt']({ ...input, turnId: 'stale-turn' }),
+    'TURN_MISMATCH',
+  );
   check(
-    (await p.service.native({ target })).pending.some((row) => row.requestId === request.requestId),
+    (await p.service['native.read']({ target })).pending.some(
+      (row) => row.requestId === request.requestId,
+    ),
     'Refused interrupt mutated the request',
   );
-  await p.service.interrupt(input);
+  await p.service['turn.interrupt'](input);
   await until('exact native interruption and retired request', async () => {
-    const operation = await p.service.messageOperation({
+    const operation = await p.service['message.operation']({
       target,
       registrationGeneration,
       messageId,
     });
-    const frame = await p.service.native({ target });
+    const frame = await p.service['native.read']({ target });
     return (
       operation.evidence?.state === 'interrupted' &&
       operation.evidence.turnId === request.turnId &&
       frame.pending.length === 0
     );
   });
-  if (target.agent === 'opencode') await p.service.interrupt(input);
+  if (target.agent === 'opencode') await p.service['turn.interrupt'](input);
   if (file) check(readFileSync(file, 'utf8') === 'ORIGINAL', 'Suspended write executed');
   report('suspended-cancelled', {
     runtime: target.agent,
@@ -142,7 +147,7 @@ try {
         ? models.find((row) => row.model === 'gpt-5.6-luna')
         : models.find((row) => row.provider === 'openrouter' && row.id === 'z-ai/glm-5.3-flash');
     check(model, 'Native fixture model unavailable');
-    const receipt = await p.service.create({
+    const receipt = await p.service['session.create']({
       runtime,
       requestId: crypto.randomUUID(),
       name: `approval-${runtime}`,
@@ -167,13 +172,13 @@ try {
         'Use the native request_user_input tool now with one question: choose red or blue. Do not answer it yourself; wait for the human answer. Do not use any other tool.',
       );
     const messageId = crypto.randomUUID();
-    await p.service.message({
+    await p.service['message.send']({
       target: receipt.target,
       messageId,
       body: 'Reply RECOVERED only. Do not use tools.',
     });
     await until('subsequent usable turn', async () => {
-      const operation = await p.service.messageOperation({
+      const operation = await p.service['message.operation']({
         target: receipt.target,
         registrationGeneration: receipt.registrationGeneration,
         messageId,
@@ -181,7 +186,7 @@ try {
       return operation.evidence?.state === 'completed';
     });
     check(
-      (await p.service.get({ target: receipt.target })).identity.threadId ===
+      (await p.service['session.get']({ target: receipt.target })).identity.threadId ===
         receipt.target.threadId,
       'Cancellation changed managed identity',
     );

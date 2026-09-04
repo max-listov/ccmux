@@ -9,7 +9,7 @@ import { customFixture as fixture } from './custom-fixture.ts';
  * These turns run against the published OpenAI-compatible adapter, not a mock model.
  *
  * A stubbed `create()` proves the composition is wired; it cannot prove the thing most likely to be
- * wrong about a new provider — that a real local server's wire format is decoded into the text,
+ * wrong about a new provider — that a real local server's transport format is decoded into the text,
  * tool calls, usage and terminal reason this runtime reports. So the model is real and the network
  * is the stub, which puts the adapter's own decoding inside the test rather than beside it.
  */

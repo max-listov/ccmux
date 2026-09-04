@@ -59,7 +59,7 @@ async function receive(
 
 async function send(
   configPath: string,
-  transport: 'ssh' | 'wire' | null,
+  transport: 'ssh' | 'remote' | null,
   args: string[],
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const env: Record<string, string> = {};
@@ -97,14 +97,16 @@ test('an anonymous msg invoked under ssh is delivered but loudly loses its retur
   expect(loadLedger(machine)[0]?.from).toEqual(cliPrincipal('host-a'));
 }, 20_000);
 
-test('an anonymous msg invoked through stitchwire gets the same return-address warning', async () => {
+test('an anonymous msg invoked through a remote adapter gets the same return-address warning', async () => {
   const { configPath, machine } = setup();
-  const result = await send(configPath, 'wire', ['worker', 'hello']);
+  const result = await send(configPath, 'remote', ['worker', 'hello']);
 
   expect(result.code).toBe(0);
   expect(result.stdout).toContain('sent ccmux/cli@host-a');
   expect(result.stderr).toContain('warning');
-  expect(result.stderr).toContain('instead of invoking remote ccmux msg through stitchwire');
+  expect(result.stderr).toContain(
+    'instead of invoking remote ccmux msg through the remote adapter',
+  );
   expect(loadLedger(machine)).toHaveLength(1);
 });
 
@@ -121,10 +123,10 @@ test('the warning predicate is exact to cli over an authenticated remote transpo
   const { machine, target } = setup();
   const cli = cliPrincipal(machine.rcPrefix);
   expect(anonymousRemoteWarning(cli, 'ssh')).not.toBeNull();
-  expect(anonymousRemoteWarning(cli, 'wire')).not.toBeNull();
+  expect(anonymousRemoteWarning(cli, 'remote')).not.toBeNull();
   expect(anonymousRemoteWarning(cli, null)).toBeNull();
   expect(anonymousRemoteWarning(managedPeer(machine.rcPrefix, target), 'ssh')).toBeNull();
-  expect(anonymousRemoteWarning(managedPeer(machine.rcPrefix, target), 'wire')).toBeNull();
+  expect(anonymousRemoteWarning(managedPeer(machine.rcPrefix, target), 'remote')).toBeNull();
 });
 
 test('transport receive accepts the exact provider+UUID endpoint once', async () => {
@@ -200,7 +202,7 @@ test('reusing the session name with another provider/thread rejects stale mail b
   expect(loadLedger(machine)).toHaveLength(0);
 });
 
-test('v1/name-only wire shape fails before append', async () => {
+test('v1/name-only transport shape fails before append', async () => {
   const { configPath, machine } = setup();
   const result = await receive(
     configPath,

@@ -27,7 +27,7 @@ const machine = MachineConfigSchema.parse({
   rcPrefix: 'test',
   tmuxSocket: `ccmux-owned-${root.split('-').at(-1)}`,
   fleet: {},
-  wire: { peers: [] },
+  remoteTransport: { peers: [] },
   autoUpdate: false,
   chatEnabled: true,
   sessionEvents: true,

@@ -51,10 +51,10 @@ export async function remoteImageAcceptance(service: ImageService, input: unknow
         runtime,
         modelSelection: { provider, model: model.model ?? model.id },
       };
-      const session = await service.create(request);
+      const session = await service['session.create'](request);
       created.push(session);
       report('remote-image-session', session);
-      const retry = await service.create(request);
+      const retry = await service['session.create'](request);
       check(
         retry.duplicate &&
           retry.target.threadId === session.target.threadId &&
@@ -63,7 +63,7 @@ export async function remoteImageAcceptance(service: ImageService, input: unknow
       );
       await until('remote image session ready', async () => {
         try {
-          return (await service.get({ target: session.target })).state === 'idle';
+          return (await service['session.get']({ target: session.target })).state === 'idle';
         } catch (error) {
           if (error instanceof Error && 'code' in error && error.code === 'UNAVAILABLE')
             return false;
@@ -116,7 +116,7 @@ export async function remoteImageAcceptance(service: ImageService, input: unknow
           'Remote visual image order differs',
         );
         await refusal(
-          () => service.message({ ...ordered.request, images: [...images].reverse() }),
+          () => service['message.send']({ ...ordered.request, images: [...images].reverse() }),
           'IDEMPOTENCY_CONFLICT',
         );
       }
@@ -160,7 +160,7 @@ export async function remoteImageAcceptance(service: ImageService, input: unknow
     // The supplied transport may allow only one in-flight operation.
     for (const session of created) {
       try {
-        await service.archive({ target: session.target });
+        await service['session.archive']({ target: session.target });
         archived++;
       } catch (error) {
         cleanupFailures.push(error);

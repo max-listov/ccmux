@@ -354,22 +354,7 @@ export const MachineConfigSchema = z.object({
         ),
     )
     .optional(),
-  /**
-   * The stitchwire transport: machines this box reaches through the local stitchwire agent instead
-   * of through ssh.
-   *
-   * It exists because ssh can only call a machine that is reachable, and a roaming laptop never is.
-   * stitchwire has every node dial OUT to a broker and keep that link, so a server can finally
-   * address the laptop — without the laptop opening a port or a server holding a key to it. The
-   * connection direction changes; the trust model does not.
-   *
-   * Listing a machine here is the entire switch, per direction: absent = ssh exactly as before.
-   * That is deliberate — a new transport earns its place one direction at a time, and a fleet-wide
-   * flag would make "which path did that call take" unanswerable during the change.
-   *
-   * INVARIANT: a stitchwire node id IS the machine's `rcPrefix`. One label names one machine in
-   * both systems; a mismatch would deliver correctly-addressed mail to the wrong box.
-   */
+  /** Provider-neutral local adapter for peers that are not reached through ssh. */
   /**
    * Whether this machine writes the session event feed. Default ON: the feed is one append per
    * transition and nothing while nothing happens, and a supervisor that stays quiet about what its
@@ -388,12 +373,21 @@ export const MachineConfigSchema = z.object({
    * addressed the project instead, and a project name is usually also a session name.
    */
   externals: z.record(z.string().regex(SESSION_NAME_RE), z.string().min(1)).default({}),
-  wire: z
+  remoteTransport: z
     .object({
       peers: z.array(z.string().regex(RC_PREFIX_RE)).default([]),
-      // Absent = the agent's default path under this user's home. Set only by an isolated instance.
+      // Absent = the stable generic adapter path under this user's state root.
       socket: z.string().startsWith('/').optional(),
+      /** Exact authenticated receiver ancestor. This is deployment data, never provider code. */
+      trustedAncestor: z
+        .object({
+          executable: z.string().startsWith('/'),
+          argument: z.string().min(1).max(128),
+        })
+        .strict()
+        .optional(),
     })
+    .strict()
     .optional(),
   // Optional command run once before a batch of outbox retries, for fleets where transit can be
   // restored locally (re-pointing a forwarded-key socket, refreshing a token). An argv ARRAY, never
@@ -527,7 +521,7 @@ export const CHAT_GENERATION = 2;
 
 export const ChatMessageSchema = z
   .object({
-    // First field on the wire and on disk, so a foreign record is identified before anything else is
+    // First field on the remote transport and on disk, so a foreign record is identified before anything else is
     // interpreted. `.strict()` below would already reject an older record — but on the shape of
     // `from`, which reads as a bug rather than as "this is from another generation".
     v: z.literal(CHAT_GENERATION),
@@ -887,7 +881,7 @@ export const SessionEventSchema = z
   // to a peer's answer.
   .loose();
 
-// `list --json` wire shape — the canonical machine-readable contract that
+// `list --json` transport shape — the canonical machine-readable contract that
 // dashboards/agents (and our own TUI) consume. Decoupled from any downstream
 // consumer's own snapshot type ON PURPOSE: duplicated there, never
 // cross-imported, so the two evolve independently.

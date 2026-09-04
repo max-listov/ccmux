@@ -90,7 +90,7 @@ export function parseCursor(raw: string): CursorParse {
 /**
  * The largest frame this feed will emit.
  *
- * Anchored to the transport rather than chosen by taste: the wire carries a stream in 32 KiB chunks,
+ * Anchored to the transport rather than chosen by taste: the remote transport carries a stream in 32 KiB chunks,
  * so a record that fits inside one is never split across two, and a reader assembling lines never
  * has to hold a partial record across a chunk boundary. The cap is on the WHOLE frame, not on the
  * body alone — otherwise a long address or task name could still push a frame over while the field

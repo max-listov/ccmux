@@ -1,5 +1,5 @@
 import type { MachineConfig } from '../types.ts';
-import { wirePeers } from './wire.ts';
+import { remotePeers } from './remoteAdapter.ts';
 
 /**
  * A fleet address — `<machine>:<session>` — is the missing piece that made cross-machine work
@@ -38,7 +38,7 @@ export const isAddressError = (a: FleetAddress | { error: string }): a is { erro
  *  registry and tmux socket come from env that ssh does not carry). */
 export type Route =
   | { kind: 'local'; session: string }
-  // `alias` is null for a machine reachable only over the wire — a roaming laptop has no ssh alias
+  // `alias` is null for a machine reachable only over the remote transport — a roaming laptop has no ssh alias
   // anywhere, which is the entire reason that transport exists.
   | { kind: 'remote'; alias: string | null; machine: string; session: string }
   | { kind: 'error'; message: string };
@@ -49,20 +49,20 @@ export function routeFor(token: string, m: MachineConfig): Route {
   if (addr.machine === null || addr.machine === m.rcPrefix)
     return { kind: 'local', session: addr.session };
   const fleet = m.fleet;
-  const wire = wirePeers(m);
-  if ((fleet === undefined || Object.keys(fleet).length === 0) && wire.length === 0) {
+  const remote = remotePeers(m);
+  if ((fleet === undefined || Object.keys(fleet).length === 0) && remote.length === 0) {
     return {
       kind: 'error',
-      message: `fleet addressing is not configured on this machine — add a "fleet" map (ssh) or a "wire.peers" list (stitchwire) to machine.json`,
+      message: `fleet addressing is not configured on this machine — add a "fleet" map (ssh) or a "remoteTransport.peers" list to machine.json`,
     };
   }
   // `Object.hasOwn`, not a plain lookup: `toString:api` would otherwise resolve to a prototype
   // METHOD, get stringified into argv, and fail as "transport failed" instead of "unknown machine".
   const alias =
     fleet !== undefined && Object.hasOwn(fleet, addr.machine) ? fleet[addr.machine] : undefined;
-  const onWire = wire.includes(addr.machine);
-  if (alias === undefined && !onWire) {
-    const known = [...new Set([...Object.keys(fleet ?? {}), ...wire])].sort().join(', ');
+  const onRemote = remote.includes(addr.machine);
+  if (alias === undefined && !onRemote) {
+    const known = [...new Set([...Object.keys(fleet ?? {}), ...remote])].sort().join(', ');
     return { kind: 'error', message: `unknown machine '${addr.machine}' — known: ${known}` };
   }
   return { kind: 'remote', alias: alias ?? null, machine: addr.machine, session: addr.session };

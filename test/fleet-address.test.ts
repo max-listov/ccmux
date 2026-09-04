@@ -175,7 +175,7 @@ test("an inherited prototype key is not a machine — 'toString:api' is unknown,
   if (r.kind === 'error') expect(r.message).toContain('unknown machine');
 });
 
-test('sub-verbs keep their word order across the wire: `chat on <name>`, never `chat <name> on`', () => {
+test('sub-verbs keep their word order across the remote transport: `chat on <name>`, never `chat <name> on`', () => {
   // `chat on/off` and `router on/off` put the sub-verb BEFORE the session, so a forwarder that
   // always appended the session right after the verb would rebuild a DIFFERENT command remotely.
   // Asserted on the real construction site (it is one line, and mocking ssh to reach it would test

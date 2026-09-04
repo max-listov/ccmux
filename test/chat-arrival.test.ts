@@ -85,7 +85,7 @@ test("a person's letter is not the one a full batch cuts, and the batch still re
   expect(batch.map((msg) => msg.body)).toContain('from a person');
   // Bounded as before — the person's letter displaces an agent's rather than widening the batch.
   expect(batch.length).toBeLessThan(ledger.length);
-  // Chronological on the wire: a conversation read out of order is worse than a letter a turn late.
+  // Chronological on the remote transport: a conversation read out of order is worse than a letter a turn late.
   expect(batch.map((msg) => msg.body)).toEqual(
     ledger.filter((msg) => batch.includes(msg)).map((msg) => msg.body),
   );

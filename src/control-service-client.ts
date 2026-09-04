@@ -146,34 +146,9 @@ export {
   SelectionUpdateSchema,
 } from './control/selectionSchema.ts';
 export {
-  ApiError,
-  CCMUX_CONTROL_SERVICE_BASE_URL,
-  CCMUX_CONTROL_SERVICE_ID,
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  type ClientFetch,
-  ControlServiceDescriptorSchema,
-  type ControlServiceEffect,
-  ControlServiceEffectSchema,
-  type ControlServiceInvocation,
-  ControlServiceInvocationSchema,
-  type ControlServiceOperation,
-  ControlServiceOperationSchema,
-  ControlServiceReplyEnvelopeSchema,
-  ControlServiceWaitSchema,
-  ccmuxControlServiceComposition,
-  ccmuxControlServiceContract,
-  ccmuxControlServiceDescriptor,
-  controlServiceEffects,
-  controlServiceInputs,
-  controlServiceOutputs,
-  createCcmuxControlServiceClient,
-  serviceOperation,
-} from './control/serviceDescriptor.ts';
-export {
   CCMUX_CONTROL_CALLER_HEADER,
   ControlTransportCallerSchema,
+  createInjectedControlClient,
 } from './control/transportBoundary.ts';
 export {
   EXTERNAL_CONTENT_LIMITS,

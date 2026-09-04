@@ -7,7 +7,7 @@ export const CCMUX_NATIVE_STREAM_PROFILE = 'ccmux-native';
 export const CCMUX_NATIVE_STREAM_COMMAND = 'control-native-stream';
 export const CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES = 4096;
 /**
- * What the wire under this stream actually allows, and it is TWO ceilings on two quantities.
+ * What the remote transport under this stream actually allows, and it is TWO ceilings on two quantities.
  *
  * The transport reads the producer's NDJSON with a parser bounded at `maxChunkBytes * 2`, and
  * separately refuses any framed chunk whose `data` exceeds `maxChunkBytes`. That knob is the
@@ -15,8 +15,8 @@ export const CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES = 4096;
  * raise it. Read from the transport's source, not inferred from its behaviour.
  *
  * The budget here used to be derived from this project's own `CONTROL_MAX_BYTES` — 513 KiB, eight
- * times what the wire carries. Sizing the frame against it produced frames that satisfied our
- * contract and died on the wire, and the earlier fix made that worse in an instructive way: it
+ * times what the remote transport carries. Sizing the frame against it produced frames that satisfied our
+ * contract and died on the remote transport, and the earlier fix made that worse in an instructive way: it
  * corrected the QUANTITY being measured (the line, not the payload) while keeping the wrong LIMIT,
  * which is the same defect one level up. A number has to come from whoever enforces it.
  *
@@ -86,7 +86,7 @@ export const ControlNativeStreamFrameSchema = z
     cursor: ControlNativeStreamCursorTokenSchema,
   })
   .strict()
-  // Checked on the LINE, not on `data`. Checking the payload and enforcing on the wire is one
+  // Checked on the LINE, not on `data`. Checking the payload and enforcing on the remote transport is one
   // number answering two different questions, and the gap between them is where a frame nobody
   // could parse got through: the consumer's framed reader hit its buffer bound, died, reconnected,
   // received the same line and died again — a retry loop that cannot converge, because a retry
@@ -133,7 +133,7 @@ export function readControlNativeStreamCursor(
  *
  * Named on its own because the two ways a producer can fail want opposite answers from a consumer.
  * A stream that could not be opened is worth another attempt; a frame whose fixed fields alone
- * exceed the wire is not, and a retry returns to exactly the same line. Carries sizes only — no
+ * exceed the remote transport is not, and a retry returns to exactly the same line. Carries sizes only — no
  * thread content ever leaves through an error path.
  */
 export class NativeStreamFrameUnrepresentable extends Error {
@@ -159,7 +159,7 @@ export class NativeStreamFrameUnrepresentable extends Error {
  * order and the same accounting the buffer uses when it sheds under its own bounds. Pending
  * requests are shed last and only when nothing observational is left, because they are the one part
  * of the frame a human can act on. Sizes are measured rather than predicted: how much a record
- * costs on the wire depends on what its text contains, and the escaping ratio is not a constant to
+ * costs on the remote transport depends on what its text contains, and the escaping ratio is not a constant to
  * multiply by.
  */
 export function controlNativeStreamFrame(snapshot: unknown) {

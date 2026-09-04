@@ -20,7 +20,7 @@ test('pickup acceptance services approvals arriving after the round trip', async
   const generation = crypto.randomUUID();
   await settleRuntimePeers(
     {
-      native: async ({ target }) => ({
+      'native.read': async ({ target }) => ({
         generation,
         pending:
           waits >= 2 && !approved && target === targets[0]
@@ -40,7 +40,7 @@ test('pickup acceptance services approvals arriving after the round trip', async
               ]
             : [],
       }),
-      respond: async (input) => {
+      'native.respond': async (input) => {
         expect(input.generation).toBe(generation);
         expect(input.target).toBe(first);
         expect(input.requestId).toBe('late-approval');
@@ -48,7 +48,7 @@ test('pickup acceptance services approvals arriving after the round trip', async
         approved = true;
         return { operationId: input.operationId, requestId: input.requestId, outcome: 'submitted' };
       },
-      wait: async ({ target }) => {
+      'session.wait': async ({ target }) => {
         waits++;
         return { target, state: null, outcome: approved ? 'completed' : 'timeout' };
       },
@@ -64,11 +64,11 @@ test('pickup acceptance does not turn failure into successful completion', async
   await expect(
     settleRuntimePeers(
       {
-        native: async () => ({ generation: crypto.randomUUID(), pending: [] }),
-        respond: async () => {
+        'native.read': async () => ({ generation: crypto.randomUUID(), pending: [] }),
+        'native.respond': async () => {
           throw new Error('Unexpected approval');
         },
-        wait: async ({ target }) => ({ target, state: null, outcome: 'failed' }),
+        'session.wait': async ({ target }) => ({ target, state: null, outcome: 'failed' }),
       },
       targets,
       Date.now() + 1_000,

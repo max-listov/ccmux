@@ -3,20 +3,22 @@ import { samePrincipal, sameTarget } from '../src/chat/identity.ts';
 import { loadLedger } from '../src/chat/store.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 import type { ControlNativeSnapshot } from '../src/control/schema.ts';
-import type { createCcmuxControlServiceClient } from '../src/control/serviceDescriptor.ts';
+import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import type { MachineConfig, ManagedPeer } from '../src/types.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
 
-type Client = ReturnType<typeof createCcmuxControlServiceClient>;
+type Client = ReturnType<typeof createInjectedControlClient>;
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
 }
 
 type PickupClient = {
-  [K in 'respond' | 'wait']: (...args: Parameters<Client[K]>) => ReturnType<Client[K]>;
+  [K in 'native.respond' | 'session.wait']: (
+    ...args: Parameters<Client[K]>
+  ) => ReturnType<Client[K]>;
 } & {
-  native(
-    input: Parameters<Client['native']>[0],
+  'native.read'(
+    input: Parameters<Client['native.read']>[0],
   ): Promise<Pick<ControlNativeSnapshot, 'generation' | 'pending'>>;
 };
 
@@ -28,10 +30,10 @@ export async function settleRuntimePeers(
 ) {
   while (Date.now() < deadline) {
     for (const target of targets) {
-      const frame = await client.native({ target });
+      const frame = await client['native.read']({ target });
       const pending = frame.pending[0];
       if (pending?.kind === 'approval') {
-        await client.respond({
+        await client['native.respond']({
           target,
           operationId: crypto.randomUUID(),
           generation: frame.generation,
@@ -42,7 +44,7 @@ export async function settleRuntimePeers(
       }
     }
     const results = await Promise.all(
-      targets.map((target) => client.wait({ target, timeoutMs: 1_000 })),
+      targets.map((target) => client['session.wait']({ target, timeoutMs: 1_000 })),
     );
     if (results.every((result) => result.outcome === 'completed')) return;
     for (const result of results) {
@@ -68,10 +70,10 @@ export async function verifyRuntimeCoexistence(
     name: 'codex-peer',
     workspace,
     flags: ['--sandbox', 'danger-full-access', '--ask-for-approval', 'never'],
-  } satisfies Parameters<Client['create']>[0];
-  const b = (await client.create(request)).target;
+  } satisfies Parameters<Client['session.create']>[0];
+  const b = (await client['session.create'](request)).target;
   check(
-    (await client.create(request)).target.threadId === b.threadId,
+    (await client['session.create'](request)).target.threadId === b.threadId,
     'Codex retry changed identity',
   );
   check(a.threadId !== b.threadId && a.agent !== b.agent, 'Runtime identities collided');
@@ -81,7 +83,7 @@ export async function verifyRuntimeCoexistence(
     '--no-env-file',
     process.env.CCMUX_E2E_CLI ?? join(process.cwd(), 'src/cli.ts'),
   ]);
-  await client.message({
+  await client['message.send']({
     target: a,
     messageId: crypto.randomUUID(),
     body: `Authorized isolated communication test. Run exactly ${invocation} msg ${b.machine}:${b.session} --to-agent codex --to-thread ${b.threadId} with body "${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command from CCMux. Do not contact anyone else or edit files." After the command returns, finish this turn immediately with SENT. Do not poll, read logs or wait for a reply: CCMux delivers the reply asynchronously. When it arrives answer RECEIVED without using tools or sending another message.`,
@@ -91,10 +93,10 @@ export async function verifyRuntimeCoexistence(
   while (!proved) {
     check(Date.now() < deadline, 'Cross-runtime round trip timed out');
     for (const target of [a, b]) {
-      const frame = await client.native({ target });
+      const frame = await client['native.read']({ target });
       const pending = frame.pending[0];
       if (pending?.kind === 'approval')
-        await client.respond({
+        await client['native.respond']({
           target,
           operationId: crypto.randomUUID(),
           generation: frame.generation,

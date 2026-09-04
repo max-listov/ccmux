@@ -15,15 +15,10 @@ import { loadMachineConfig } from '../src/config/machine.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 import { controlSocket } from '../src/control/path.ts';
-import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { killSession, newSession } from '../src/tmux/tmux.ts';
 import type { ManagedPeer, Session } from '../src/types.ts';
+import { localControlFetch } from './control-client.ts';
 
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -35,17 +30,17 @@ const commandPrefix =
   cli.endsWith('.ts') || cli.endsWith('.js') ? [process.execPath, '--no-env-file', cli] : [cli];
 // An extracted, checksum-verified published package can prove the installed client boundary too.
 const publishedClient = process.argv[3];
-const makeServiceClient: typeof createCcmuxControlServiceClient =
+const makeServiceClient: typeof createInjectedControlClient =
   publishedClient === undefined
-    ? createCcmuxControlServiceClient
-    : (await import(resolve(publishedClient))).createCcmuxControlServiceClient;
+    ? createInjectedControlClient
+    : (await import(resolve(publishedClient))).createInjectedControlClient;
 const machine = MachineConfigSchema.parse({
   ...loadMachineConfig(),
   stateDir: join(root, 'state'),
   rcPrefix: 'probe',
   tmuxSocket: `ccmux-owned-${root.split('-').at(-1)}`,
   fleet: {},
-  wire: { peers: [] },
+  remoteTransport: { peers: [] },
   autoUpdate: false,
   chatEnabled: true,
   sessionEvents: true,
@@ -126,29 +121,11 @@ async function command(args: string[]) {
   ]);
   check(code === 0, `Command failed (${code}): ${out} ${err}`);
 }
-const remote = makeServiceClient(async (url, init) => {
-  const operation = ControlServiceOperationSchema.parse(
-    new URL(String(url)).pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-  );
-  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-    unix: controlSocket(machine),
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      v: 1,
-      id: crypto.randomUUID(),
-      caller: machine.rcPrefix,
-      service: 'ccmux.control',
-      revision: CCMUX_CONTROL_SERVICE_REVISION,
-      operation,
-      payload: typeof init?.body === 'string' ? init.body : '{}',
-    }),
-  });
-});
+const remote = makeServiceClient(localControlFetch(controlSocket(machine), machine.rcPrefix));
 async function idle(target: ManagedPeer) {
   await until('native idle', async () => {
     try {
-      return (await remote.get({ target })).state === 'idle';
+      return (await remote['session.get']({ target })).state === 'idle';
     } catch {
       return false;
     }
@@ -169,7 +146,7 @@ async function refused(run: () => Promise<unknown>, code: string) {
 async function toolTurn(target: ManagedPeer, session: Session, differentPreset?: string) {
   await idle(target);
   const marker = `READ_${crypto.randomUUID().replaceAll('-', '')}`;
-  const before = await remote.native({ target, cursor: null });
+  const before = await remote['native.read']({ target, cursor: null });
   const body = `Use the native shell tool to run pwd in this workspace (read only), then reply exactly ${marker}. Do not edit files or contact any sessions.`;
   if (differentPreset !== undefined) {
     const rpc = await connectOwnedCodex(machine, session, { signal: AbortSignal.timeout(15_000) });
@@ -205,9 +182,9 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
     } finally {
       rpc.close();
     }
-  } else await remote.message({ target, messageId: crypto.randomUUID(), body });
+  } else await remote['message.send']({ target, messageId: crypto.randomUUID(), body });
   await until('tool turn', async () => {
-    const frame = await remote.native({
+    const frame = await remote['native.read']({
       target,
       cursor: { generation: before.generation, sequence: before.sequence },
     });
@@ -237,8 +214,8 @@ const targets: ManagedPeer[] = [];
 try {
   await restartDaemon();
   check(loadSessions(machine).length === 0, 'Inventory not empty');
-  const catalog = await remote.models({});
-  const profiled = await remote.models({ launchRecipe: { id: 'native', revision: '1' } });
+  const catalog = await remote['model.list']({});
+  const profiled = await remote['model.list']({ launchRecipe: { id: 'native', revision: '1' } });
   check(
     catalog.target === undefined &&
       catalog.source.kind === 'host' &&
@@ -249,11 +226,11 @@ try {
     profiled.data.length > 1 && loadSessions(machine).length === 0,
     'Catalog needs a conversation',
   );
-  const page = await remote.models({ limit: 1 });
+  const page = await remote['model.list']({ limit: 1 });
   check(page.nextCursor !== null, 'Pagination fixture too small');
-  const next = await remote.models({ limit: 1, cursor: page.nextCursor });
+  const next = await remote['model.list']({ limit: 1, cursor: page.nextCursor });
   check(page.data[0]?.id !== next.data[0]?.id, 'Pagination repeated a model');
-  const directory = await remote.directories({ path: root });
+  const directory = await remote['directory.list']({ path: root });
   check(
     directory.path === root && directory.entries.some((entry) => entry.name === 'machine.json'),
     'Directory service failed',
@@ -278,7 +255,7 @@ try {
   const receipts = [];
   await refused(
     () =>
-      remote.create({
+      remote['session.create']({
         requestId: crypto.randomUUID(),
         name: 'unavailable',
         workspace: root,
@@ -297,15 +274,19 @@ try {
       launchRecipe: { id: 'native', revision: '1' },
       modelSelection: { provider: 'openai', model },
     };
-    const created = await remote.create(input);
+    const created = await remote['session.create'](input);
     targets.push(created.target);
-    const retried = await remote.create(input);
+    const retried = await remote['session.create'](input);
     check(
       retried.duplicate && retried.target.threadId === created.target.threadId,
       'One-writer retry failed',
     );
     await refused(
-      () => remote.create({ ...input, modelSelection: { provider: 'openai', model: 'different' } }),
+      () =>
+        remote['session.create']({
+          ...input,
+          modelSelection: { provider: 'openai', model: 'different' },
+        }),
       'IDEMPOTENCY_CONFLICT',
     );
     const session = loadSessions(machine).find(
@@ -330,14 +311,14 @@ try {
   check(first !== undefined, 'First create receipt is missing');
   await idle(first.created.target);
   const inputMarker = `INPUT_${crypto.randomUUID().replaceAll('-', '')}`;
-  await remote.message({
+  await remote['message.send']({
     target: first.created.target,
     messageId: crypto.randomUUID(),
     body: `Ask one native request_user_input question with two choices Red and Blue. Wait for the answer, then reply exactly ${inputMarker}. No other tools or messages.`,
   });
-  let inputFrame = await remote.native({ target: first.created.target, cursor: null });
+  let inputFrame = await remote['native.read']({ target: first.created.target, cursor: null });
   await until('Plan native input request', async () => {
-    inputFrame = await remote.native({ target: first.created.target, cursor: null });
+    inputFrame = await remote['native.read']({ target: first.created.target, cursor: null });
     return inputFrame.pending.some((request) => request.kind === 'input');
   });
   const pending = inputFrame.pending.find((request) => request.kind === 'input');
@@ -354,12 +335,15 @@ try {
     answers,
   };
   await refused(
-    () => remote.respond({ ...answer, generation: crypto.randomUUID() }),
+    () => remote['native.respond']({ ...answer, generation: crypto.randomUUID() }),
     'STALE_REQUEST',
   );
-  check((await remote.respond(answer)).outcome === 'submitted', 'Exact input response failed');
+  check(
+    (await remote['native.respond'](answer)).outcome === 'submitted',
+    'Exact input response failed',
+  );
   await until('input answer completed', async () =>
-    (await remote.native({ target: first.created.target, cursor: null })).baseline.some(
+    (await remote['native.read']({ target: first.created.target, cursor: null })).baseline.some(
       (item) => item.kind === 'assistant' && item.text?.includes(inputMarker),
     ),
   );
@@ -376,7 +360,7 @@ try {
     );
   });
   await restartDaemon();
-  const retry = await remote.create(first.input);
+  const retry = await remote['session.create'](first.input);
   check(
     retry.duplicate &&
       retry.target.threadId === first.created.target.threadId &&
@@ -384,16 +368,16 @@ try {
     'Restart changed selection/identity',
   );
   await toolTurn(retry.target, first.session);
-  const model = (await remote.get({ target: retry.target })).nativeSelection?.model;
+  const model = (await remote['session.get']({ target: retry.target })).nativeSelection?.model;
   check(model?.model === first.input.modelSelection.model, 'Status lost model selection');
-  const native = await remote.native({ target: retry.target, cursor: null });
+  const native = await remote['native.read']({ target: retry.target, cursor: null });
   check(native.nativeSelection?.model.model === model.model, 'Native projection lost selection');
-  const waited = await remote.wait({ target: retry.target, timeoutMs: 10_000 });
+  const waited = await remote['session.wait']({ target: retry.target, timeoutMs: 10_000 });
   check(
     ['idle', 'completed'].includes(waited.outcome),
     'Wait did not see a terminal native boundary',
   );
-  const plain = await remote.create({
+  const plain = await remote['session.create']({
     requestId: crypto.randomUUID(),
     name: 'default-native',
     workspace: root,
@@ -406,7 +390,7 @@ try {
   );
   await idle(plain.target);
   for (const target of targets)
-    check((await remote.archive({ target })).archived, 'Archive failed');
+    check((await remote['session.archive']({ target })).archived, 'Archive failed');
   console.log(
     JSON.stringify({
       ok: true,
@@ -433,7 +417,7 @@ try {
     }),
   );
 } finally {
-  for (const target of targets) await remote.archive({ target }).catch(() => {});
+  for (const target of targets) await remote['session.archive']({ target }).catch(() => {});
   await killSession(machine, 'probe-daemon');
   console.log(JSON.stringify({ evidenceDirectory: root }));
 }

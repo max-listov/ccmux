@@ -7,7 +7,6 @@ import { controlContract, controlEventsContract } from './contract.ts';
 import { subscribeControlNative } from './nativeFeed.ts';
 import { type ControlOperationDependencies, createControlOperations } from './operations.ts';
 import type { ControlPublisher } from './publisher.ts';
-import { createControlServiceIngress } from './serviceIngress.ts';
 
 export function controlServices(
   m: MachineConfig,
@@ -81,6 +80,5 @@ export function controlServices(
     watchNative: ({ input, signal }) =>
       subscribeControlNative(m, input.target, input.cursor, signal),
   });
-  const ingress = createControlServiceIngress(operations);
-  return { services: [service, events, ingress], service, ingress, mutations, waits, reads };
+  return { services: [service, events], service, mutations, waits, reads };
 }

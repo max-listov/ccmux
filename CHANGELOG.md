@@ -86,7 +86,7 @@ A plan window ends on the clock, and an ended one is not served as current
 Every command loads at its case, and the status line's own cost is counted
 ## [0.49.4] — 2026-09-02
 
-A pending request too large for the wire sheds instead of killing the stream
+A pending request too large for the remote transport sheds instead of killing the stream
 ## [0.49.3] — 2026-09-02
 
 A rejected service result says which fields it could not read
@@ -95,7 +95,7 @@ A rejected service result says which fields it could not read
 A run from a checkout writes its own record, not the machine's history
 ## [0.49.1] — 2026-09-02
 
-The native stream frame budget comes from the wire, not from this project's constant
+The native stream frame budget comes from the remote transport, not from this project's constant
 ## [0.49.0] — 2026-09-02
 
 A held message publishes why, as a value and not only as a sentence
@@ -889,7 +889,7 @@ the chat log as a resumable feed, with a cursor that is a position
 - **Every record is bounded to one transport chunk (32 KiB), and an oversized body is REPLACED
   rather than cut** — with a sentence naming its real size. Route, time and position all survive, so
   the cursor still advances and nothing after it is lost.
-- `--framed` wraps each frame for a transport that resumes, and `STITCHWIRE_STREAM_CURSOR` is read
+- `--framed` wraps each frame for a transport that resumes, and `CCMUX_REMOTE_STREAM_CURSOR` is read
   on reopen — the same contract the session event feed already speaks. An unusable cursor is refused
   loudly from either source: ignoring it and starting from "now" is the failure with no symptom.
 - One strict frame schema covers rows and machine availability, so "nothing happened there" stays
@@ -897,7 +897,7 @@ the chat log as a resumable feed, with a cursor that is a position
 
 ### Fixed
 
-- **`chat log --fleet` asked only ssh peers.** A machine reachable only over the wire was not shown
+- **`chat log --fleet` asked only ssh peers.** A machine reachable only over the remote transport was not shown
   as unreachable — it was absent, which reads as a machine where nothing has ever happened. Same
   resolver as everything else now.
 - **A peer answer cut by the transport is named as cut, not blamed on an old build.** Both produce
@@ -1161,15 +1161,15 @@ a reopened event stream resumes where the reader left off
   cursor fails loudly rather than degrading back into that silence.
 ## [0.30.0] — 2026-08-25
 
-sessions publish what happened, and the wire's answer is read in full
+sessions publish what happened, and the remote transport's answer is read in full
 
 ### Fixed
 
 - **Cross-machine mail to a wire-only peer could be thrown away.** The outbox drain pass read the ssh
-  fleet map directly, and a machine reachable only over the wire has no alias in it — so every retry
+  fleet map directly, and a machine reachable only over the remote transport has no alias in it — so every retry
   to it found "no route", marked the envelope delivered and dropped it, silently. Measured on a live
-  fleet: both servers reach the laptop over the wire and have no ssh alias for it at all, which is
-  the direction the wire was added for. Retries now resolve the route the same way a send does; the
+  fleet: both servers reach the laptop over the remote transport and have no ssh alias for it at all, which is
+  the direction the remote transport was added for. Retries now resolve the route the same way a send does; the
   only settle case left is a target in neither map, and it is logged.
 - A refusal that will never change is no longer retried for an hour and no longer described as
   "queued, retried automatically". The wire distinguishes a temporary `capacity` refusal from a
@@ -1245,12 +1245,12 @@ the launch stamp sees the rules, MCP and environment that argv never showed
 ### Fixed
 
 - The `reply:` command in an incoming chat tag is now computed by the same resolver `msg` delivers
-  with, so a sender reachable over the stitchwire transport is answered on the wire instead of being
+  with, so a sender reachable over the injected remote transport transport is answered on the remote transport instead of being
   declared unreachable. The hint previously consulted only the ssh fleet map: a machine with a live
   wire route to the sender was told "no route back", followed that prescriptive instruction, and
   answered the owner while peer-to-peer delivery was working the same minute.
 - When a reply genuinely cannot be routed, the tag now names the resolver's reason — unknown machine,
-  no transport configured, local stitchwire agent down — instead of a bare verdict with nothing to
+  no transport configured, local injected remote transport agent down — instead of a bare verdict with nothing to
   check. The local agent socket is checked by existence only, never probed, so a healthy-but-busy
   agent can never be reported as unreachable.
 ## [0.28.0] — 2026-08-21
@@ -1259,7 +1259,7 @@ anonymous remote messages now expose their missing return route
 
 ### Fixed
 
-- A direct remote `ccmux msg` launched beneath SSH or Stitchwire without managed session identity
+- A direct remote `ccmux msg` launched beneath SSH or injected remote transport without managed session identity
   still delivers as the honest `cli` principal, but now warns on stderr that the recipient has no
   route back to the originating agent. Local human CLI sends and authenticated managed senders stay
   quiet; the distinction comes from verified process ancestry rather than environment or address
@@ -1357,7 +1357,7 @@ went, and that a rule still teaching it is what is out of date. Matching is verb
 whole-token, so a chat body discussing the flag passes straight through.
 ## [0.23.0] — 2026-08-18
 
-stitchwire transport: the fleet map is no longer one-directional
+injected remote transport transport: the fleet map is no longer one-directional
 
 the fleet map is no longer one-directional: a server can address the laptop
 
@@ -1367,12 +1367,12 @@ address, no open port, and a machine that changes networks daily. An agent on a 
 a delegated job perfectly and then had no route to hand the result back (the 2026-08-05 live check,
 recorded in the return-channel note).
 
-ccmux now carries a second transport. [stitchwire](https://github.com/max-listov/stitchwire) has
+ccmux now carries a second transport. an injected remote transport has
 every machine dial OUT to a broker and keep that connection, so the direction of the TCP link and
 the direction of a call are unrelated — a laptop behind NAT is as addressable as a server with a
 public IP, while no node listens on a port and no node holds a credential to another node.
 
-- `wire.peers` in machine.json lists machines reached through the local stitchwire agent instead of
+- `remoteTransport.peers` in machine.json lists machines reached through the local injected remote transport agent instead of
   ssh — per direction, so the transport is adoptable one route at a time and "which path did that
   call take" stays answerable.
 - `runPeer`/`peersOf` are the single place deciding how a remote call travels; `fleet`, `doctor`,
@@ -1384,7 +1384,7 @@ public IP, while no node listens on a port and no node holds a credential to ano
 - Transport failures now carry the real reason (`denied`, `offline`, `timeout`) instead of the
   one-size ssh sentence: a policy refusal must not send the reader looking for a network fault.
 - Admission stays hard: chat receive requires descending from an authenticated remote transport —
-  sshd, or the stitchwire agent (proved by process-tree walk; `stitchwire call` deliberately does
+  sshd, or the injected remote transport agent (proved by process-tree walk; `injected remote transport call` deliberately does
   NOT confer admission, so a local process cannot launder itself into delivery through the CLI).
 ## [0.22.0] — 2026-08-17
 

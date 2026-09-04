@@ -89,7 +89,7 @@ process/routing provenance, not security against a hostile process with the same
 read ccmux state; provider metadata never increases trust.
 
 An outbound `msg` invoked directly beneath an authenticated remote transport (`sshd` or the local
-Stitchwire agent) without managed identity remains legal and keeps exit code zero after a successful
+Injected remote adapter agent) without managed identity remains legal and keeps exit code zero after a successful
 send, but it is never silent: stderr warns that the envelope was sent as `cli`, has no route back to
 the originating agent, and must instead be addressed through `ccmux msg <machine>:<session>` from
 that managed session. A local human CLI is intentionally quiet; the distinction comes from process
@@ -193,10 +193,10 @@ optional, and it is the same one the event feed already follows: the consumer's 
 | Transport | Reaches | Requires | Configured by |
 |---|---|---|---|
 | ssh | a machine with an address and a key | the receiver to be reachable | `fleet: { <machine>: <alias> }` |
-| stitchwire | any machine running the agent | nothing inbound at all | `wire: { peers: [<machine>] }` |
+| injected remote adapter | any machine running the agent | nothing inbound at all | `remoteTransport: { peers: [<machine>] }` |
 
 ssh cannot address a roaming laptop, and never will: it has no stable address, and giving it an
-inbound port plus a server-held key would invert the trust model to buy one direction. stitchwire
+inbound port plus a server-held key would invert the trust model to buy one direction. injected remote adapter
 inverts the *connection* instead — every node dials out to a broker and keeps that link — so
 `dev:<session>` reaching `host-C:<session>` becomes possible while no node holds a credential to another
 node.
@@ -210,8 +210,8 @@ Two rules cover every case, and neither depends on a person being connected:
    sitting in `~/.ssh` is not evidence of being authorised on the other end, and `IdentityAgent` in
    `ssh_config` overrides `SSH_AUTH_SOCK`, so a fleet may in fact authenticate only through a
    forwarded identity. Read the config before asserting anything about it.
-2. **To a machine with no address of its own** (a laptop that roams) — the wire, because it dials out
-   and keeps the link. List it in `wire.peers` and address it exactly like any other: `<machine>:<session>`.
+2. **To a machine with no address of its own** (a laptop that roams) — the remote transport, because it dials out
+   and keeps the link. List it in `remoteTransport.peers` and address it exactly like any other: `<machine>:<session>`.
 
 Checking a route takes one command, and the flags matter:
 
@@ -288,11 +288,11 @@ worse than one that says nothing: the guess gets believed and acted on.
 The rule that follows: never name a cause the transport did not report, and never describe a queued
 message as a lost one.
 
-A machine listed in `wire.peers` is reached over the wire even when it also has an ssh alias. That is
-what makes the wire adoptable one direction at a time: a fleet-wide flag would make "which path did
+A machine listed in `remoteTransport.peers` is reached over the remote transport even when it also has an ssh alias. That is
+what makes the remote transport adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.
 
-### What the wire's answer says, beyond yes and no
+### What the remote transport's answer says, beyond yes and no
 
 The local door separates **who** said no (`failure`) from **what kind** of no it is (`refusal`), and
 the kinds behave oppositely:
@@ -326,8 +326,8 @@ envelope ID and exact target survive every attempt and atomic receive admits it 
 ### A retry uses the same resolver as a send
 
 Not a second lookup. The drain pass used to read the ssh map directly and, finding no alias, settle
-the envelope as delivered — on a fleet whose laptop is reachable **only** over the wire, that threw
-away every retry to the one machine the wire exists for, silently and with no error anywhere. The
+the envelope as delivered — on a fleet whose laptop is reachable **only** over the remote transport, that threw
+away every retry to the one machine the remote transport exists for, silently and with no error anywhere. The
 only honest settle case is a target that is in neither map.
 
 ### The reply hint is the resolver's answer, not a second map
@@ -337,13 +337,13 @@ use it verbatim. That makes the hint **prescriptive**: a wrong verdict does not 
 the answer somewhere the sender will never see it — silently, with no error on either side.
 
 So the hint asks the same resolver `msg` delivers with (`routeFor`), and nothing else. It used to read
-the ssh map directly, which made every wire-only direction unreachable *in the tag* while it was
+the ssh map directly, which made every remote-only direction unreachable *in the tag* while it was
 carrying mail: a machine with `wire.peers: [<hub>]` and a live agent was told "no route back to
 `<hub>`" and answered the human, minutes after `ccmux msg <hub>:<session>` from that same box
 delivered instantly. One resolver means a direction that moves onto a new transport moves its hint
 with it.
 
-Beyond routing, exactly one thing is checked: the local end of the wire, because `msg` resolves the
+Beyond routing, exactly one thing is checked: the local end of the remote transport, because `msg` resolves the
 exact remote peer *before* queueing anything — with no agent socket here the reply command exits 1
 rather than queueing for retry, and a command that errors is worse than none. It is a file-existence
 check and never a probe: this runs on the daemon's delivery cadence, and a timeout-shaped question
@@ -354,16 +354,16 @@ When the hint does fall back to `msg owner`, it names the reason the resolver ga
 no transport configured, local agent down. A bare "no route" is the one shape a reader cannot act on:
 it names nothing to check, so it can only be believed.
 
-**Invariant: a stitchwire node id IS a ccmux `rcPrefix`.** One label names one machine in both
+**Invariant: a injected remote adapter node id IS a ccmux `rcPrefix`.** One label names one machine in both
 systems. `ccmux doctor` proves it per peer by asking the far side which prefix it reports — a
 mismatch would deliver correctly-addressed mail to the wrong box, which is the failure fleet
 addressing exists to remove.
 
 Admission is transport-shaped, not transport-specific. An inbound chat receiver must descend from an
-authenticated remote transport: **sshd**, or **the local stitchwire agent** — the daemon that
+authenticated remote transport: **sshd**, or **the local injected remote adapter agent** — the daemon that
 authenticated to the broker with this machine's own token and runs only what this machine's
 allowlist names. Both are proved by walking the process tree, because ancestry is kernel truth while
-an environment variable is a claim the caller writes. `stitchwire call` is explicitly NOT admitted:
+an environment variable is a claim the caller writes. `injected remote adapter call` is explicitly NOT admitted:
 it is the outbound side, and treating it as a transport would let any local process launder itself
 into delivery by shelling out through the CLI.
 

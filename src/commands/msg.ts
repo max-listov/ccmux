@@ -3,8 +3,8 @@ import { lastTranscriptMessage, supportsManagedInput } from '../agent/index.ts';
 import type { RemoteTransport } from '../chat/auth.ts';
 import {
   CHAT_CREDENTIAL_ENV,
+  hasAuthenticatedRemoteAncestor,
   hasChatCredential,
-  hasSshdAncestor,
   remoteTransportAncestor,
 } from '../chat/auth.ts';
 import { currentCodexAppThreadId, resolveCodexAppPeer } from '../chat/codexApp.ts';
@@ -58,7 +58,7 @@ export function anonymousRemoteWarning(
   transport: RemoteTransport | null,
 ): string | null {
   if (from.kind !== 'cli' || transport === null) return null;
-  const transportLabel = transport === 'ssh' ? 'ssh' : 'stitchwire';
+  const transportLabel = transport === 'ssh' ? 'ssh' : 'the remote adapter';
   return (
     `msg: warning — this command is running under ${transportLabel} without a managed sender; sent as ${principalLabel(from)}, ` +
     'so the recipient cannot reply to the originating agent. Run ccmux msg <machine>:<session> from the managed ' +
@@ -238,17 +238,16 @@ function localCandidate(s: Session, m: MachineConfig): RoleCandidate {
 
 /** Transport-only v2 receiver. Old binaries reject the unknown verb before appending anything. */
 export async function cmdReceiveChat(
-  transportAuthenticated = hasSshdAncestor(),
+  transportAuthenticated?: boolean,
   rawInput?: string,
 ): Promise<number> {
+  const machine = loadMachineConfig();
   if (process.env.CCMUX_SESSION !== undefined) {
     console.error('chat receive is transport-only');
     return 1;
   }
-  if (!transportAuthenticated) {
-    console.error(
-      'chat receive is only admitted from an authenticated remote transport — sshd, or the local stitchwire agent',
-    );
+  if (!(transportAuthenticated ?? hasAuthenticatedRemoteAncestor(machine))) {
+    console.error('chat receive is only admitted from an authenticated remote transport');
     return 1;
   }
   let message: ChatMessage;
@@ -262,7 +261,6 @@ export async function cmdReceiveChat(
     console.error('chat receive: remote owner target is not allowed');
     return 1;
   }
-  const machine = loadMachineConfig();
   if (message.to.machine !== machine.rcPrefix) {
     console.error(
       `chat receive: target machine mismatch (${message.to.machine} != ${machine.rcPrefix})`,
@@ -357,7 +355,11 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     return 1;
   }
   const senderTransport =
-    transport === undefined ? (from.kind === 'cli' ? remoteTransportAncestor() : null) : transport;
+    transport === undefined
+      ? from.kind === 'cli'
+        ? remoteTransportAncestor(machine)
+        : null
+      : transport;
 
   if (positionals[0] === 'cancel') {
     const cancelTask = positionals[1];

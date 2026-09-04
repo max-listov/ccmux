@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { ApiError } from 'stitchkit';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { loadPendingSessions } from '../src/config/pendingSessions.ts';
 import { loadSessions } from '../src/config/sessions.ts';
@@ -11,7 +12,6 @@ import type {
   ControlCreateReceipt,
   ControlNativeSnapshot,
 } from '../src/control/schema.ts';
-import { ApiError } from '../src/control/serviceDescriptor.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer, Session } from '../src/types.ts';
@@ -85,7 +85,7 @@ const accepted: Array<{ request: ControlCreate; receipt: ControlCreateReceipt; s
 async function ready(target: ManagedPeer) {
   await until('native live idle', async () => {
     try {
-      const row = await service.get({ target });
+      const row = await service['session.get']({ target });
       return row.availability === 'live' && row.state === 'idle';
     } catch (error) {
       if (error instanceof ApiError && error.code === 'UNAVAILABLE') return false;
@@ -96,20 +96,20 @@ async function ready(target: ManagedPeer) {
 
 async function proof(target: ManagedPeer, variant: string, nativeToken: string) {
   await ready(target);
-  const before = await service.native({ target });
+  const before = await service['native.read']({ target });
   const message = {
     target,
     messageId: crypto.randomUUID(),
     body: 'Return the verification tokens required by your loaded application policy and selected native skill or agent. Do not use tools.',
   };
-  const sent = await service.message(message);
+  const sent = await service['message.send'](message);
   check(
-    sent.accepted && !sent.duplicate && (await service.message(message)).duplicate,
+    sent.accepted && !sent.duplicate && (await service['message.send'](message)).duplicate,
     'Message idempotency failed',
   );
   let verified: ControlNativeSnapshot | null = null;
   await until('real native policy consumption', async () => {
-    const frame = await service.native({
+    const frame = await service['native.read']({
       target,
       cursor: { generation: before.generation, sequence: before.sequence },
     });
@@ -118,7 +118,7 @@ async function proof(target: ManagedPeer, variant: string, nativeToken: string) 
       .map((item) => item.text ?? '')
       .join('');
     check(frame.pending.length === 0, 'Text-only policy probe unexpectedly requires native input');
-    const result = await service.wait({ target, timeoutMs: 1000 });
+    const result = await service['session.wait']({ target, timeoutMs: 1000 });
     check(
       result.outcome !== 'failed' && result.outcome !== 'interrupted',
       'Native policy turn failed',
@@ -138,7 +138,7 @@ async function proof(target: ManagedPeer, variant: string, nativeToken: string) 
     return false;
   });
   check(verified, 'No native policy proof');
-  const frame = await service.native({ target });
+  const frame = await service['native.read']({ target });
   check(
     frame.applicationPolicy?.state === 'applied',
     'Positive native consumption lacks applied policy evidence',
@@ -186,7 +186,7 @@ async function refusedBeforeSpawn(request: ControlCreate, runtime: 'codex' | 'op
   const sessions = JSON.stringify(loadSessions(m));
   const pending = JSON.stringify(loadPendingSessions(m));
   try {
-    await service.create(request);
+    await service['session.create'](request);
     throw new Error('Unavailable policy was accepted');
   } catch (error) {
     check(
@@ -219,7 +219,7 @@ try {
     loadSessions(m).length === 0 && (await listSessionNames(m)).size === 0,
     'Probe baseline is not empty',
   );
-  const runtimes = await service.runtimes({});
+  const runtimes = await service['runtime.list']({});
   check(
     ['codex', 'opencode'].every((runtime) =>
       runtimes.runtimes.some((row) => row.runtime === runtime && row.availability === 'configured'),
@@ -229,7 +229,7 @@ try {
   let cursor: string | null = null;
   let external: { provider: string; model: string } | undefined;
   do {
-    const catalog = await service.models({ runtime: 'opencode', cursor });
+    const catalog = await service['model.list']({ runtime: 'opencode', cursor });
     const selected = catalog.data.find(
       (row) => row.provider === 'openrouter' && row.model === 'z-ai/glm-5.3-flash',
     );
@@ -262,8 +262,8 @@ try {
         { ...request, applicationPolicy: { id: `${runtime}-${variant}`, revision: 'different' } },
         runtime,
       );
-      const receipt = await service.create(request);
-      const retry = await service.create(request);
+      const receipt = await service['session.create'](request);
+      const retry = await service['session.create'](request);
       check(
         retry.duplicate && JSON.stringify(retry.target) === JSON.stringify(receipt.target),
         'Create retry changed managed identity',
@@ -338,10 +338,11 @@ try {
   for (const { request, receipt, session } of accepted) {
     await ready(receipt.target);
     check(
-      (await service.get({ target: receipt.target })).applicationPolicy?.state === 'applied',
+      (await service['session.get']({ target: receipt.target })).applicationPolicy?.state ===
+        'applied',
       'Daemon restart lost applied evidence',
     );
-    const generation = (await service.native({ target: receipt.target })).generation;
+    const generation = (await service['native.read']({ target: receipt.target })).generation;
     await killSession(m, session.name);
     const policy = m.agentPolicies[request.applicationPolicy?.id ?? ''];
     check(
@@ -363,7 +364,7 @@ try {
     const refused = refusalCount();
     try {
       await atomicWrite(source.path, `${original}\nChanged restart source.\n`, 0o600);
-      await service.start({ target: receipt.target });
+      await service['session.start']({ target: receipt.target });
       await until(
         'restart source validation refusal',
         async () => refusalCount() > refused,
@@ -377,12 +378,14 @@ try {
       await killSession(m, session.name);
       await atomicWrite(source.path, original, 0o600);
     }
-    await service.start({ target: receipt.target });
+    await service['session.start']({ target: receipt.target });
     await until(
       'same-identity provider restart',
       async () => {
         try {
-          return (await service.native({ target: receipt.target })).generation !== generation;
+          return (
+            (await service['native.read']({ target: receipt.target })).generation !== generation
+          );
         } catch {
           return false;
         }
@@ -396,7 +399,7 @@ try {
       'Provider restart changed identity',
     );
     check(
-      (await service.create(request)).duplicate,
+      (await service['session.create'](request)).duplicate,
       'Late create retry after restart created another writer',
     );
     await proof(
@@ -404,7 +407,7 @@ try {
       request.name.endsWith('alpha') ? 'alpha' : 'beta',
       session.agent === 'codex' ? 'SKILL_CONSUMED' : 'AGENT_CONSUMED',
     );
-    await service.archive({ target: receipt.target });
+    await service['session.archive']({ target: receipt.target });
     report('restart-and-archive', {
       runtime: session.agent,
       targetHash: hash(session.uuid),
@@ -436,7 +439,7 @@ try {
 } finally {
   for (const row of loadSessions(m).filter((item) => !item.archived)) {
     const entry = accepted.find((item) => item.session.uuid === row.uuid);
-    if (entry) await service.archive({ target: entry.receipt.target }).catch(() => {});
+    if (entry) await service['session.archive']({ target: entry.receipt.target }).catch(() => {});
   }
   for (const name of await listSessionNames(m)) await killSession(m, name).catch(() => {});
   daemon.kill('SIGTERM');

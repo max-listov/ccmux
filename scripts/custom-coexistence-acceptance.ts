@@ -6,12 +6,12 @@ import { check, type NativeImageProbe, report, until } from './native-image-stee
 
 /** Exactly three real provider owners communicate through the existing authenticated chat ledger. */
 export async function customCoexistence(p: NativeImageProbe, custom: ControlCreateReceipt) {
-  const codexModels = await p.service.models({ runtime: 'codex' });
+  const codexModels = await p.service['model.list']({ runtime: 'codex' });
   const model =
     codexModels.data.find((row) => row.id === 'gpt-5.6-luna') ??
     codexModels.data.find((row) => row.isDefault);
   check(model, 'Native Codex catalog has no default');
-  const codex = await p.service.create({
+  const codex = await p.service['session.create']({
     requestId: crypto.randomUUID(),
     runtime: 'codex',
     name: 'codex-peer',
@@ -20,7 +20,7 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
     launchRecipe: { id: 'native', revision: '1' },
     modelSelection: { provider: 'openai', model: model.model ?? model.id },
   });
-  const opencode = await p.service.create({
+  const opencode = await p.service['session.create']({
     requestId: crypto.randomUUID(),
     runtime: 'opencode',
     name: 'opencode-peer',
@@ -33,7 +33,7 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
   await until('three native owners ready', async () => {
     const rows = await Promise.all(
       all.map((row) =>
-        p.service.get({ target: row.target }).catch((error) => {
+        p.service['session.get']({ target: row.target }).catch((error) => {
           if (error instanceof Error && 'code' in error && error.code === 'UNAVAILABLE')
             return null;
           throw error;
@@ -43,13 +43,14 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
     return rows.every((row) => row?.availability === 'live' && row.state === 'idle');
   });
   const token = `route-${crypto.randomUUID()}`;
-  const currentModel = (await p.service.native({ target: custom.target })).nativeProfile?.model;
+  const currentModel = (await p.service['native.read']({ target: custom.target })).nativeProfile
+    ?.model;
   if (currentModel) {
-    const selection = await p.service.selection({
+    const selection = await p.service['selection.read']({
       target: custom.target,
       registrationGeneration: custom.registrationGeneration,
     });
-    await p.service.select({
+    await p.service['selection.update']({
       target: custom.target,
       registrationGeneration: custom.registrationGeneration,
       operationId: crypto.randomUUID(),
@@ -83,9 +84,9 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
     ],
   ] satisfies [ControlCreateReceipt, string][]) {
     const messageId = crypto.randomUUID();
-    await p.service.message({ target: receipt.target, messageId, body });
+    await p.service['message.send']({ target: receipt.target, messageId, body });
     await until('routing instruction retained', async () => {
-      const result = await p.service.messageOperation({
+      const result = await p.service['message.operation']({
         target: receipt.target,
         registrationGeneration: receipt.registrationGeneration,
         messageId,
@@ -95,7 +96,7 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
     });
   }
   const first = command(opencode.target, `${token}:A_TO_B`);
-  await p.service.message({
+  await p.service['message.send']({
     target: codex.target,
     messageId: crypto.randomUUID(),
     body: `Authorized isolated communication test. Run exactly this command:\n${first}\nThen finish SENT immediately. Do not poll or wait; the reply arrives asynchronously. On ${token}:C_TO_A, reply RECEIVED without tools.`,
@@ -105,14 +106,14 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
     'exact three-runtime route',
     async () => {
       for (const { target } of all) {
-        const frame = await p.service.native({ target }).catch((error) => {
+        const frame = await p.service['native.read']({ target }).catch((error) => {
           if (error instanceof Error && 'code' in error && error.code === 'UNAVAILABLE')
             return null;
           throw error;
         });
         const pending = frame?.pending[0];
         if (frame && pending?.kind === 'approval')
-          await p.service.respond({
+          await p.service['native.respond']({
             target,
             operationId: crypto.randomUUID(),
             generation: frame.generation,
@@ -140,7 +141,7 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
     'three-runtime terminal pickup',
     async () => {
       const outcomes = await Promise.all(
-        all.map(({ target }) => p.service.wait({ target, timeoutMs: 500 })),
+        all.map(({ target }) => p.service['session.wait']({ target, timeoutMs: 500 })),
       );
       check(!outcomes.some((row) => row.outcome === 'failed'), 'Cross-runtime pickup failed');
       return outcomes.every((row) => row.outcome === 'completed');

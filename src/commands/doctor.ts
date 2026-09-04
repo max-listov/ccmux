@@ -19,8 +19,8 @@ import { loadMachineConfig } from '../config/machine.ts';
 import { APP_BUNDLE, CACHE_DIR, chatAuthPath, DATA_DIR } from '../config/paths.ts';
 import { loadSessions } from '../config/sessions.ts';
 import { HOME, PLATFORM, promptInvocation, SELF_DISPLAY, UID } from '../env.ts';
+import { remoteAdapterSocketPath } from '../fleet/remoteAdapter.ts';
 import { checkFleet, peersOf } from '../fleet/transport.ts';
-import { wireSocketPath } from '../fleet/wire.ts';
 import type { MachineConfig } from '../types.ts';
 import { run } from '../util/spawn.ts';
 import { VERSION } from '../util/version.ts';
@@ -80,11 +80,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // to a local same-named session.
   const selfLabelled = Object.keys(fleet).includes(m.rcPrefix);
   // The wire has one prerequisite ssh does not: a LOCAL agent holding this machine's connection.
-  // Without it every wire peer reads as "unreachable", which sends the reader looking at the far
+  // Without it every remote peer reads as "unreachable", which sends the reader looking at the far
   // machine for a fault that is on this one.
-  const wireSocket = wireSocketPath(m);
-  const wireExpected = peers.some((p) => p.via === 'wire');
-  const wireReady = wireSocket !== null && existsSync(wireSocket);
+  const remoteSocket = remoteAdapterSocketPath(m);
+  const remoteExpected = peers.some((p) => p.via === 'remote');
+  const remoteReady = existsSync(remoteSocket);
   // What shapes these sessions besides argv: the agents' external files, and the environment the
   // supervisor's own runtime mixes in from each session directory. Both were invisible until now,
   // and the second one is the reason this section exists at all.
@@ -112,7 +112,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         deps: { claude: claudeOk, codex: codexOk, tmux: tmuxOk },
         fleet: fleetChecks,
         fleetSelfLabelled: selfLabelled,
-        wire: wireExpected ? { socket: wireSocket, ready: wireReady } : null,
+        remoteTransport: remoteExpected ? { socket: remoteSocket, ready: remoteReady } : null,
         // Names, never values — an agent reading this is exactly the consumer that would otherwise
         // paste a secret somewhere.
         sessionEnv: inherited,
@@ -144,7 +144,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log('fleet:');
     for (const c of fleetChecks) {
       const mark = c.ok ? 'ok' : c.reachable ? 'PROBLEM' : 'unreachable';
-      const route = c.via === 'wire' ? 'via wire' : `→ ${c.alias}`;
+      const route = c.via === 'remote' ? 'via remote adapter' : `→ ${c.alias}`;
       console.log(`  ${c.machine} ${route} (${mark})${c.ok ? '' : ` — ${c.detail}`}`);
     }
     if (selfLabelled) {
@@ -153,9 +153,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
     }
   }
-  if (wireExpected) {
+  if (remoteExpected) {
     console.log(
-      `wire:   ${wireReady ? `agent socket ${wireSocket}` : `PROBLEM — no agent socket at ${wireSocket ?? '(unknown)'}; start 'stitchwire agent' on this machine`}`,
+      `remote: ${remoteReady ? `adapter socket ${remoteSocket}` : `PROBLEM — no adapter socket at ${remoteSocket}`}`,
     );
   }
   const unhonourable = unhonourableModes(m, UID === 0);

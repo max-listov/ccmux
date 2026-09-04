@@ -14,11 +14,12 @@ import { makeChatMessage, makeCli, makeMachine, makeSession } from './helpers.ts
 const InputSchema = z.object({
   to: z.literal('host-b'),
   argv: z.array(z.string()),
-  stdin: z.string(),
+  stdin: z.string().nullable(),
+  timeoutMs: z.number(),
 });
 
-test('lost Wire reply and concurrent outbox retries preserve one receiver envelope', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-wire-chat-'));
+test('lost remote reply and concurrent outbox retries preserve one receiver envelope', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-remote-chat-'));
   const state = join(root, 'receiver');
   mkdirSync(state);
   const receiver = makeMachine({ stateDir: state, rcPrefix: 'host-b', chatEnabled: true });
@@ -38,13 +39,14 @@ test('lost Wire reply and concurrent outbox retries preserve one receiver envelo
     fetch: async (request) => {
       const input = InputSchema.parse(await request.json());
       expect(input.argv).toEqual(['ccmux', '_chat-receive-v2']);
-      received.push(input.stdin);
+      const stdin = input.stdin ?? '';
+      received.push(stdin);
       const child = Bun.spawn(
         [process.execPath, '--no-env-file', join(import.meta.dir, 'fixtures/receive-chat.ts')],
         {
           env,
           cwd: state,
-          stdin: new Response(input.stdin),
+          stdin: new Response(stdin),
           stdout: 'pipe',
           stderr: 'pipe',
         },
@@ -59,18 +61,11 @@ test('lost Wire reply and concurrent outbox retries preserve one receiver envelo
         return new Response('{');
       }
       return Response.json({
-        v: 2,
-        id: crypto.randomUUID(),
-        ts: new Date().toISOString(),
-        from: 'host-b',
         code,
         stdout,
         stderr,
-        failure: 'none',
-        refusal: 'none',
-        retryAfterMs: null,
-        detail: '',
-        truncated: false,
+        transportFailed: false,
+        delivery: 'received',
       });
     },
   });
@@ -78,7 +73,7 @@ test('lost Wire reply and concurrent outbox retries preserve one receiver envelo
     const sender = makeMachine({
       stateDir: join(root, 'sender'),
       rcPrefix: 'host-a',
-      wire: { socket, peers: ['host-b'] },
+      remoteTransport: { socket, peers: ['host-b'] },
     });
     const envelope = makeChatMessage({
       id: crypto.randomUUID(),

@@ -102,7 +102,7 @@ test('its own stale memory is still reported — that is WHY it is behind', () =
 test('a machine nobody could reach makes no claim about its release', () => {
   const unreachable: FleetMachine = {
     machine: 'host-c',
-    alias: 'wire',
+    alias: 'remote',
     ok: false,
     error: 'no transit',
     version: '?',

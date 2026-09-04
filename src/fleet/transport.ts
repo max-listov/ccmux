@@ -3,7 +3,7 @@ import type { MachineConfig } from '../types.ts';
 import { shellJoin } from '../util/shellQuote.ts';
 import { run, runWithInput } from '../util/spawn.ts';
 import { writeErr, writeOut } from '../util/stdout.ts';
-import { isWirePeer, runWire, wirePeers } from './wire.ts';
+import { isRemotePeer, remotePeers, runRemoteAdapter } from './remoteAdapter.ts';
 
 /**
  * Run a ccmux command on another fleet machine over ssh.
@@ -66,7 +66,7 @@ export interface RemoteResult {
   /** Remote execution certainty, independent of its exit code or a local HTTP acknowledgement. */
   delivery: 'not-sent' | 'unknown' | 'received';
   /** What actually went wrong, when the transport can say. ssh cannot distinguish "no route" from
-   *  "no agent forwarding", so it leaves this unset and the generic sentence stands; the wire knows
+   *  "no agent forwarding", so it leaves this unset and the generic sentence stands; the remote transport knows
    *  the difference between offline, denied and timed out, and saying "ssh unreachable" for a
    *  policy refusal would send the reader looking for a network problem that does not exist. */
   failureDetail?: string;
@@ -190,7 +190,7 @@ const ReportedPrefixSchema = z.object({ rcPrefix: z.string() });
  * The one place that decides HOW a remote call travels.
  *
  * Every caller states WHERE (a machine label); this states WITH WHAT. Keeping the choice here means
- * a direction can move onto the wire by editing config, and no command has to learn that two
+ * a direction can move onto the remote transport by editing config, and no command has to learn that two
  * transports exist.
  */
 export function runPeer(
@@ -200,7 +200,7 @@ export function runPeer(
   argv: string[],
   opts?: { stdin?: string; timeoutMs?: number; connectTimeoutSeconds?: number },
 ): Promise<RemoteResult> {
-  if (isWirePeer(m, machine)) return runWire(m, machine, argv, opts);
+  if (isRemotePeer(m, machine)) return runRemoteAdapter(m, machine, argv, opts);
   if (alias === null) {
     return Promise.resolve({
       code: 1,
@@ -208,7 +208,7 @@ export function runPeer(
       stderr: '',
       transportFailed: true,
       delivery: 'not-sent',
-      failureDetail: `no route to '${machine}': it is in neither the ssh fleet map nor wire.peers`,
+      failureDetail: `no route to '${machine}': it is in neither the ssh fleet map nor remoteTransport.peers`,
     });
   }
   return runRemote(alias, argv, opts);
@@ -217,8 +217,8 @@ export function runPeer(
 /** Every machine this box can address, and how it would get there. */
 export interface Peer {
   machine: string;
-  via: 'ssh' | 'wire';
-  /** ssh alias, or null for a wire-only peer — a laptop has no alias anywhere. */
+  via: 'ssh' | 'remote';
+  /** ssh alias, or null for a remote-only peer — a laptop has no alias anywhere. */
   alias: string | null;
 }
 
@@ -227,17 +227,17 @@ export function peersOf(m: MachineConfig): Peer[] {
   for (const [machine, alias] of Object.entries(m.fleet ?? {})) {
     if (machine !== m.rcPrefix) out.set(machine, { machine, via: 'ssh', alias });
   }
-  // The wire wins where both are configured: that is what makes listing one machine a per-direction
+  // The remote route wins where both are configured: that makes one machine a per-direction
   // switch rather than a fleet-wide migration.
-  for (const machine of wirePeers(m)) {
-    out.set(machine, { machine, via: 'wire', alias: out.get(machine)?.alias ?? null });
+  for (const machine of remotePeers(m)) {
+    out.set(machine, { machine, via: 'remote', alias: out.get(machine)?.alias ?? null });
   }
   return [...out.values()].sort((a, b) => a.machine.localeCompare(b.machine));
 }
 
 export interface FleetCheck {
   machine: string;
-  via: 'ssh' | 'wire';
+  via: 'ssh' | 'remote';
   alias: string | null;
   ok: boolean;
   reachable: boolean;

@@ -1,5 +1,5 @@
 import type { AttachmentReference } from '../src/attachments/reference.ts';
-import type { createCcmuxControlServiceClient } from '../src/control/serviceClient.ts';
+import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import {
   check,
   previewImage,
@@ -8,8 +8,8 @@ import {
   uploadImage,
 } from './native-image-steering-fixture.ts';
 
-export type ImageService = ReturnType<typeof createCcmuxControlServiceClient>;
-export type ImageSession = Awaited<ReturnType<ImageService['create']>>;
+export type ImageService = ReturnType<typeof createInjectedControlClient>;
+export type ImageSession = Awaited<ReturnType<ImageService['session.create']>>;
 
 export async function remoteUpload(
   service: ImageService,
@@ -36,23 +36,23 @@ export async function remoteImageTurn(
   const { target, registrationGeneration } = session;
   const selector = { target, registrationGeneration, messageId: crypto.randomUUID() };
   const request = { ...selector, body, images, notification: 'conversation' } satisfies Parameters<
-    ImageService['message']
+    ImageService['message.send']
   >[0];
-  const receipt = await service.message(request);
+  const receipt = await service['message.send'](request);
   check(receipt.notification === 'conversation', 'Fixture notification audience changed');
-  check((await service.message(request)).duplicate, 'Image retry duplicated admission');
-  let operation = await service.messageOperation(selector);
+  check((await service['message.send'](request)).duplicate, 'Image retry duplicated admission');
+  let operation = await service['message.operation'](selector);
   await until('exact remote image turn', async () => {
-    operation = await service.messageOperation(selector);
+    operation = await service['message.operation'](selector);
     check(operation.evidence?.state !== 'failed', 'Remote model turn failed');
     check(operation.evidence?.state !== 'interrupted', 'Remote model turn interrupted');
     return operation.evidence?.state === 'completed';
   });
   const turnId = operation.evidence?.turnId;
   check(turnId, 'Image message has no exact native turn');
-  let native = await service.native({ target });
+  let native = await service['native.read']({ target });
   await until('completed native image content', async () => {
-    native = await service.native({ target });
+    native = await service['native.read']({ target });
     return native.baseline.some(
       (row) => row.turnId === turnId && row.kind === 'assistant' && row.complete,
     );
@@ -65,7 +65,7 @@ export async function remoteImageTurn(
   const encoded = JSON.stringify(native);
   check(!encoded.includes('data:image/'), 'Inline image bytes leaked into native projection');
   check(Buffer.byteLength(encoded) <= 512 * 1024, 'Native image projection exceeds its bound');
-  const history = await service.history({ target, registrationGeneration, limit: 64 });
+  const history = await service['history.read']({ target, registrationGeneration, limit: 64 });
   const received = history.entries
     .filter((row) => row.turnId === turnId)
     .flatMap((row) => row.images);

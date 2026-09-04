@@ -34,7 +34,7 @@ const USAGE =
 
 /** Where the transport hands back a resume point when it reopens a capped stream. The same variable
  *  the session feed reads, because it is the transport's mechanism and not this feed's. */
-const RESUME_CURSOR_ENV = 'STITCHWIRE_STREAM_CURSOR';
+const RESUME_CURSOR_ENV = 'CCMUX_REMOTE_STREAM_CURSOR';
 
 interface Source {
   machine: LogMachine;
@@ -47,7 +47,7 @@ const RemoteEnvelopeSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())).default([]),
 });
 
-/** The marker the wire puts on an answer it had to cut at its stream cap. */
+/** The marker the remote transport puts on an answer it had to cut at its stream cap. */
 const TRUNCATION_MARKER = 'output truncated';
 
 /**
@@ -74,8 +74,8 @@ export function unreadableReason(stdout: string, stderr: string): string {
  *  recursion is impossible by construction rather than by a guard. An unreachable machine is a row,
  *  not a failure: with no server-to-server keys, transit exists only while the owner is connected.
  *
- *  Asked through `runPeer`, so a machine reachable only over the wire is asked at all. Reading the
- *  ssh map directly meant a wire-only peer was not unreachable in the view — it was ABSENT from it,
+ *  Asked through `runPeer`, so a machine reachable only over the remote transport is asked at all. Reading the
+ *  ssh map directly meant a remote-only peer was not unreachable in the view — it was ABSENT from it,
  *  which reads as a machine where nothing has ever happened. */
 async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
   const others = peersOf(m).filter((p) => p.machine !== m.rcPrefix);
@@ -214,7 +214,7 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
     rows: localRows(m.rcPrefix, loadLedger(m), loadOutbox(m), loadOutboxAcked(m)),
   };
   // A peer is always asked WITHOUT `--fleet` (see remoteLogs), so answering about ourselves here is
-  // what makes the wire format the same shape as the human-facing one.
+  // what makes the remote transport format the same shape as the human-facing one.
   const sources = args.includes('--fleet') ? [self, ...(await remoteLogs(m, limit))] : [self];
   const machines = sources.map((s) => s.machine);
   const rows = mergeFleetLog(sources, limit);
@@ -243,7 +243,7 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
  * Chat administration + inspection:
  *   ccmux chat log [-n N]    — this machine's exchange (received + sent), tail of N (default 30)
  *   ccmux chat log --fleet   — the same, merged with every other machine's log, in time order
- *   ccmux chat log --json    — machine-readable; also the wire format `--fleet` reads from peers
+ *   ccmux chat log --json    — machine-readable; also the remote transport format `--fleet` reads from peers
  *   ccmux chat on  <name>     — enable inter-agent chat for this session
  *   ccmux chat off <name>     — disable it for this session
  *   ccmux chat default <name> — clear the override; inherit the machine's chatEnabled

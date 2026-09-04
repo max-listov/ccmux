@@ -15,7 +15,7 @@ import { hasExited } from './process-state.ts';
 export async function customCoding(p: NativeImageProbe, receipt: ControlCreateReceipt) {
   const { target, registrationGeneration } = receipt;
   const pending = async () =>
-    p.service.native({ target }).catch((error) => {
+    p.service['native.read']({ target }).catch((error) => {
       if (error instanceof Error && 'code' in error && error.code === 'UNAVAILABLE') return null;
       throw error;
     });
@@ -23,7 +23,7 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
     const frame = await pending(),
       request = frame?.pending[0];
     if (!frame || !request) return;
-    await p.service.respond({
+    await p.service['native.respond']({
       target,
       generation: frame.generation,
       requestId: request.requestId,
@@ -37,7 +37,11 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
       'real Custom coding completion',
       async () => {
         await answer(decision);
-        const op = await p.service.messageOperation({ target, registrationGeneration, messageId });
+        const op = await p.service['message.operation']({
+          target,
+          registrationGeneration,
+          messageId,
+        });
         check(op.evidence?.state !== 'failed', 'Real coding model turn failed');
         return op.evidence?.state === 'completed';
       },
@@ -46,7 +50,7 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
   };
   const send = async (body: string) => {
     const messageId = crypto.randomUUID();
-    await p.service.message({ target, messageId, body });
+    await p.service['message.send']({ target, messageId, body });
     return messageId;
   };
   const path = join(receipt.workspace, 'coding.txt');
@@ -57,7 +61,7 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
   );
   await complete(messageId);
   check((await readFile(path, 'utf8')) === 'after', 'Guarded patch effect differs');
-  const native = await p.service.native({ target });
+  const native = await p.service['native.read']({ target });
   const tools = native.baseline.flatMap((item) => (item.tool ? [item.tool] : []));
   for (const name of ['read_file', 'search_files', 'edit_file'])
     check(
@@ -79,10 +83,10 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
   await until('signed denial request', async () => (await pending())?.pending.length === 1);
   // session.get is the prepared monitoring projection, not the native event stream.
   // Qualify its next observation of this exact request instead of assuming atomic publication.
-  const requestFrame = await p.service.native({ target });
+  const requestFrame = await p.service['native.read']({ target });
   const requestTurnId = requestFrame.pending[0]?.turnId;
   check(requestTurnId, 'Signed denial request has no exact turn');
-  const firstObservation = await p.service.get({ target });
+  const firstObservation = await p.service['session.get']({ target });
   report('custom-pending-observation', {
     nativeTurnId: requestTurnId,
     preparedTurnId: firstObservation.turn?.id,
@@ -90,15 +94,15 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
     preparedObservedAt: firstObservation.observedAt,
   });
   await until('prepared signed denial state', async () => {
-    const state = await p.service.get({ target });
+    const state = await p.service['session.get']({ target });
     return state.state === 'waiting-approval' && state.turn?.id === requestTurnId;
   });
-  const suspended = await p.service.get({ target }),
-    frame = await p.service.native({ target });
+  const suspended = await p.service['session.get']({ target }),
+    frame = await p.service['native.read']({ target });
   check(suspended.state === 'waiting-approval' && suspended.turn, 'Pending approval state missing');
   await refusal(
     () =>
-      p.service.interrupt({
+      p.service['turn.interrupt']({
         target,
         generation: frame.generation,
         turnId: suspended.turn?.id ?? '',
@@ -106,17 +110,17 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
     'TURN_MISMATCH',
   );
   check(
-    (await p.service.wait({ target, timeoutMs: 500 })).outcome === 'timeout',
+    (await p.service['session.wait']({ target, timeoutMs: 500 })).outcome === 'timeout',
     'Pending approval falsely completed wait',
   );
   const deferred = crypto.randomUUID();
-  await p.service.message({
+  await p.service['message.send']({
     target,
     messageId: deferred,
     defer: true,
     body: 'Reply DEFERRED only. Do not use tools.',
   });
-  const held = await p.service.messageOperation({
+  const held = await p.service['message.operation']({
     target,
     registrationGeneration,
     messageId: deferred,
@@ -145,8 +149,8 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
     return Bun.file(marker).exists();
   });
   await until('prepared active command state', async () => {
-    const state = await p.service.get({ target });
-    const op = await p.service.messageOperation({
+    const state = await p.service['session.get']({ target });
+    const op = await p.service['message.operation']({
       target,
       registrationGeneration,
       messageId: interrupted,
@@ -156,18 +160,27 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
       state.state === 'working' && state.turn?.status === 'inProgress' && state.turn.id === runId
     );
   });
-  const active = await p.service.get({ target }),
-    activeFrame = await p.service.native({ target });
+  const active = await p.service['session.get']({ target }),
+    activeFrame = await p.service['native.read']({ target });
   check(
     active.state === 'working' && active.turn?.status === 'inProgress',
     'Active turn not observable',
   );
-  await p.service.interrupt({ target, generation: activeFrame.generation, turnId: active.turn.id });
+  await p.service['turn.interrupt']({
+    target,
+    generation: activeFrame.generation,
+    turnId: active.turn.id,
+  });
   await until(
     'exact interrupted managed operation',
     async () =>
-      (await p.service.messageOperation({ target, registrationGeneration, messageId: interrupted }))
-        .evidence?.state === 'interrupted',
+      (
+        await p.service['message.operation']({
+          target,
+          registrationGeneration,
+          messageId: interrupted,
+        })
+      ).evidence?.state === 'interrupted',
   );
   const pid = Number(await readFile(marker, 'utf8'));
   // A cancelled child that exits under a parent which is not reaping it becomes a zombie, and the

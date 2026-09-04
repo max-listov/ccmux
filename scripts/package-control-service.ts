@@ -9,7 +9,6 @@ import {
   CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
   CCMUX_NATIVE_STREAM_PROFILE,
 } from '../src/control/nativeStreamContract.ts';
-import { ccmuxControlServiceDescriptor } from '../src/control/serviceDescriptor.ts';
 import { VERSION } from '../src/util/version.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -92,10 +91,9 @@ export async function packageControlServiceClient(directory: string): Promise<{
         name: '@ccmux/control-service-client',
         version: VERSION,
         type: 'module',
-        files: ['dist', 'types', 'descriptor.json', 'native-stream.json', 'README.md'],
+        files: ['dist', 'types', 'native-stream.json', 'README.md'],
         exports: {
           '.': { types: './types/control-service-client.d.ts', import: './dist/index.js' },
-          './descriptor.json': './descriptor.json',
           './native-stream.json': './native-stream.json',
         },
         dependencies: sourcePackage.dependencies,
@@ -103,10 +101,6 @@ export async function packageControlServiceClient(directory: string): Promise<{
       null,
       2,
     )}\n`,
-  );
-  await writeFile(
-    join(stage, 'descriptor.json'),
-    `${JSON.stringify(ccmuxControlServiceDescriptor, null, 2)}\n`,
   );
   await writeFile(
     join(stage, 'native-stream.json'),

@@ -131,7 +131,7 @@ Validate each line with `ExternalStatusSnapshotSchema`, cap an unfinished line a
 check the returned machine against the configured peer and retain the provider UUID. EOF, invalid
 data or transport failure invalidates only that host; reconnect with bounded backoff and consume
 a fresh baseline. The 5-second evidence lease remains authoritative even before SSH declares a
-dead connection. Consumer cancellation must close its SSH process and pipes. No wire-only route
+dead connection. Consumer cancellation must close its SSH process and pipes. No remote-only route
 or automatic aggregate fleet API is claimed by this change; consumers without an existing SSH
 route need a transport contract from their transport owner. Local readers never wait for remote
 hosts. Aggregation and rendering are consumer responsibilities.

@@ -4,24 +4,19 @@ import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { PNG } from 'pngjs';
+import { ApiError } from 'stitchkit';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { loadPendingSessions } from '../src/config/pendingSessions.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 import { createControlClient } from '../src/control/client.ts';
 import { controlSocket } from '../src/control/path.ts';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
-import {
-  ApiError,
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { localControlFetch } from './control-client.ts';
 
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -126,32 +121,12 @@ const spawnDaemon = () =>
   });
 let daemon = spawnDaemon();
 const local = createControlClient({ socket: controlSocket(m) });
-const service = createCcmuxControlServiceClient(async (url, init) => {
-  const route = new URL(String(url));
-  const operation = ControlServiceOperationSchema.parse(
-    route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-  );
-  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-    unix: controlSocket(m),
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    ...(init?.signal === undefined ? {} : { signal: init.signal }),
-    body: JSON.stringify({
-      v: 1,
-      id: crypto.randomUUID(),
-      caller: 'context-client',
-      service: 'ccmux.control',
-      revision: CCMUX_CONTROL_SERVICE_REVISION,
-      operation,
-      payload: typeof init?.body === 'string' ? init.body : '{}',
-    }),
-  });
-});
+const service = createInjectedControlClient(localControlFetch(controlSocket(m), 'context-client'));
 const accepted: ControlCreateReceipt[] = [];
 async function idle(target: ManagedPeer) {
   await until('live idle', async () => {
     try {
-      const row = await service.get({ target });
+      const row = await service['session.get']({ target });
       return row.availability === 'live' && row.state === 'idle';
     } catch (error) {
       if (error instanceof ApiError && ['UNAVAILABLE', 'IDENTITY_MISMATCH'].includes(error.code))
@@ -162,12 +137,12 @@ async function idle(target: ManagedPeer) {
 }
 async function reply(target: ManagedPeer, token: string, body: string) {
   await idle(target);
-  const before = await service.native({ target });
-  await service.message({ target, messageId: crypto.randomUUID(), body });
+  const before = await service['native.read']({ target });
+  await service['message.send']({ target, messageId: crypto.randomUUID(), body });
   await until('native reply', async () => {
-    const result = await service.wait({ target, timeoutMs: 1_000 });
+    const result = await service['session.wait']({ target, timeoutMs: 1_000 });
     check(result.outcome !== 'failed' && result.outcome !== 'interrupted', 'Native turn failed');
-    const frame = await service.native({
+    const frame = await service['native.read']({
       target,
       cursor: { generation: before.generation, sequence: before.sequence },
     });
@@ -187,15 +162,20 @@ async function image(target: ManagedPeer) {
   }
   const bytes = PNG.sync.write(png),
     uploadId = crypto.randomUUID();
-  await service.attachmentBegin({
+  await service['attachment.begin']({
     target,
     uploadId,
     mediaType: 'image/png',
     totalBytes: bytes.length,
     digest: createHash('sha256').update(bytes).digest('hex'),
   });
-  await service.attachmentChunk({ target, uploadId, offset: 0, data: bytes.toString('base64') });
-  return service.attachmentFinalize({ target, uploadId });
+  await service['attachment.chunk']({
+    target,
+    uploadId,
+    offset: 0,
+    data: bytes.toString('base64'),
+  });
+  return service['attachment.finalize']({ target, uploadId });
 }
 async function expectedRefusal(run: () => Promise<unknown>, codes: string[]) {
   try {
@@ -243,11 +223,14 @@ try {
       workspace: join(root, 'workspace'),
       modelSelection,
       ...(runtime === 'codex' ? { launchRecipe: { id: 'native', revision: '1' } } : {}),
-    } satisfies Parameters<typeof service.create>[0];
-    const receipt = await service.create(create);
+    } satisfies Parameters<(typeof service)['session.create']>[0];
+    const receipt = await service['session.create'](create);
     accepted.push(receipt);
     const { target, registrationGeneration } = receipt;
-    check((await service.create(create)).duplicate, 'Native create retry is not idempotent');
+    check(
+      (await service['session.create'](create)).duplicate,
+      'Native create retry is not idempotent',
+    );
     await idle(target);
     await reply(
       target,
@@ -255,18 +238,18 @@ try {
       "Remember CONTEXT_MEMO as this conversation's verification word. Reply CONTEXT_MEMO only, without tools.",
     );
     const reference = await image(target);
-    await service.message({
+    await service['message.send']({
       target,
       messageId: crypto.randomUUID(),
       body: "Describe this image's dominant color and include IMAGE_SEEN. Do not use tools.",
       images: [reference],
     });
     await until('image turn', async () => {
-      const waited = await service.wait({ target, timeoutMs: 1_000 });
+      const waited = await service['session.wait']({ target, timeoutMs: 1_000 });
       check(waited.outcome !== 'failed', 'Native image turn failed');
       return waited.outcome === 'completed';
     });
-    const page = await service.history({ target, registrationGeneration, limit: 64 });
+    const page = await service['history.read']({ target, registrationGeneration, limit: 64 });
     check(
       page.entries.some((item) => item.images.some((ref) => ref.id === reference.id)),
       'Native image history reference is absent',
@@ -275,9 +258,9 @@ try {
       page.entries.some((item) => item.text?.includes('CONTEXT_MEMO')),
       'Native text history is absent',
     );
-    const firstPage = await service.history({ target, registrationGeneration, limit: 1 });
+    const firstPage = await service['history.read']({ target, registrationGeneration, limit: 1 });
     check(firstPage.nextCursor, 'Native history pagination has no next cursor');
-    const secondPage = await service.history({
+    const secondPage = await service['history.read']({
       target,
       registrationGeneration,
       limit: 1,
@@ -295,7 +278,7 @@ try {
       sourceHash: hash(target.threadId),
     });
 
-    const sourceFrame = await service.native({ target });
+    const sourceFrame = await service['native.read']({ target });
     const forkRequest = {
       target,
       registrationGeneration,
@@ -303,18 +286,18 @@ try {
       requestId: crypto.randomUUID(),
       name: `${runtime}-branch`,
     };
-    const branch = await service.fork(forkRequest);
+    const branch = await service['session.fork'](forkRequest);
     accepted.push(branch);
     check(
       branch.target.threadId !== target.threadId,
       'Native fork reused the source managed identity',
     );
     check(
-      (await service.fork(forkRequest)).target.threadId === branch.target.threadId,
+      (await service['session.fork'](forkRequest)).target.threadId === branch.target.threadId,
       'Native fork retry changed identity',
     );
     await idle(branch.target);
-    const branchHistory = await service.history({
+    const branchHistory = await service['history.read']({
       target: branch.target,
       registrationGeneration: branch.registrationGeneration,
       limit: 64,
@@ -328,7 +311,11 @@ try {
       'CONTEXT_MEMO',
       'Recall the verification word we remembered earlier. Return that word only, without tools.',
     );
-    const sourceAfter = await service.history({ target, registrationGeneration, limit: 64 });
+    const sourceAfter = await service['history.read']({
+      target,
+      registrationGeneration,
+      limit: 64,
+    });
     check(
       JSON.stringify(sourceAfter.entries) === JSON.stringify(page.entries),
       'Fork modified its source history',
@@ -342,19 +329,19 @@ try {
       sourceUnchanged: true,
     });
 
-    await service.message({
+    await service['message.send']({
       target,
       messageId: crypto.randomUUID(),
       body: 'Use the shell tool to run sleep 3, then reply BUSY_CHECK_DONE. Do not change any files or contact other sessions.',
     });
     await until(
       'working native turn',
-      async () => (await service.get({ target })).state === 'working',
+      async () => (await service['session.get']({ target })).state === 'working',
     );
-    const busy = await service.native({ target });
+    const busy = await service['native.read']({ target });
     await expectedRefusal(
       () =>
-        service.compact({
+        service['context.compact']({
           target,
           registrationGeneration,
           generation: busy.generation,
@@ -364,7 +351,7 @@ try {
     );
     await expectedRefusal(
       () =>
-        service.fork({
+        service['session.fork']({
           target,
           registrationGeneration,
           generation: busy.generation,
@@ -375,22 +362,23 @@ try {
     );
     await until(
       'busy turn completed',
-      async () => (await service.wait({ target, timeoutMs: 1_000 })).outcome === 'completed',
+      async () =>
+        (await service['session.wait']({ target, timeoutMs: 1_000 })).outcome === 'completed',
     );
     report('busy-refusal', { runtime, compact: true, fork: true });
 
-    const beforeCompact = await service.native({ target });
+    const beforeCompact = await service['native.read']({ target });
     const compact = {
       target,
       registrationGeneration,
       generation: beforeCompact.generation,
       operationId: crypto.randomUUID(),
     };
-    await service.compact(compact);
-    await service.compact(compact);
+    await service['context.compact'](compact);
+    await service['context.compact'](compact);
     await expectedRefusal(
       () =>
-        service.message({
+        service['message.send']({
           target,
           messageId: crypto.randomUUID(),
           body: 'Do not admit while compact is unresolved.',
@@ -400,7 +388,7 @@ try {
     await until(
       'native compaction completion',
       async () => {
-        const state = await service.contextOperation({
+        const state = await service['context.operation']({
           target,
           registrationGeneration,
           operationId: compact.operationId,
@@ -410,7 +398,7 @@ try {
       },
       180_000,
     );
-    const reset = await service.native({
+    const reset = await service['native.read']({
       target,
       cursor: { generation: beforeCompact.generation, sequence: beforeCompact.sequence },
     });
@@ -418,7 +406,7 @@ try {
       reset.reset === 'context' || reset.reset === 'generation',
       'Native compact did not reset content replay',
     );
-    const compacted = await service.contextOperation({
+    const compacted = await service['context.operation']({
       target,
       registrationGeneration,
       operationId: compact.operationId,
@@ -429,7 +417,7 @@ try {
     );
     await expectedRefusal(
       () =>
-        service.history({
+        service['history.read']({
           target,
           registrationGeneration,
           limit: 1,
@@ -443,7 +431,7 @@ try {
       'Return our remembered verification word only. Do not use tools.',
     );
     check(
-      (await service.history({ target, registrationGeneration, limit: 1 })).revision ===
+      (await service['history.read']({ target, registrationGeneration, limit: 1 })).revision ===
         compacted.operation.revision,
       'Delayed completion reset the same native context again',
     );
@@ -460,7 +448,7 @@ try {
     check(session, 'Native source registration disappeared');
     const oldGeneration = readManagedRuntimeStatus(m, session).snapshot?.generation;
     await killSession(m, session.name);
-    await service.start({ target });
+    await service['session.start']({ target });
     await until(
       'same identity resume',
       async () => {
@@ -472,7 +460,7 @@ try {
       30_000,
     );
     check(
-      (await service.fork(forkRequest)).target.threadId === branch.target.threadId,
+      (await service['session.fork'](forkRequest)).target.threadId === branch.target.threadId,
       'Late fork retry after restart changed identity',
     );
     await reply(
@@ -524,7 +512,8 @@ try {
     daemonRestartPreservedWriters: true,
   });
 } finally {
-  for (const receipt of accepted) await service.archive({ target: receipt.target }).catch(() => {});
+  for (const receipt of accepted)
+    await service['session.archive']({ target: receipt.target }).catch(() => {});
   for (const session of loadSessions(m)) await killSession(m, session.name);
   daemon.kill('SIGTERM');
   await daemon.exited;

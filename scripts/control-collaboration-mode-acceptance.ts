@@ -5,14 +5,9 @@ import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 import { controlSocket } from '../src/control/path.ts';
-import {
-  CCMUX_CONTROL_SERVICE_INGRESS_PATH,
-  CCMUX_CONTROL_SERVICE_PREFIX,
-  CCMUX_CONTROL_SERVICE_REVISION,
-  ControlServiceOperationSchema,
-  createCcmuxControlServiceClient,
-} from '../src/control/serviceDescriptor.ts';
+import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { hasSession, killSession, newSession } from '../src/tmux/tmux.ts';
+import { localControlFetch } from './control-client.ts';
 
 const configArgument = process.argv[2];
 if (
@@ -132,27 +127,9 @@ async function restartDaemon(): Promise<void> {
 await Bun.write(config, `${JSON.stringify(activeMachine, null, 2)}\n`);
 await restartDaemon();
 
-const remote = createCcmuxControlServiceClient(async (url, init) => {
-  const route = new URL(String(url));
-  const operation = ControlServiceOperationSchema.parse(
-    route.pathname.slice(CCMUX_CONTROL_SERVICE_PREFIX.length + 1),
-  );
-  const payload = typeof init?.body === 'string' ? init.body : '{}';
-  return fetch(`http://ccmux.local${CCMUX_CONTROL_SERVICE_INGRESS_PATH}`, {
-    unix: controlSocket(activeMachine),
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      v: 1,
-      id: crypto.randomUUID(),
-      caller: activeMachine.rcPrefix,
-      service: 'ccmux.control',
-      revision: CCMUX_CONTROL_SERVICE_REVISION,
-      operation,
-      payload,
-    }),
-  });
-});
+const remote = createInjectedControlClient(
+  localControlFetch(controlSocket(activeMachine), activeMachine.rcPrefix),
+);
 
 async function expectCode(run: () => Promise<unknown>, code: string): Promise<void> {
   try {
@@ -168,11 +145,11 @@ async function expectCode(run: () => Promise<unknown>, code: string): Promise<vo
 }
 
 async function requestAndAnswer(
-  target: Awaited<ReturnType<typeof remote.create>>['target'],
+  target: Awaited<ReturnType<(typeof remote)['session.create']>>['target'],
   marker: string,
 ) {
-  const before = await remote.native({ target, cursor: null });
-  await remote.message({
+  const before = await remote['native.read']({ target, cursor: null });
+  await remote['message.send']({
     target,
     messageId: crypto.randomUUID(),
     defer: false,
@@ -180,7 +157,7 @@ async function requestAndAnswer(
     task: null,
     body: `Use native request_user_input exactly once to ask me to choose Red or Blue. Wait for my answer, then reply exactly ${marker}. Do not use tools or contact other sessions.`,
   });
-  let frame = await remote.native({
+  let frame = await remote['native.read']({
     target,
     cursor: { generation: before.generation, sequence: before.sequence },
   });
@@ -188,7 +165,7 @@ async function requestAndAnswer(
   while (!frame.pending.some((request) => request.kind === 'input')) {
     check(Date.now() < inputDeadline, 'Timed out: native input request');
     await Bun.sleep(150);
-    frame = await remote.native({
+    frame = await remote['native.read']({
       target,
       cursor: { generation: before.generation, sequence: before.sequence },
     });
@@ -200,7 +177,7 @@ async function requestAndAnswer(
   );
   await expectCode(
     () =>
-      remote.respond({
+      remote['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: crypto.randomUUID(),
@@ -213,7 +190,7 @@ async function requestAndAnswer(
   );
   await expectCode(
     () =>
-      remote.respond({
+      remote['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: frame.generation,
@@ -226,7 +203,7 @@ async function requestAndAnswer(
   );
   await expectCode(
     () =>
-      remote.respond({
+      remote['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: frame.generation,
@@ -239,7 +216,7 @@ async function requestAndAnswer(
   );
   await expectCode(
     () =>
-      remote.respond({
+      remote['native.respond']({
         target,
         operationId: crypto.randomUUID(),
         generation: frame.generation,
@@ -251,7 +228,7 @@ async function requestAndAnswer(
     'STALE_REQUEST',
   );
   const operationId = crypto.randomUUID();
-  const receipt = await remote.respond({
+  const receipt = await remote['native.respond']({
     target,
     operationId,
     generation: frame.generation,
@@ -263,7 +240,7 @@ async function requestAndAnswer(
   check(receipt.outcome === 'submitted', 'exact input answer was not submitted');
   check(
     (
-      await remote.respond({
+      await remote['native.respond']({
         target,
         operationId,
         generation: frame.generation,
@@ -278,7 +255,7 @@ async function requestAndAnswer(
   const changedAnswers = Object.fromEntries(Object.entries(answers).map(([id]) => [id, ['Blue']]));
   await expectCode(
     () =>
-      remote.respond({
+      remote['native.respond']({
         target,
         operationId,
         generation: frame.generation,
@@ -292,12 +269,12 @@ async function requestAndAnswer(
   await waitFor(
     'answered turn terminal success',
     async () => {
-      const current = await remote.get({ target });
+      const current = await remote['session.get']({ target });
       return current.state === 'idle' && current.turn?.status === 'completed';
     },
     120_000,
   );
-  const after = await remote.native({ target, cursor: null });
+  const after = await remote['native.read']({ target, cursor: null });
   check(
     [...after.baseline, ...after.records].some(
       (item) => item.kind === 'assistant' && item.text?.includes(marker),
@@ -312,7 +289,7 @@ async function requestAndAnswer(
   };
 }
 
-let target: Awaited<ReturnType<typeof remote.create>>['target'] | null = null;
+let target: Awaited<ReturnType<(typeof remote)['session.create']>>['target'] | null = null;
 let archived = false;
 try {
   const createInput = {
@@ -322,7 +299,7 @@ try {
     flags: [],
     launchRecipe: { id: recipeId, revision },
   };
-  const created = await remote.create(createInput);
+  const created = await remote['session.create'](createInput);
   target = created.target;
   check(
     created.launchRecipe?.collaborationMode === 'plan' &&
@@ -358,7 +335,7 @@ try {
   );
 
   await restartDaemon();
-  const retried = await remote.create(createInput);
+  const retried = await remote['session.create'](createInput);
   check(
     retried.duplicate &&
       retried.target.threadId === target.threadId &&
@@ -367,13 +344,13 @@ try {
     'daemon retry changed identity or collaboration policy',
   );
   const second = await requestAndAnswer(target, 'INPUT_ROUND_TWO_DONE');
-  const row = await remote.get({ target });
+  const row = await remote['session.get']({ target });
   check(
     row.launchRecipe?.digest === created.launchRecipe.digest &&
       row.launchRecipe.collaborationMode === 'plan',
     'status projection changed collaboration policy metadata',
   );
-  const archive = await remote.archive({ target });
+  const archive = await remote['session.archive']({ target });
   archived = archive.archived;
   console.log(
     JSON.stringify({
@@ -390,5 +367,5 @@ try {
     }),
   );
 } finally {
-  if (target !== null && !archived) await remote.archive({ target }).catch(() => {});
+  if (target !== null && !archived) await remote['session.archive']({ target }).catch(() => {});
 }
