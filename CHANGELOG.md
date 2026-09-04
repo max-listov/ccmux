@@ -6,13 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.1] — 2026-09-04
+
+Reduce idle native supervisor work and preserve recipe continuations
+
 - Wake Custom and native Claude supervisors on command-file changes, with one-second recovery
   polling and unchanged realtime provider events. Idle content is no longer cloned and written
   repeatedly; omissions, context resets and shutdown remain observable.
 - Resume pre-service Custom recipes when their only representation difference is an empty service
   list. Actual capability changes still fail closed. Restart checks the pinned recipe before
   stopping a running session.
-
 ## [0.55.0] — 2026-09-04
 
 Injected remote transport boundary
