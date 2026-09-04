@@ -99,19 +99,6 @@ function fixture(
           mkdirSync(directory, { recursive: true });
           const rollout = join(directory, `rollout-2026-08-29T00-00-00-${s.uuid}.jsonl`);
           writeFileSync(rollout, publication === 'malformed' ? '{broken}\n' : '');
-          if (publication === 'delayed') {
-            setTimeout(
-              () =>
-                writeFileSync(
-                  rollout,
-                  `${JSON.stringify({
-                    type: 'session_meta',
-                    payload: { id: s.uuid, originator: 'test' },
-                  })}\n`,
-                ),
-              40,
-            );
-          }
           respond({
             thread: {
               id: s.uuid,
@@ -138,14 +125,26 @@ function fixture(
             `rollout-2026-08-29T00-00-00-${s.uuid}.jsonl`,
           );
           const committed = readFileSync(rollout, 'utf8').includes('"type":"session_meta"');
-          if (!committed)
+          if (!committed) {
             ws.send(
               JSON.stringify({
                 id: message.id,
                 error: { code: -32000, message: 'thread-store internal error: rollout is empty' },
               }),
             );
-          else respond({ turn: { id: 'bootstrap-turn' } });
+            // Published in ANSWER to the attempt that found it empty, not on a timer beside it.
+            // A timer decides how many attempts happen by how fast the machine is: under load the
+            // first `turn/start` arrived after the write and there was no retry to observe, so a
+            // case about retrying failed for a reason it does not test.
+            if (publication === 'delayed')
+              writeFileSync(
+                rollout,
+                `${JSON.stringify({
+                  type: 'session_meta',
+                  payload: { id: s.uuid, originator: 'test' },
+                })}\n`,
+              );
+          } else respond({ turn: { id: 'bootstrap-turn' } });
         }
         if (message.method === 'thread/resume' || message.method === 'thread/read') {
           if (message.method === 'thread/resume' && admissionRace) {

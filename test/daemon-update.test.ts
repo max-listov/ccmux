@@ -83,10 +83,17 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     });
   let daemon = start();
   let errors = new Response(daemon.stderr).text();
+  // Waits for the daemon to ANSWER, on a deadline that fails a hang and says nothing about how busy
+  // the machine is. As a hundred attempts spaced twenty milliseconds it was a two-second budget
+  // wearing an iteration count, and a freshly spawned daemon on a loaded box needs longer than that
+  // to bind its socket — so the case failed for the machine's speed rather than for the update it
+  // is about. The per-attempt timeout is generous for the same reason: a daemon that accepts and
+  // answers slowly is ready, not absent.
   const ready = async () => {
-    const client = createControlClient({ socket: controlSocket(machine), timeoutMs: 100 });
+    const client = createControlClient({ socket: controlSocket(machine), timeoutMs: 2_000 });
     try {
-      for (let n = 0; n < 100; n++) {
+      const deadline = Date.now() + 20_000;
+      while (Date.now() < deadline) {
         try {
           return await client.list();
         } catch {}
@@ -129,4 +136,4 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     server.stop(true);
     rmSync(root, { recursive: true, force: true });
   }
-}, 20_000);
+}, 60_000);
