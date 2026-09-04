@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.54.0] — 2026-09-04
+
+Canonical transport-native control contract
 ## [0.53.6] — 2026-09-04
 
 Current public dependencies with Stitchkit 0.80 support
