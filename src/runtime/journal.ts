@@ -1,9 +1,6 @@
 import { join } from 'node:path';
-import {
-  createDiagnosticJournal,
-  type DiagnosticJournalFailure,
-  type DiagnosticJournalLimits,
-} from 'stitchkit/application';
+import type { DiagnosticJournalFailure, DiagnosticJournalLimits } from 'stitchkit/application';
+import { createDiagnosticJournal } from 'stitchkit/application/diagnostic-journal';
 import { z } from 'zod';
 import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import type { MachineConfig } from '../types.ts';

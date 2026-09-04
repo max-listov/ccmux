@@ -27,7 +27,7 @@ const RESPONSE_BYTES = 256 * 1024;
 /** A JSON Schema node, only as far as this converter reads one. */
 const NodeSchema = z
   .object({
-    type: z.string().optional(),
+    type: z.union([z.string(), z.array(z.string()).max(32)]).optional(),
     enum: z.array(z.unknown()).optional(),
     items: z.unknown().optional(),
     properties: z.record(z.string(), z.unknown()).optional(),
@@ -38,15 +38,23 @@ const NodeSchema = z
   .loose();
 
 /**
- * The one `anyOf` this reads: a nullable field.
+ * The one union this reads: a nullable field.
  *
- * Two branches where one is `null` is not a union of meanings — it is one shape that may be absent,
- * and it is the commonest form in a real contract tree: a consumer counted 18 of them against 31
- * genuine unions. Refusing it would have cost them half their operations or made them double the
- * contract to spell out an optional field. A union of two real types stays refused, because there
- * the model would have to be told which one to send and this cannot tell it.
+ * JSON Schema permits both `anyOf: [{ type: 'boolean' }, { type: 'null' }]` and
+ * `type: ['boolean', 'null']` for it. Two branches where one is `null` is not a union of meanings —
+ * it is one shape that may be absent, and it is the commonest form in a real contract tree: a
+ * consumer counted 18 of them against 31 genuine unions. Refusing it would have cost them half
+ * their operations or made them double the contract to spell out an optional field. A union of
+ * two real types stays refused, because there the model would have to be told which one to send and
+ * this cannot tell it.
  */
 function nullableBranch(node: z.output<typeof NodeSchema>): unknown | null {
+  if (Array.isArray(node.type)) {
+    if (node.type.length !== 2 || node.type.filter((type) => type === 'null').length !== 1)
+      return null;
+    const concrete = node.type.find((type) => type !== 'null');
+    return concrete === undefined ? null : { ...node, type: concrete };
+  }
   if (node.anyOf === undefined || node.anyOf.length !== 2) return null;
   const parsed = node.anyOf.map((branch) => NodeSchema.parse(branch));
   const nulls = parsed.filter((branch) => branch.type === 'null');
