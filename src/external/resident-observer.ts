@@ -73,7 +73,7 @@ export class ExternalStatusObserver {
     );
     try {
       if (!connection.rpc) {
-        this.publisher.reconnect();
+        this.publisher.connecting();
         this.events.clear();
         this.stats.connections++;
         connection.rpc = await this.connect(machine, {
@@ -90,6 +90,9 @@ export class ExternalStatusObserver {
           connection.rpc.close();
           return;
         }
+        // The boundary belongs to the connection that exists, not to the attempt that might not
+        // have: everything numbered before this came from a source that is gone.
+        this.publisher.producerChanged();
       }
       connection.abort.signal.throwIfAborted();
       if (!supportsNativeStatus(connection.rpc.userAgent)) {

@@ -39,8 +39,15 @@ preview, provider path, launch settings or credentials cross the public status b
 `thread/status/changed` updates reach the prepared projection immediately. A notification newer
 than the start of a reconciliation wins over that pass's older response. Notifications do not
 extend unrelated rows' leases or replace a successful complete reconciliation. The event overlay
-holds at most 512 identities. Each reconnect replaces the connection generation and invalidates
-old positive observations before rebuilding state. Late events from retired connections have no
+holds at most 512 identities. A connection that is ESTABLISHED replaces the generation and
+invalidates old positive observations before rebuilding state; an attempt that fails does not.
+The distinction is the consumer's: it must retire every generation it is shown and its retired set
+is bounded, so a generation minted per attempt spends that budget on an event that did not happen —
+on a machine whose provider is absent, seven of them in twelve seconds beside an unbroken sequence,
+which announces that the numbering restarted while it plainly did not. For the same reason a
+repeated identical refusal is not re-published: the same status and reason said again is not news,
+and re-announcing `observation-pending` on every retry would overwrite the failure reason that
+carries the information with one that carries none. Late events from retired connections have no
 effect. A successful empty inventory removes rows; a failed observation retains last-known metadata
 but clears positive execution claims. Root changes invalidate the old source before reconnecting.
 
