@@ -1,15 +1,24 @@
-import { type FSWatcher, watch } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { type FSWatcher, lstatSync, type WatchListener, watch } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { nativeCommandPath } from '../agent/codex/ownedControl.ts';
 import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import { pendingSessionsPath, sessionsPath } from '../config/paths.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { managedRuntimeRoot } from './status.ts';
 
+function fileStamp(path: string): string | null {
+  try {
+    const stat = lstatSync(path, { bigint: true });
+    return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+  } catch {
+    return null;
+  }
+}
+
 /** Command files wake the owner immediately; the deadline repairs missed filesystem events.
  * Status, content and locks are outputs and cannot wake their own producer. */
 export class RuntimeWake {
-  private watchers: FSWatcher[] = [];
+  private watchers: Pick<FSWatcher, 'on' | 'close'>[] = [];
   private pending = false;
   private closed = false;
   private resume: (() => void) | null = null;
@@ -18,29 +27,32 @@ export class RuntimeWake {
   constructor(
     paths: readonly string[],
     private signal: AbortSignal,
+    watchDirectory: (
+      path: string,
+      listener: WatchListener<string>,
+    ) => Pick<FSWatcher, 'on' | 'close'> = watch,
   ) {
-    const directories = new Map<string, Set<string>>();
-    for (const path of paths) {
-      const directory = dirname(path);
-      const names = directories.get(directory) ?? new Set<string>();
-      names.add(basename(path));
-      directories.set(directory, names);
-    }
-    for (const [directory, names] of directories) {
+    const stamps = new Map(paths.map((path) => [path, fileStamp(path)]));
+    const reconcile = () => {
+      let changed = false;
+      for (const [path, previous] of stamps) {
+        const current = fileStamp(path);
+        if (current !== previous) {
+          stamps.set(path, current);
+          changed = true;
+        }
+      }
+      if (changed) this.notify();
+    };
+    for (const directory of new Set(paths.map(dirname))) {
       try {
-        const watcher = watch(directory, (_event, filename) => {
-          const name = String(filename);
-          if (
-            filename === null ||
-            [...names].some((file) => name === file || name.startsWith(`${file}.tmp-`))
-          ) {
-            // macOS can coalesce an atomic replacement into only the temporary sibling event.
-            // Give the writer its rename turn, then read the canonical command, never the temp.
-            this.eventTimer ??= setTimeout(() => {
-              this.eventTimer = null;
-              this.notify();
-            }, 10);
-          }
+        const watcher = watchDirectory(directory, () => {
+          // A coalesced macOS event can name a LOCK rather than the changed command. Inspect
+          // exact input stamps after the rename turn; output-only events never wake the owner.
+          this.eventTimer ??= setTimeout(() => {
+            this.eventTimer = null;
+            reconcile();
+          }, 10);
         });
         watcher.on('error', () => {
           watcher.close();
