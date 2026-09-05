@@ -42,6 +42,7 @@ function fixture() {
     { name: 'Plan', mode: 'plan', model: null, reasoning_effort: 'medium' },
   ];
   let receipts: unknown[] = [];
+  let resumeParams: unknown = null;
   let hold = '';
   const rpc: CodexAppRpc = {
     close() {
@@ -59,7 +60,8 @@ function fixture() {
             canAcceptDirectInput,
           },
         };
-      if (method === 'thread/resume')
+      if (method === 'thread/resume') {
+        resumeParams = params;
         return {
           thread: {
             id: s.uuid,
@@ -71,6 +73,7 @@ function fixture() {
           model: 'model-current',
           reasoningEffort: 'low',
         };
+      }
       if (method === 'collaborationMode/list') return { data: collaborationModes };
       if (method === 'turn/start') {
         expect(cursors.pickups[key]?.native).toEqual({ phase: 'intent', turnId: null });
@@ -154,6 +157,7 @@ function fixture() {
       receipts = value;
     },
     hold: () => hold,
+    resumeParams: () => resumeParams,
     run: (rateHeld = false) =>
       deliverOwnedCodexPending(m, s, [msg], cursors, new Set(), rateHeld, Date.now(), deps),
   };
@@ -371,4 +375,27 @@ test('future delivery, rate holds and changed registration cannot submit', async
   replaced.deps.sessions = () => [{ ...replaced.s, uuid: randomUUID() }];
   expect(await replaced.run()).toBe(0);
   expect(replaced.calls).not.toContain('turn/start');
+});
+
+test('the delivery resume asks for the thread context without its conversation attached', async () => {
+  const f = fixture();
+  f.s.launchRecipe = {
+    id: 'input-policy',
+    revision: 'r1',
+    digest: 'a'.repeat(64),
+    capabilities: ['input-requests'],
+    collaborationMode: 'plan',
+  };
+  expect(await f.run()).toBe(1);
+  // Without this the response carries every turn of the thread, so a control read grows with the
+  // session's age until it passes the connection's frame limit and delivery stops for good. Nothing
+  // on this path reads a turn: the fields wanted are the model, its provider and the effort.
+  expect(f.resumeParams()).toEqual({ threadId: f.s.uuid, excludeTurns: true });
+});
+
+test("a delivery pass that throws records the failure as this letter's hold", async () => {
+  const f = fixture();
+  f.loseResponse();
+  await expect(f.run()).rejects.toThrow('response lost');
+  expect(f.hold()).toBe('native delivery failed: response lost after request was sent');
 });

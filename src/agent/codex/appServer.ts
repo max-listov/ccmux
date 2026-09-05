@@ -197,12 +197,22 @@ export async function resumeCodexAppThread(
   return response.thread;
 }
 
+/**
+ * The thread's own model context, without the conversation attached.
+ *
+ * `excludeTurns` is not an optimization here, it is the bound. A resume that carries the turns
+ * answers with the whole conversation, so the size of a control response grows with the session's
+ * age until it crosses the connection's frame limit — after which it never fits again, and every
+ * later attempt fails the same way. Nothing on this path reads a turn: what is wanted is `model`,
+ * `modelProvider`, `reasoningEffort` and the thread's status. Measured on one working session:
+ * 2,429,351 bytes with the turns, 1,777 without, carrying the same four fields.
+ */
 export async function resumeCodexAppThreadContext(
   rpc: CodexAppRpc,
   threadId: string,
 ): Promise<CodexAppThreadContext> {
   const response = CodexAppThreadContextSchema.parse(
-    await rpc.request('thread/resume', { threadId }),
+    await rpc.request('thread/resume', { threadId, excludeTurns: true }),
   );
   if (response.thread.id !== threadId)
     throw new Error('Codex App Server resumed a different thread identity');

@@ -22,7 +22,12 @@ import { formatChatInjection } from './format.ts';
 import { managedPeer, managedPeerKey } from './identity.ts';
 import { advanceMessageOperation } from './messageOperationStore.ts';
 import { findOwnedCodexReceipt } from './ownedCodexReceipt.ts';
-import { conditionalMessage, pickPendingDelivery } from './pendingDelivery.ts';
+import {
+  conditionalMessage,
+  nativeDeliveryHold,
+  pendingMessageId,
+  pickPendingDelivery,
+} from './pendingDelivery.ts';
 import { replyRouteToSender } from './replyRoute.ts';
 import { appendAck, type LedgerSlot, type loadCursors, saveCursors } from './store.ts';
 
@@ -51,9 +56,21 @@ export async function deliverOwnedCodexPending(
   now = Date.now(),
   deps = nativeDeliveryDependencies,
 ): Promise<number> {
-  return withNativeAdmission(m, s, () =>
-    deliverLocked(m, s, ledger, cursors, acked, rateHeld, now, deps),
-  );
+  try {
+    return await withNativeAdmission(m, s, () =>
+      deliverLocked(m, s, ledger, cursors, acked, rateHeld, now, deps),
+    );
+  } catch (error) {
+    const held = pendingMessageId(
+      ledger,
+      managedPeerKey(managedPeer(m.rcPrefix, s)),
+      cursors,
+      acked,
+      now,
+    );
+    if (held !== undefined) await deps.hold(s.name, held, nativeDeliveryHold(error));
+    throw error;
+  }
 }
 
 async function deliverLocked(
@@ -69,9 +86,8 @@ async function deliverLocked(
   const recipient = managedPeer(m.rcPrefix, s);
   const key = managedPeerKey(recipient);
   const pickup = cursors.pickups[key];
-  const selected = pickPendingDelivery(ledger, key, cursors.delivered[key] ?? 0, acked, now);
-  const pick = selected.pick;
-  const messageId = pickup?.messageId ?? pick?.msg.id;
+  const pick = pickPendingDelivery(ledger, key, cursors.delivered[key] ?? 0, acked, now).pick;
+  const messageId = pendingMessageId(ledger, key, cursors, acked, now);
   if (messageId === undefined) return 0;
   const hold = (reason: string) => deps.hold(s.name, messageId, reason);
   const observed = deps.readStatus(m, s);

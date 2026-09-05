@@ -288,6 +288,27 @@ worse than one that says nothing: the guess gets believed and acted on.
 The rule that follows: never name a cause the transport did not report, and never describe a queued
 message as a lost one.
 
+The same rule binds the local delivery pass, where the failure is nearer and therefore easier to
+lose. `inbox` answers "why has this not landed" from the hold the daemon recorded, and with no hold
+on record it says the letter is simply queued and suggests checking that the daemon runs. That
+sentence is true for a letter nobody has reached yet and false for one whose delivery is failing
+every pass — and it sends the reader to inspect the one component that is healthy. So a pass that
+throws writes the hold itself, carrying the failure's own sentence: a repeating failure is the case
+that most needs a name, because it is the one that never clears on its own.
+
+`msg cancel <task>` withdraws **conditional** mail — deferred or time-delayed — and only from this
+machine's ledger. Immediate mail (`--interrupt`) has no withdrawal at all, and a letter sent across
+the fleet lives in the recipient machine's ledger, where a local tombstone cannot reach it: cancel
+is local-only for the same reason `--after` is. Both limits are printed beside the count, because a
+bare "cancelled 0" is read as "nothing of mine is waiting" — the opposite of the truth in exactly
+the two cases a sender cannot check from here.
+
+`inbox` for another session is a diagnosis and advances no cursor — an inbox is closed by the session
+that owns it, and marking someone else's mail read would hide it from the agent that must receive
+it. The listing says so, because it otherwise looks exactly like reading your own: a sender who
+listed the recipient's queue, saw the letters and concluded they were handled goes on reporting an
+empty queue while they wait on a delivery that is not coming.
+
 A machine listed in `remoteTransport.peers` is reached over the remote transport even when it also has an ssh alias. That is
 what makes the remote transport adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.

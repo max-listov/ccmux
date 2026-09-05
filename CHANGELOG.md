@@ -6,6 +6,28 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Read the native thread's model context without its conversation attached. A resume that carried
+  the turns grew with the session's age until it crossed the connection's message limit, after which
+  every chat delivery to that session failed identically and forever; a session restart could not
+  clear it. Measured on one working session: 2,429,351 bytes before, 1,777 after, carrying the same
+  fields.
+- Record a failed delivery pass as the pending letter's hold. The cause now reaches `ccmux inbox`
+  instead of only the log, which answered "queued — the daemon delivers it (check the daemon is
+  running)" for a recipient whose delivery was failing every pass.
+- `ccmux inbox <other session>` says it marked nothing read. It advances no cursor by design, and
+  looked exactly like reading your own inbox — so having listed someone's queue read as having
+  handled it.
+- `ccmux msg cancel` names what it could not withdraw: immediate mail, which has no withdrawal, and
+  mail already sent to another machine, where a local tombstone cannot reach it. A bare "cancelled 0"
+  reads as "nothing of mine is waiting" in exactly the two cases a sender cannot check locally.
+- `inbox` asks both delivery tracks the same question delivery asks them. Conditional mail is
+  retired by the ack-log, not the read cursor, so an immediate delivery moving that cursor hid
+  deferred letters that were still queued.
+- A Codex reasoning record with no published summary carries `text: null` rather than a literal
+  `[reasoning]`, and a published summary is surfaced as its own text. The marker made consumers
+  recognize a placeholder by matching its text — and it replaced real summaries the provider had
+  published.
+
 ## [0.55.3] — 2026-09-05
 
 The hottest command evaluates a leaf, not the product

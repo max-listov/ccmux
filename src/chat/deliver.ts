@@ -397,6 +397,8 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
           now,
         );
       } catch (error) {
+        // The hold itself is recorded by the deliverer, which already knows which letter the pass
+        // was about; here the failure only reaches the log.
         log.warn({ msg: 'native managed chat held', name: s.name, error: String(error) });
       }
       continue;

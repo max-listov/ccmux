@@ -49,9 +49,16 @@ adapters остаются чистыми трансформами. `detect(lines
 | text | `{type:text\|thinking, …}` | `{type:input_text\|output_text}` |
 | tool call | inline `{type:tool_use, name, id, input}` | top-level `{function_call, name, arguments(JSON-строка), call_id}` |
 | tool result | user `{type:tool_result, tool_use_id, content}` | `{function_call_output, call_id, output}` |
-| reasoning | `{type:thinking, thinking}` (текст есть) | `{reasoning, encrypted_content}` → текст `[reasoning]` |
+| reasoning | `{type:thinking, thinking}` (текст есть) | `{reasoning, encrypted_content, summary[]}` → текст сводки, при `summary: []` — `text: null` |
 | токены | `.message.usage` | отдельный `event_msg/token_count → info.*_token_usage` |
 | роли | user/assistant | user/assistant/**developer**(→system) |
+
+Отсутствие сводки — признак в данных, а не строка. У зашифрованного размышления `text` равен `null`
+при `rawType: 'reasoning'`; заглушки в тексте нет. Строка-заглушка заставляла бы потребителя узнавать
+её сверкой по тексту, и эта сверка неверна в обе стороны: настоящая сводка, случайно так
+написанная, была бы проглочена, а смена формулировки у нас молча превратила бы все заглушки в
+содержимое. Поток содержимого control-service тем же правилом живёт с самого начала — он публикует
+`reasoning-summary` только когда сводка есть.
 
 ## Чтение untyped-границы без `as`
 

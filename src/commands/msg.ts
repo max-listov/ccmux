@@ -18,6 +18,7 @@ import {
   managedPeer,
   ownerTarget,
   principalLabel,
+  samePrincipal,
   targetLabel,
 } from '../chat/identity.ts';
 import { isRoleToken, type RoleCandidate, resolveRole } from '../chat/roleAddress.ts';
@@ -26,9 +27,11 @@ import {
   appendMessage,
   appendMessageOnce,
   loadAckedIds,
+  loadCursors,
   loadLedger,
   OWNER,
   pendingConditional,
+  pendingImmediate,
 } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
@@ -36,7 +39,7 @@ import { AgentKindSchema, ChatMessageSchema, ListJsonSchema } from '../config/sc
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { routeFor } from '../fleet/address.ts';
 import { RETRY_WINDOW_MS } from '../fleet/flush.ts';
-import { appendOutbound } from '../fleet/outbox.ts';
+import { appendOutbound, loadOutbox } from '../fleet/outbox.ts';
 import { queuedForRetryNotice, relay, runPeer } from '../fleet/transport.ts';
 import type {
   AgentKind,
@@ -367,7 +370,8 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.log('usage: ccmux msg cancel <task>');
       return 1;
     }
-    const pending = pendingConditional(loadLedger(machine), loadAckedIds(machine), {
+    const ledger = loadLedger(machine);
+    const pending = pendingConditional(ledger, loadAckedIds(machine), {
       from,
       task: cancelTask,
     });
@@ -375,6 +379,28 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     console.log(
       `cancelled ${pending.length} undelivered message(s) from ${principalLabel(from)} for task '${cancelTask}'`,
     );
+    const carried = pendingImmediate(ledger, loadCursors(machine), { from, task: cancelTask });
+    if (carried.length > 0) {
+      console.log(
+        `${carried.length} immediate message(s) for '${cancelTask}' are still on their way — immediate mail has no withdrawal, it is handed over at the recipient's next opportunity`,
+      );
+    }
+    // Cancel is local-only, exactly as `--after` is, and for the same reason: a letter to another
+    // machine lives in THAT machine's ledger, so there is nothing here to tombstone. Saying it is
+    // the whole point — "cancelled 0" is otherwise read as "nothing of mine is waiting", which is
+    // the opposite of the truth for the one kind of mail a sender cannot see from here.
+    const away = loadOutbox(machine).filter(
+      (record) =>
+        record.envelope.task === cancelTask &&
+        samePrincipal(record.envelope.from, from) &&
+        (record.envelope.to.kind === 'managed' || record.envelope.to.kind === 'codex-app') &&
+        record.envelope.to.machine !== machine.rcPrefix,
+    );
+    if (away.length > 0) {
+      console.log(
+        `${away.length} message(s) for '${cancelTask}' went to another machine — cancel is local-only and cannot withdraw them there`,
+      );
+    }
     return 0;
   }
 

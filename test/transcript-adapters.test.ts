@@ -66,3 +66,33 @@ test("codex adapter parses a response_item message's output_text", () => {
   expect(msgs[0]?.role).toBe('assistant');
   expect(msgs[0]?.text).toBe('hello');
 });
+
+test('codex reasoning: an encrypted item carries no text, a published summary carries its own', () => {
+  const lines = [
+    L({
+      type: 'response_item',
+      timestamp: '2026-09-06T00:00:00Z',
+      payload: { type: 'reasoning', id: 'r1', encrypted_content: 'opaque', summary: [] },
+    }),
+    L({
+      type: 'response_item',
+      timestamp: '2026-09-06T00:00:01Z',
+      payload: {
+        type: 'reasoning',
+        id: 'r2',
+        encrypted_content: 'opaque',
+        summary: [
+          { type: 'summary_text', text: 'Checked the config' },
+          { type: 'summary_text', text: 'Then the socket' },
+        ],
+      },
+    }),
+  ];
+  const thinking = parseCodex(lines, 1).filter((m) => m.kind === 'thinking');
+  expect(thinking).toHaveLength(2);
+  // The absence is a fact in the field that carries text, not a string a consumer has to recognize.
+  expect(thinking[0]?.text).toBeNull();
+  expect(thinking[0]?.rawType).toBe('reasoning');
+  expect(thinking[1]?.text).toBe('Checked the config\n\nThen the socket');
+  expect(parseCodex(lines, 1).some((m) => m.text?.includes('[reasoning]') === true)).toBe(false);
+});

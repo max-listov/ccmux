@@ -126,6 +126,29 @@ export function pendingConditional(
 }
 
 /**
+ * Immediate mail from this sender for this task that its recipient has not been handed yet.
+ *
+ * `msg cancel` deliberately withdraws conditional mail only: immediate mail is delivered at the
+ * recipient's next opportunity and there is nothing to hold back. That makes its count of zero
+ * indistinguishable from "nothing is waiting" — the reading a sender takes when a letter has been
+ * overtaken by events and they want it gone. Naming what cancel could not touch is what separates
+ * those two, and the letters are still on their way.
+ */
+export function pendingImmediate(
+  ledger: readonly LedgerSlot[],
+  cursors: ChatCursors,
+  filter: { from?: ChatPrincipal; task?: string },
+): ChatMessage[] {
+  return ledger.filter((msg, idx): msg is ChatMessage => {
+    if (msg === null) return false;
+    if (msg.defer || msg.notBefore !== null) return false;
+    if (filter.from !== undefined && !samePrincipal(msg.from, filter.from)) return false;
+    if (filter.task !== undefined && msg.task !== filter.task) return false;
+    return (cursors.delivered[chatTargetKey(msg.to)] ?? 0) <= idx;
+  });
+}
+
+/**
  * What every generation-2 record carries, with room for what a newer build may add.
  *
  * This is the line between "written by something newer" and "malformed". Without it the two are
@@ -355,11 +378,19 @@ export function unreadFor(
   const since = cursors.read[key] ?? 0;
   const activePickupId = cursors.pickups[key]?.messageId;
   const out: { msg: ChatMessage; idx: number }[] = [];
-  for (let idx = since; idx < ledger.length; idx++) {
+  for (let idx = 0; idx < ledger.length; idx++) {
     const msg = ledger[idx];
     if (msg?.to.kind !== 'managed' || managedPeerKey(msg.to) !== key) continue;
     if (msg.id === activePickupId) continue; // already armed/injected; transcript pickup owns it
     if (acked?.has(msg.id) === true) continue; // already injected (Stop hook or daemon) — not pending
+    // The two tracks are asked the same question delivery asks them, because anything else makes
+    // this listing disagree with what is actually queued. Immediate mail is behind the read cursor;
+    // conditional mail is NOT — its authority is the ack-log, and it is delivered off-cursor by id.
+    // Reading both off the cursor hid deferred letters the moment an immediate one moved it past
+    // them: still unacked, still due for delivery, and absent from the one command that answers
+    // "what is waiting for me". Measured on a live fleet when this was found: four such letters,
+    // invisible here while the daemon still held them.
+    if (!(msg.defer || msg.notBefore !== null) && idx < since) continue;
     out.push({ msg, idx });
   }
   return out;

@@ -85,6 +85,18 @@ lost reply is ambiguous: the durable intent is held and reconciled, never blindl
 Receipt lookup is bounded to 32 recent native turn summaries and the RPC byte limit. Absence is
 not proof of rejection, so an unresolved intent stays held rather than producing duplicate work.
 
+Every provider read on this path is bounded by a request parameter, not by hope. The pre-dispatch
+context read asks for the thread without its turns (`excludeTurns`): the fields it uses are the
+model, its provider and the reasoning effort, while the conversation attached to a full answer grows
+with the session's age. An unbounded read of a growing thread is not slow, it is a delivery outage
+with a date on it — once the answer passes the 2 MiB message cap it never fits again, and every
+later attempt fails identically. Measured on one working session: 2,429,351 bytes with the turns,
+1,777 without, carrying the same fields.
+
+A delivery pass that throws records the failure as the pending letter's hold, in the recipient's
+status, so `ccmux inbox` reports the cause instead of falling back to "queued — the daemon delivers
+it".
+
 Immediate and conditional messages keep separate cursors. A conditional acknowledgement follows
 pickup evidence, not the mere send attempt; future `--after` mail does not block an immediate reply.
 `wait` requires native idle, a terminal/no turn, and no due unread mail or unresolved pickup.

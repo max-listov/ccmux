@@ -4,9 +4,10 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../src/chat/auth.ts';
+import { buildEnvelope } from '../src/chat/compose.ts';
 import { managedPeer } from '../src/chat/identity.ts';
 import { loadAckedIds, loadLedger, pendingConditional } from '../src/chat/store.ts';
-import { chatAuthPath, sessionsPath } from '../src/config/paths.ts';
+import { chatAuthPath, outboxPath, sessionsPath } from '../src/config/paths.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
 import { loadSessions } from '../src/config/sessions.ts';
 
@@ -141,4 +142,45 @@ test('stdin body: echo … | ccmux msg <to> reads the piped text', async () => {
   const { code } = await runMsg(cfgPath, 'router', ['worker'], 'piped body here');
   expect(code).toBe(0);
   expect(loadLedger(m).at(-1)?.body).toBe('piped body here');
+});
+
+test('cancel names the immediate mail it could not withdraw, so its zero is not read as "nothing waiting"', async () => {
+  const { cfgPath, m } = setup();
+  // `--interrupt` is what makes a letter immediate; ordinary mail waits for a turn boundary and is
+  // therefore conditional, which cancel does withdraw.
+  await runMsg(cfgPath, 'router', [
+    'worker',
+    '--interrupt',
+    '--task',
+    't4',
+    'already overtaken by events',
+  ]);
+  const { code, out } = await runMsg(cfgPath, 'router', ['cancel', 't4']);
+  expect(code).toBe(0);
+  // Nothing conditional to tombstone — and a bare zero here reads as an empty queue while the
+  // letter is still on its way, which is exactly the conclusion a sender acts on.
+  expect(out).toContain('cancelled 0');
+  expect(out).toContain("1 immediate message(s) for 't4' are still on their way");
+  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't4' }).length).toBe(0);
+});
+
+test('cancel says it cannot reach mail that went to another machine, instead of a bare zero', async () => {
+  const { cfgPath, m } = setup();
+  const router = loadSessions(m).find((row) => row.name === 'router');
+  if (router === undefined) throw new Error('fixture lost its sender');
+  // A cross-machine letter lives in the RECIPIENT machine's ledger; here only the outbox record of
+  // having sent it exists — which is exactly why cancel finds nothing to tombstone.
+  const envelope = buildEnvelope(
+    managedPeer(m.rcPrefix, router),
+    { ...managedPeer(m.rcPrefix, router), machine: 'host-b', session: 'worker' },
+    'sent across the fleet',
+    { task: 't5', defer: true, onBehalfOf: null, notBefore: null },
+  );
+  writeFileSync(
+    outboxPath(m),
+    `${JSON.stringify({ kind: 'msg', envelope, result: { ok: true, detail: '' } })}\n`,
+  );
+  const { out } = await runMsg(cfgPath, 'router', ['cancel', 't5']);
+  expect(out).toContain('cancelled 0');
+  expect(out).toContain("1 message(s) for 't5' went to another machine");
 });

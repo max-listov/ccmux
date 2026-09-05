@@ -91,5 +91,13 @@ export async function cmdInbox(args: string[]): Promise<number> {
   // Never advance another session's cursor — that would hide its mail behind your diagnosis.
   const isSelf = self !== undefined && self === name;
   if (!peek && isSelf) await markRead(m, peer, ledger.length);
+  // A listing that changes nothing must say so. Reading someone else's inbox looks exactly like
+  // reading your own, and the reader draws the obvious conclusion from having seen the mail: that
+  // it is now handled. It is not — the letters are still queued, still waiting on delivery, and the
+  // sender who "closed" them this way goes on believing the queue is empty.
+  else if (unread.length > 0)
+    console.log(
+      '(nothing marked read: an inbox is closed by its own session; this is a diagnosis)',
+    );
   return 0;
 }

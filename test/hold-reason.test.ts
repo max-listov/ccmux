@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { holdReason } from '../src/chat/holdReason.ts';
+import { managedPeerKey } from '../src/chat/identity.ts';
 import { unreadFor } from '../src/chat/store.ts';
 import type { ChatMessage } from '../src/types.ts';
 import { makeChatMessage, makeOwner, makePeer, makeSession } from './helpers.ts';
@@ -145,4 +146,15 @@ test('N9: an already-injected deferred message is no longer reported as pending 
   expect(unreadFor(api, ledger, cursors, new Set(['delivered'])).map((u) => u.msg.id)).toEqual([
     'waiting',
   ]);
+});
+
+test('N10: an immediate delivery moving the read cursor does not hide deferred mail behind it', () => {
+  // The cursor belongs to the immediate track. Conditional mail is delivered off it, by id, and is
+  // retired by the ack-log alone — so a read cursor that has moved past a deferred letter says
+  // nothing about whether that letter is still coming. It is.
+  const ledger = [msg({ id: 'waiting-defer', defer: true }), msg({ id: 'immediate' })];
+  const cursors = { read: { [managedPeerKey(api)]: 2 }, delivered: {}, pickups: {}, telegram: 0 };
+  expect(unreadFor(api, ledger, cursors).map((u) => u.msg.id)).toEqual(['waiting-defer']);
+  // Once the ack-log retires it, it is gone from the listing like any delivered letter.
+  expect(unreadFor(api, ledger, cursors, new Set(['waiting-defer']))).toEqual([]);
 });

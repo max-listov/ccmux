@@ -6,7 +6,8 @@ import { resultSummary } from '../toolSummary.ts';
 //   { type:"response_item"|"event_msg"|"session_meta"|…, payload:{…}, timestamp }
 // Real turns live in response_item.payload.type:
 //   message (content[] of input_text/output_text), function_call (top-level, args is a
-//   JSON string), function_call_output, reasoning (encrypted → no plaintext).
+//   JSON string), function_call_output, reasoning (encrypted content plus an OPTIONAL published
+//   summary — the summary is the only readable part, and it is often absent).
 // Token usage lives in a SEPARATE event_msg of type "token_count".
 
 function mapRole(role: string | null): TranscriptRole {
@@ -103,13 +104,24 @@ function fromPayload(payload: Record<string, unknown>, textLimit: number): Pushe
         },
       ];
     }
-    case 'reasoning':
-      // Codex ships reasoning encrypted (no plaintext summary) — surface a marker.
+    case 'reasoning': {
+      // Codex publishes a reasoning summary only sometimes; the rest stays encrypted and is never
+      // extracted. The record is kept either way — that the model thought here is itself the fact —
+      // but with no summary its text is NULL rather than a stand-in string. A literal marker makes
+      // every consumer recognize a placeholder by matching its text, and that reading is wrong in
+      // both directions: a real summary that happens to read the same is swallowed, and the day the
+      // wording changes every placeholder silently becomes content. `rawType` already says which
+      // kind of record this is, so the absence belongs in the field that carries the text.
+      const summary = Array.isArray(payload.summary) ? payload.summary : [];
+      const published = summary
+        .map((entry) => str(rec(entry)?.text) ?? str(entry) ?? '')
+        .filter((part) => part !== '')
+        .join('\n\n');
       return [
         {
           role: 'assistant',
           kind: 'thinking',
-          text: '[reasoning]',
+          text: cut(published),
           title: null,
           toolName: null,
           toolCallId: null,
@@ -117,6 +129,7 @@ function fromPayload(payload: Record<string, unknown>, textLimit: number): Pushe
           rawType: ptype,
         },
       ];
+    }
     default:
       return [];
   }
