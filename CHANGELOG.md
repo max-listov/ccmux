@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.4] — 2026-09-05
+
+Bound the native thread read, and stop four diagnostics from lying
+
 - Read the native thread's model context without its conversation attached. A resume that carried
   the turns grew with the session's age until it crossed the connection's message limit, after which
   every chat delivery to that session failed identically and forever; a session restart could not
@@ -27,7 +31,6 @@ the GitHub Release with that section as the notes.
   `[reasoning]`, and a published summary is surfaced as its own text. The marker made consumers
   recognize a placeholder by matching its text — and it replaced real summaries the provider had
   published.
-
 ## [0.55.3] — 2026-09-05
 
 The hottest command evaluates a leaf, not the product
