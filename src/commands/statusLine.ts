@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { z } from 'zod';
-import { type MetricsStatus, readMetrics, writeMetrics } from '../agent/sessionStatus.ts';
+import { type MetricsStatus, readMetricsFile, writeMetricsFile } from '../agent/metricsFile.ts';
 
 /**
  * `ccmux status-line` — the injected Claude Code statusLine command for a managed session. Claude
@@ -14,15 +13,21 @@ import { type MetricsStatus, readMetrics, writeMetrics } from '../agent/sessionS
  * every statusline refresh (debounced, but hotter than end-of-turn hooks).
  */
 
-const StatusLineJsonSchema = z.object({
-  model: z.object({ display_name: z.string().optional(), id: z.string().optional() }).optional(),
-  context_window: z
-    .object({ used_percentage: z.number().nullish(), context_window_size: z.number().nullish() })
-    .optional(),
-  cost: z.object({ total_cost_usd: z.number().nullish() }).optional(),
-});
-
-const SettingsSchema = z.object({ statusLine: z.object({ command: z.string() }).optional() });
+/**
+ * Read by hand, because a schema library on this path is evaluated thirty times a minute.
+ *
+ * `zod` costs about as much to evaluate as everything else this command does, and it is used here
+ * for two shapes of a handful of optional fields — each read once, each already guarded by a
+ * try/catch and a null return. Hand reading is the cheaper instrument for the same certainty; the
+ * declared contracts elsewhere in this tree are not affected, and nothing else on this path
+ * validates these two files.
+ */
+const asObject = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
+const asNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
 
 /** Pure: statusLine stdin JSON → the metrics to persist, or null on bad JSON. Separated for tests. */
 export function extractMetrics(raw: string, now: number): MetricsStatus | null {
@@ -32,15 +37,17 @@ export function extractMetrics(raw: string, now: number): MetricsStatus | null {
   } catch {
     return null;
   }
-  const j = StatusLineJsonSchema.safeParse(parsed).data;
+  const j = asObject(parsed);
   if (j === undefined) return null;
-  const cw = j.context_window;
+  const cw = asObject(j.context_window);
+  const model = asObject(j.model);
+  const cost = asObject(j.cost);
   return {
     ts: now,
-    pct: cw?.used_percentage ?? null,
-    contextSizeTokens: cw?.context_window_size ?? null,
-    model: j.model?.display_name ?? j.model?.id ?? null,
-    costUsd: j.cost?.total_cost_usd ?? null,
+    pct: asNumber(cw?.used_percentage),
+    contextSizeTokens: asNumber(cw?.context_window_size),
+    model: asString(model?.display_name) ?? asString(model?.id) ?? null,
+    costUsd: asNumber(cost?.total_cost_usd),
     renders: 1,
     rendersSince: now,
   };
@@ -79,8 +86,9 @@ export function originalCommand(cwd: string, home: string): string | null {
   for (const f of files) {
     try {
       if (!existsSync(f)) continue;
-      const cmd = SettingsSchema.safeParse(JSON.parse(readFileSync(f, 'utf8'))).data?.statusLine
-        ?.command;
+      const cmd = asString(
+        asObject(asObject(JSON.parse(readFileSync(f, 'utf8')))?.statusLine)?.command,
+      );
       // Skip our OWN injected command (`… status-line` as a standalone subcommand) so the tee can
       // never recurse — but a user script merely CONTAINING "status-line" (e.g. status-line-pretty.sh)
       // is a real statusline and must be run.
@@ -123,7 +131,7 @@ export async function cmdStatusLine(): Promise<number> {
     // Capture metrics (best-effort — never let a write failure suppress the visual statusline).
     if (self !== undefined && self !== '' && metrics !== null) {
       try {
-        await writeMetrics(self, countRender(readMetrics(self), metrics));
+        await writeMetricsFile(self, countRender(readMetricsFile(self), metrics));
       } catch {
         // metrics are best-effort
       }

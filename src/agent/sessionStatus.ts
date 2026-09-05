@@ -55,29 +55,17 @@ export const ChatHoldSchema = z.object({
   msgId: z.string().nullable().default(null),
 });
 
-export const MetricsStatusSchema = z.object({
-  ts: z.number(),
-  pct: z.number().nullable(), // context_window.used_percentage
-  contextSizeTokens: z.number().nullable(), // context_window.context_window_size
-  model: z.string().nullable(), // model.display_name
-  costUsd: z.number().nullable(),
-  /**
-   * How often the agent asks for this line, counted where it is already writing.
-   *
-   * The statusLine command runs on every transcript event, per session, and nothing recorded how
-   * often that is — so its cost was argued from a `ps` sample, which cannot see a process shorter
-   * than its own interval and counted the sampling shell as a hit. This is the same write that was
-   * happening anyway plus two numbers, and it makes the rate a reading instead of an estimate.
-   *
-   * Defaulted, because records written before the counter existed carry neither field, and a
-   * missing count must read as "not measured yet" rather than as zero renders.
-   */
-  renders: z.number().default(0),
-  /** Start of the window `renders` covers. Rolled forward so the rate describes recent behaviour:
-   *  a session alive for two days would otherwise average its bursts into nothing. */
-  rendersSince: z.number().default(0),
-});
-export type MetricsStatus = z.infer<typeof MetricsStatusSchema>;
+// The metrics record's shape, reader and writer live in `metricsFile.ts` — a leaf with no schema
+// library and no agent graph — because the status-line command writes it thirty times a minute and
+// was paying this module's whole import cost to do it. Re-exported here under the same names so
+// there is one implementation and one format, not a second authority beside it.
+export {
+  type MetricsStatus,
+  readMetricsFile as readMetrics,
+  writeMetricsFile as writeMetrics,
+} from './metricsFile.ts';
+
+import { type MetricsStatus, metricsPath } from './metricsFile.ts';
 
 /**
  * Resolve live working/idle once for every snapshot consumer. A positive pane marker is immediate
@@ -110,7 +98,6 @@ export function resolveLiveState(
 const safe = (name: string): string => name.replace(/[^\w.-]/g, '_');
 const lifecyclePath = (name: string): string => `${STATUS_DIR}/${safe(name)}.lifecycle.json`;
 const chatHoldPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.chathold.json`;
-const metricsPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.metrics.json`;
 const launchPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.launch.json`;
 const waitingPath = (name: string): string => `${STATUS_DIR}/${safe(name)}.waiting.json`;
 
@@ -125,10 +112,6 @@ function readRaw(path: string): unknown {
 
 export function readLifecycle(name: string): LifecycleStatus | null {
   return LifecycleStatusSchema.safeParse(readRaw(lifecyclePath(name))).data ?? null;
-}
-
-export function readMetrics(name: string): MetricsStatus | null {
-  return MetricsStatusSchema.safeParse(readRaw(metricsPath(name))).data ?? null;
 }
 
 export async function writeLifecycle(name: string, data: LifecycleStatus): Promise<void> {
@@ -179,11 +162,6 @@ export function renderRate(
     sessions += 1;
   }
   return sessions === 0 ? null : { perMinute, sessions };
-}
-
-export async function writeMetrics(name: string, data: MetricsStatus): Promise<void> {
-  mkdirSync(STATUS_DIR, { recursive: true });
-  await atomicWrite(metricsPath(name), JSON.stringify(data));
 }
 
 /** Drop both status files for a session — called from every kill path (stop/rm/restart) so a
