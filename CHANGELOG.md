@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.3] — 2026-09-05
+
+The hottest command evaluates a leaf, not the product
 ## [0.55.2] — 2026-09-04
 
 Preserve realtime delivery through coalesced filesystem events
