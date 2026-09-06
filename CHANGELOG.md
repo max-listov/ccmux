@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.11] — 2026-09-06
+
+Verify self-update shutdown only after the current daemon completes startup
 ## [0.55.10] — 2026-09-06
 
 Adopt Stitchkit 0.81 with durable daemon lifecycle, bounded logging and revision-based wakeups
