@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.12] — 2026-09-06
+
+Read external Codex transcripts by exact app address with shared line cursors
 ## [0.55.11] — 2026-09-06
 
 Verify self-update shutdown only after the current daemon completes startup
