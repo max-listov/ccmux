@@ -3,6 +3,7 @@ import {
   createApplication,
   createManagedSchedule,
   defineManagedResource,
+  lifecycleLedgerResource,
   managedServerResource,
 } from 'stitchkit/application';
 import { deliverPending } from '../chat/deliver.ts';
@@ -25,6 +26,8 @@ import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/jo
 import type { MachineConfig } from '../types.ts';
 import { clearBootGuard } from '../util/bootGuard.ts';
 import { log, setLogLevel } from '../util/log.ts';
+import { VERSION } from '../util/version.ts';
+import { createDaemonLifecycle } from './lifecycle.ts';
 
 /** The daemon owns these resources, not the independently supervised provider writers. */
 export function createDaemonApplication(initial: MachineConfig) {
@@ -33,18 +36,36 @@ export function createDaemonApplication(initial: MachineConfig) {
     id: 'diagnostic-journal',
     start: async () => {
       journal = await openOwnedRuntimeJournal(initial, { kind: 'daemon' });
-      journal.submit({
-        at: new Date().toISOString(),
-        runtime: 'daemon',
-        kind: journal.recovered ? 'recovery' : 'started',
-      });
       return { value: journal };
     },
     close: async () => {
-      journal?.submit({ at: new Date().toISOString(), runtime: 'daemon', kind: 'stopped' });
       await journal?.close();
     },
   });
+  const lifecycle = createDaemonLifecycle(initial);
+  lifecycle.subscribe((fact) => {
+    log.info({ msg: 'daemon lifecycle', ...fact });
+    journal?.submit({
+      runtime: 'daemon',
+      generation: fact.runId,
+      at:
+        fact.type === 'started'
+          ? fact.startedAt
+          : fact.type === 'ready'
+            ? fact.readyAt
+            : fact.stoppedAt,
+      kind:
+        fact.type === 'ready'
+          ? 'bound'
+          : fact.type === 'started' && fact.previousExit === 'abnormal'
+            ? 'recovery'
+            : fact.type,
+    });
+  });
+  const processLifecycle = {
+    ...lifecycleLedgerResource(lifecycle, { id: 'process-lifecycle', version: VERSION }),
+    dependsOn: [chronology],
+  };
   const monitoring = new MonitoringPublisher();
   const publisher = new ControlPublisher(initial);
   const external = new ExternalStatusPublisher(initial.rcPrefix);
@@ -53,7 +74,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   const machine = loadMachineConfig;
   const projection = defineManagedResource({
     id: 'projection',
-    dependsOn: [chronology],
+    dependsOn: [chronology, processLifecycle],
     start: () => ({ value: publisher }),
     stopAdmission: () => publisher.close(),
     close: () => {
@@ -201,6 +222,7 @@ export function createDaemonApplication(initial: MachineConfig) {
     id: 'ccmux-daemon',
     resources: [
       chronology,
+      processLifecycle,
       projection,
       externalOwner,
       controlOwner,
@@ -217,6 +239,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   });
   return {
     application,
+    lifecycle,
     publisher,
     external,
     externalObserver,

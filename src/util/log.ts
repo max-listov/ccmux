@@ -9,6 +9,7 @@
 // sane bounds, intentionally NOT config (a runaway log should never eat a server disk).
 
 import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { createBoundedLogger } from 'stitchkit/observability';
 import { LOG_FILE, STATE_DIR } from '../config/paths.ts';
 import { IS_DEV } from '../env.ts';
 
@@ -71,11 +72,29 @@ function writeFile(line: string): void {
   }
 }
 
-function emit(level: LogLevel, fields: Fields): void {
-  if (SEVERITY[level] < SEVERITY[threshold]) return;
-  const line = `${JSON.stringify({ ts: new Date().toISOString(), pid: process.pid, src: IS_DEV ? 'dev' : 'prod', level, ...fields })}\n`;
+function writeRecord(level: LogLevel, msg: string, data?: Record<string, unknown>): void {
+  const line = `${JSON.stringify({ ...data, ts: new Date().toISOString(), pid: process.pid, src: IS_DEV ? 'dev' : 'prod', level, msg })}\n`;
   writeFile(line);
   if (stderrOn) process.stderr.write(line);
+}
+
+// The framework owns sanitation and entry bounds; this sink owns only the file layout,
+// rotation and terminal mirror. Reserve space for the sink's timestamp/process envelope.
+const bounded = createBoundedLogger({
+  bounds: { entryBytes: 16 * 1024 - 256 },
+  sensitiveUrlPatterns: [/\bhttps?:\/\/[^\s]*[?#][^\s]*/i, /\bhttps?:\/\/[^\s/]+@[^\s]*/i],
+  sink: {
+    debug: (msg, data) => writeRecord('debug', msg, data),
+    info: (msg, data) => writeRecord('info', msg, data),
+    warn: (msg, data) => writeRecord('warn', msg, data),
+    error: (msg, data) => writeRecord('error', msg, data),
+  },
+});
+
+function emit(level: LogLevel, fields: Fields): void {
+  if (SEVERITY[level] < SEVERITY[threshold]) return;
+  const { msg, ...data } = fields;
+  bounded[level](msg, data);
 }
 
 export const log = {

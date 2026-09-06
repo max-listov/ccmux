@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-08-31
+updated: 2026-09-06 14:41 +0700
 ---
 
 # Ownership
@@ -515,6 +515,28 @@ closes admission and streams, drains up to 5 seconds, then spends at most 2 seco
 cleanup. SIGINT/SIGTERM retain exit codes 130/143 for boot-unit restart policy. `_run`, native
 provider writers and tmux sessions are not application resources and survive daemon shutdown.
 Operation audit records contain action/outcome/duration, never payloads or capability headers.
+
+Процессный ledger принадлежит Stitchkit: `createProcessLifecycleLedger` с atomic
+`createFileStateStore` сохраняет до 20 запусков в `native-diagnostics/daemon-lifecycle.json`.
+`lifecycleLedgerResource` запускается после получения lifetime-lock диагностического журнала;
+ready отмечается после готовности required resource graph. Штатное закрытие, forced cleanup
+и crash предыдущего процесса различаются, runId не подменяется PID. Повреждённый ledger
+останавливает startup и сохраняется для диагностики. Это новый диагностический файл,
+не миграция registry, истории бесед или delivery receipts.
+
+В журнал попадает проекция этих же lifecycle facts, а не независимо вычисленная причина рестарта.
+Процессные факты не дают права объявлять готовыми provider sessions: те наблюдаются отдельно.
+
+Структурные логи проходят через Stitchkit `createBoundedLogger`: секретные поля, URL с query,
+fragment или userinfo маскируются, Error и циклические значения безопасно сериализуются.
+Запись вместе с envelope ограничена 16 KiB; `ts`, `pid`, `src`, `level` назначает sink.
+CCMux сохраняет свой JSONL sink, rotation, динамический threshold и выключаемое stderr mirror.
+Логгер не заменяет metadata-only audit и не делает произвольный текст безопасным для публикации.
+
+`RuntimeWake` использует `createRevisionSignal` для единственного ожидающего runtime owner:
+монотонная revision сохраняет уведомление во время работы, deadline допускает reconciliation,
+abort/close освобождает ожидание. Наблюдение точных файлов команд и фильтрация output-only
+filesystem events остаются в CCMux; provider outputs не будят собственного producer.
 
 Stitchkit 0.70.5 owns cooperative HTTP stream cancellation when admission closes. Native feed
 sources receive their existing signal and finish before the server resource reports closed;

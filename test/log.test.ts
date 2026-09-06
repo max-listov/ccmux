@@ -16,6 +16,13 @@ const setLogLevel = (level: string) => {
   threshold = level;
 };
 function emit(level: string, fields: Record<string, unknown>): void {
+  emitScript('log[process.env.CCMUX_TEST_METHOD](JSON.parse(process.env.CCMUX_TEST_FIELDS));', {
+    CCMUX_TEST_METHOD: level,
+    CCMUX_TEST_FIELDS: JSON.stringify(fields),
+  });
+}
+
+function emitScript(script: string, env: Record<string, string> = {}): void {
   const child = Bun.spawnSync(
     [
       process.execPath,
@@ -23,7 +30,7 @@ function emit(level: string, fields: Record<string, unknown>): void {
       [
         'const { log, setLogLevel, LOG_FILE } = await import(process.env.CCMUX_TEST_LOGGER);',
         'setLogLevel(process.env.CCMUX_TEST_LEVEL);',
-        'log[process.env.CCMUX_TEST_METHOD](JSON.parse(process.env.CCMUX_TEST_FIELDS));',
+        script,
         'console.log(LOG_FILE);',
       ].join('\n'),
     ],
@@ -33,8 +40,7 @@ function emit(level: string, fields: Record<string, unknown>): void {
         CCMUX_STATE_DIR: sandbox,
         CCMUX_TEST_LOGGER: new URL('../src/util/log.ts', import.meta.url).href,
         CCMUX_TEST_LEVEL: threshold,
-        CCMUX_TEST_METHOD: level,
-        CCMUX_TEST_FIELDS: JSON.stringify(fields),
+        ...env,
       },
       stdout: 'pipe',
       stderr: 'pipe',
@@ -140,4 +146,58 @@ test('rotation caps generations at .2 (no unbounded growth)', () => {
   expect(existsSync(`${LOG_FILE}.1`)).toBe(true);
   expect(existsSync(`${LOG_FILE}.2`)).toBe(true);
   expect(existsSync(`${LOG_FILE}.3`)).toBe(false); // KEEP=2 — never a third rotated file
+});
+
+test('the real log sink redacts nested credentials and retains useful diagnostic fields', () => {
+  log.error({
+    msg: 'request failed',
+    status: 503,
+    nested: { token: 'synthetic-token', CCMUX_CHAT_CREDENTIAL: 'synthetic-capability' },
+    apiKey: 'synthetic-key',
+    url: 'https://example.com/resource?token=synthetic-query',
+  });
+  const body = readFileSync(LOG_FILE, 'utf8');
+  for (const secret of [
+    'synthetic-token',
+    'synthetic-capability',
+    'synthetic-key',
+    'synthetic-query',
+  ])
+    expect(body).not.toContain(secret);
+  expect(body).toContain('"status":503');
+  expect(body).toContain('request failed');
+});
+
+test('cycles, BigInt and Error values cannot throw from logging', () => {
+  emitScript(`
+    const circular = { count: 123n }; circular.self = circular;
+    log.error({ msg: 'safe failure', circular, err: new Error('diagnostic reason') });
+  `);
+  const body = readFileSync(LOG_FILE, 'utf8');
+  expect(body).toContain('safe failure');
+  expect(body).toContain('diagnostic reason');
+  expect(body.trim().split('\n')).toHaveLength(1);
+});
+
+test('one adversarial log entry stays within 16 KiB including its sink envelope', () => {
+  emitScript(
+    "log.info({ msg: 'wide entry', values: Array.from({ length: 100 }, () => '😀'.repeat(4000)) });",
+  );
+  const body = readFileSync(LOG_FILE, 'utf8');
+  expect(Buffer.byteLength(body)).toBeLessThanOrEqual(16 * 1024);
+  expect(body).toContain('truncated');
+});
+
+test('caller fields cannot forge the sink identity and stderr failure cannot escape', () => {
+  log.info({ msg: 'real identity', level: 'error', pid: -1, ts: 'fake-time', src: 'fake-source' });
+  const body = readFileSync(LOG_FILE, 'utf8');
+  expect(body).toContain('"level":"info"');
+  expect(body).not.toContain('"pid":-1');
+  expect(body).not.toContain('fake-time');
+  expect(body).not.toContain('fake-source');
+  emitScript(`
+    process.stderr.write = () => { throw new Error('closed stderr'); };
+    log.info({ msg: 'file survived stderr' });
+  `);
+  expect(readFileSync(LOG_FILE, 'utf8')).toContain('file survived stderr');
 });

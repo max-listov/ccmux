@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { LifecycleStateSchema } from 'stitchkit/application';
 import { histFile } from '../src/agent/claude/resume.ts';
 import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { readMonitoringStatus } from '../src/monitoring/read.ts';
@@ -66,6 +67,10 @@ test.skipIf(!Bun.which('tmux'))(
         stderr: 'ignore',
         stdin: 'ignore',
       });
+    const lifecycle = async () =>
+      LifecycleStateSchema.parse(
+        await Bun.file(join(root, 'native-diagnostics', 'daemon-lifecycle.json')).json(),
+      ).runs;
     const runTmux = (...args: string[]) =>
       Bun.spawnSync([tmux, '-L', socket, ...args], { stdout: 'pipe', stderr: 'pipe' });
     const create = () =>
@@ -100,6 +105,10 @@ test.skipIf(!Bun.which('tmux'))(
     let daemon = start();
     try {
       const first = await waitFor((s) => s.sessions[0]?.model === 'model-a');
+      const firstRun = (await lifecycle())[0];
+      expect(firstRun?.pid).toBe(daemon.pid);
+      expect(firstRun?.termination).toBe('active');
+      expect(firstRun?.readyAt).toBeString();
       expect(first.sessions[0]).toMatchObject({ state: 'working', uuid: a.uuid, agent: 'claude' });
       expect(first.sessions[1]).toMatchObject({ state: 'stopped', uuid: b.uuid, agent: 'codex' });
       expect(JSON.stringify(first)).not.toContain('private transcript body');
@@ -112,11 +121,18 @@ test.skipIf(!Bun.which('tmux'))(
       await waitFor((s) => s.sessions[0]?.state === 'working');
       daemon.kill('SIGTERM');
       await daemon.exited;
+      expect((await lifecycle())[0]).toMatchObject({
+        runId: firstRun?.runId,
+        termination: 'clean',
+      });
       expect(readMonitoringStatus(machine).status).not.toBe('live');
       expect((await readNativeStatus()).status).not.toBe('live');
       expect(runTmux('has-session', '-t', '=agent-a').exitCode).toBe(0);
       daemon = start();
       const restarted = await waitFor((s) => s.generation !== first.generation);
+      const secondRun = (await lifecycle())[0];
+      expect(secondRun?.runId).not.toBe(firstRun?.runId);
+      expect(secondRun?.pid).toBe(daemon.pid);
       expect(restarted.sessions[0]?.uuid).toBe(a.uuid);
       const cancellation = new AbortController();
       const cancelled = readNativeStatus({ signal: cancellation.signal });
@@ -129,6 +145,11 @@ test.skipIf(!Bun.which('tmux'))(
       expect(runTmux('has-session', '-t', '=agent-a').exitCode).toBe(0);
       daemon = start();
       await waitFor((s) => s.generation !== restarted.generation);
+      const runs = await lifecycle();
+      expect(runs[0]?.pid).toBe(daemon.pid);
+      expect(runs[0]?.readyAt).toBeString();
+      expect(runs[1]).toMatchObject({ runId: secondRun?.runId, termination: 'abnormal' });
+      expect(runs[2]).toMatchObject({ runId: firstRun?.runId, termination: 'clean' });
       await writeSessionsUnlocked(machine, [b]);
       const removed = await waitFor(
         (s) => s.sessions.length === 1 && s.sessions[0]?.name === b.name,

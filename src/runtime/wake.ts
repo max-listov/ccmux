@@ -1,5 +1,6 @@
 import { type FSWatcher, lstatSync, type WatchListener, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createRevisionSignal } from 'stitchkit/application';
 import { nativeCommandPath } from '../agent/codex/ownedControl.ts';
 import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import { pendingSessionsPath, sessionsPath } from '../config/paths.ts';
@@ -19,9 +20,9 @@ function fileStamp(path: string): string | null {
  * Status, content and locks are outputs and cannot wake their own producer. */
 export class RuntimeWake {
   private watchers: Pick<FSWatcher, 'on' | 'close'>[] = [];
-  private pending = false;
+  private revisions = createRevisionSignal({ maxWaiters: 1 });
+  private consumedRevision = 0;
   private closed = false;
-  private resume: (() => void) | null = null;
   private eventTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -68,27 +69,17 @@ export class RuntimeWake {
   }
 
   notify(): void {
-    if (this.closed) return;
-    this.pending = true;
-    this.resume?.();
+    this.revisions.advance();
   }
 
   async wait(maxMs = 1_000): Promise<void> {
     if (this.closed) return;
-    if (this.pending) {
-      this.pending = false;
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      const finish = () => {
-        clearTimeout(timer);
-        this.resume = null;
-        this.pending = false;
-        resolve();
-      };
-      const timer = setTimeout(finish, maxMs);
-      this.resume = finish;
+    const result = await this.revisions.wait(this.consumedRevision, {
+      signal: this.signal,
+      timeoutMs: maxMs,
     });
+    if (result.outcome === 'capacity') throw new Error('Runtime wake already has a waiting owner');
+    this.consumedRevision = result.revision;
   }
 
   close = (): void => {
@@ -98,7 +89,7 @@ export class RuntimeWake {
     this.eventTimer = null;
     for (const watcher of this.watchers) watcher.close();
     this.watchers = [];
-    this.resume?.();
+    this.revisions.close();
   };
 }
 

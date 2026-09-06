@@ -95,3 +95,15 @@ test('missing watcher still reconciles and cannot strand commands', async () => 
     wake.close();
   }
 });
+
+test('a second waiting owner is refused without stranding the first', async () => {
+  const wake = new RuntimeWake([], new AbortController().signal);
+  try {
+    const first = wake.wait(60_000);
+    await expect(wake.wait(20)).rejects.toThrow('already has a waiting owner');
+    wake.notify();
+    await first;
+  } finally {
+    wake.close();
+  }
+});
