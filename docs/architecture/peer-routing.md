@@ -303,6 +303,24 @@ is local-only for the same reason `--after` is. Both limits are printed beside t
 bare "cancelled 0" is read as "nothing of mine is waiting" — the opposite of the truth in exactly
 the two cases a sender cannot check from here.
 
+**Those two limits stay.** A letter that events have overtaken is not withdrawn; the sender writes
+another one. This is a decision, not a gap waiting to be filled: a ledger is what makes "who said
+what, and when" answerable, and mail that can vanish from it answers nothing — a recipient that
+never saw a letter and one whose letter was pulled back look identical afterwards. Withdrawal across
+machines is worse still, because the tombstone would have to be written where the letter lives and
+prove there that the original sender asked for it, which is an authorization problem invented to
+serve a habit no conversation has.
+
+What to do instead is already in the delivery order, and it is cheaper than a withdrawal: immediate
+mail is picked ahead of the whole deferred backlog, so ONE short letter naming the current task
+reaches the recipient before the stale ones it is about. It also leaves both letters in the ledger,
+which is the point — the recipient can see that the instruction changed, rather than finding a queue
+that quietly rearranged itself.
+
+Conditional mail is the exception, and only because of what it is: a deferred letter or a timer has
+not been said yet. Re-arming a `--after` watchdog under the same task replaces the pending one for
+the same reason — cancelling an alarm is not unsaying a sentence.
+
 A provider's refusal is a hold, not a failure of ours, and it can come from ANY call in the delivery
 — not the one that is easiest to imagine. A thread another App client is working in reports
 `notLoaded`, so the refusal arrives from the resume rather than from `turn/start`. Read as an
