@@ -180,16 +180,21 @@ test('restart proof finds only an exact persisted client_id, including across a 
   expect(await codexAppMessagePersisted(machine, UUID, bodyOnlyId)).toBe(false);
 });
 
-test('a provider refusal at turn/start is a hold with its own sentence; a broken socket still throws', async () => {
-  const call = (failure: Error) =>
+test('a provider refusal is a hold with its own sentence, whichever call it comes from', async () => {
+  const call = (failure: Error, refusing = 'turn/start') =>
     deliverCodexAppMessage(
       makeMachine(),
       makeChatMessage({ id: randomUUID(), to: makeAppPeer({ machine: 'prod' }) }),
       'payload',
       async () =>
         fakeRpc((method) => {
-          if (method === 'thread/read') return { thread: thread() };
-          if (method === 'turn/start') throw failure;
+          if (method === refusing) throw failure;
+          if (method === 'thread/read')
+            return {
+              thread: thread(refusing === 'thread/resume' ? { status: { type: 'notLoaded' } } : {}),
+            };
+          if (method === 'thread/resume') return { thread: thread() };
+          if (method === 'turn/start') return { turn: { id: 'turn-1' } };
           throw new Error(`unexpected ${method}`);
         }),
     );
@@ -203,6 +208,10 @@ test('a provider refusal at turn/start is a hold with its own sentence; a broken
     delivered: false,
     reason: 'App Server RPC failed: thread 0000 already has an active writer',
   });
+  // A thread another client is working in reports notLoaded, so the refusal actually arrives from
+  // the resume — the call it is easiest to forget, and the one that produced the warning storm.
+  const busy = new Error('App Server RPC failed: thread 0000 already has an active writer');
+  expect(await call(busy, 'thread/resume')).toEqual({ delivered: false, reason: busy.message });
   // Anything that is not the provider's answer is still a failure, not a polite refusal.
   await expect(call(new Error('Codex App Server connection closed'))).rejects.toThrow(
     'connection closed',

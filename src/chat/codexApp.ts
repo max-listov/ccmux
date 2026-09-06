@@ -71,20 +71,19 @@ export async function deliverCodexAppMessage(
     }
     if (thread.status.type !== 'idle')
       return { delivered: false, reason: `Codex App thread is ${thread.status.type}` };
-    // A refusal from the provider is a HOLD, not a failure of ours. The thread reports `idle` while
-    // another App client still holds its writer, so the only place that truth arrives is the
-    // rejected `turn/start` — and read as an exception it becomes a warning on every pass for as
-    // long as the other client keeps working, which is hours. The barrier is retained either way;
-    // what changes is that the reason is the provider's own sentence instead of a stack trace.
-    // Anything that is not a provider answer — a dead socket, a closed connection — still throws.
-    try {
-      const turnId = await startCodexAppTurn(rpc, msg.to.threadId, msg.id, codexTextInput(text));
-      return { delivered: true, duplicate: false, turnId };
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      if (!reason.startsWith('App Server RPC failed:')) throw error;
-      return { delivered: false, reason };
-    }
+    const turnId = await startCodexAppTurn(rpc, msg.to.threadId, msg.id, codexTextInput(text));
+    return { delivered: true, duplicate: false, turnId };
+  } catch (error) {
+    // A refusal from the provider is a HOLD, not a failure of ours — and it can come from ANY of
+    // the calls above, not the one it is easiest to imagine. A thread another App client is working
+    // in reports `notLoaded` here, so the refusal arrives from the resume, not from `turn/start`.
+    // Read as an exception it becomes a warning on every delivery pass for as long as that other
+    // client keeps working, which is hours. The barrier is retained either way; what changes is
+    // that the reason is the provider's own sentence. Anything that is not a provider answer — a
+    // dead socket, a closed connection — is still a failure and still throws.
+    const reason = error instanceof Error ? error.message : String(error);
+    if (!reason.startsWith('App Server RPC failed:')) throw error;
+    return { delivered: false, reason };
   } finally {
     rpc.close();
   }
