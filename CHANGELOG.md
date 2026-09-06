@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.9] — 2026-09-06
+
+Authenticate native Claude child commands with the session launch environment
 ## [0.55.8] — 2026-09-06
 
 Remove completed compatibility paths and require the packaged status line
