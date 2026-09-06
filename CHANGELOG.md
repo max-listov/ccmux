@@ -6,10 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.6] — 2026-09-06
+
+The refusal comes from the resume, not the call I assumed
+
 - Classify a provider refusal as a held delivery wherever it comes from. A thread another App client
   is working in reports `notLoaded`, so the refusal arrives from the resume rather than from
   `turn/start`, and only the latter was being read as an answer.
-
 ## [0.55.5] — 2026-09-06
 
 A provider's refusal is a hold, and an unchanged hold is not news
