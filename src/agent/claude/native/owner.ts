@@ -9,6 +9,7 @@ import type {
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { resolveMessageAttachments } from '../../../attachments/pins.ts';
+import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../../../chat/auth.ts';
 import { ContentProducer } from '../../../content/producer.ts';
 import { claudeContextApi } from '../../../context/claude.ts';
 import {
@@ -29,6 +30,7 @@ import type { NativeSnapshot } from '../../../runtime/projectionSchema.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+import { launchEnv } from '../launch.ts';
 
 /** How often the sample is CHECKED, not how often it is read: `planLimitsDue` decides the read. */
 const PLAN_LIMITS_TICK_MS = 15_000;
@@ -176,9 +178,12 @@ export class ClaudeNativeOwner {
     const forkIntent = readNativeForkIntent(this.m, this.session);
     if (forkIntent !== null) await this.adoptFork(sdk, forkIntent);
     const managedId = this.session.nativeSession.id;
+    const env = launchEnv(this.m, this.session);
+    env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(this.m, this.session);
     const options = {
       pathToClaudeCodeExecutable: this.m.claudeBin,
       cwd: this.session.dir,
+      env,
       // Without these two the runtime is a bare agent loop wearing Claude's model, not Claude Code:
       // no product system prompt, no CLAUDE.md, none of the operator's settings.
       systemPrompt: { type: 'preset', preset: 'claude_code' },
