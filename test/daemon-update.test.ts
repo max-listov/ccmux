@@ -10,11 +10,34 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { buildBundle } from '../scripts/bundle.ts';
 import { createControlClient } from '../src/control/client.ts';
 import { controlSocket } from '../src/control/path.ts';
 import { VERSION } from '../src/util/version.ts';
 import { makeMachine } from './helpers.ts';
+
+const StartupLogSchema = z.object({ pid: z.number(), msg: z.string() });
+
+function daemonStarted(log: string, pid: number): boolean {
+  return log
+    .split('\n')
+    .slice(0, -1)
+    .some((line) => {
+      const entry = StartupLogSchema.parse(JSON.parse(line));
+      return entry.pid === pid && entry.msg === 'ccmux daemon up';
+    });
+}
+
+test('daemon readiness requires the current process completed-start fact', () => {
+  const previous = '{"pid":101,"msg":"ccmux daemon up"}\n';
+  const starting = '{"pid":102,"msg":"daemon lifecycle","type":"started"}\n';
+  const current = '{"pid":102,"msg":"ccmux daemon up"}\n';
+  expect(daemonStarted('', 102)).toBe(false);
+  expect(daemonStarted(previous + starting, 102)).toBe(false);
+  expect(daemonStarted(previous + starting + current.trimEnd(), 102)).toBe(false);
+  expect(daemonStarted(previous + starting + current, 102)).toBe(true);
+});
 
 test('bundled daemon self-update settles healing before clean SIGTERM and restored-bundle restart', async () => {
   const root = mkdtempSync('/tmp/ccmux-self-update-');
@@ -83,19 +106,17 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     });
   let daemon = start();
   let errors = new Response(daemon.stderr).text();
-  // Waits for the daemon to ANSWER, on a deadline that fails a hang and says nothing about how busy
-  // the machine is. As a hundred attempts spaced twenty milliseconds it was a two-second budget
-  // wearing an iteration count, and a freshly spawned daemon on a loaded box needs longer than that
-  // to bind its socket — so the case failed for the machine's speed rather than for the update it
-  // is about. The per-attempt timeout is generous for the same reason: a daemon that accepts and
-  // answers slowly is ready, not absent.
+  // A bound control socket can answer while application resources are still activating.
+  // This case stops a fully started daemon, not an interrupted startup. The completed-start
+  // log must belong to this PID; a previous process's record cannot prove its successor ready.
   const ready = async () => {
     const client = createControlClient({ socket: controlSocket(machine), timeoutMs: 2_000 });
     try {
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         try {
-          return await client['session.list']();
+          const log = readFileSync(join(machine.stateDir, 'ccmux.log'), 'utf8');
+          if (daemonStarted(log, daemon.pid)) return await client['session.list']();
         } catch {}
         await Bun.sleep(20);
       }
@@ -127,8 +148,10 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     const second = await ready();
     expect(second.generation).not.toBe(first.generation);
     daemon.kill('SIGTERM');
-    expect(await daemon.exited).toBe(143);
-    expect(await errors).toContain('"outcome":"clean"');
+    const stopped = await daemon.exited;
+    const stderr = await errors;
+    expect(stopped, stderr).toBe(143);
+    expect(stderr).toContain('"outcome":"clean"');
   } finally {
     daemon.kill('SIGKILL');
     await daemon.exited;
