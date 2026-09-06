@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.8] — 2026-09-06
+
+Remove completed compatibility paths and require the packaged status line
 ## [0.55.7] — 2026-09-06
 
 Run the status line as its own program
