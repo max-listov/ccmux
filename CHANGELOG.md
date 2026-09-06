@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.10] — 2026-09-06
+
+Adopt Stitchkit 0.81 with durable daemon lifecycle, bounded logging and revision-based wakeups
 ## [0.55.9] — 2026-09-06
 
 Authenticate native Claude child commands with the session launch environment
