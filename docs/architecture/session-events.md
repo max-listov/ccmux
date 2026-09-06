@@ -42,6 +42,20 @@ running when these happen:
 | `turn-end` the hook never sent | `Stop` fires only when a turn ends *voluntarily*, and sometimes not even then; the turn would otherwise have a start and never an end, and a reader would show that session working forever |
 | `session-stop`, `session-blocked` | nothing inside a dead session survives to report it |
 
+**A native runtime is a third writer**, and it carries the same two obligations the other two do:
+each boundary is announced exactly once, and none of them is announced twice. Its projection keeps a
+ring of boundaries with sequence numbers, and the publisher walks everything past the cursor it kept
+from last time. Reading only the ring's newest entry does neither job: whichever boundary happens to
+stay last is re-announced on every publish, and one overtaken by the next event is never announced at
+all. Measured on a live machine over a day before this was fixed — 2236 `turn-start` against 16
+`turn-end` for native sessions, beside 193 against 193 for hook-driven ones. The feed looked healthy
+and answered every question about turns wrongly: how much work a session did, how long its turns ran,
+whether it is working now.
+
+The cursor starts where the session already is, not at zero. A turn that was running when a consumer
+began listening is state, not news; replaying its boundary would tell that consumer work started the
+moment it connected.
+
 `resumed` exists because the `waiting` pair is not otherwise closable: answering a permission prompt
 puts the agent straight back to work **without a new user turn**, so nothing else would ever follow.
 A reader tracking state would leave that session flagged "waiting for you" for hours.

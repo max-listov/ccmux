@@ -78,6 +78,8 @@ export class OwnedCodexConnection {
   private active = true;
   private failure: Error | null = null;
   private feedSession: Session | null = null;
+  /** Highest boundary sequence already announced to the feed — the ring is re-read on every publish. */
+  private emittedBoundary = 0;
   private applicationPolicy: MaterializedPolicy | null = null;
   private lastLimitsAt = 0;
   private contextCompletionSeen = 0;
@@ -160,7 +162,12 @@ export class OwnedCodexConnection {
             if (OBSERVED_EVENTS.has(event.method) && this.projection.event(event)) {
               this.publish();
               if (this.feedSession !== null && event.method !== 'thread/status/changed') {
-                emitOwnedCodexBoundary(this.m, this.feedSession, this.projection.snapshot());
+                this.emittedBoundary = emitOwnedCodexBoundary(
+                  this.m,
+                  this.feedSession,
+                  this.projection.snapshot(),
+                  this.emittedBoundary,
+                );
               }
             }
           } catch (error) {
@@ -429,6 +436,11 @@ export class OwnedCodexConnection {
 
   activateEvents(session: Session): void {
     this.feedSession = session;
+    // The cursor starts at what has ALREADY happened, so activation announces nothing about the past.
+    // A turn that was running at admission is state, not news: reconciliation establishes where the
+    // session is, and replaying its boundary would tell a reader that work began the moment someone
+    // started listening.
+    this.emittedBoundary = this.projection?.snapshot().events.at(-1)?.sequence ?? 0;
   }
 
   applyContext(session: Session, signal: AbortSignal): void {
