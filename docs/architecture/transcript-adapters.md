@@ -4,7 +4,7 @@ description: Как ccmux читает историю сессии разных 
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-08-10
+updated: 2026-09-06 18:17 +0700
 ---
 
 # Транскрипт-адаптеры
@@ -36,9 +36,39 @@ interface AgentProvider {
 }
 ```
 Выбор provider — по `Session.agent` (`getProvider`/`providerFor`). IO + tail/cursor-окно живут в
-`src/agent/index.ts` (`readTranscript` / `lastTranscriptMessage` / `sessionUsedTokens`); format
+`src/agent/transcriptRead.ts` (`readTranscriptFile`); managed lookup и previews остаются в
+`src/agent/index.ts` (`readTranscript` / `lastTranscriptMessage` / `sessionUsedTokens`). Format
 adapters остаются чистыми трансформами. `detect(lines)` — сниффер формата по содержимому для
 неизвестного исторического файла.
+
+## Exact external Codex address
+
+`ccmux transcript app/<UUID> --json --tail 3` и форма с префиксом машины
+`<machine>:app/<UUID>` читают persisted Codex JSONL без adopt, fork, запуска provider или записи
+managed registry. Имя задачи и cwd не участвуют в lookup. Как и явный CLI `external`, чтение
+не требует включения автоматического fleet scanning через `externalInventory`. Доступ задаётся
+host account и разрешённым remote CLI transport; managed UUID требует managed address.
+Service API `external.history` сохраняет собственный access policy и не расширяется этой командой.
+
+`src/external/storage.ts` владеет общим с external-content lookup: configured root,
+не более 8192 entries и восьми уровней, exact UUID filename и совпадающая первая metadata record.
+Требуются same-user regular file и отсутствие group/world write; symlink не обходится.
+`src/external/transcript.ts` подключает подтверждённый файл к общему line reader.
+
+Tail и backward limit ограничены 1000 строками. `seq` и `--cursor` — абсолютные номера
+завершённых JSONL-строк; `--before LINE --limit N` читает предыдущее окно. Незавершённая последняя
+строка появится только после newline. Первый запрос индексирует файл потоково, последующие
+индексируют append; forward cursor сохраняет существующее значение «всё после LINE».
+`--last-message` возвращает последний assistant text из bounded окна; external `--image`
+явно не поддерживается. Это полный transcript projection, не authored-text external.history API
+с его отдельным revision-pinned byte cursor.
+
+Stored transcript: `source.available=true`, `kind=codex-jsonl`, exit 0; пустое успешно прочитанное
+окно остаётся доступным. Missing: `source.available=false`, error `transcript file not found`.
+Unreadable, invalid metadata, ambiguous identity или смена файла: false и `transcript file unreadable`.
+В обоих отказах JSON содержит пустые messages и null cursor, exit 1; неизвестные cwd/path — пустые
+строки. Неверный UUID и managed identity дают явный CLI refusal. Для external `session.rc`
+содержит exact `<machine>:app/<UUID>`; managed RC labels не меняются.
 
 ## Форматы (выверено на реальных файлах)
 

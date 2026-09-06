@@ -9,18 +9,18 @@ import type {
   MachineConfig,
   Session,
   TranscriptMessage,
-  TranscriptStats,
 } from '../types.ts';
 import { MtimeCache } from '../util/mtimeCache.ts';
 import { readTailLines, readTailUntil } from '../util/readLines.ts';
 import { claudeProvider } from './claude/index.ts';
 import { codexProvider } from './codex/index.ts';
 import type { LaunchInput } from './launchInputs.ts';
-import { EMPTY_STATS, indexTranscript } from './transcriptIndex.ts';
+import { readTranscriptFile, type TranscriptRead } from './transcriptRead.ts';
 
 // Format sniff lives in its own light module (normalize-only deps) so the public library seam can
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
 export { detect } from './detect.ts';
+export type { TranscriptRead } from './transcriptRead.ts';
 
 /** Live status scraped from a rendered pane (pure: text → status). The MODEL is NOT here — it's
  *  conversation metadata read from jsonl (source of truth), not a live pane signal. */
@@ -171,114 +171,14 @@ export function supportsManagedInput(session: Session): boolean {
 const LAST_MESSAGE_WINDOW = 120;
 const LAST_MESSAGE_TEXT_LIMIT = 280;
 
-/** Whole-session composition, kept as a running total by the transcript index. It used to be
- *  recomputed by re-parsing the whole file behind an in-memory mtime cache — in a process that
- *  handles one command and exits, so the cache never once hit and every call paid the full pass. */
-/**
- * What a batch of lines adds to the totals.
- *
- * Counted over a slice rather than the file, because the index feeds each new line here exactly
- * once and keeps the running sum. The four counters survive being cut into batches: a tool_result
- * separated from its call is folded into none of them either way, so a boundary changes no number.
- */
-function countStats(provider: AgentProvider, lines: string[]): TranscriptStats {
-  let user = 0;
-  let assistant = 0;
-  let toolCalls = 0;
-  let thinking = 0;
-  for (const msg of provider.parse(lines, 1)) {
-    if (msg.kind === 'tool_call') toolCalls++;
-    else if (msg.kind === 'thinking') thinking++;
-    else if (msg.kind === 'message') {
-      if (msg.role === 'user') user++;
-      else if (msg.role === 'assistant') assistant++;
-    }
-  }
-  return { messages: user + assistant, user, assistant, toolCalls, thinking };
-}
-
-export interface TranscriptRead {
-  agent: AgentKind;
-  available: boolean;
-  error: string | null;
-  path: string;
-  totalLines: number;
-  messages: TranscriptMessage[];
-  mtimeMs: number | null;
-  // Window bounds for pagination: `firstLine` = absolute line the parse started at,
-  // `reachedStart` = that window reaches the very first line (nothing older to load).
-  firstLine: number;
-  reachedStart: boolean;
-  // Whole-session composition (all lines, cached by mtime) — true totals for the header.
-  stats: TranscriptStats;
-}
-
-/**
- * Read + normalize a transcript window. Three modes:
- *   default        → last `tail` lines (fresh open).
- *   { cursor }     → forward: everything after line `cursor` (live tail growth).
- *   { before, limit } → backward: the `limit` lines ending just before line `before`
- *                       (infinite-scroll-up; line-based so it's robust to lines that
- *                       carry no message — blank / folded tool_result).
- */
+/** Resolve managed storage through its runtime provider, then use the shared line reader. */
 export function readTranscript(
   session: Session,
   m: MachineConfig,
   opts: { tail: number; cursor?: number; before?: number; limit?: number; textLimit?: number },
 ): TranscriptRead {
   const provider = providerFor(session);
-  const path = provider.historyFile(session, m);
-  if (!path || !existsSync(path)) {
-    return {
-      agent: provider.id,
-      available: false,
-      error: 'transcript file not found',
-      path: path ?? '',
-      totalLines: 0,
-      messages: [],
-      mtimeMs: null,
-      firstLine: 1,
-      reachedStart: true,
-      stats: EMPTY_STATS,
-    };
-  }
-  const index = indexTranscript(path, provider.id, (batch) => countStats(provider, batch));
-  const total = index?.totalLines ?? 0;
-  let start: number;
-  let endLine: number | undefined;
-  if (opts.before !== undefined && Number.isFinite(opts.before)) {
-    const limit = opts.limit !== undefined && Number.isFinite(opts.limit) ? opts.limit : opts.tail;
-    endLine = opts.before - 1;
-    start = opts.before - limit;
-  } else if (opts.cursor !== undefined && Number.isFinite(opts.cursor)) {
-    start = opts.cursor + 1;
-  } else {
-    start = total > opts.tail ? total - opts.tail + 1 : 1;
-  }
-  start = Math.max(1, start);
-  // Only the window is read, and it is read knowing where it starts — which is the whole reason the
-  // index exists. `seq` stays the absolute line number a `--cursor` is expressed in.
-  const window = index?.read(start, endLine ?? total) ?? [];
-  const messages = provider.parse(window, start, opts.textLimit, endLine, start);
-  const stats = index?.stats ?? EMPTY_STATS;
-  let mtimeMs: number | null = null;
-  try {
-    mtimeMs = Math.floor(statSync(path).mtimeMs);
-  } catch {
-    mtimeMs = null;
-  }
-  return {
-    agent: provider.id,
-    available: true,
-    error: null,
-    path,
-    totalLines: total,
-    messages,
-    mtimeMs,
-    firstLine: start,
-    reachedStart: start <= 1,
-    stats,
-  };
+  return readTranscriptFile(provider.historyFile(session, m), provider, opts);
 }
 
 // mtime-keyed caches: skip the tail-read + JSON parse when the transcript hasn't moved, and (just

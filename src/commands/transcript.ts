@@ -1,8 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readImage } from '../agent/claude/transcript.ts';
 import { providerFor, readTranscript } from '../agent/index.ts';
+import type { TranscriptRead } from '../agent/transcriptRead.ts';
+import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
 import { rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
+import { readExternalTranscript } from '../external/transcript.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import type { MachineConfig, Session, TranscriptJson, TranscriptMessage } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
@@ -20,7 +23,7 @@ export function lastAssistantText(messages: TranscriptMessage[]): string | null 
 const LAST_MESSAGE_WINDOW = 200; // enough lines back to find the last answer without reading the file
 
 const USAGE =
-  'usage: ccmux transcript <name> --json [--tail N] [--cursor LINE] [--before LINE --limit N]\n' +
+  'usage: ccmux transcript <name|app/UUID|machine:app/UUID> --json [--tail N] [--cursor LINE] [--before LINE --limit N]\n' +
   "       ccmux transcript <name> --last-message        (just the agent's final answer, as text)\n" +
   '       ccmux transcript <name> --image <address>     (one image, as a data URL)';
 
@@ -92,6 +95,35 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
+  if (isCodexAppToken(name)) {
+    if (o.image !== undefined) {
+      console.error(`${name}: external transcript images are not supported`);
+      return 1;
+    }
+    try {
+      const threadId = codexAppThreadId(name);
+      const window = o.lastMessage ? { tail: LAST_MESSAGE_WINDOW, textLimit: FULL_TEXT_LIMIT } : o;
+      const { read, dir } = await readExternalTranscript(m, threadId, window);
+      if (o.lastMessage) {
+        const last = lastAssistantText(read.messages);
+        if (!read.available || last === null) {
+          console.error(`${name}: ${read.error ?? 'no assistant message yet'}`);
+          return 1;
+        }
+        await printLine(last);
+      } else {
+        await printLine(
+          JSON.stringify(
+            transcriptReadJson(m, { name, uuid: threadId, dir }, read, `${m.rcPrefix}:${name}`),
+          ),
+        );
+      }
+      return read.available ? 0 : 1;
+    } catch (error) {
+      console.error(`${name}: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
+  }
   const s = findSession(loadSessions(m), name);
   if (!s) {
     console.log(`unknown session: ${name}`);
@@ -157,10 +189,19 @@ export function transcriptJson(
   window: TranscriptWindow,
 ): TranscriptJson {
   const read = readTranscript(s, m, window);
+  return transcriptReadJson(m, s, read);
+}
+
+function transcriptReadJson(
+  m: MachineConfig,
+  s: Pick<Session, 'name' | 'uuid' | 'dir'>,
+  read: TranscriptRead,
+  rc = rcName(m, s.name),
+): TranscriptJson {
   return {
     version: VERSION,
     generatedAt: new Date().toISOString(),
-    session: { name: s.name, uuid: s.uuid, rc: rcName(m, s.name), dir: s.dir, machine: m.rcPrefix },
+    session: { name: s.name, uuid: s.uuid, rc, dir: s.dir, machine: m.rcPrefix },
     source: {
       kind: read.available ? `${read.agent}-jsonl` : 'unavailable',
       path: read.path,

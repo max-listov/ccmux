@@ -131,7 +131,7 @@ export const COMMANDS: HelpEntry[] = [
   { verb: 'logs', args: '<name> [lines]', desc: "print a session's pane buffer" },
   {
     verb: 'transcript',
-    args: '<name|machine:name> <--json [--tail N] [--cursor LINE] | --last-message>',
+    args: '<name|machine:name|app/UUID|machine:app/UUID> <--json [--tail N] [--cursor LINE] [--before LINE --limit N] | --last-message>',
     desc: "conversation history as JSON (incremental reads via --cursor), or --last-message for just the agent's final answer as text (full, not clipped)",
     example: 'ccmux transcript cc-api --last-message',
   },

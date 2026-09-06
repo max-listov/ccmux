@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, open, opendir, realpath } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
+import { lstat, open, realpath } from 'node:fs/promises';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { loadSessions } from '../config/sessions.ts';
@@ -16,6 +15,11 @@ import {
   type ExternalContentTarget,
   EXTERNAL_CONTENT_LIMITS as limits,
 } from './contentSchema.ts';
+import {
+  locateExternalStorage,
+  readExternalCodexMetadata,
+  validateExternalPath,
+} from './storage.ts';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const CursorSchema = z
@@ -38,10 +42,6 @@ const RecordSchema = z.object({
   payload: z.unknown().optional(),
   message: z.unknown().optional(),
 });
-const CodexMetaSchema = z.object({
-  type: z.literal('session_meta'),
-  payload: z.object({ id: z.uuid() }),
-});
 
 function authorize(m: MachineConfig, target: ExternalContentTarget) {
   if (target.machine !== m.rcPrefix)
@@ -56,38 +56,6 @@ function authorize(m: MachineConfig, target: ExternalContentTarget) {
     );
 }
 
-/** Fixed configured roots and UUID filenames only. Never follow a caller path or a symlink. */
-async function locate(root: string, target: ExternalContentTarget, signal: AbortSignal) {
-  const queue = [{ path: root, depth: 0 }];
-  let seen = 0;
-  let found: string | null = null;
-  while (queue.length) {
-    const item = queue.shift();
-    if (!item) break;
-    signal.throwIfAborted();
-    if (!(await lstat(item.path)).isDirectory()) throw new Error('Storage directory changed');
-    for await (const entry of await opendir(item.path)) {
-      signal.throwIfAborted();
-      if (++seen > limits.lookupEntries) throw new Error('External lookup budget exceeded');
-      if (entry.isSymbolicLink()) continue;
-      const path = join(item.path, entry.name);
-      if (entry.isDirectory()) {
-        if (item.depth >= limits.lookupDepth) throw new Error('External lookup depth exceeded');
-        queue.push({ path, depth: item.depth + 1 });
-      } else if (
-        entry.isFile() &&
-        (target.provider === 'codex'
-          ? entry.name.startsWith('rollout-') && entry.name.endsWith(`-${target.threadId}.jsonl`)
-          : entry.name === `${target.threadId}.jsonl`)
-      ) {
-        if (found) throw new Error('Ambiguous external storage identity');
-        found = path;
-      }
-    }
-  }
-  return found;
-}
-
 function stamp(
   stat: Awaited<ReturnType<typeof lstat>>,
   root: string,
@@ -96,17 +64,6 @@ function stamp(
   return digest(
     JSON.stringify([target, root, stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]),
   );
-}
-
-async function validatePath(root: string, path: string) {
-  const local = relative(root, path);
-  if (local.startsWith(`..${sep}`) || local === '..') throw new Error('Storage containment failed');
-  let current = root;
-  for (const segment of local.split(sep)) {
-    current = join(current, segment);
-    if ((await lstat(current)).isSymbolicLink()) throw new Error('Storage symlink refused');
-  }
-  if ((await realpath(path)) !== path) throw new Error('Storage path changed');
 }
 
 function project(
@@ -184,9 +141,9 @@ export async function readExternalContent(
     const configuredRoot = input.target.provider === 'codex' ? m.codexSessionsDir : m.projectsDir;
     if (!configuredRoot) return result;
     const root = await realpath(configuredRoot);
-    const path = await locate(root, input.target, signal);
+    const path = await locateExternalStorage(root, input.target, signal);
     if (path === null) return { ...result, outcome: cursor ? 'stale' : 'history-absent' };
-    await validatePath(root, path);
+    await validateExternalPath(root, path);
     const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
     try {
       const stat = await file.stat();
@@ -197,18 +154,8 @@ export async function readExternalContent(
         throw new Error('Storage replaced');
       if (cursor && (cursor.revision !== revision || cursor.end > stat.size))
         return { ...result, outcome: 'stale', revision };
-      if (input.target.provider === 'codex') {
-        const head = Buffer.alloc(Math.min(limits.metadataBytes, stat.size));
-        const { bytesRead } = await file.read(head, 0, head.length, 0);
-        const end = head.indexOf(10);
-        if (end < 0 && stat.size > head.length)
-          throw new Error('External metadata exceeds its byte budget');
-        const meta = CodexMetaSchema.safeParse(
-          JSON.parse(head.toString('utf8', 0, end < 0 ? bytesRead : end)),
-        );
-        if (!meta.success || meta.data.payload.id !== input.target.threadId)
-          throw new Error('External metadata identity differs');
-      }
+      if (input.target.provider === 'codex')
+        await readExternalCodexMetadata(file, input.target.threadId);
       const end = cursor?.end ?? stat.size;
       const start = Math.max(0, end - limits.sourceBytes);
       const bytes = Buffer.alloc(end - start);
@@ -243,7 +190,7 @@ export async function readExternalContent(
       const selected = rows.slice(-input.limit);
       const boundary = start + first < end ? start + first : start;
       const nextEnd = rows.length > selected.length ? (selected[0]?.offset ?? boundary) : boundary;
-      await validatePath(root, path);
+      await validateExternalPath(root, path);
       authorize(m, input.target);
       if (
         stamp(await file.stat(), root, input.target) !== revision ||
