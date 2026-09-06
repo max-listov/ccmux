@@ -6,12 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.55.13] — 2026-09-06
+
+A native turn boundary is announced once, and none is skipped
+
 - Announce a native runtime's turn boundaries exactly once each. The publisher read only the newest
   entry in the projection's ring, so a boundary that stayed newest was re-announced on every publish
   and one overtaken by the next event was never announced at all: 2236 `turn-start` against 16
   `turn-end` over a day on one machine, beside 193/193 for hook-driven sessions. Activation still
   announces nothing about the past.
-
 ## [0.55.12] — 2026-09-06
 
 Read external Codex transcripts by exact app address with shared line cursors
