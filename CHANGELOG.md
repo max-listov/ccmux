@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Run the status line as its own program. Claude Code calls it on every refresh of every managed
+  session, and through the CLI bundle a call spent 81 ms of CPU to do about 4 ms of work — the rest
+  was parsing the bundle. Compiled on its own it costs 36 ms, of which 25 is the runtime's own start.
+  The program travels inside the bundle, is written beside it, and is reached by a guard in the PATH
+  shim; without it the bundle answers the same verb.
+
 ## [0.55.6] — 2026-09-06
 
 The refusal comes from the resume, not the call I assumed

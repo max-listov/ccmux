@@ -1,11 +1,19 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { convergeBootUnit, writeBootUnitOnly } from '../boot/install.ts';
 import { IS_DEV, SHIM_PATH } from '../env.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { log } from '../util/log.ts';
-import { APP_BUNDLE, bootArgv, DATA_DIR, DEFAULT_DATA_DIR, LEGACY_APP_BUNDLE } from './paths.ts';
+import {
+  APP_BUNDLE,
+  bootArgv,
+  DATA_DIR,
+  DEFAULT_DATA_DIR,
+  LEGACY_APP_BUNDLE,
+  STATUS_LINE_APP,
+} from './paths.ts';
+import { ensureStatusLineApp } from './statusLineInstall.ts';
 
 export type BundleMigration = 'already' | 'moved' | 'absent';
 
@@ -41,11 +49,33 @@ export function migrateBundleToDurableRoot(
   return 'moved';
 }
 
-/** The two-line PATH shim, as it should read for the current bundle location. */
+/**
+ * The PATH shim, as it should read for the current bundle location.
+ *
+ * One verb is routed past the bundle. `status-line` is run by Claude Code on every refresh of every
+ * managed session and it is injected as `ccmux status-line` — through this file — so teaching the
+ * shim is what makes the compiled program reach every session at once, with no session's settings
+ * rewritten and nothing to migrate. The guard is the rollback: no artifact, and the bundle answers
+ * the same verb, slower and correctly. A compiled single-file build has no separate bundle to skip,
+ * so it keeps the plain two-line form.
+ *
+ * `scripts/install.sh` writes this same file before any of this code can run, and the two are
+ * compared in the test suite: two writers that disagree would rewrite each other on every daemon
+ * start, forever.
+ */
 export function shimContents(): string {
   const [exec, entry] = bootArgv();
-  const target = entry === undefined ? `"${exec}"` : `"${exec}" "${entry}"`;
-  return `#!/bin/sh\nexec ${target} "$@"\n`;
+  if (entry === undefined) return `#!/bin/sh\nexec "${exec}" "$@"\n`;
+  // Beside the bundle this shim actually names, not beside the one an installed machine would have:
+  // a file that routes somewhere must not hold two different opinions about where it points.
+  const program = join(dirname(entry), 'status-line.js');
+  return (
+    `#!/bin/sh\n` +
+    `if [ "$1" = "status-line" ] && [ -r "${program}" ]; then\n` +
+    `  exec "${exec}" "${program}" "$@"\n` +
+    `fi\n` +
+    `exec "${exec}" "${entry}" "$@"\n`
+  );
 }
 
 /** Rewrite the shim only when it does not already say the right thing. Convergent on purpose: a
@@ -98,6 +128,16 @@ export async function convergeBundleLocation(m: MachineConfig): Promise<BundleMi
   // env-based shim after an ordinary bundle rollout; source/dev daemons must never rewrite the
   // operator's installed command to point into a checkout.
   if (ownsInstalledShim() && moved !== 'absent') {
+    // The program the shim routes to is laid down FIRST. In the other order a machine would carry a
+    // shim naming a file that is not there yet — harmless, because the guard falls back to the
+    // bundle, but it would mean the win arrives a daemon start later than the risk.
+    try {
+      const status = await ensureStatusLineApp();
+      if (status === 'written')
+        log.info({ msg: 'status-line program written', path: STATUS_LINE_APP });
+    } catch (e) {
+      log.warn({ msg: 'status-line program could not be written', err: String(e) });
+    }
     try {
       await ensureShim();
     } catch (e) {

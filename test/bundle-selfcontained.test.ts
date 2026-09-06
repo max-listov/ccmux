@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildBundle } from '../scripts/bundle.ts';
+import { ensureStatusLineApp } from '../src/config/statusLineInstall.ts';
 
 // The prod bundle must be TRULY self-contained: it starts with no bun cache and no network. This is
 // the exact failure that shipped for months invisibly — ink's hoisted `import "react-devtools-core"`
@@ -41,3 +42,31 @@ test('the shipped bundle starts with an EMPTY bun cache and NO network (the real
   expect(code).toBe(0);
   expect(stdout).toContain('ccmux');
 }, 60_000);
+
+test('the shipped bundle carries the status-line program, and it runs on its own', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-bundle-sl-'));
+  const out = join(dir, 'ccmux.js');
+  expect(await buildBundle(out)).toBe(true);
+  // The source module is null on purpose, so a build that failed to replace it would ship a bundle
+  // whose shim points at a file nothing ever writes — the win silently absent, the fallback silently
+  // carrying every call.
+  expect(readFileSync(out, 'utf8')).not.toContain('STATUS_LINE_ARTIFACT = null');
+
+  // And the embedded bytes are the program itself: gunzip, hand them to the installer, run the file.
+  const artifact = /STATUS_LINE_ARTIFACT = (\{[^}]+\})/.exec(readFileSync(out, 'utf8'))?.[1];
+  expect(artifact).toBeDefined();
+  const parsed = JSON.parse((artifact ?? '{}').replace(/(\w+):/g, '"$1":')) as {
+    data: string;
+    sha256: string;
+  };
+  const app = join(dir, 'status-line.js');
+  expect(await ensureStatusLineApp(parsed, app)).toBe('written');
+  expect(await ensureStatusLineApp(parsed, app)).toBe('current'); // convergent, not rewritten
+  const proc = Bun.spawn([process.execPath, app], {
+    stdin: new Response('{"model":{"display_name":"M"},"context_window":{"used_percentage":5}}'),
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: { ...process.env, HOME: dir, CCMUX_SESSION: '' },
+  });
+  expect(await proc.exited).toBe(0);
+}, 120_000);

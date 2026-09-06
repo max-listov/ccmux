@@ -57,6 +57,9 @@ export const CACHE_DIR: string =
 
 /** The bundle the boot daemon and the `ccmux` command run; `ccmux update` swaps it atomically. */
 export const APP_BUNDLE = join(DATA_DIR, 'app', 'ccmux.js');
+/** The status-line program, beside the bundle it was cut from. Absent is a valid state: the shim
+ *  falls back to the bundle, which answers the same verb — slower, and correctly. */
+export const STATUS_LINE_APP = join(DATA_DIR, 'app', 'status-line.js');
 /** Where installs before the durable-root move put the bundle. Read only by the migration. */
 export const LEGACY_APP_BUNDLE = join(CACHE_DIR, 'app', 'ccmux.js');
 

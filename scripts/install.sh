@@ -104,13 +104,21 @@ if [ -f "$LEGACY_APP" ]; then
 fi
 
 # ── shim ─────────────────────────────────────────────────────────────────────
-WANT_SHIM="$(printf '#!/bin/sh\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR")"
+# One verb is routed past the bundle: `status-line` runs on every refresh of every managed session,
+# and through the whole CLI bundle it spends 81 ms of CPU to do 4 ms of work. The guard is the
+# rollback — no program there, and the bundle answers the same verb. Kept byte-identical to
+# `shimContents()` in the source; the test suite compares them, because two writers that disagree
+# would rewrite each other on every daemon start.
+WANT_SHIM="$(printf '#!/bin/sh\nif [ "$1" = "status-line" ] && [ -r "%s/status-line.js" ]; then\n  exec "%s" "%s/status-line.js" "$@"\nfi\nexec "%s" "%s/ccmux.js" "$@"\n' "$APP_DIR" "$BUN" "$APP_DIR" "$BUN" "$APP_DIR")"
 if [ -f "$SHIM" ] && [ "$(cat "$SHIM")" = "$WANT_SHIM" ]; then
   say "shim: already correct (unchanged)"
 else
   mkdir -p "$BIN_DIR"
   NEXT_SHIM="${TMP}/ccmux"
-  printf '%s' "$WANT_SHIM" > "$NEXT_SHIM"
+  # With the trailing newline: `$(…)` strips it from WANT_SHIM, and without it here the file differs
+  # from `shimContents()` by one byte — enough for the daemon to rewrite the installer's own work on
+  # the next start. The comparison above strips it from both sides, so it stays correct either way.
+  printf '%s\n' "$WANT_SHIM" > "$NEXT_SHIM"
   chmod +x "$NEXT_SHIM"
   mv "$NEXT_SHIM" "$SHIM"
   note_change "shim written: ${SHIM}"

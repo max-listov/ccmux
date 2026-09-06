@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /**
@@ -58,3 +59,75 @@ test('one implementation of the metrics file, re-exported rather than copied', (
   expect(status).toContain('readMetricsFile as readMetrics');
   expect(status).not.toContain('MetricsStatusSchema');
 });
+
+/**
+ * The compiled program and the verb are the same program.
+ *
+ * The shim routes `status-line` past the bundle to a separate file, so the two ways of running it
+ * must be indistinguishable from outside: the same line on stdout, the same metrics on disk. A
+ * difference would be invisible in production — the status line would simply start saying something
+ * slightly else, on every session, and nothing would report it.
+ *
+ * What this guards is the PLUMBING, and it says so because the shape is the blind one: both sides
+ * call the same function, so a change to the command itself moves them together and this test stays
+ * green (verified by mutating `extractMetrics` — 4 pass). What it does catch is the entry losing the
+ * command, its await, its exit code, or writing the metrics somewhere else; the command's own
+ * behaviour is guarded by the tests above it.
+ */
+test('the status-line program answers exactly as the bundled verb does', async () => {
+  // Built in a child process, the way the release builds it — and because a `Bun.build` call is the
+  // first thing this process would do, which this runtime resolves unreliably until some other build
+  // has warmed it. A test that fails by running first is not a statement about the code.
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-sl-equal-'));
+  const build = Bun.spawn(
+    [process.execPath, join(import.meta.dir, '..', 'scripts', 'build-status-line.ts'), dir],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  expect(await build.exited).toBe(0);
+  const program = join(dir, 'status-line.js');
+  const payload =
+    '{"model":{"display_name":"Opus 5"},"context_window":{"used_percentage":42,"context_window_size":1000000},"cost":{"total_cost_usd":1.5}}';
+
+  const run = async (argv: string[], home: string) => {
+    mkdirSync(home, { recursive: true });
+    const proc = Bun.spawn(argv, {
+      stdin: new Response(payload),
+      stdout: 'pipe',
+      stderr: 'pipe',
+      cwd: home,
+      env: {
+        ...process.env,
+        HOME: home,
+        XDG_STATE_HOME: join(home, 'state'),
+        CCMUX_SESSION: 'sl-equal',
+      },
+    });
+    const out = await new Response(proc.stdout).text();
+    const code = await proc.exited;
+    const metrics = join(home, 'state', 'ccmux', 'status', 'sl-equal.metrics.json');
+    const written = existsSync(metrics)
+      ? (JSON.parse(readFileSync(metrics, 'utf8')) as Record<string, unknown>)
+      : null;
+    return { out, code, written };
+  };
+
+  const cli = join(import.meta.dir, '..', 'src', 'cli.ts');
+  const viaBundle = await run([process.execPath, cli, 'status-line'], join(dir, 'a'));
+  const viaProgram = await run([process.execPath, program], join(dir, 'b'));
+  expect(viaProgram.code).toBe(viaBundle.code);
+  expect(viaProgram.out).toBe(viaBundle.out);
+  // `ts`/`rendersSince` are clock stamps; everything the readers use must match exactly.
+  const fields = (m: Record<string, unknown> | null) =>
+    m === null
+      ? null
+      : {
+          pct: m.pct,
+          contextSizeTokens: m.contextSizeTokens,
+          model: m.model,
+          costUsd: m.costUsd,
+          renders: m.renders,
+        };
+  expect(fields(viaProgram.written)).toEqual(fields(viaBundle.written));
+  expect(fields(viaProgram.written)).not.toBeNull();
+  rmSync(dir, { recursive: true, force: true });
+}, 60_000);
