@@ -1,6 +1,11 @@
 import { expect, test } from 'bun:test';
 import { atInteractiveMenu, chatDeliverable } from '../src/agent/claude/pane.ts';
-import { isConditional, notBeforeDue, recentInboundCount } from '../src/chat/deliver.ts';
+import {
+  holdChanged,
+  isConditional,
+  notBeforeDue,
+  recentInboundCount,
+} from '../src/chat/deliver.ts';
 import type { ChatMessage } from '../src/types.ts';
 import { makeChatMessage, makePeer } from './helpers.ts';
 
@@ -79,4 +84,17 @@ test('recentInboundCount counts only in-window messages addressed to the recipie
   expect(recentInboundCount(recipientB, led, now)).toBe(2); // two within 60s; the 120s-old one excluded
   expect(recentInboundCount(recipientC, led, now)).toBe(1);
   expect(recentInboundCount(recipientNobody, led, now)).toBe(0);
+});
+
+test('a held App pickup is logged when its answer changes, not once per delivery pass', () => {
+  const seen = new Map<string, string>();
+  const busy = 'App Server RPC failed: thread 0000 already has an active writer';
+  expect(holdChanged(seen, 'app:a', busy)).toBe(true);
+  // The same condition on the next pass, and the next, and the next — three seconds apart, for as
+  // long as the other client keeps working. Restating it is what teaches a reader to skip the line.
+  expect(holdChanged(seen, 'app:a', busy)).toBe(false);
+  expect(holdChanged(seen, 'app:a', busy)).toBe(false);
+  // A different answer is news, and so is the same answer for a different recipient.
+  expect(holdChanged(seen, 'app:a', 'Codex App thread is active')).toBe(true);
+  expect(holdChanged(seen, 'app:b', busy)).toBe(true);
 });

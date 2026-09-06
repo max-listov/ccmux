@@ -179,3 +179,32 @@ test('restart proof finds only an exact persisted client_id, including across a 
   writeFileSync(path, `{"message":"${bodyOnlyId}"}\n`, { flag: 'a' });
   expect(await codexAppMessagePersisted(machine, UUID, bodyOnlyId)).toBe(false);
 });
+
+test('a provider refusal at turn/start is a hold with its own sentence; a broken socket still throws', async () => {
+  const call = (failure: Error) =>
+    deliverCodexAppMessage(
+      makeMachine(),
+      makeChatMessage({ id: randomUUID(), to: makeAppPeer({ machine: 'prod' }) }),
+      'payload',
+      async () =>
+        fakeRpc((method) => {
+          if (method === 'thread/read') return { thread: thread() };
+          if (method === 'turn/start') throw failure;
+          throw new Error(`unexpected ${method}`);
+        }),
+    );
+  // The thread reports idle while another App client holds its writer, so this is the only place
+  // that truth arrives. Read as an exception it becomes a warning on every delivery pass, for as
+  // long as the other client keeps working.
+  const refused = await call(
+    new Error('App Server RPC failed: thread 0000 already has an active writer'),
+  );
+  expect(refused).toEqual({
+    delivered: false,
+    reason: 'App Server RPC failed: thread 0000 already has an active writer',
+  });
+  // Anything that is not the provider's answer is still a failure, not a polite refusal.
+  await expect(call(new Error('Codex App Server connection closed'))).rejects.toThrow(
+    'connection closed',
+  );
+});

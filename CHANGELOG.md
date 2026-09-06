@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Treat a provider refusal at `turn/start` as a held delivery rather than a failure. An App thread
+  reports `idle` while another client holds its writer, so the refusal only arrives as a rejected
+  request — and it was logged as a warning on every pass for as long as that client kept working.
+- Log a held App pickup when its answer changes, not once per delivery pass. An unchanged condition
+  was restating itself every three seconds: 6,049 identical lines in five hours.
+
 ## [0.55.4] — 2026-09-05
 
 Bound the native thread read, and stop four diagnostics from lying

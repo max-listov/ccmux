@@ -354,6 +354,30 @@ export function notBeforeDue(msg: ChatMessage, nowMs: number): boolean {
 }
 
 /**
+ * The last hold reason logged for each App recipient.
+ *
+ * A held pickup is re-attempted every pass, and a condition that does not change — another client
+ * holding the thread's writer while its operator works — restates itself once every three seconds
+ * for as long as that work lasts. Six thousand identical lines in five hours record nothing; they
+ * teach whoever greps the log that this message is noise, which is the same lesson a false "all
+ * clear" teaches. So the line is written when the answer CHANGES, and again after a delivery.
+ */
+const lastAppHold = new Map<string, string>();
+
+/** Is this a new answer for that recipient? Records it when it is. Pure over the map it is given,
+ *  so the rule can be exercised without the module's own state. */
+export function holdChanged(seen: Map<string, string>, key: string, reason: string): boolean {
+  if (seen.get(key) === reason) return false;
+  seen.set(key, reason);
+  return true;
+}
+
+function noteAppHold(key: string, to: string, reason: string, level: 'info' | 'warn'): void {
+  if (holdChanged(lastAppHold, key, reason))
+    log[level]({ msg: 'Codex App chat pickup held', to, reason });
+}
+
+/**
  * One push-delivery pass (called by the daemon on a fast cadence). For each chat-enabled, running
  * recipient it delivers at most ONE message, choosing between two tracks:
  *  - **Immediate track** — the monotonic `delivered` cursor over NON-conditional mail, in order.
@@ -616,14 +640,11 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         });
         const result = await deliverCodexAppMessage(m, activeMessage, text);
         if (!result.delivered) {
-          log.info({
-            msg: 'Codex App chat pickup held',
-            to: targetLabel(recipient),
-            reason: result.reason,
-          });
+          noteAppHold(recipientKey, targetLabel(recipient), result.reason, 'info');
           continue;
         }
         if (activePickup.conditional) appendAck(m, activePickup.messageId, 'daemon', recipient);
+        lastAppHold.delete(recipientKey);
         const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
         cursors.pickups = remaining;
         await saveCursors(m, cursors);
@@ -634,11 +655,12 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
           duplicate: result.duplicate,
         });
       } catch (error) {
-        log.warn({
-          msg: 'Codex App chat pickup unavailable — barrier retained',
-          to: targetLabel(recipient),
-          error: error instanceof Error ? error.message : String(error),
-        });
+        noteAppHold(
+          recipientKey,
+          targetLabel(recipient),
+          `unavailable — barrier retained: ${error instanceof Error ? error.message : String(error)}`,
+          'warn',
+        );
       }
       continue;
     }

@@ -303,6 +303,17 @@ is local-only for the same reason `--after` is. Both limits are printed beside t
 bare "cancelled 0" is read as "nothing of mine is waiting" — the opposite of the truth in exactly
 the two cases a sender cannot check from here.
 
+A provider's refusal is a hold, not a failure of ours. An App thread reports `idle` while another
+client still holds its writer, so the only place that truth arrives is the rejected `turn/start` —
+and read as an exception it becomes a warning on every delivery pass for as long as that other
+client keeps working. The barrier is retained either way; the reason is the provider's own sentence.
+Anything that is not a provider answer — a dead socket, a closed connection — is still a failure.
+
+A held pickup is written to the log when its answer CHANGES, not once per pass. A condition lasting
+hours otherwise restates itself every three seconds: six thousand identical lines record nothing and
+teach whoever greps the log that the message is noise, which is the same lesson a false all-clear
+teaches.
+
 `inbox` for another session is a diagnosis and advances no cursor — an inbox is closed by the session
 that owns it, and marking someone else's mail read would hide it from the agent that must receive
 it. The listing says so, because it otherwise looks exactly like reading your own: a sender who
