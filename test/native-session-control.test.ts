@@ -83,7 +83,7 @@ test('a mode a session was given is restored on restart, and only that one', () 
   expect(shouldRestoreMode(null, generation)).toBe(false);
 });
 
-test('a mode recorded by an earlier build is read, not discarded', async () => {
+test('saved modes use the current schema and invalid records fail closed', () => {
   const root = mkdtempSync(join(tmpdir(), 'ccmux-mode-'));
   const m = makeMachine({ stateDir: join(root, 'state') });
   const generation = '33333333-3333-4333-8333-333333333333';
@@ -96,12 +96,24 @@ test('a mode recorded by an earlier build is read, not discarded', async () => {
   });
   const dir = managedRuntimeRoot(m, s);
   mkdirSync(dir, { recursive: true });
-  // The shape written before the request carried an operation id. Refusing it would put a session
-  // that was in `plan` back into `default` on the first restart after an upgrade — a downgrade to
-  // the mode that asks less, performed by the code whose whole job is to prevent that.
+  expect(readRuntimeMode(m, s)).toBeNull();
   writeFileSync(
     join(dir, 'permission-mode.json'),
     JSON.stringify({ generation, mode: 'plan', phase: 'accepted', reason: null }),
+    { mode: 0o600 },
+  );
+  expect(() => readRuntimeMode(m, s)).toThrow('Saved permission mode is invalid');
+  writeFileSync(join(dir, 'permission-mode.json'), '{broken', { mode: 0o600 });
+  expect(() => readRuntimeMode(m, s)).toThrow('Saved permission mode is invalid');
+  writeFileSync(
+    join(dir, 'permission-mode.json'),
+    JSON.stringify({
+      operationId: '55555555-5555-4555-8555-555555555555',
+      generation,
+      mode: 'plan',
+      phase: 'complete',
+      reason: null,
+    }),
     { mode: 0o600 },
   );
   const read = readRuntimeMode(m, s);

@@ -54,24 +54,17 @@ function readStore(m: MachineConfig, s: Session) {
 
 export const readSelection = (m: MachineConfig, s: Session): AcceptedTurnOptions | null =>
   readStore(m, s)?.current ?? null;
-/**
- * The answer this operation already got, if it asked the same thing.
- *
- * Takes every digest that counts as "the same thing" rather than one: receipts are durable and
- * survive a restart, so a change in HOW the digest is computed would otherwise turn the first
- * retry of every in-flight request into a conflict with itself. The extra digests are a bounded
- * migration and are meant to be removed once no journal can still hold one.
- */
+/** Replay an operation only when its canonical request fingerprint matches. */
 export function selectionReceipt(
   m: MachineConfig,
   s: Session,
   operationId: string,
-  fingerprints: readonly string[],
+  fingerprint: string,
 ): AcceptedTurnOptions | null {
   const store = readStore(m, s);
   const prior = store?.receipts.find((row) => row.operationId === operationId);
   if (prior !== undefined) {
-    if (!fingerprints.includes(prior.fingerprint))
+    if (fingerprint !== prior.fingerprint)
       throw new AppError('IDEMPOTENCY_CONFLICT', 'Selection request changed', 409);
     return prior.result;
   }

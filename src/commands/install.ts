@@ -46,6 +46,11 @@ export function renameRefusal(
 }
 
 export async function cmdInstall(args: string[]): Promise<number> {
+  if (args.includes('--artifacts-only')) {
+    const { ensureStatusLineApp } = await import('../config/statusLineInstall.ts');
+    console.log(await ensureStatusLineApp());
+    return 0;
+  }
   const cfg = configPath();
   const rc = parseRcPrefix(args);
   const releaseUrl = parseReleaseUrl(args);

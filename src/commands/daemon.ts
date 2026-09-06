@@ -1,6 +1,6 @@
 import { bindProcessSignals } from 'stitchkit/server';
+import { ensureInstalledApp } from '../config/installedApp.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { convergeBundleLocation } from '../config/migrateBundle.ts';
 import { APP_BUNDLE, BOOT_ATTEMPTS } from '../config/paths.ts';
 import { createDaemonApplication } from '../daemon/application.ts';
 import { IS_DEV } from '../env.ts';
@@ -14,10 +14,10 @@ export async function cmdDaemon(): Promise<number> {
   try {
     m = loadMachineConfig();
     setLogLevel(m.logLevel);
-    if (!IS_DEV) await convergeBundleLocation(m);
+    if (!IS_DEV) await ensureInstalledApp(m);
   } catch (error) {
-    log.error({ msg: 'machine config invalid; daemon not starting', err: String(error) });
-    return 0;
+    log.error({ msg: 'daemon initialization failed', err: String(error) });
+    return 1;
   }
   const { application } = createDaemonApplication(m);
   let code = 143;

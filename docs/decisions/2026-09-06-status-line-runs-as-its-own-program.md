@@ -4,15 +4,16 @@ description: Carry the compiled status-line command inside the bundle, lay it do
 type: decision
 status: active
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-06 11:37 +0700
 ---
 
 # Decision
 
 `ccmux status-line` is compiled from the same source into a separate small program, carried inside
 the bundle, written beside it on the same convergence that writes the PATH shim, and reached by a
-guard in that shim. Nothing else is routed this way. When the program is absent the shim runs the
-bundle, which answers the same verb.
+route in that shim. Nothing else is routed this way. The program is required: its absence fails
+the command, never routes it through the bundle. Installation materializes the embedded program
+before writing the shim; daemon initialization also fails if the artifact cannot be installed.
 
 # Why
 
@@ -47,8 +48,7 @@ not survive that transform. Ruled out by building it, not by argument.
 
 **Not a change to what each session is told.** The command injected into a managed session's
 settings is `ccmux status-line`, where `ccmux` is the PATH shim. Teaching the shim reaches every
-existing session at once, rewrites no session's settings, and needs no migration. It also puts the
-fallback in the only place that can be sure of it: the guard tests for the file it is about to run.
+existing session at once, rewrites no session's settings, and needs no migration.
 
 # Boundaries
 

@@ -1,9 +1,11 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import type { MachineConfig, Session } from '../types.ts';
 import { defineMailbox } from './mailbox.ts';
 import { type PermissionMode, PermissionModeSchema } from './projectionSchema.ts';
-import { readManagedRuntimeStatus } from './status.ts';
+import { managedRuntimeRoot, readManagedRuntimeStatus } from './status.ts';
 
 /**
  * The requested permission mode, durable between the caller and the session that owns the runtime.
@@ -11,7 +13,7 @@ import { readManagedRuntimeStatus } from './status.ts';
  * A setting, not a turn: it carries a generation so a request written for one conversation can
  * never be applied to the conversation that replaced it.
  */
-const ModeRequestFields = z
+const ModeRequestSchema = z
   .object({
     operationId: z.uuid(),
     generation: z.uuid(),
@@ -21,34 +23,6 @@ const ModeRequestFields = z
   })
   .strict();
 
-/**
- * A record is read in the shape an earlier build may have written it, and upgraded on the way in.
- *
- * The mode is the one durable request whose loss is dangerous rather than merely annoying: a
- * session that cannot read its own record comes up in `default`, which asks less before writing
- * than whatever it was put into. Rejecting the older shape would therefore have downgraded every
- * session that was in `plan` or `acceptEdits` at the moment of an upgrade — the exact drop
- * `shouldRestoreMode` exists to prevent, performed by the code that prevents it.
- *
- * A bounded migration with an end: it can go once no session can still be holding a record written
- * before the operation id existed, which is one restart of every managed session.
- */
-const ModeRequestSchema = z.preprocess((value) => {
-  if (typeof value !== 'object' || value === null || 'operationId' in value) return value;
-  const legacy = value as { phase?: unknown; generation?: unknown };
-  return {
-    ...legacy,
-    // Derived from the conversation it was written for, so the upgraded record keeps the identity
-    // it had. A fresh id would make the session's own record look like somebody else's request.
-    operationId: legacy.generation,
-    phase:
-      legacy.phase === 'accepted'
-        ? 'complete'
-        : legacy.phase === 'rejected'
-          ? 'failed'
-          : legacy.phase,
-  };
-}, ModeRequestFields);
 export type RuntimeModeRequest = z.infer<typeof ModeRequestSchema>;
 
 /**
@@ -73,7 +47,12 @@ const mailbox = defineMailbox<RuntimeModeRequest, PermissionMode>({
     new AppError('IDENTITY_MISMATCH', 'The conversation changed while setting its mode', 409),
 });
 
-export const readRuntimeMode = (m: MachineConfig, s: Session) => mailbox.read(m, s);
+export function readRuntimeMode(m: MachineConfig, s: Session): RuntimeModeRequest | null {
+  const receipt = mailbox.read(m, s);
+  if (receipt === null && existsSync(join(managedRuntimeRoot(m, s), 'permission-mode.json')))
+    throw new AppError('PERMISSION_MODE_UNAVAILABLE', 'Saved permission mode is invalid', 409);
+  return receipt;
+}
 export const writeRuntimeMode = (m: MachineConfig, s: Session, value: RuntimeModeRequest) =>
   mailbox.write(m, s, value);
 

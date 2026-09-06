@@ -176,11 +176,7 @@ export async function updateControlSelection(
     signal.throwIfAborted();
     exactNativeTarget(m, input);
     const fingerprint = createHash('sha256').update(stableJson(input)).digest('hex');
-    // The digest this receipt would have carried before the fingerprint was computed a stable way.
-    // Bounded migration, not a second permanent path: a retry of a request made before the change
-    // must replay to the answer it already got instead of being told it conflicts with itself.
-    const legacyFingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-    const prior = selectionReceipt(m, session, input.operationId, [fingerprint, legacyFingerprint]);
+    const prior = selectionReceipt(m, session, input.operationId, fingerprint);
     if (prior !== null) {
       return SelectionResultSchema.parse({
         protocol: 1,

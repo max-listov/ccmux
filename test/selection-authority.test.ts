@@ -82,7 +82,7 @@ test('every key the catalog publishes is one the admission accepts', () => {
   }
 });
 
-test('a receipt written before the digest changed still replays instead of conflicting', async () => {
+test('a receipt replays only the canonical fingerprint', async () => {
   const root = mkdtempSync(join(tmpdir(), 'ccmux-receipt-'));
   roots.push(root);
   const m = makeMachine({ stateDir: join(root, 'state') });
@@ -101,15 +101,12 @@ test('a receipt written before the digest changed still replays instead of confl
     }),
   };
   const operationId = '22222222-2222-4222-8222-222222222222';
-  const legacyDigest = 'a'.repeat(64);
-  const currentDigest = 'b'.repeat(64);
-  await writeSelection(m, s, accepted, operationId, legacyDigest);
+  const acceptedDigest = 'a'.repeat(64);
+  const differentDigest = 'b'.repeat(64);
+  await writeSelection(m, s, accepted, operationId, acceptedDigest);
 
-  // The retry arrives computing its digest the new way. Offered both, the journal recognises its
-  // own entry and answers it; offered only the new one it would call the request a conflict with
-  // itself — a durable receipt outliving the code that wrote it is the whole point of keeping one.
-  expect(selectionReceipt(m, s, operationId, [currentDigest, legacyDigest])).toEqual(accepted);
-  expect(() => selectionReceipt(m, s, operationId, [currentDigest])).toThrow(
+  expect(selectionReceipt(m, s, operationId, acceptedDigest)).toEqual(accepted);
+  expect(() => selectionReceipt(m, s, operationId, differentDigest)).toThrow(
     'Selection request changed',
   );
 });

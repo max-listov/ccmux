@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { replaceBundle } from '../src/commands/update.ts';
-import { shimContents } from '../src/config/migrateBundle.ts';
+import { shimContents } from '../src/config/installedApp.ts';
 import {
   ControlNativeStreamFrameSchema,
   controlNativeStreamFrame,

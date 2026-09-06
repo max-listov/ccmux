@@ -2,8 +2,24 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildBundle } from '../scripts/bundle.ts';
 import { ensureStatusLineApp } from '../src/config/statusLineInstall.ts';
+
+// Build in the release process shape, outside the test runner's module resolver/cache.
+// A fresh standalone test run otherwise rejects existing relative imports in the custom driver,
+// while the identical Bun.build invocation outside bun:test resolves them successfully.
+async function buildBundle(out: string): Promise<boolean> {
+  const builder = join(import.meta.dir, '..', 'scripts', 'bundle.ts');
+  const proc = Bun.spawn(
+    [
+      process.execPath,
+      '-e',
+      `import {buildBundle} from ${JSON.stringify(builder)}; process.exit(await buildBundle(process.argv[1]) ? 0 : 1);`,
+      out,
+    ],
+    { stdout: 'inherit', stderr: 'inherit' },
+  );
+  return (await proc.exited) === 0;
+}
 
 // The prod bundle must be TRULY self-contained: it starts with no bun cache and no network. This is
 // the exact failure that shipped for months invisibly — ink's hoisted `import "react-devtools-core"`
@@ -48,8 +64,7 @@ test('the shipped bundle carries the status-line program, and it runs on its own
   const out = join(dir, 'ccmux.js');
   expect(await buildBundle(out)).toBe(true);
   // The source module is null on purpose, so a build that failed to replace it would ship a bundle
-  // whose shim points at a file nothing ever writes — the win silently absent, the fallback silently
-  // carrying every call.
+  // whose required status-line program could never be installed.
   expect(readFileSync(out, 'utf8')).not.toContain('STATUS_LINE_ARTIFACT = null');
 
   // And the embedded bytes are the program itself: gunzip, hand them to the installer, run the file.
@@ -60,8 +75,25 @@ test('the shipped bundle carries the status-line program, and it runs on its own
     sha256: string;
   };
   const app = join(dir, 'status-line.js');
+  await expect(ensureStatusLineApp(null, app)).rejects.toThrow(
+    'Required status-line artifact is missing',
+  );
   expect(await ensureStatusLineApp(parsed, app)).toBe('written');
   expect(await ensureStatusLineApp(parsed, app)).toBe('current'); // convergent, not rewritten
+  const installRoot = join(dir, 'installed');
+  for (const expected of ['written', 'current']) {
+    const install = Bun.spawn([process.execPath, out, 'install', '--artifacts-only'], {
+      env: { ...process.env, HOME: dir, CCMUX_DATA_DIR: installRoot },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const stdout = await new Response(install.stdout).text();
+    expect(await install.exited).toBe(0);
+    expect(stdout.trim()).toBe(expected);
+  }
+  expect(readFileSync(join(installRoot, 'app', 'status-line.js'), 'utf8')).toBe(
+    readFileSync(app, 'utf8'),
+  );
   const proc = Bun.spawn([process.execPath, app], {
     stdin: new Response('{"model":{"display_name":"M"},"context_window":{"used_percentage":5}}'),
     stdout: 'pipe',

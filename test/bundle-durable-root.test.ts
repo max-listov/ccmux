@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { migrateBundleToDurableRoot, ownsInstalledShim } from '../src/config/migrateBundle.ts';
+import { ownsInstalledShim } from '../src/config/installedApp.ts';
 import { DEFAULT_DATA_DIR } from '../src/config/paths.ts';
 
 function tmpRoot(): string {
@@ -55,42 +55,6 @@ test('wiping the cache root leaves the runnable code untouched', () => {
 
   expect(existsSync(p.app)).toBe(true);
   expect(readFileSync(p.app, 'utf8')).toBe('// the tool');
-  rmSync(root, { recursive: true, force: true });
-});
-
-test('a legacy install is carried over, rollback copy included', () => {
-  const root = tmpRoot();
-  const app = join(root, 'share', 'ccmux', 'app', 'ccmux.js');
-  const legacy = join(root, 'cache', 'ccmux', 'app', 'ccmux.js');
-  mkdirSync(join(root, 'cache', 'ccmux', 'app'), { recursive: true });
-  writeFileSync(legacy, '// old location');
-  writeFileSync(`${legacy}.bak`, '// previous version');
-
-  expect(migrateBundleToDurableRoot(app, legacy)).toBe('moved');
-  expect(readFileSync(app, 'utf8')).toBe('// old location');
-  // The boot guard's only escape from a crash loop must not be left behind in the directory
-  // the move exists to abandon.
-  expect(readFileSync(`${app}.bak`, 'utf8')).toBe('// previous version');
-  // The old copy stays until the machine is fully converged: a boot manager may still be serving the
-  // definition that names it, and a path it believes in must not vanish under it.
-  expect(existsSync(legacy)).toBe(true);
-  rmSync(root, { recursive: true, force: true });
-});
-
-test('migration reports an empty machine honestly and never overwrites a live bundle', () => {
-  const root = tmpRoot();
-  const app = join(root, 'share', 'ccmux', 'app', 'ccmux.js');
-  const legacy = join(root, 'cache', 'ccmux', 'app', 'ccmux.js');
-
-  expect(migrateBundleToDurableRoot(app, legacy)).toBe('absent'); // nothing anywhere
-
-  mkdirSync(join(root, 'share', 'ccmux', 'app'), { recursive: true });
-  writeFileSync(app, '// current');
-  mkdirSync(join(root, 'cache', 'ccmux', 'app'), { recursive: true });
-  writeFileSync(legacy, '// stale copy');
-
-  expect(migrateBundleToDurableRoot(app, legacy)).toBe('already');
-  expect(readFileSync(app, 'utf8')).toBe('// current');
   rmSync(root, { recursive: true, force: true });
 });
 

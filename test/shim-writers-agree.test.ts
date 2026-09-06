@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { shimContents } from '../src/config/migrateBundle.ts';
+import { shimContents } from '../src/config/installedApp.ts';
 
 /**
  * Two programs write `~/.local/bin/ccmux`: the installer, before any of our code can run, and the
@@ -30,4 +31,42 @@ test('the installer and the daemon write the same PATH shim, byte for byte', asy
   const fromInstaller = await new Response(proc.stdout).text();
   await proc.exited;
   expect(fromInstaller).toBe(written.replace(/ccmux\.js|[^"/]+\.ts/, 'ccmux.js'));
+});
+
+test('the installed shim fails when its required program is missing, without running the bundle', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-shim-'));
+  try {
+    const installer = readFileSync(join(import.meta.dir, '..', 'scripts', 'install.sh'), 'utf8');
+    const line = installer.split('\n').find((row) => row.startsWith('WANT_SHIM='));
+    expect(line).toBeDefined();
+    const render = Bun.spawn(['sh', '-c', `${line}; printf '%s\\n' "$WANT_SHIM"`], {
+      env: { ...process.env, BUN: process.execPath, APP_DIR: dir },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const shim = join(dir, 'ccmux');
+    writeFileSync(shim, await new Response(render.stdout).text());
+    expect(await render.exited).toBe(0);
+    writeFileSync(join(dir, 'ccmux.js'), 'console.log("BUNDLE_EXECUTED")');
+    const missing = Bun.spawn(['sh', shim, 'status-line'], { stdout: 'pipe', stderr: 'pipe' });
+    const [out, err, code] = await Promise.all([
+      new Response(missing.stdout).text(),
+      new Response(missing.stderr).text(),
+      missing.exited,
+    ]);
+    expect(code).not.toBe(0);
+    expect(err).toContain('status-line.js');
+    expect(out).not.toContain('BUNDLE_EXECUTED');
+    writeFileSync(join(dir, 'status-line.js'), 'console.log("STATUS_LINE_EXECUTED")');
+    for (const [verb, expected] of [
+      ['status-line', 'STATUS_LINE_EXECUTED'],
+      ['version', 'BUNDLE_EXECUTED'],
+    ] as const) {
+      const proc = Bun.spawn(['sh', shim, verb], { stdout: 'pipe', stderr: 'pipe' });
+      expect((await new Response(proc.stdout).text()).trim()).toBe(expected);
+      expect(await proc.exited).toBe(0);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

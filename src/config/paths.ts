@@ -57,11 +57,8 @@ export const CACHE_DIR: string =
 
 /** The bundle the boot daemon and the `ccmux` command run; `ccmux update` swaps it atomically. */
 export const APP_BUNDLE = join(DATA_DIR, 'app', 'ccmux.js');
-/** The status-line program, beside the bundle it was cut from. Absent is a valid state: the shim
- *  falls back to the bundle, which answers the same verb — slower, and correctly. */
+/** Required status-line program, installed beside the bundle before writing the PATH shim. */
 export const STATUS_LINE_APP = join(DATA_DIR, 'app', 'status-line.js');
-/** Where installs before the durable-root move put the bundle. Read only by the migration. */
-export const LEGACY_APP_BUNDLE = join(CACHE_DIR, 'app', 'ccmux.js');
 
 // ── cache: what a download or a build can rebuild ────────────────────────────────────────────────
 /** A local dev build; `ccmux update` prefers it over a remote release ("test before publishing"). */
@@ -163,11 +160,8 @@ export const chatAuthPath = (m: MachineConfig, sessionName: string): string =>
 // ── how this tool re-execs itself ────────────────────────────────────────────────────────────────
 
 /**
- * The argv a boot unit or a PATH shim should be written with — the invocation this tool WANTS to be
- * launched by, which is not always the one it happens to be running under. During the move to a
- * durable root a process is launched from the legacy cache path and must still write the new one,
- * so deriving the launch line from `process.execPath` alone would faithfully re-record the path we
- * are trying to leave. A source checkout keeps re-execing its source.
+ * Installed boot units and PATH commands use the durable application root.
+ * A source checkout keeps re-executing its source.
  */
 export function bootArgv(): readonly string[] {
   if (IS_DEV) return SELF_ARGV;

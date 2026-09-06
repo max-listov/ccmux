@@ -6,10 +6,10 @@ import { atomicWrite } from '../util/atomic.ts';
 import { STATUS_LINE_APP } from './paths.ts';
 import { STATUS_LINE_ARTIFACT, type StatusLineArtifact } from './statusLineArtifact.ts';
 
-export type StatusLineInstall = 'written' | 'current' | 'unavailable';
+export type StatusLineInstall = 'written' | 'current';
 
 /**
- * Lay the status-line program down beside the bundle, or leave the machine as it is.
+ * Require the packaged status-line program and install it beside the bundle.
  *
  * Convergent, like the shim and the boot unit next to it: a machine that is already correct comes
  * out untouched, and one carrying an older copy is rewritten. The digest is checked against the
@@ -21,7 +21,7 @@ export async function ensureStatusLineApp(
   artifact: StatusLineArtifact | null = STATUS_LINE_ARTIFACT,
   path: string = STATUS_LINE_APP,
 ): Promise<StatusLineInstall> {
-  if (artifact === null) return 'unavailable';
+  if (artifact === null) throw new Error('Required status-line artifact is missing');
   const bytes = gunzipSync(Buffer.from(artifact.data, 'base64'));
   if (createHash('sha256').update(bytes).digest('hex') !== artifact.sha256)
     throw new Error('Status-line artifact digest differs');

@@ -25,7 +25,6 @@ CONFIG="${CCMUX_CONFIG:-${HOME}/.config/ccmux/machine.json}"
 # deleting the tool takes its own recovery path with it (the boot unit and this shim both point here).
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/ccmux"
 APP_DIR="${DATA_DIR}/app"
-LEGACY_APP="${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/app/ccmux.js"
 BIN_DIR="${HOME}/.local/bin"
 SHIM="${BIN_DIR}/ccmux"
 
@@ -96,20 +95,20 @@ else
   note_change "bundle installed: ${APP_DIR}/ccmux.js (sha256 verified)"
 fi
 
-# A bundle left in the old cache location is a second, stale copy of the tool; the boot unit is
-# rewritten below to stop pointing at it.
-if [ -f "$LEGACY_APP" ]; then
-  rm -f "$LEGACY_APP" "${LEGACY_APP}.bak"
-  note_change "removed the stale bundle from the cache root"
-fi
+# Required embedded programs must exist before the shim exposes their routes.
+ARTIFACT_STATUS="$(CCMUX_DATA_DIR="$DATA_DIR" "$BUN" "${APP_DIR}/ccmux.js" install --artifacts-only)"
+case "$ARTIFACT_STATUS" in
+  written) note_change "status-line program installed" ;;
+  current) say "status-line program: already correct (unchanged)" ;;
+  *) die "unexpected artifact installation result: ${ARTIFACT_STATUS}" ;;
+esac
 
 # ── shim ─────────────────────────────────────────────────────────────────────
 # One verb is routed past the bundle: `status-line` runs on every refresh of every managed session,
-# and through the whole CLI bundle it spends 81 ms of CPU to do 4 ms of work. The guard is the
-# rollback — no program there, and the bundle answers the same verb. Kept byte-identical to
+# and requires the packaged program installed above. Kept byte-identical to
 # `shimContents()` in the source; the test suite compares them, because two writers that disagree
 # would rewrite each other on every daemon start.
-WANT_SHIM="$(printf '#!/bin/sh\nif [ "$1" = "status-line" ] && [ -r "%s/status-line.js" ]; then\n  exec "%s" "%s/status-line.js" "$@"\nfi\nexec "%s" "%s/ccmux.js" "$@"\n' "$APP_DIR" "$BUN" "$APP_DIR" "$BUN" "$APP_DIR")"
+WANT_SHIM="$(printf '#!/bin/sh\nif [ "$1" = "status-line" ]; then\n  exec "%s" "%s/status-line.js" "$@"\nfi\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR" "$BUN" "$APP_DIR")"
 if [ -f "$SHIM" ] && [ "$(cat "$SHIM")" = "$WANT_SHIM" ]; then
   say "shim: already correct (unchanged)"
 else
