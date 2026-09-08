@@ -27,6 +27,8 @@ function message(role: 'user' | 'assistant' | 'system', text: string): Transcrip
     resultText: null,
     image: null,
     usage: null,
+    doneAt: null,
+    agent: null,
   };
 }
 

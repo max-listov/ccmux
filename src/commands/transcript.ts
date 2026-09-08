@@ -23,7 +23,7 @@ export function lastAssistantText(messages: TranscriptMessage[]): string | null 
 const LAST_MESSAGE_WINDOW = 200; // enough lines back to find the last answer without reading the file
 
 const USAGE =
-  'usage: ccmux transcript <name|app/UUID|machine:app/UUID> --json [--tail N] [--cursor LINE] [--before LINE --limit N]\n' +
+  'usage: ccmux transcript <name|app/UUID|machine:app/UUID> --json [--tail N] [--cursor LINE] [--before LINE --limit N] [--text-limit CHARS] [--agent ID]\n' +
   "       ccmux transcript <name> --last-message        (just the agent's final answer, as text)\n" +
   '       ccmux transcript <name> --image <address>     (one image, as a data URL)';
 
@@ -40,6 +40,10 @@ export interface Opts {
   cursor?: number;
   before?: number;
   limit?: number;
+  /** Per-message text budget; the default clip is sized for a listing, not for a report. */
+  textLimit?: number;
+  /** A spawned agent's transcript, by the id the session's `Agent` call carries. */
+  agent?: string;
 }
 
 export function parseOpts(args: string[]): Opts {
@@ -50,12 +54,18 @@ export function parseOpts(args: string[]): Opts {
   let cursor: number | undefined;
   let before: number | undefined;
   let limit: number | undefined;
+  let textLimit: number | undefined;
+  let agent: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--json') json = true;
     else if (a === '--last-message') lastMessage = true;
     else if (a === '--image') image = args[++i];
-    else if (a === '--tail') {
+    else if (a === '--agent') agent = args[++i];
+    else if (a === '--text-limit') {
+      const n = Number.parseInt(args[++i] ?? '', 10);
+      if (Number.isFinite(n)) textLimit = n;
+    } else if (a === '--tail') {
       const n = Number.parseInt(args[++i] ?? '', 10);
       if (Number.isFinite(n)) tail = n;
     } else if (a === '--cursor') {
@@ -78,6 +88,8 @@ export function parseOpts(args: string[]): Opts {
   if (cursor !== undefined) opts.cursor = cursor;
   if (before !== undefined) opts.before = before;
   if (limit !== undefined) opts.limit = limit;
+  if (textLimit !== undefined) opts.textLimit = Math.min(Math.max(textLimit, 1), FULL_TEXT_LIMIT);
+  if (agent !== undefined && agent !== '') opts.agent = agent;
   return opts;
 }
 
@@ -162,6 +174,8 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
   if (o.cursor !== undefined) readOpts.cursor = o.cursor;
   if (o.before !== undefined) readOpts.before = o.before;
   if (o.limit !== undefined) readOpts.limit = o.limit;
+  if (o.textLimit !== undefined) readOpts.textLimit = o.textLimit;
+  if (o.agent !== undefined) readOpts.agent = o.agent;
   await printLine(JSON.stringify(transcriptJson(m, s, readOpts)));
   return 0;
 }
@@ -174,6 +188,7 @@ export interface TranscriptWindow {
   before?: number;
   limit?: number;
   textLimit?: number;
+  agent?: string;
 }
 
 /**

@@ -224,7 +224,15 @@ export const ControlTranscriptReadSchema = ControlTargetSchema.extend({
   cursor: z.number().int().nonnegative().nullable().default(null),
   before: z.number().int().positive().nullable().default(null),
   limit: z.number().int().min(1).max(200).nullable().default(null),
-  textLimit: z.number().int().min(1).max(8_192).nullable().default(null),
+  // Wide enough for a whole report: an agent's final answer or a task notification carrying one
+  // runs past 8 KB, and a consumer that parses either needs it intact, not cut mid-tag.
+  textLimit: z.number().int().min(1).max(65_536).nullable().default(null),
+  /** Read the transcript of the agent this session spawned, by the id its `Agent` call carries. */
+  agent: z
+    .string()
+    .regex(/^[0-9a-f]{1,64}$/)
+    .nullable()
+    .default(null),
 }).strict();
 export const ControlTranscriptResultSchema = TranscriptJsonSchema.extend(
   ControlTargetSchema.shape,

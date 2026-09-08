@@ -141,6 +141,9 @@ export function parse(
   textLimit: number = DEFAULT_TEXT_LIMIT,
   endLine?: number,
   baseLine = 1,
+  // Codex keeps nothing beside its rollout that this parser would read; the argument exists so
+  // every provider answers the one `parse` contract.
+  _source?: { path: string },
 ): TranscriptMessage[] {
   const out: TranscriptMessage[] = [];
   const callArgs = new Map<string, Record<string, unknown> | null>();
@@ -181,6 +184,7 @@ export function parse(
       results.set(callId, {
         content: flattenContent(o?.content ?? payload.output) ?? '',
         isError: o?.success === false,
+        at: createdAt,
       });
     }
     fromPayload(payload, textLimit).forEach((p, key) => {
@@ -207,6 +211,8 @@ export function parse(
         // the point — a reader must be able to tell "not reported here" from "zero".
         image: null,
         usage: null,
+        doneAt: null,
+        agent: null,
       });
     });
   }
@@ -216,6 +222,8 @@ export function parse(
 interface RawResult {
   content: string;
   isError: boolean;
+  /** When the output line was written: the call's end. */
+  at: string | null;
 }
 
 /** function_call.arguments is a JSON string — parse it to a record for the result summarizer. */
@@ -243,6 +251,7 @@ function foldResults(
     const r = results.get(m.toolCallId);
     if (!r) continue;
     m.done = true;
+    m.doneAt = r.at;
     m.status = r.isError ? 'error' : null;
     m.result = resultSummary(
       callName.get(m.toolCallId) ?? m.toolName ?? 'tool',

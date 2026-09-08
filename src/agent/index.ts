@@ -13,9 +13,14 @@ import type {
 import { MtimeCache } from '../util/mtimeCache.ts';
 import { readTailLines, readTailUntil } from '../util/readLines.ts';
 import { claudeProvider } from './claude/index.ts';
+import { subagentFile } from './claude/subagent.ts';
 import { codexProvider } from './codex/index.ts';
 import type { LaunchInput } from './launchInputs.ts';
-import { readTranscriptFile, type TranscriptRead } from './transcriptRead.ts';
+import {
+  readTranscriptFile,
+  type TranscriptRead,
+  unavailableTranscript,
+} from './transcriptRead.ts';
 
 // Format sniff lives in its own light module (normalize-only deps) so the public library seam can
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
@@ -104,12 +109,15 @@ export interface AgentProvider {
   // for backward pagination; omit to parse through the end of the file. `baseLine` is the absolute
   // line number of `lines[0]`: the array may be a WINDOW of the file rather than all of it, and
   // every `seq` this returns is a cursor the caller can hand back to `--cursor`.
+  // `source` names the file the lines came from, for what lives BESIDE it — Claude keeps the
+  // transcripts of spawned agents next to the session file, and the `Agent` call reads them.
   parse(
     lines: string[],
     startLine: number,
     textLimit?: number,
     endLine?: number,
     baseLine?: number,
+    source?: { path: string },
   ): TranscriptMessage[];
   usedTokens(lines: string[]): number | null;
   // The conversation's CURRENT model, read from history (source of truth), or null if not yet
@@ -175,10 +183,31 @@ const LAST_MESSAGE_TEXT_LIMIT = 280;
 export function readTranscript(
   session: Session,
   m: MachineConfig,
-  opts: { tail: number; cursor?: number; before?: number; limit?: number; textLimit?: number },
+  opts: {
+    tail: number;
+    cursor?: number;
+    before?: number;
+    limit?: number;
+    textLimit?: number;
+    /** A spawned agent's transcript instead of the session's own, by the id its call carries. */
+    agent?: string;
+  },
 ): TranscriptRead {
   const provider = providerFor(session);
-  return readTranscriptFile(provider.historyFile(session, m), provider, opts);
+  const path = provider.historyFile(session, m);
+  if (opts.agent === undefined) return readTranscriptFile(path, provider, opts);
+  // Only Claude writes spawned agents beside the session; for any other runtime the answer is
+  // "there is no such file", said as such rather than as a missing-file error.
+  if (provider.id !== 'claude' || path === null)
+    return unavailableTranscript(
+      provider.id,
+      path ?? '',
+      'this runtime keeps no agent transcripts',
+    );
+  const agentPath = subagentFile(path, opts.agent);
+  if (agentPath === null)
+    return unavailableTranscript(provider.id, path, 'agent id is not one this runtime issues');
+  return readTranscriptFile(agentPath, provider, opts);
 }
 
 // mtime-keyed caches: skip the tail-read + JSON parse when the transcript hasn't moved, and (just

@@ -651,6 +651,29 @@ export const TranscriptUsageSchema = z.object({
 });
 export type TranscriptUsage = z.infer<typeof TranscriptUsageSchema>;
 
+/**
+ * The agent a Claude `Agent` call spawned, read from the agent's own transcript beside the
+ * session file (`<uuid>/subagents/agent-<id>.jsonl`). The call carries this so a consumer can show
+ * the agent living — with its tool calls and spend — instead of a call that "finished" the second
+ * it was launched. `available` says the file was there to read; the rest is null when it was not.
+ */
+export const TranscriptAgentSchema = z.object({
+  id: z.string(),
+  /** `subagent_type` of the call: Explore, Plan, general-purpose, a custom agent's name. */
+  type: z.string().nullable(),
+  description: z.string().nullable(),
+  model: z.string().nullable(),
+  /** `finished` once the session was notified, or the agent's transcript ends on its own answer. */
+  state: z.enum(['running', 'finished']),
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  toolCalls: z.number().int().nonnegative().nullable(),
+  /** Summed over the agent's own API messages; null when its transcript was not readable. */
+  usage: TranscriptUsageSchema.nullable(),
+  available: z.boolean(),
+});
+export type TranscriptAgent = z.infer<typeof TranscriptAgentSchema>;
+
 export const TranscriptMessageSchema = z.object({
   id: z.string(),
   seq: z.number(),
@@ -680,6 +703,13 @@ export const TranscriptMessageSchema = z.object({
    */
   usage: TranscriptUsageSchema.nullable().default(null),
   resultText: z.string().nullable(),
+  /**
+   * When the folded tool_result was written — the call's end. The call's own `createdAt` is its
+   * start, and without this a consumer computing durations could only guess the other edge.
+   */
+  doneAt: z.string().nullable().default(null),
+  /** The agent this call spawned; null on every other kind of message and on every other tool. */
+  agent: TranscriptAgentSchema.nullable().default(null),
 });
 
 // Provider-neutral inventory row for a conversation that exists outside ccmux's registry.

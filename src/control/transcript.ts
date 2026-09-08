@@ -23,6 +23,7 @@ export function readControlTranscript(
   if (input.before !== null) window.before = input.before;
   if (input.limit !== null) window.limit = input.limit;
   if (input.textLimit !== null) window.textLimit = input.textLimit;
+  if (input.agent !== null) window.agent = input.agent;
   const answer = transcriptJson(m, session, window);
   // A runtime that keeps no transcript on disk is not an error to retry: it is an answer, and it
   // says which runtime it is. Refusing here instead would send a caller looking for a fault.

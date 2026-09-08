@@ -25,6 +25,8 @@ const msg = (over: Partial<TranscriptMessage>): TranscriptMessage => ({
   resultText: null,
   image: null,
   usage: null,
+  doneAt: null,
+  agent: null,
   ...over,
 });
 

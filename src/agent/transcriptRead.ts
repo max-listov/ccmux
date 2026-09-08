@@ -93,7 +93,7 @@ export function readTranscriptFile(
   // Only the window is read, and it is read knowing where it starts — which is the whole reason the
   // index exists. `seq` stays the absolute line number a `--cursor` is expressed in.
   const window = index.read(start, endLine ?? total);
-  const messages = provider.parse(window, start, opts.textLimit, endLine, start);
+  const messages = provider.parse(window, start, opts.textLimit, endLine, start, { path });
   const stats = index.stats;
   let mtimeMs: number | null = null;
   try {
