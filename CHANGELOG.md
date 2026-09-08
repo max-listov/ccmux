@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.56.0] — 2026-09-08
+
+Spawned agents live on the Agent call, and a folded result says when it ended
+
 Spawned agents live on the Agent call, and a folded result says when it ended
 
 - The Claude adapter reads the agent an `Agent` call spawned from its transcript beside the session
@@ -17,7 +21,6 @@ Spawned agents live on the Agent call, and a folded result says when it ended
 - Every folded tool call (Claude and Codex) carries `doneAt`, the time its result was written.
 - `ccmux transcript <session> --agent <id>` and `transcript.read { agent }` read a spawned agent's
   transcript; `--text-limit CHARS` (control: up to 65 536) widens the per-message text budget.
-
 ## [0.55.13] — 2026-09-06
 
 A native turn boundary is announced once, and none is skipped
