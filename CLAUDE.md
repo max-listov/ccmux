@@ -58,7 +58,7 @@ local directory, is how the second queue gets created.
 
 Two consequences for what lives here. This tree cannot answer "why" from a task any more, so
 anything whose reasoning deserves to be public must become an ADR in `docs/decisions/` or a
-comment at the mechanism — the bar on both goes up. And a `quality.config.json` at the root
+comment at the mechanism — the bar on both goes up. And a `.repository.json` at the root
 declares this repository's identity, role and content classification in typed form; the companion
 reads it to check that the boundary still holds.
 

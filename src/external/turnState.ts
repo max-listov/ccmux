@@ -3,6 +3,7 @@ import { connectCodexAppServer } from '../agent/codex/appServer.ts';
 import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import type { ExternalSession, MachineConfig } from '../types.ts';
 import { supportsNativeStatus } from './native-list.ts';
+import { readNativeTurns, withNativeTurn } from './native-turn.ts';
 import { type ExternalTurnState, unknownTurnState } from './turnSchema.ts';
 
 export const TURN_OBSERVATION_TTL_MS = 5_000;
@@ -127,6 +128,14 @@ export async function observeExternalTurns(
       cursors.add(page.nextCursor);
       cursor = page.nextCursor;
     }
+    const turns = await readNativeTurns(
+      rpc,
+      [...observed]
+        .filter(([, state]) => state.state !== 'idle' && state.state !== 'unknown')
+        .map(([id]) => id),
+      abort.signal,
+    );
+    for (const [id, state] of observed) observed.set(id, withNativeTurn(state, turns.get(id)));
   } catch {
     observed.clear();
     missing = abort.signal.aborted

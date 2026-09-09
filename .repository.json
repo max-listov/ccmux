@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "rules": {},
-  "boundaries": { "uiPrimitives": [], "mcpAdapter": [], "apiPathPrefix": null },
-  "repositoryContent": {
-    "schemaVersion": 1,
+  "identity": {
     "repositoryId": "max-listov/ccmux",
+    "project": "max-listov/ccmux",
     "role": "source",
-    "policy": "public-source",
+    "policy": "public-source"
+  },
+  "layout": {
     "documentationRoots": ["docs"],
     "backlogRoots": [],
     "surfaces": [
@@ -20,7 +20,10 @@
       { "path": "package.json", "classification": "deliverable" },
       { "path": "biome.json", "classification": "deliverable" },
       { "path": "tsconfig.json", "classification": "deliverable" },
-      { "path": "quality.config.json", "classification": "deliverable" }
+      { "path": ".repository.json", "classification": "deliverable" }
     ]
+  },
+  "rules": {
+    "boundaries": { "uiPrimitives": [], "mcpAdapter": [], "apiPathPrefix": null }
   }
 }

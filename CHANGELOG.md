@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- External Codex status carries native turn identity and start time, independently of observation
+  freshness. Bounded metadata-only reads and native events preserve the start through reconnects;
+  unavailable or stale evidence clears it instead of inventing a new start. This changes the strict
+  external reader contract: deploy the matching reader and producer together.
+- The cancellation regression waits for server acknowledgement before releasing its held lock,
+  removing an assertion that depended on client/server event-loop ordering.
+
 ## [0.57.2] — 2026-09-09
 
 The pin is required where there is something to pin

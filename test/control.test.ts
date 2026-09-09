@@ -383,7 +383,11 @@ test('oversize bodies refuse early and cancelled lock waiters cannot append late
     expect(f.owned.controls.mutations.getSnapshot().active).toBe(1);
     stop.abort();
     expect(await rejected).toMatchObject({ code: 'REQUEST_ABORTED' });
-    expect(f.owned.controls.mutations.getSnapshot().active).toBe(1);
+    // Client cancellation is not server acknowledgement. Keep the registry locked until
+    // the server has observed cancellation and released the waiting mutation's admission.
+    for (let i = 0; i < 100 && f.owned.controls.mutations.getSnapshot().active; i++)
+      await Bun.sleep(10);
+    expect(f.owned.controls.mutations.getSnapshot().active).toBe(0);
   } finally {
     release.resolve();
     await lock;

@@ -6,6 +6,8 @@ export const ExternalTurnStateSchema = z
     state: z.enum(['working', 'idle', 'waiting-approval', 'waiting-input', 'unknown']),
     evidence: z.enum(['observed', 'unknown', 'unavailable', 'stale']),
     source: z.enum(['codex-app-server', 'unsupported']),
+    turnId: z.string().min(1).max(128).nullable(),
+    startedAt: z.iso.datetime().nullable(),
     observedAt: z.iso.datetime().nullable(),
     expiresAt: z.iso.datetime().nullable(),
     reason: z.enum([
@@ -24,6 +26,16 @@ export const ExternalTurnStateSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (
+      (value.startedAt !== null && value.turnId === null) ||
+      ((value.state === 'unknown' || value.state === 'idle') &&
+        (value.turnId !== null || value.startedAt !== null))
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'native turn metadata belongs to an observed active turn',
+      });
+    }
     if ((value.state !== 'unknown') !== (value.evidence === 'observed')) {
       ctx.addIssue({
         code: 'custom',
@@ -48,5 +60,14 @@ export function unknownTurnState(
   reason: ExternalTurnState['reason'] = 'not-observed',
   evidence: ExternalTurnState['evidence'] = 'unknown',
 ): ExternalTurnState {
-  return { state: 'unknown', evidence, source, observedAt: null, expiresAt: null, reason };
+  return {
+    state: 'unknown',
+    evidence,
+    source,
+    turnId: null,
+    startedAt: null,
+    observedAt: null,
+    expiresAt: null,
+    reason,
+  };
 }

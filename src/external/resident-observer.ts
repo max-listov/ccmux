@@ -9,6 +9,12 @@ import {
   nativeStatusInventory,
   supportsNativeStatus,
 } from './native-list.ts';
+import {
+  type NativeTurn,
+  NativeTurnEventSchema,
+  readNativeTurns,
+  withNativeTurn,
+} from './native-turn.ts';
 import type { ExternalStatusPublisher } from './resident-publisher.ts';
 import {
   EXTERNAL_MAX_ROWS,
@@ -19,7 +25,7 @@ import { nativeTurnState, TURN_OBSERVATION_DEADLINE_MS } from './turnState.ts';
 
 const EventSchema = z.object({ threadId: z.uuid(), status: NativeStatusEnvelopeSchema });
 type Connection = { abort: AbortController; root: string | undefined; rpc?: CodexAppRpc };
-type Observation = { revision: number; at: number; status: unknown };
+type Observation = { revision: number; at: number; status: unknown; turn?: NativeTurn };
 type Connector = (machine: MachineConfig, options: CodexRpcOptions) => Promise<CodexAppRpc>;
 
 /** One read-only provider connection with bounded reconciliation and notification overlays. */
@@ -103,6 +109,13 @@ export class ExternalStatusObserver {
         startedAt = Date.now();
       this.stats.reconciliations++;
       const inventory = await nativeStatusInventory(connection.rpc, connection.abort.signal);
+      const turns = await readNativeTurns(
+        connection.rpc,
+        inventory.rows
+          .filter((row) => row.status.type === 'active' && !this.managed.has(row.id))
+          .map((row) => row.id),
+        connection.abort.signal,
+      );
       if (this.connection !== connection || this.stopped) return;
       const rows = new Map<string, ExternalStatusRow>();
       for (const row of inventory.rows) {
@@ -115,7 +128,10 @@ export class ExternalStatusObserver {
           dir: row.cwd ?? null,
           updatedAt:
             row.updatedAt === undefined ? null : new Date(row.updatedAt * 1000).toISOString(),
-          turnState: nativeTurnState(latest?.status ?? row.status, latest?.at ?? startedAt),
+          turnState: withNativeTurn(
+            nativeTurnState(latest?.status ?? row.status, latest?.at ?? startedAt),
+            latest ? latest.turn : turns.get(row.id),
+          ),
         });
       }
       for (const [id, event] of this.events) {
@@ -139,18 +155,54 @@ export class ExternalStatusObserver {
   }
 
   private event(connection: Connection, event: CodexRpcEvent): void {
-    if (this.connection !== connection || this.stopped || event.method !== 'thread/status/changed')
+    if (this.connection !== connection || this.stopped) return;
+    if (event.method === 'turn/started' || event.method === 'turn/completed') {
+      const parsed = NativeTurnEventSchema.safeParse(event.params);
+      if (!parsed.success) {
+        this.disconnect('invalid-response', connection);
+        return;
+      }
+      const { threadId, turn } = parsed.data;
+      this.observe(threadId, {
+        revision: ++this.revision,
+        at: Date.now(),
+        status:
+          turn.status === 'inProgress' ? { type: 'active', activeFlags: [] } : { type: 'idle' },
+        turn,
+      });
       return;
+    }
+    if (event.method !== 'thread/status/changed') return;
     const parsed = EventSchema.safeParse(event.params);
     if (!parsed.success) {
       this.disconnect('invalid-response', connection);
       return;
     }
     const { threadId, status } = parsed.data;
+    const previous = this.publisher
+      .read()
+      .sessions.find((row) => row.identity.threadId === threadId)?.turnState;
+    const turn =
+      this.events.get(threadId)?.turn ??
+      (previous?.turnId
+        ? ({
+            id: previous.turnId,
+            status: 'inProgress',
+            startedAt: previous.startedAt === null ? null : Date.parse(previous.startedAt) / 1000,
+          } satisfies NativeTurn)
+        : undefined);
+    this.observe(threadId, {
+      revision: ++this.revision,
+      at: Date.now(),
+      status,
+      ...(status.type === 'active' && turn?.status === 'inProgress' ? { turn } : {}),
+    });
+  }
+
+  private observe(threadId: string, observation: Observation): void {
     if (this.managed.has(threadId)) return;
-    const observation = { revision: ++this.revision, at: Date.now(), status };
     if (!this.events.has(threadId) && this.events.size >= EXTERNAL_MAX_ROWS) {
-      this.disconnect('invalid-response', connection);
+      this.disconnect('invalid-response');
       return;
     }
     this.events.set(threadId, observation);
@@ -163,7 +215,13 @@ export class ExternalStatusObserver {
     rows.set(
       threadId,
       previous
-        ? { ...previous, turnState: nativeTurnState(status, observation.at) }
+        ? {
+            ...previous,
+            turnState: withNativeTurn(
+              nativeTurnState(observation.status, observation.at),
+              observation.turn,
+            ),
+          }
         : this.eventRow(threadId, observation),
     );
     this.publisher.publish([...rows.values()], snapshot.truncated, Date.parse(snapshot.observedAt));
@@ -175,7 +233,7 @@ export class ExternalStatusObserver {
       name: null,
       dir: null,
       updatedAt: null,
-      turnState: nativeTurnState(event.status, event.at),
+      turnState: withNativeTurn(nativeTurnState(event.status, event.at), event.turn),
     };
   }
 

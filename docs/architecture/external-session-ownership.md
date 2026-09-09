@@ -4,7 +4,7 @@ description: Provider-neutral identity, advisory writer evidence and atomic Code
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-28
+updated: 2026-09-09 13:21 +0700
 ---
 
 # External session discovery and ownership
@@ -89,7 +89,7 @@ older servers could ignore the no-scan option. See the [provider status protocol
 Newer prerelease versions satisfy the numeric contract floor; prereleases of 0.144.6 itself do
 not. Build metadata does not change the contract version.
 
-Each object carries `state`, `evidence`, `source`, `observedAt`, `expiresAt`, and a fixed `reason` code.
+Each object carries `state`, `evidence`, `source`, `turnId`, `startedAt`, `observedAt`, `expiresAt`, and a fixed `reason` code.
 `source` is `codex-app-server` or `unsupported`; no raw RPC errors, messages or paths are copied into
 it. Evidence is `observed` only for a known state, `unknown` for absent/unsupported state,
 `unavailable` on connection/protocol failure, and `stale` on the observation deadline. Failures clear
@@ -101,7 +101,13 @@ receipt. Consumers must treat an expired observation as `state=unknown, evidence
 cached inventory still contains `working` or `idle`; a recent activity timestamp cannot renew it.
 There is no completed-result cache in the reader.
 
-Per call: one connection, one request at a time, at most **4 pages × 128 entries**, **2 MiB** per RPC
+Native `turnId` и `startedAt` описывают только текущий активный ход. Неизвестные значения — null;
+receipt и activity timestamps никогда не подменяют начало. Metadata читается тем же bounded
+`thread/turns/list` механизмом, что и в [resident contract](external-resident-status.md):
+максимум 64 active identities, четыре запроса одновременно, одна metadata-only страница на identity.
+На runtime без подтверждённой metadata-only поддержки эти поля null.
+
+Per call: one connection, at most **4 pages × 128 entries** plus bounded active-turn metadata, **2 MiB** per RPC
 message, **2 seconds total** including connection/initialization, 16 KiB handshake headers and 1,024
 fragments maximum. Deadline or oversized input closes the socket. Unvisited identities are
 `unknown/read-limit`, never idle. Native status observation spawns no CLI, tmux, or transcript scan;

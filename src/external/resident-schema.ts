@@ -79,6 +79,8 @@ export function currentExternalStatus(
         (state.observedAt !== null && Date.parse(state.observedAt) > now))
     ) {
       state.state = 'unknown';
+      state.turnId = null;
+      state.startedAt = null;
       state.evidence = current.status === 'unavailable' ? 'unavailable' : 'stale';
       state.reason = current.status === 'unavailable' ? 'connection-unavailable' : 'deadline';
     }

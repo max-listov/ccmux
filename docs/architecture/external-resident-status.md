@@ -4,7 +4,7 @@ description: One daemon-owned observer exposes bounded external thread snapshots
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-09-09 13:21 +0700
 ---
 
 # Authority and coverage
@@ -33,7 +33,7 @@ One observer registers notifications before its initial read. It requests `threa
 a 2-second total deadline, at most 4 pages of 128 rows and 2 MiB per native message. The verified
 native-version floor is shared with the on-demand external reader; older or unrecognized
 runtimes receive no potentially scanning list request. Native metadata may contain additional
-fields, but only UUID, title, cwd, update time and status are projected. No transcript body,
+fields, but only UUID, title, cwd, update time, status and native active-turn metadata are projected. No transcript body,
 preview, provider path, launch settings or credentials cross the public status boundary.
 
 `thread/status/changed` updates reach the prepared projection immediately. A notification newer
@@ -50,6 +50,29 @@ and re-announcing `observation-pending` on every retry would overwrite the failu
 carries the information with one that carries none. Late events from retired connections have no
 effect. A successful empty inventory removes rows; a failed observation retains last-known metadata
 but clears positive execution claims. Root changes invalidate the old source before reconnecting.
+
+## Native начало хода
+
+`turnState.turnId: string | null` — идентичность активного native turn;
+`turnState.startedAt: string | null` — его native Unix timestamp, преобразованный в ISO UTC.
+Оба поля обязательны. Начало может быть неизвестно при известном turnId; без turnId
+startedAt всегда null. `idle`, `unknown`, stale или unavailable очищают оба поля.
+Отсутствие начала не превращается в observedAt, updatedAt, время подключения или обнаружения.
+
+Для Codex 0.151.0 и новее reconciliation читает `thread/turns/list`: одна страница,
+`limit: 1`, `sortDirection: desc`, `itemsView: notLoaded`, без перехода по cursor.
+Только active внешние identities, не managed: максимум 64 metadata-запроса за проход,
+не более четырёх одновременно, внутри общего двухсекундного deadline и лимита 2 MiB.
+Ответ обязан подтвердить `itemsView: notLoaded` и пустые items. Неизвестный/старый runtime,
+непрочитанный turn или identity за пределом бюджета оставляют metadata null, не запрещая
+отдельно наблюдать native status. Чтение всей истории и thread/resume не используются.
+
+`turn/started` и `turn/completed` обновляют тот же snapshot; timestamp берётся только из
+native payload, никогда из времени получения события. Событие новее начала reconciliation
+приоритетнее ответа того прохода. При reconnect метаданные читаются заново: тот же native
+turn сохраняет свой настоящий старт, новый имеет другую identity и собственное начало.
+Обновление observedAt не начинает новый таймер. Fleet consumers получают эти поля внутри
+той же строки external snapshot и соединяют её по provider/machine/threadId.
 
 No consumer read, subscription or reconnect causes a provider request, CLI spawn, pane capture or
 transcript scan. Daemon shutdown closes observer connections, not external provider processes.

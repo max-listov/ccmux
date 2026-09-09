@@ -23,11 +23,20 @@ export type NativeThreadSummary = z.infer<typeof NativeThreadSummarySchema>;
 
 /** Older providers may ignore useStateDbOnly and scan/repair rollouts. */
 export function supportsNativeStatus(userAgent: string | undefined): boolean {
+  return supportsVersion(userAgent, '0.144.6');
+}
+
+/** This provider floor exposes metadata-only thread/turns/list in its generated schema. */
+export function supportsNativeTurnMetadata(userAgent: string | undefined): boolean {
+  return supportsVersion(userAgent, '0.151.0');
+}
+
+function supportsVersion(userAgent: string | undefined, minimum: string): boolean {
   const version = userAgent?.match(
     /^[^/]+\/(\d+\.\d+\.\d+)(-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\s|$)/,
   );
   const core = version?.[1];
-  const compared = core ? compareSemver(core, '0.144.6') : -1;
+  const compared = core ? compareSemver(core, minimum) : -1;
   return !!core && (compared > 0 || (compared === 0 && !version?.[2]));
 }
 
