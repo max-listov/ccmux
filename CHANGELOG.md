@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.58.0] — 2026-09-09
+
+Incremental usage accounting and thread-bound communication receipts
+
 - Add incremental session usage accounting for Claude, Codex, OpenCode and Custom runtimes,
   with bounded SQLite indexing, day/model summaries, cache metrics, cost provenance and explicit
   partial or unavailable states. Expose `usage.read`, `usage.list` and `ccmux usage` without
@@ -15,7 +19,6 @@ the GitHub Release with that section as the notes.
   the same exact pair and task. Reject mismatched peers, threads, tasks and quotes; show all three
   accepted forms in admission errors. Historical ledger records remain readable without invented
   permission, and chat receipts do not authorize file transfers.
-
 ## [0.57.3] — 2026-09-09
 
 Native turn start survives observation and reconnect
