@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.57.0] — 2026-09-09
+
+A message to a session carries its justification
+
 - **A message to a session now carries its justification.** `communicationAuthorization` is a
   required input for every session target: why this recipient and how it sits inside what the user
   authorized (40–4000 chars), the user's verbatim authorization quote, and a reference to the message
@@ -18,7 +22,6 @@ the GitHub Release with that section as the notes.
   sits below the composer, so a pane whose bottom rows were taken by a queued-feedback-drafts box
   carried none of them: the session held its mail, timed out every `wait`, and was reported working
   for eleven hours while it sat idle at its prompt.
-
 ## [0.56.0] — 2026-09-08
 
 Spawned agents live on the Agent call, and a folded result says when it ended
