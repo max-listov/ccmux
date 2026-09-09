@@ -1,0 +1,5 @@
+{
+  "whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope": "Contact this isolated test recipient to exercise the requested message admission behavior.",
+  "userAuthorizationQuote": "Send the fixture message to the isolated test recipient.",
+  "sourceMessageRef": "fixture://user/message-1"
+}

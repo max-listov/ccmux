@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { MachineLaunchRecipeSchema } from '../src/config/schema.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { customCoding } from './custom-coding-acceptance.ts';
 import { customCoexistence } from './custom-coexistence-acceptance.ts';
 import { customResident } from './custom-resident-acceptance.ts';
@@ -116,8 +120,19 @@ try {
     messageId: crypto.randomUUID(),
     body: 'Use write_file to create proof.txt with the exact content PROOF_ONCE, overwrite false. Then respond DONE. Do not run commands or send any messages.',
   };
-  await p.service['message.send'](message);
-  check((await p.service['message.send'](message)).duplicate, 'Message retry duplicated');
+  await p.service['message.send']({
+    ...message,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
+  check(
+    (
+      await p.service['message.send']({
+        ...message,
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+      })
+    ).duplicate,
+    'Message retry duplicated',
+  );
   await until('Custom real signed approval', async () => {
     const frame = await p.service['native.read']({ target }).catch((error) => {
       if (error instanceof Error && 'code' in error && error.code === 'UNAVAILABLE') return null;
@@ -214,14 +229,26 @@ try {
   if (visionModel) {
     const reference = await uploadImage(p, target, geometryImage('png'), 'image/png');
     const imageMessage = {
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target,
       messageId: crypto.randomUUID(),
       images: [reference],
       body: 'Inspect the attached image. State the color and shape of the left object and then of the right object, in English. No tools.',
       options: { runtime: 'custom', model: { provider: 'openrouter', model: visionModel } },
     } satisfies Parameters<(typeof p.service)['message.send']>[0];
-    await p.service['message.send'](imageMessage);
-    check((await p.service['message.send'](imageMessage)).duplicate, 'Image retry duplicated');
+    await p.service['message.send']({
+      ...imageMessage,
+      communicationAuthorization: acceptanceCommunicationAuthorization,
+    });
+    check(
+      (
+        await p.service['message.send']({
+          ...imageMessage,
+          communicationAuthorization: acceptanceCommunicationAuthorization,
+        })
+      ).duplicate,
+      'Image retry duplicated',
+    );
     await until('real Custom vision terminal', async () => {
       const result = await p.service['message.operation']({
         target,

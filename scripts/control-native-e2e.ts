@@ -13,6 +13,13 @@ import { controlSocket } from '../src/control/path.ts';
 import { readMonitoringStatus } from '../src/monitoring/read.ts';
 import { killSession, newSession } from '../src/tmux/tmux.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
+import {
+  acceptanceAuthorizationPath,
+  readAcceptanceCommunicationAuthorization,
+} from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { hasExited } from './process-state.ts';
 
 const config = process.argv[2];
@@ -84,14 +91,28 @@ async function settled(target: typeof targetA) {
 const invocation = shellJoin([process.execPath, '--no-env-file', cli]);
 async function roundTrip(label: string) {
   const token = `control-${crypto.randomUUID()}`;
-  const request = `Authorized isolated communication test ${token}. Invoke exactly ${invocation} msg ${targetB.machine}:${targetB.session} --to-agent codex --to-thread ${targetB.threadId} with this body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by ccmux. Do not message anyone else.' Do not reuse CLI paths from earlier history. When B_TO_A arrives finish with RECEIVED, without sending another message. Do not change files or do unrelated work.`;
+  const request = `Authorized isolated communication test ${token}. Invoke exactly ${invocation} msg ${targetB.machine}:${targetB.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent codex --to-thread ${targetB.threadId} with this body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by ccmux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not message anyone else.' Do not reuse CLI paths from earlier history. When B_TO_A arrives finish with RECEIVED, without sending another message. Do not change files or do unrelated work.`;
   const messageId = crypto.randomUUID();
   check(
-    (await client['message.send']({ target: targetA, messageId, body: request })).accepted,
+    (
+      await client['message.send']({
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+        target: targetA,
+        messageId,
+        body: request,
+      })
+    ).accepted,
     'Not accepted',
   );
   check(
-    (await client['message.send']({ target: targetA, messageId, body: request })).duplicate,
+    (
+      await client['message.send']({
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+        target: targetA,
+        messageId,
+        body: request,
+      })
+    ).duplicate,
     'Duplicate was not recognized',
   );
   await until(label, () => {
@@ -136,6 +157,7 @@ try {
   try {
     await roundTrip('control-A-B-A');
     await client['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target: targetA,
       messageId: crypto.randomUUID(),
       body: 'Run sleep 15, then reply BUSY_DONE only. This is an isolated delivery test; do not change files or contact anyone.',
@@ -148,6 +170,7 @@ try {
     check(busy.turn, 'No busy turn identity');
     const deferredId = crypto.randomUUID();
     await client['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target: targetA,
       messageId: deferredId,
       body: 'Reply CONTROL_DEFERRED_DONE only.',
@@ -175,6 +198,7 @@ try {
 
     const busyMessage = crypto.randomUUID();
     await client['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target: targetA,
       messageId: busyMessage,
       body: 'Run sleep 30, then reply TIMING_DONE only. This is an isolated interruption test; do not change files or contact anyone.',
@@ -197,6 +221,7 @@ try {
     );
     const recoveryId = crypto.randomUUID();
     await client['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target: targetA,
       messageId: recoveryId,
       body: 'Reply CONTROL_INTERRUPTION_RECOVERED only.',

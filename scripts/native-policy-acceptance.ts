@@ -16,6 +16,10 @@ import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer, Session } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   createPolicyFixture,
@@ -102,9 +106,19 @@ async function proof(target: ManagedPeer, variant: string, nativeToken: string) 
     messageId: crypto.randomUUID(),
     body: 'Return the verification tokens required by your loaded application policy and selected native skill or agent. Do not use tools.',
   };
-  const sent = await service['message.send'](message);
+  const sent = await service['message.send']({
+    ...message,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
   check(
-    sent.accepted && !sent.duplicate && (await service['message.send'](message)).duplicate,
+    sent.accepted &&
+      !sent.duplicate &&
+      (
+        await service['message.send']({
+          ...message,
+          communicationAuthorization: acceptanceCommunicationAuthorization,
+        })
+      ).duplicate,
     'Message idempotency failed',
   );
   let verified: ControlNativeSnapshot | null = null;

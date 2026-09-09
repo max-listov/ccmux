@@ -1,5 +1,6 @@
 import type { AttachmentReference } from '../src/attachments/reference.ts';
 import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 import {
   check,
   previewImage,
@@ -33,14 +34,30 @@ export async function remoteImageTurn(
   images: AttachmentReference[],
   body: string,
 ) {
+  const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
   const { target, registrationGeneration } = session;
   const selector = { target, registrationGeneration, messageId: crypto.randomUUID() };
-  const request = { ...selector, body, images, notification: 'conversation' } satisfies Parameters<
-    ImageService['message.send']
-  >[0];
-  const receipt = await service['message.send'](request);
+  const request = {
+    ...selector,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+    body,
+    images,
+    notification: 'conversation',
+  } satisfies Parameters<ImageService['message.send']>[0];
+  const receipt = await service['message.send']({
+    ...request,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
   check(receipt.notification === 'conversation', 'Fixture notification audience changed');
-  check((await service['message.send'](request)).duplicate, 'Image retry duplicated admission');
+  check(
+    (
+      await service['message.send']({
+        ...request,
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+      })
+    ).duplicate,
+    'Image retry duplicated admission',
+  );
   let operation = await service['message.operation'](selector);
   await until('exact remote image turn', async () => {
     operation = await service['message.operation'](selector);

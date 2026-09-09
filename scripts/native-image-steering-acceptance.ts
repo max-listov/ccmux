@@ -6,6 +6,10 @@ import { loadSessions } from '../src/config/sessions.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   geometryImage,
@@ -71,13 +75,26 @@ async function orderedImages(
     images: references,
     body: "Inspect the two images attached to this message. In attachment order, write one numbered line per image describing the left object's color and shape, then the right object's color and shape. Use English. No tools, other messages or follow-up questions.",
   };
-  await p.service['message.send'](request);
+  await p.service['message.send']({
+    ...request,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
   check(
-    (await p.service['message.send'](request)).duplicate,
+    (
+      await p.service['message.send']({
+        ...request,
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+      })
+    ).duplicate,
     'Multiple-image retry changed identity',
   );
   await refusal(
-    () => p.service['message.send']({ ...request, images: [...references].reverse() }),
+    () =>
+      p.service['message.send']({
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+        ...request,
+        images: [...references].reverse(),
+      }),
     'IDEMPOTENCY_CONFLICT',
   );
   const answer = await completed(p, created.target, {
@@ -149,9 +166,17 @@ async function vision(p: NativeImageProbe, created: Created) {
           ? "For this image and each image I send next, report only the left object's color and shape followed by the right object's color and shape, in English. Inspect the actual pixels. No tools, other messages or follow-up questions."
           : '',
     };
-    await p.service['message.send'](request);
+    await p.service['message.send']({
+      ...request,
+      communicationAuthorization: acceptanceCommunicationAuthorization,
+    });
     check(
-      (await p.service['message.send'](request)).duplicate,
+      (
+        await p.service['message.send']({
+          ...request,
+          communicationAuthorization: acceptanceCommunicationAuthorization,
+        })
+      ).duplicate,
       'Image message retry changed identity',
     );
     answers.push(
@@ -220,6 +245,7 @@ async function largeImage(
       reference = await uploadImage(p, created.target, bytes, 'image/png');
     const before = await p.service['native.read']({ target: created.target });
     await p.service['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target: created.target,
       messageId: crypto.randomUUID(),
       images: [reference],
@@ -265,6 +291,7 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
   await idle(p, target);
   const baseline = await p.service['native.read']({ target });
   await p.service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     body: 'Use the shell tool once to run sleep 12, then reply ORIGINAL_MARKER. This is a bounded concurrency test. Do not edit files or contact other sessions.',
@@ -286,6 +313,7 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
   };
   const queuedId = crypto.randomUUID();
   await p.service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: queuedId,
     body: 'Report the colors and shapes only, in English. No tools.',
@@ -329,6 +357,7 @@ async function steering(p: NativeImageProbe, created: Created, image: Attachment
   );
   const beforeQuestion = await p.service['native.read']({ target });
   await p.service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     body: 'Ask one native request_user_input question with exactly two choices Red and Blue. Wait for the answer and then say ANSWERED_MARKER. No other tools.',
@@ -509,6 +538,7 @@ try {
   await refusal(
     () =>
       p.service['message.send']({
+        communicationAuthorization: acceptanceCommunicationAuthorization,
         target: opencode.target,
         messageId: crypto.randomUUID(),
         body: 'Describe this image.',

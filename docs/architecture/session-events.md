@@ -122,6 +122,15 @@ runs from the later of "transcript last moved" and "pane last seen working", and
 session acts on nothing — it has no baseline to be a diff against. Nothing is loosened for a turn
 that really stopped: its pane stopped with it.
 
+Whether the UI is drawn at all is asked of the COMPOSER — its rule line followed by its prompt — and
+not only of the mode footer. Every footer marker sits below the composer, so a capture that stops at
+the composer carries none of them, and the session then reads as "never painted" for as long as that
+lasts: its mail is held, `wait` on it always times out, and `list` calls it working. Measured on a
+live pane whose bottom rows were taken by a queued-feedback-drafts box — twenty-four lines, two
+identical captures, zero of the four markers, session idle at its prompt, reported working for eleven
+hours. Both parts are needed: the prompt alone would read a past user message as a live interface,
+and the footer alone is not always in the frame.
+
 The pane contract therefore has three observations: `working` (a positive live marker), `idle`
 (structural proof when a provider has one), and `indeterminate` (the UI is drawn but this frame does
 not prove either boundary). Claude's star spinner has animation frames whose plain tmux capture

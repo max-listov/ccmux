@@ -6,6 +6,19 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- **A message to a session now carries its justification.** `communicationAuthorization` is a
+  required input for every session target: why this recipient and how it sits inside what the user
+  authorized (40–4000 chars), the user's verbatim authorization quote, and a reference to the message
+  it came from. Passed as a file (`--communication-authorization <JSON file>`) so private quotes stay
+  out of process arguments. It is a caller's claim, recorded beside the body and shown as unverified
+  — never a grant, never added to the recipient's prompt, never auto-filled. Only an application's
+  admitted human channel may omit it; a CLI cannot promote itself by labelling its own actor. Owner
+  messages and `msg cancel` do not require it.
+- Read "the interface is drawn" from the composer, not only from the mode footer. Every footer marker
+  sits below the composer, so a pane whose bottom rows were taken by a queued-feedback-drafts box
+  carried none of them: the session held its mail, timed out every `wait`, and was reported working
+  for eleven hours while it sat idle at its prompt.
+
 ## [0.56.0] — 2026-09-08
 
 Spawned agents live on the Agent call, and a folded result says when it ended

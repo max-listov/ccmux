@@ -30,6 +30,7 @@ import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { observationExecCount } from '../src/monitoring/tmux.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
+import { communicationAuthorization } from './communication-fixture.ts';
 import { nativeCatalogFixture } from './fixtures/native-catalog.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
@@ -157,7 +158,12 @@ test('authorization precedes body handling, managed credentials rotate, and exac
       code: 'IDENTITY_MISMATCH',
     });
     await expect(
-      f.client['message.send']({ target, messageId: crypto.randomUUID(), body: 'must not land' }),
+      f.client['message.send']({
+        communicationAuthorization,
+        target,
+        messageId: crypto.randomUUID(),
+        body: 'must not land',
+      }),
     ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
   }
   expect(loadLedger(f.m)).toEqual([]);
@@ -193,6 +199,7 @@ test('message acceptance is durable, identity-authenticated and idempotent witho
   const credential = rotateChatCredential(f.m, f.s);
   const client = createControlClient({ socket: f.socket, session: f.s.name, credential });
   const input = {
+    communicationAuthorization,
     target: f.target,
     messageId: crypto.randomUUID(),
     body: 'private message body',
@@ -362,7 +369,12 @@ test('oversize bodies refuse early and cancelled lock waiters cannot append late
   const stop = new AbortController();
   try {
     const request = f.client['message.send'].withOptions(
-      { target: f.target, messageId: crypto.randomUUID(), body: 'must never append' },
+      {
+        communicationAuthorization,
+        target: f.target,
+        messageId: crypto.randomUUID(),
+        body: 'must never append',
+      },
       { signal: stop.signal },
     );
     const rejected = request.catch((error: unknown) => error);
@@ -424,6 +436,7 @@ test('native approval/input/working states remain distinct; interruption cannot 
   await f.publish();
   expect((await waiting).outcome).toBe('idle');
   await f.client['message.send']({
+    communicationAuthorization,
     target: f.target,
     messageId: crypto.randomUUID(),
     body: 'pending pickup',

@@ -18,6 +18,10 @@ import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   hash,
@@ -284,12 +288,23 @@ async function turn(
     body: `Reply exactly ${marker}. Do not use tools or edit files.`,
     ...(override === undefined ? {} : { options: override }),
   };
-  const sent = await service['message.send'](message);
+  const sent = await service['message.send']({
+    ...message,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
   check(
     same(sent.turnOptions, { revision: defaults.revision, options: expected }),
     'Message did not pin accepted options',
   );
-  check((await service['message.send'](message)).duplicate, 'Message retry was not idempotent');
+  check(
+    (
+      await service['message.send']({
+        ...message,
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+      })
+    ).duplicate,
+    'Message retry was not idempotent',
+  );
   if (busy) {
     await until(
       'positive native busy turn',
@@ -322,7 +337,12 @@ async function pending(
     kind === 'approval'
       ? `Use the bash tool exactly once to execute sleep 5; printf selection-probe. Wait for permission. Then reply exactly ${marker}.`
       : `Use the native ${receipt.target.agent === 'codex' ? 'request_user_input' : 'question'} tool exactly once to ask me to choose Red or Blue. Wait for my answer, then reply exactly ${marker}. Do not use any other tools or edit files.`;
-  await service['message.send']({ target: receipt.target, messageId: crypto.randomUUID(), body });
+  await service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+    target: receipt.target,
+    messageId: crypto.randomUUID(),
+    body,
+  });
   let frame: ControlNativeSnapshot | undefined;
   await until(`native ${kind} pending`, async () => {
     const read = await service['native.read']({ target: receipt.target });
@@ -453,14 +473,25 @@ try {
       notBefore: new Date(Date.now() + 8_000).toISOString(),
       body: `Reply exactly ${delayedMarker}. Do not use tools or edit files.`,
     };
-    const pinned = await service['message.send'](delayed);
+    const pinned = await service['message.send']({
+      ...delayed,
+      communicationAuthorization: acceptanceCommunicationAuthorization,
+    });
     check(
       same(pinned.turnOptions?.options, b),
       'Delayed message was not pinned to current defaults',
     );
     await change(receipt, a);
     check(
-      same((await service['message.send'](delayed)).turnOptions, pinned.turnOptions),
+      same(
+        (
+          await service['message.send']({
+            ...delayed,
+            communicationAuthorization: acceptanceCommunicationAuthorization,
+          })
+        ).turnOptions,
+        pinned.turnOptions,
+      ),
       'Delayed retry changed pinned options',
     );
     await expectEvidence(receipt, b, delayedBefore, delayedMarker);

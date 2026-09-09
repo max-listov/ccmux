@@ -11,6 +11,10 @@ import {
 import { controlSocket } from '../src/control/path.ts';
 import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import type { ManagedPeer } from '../src/types.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { localControlFetch } from './control-client.ts';
 
 const workspace = Bun.argv[2];
@@ -110,6 +114,7 @@ try {
 
   const messageId = crypto.randomUUID();
   const accepted = await remote['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId,
     body: 'Reply exactly with CCMUX_SERVICE_READY and nothing else.',

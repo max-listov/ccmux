@@ -4,6 +4,10 @@ import type { ContentRecord } from '../src/content/schema.ts';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
 import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { killSession } from '../src/tmux/tmux.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   modelCatalog,
@@ -42,6 +46,7 @@ async function prove(receipt: ControlCreateReceipt) {
   const answered = new Set<string>();
   const messageId = crypto.randomUUID();
   await p.service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId,
     body: "Run exactly two separate shell tool calls, sequentially: first `printf 'TOOL_OK\\n'`, then `sh -c 'exit 7'`. Do not combine them into one tool call. The nonzero exit is deliberate: do not retry, repair, or suppress it. Use no other tools. After both tool calls finish, reply TOOL_PROBE_DONE.",

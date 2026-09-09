@@ -6,6 +6,10 @@ import type { ControlNativeSnapshot } from '../src/control/schema.ts';
 import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import type { MachineConfig, ManagedPeer } from '../src/types.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
+import {
+  acceptanceAuthorizationPath,
+  readAcceptanceCommunicationAuthorization,
+} from './acceptance-communication.ts';
 
 type Client = ReturnType<typeof createInjectedControlClient>;
 function check(value: unknown, message: string): asserts value {
@@ -64,6 +68,7 @@ export async function verifyRuntimeCoexistence(
   a: ManagedPeer,
   workspace: string,
 ) {
+  const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
   const request = {
     requestId: crypto.randomUUID(),
     runtime: 'codex',
@@ -84,9 +89,10 @@ export async function verifyRuntimeCoexistence(
     process.env.CCMUX_E2E_CLI ?? join(process.cwd(), 'src/cli.ts'),
   ]);
   await client['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target: a,
     messageId: crypto.randomUUID(),
-    body: `Authorized isolated communication test. Run exactly ${invocation} msg ${b.machine}:${b.session} --to-agent codex --to-thread ${b.threadId} with body "${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command from CCMux. Do not contact anyone else or edit files." After the command returns, finish this turn immediately with SENT. Do not poll, read logs or wait for a reply: CCMux delivers the reply asynchronously. When it arrives answer RECEIVED without using tools or sending another message.`,
+    body: `Authorized isolated communication test. Run exactly ${invocation} msg ${b.machine}:${b.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent codex --to-thread ${b.threadId} with body "${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command from CCMux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not contact anyone else or edit files." After the command returns, finish this turn immediately with SENT. Do not poll, read logs or wait for a reply: CCMux delivers the reply asynchronously. When it arrives answer RECEIVED without using tools or sending another message.`,
   });
   const deadline = Date.now() + 180_000;
   let proved = false;

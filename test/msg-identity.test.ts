@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliPrincipal, managedPeer } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/store.ts';
-import { anonymousRemoteWarning } from '../src/commands/msg.ts';
+import { anonymousRemoteWarning } from '../src/commands/messagePeers.ts';
 import { sessionsPath } from '../src/config/paths.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
+import { communicationAuthorizationFile } from './communication-fixture.ts';
 import { makeChatMessage, makeCli, makeSession } from './helpers.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
@@ -71,11 +72,14 @@ async function send(
   delete env.CODEX_SESSION_ID;
   if (transport === null) delete env.CCMUX_TEST_REMOTE_TRANSPORT;
   else env.CCMUX_TEST_REMOTE_TRANSPORT = transport;
-  const processHandle = Bun.spawn(['bun', MSG_FIXTURE, ...args], {
-    env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const processHandle = Bun.spawn(
+    ['bun', MSG_FIXTURE, '--communication-authorization', communicationAuthorizationFile, ...args],
+    {
+      env,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   const stdout = await new Response(processHandle.stdout).text();
   const stderr = await new Response(processHandle.stderr).text();
   return { code: await processHandle.exited, stdout, stderr };

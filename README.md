@@ -625,6 +625,10 @@ names would be ambiguous, since the same session name commonly exists on two box
 its own `topicId` if you'd rather keep them in separate threads.
 
 Applications use the [message origin and audience contract](docs/architecture/message-origin.md).
+Session messages require [communication authorization evidence](docs/communication-authorization.md):
+pass `--communication-authorization /absolute/authorization.json` with the rationale, verbatim user
+permission and source-message reference. Apply this flag to peer-message examples below; an enabled
+transport or an incoming message is not permission to contact another session.
 The chat snapshot and resumable feed preserve `messageId`, structured `sender`/`target`, `origin`,
 `notification` and registration generation. Display labels and `kind: chat` are not notification intent.
 

@@ -7,6 +7,10 @@ import { loadSessions } from '../src/config/sessions.ts';
 import { controlSocket } from '../src/control/path.ts';
 import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { hasSession, killSession, newSession } from '../src/tmux/tmux.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { localControlFetch } from './control-client.ts';
 
 const configArgument = process.argv[2];
@@ -150,6 +154,7 @@ async function requestAndAnswer(
 ) {
   const before = await remote['native.read']({ target, cursor: null });
   await remote['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     defer: false,

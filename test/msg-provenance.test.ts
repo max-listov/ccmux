@@ -8,6 +8,7 @@ import { loadLedger } from '../src/chat/store.ts';
 import { chatAuthPath, sessionsPath } from '../src/config/paths.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
 import { loadSessions } from '../src/config/sessions.ts';
+import { communicationAuthorizationFile } from './communication-fixture.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 
@@ -61,7 +62,10 @@ async function runMsg(
     delete env.CODEX_THREAD_ID;
     delete env.CODEX_SESSION_ID;
   }
-  const proc = Bun.spawn(['bun', CLI, 'msg', ...args], { env, stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn(
+    ['bun', CLI, 'msg', '--communication-authorization', communicationAuthorizationFile, ...args],
+    { env, stdout: 'pipe', stderr: 'pipe' },
+  );
   await new Response(proc.stdout).text();
   return await proc.exited;
 }

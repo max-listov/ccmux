@@ -23,6 +23,7 @@ export {
 
 import { CustomLaunchConfigSchema } from '../agent/custom/config.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
+import { CommunicationAuthorizationSchema } from '../chat/communicationAuthorizationSchema.ts';
 import {
   MessageApplicationsSchema,
   MessageOriginSchema,
@@ -530,6 +531,8 @@ export const ChatMessageSchema = z
     from: ChatPrincipalSchema,
     to: ChatTargetSchema,
     origin: MessageOriginSchema.optional(),
+    // Historical records have no claim. New external admission enforces the required input.
+    communicationAuthorization: CommunicationAuthorizationSchema.optional(),
     notification: NotificationAudienceSchema.optional(),
     registrationGeneration: z.uuid().optional(),
     body: z.string(),

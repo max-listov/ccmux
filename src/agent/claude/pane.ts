@@ -43,14 +43,45 @@ const READY_MARKERS = [
   /shift\+tab to cycle/, // the hint — still valid evidence, no longer the only one
 ];
 
+/**
+ * The composer itself — the one part of the interface that is not below anything.
+ *
+ * Every marker above lives in the mode footer, and the footer is drawn UNDER the composer. That
+ * placement is the whole weakness: a capture that does not reach the footer carries none of the four,
+ * and the session then reads as "never painted" for as long as it stays that way. Measured on a live
+ * pane whose bottom rows held a queued-feedback-drafts box: twenty-four lines, both captures
+ * identical, zero of the four markers — while the same capture plainly showed the composer, and the
+ * session was idle at its prompt. The consequences are not cosmetic and were all three observed
+ * before: its mail is held, `wait` on it always times out, and `list` calls it working for hours.
+ *
+ * Why the footer went missing that time is NOT established here — displaced past the pane's bottom
+ * edge and simply not drawn look identical in a capture, and I could not reproduce the box to tell
+ * them apart. What the capture does settle is that the footer is not a reliable place to look, and
+ * that the composer was there when it was not.
+ *
+ * Matched as two lines rather than one: the composer's top rule followed by its prompt. `❯` alone
+ * would be too little — Claude prefixes past user messages with it, so history would read as a live
+ * interface — and the rule alone is drawn by boxes too. Checked against every live pane on this
+ * fleet at the time of the change: the two rules agreed on all of them, fourteen drawn and four not,
+ * so this adds the missing case without loosening the answer anywhere it was already right.
+ */
+function composerDrawn(lines: readonly string[]): boolean {
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!/^─{3,}/.test(lines[i] ?? '')) continue;
+    if ((lines[i + 1] ?? '').trimStart().startsWith('❯')) return true;
+  }
+  return false;
+}
+
 export function scanPane(paneText: string): PaneScan {
-  const tail = paneText.split('\n').slice(-30).join('\n');
+  const lines = paneText.split('\n').slice(-30);
+  const tail = lines.join('\n');
   const contextLabel = tail.match(CONTEXT_RE)?.[0] ?? null;
   // A menu blocks the pane, so the session is not idle no matter how still it looks. Reporting the
   // prompt here is what stops `list` from calling a session waiting on a human "idle".
   const prompt = detectPromptImpl(paneText);
   return {
-    ready: READY_MARKERS.some((re) => re.test(tail)),
+    ready: composerDrawn(lines) || READY_MARKERS.some((re) => re.test(tail)),
     // The star spinner has blank animation frames, so its absence in one capture proves nothing
     // about a turn boundary. Stop/lifecycle and bounded turn evidence decide idle outside the pane.
     state: WORKING_RE.test(tail) ? 'working' : 'indeterminate',

@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { scanPane } from '../src/agent/claude/pane.ts';
+import { resolveLiveState } from '../src/agent/sessionStatus.ts';
+import { turnState } from '../src/chat/turnState.ts';
 
 // Real captured chrome (ansi-stripped) from a booted claude pane — the ready marker is the
 // permission-mode footer while idle, the interrupt hint while working. Both are claude-native and
@@ -70,4 +74,64 @@ test('a half-booted blank pane is NOT ready (waitReady keeps polling)', () => {
 
 test('PaneScan no longer carries a model field', () => {
   expect('model' in scanPane(IDLE_PANE)).toBe(false);
+});
+
+// The tail of a live pane whose bottom rows were taken by the queued-feedback-drafts box, captured
+// twice by the session that reported it and identical both times. Kept as a file rather than a
+// string literal: it is evidence, and retyping evidence is how it stops being evidence.
+const DRAFTS_BOX_PANE = readFileSync(
+  join(import.meta.dir, 'fixtures', 'claude-pane', 'queued-feedback-drafts.txt'),
+  'utf8',
+);
+
+test('a box above the composer does not un-draw the interface', () => {
+  // None of the four footer markers is in this capture — every one of them lives below the composer,
+  // and this capture stops at the composer. The session was sitting at its prompt; reading it as
+  // unpainted printed `working` for eleven hours and timed out every `wait` on it.
+  const footer = /⏵+ [a-z ]+ on\b|\? for shortcuts|esc to interrupt|shift\+tab to cycle/;
+  expect(footer.test(DRAFTS_BOX_PANE)).toBe(false);
+  expect(scanPane(DRAFTS_BOX_PANE).ready).toBe(true);
+});
+
+test('an empty pane is still NOT ready, so the signal still refuses something', () => {
+  // Captured from a live session that had not painted: twenty-four blank lines, no composer, no
+  // markers. Without this the change would read as "always ready" and the not-drawn gate — which
+  // exists to stop a keystroke being swallowed by an unpainted UI — would guard nothing.
+  expect(scanPane('\n'.repeat(23)).ready).toBe(false);
+  expect(scanPane(BOOTING_PANE).ready).toBe(false);
+});
+
+test('a `❯` in scrollback is not a composer', () => {
+  // Claude prefixes past user messages with the same character, so the prompt alone cannot be the
+  // signal: an old message would make a booting session look interactive.
+  expect(scanPane(['❯ доделай sp-blocks', '', 'loading…'].join('\n')).ready).toBe(false);
+});
+
+test('with the box up, an abandoned turn mark is closed and the session reads idle', () => {
+  // The whole chain the report followed, on the same capture: scan → facts → turn state → what
+  // `list` prints. The pane is what decides `paneReady`, and it was the only false thing here — the
+  // transcript had been still for eleven hours and the lifecycle mark was left behind by a hook.
+  const scan = scanPane(DRAFTS_BOX_PANE);
+  const facts = {
+    paneWorking: scan.state === 'working',
+    paneReady: scan.ready,
+    atMenu: scan.atPrompt !== null,
+    endedOnAssistantText: true,
+    msSinceActivity: 11 * 60 * 60 * 1000,
+  };
+  const state = turnState(facts);
+  expect(state).toEqual({ settled: true, why: 'turn-ended' });
+  // `over` in the observation pass is exactly "a claimed turn plus a settled state", which is what
+  // lets the abandoned mark be closed rather than carried for another eleven hours.
+  expect(
+    resolveLiveState(scan.state, { state: 'working', ts: 0, event: 'UserPromptSubmit' }, state),
+  ).toBe('idle');
+  // And the same facts with the OLD answer for the pane keep the session working, which is the bug.
+  expect(
+    resolveLiveState(
+      scan.state,
+      { state: 'working', ts: 0, event: 'UserPromptSubmit' },
+      turnState({ ...facts, paneReady: false }),
+    ),
+  ).toBe('working');
 });

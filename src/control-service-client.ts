@@ -23,6 +23,10 @@ export {
   AttachmentUploadSelectorSchema,
 } from './attachments/schema.ts';
 export {
+  type CommunicationAuthorization,
+  CommunicationAuthorizationSchema,
+} from './chat/communicationAuthorizationSchema.ts';
+export {
   type LogFrame,
   LogFrameSchema,
   type LogMachine,

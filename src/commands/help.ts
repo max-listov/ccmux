@@ -80,8 +80,8 @@ export const COMMANDS: HelpEntry[] = [
   },
   {
     verb: 'relay',
-    args: 'owner/<name> [--task X] "<their answer>"',
-    desc: 'bring an answer back from an owner OUTSIDE the fleet — recorded as a relay (on behalf of), delivered to whoever wrote, and the letter stops waiting',
+    args: 'owner/<name> [--task X] [--communication-authorization <JSON file>] "<their answer>"',
+    desc: 'bring an answer back from an owner OUTSIDE the fleet — recorded as a relay (on behalf of), delivered to whoever wrote, and the letter stops waiting; a session recipient requires a communication authorization file just like msg',
     example: 'ccmux relay owner/contract-owner "shipped in 1.2.0"',
   },
   {
@@ -104,11 +104,11 @@ export const COMMANDS: HelpEntry[] = [
   },
   {
     verb: 'msg',
-    args: '<to|machine:to|app/UUID|machine:app/UUID|owner> <text...> [--to-agent claude|codex|opencode] [--to-thread UUID] [--task X] [--interrupt] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>',
+    args: '<to|machine:to|app/UUID|machine:app/UUID|owner> <text...> [--communication-authorization <JSON file>] [--to-agent claude|codex|opencode] [--to-thread UUID] [--task X] [--interrupt] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>',
     desc: "chat a managed session, an exact Codex App thread, or 'owner'; --to-agent/--to-thread pin replies; mail ARRIVES AT THE RECIPIENT'S TURN BOUNDARY by default (an idle session gets it at once) — --interrupt breaks into a running turn instead, --after N is a timer",
-    note: "sender is automatic and verified: managed session, exact App thread, or 'cli'",
+    note: 'sender is automatic and verified: managed session, exact App thread, or cli. Every session target requires --communication-authorization: JSON with whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope (40–4000 chars), userAuthorizationQuote (verbatim), sourceMessageRef. Stored as an unverified caller claim, not a grant. Owner messages and cancellation do not require it. See docs/communication-authorization.md.',
     example:
-      "ccmux msg dev:app/4e117aea-… 'build is green' --to-agent codex --to-thread 4e117aea-…",
+      "ccmux msg host-b:app/4e117aea-… 'build is green' --communication-authorization /absolute/authorization.json --to-agent codex --to-thread 4e117aea-…",
   },
   {
     verb: 'inbox',

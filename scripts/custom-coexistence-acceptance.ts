@@ -2,6 +2,10 @@ import { samePrincipal, sameTarget } from '../src/chat/identity.ts';
 import { loadLedger } from '../src/chat/store.ts';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { check, type NativeImageProbe, report, until } from './native-image-steering-fixture.ts';
 
 /** Exactly three real provider owners communicate through the existing authenticated chat ledger. */
@@ -84,7 +88,12 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
     ],
   ] satisfies [ControlCreateReceipt, string][]) {
     const messageId = crypto.randomUUID();
-    await p.service['message.send']({ target: receipt.target, messageId, body });
+    await p.service['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
+      target: receipt.target,
+      messageId,
+      body,
+    });
     await until('routing instruction retained', async () => {
       const result = await p.service['message.operation']({
         target: receipt.target,
@@ -97,6 +106,7 @@ export async function customCoexistence(p: NativeImageProbe, custom: ControlCrea
   }
   const first = command(opencode.target, `${token}:A_TO_B`);
   await p.service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target: codex.target,
     messageId: crypto.randomUUID(),
     body: `Authorized isolated communication test. Run exactly this command:\n${first}\nThen finish SENT immediately. Do not poll or wait; the reply arrives asynchronously. On ${token}:C_TO_A, reply RECEIVED without tools.`,

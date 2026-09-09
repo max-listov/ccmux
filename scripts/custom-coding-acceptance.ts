@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   type NativeImageProbe,
@@ -50,7 +54,12 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
   };
   const send = async (body: string) => {
     const messageId = crypto.randomUUID();
-    await p.service['message.send']({ target, messageId, body });
+    await p.service['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
+      target,
+      messageId,
+      body,
+    });
     return messageId;
   };
   const path = join(receipt.workspace, 'coding.txt');
@@ -115,6 +124,7 @@ export async function customCoding(p: NativeImageProbe, receipt: ControlCreateRe
   );
   const deferred = crypto.randomUUID();
   await p.service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: deferred,
     defer: true,

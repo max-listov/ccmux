@@ -3,6 +3,7 @@ import { AppError } from 'stitchkit';
 import { supportsManagedInput } from '../agent/index.ts';
 import { stableJson } from '../agent/launchInputs.ts';
 import { withPinnedAttachments } from '../attachments/pins.ts';
+import { requireCommunicationAuthorization } from '../chat/communicationAuthorization.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
 import { advanceMessageOperation, prepareMessageOperation } from '../chat/messageOperationStore.ts';
@@ -27,6 +28,13 @@ export async function acceptControlMessage(
   signal: AbortSignal,
 ) {
   const input = ControlMessageSchema.parse(request);
+  const admittedOrigin = admitMessageOrigin(
+    m,
+    from,
+    input.origin,
+    input.notification ?? 'conversation',
+  );
+  requireCommunicationAuthorization(from, admittedOrigin, input.communicationAuthorization);
   const target = controlTarget(m, input.target);
   const accept = () =>
     withSessionRegistryLock(
@@ -58,6 +66,8 @@ export async function acceptControlMessage(
             prior.defer !== input.defer ||
             prior.notBefore !== input.notBefore ||
             prior.task !== input.task ||
+            stableJson(prior.communicationAuthorization ?? null) !==
+              stableJson(input.communicationAuthorization) ||
             prior.onBehalfOf !== null ||
             (prior.origin !== undefined && stableJson(prior.origin) !== stableJson(origin)) ||
             (prior.notification !== undefined && prior.notification !== notification) ||
@@ -114,6 +124,7 @@ export async function acceptControlMessage(
             defer: input.defer,
             notBefore: input.notBefore,
             task: input.task,
+            communicationAuthorization: input.communicationAuthorization,
           }),
           id: input.messageId,
           origin,

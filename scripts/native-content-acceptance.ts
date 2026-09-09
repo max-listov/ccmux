@@ -6,6 +6,10 @@ import { createControlClient } from '../src/control/client.ts';
 import { controlSocket } from '../src/control/path.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import type { ManagedPeer } from '../src/types.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   modelCatalog,
@@ -139,6 +143,7 @@ async function run(
   });
   try {
     await p.service['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target,
       messageId: crypto.randomUUID(),
       body: 'Output exactly 220 separate numbered lines. Each line must contain its number followed by: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. Print every line literally, no omissions, ellipses, code, tools or commentary. This measures streamed text; do not summarize or abbreviate.',

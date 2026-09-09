@@ -3,6 +3,10 @@ import { join, resolve } from 'node:path';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
 import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { killSession } from '../src/tmux/tmux.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   modelCatalog,
@@ -56,9 +60,17 @@ async function prove(receipt: ControlCreateReceipt) {
   const selector = (messageId: string): Selector => ({ target, registrationGeneration, messageId });
   const first = { target, messageId: crypto.randomUUID(), body };
   // Discard the first response to model a lost caller ACK, then retry the exact original request.
-  await p.service['message.send'](first);
+  await p.service['message.send']({
+    ...first,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
   check(
-    (await p.service['message.send'](first)).duplicate,
+    (
+      await p.service['message.send']({
+        ...first,
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+      })
+    ).duplicate,
     'Lost caller ACK retry was not idempotent',
   );
   await terminal(p.service, selector(first.messageId));
@@ -69,14 +81,20 @@ async function prove(receipt: ControlCreateReceipt) {
     defer: true,
     notBefore: new Date(Date.now() + 30_000).toISOString(),
   };
-  await p.service['message.send'](second);
+  await p.service['message.send']({
+    ...second,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
   check(
     (await p.service['message.operation'](selector(second.messageId))).evidence?.state === 'queued',
     'Deferred message has premature native admission',
   );
   const external = p.client('other-client');
   const intervening = { ...first, messageId: crypto.randomUUID() };
-  await external['message.send'](intervening);
+  await external['message.send']({
+    ...intervening,
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+  });
   const outside = await terminal(external, selector(intervening.messageId));
   check(
     (await p.service['message.operation'](selector(intervening.messageId))).outcome ===
@@ -94,7 +112,15 @@ async function prove(receipt: ControlCreateReceipt) {
       .size === 3,
     'Native turns were conflated',
   );
-  check((await reconnected['message.send'](second)).duplicate, 'Deferred retry duplicated');
+  check(
+    (
+      await reconnected['message.send']({
+        ...second,
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+      })
+    ).duplicate,
+    'Deferred retry duplicated',
+  );
   check(
     JSON.stringify(await reconnected['message.operation'](selector(second.messageId))) ===
       JSON.stringify(secondResult),
@@ -190,7 +216,10 @@ try {
         'Provider restart changed correlation',
       );
     const resumed = { target, messageId: crypto.randomUUID(), body };
-    await p.service['message.send'](resumed);
+    await p.service['message.send']({
+      ...resumed,
+      communicationAuthorization: acceptanceCommunicationAuthorization,
+    });
     const result = await terminal(p.service, {
       target,
       registrationGeneration,

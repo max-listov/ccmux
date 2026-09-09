@@ -16,6 +16,10 @@ import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { localControlFetch } from './control-client.ts';
 
 function check(value: unknown, message: string): asserts value {
@@ -138,7 +142,12 @@ async function idle(target: ManagedPeer) {
 async function reply(target: ManagedPeer, token: string, body: string) {
   await idle(target);
   const before = await service['native.read']({ target });
-  await service['message.send']({ target, messageId: crypto.randomUUID(), body });
+  await service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+    target,
+    messageId: crypto.randomUUID(),
+    body,
+  });
   await until('native reply', async () => {
     const result = await service['session.wait']({ target, timeoutMs: 1_000 });
     check(result.outcome !== 'failed' && result.outcome !== 'interrupted', 'Native turn failed');
@@ -239,6 +248,7 @@ try {
     );
     const reference = await image(target);
     await service['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target,
       messageId: crypto.randomUUID(),
       body: "Describe this image's dominant color and include IMAGE_SEEN. Do not use tools.",
@@ -330,6 +340,7 @@ try {
     });
 
     await service['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target,
       messageId: crypto.randomUUID(),
       body: 'Use the shell tool to run sleep 3, then reply BUSY_CHECK_DONE. Do not change any files or contact other sessions.',
@@ -379,6 +390,7 @@ try {
     await expectedRefusal(
       () =>
         service['message.send']({
+          communicationAuthorization: acceptanceCommunicationAuthorization,
           target,
           messageId: crypto.randomUUID(),
           body: 'Do not admit while compact is unresolved.',

@@ -9,6 +9,7 @@ import type {
   ManagedPeer,
   Session,
 } from '../src/types.ts';
+import { communicationAuthorization } from './communication-fixture.ts';
 
 export const UUID = '11111111-1111-4111-8111-111111111111';
 
@@ -76,6 +77,7 @@ export function makeChatMessage(over: Partial<ChatMessage> = {}): ChatMessage {
     from,
     to,
     origin: principalOrigin(from),
+    communicationAuthorization,
     notification: to.kind === 'owner' || to.kind === 'external' ? 'owner' : 'conversation',
     body: 'hello',
     task: null,

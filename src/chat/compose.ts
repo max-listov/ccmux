@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { CHAT_GENERATION, ChatMessageSchema } from '../config/schema.ts';
 import type { ChatMessage, ChatPrincipal, ChatTarget } from '../types.ts';
+import type { CommunicationAuthorization } from './communicationAuthorizationSchema.ts';
 import { principalOrigin } from './origin.ts';
 
 /**
@@ -22,6 +23,7 @@ export function buildEnvelope(
     defer?: boolean;
     onBehalfOf?: string | null;
     notBefore?: string | null;
+    communicationAuthorization?: CommunicationAuthorization | null | undefined;
   },
 ): ChatMessage {
   return ChatMessageSchema.parse({
@@ -33,6 +35,9 @@ export function buildEnvelope(
     origin: principalOrigin(from),
     notification: to.kind === 'owner' || to.kind === 'external' ? 'owner' : 'conversation',
     body,
+    ...(opts?.communicationAuthorization == null
+      ? {}
+      : { communicationAuthorization: opts.communicationAuthorization }),
     task: opts?.task ?? null,
     // Waiting for the turn boundary is the DEFAULT, not a sender's courtesy. Typed input reaches a
     // working agent as steering: it lands inside the turn and redirects it, so a peer's routine

@@ -4,7 +4,7 @@ description: Preserve authenticated ingress, attributed authorship and explicit 
 type: architecture
 status: active
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-08 20:23 +0700
 ---
 
 # Authority and attribution
@@ -49,6 +49,7 @@ changing a binding cannot silently reattribute accepted work.
 
 ```ts
 await client['message.send']({
+  communicationAuthorization: null, // admitted human application input only
   target: created.target,
   registrationGeneration: created.registrationGeneration,
   messageId: crypto.randomUUID(),
@@ -66,6 +67,10 @@ different messages. Native framing identifies application-attested input, not a 
 peer request. Unknown historical input is explicitly unknown. None of these fields grants permissions.
 The state sequence remains validation → durable acceptance → native admission → terminal evidence.
 Accepted input/images survive daemon replacement, retaining exact registration and digest checks.
+
+Agent and unclassified callers require the [communication authorization evidence](../communication-authorization.md)
+object. It records why this recipient is necessary, a verbatim user quote and its source reference;
+the claim grants no authority. Human exemption depends on the host binding above, not a caller boolean.
 
 # Audience and projections
 

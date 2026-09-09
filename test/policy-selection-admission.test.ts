@@ -15,6 +15,7 @@ import { policySha256 } from '../src/policy/sources.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
 import type { NativeTurnOptions } from '../src/runtime/selectionSchema.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/status.ts';
+import { communicationAuthorization } from './communication-fixture.ts';
 import { makeCli, makeMachine, makeSession } from './helpers.ts';
 
 const roots: string[] = [];
@@ -120,6 +121,7 @@ test('message admission refuses another catalog agent before appending policy-in
       f.m,
       makeCli(f.m.rcPrefix),
       {
+        communicationAuthorization,
         target: f.target,
         messageId: crypto.randomUUID(),
         body: 'hello',
@@ -170,7 +172,13 @@ for (const agent of ['agent-a', undefined]) {
       f.signal,
     );
     expect(selection.current).toEqual({ revision: 1, options });
-    const message = { target: f.target, messageId: crypto.randomUUID(), body: 'hello', options };
+    const message = {
+      communicationAuthorization,
+      target: f.target,
+      messageId: crypto.randomUUID(),
+      body: 'hello',
+      options,
+    };
     const receipt = await acceptControlMessage(f.m, makeCli(f.m.rcPrefix), message, f.signal);
     expect(receipt.turnOptions).toEqual(selection.current);
     expect(
@@ -192,7 +200,12 @@ test('changed canonical policy refuses both admission paths without persisted wo
     acceptControlMessage(
       f.m,
       makeCli(f.m.rcPrefix),
-      { target: f.target, messageId: crypto.randomUUID(), body: 'hello' },
+      {
+        communicationAuthorization,
+        target: f.target,
+        messageId: crypto.randomUUID(),
+        body: 'hello',
+      },
       f.signal,
     ),
   ).rejects.toMatchObject({ code: 'APPLICATION_POLICY_UNAVAILABLE' });

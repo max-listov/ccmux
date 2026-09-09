@@ -48,6 +48,9 @@ export function rowFromLedgerRecord(machine: string, msg: LedgerSlot): LogRow {
     sender: msg.from,
     target: msg.to,
     origin: msg.origin ?? unknownMessageOrigin(),
+    ...(msg.communicationAuthorization === undefined
+      ? {}
+      : { communicationAuthorization: msg.communicationAuthorization }),
     notification: msg.notification ?? 'conversation',
     registrationGeneration: msg.registrationGeneration ?? null,
     kind: 'chat',
@@ -75,6 +78,9 @@ export function rowFromOutbound(
     sender: o.envelope.from,
     target: o.envelope.to,
     origin: o.envelope.origin ?? unknownMessageOrigin(),
+    ...(o.envelope.communicationAuthorization === undefined
+      ? {}
+      : { communicationAuthorization: o.envelope.communicationAuthorization }),
     notification: o.envelope.notification ?? 'conversation',
     registrationGeneration: o.envelope.registrationGeneration ?? null,
     kind: 'sent',

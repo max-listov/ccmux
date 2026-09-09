@@ -10,6 +10,10 @@ import { createInjectedControlClient } from '../src/control/transportBoundary.ts
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { localControlFetch } from './control-client.ts';
 import { verifyOpenCodeActions } from './opencode-actions-e2e.ts';
 import { verifyRuntimeCoexistence } from './runtime-coexistence-e2e.ts';
@@ -152,9 +156,21 @@ try {
   const messageId = crypto.randomUUID();
   const body =
     'This is an isolated runtime acceptance test. Use the shell tool to run pwd, printf CCMUX_NATIVE_TOOL_OK, and append exactly one line with the text effect to effect.txt in this workspace. Also run: test -n "$NATIVE_RUNTIME_PROBE_SECRET" && printf CHECKED > env-check.txt . Do not print the variable value. Do not edit other files, contact other agents, or print environment variables. Reply NATIVE_DONE afterwards.';
-  await service['message.send']({ target, messageId, body });
+  await service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+    target,
+    messageId,
+    body,
+  });
   check(
-    (await service['message.send']({ target, messageId, body })).duplicate,
+    (
+      await service['message.send']({
+        communicationAuthorization: acceptanceCommunicationAuthorization,
+        target,
+        messageId,
+        body,
+      })
+    ).duplicate,
     'Message retry was not idempotent',
   );
   let approvals = 0;
@@ -260,6 +276,7 @@ try {
     'Restart replayed tool side effects',
   );
   await service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     body: 'Reply RESUMED_OK only. Do not use tools.',

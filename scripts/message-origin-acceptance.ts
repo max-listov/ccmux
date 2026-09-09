@@ -69,6 +69,7 @@ try {
   const bytes = geometryImage('png');
   const image = await uploadImage(p, created.target, bytes, 'image/png');
   const input: ControlMessage = {
+    communicationAuthorization: null,
     target: created.target,
     registrationGeneration: created.registrationGeneration,
     messageId: crypto.randomUUID(),

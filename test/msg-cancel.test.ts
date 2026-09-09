@@ -10,6 +10,7 @@ import { loadAckedIds, loadLedger, pendingConditional } from '../src/chat/store.
 import { chatAuthPath, outboxPath, sessionsPath } from '../src/config/paths.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
 import { loadSessions } from '../src/config/sessions.ts';
+import { communicationAuthorizationFile } from './communication-fixture.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 
@@ -60,12 +61,15 @@ async function runMsg(
     if (managed !== undefined)
       env[CHAT_CREDENTIAL_ENV] = (await Bun.file(chatAuthPath(m, managed.name)).text()).trim();
   } else delete env.CCMUX_SESSION;
-  const proc = Bun.spawn(['bun', CLI, 'msg', ...args], {
-    env,
-    stdin: stdin !== undefined ? new Response(stdin) : 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const proc = Bun.spawn(
+    ['bun', CLI, 'msg', '--communication-authorization', communicationAuthorizationFile, ...args],
+    {
+      env,
+      stdin: stdin !== undefined ? new Response(stdin) : 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   const out = await new Response(proc.stdout).text();
   const code = await proc.exited;
   return { code, out };

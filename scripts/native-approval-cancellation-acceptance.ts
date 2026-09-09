@@ -4,6 +4,10 @@ import { dirname, join, resolve } from 'node:path';
 import type { ControlCreateReceipt } from '../src/control/schema.ts';
 import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import {
   check,
   modelCatalog,
@@ -51,7 +55,12 @@ async function cancel(receipt: ControlCreateReceipt, body: string, file?: string
     }
   });
   const messageId = crypto.randomUUID();
-  await p.service['message.send']({ target, messageId, body });
+  await p.service['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
+    target,
+    messageId,
+    body,
+  });
   let native = await p.service['native.read']({ target });
   await until('native suspended request', async () => {
     native = await p.service['native.read']({ target });
@@ -173,6 +182,7 @@ try {
       );
     const messageId = crypto.randomUUID();
     await p.service['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
       target: receipt.target,
       messageId,
       body: 'Reply RECOVERED only. Do not use tools.',

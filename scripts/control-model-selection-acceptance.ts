@@ -18,6 +18,10 @@ import { controlSocket } from '../src/control/path.ts';
 import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import { killSession, newSession } from '../src/tmux/tmux.ts';
 import type { ManagedPeer, Session } from '../src/types.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
+
 import { localControlFetch } from './control-client.ts';
 
 function check(value: unknown, message: string): asserts value {
@@ -182,7 +186,13 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
     } finally {
       rpc.close();
     }
-  } else await remote['message.send']({ target, messageId: crypto.randomUUID(), body });
+  } else
+    await remote['message.send']({
+      communicationAuthorization: acceptanceCommunicationAuthorization,
+      target,
+      messageId: crypto.randomUUID(),
+      body,
+    });
   await until('tool turn', async () => {
     const frame = await remote['native.read']({
       target,
@@ -312,6 +322,7 @@ try {
   await idle(first.created.target);
   const inputMarker = `INPUT_${crypto.randomUUID().replaceAll('-', '')}`;
   await remote['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target: first.created.target,
     messageId: crypto.randomUUID(),
     body: `Ask one native request_user_input question with two choices Red and Blue. Wait for the answer, then reply exactly ${inputMarker}. No other tools or messages.`,

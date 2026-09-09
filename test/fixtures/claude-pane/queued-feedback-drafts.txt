@@ -1,0 +1,11 @@
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ✻ Bug report drafted: Background Bash tasks are killed after ~3-4 minutes, … │
+│ │ - What happened: Three consecutive Bash calls with run_in_background: true │
+│ │ were reported by the harness as status: killed roughly 3-4 minutes after   │
+│ │ st…                                                                        │
+│ 1 to review · 2 to send · 0 to dismiss · +1 more queued                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+                                        new task? /clear to save 308.9k tokens
+──────────────────────────────────────────────────────────────── <session-rc> ─
+❯

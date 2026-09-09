@@ -1,5 +1,8 @@
 import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
 import type { ManagedPeer } from '../src/types.ts';
+import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+
+const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
 type Client = ReturnType<typeof createInjectedControlClient>;
 function check(value: unknown, message: string): asserts value {
@@ -41,6 +44,7 @@ async function settle(client: Client, target: ManagedPeer, outcome: string): Pro
 
 export async function verifyOpenCodeActions(client: Client, target: ManagedPeer): Promise<void> {
   await client['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     body: 'Use the built-in question tool now. Ask me to choose Alpha or Beta, with exactly those two options. Do not use shell or edit files. After receiving my choice, reply INPUT_OK and that choice.',
@@ -94,6 +98,7 @@ export async function verifyOpenCodeActions(client: Client, target: ManagedPeer)
   );
 
   await client['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     body: 'Use the shell tool to run sleep 8, then reply BUSY_DONE. Do not edit files or contact anyone.',
@@ -112,6 +117,7 @@ export async function verifyOpenCodeActions(client: Client, target: ManagedPeer)
   const busy = await client['session.get']({ target });
   const deferredId = crypto.randomUUID();
   await client['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: deferredId,
     defer: true,
@@ -134,6 +140,7 @@ export async function verifyOpenCodeActions(client: Client, target: ManagedPeer)
   );
 
   await client['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     body: 'Use the shell tool to run sleep 30, then reply INTERRUPT_TEST_DONE. Do not edit files or contact anyone.',
@@ -158,6 +165,7 @@ export async function verifyOpenCodeActions(client: Client, target: ManagedPeer)
   });
   await settle(client, target, 'interrupted');
   await client['message.send']({
+    communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId: crypto.randomUUID(),
     body: 'Reply INTERRUPT_RECOVERED only. Do not use tools.',

@@ -111,12 +111,23 @@ export function boundFrame(frame: LogFrame): LogFrame {
   const size = Buffer.byteLength(JSON.stringify(frame));
   if (size <= MAX_FRAME_BYTES || frame.kind !== 'row') return frame;
   const bytes = Buffer.byteLength(frame.row.body);
-  return {
+  const bounded: LogFrame = {
     ...frame,
     row: {
       ...frame.row,
       body: `(body omitted: ${bytes} bytes exceeds this feed's ${MAX_FRAME_BYTES}-byte record limit — read it with: ccmux chat log -n 1 --json)`,
       note: frame.row.note === '' ? 'oversized' : `${frame.row.note}; oversized`,
+    },
+  };
+  if (Buffer.byteLength(JSON.stringify(bounded)) <= MAX_FRAME_BYTES) return bounded;
+  // Never truncate a verbatim quote into different evidence. Keep the full claim on disk and
+  // explicitly report its omission in this bounded projection.
+  const { communicationAuthorization: omitted, ...row } = bounded.row;
+  return {
+    ...bounded,
+    row: {
+      ...row,
+      note: `${row.note}; communication authorization omitted from feed — read the source ledger by messageId`,
     },
   };
 }

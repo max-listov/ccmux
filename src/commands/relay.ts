@@ -1,3 +1,8 @@
+import {
+  readCommunicationAuthorization,
+  requireCommunicationAuthorization,
+} from '../chat/communicationAuthorization.ts';
+import type { CommunicationAuthorization } from '../chat/communicationAuthorizationSchema.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import {
   externalNameOf,
@@ -13,6 +18,7 @@ import {
   principalLabel,
   targetLabel,
 } from '../chat/identity.ts';
+import { principalOrigin } from '../chat/origin.ts';
 import { appendMessage, loadLedger } from '../chat/store.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
@@ -36,10 +42,23 @@ import { usageLine } from './help.ts';
  */
 export async function cmdRelay(args: string[]): Promise<number> {
   let task: string | null = null;
+  let communicationAuthorization: CommunicationAuthorization | undefined;
   const positionals: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const value = args[i];
-    if (value === '--task') task = args[++i] ?? null;
+    if (value === '--communication-authorization') {
+      const path = args[++i];
+      if (!path || communicationAuthorization !== undefined) {
+        console.error('relay: one communication authorization JSON file is required');
+        return 1;
+      }
+      try {
+        communicationAuthorization = await readCommunicationAuthorization(path);
+      } catch {
+        console.error('relay: invalid communication authorization file');
+        return 1;
+      }
+    } else if (value === '--task') task = args[++i] ?? null;
     else if (value?.startsWith('--')) {
       console.error(`relay: unknown flag '${value}'\n${usageLine('relay')}`);
       return 1;
@@ -98,10 +117,21 @@ export async function cmdRelay(args: string[]): Promise<number> {
       : ownerTarget();
 
   const from = cliPrincipal(m.rcPrefix);
+  if (target.kind === 'managed') {
+    try {
+      requireCommunicationAuthorization(from, principalOrigin(from), communicationAuthorization);
+    } catch {
+      console.error(
+        'relay: --communication-authorization <JSON file> is required before contacting a session',
+      );
+      return 1;
+    }
+  }
   appendMessage(
     m,
     buildEnvelope(from, target, body, {
       task: letter.msg.task,
+      communicationAuthorization,
       defer: false,
       onBehalfOf: externalAddress(external.name),
       notBefore: null,
