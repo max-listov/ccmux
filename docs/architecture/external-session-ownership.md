@@ -30,6 +30,15 @@ the TUI's initial `externalInventory` preference, just as toggling the inventory
 | turnState | working / idle / waiting-approval / waiting-input / unknown | Independent, expiring provider-native execution observation. |
 | admission | accepted / conflict | Result of the mutating managed process, never a discovery inference. |
 
+An exact address is read from both places the provider keeps a conversation: the live sessions
+directory and the `archived_sessions` directory beside it, live first. Codex MOVES a finished thread
+into the archive without changing its identity, so a lookup that knows only the live directory calls
+most exact addresses "transcript file not found" — the answer that reads as "this never existed".
+Measured on this fleet when that was fixed: 215 archived against 61 live on one machine, 14 against
+0 on another. The inventory below is a separate surface and still lists only live rollouts; that is
+a deliberate difference, not an oversight — what may be adopted is a narrower question than what may
+be read.
+
 Codex inventory is the union of persisted `session_meta` rollouts and positively held writer-lock
 UUIDs. This exposes a pre-turn task whose rollout does not exist yet as storage missing + observed
 writer, without inventing cwd or origin. A stale lock filename without an OS holder is not a live

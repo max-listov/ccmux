@@ -250,3 +250,49 @@ test('managed transcript remains readable only by its registered address', async
   expect(external.stderr).toContain('managed session address');
   expect(readFileSync(join(f.m.stateDir, 'sessions.jsonl'), 'utf8')).toBe(before);
 });
+
+test('a thread the provider archived is still readable at the same address', async () => {
+  // Codex MOVES a finished thread from `sessions/` into `archived_sessions/` beside it, and the
+  // address does not change with it. Looking only in the live directory answered "transcript file
+  // not found" about a conversation sitting one directory over — measured on this fleet, 215
+  // archived against 61 live on one machine, so that answer was wrong far more often than right.
+  const f = setup();
+  const archived = join(f.root, 'archived_sessions');
+  mkdirSync(archived);
+  const path = join(archived, `rollout-test-${OTHER}.jsonl`);
+  writeFileSync(
+    path,
+    `${JSON.stringify({ type: 'session_meta', payload: { id: OTHER, cwd: f.root } })}\n${record(1)}\n${record(2)}\n`,
+    { mode: 0o600 },
+  );
+  const { read, dir } = await readExternalTranscript(f.m, OTHER, { tail: 3 });
+  expect(read.available).toBe(true);
+  expect(read.path).toBe(realpathSync(path));
+  expect(read.messages.length).toBe(2);
+  expect(dir).toBe(f.root);
+});
+
+test('a live thread still wins over an archived file with the same identity', async () => {
+  // Both directories can hold the same id for a moment. The live one is the current conversation,
+  // and resolving to yesterday's copy would be a quieter wrong answer than not finding it at all.
+  const f = setup();
+  const archived = join(f.root, 'archived_sessions');
+  mkdirSync(archived);
+  writeFileSync(
+    join(archived, `rollout-old-${THREAD}.jsonl`),
+    `${JSON.stringify({ type: 'session_meta', payload: { id: THREAD, cwd: f.root } })}\n${record(99)}\n`,
+    { mode: 0o600 },
+  );
+  const { read } = await readExternalTranscript(f.m, THREAD, { tail: 3 });
+  expect(read.available).toBe(true);
+  expect(read.path).toContain('/sessions/');
+  expect(read.path).not.toContain('archived_sessions');
+});
+
+test('an identity in neither directory is still reported as missing', async () => {
+  const f = setup();
+  mkdirSync(join(f.root, 'archived_sessions'));
+  const { read } = await readExternalTranscript(f.m, OTHER, { tail: 3 });
+  expect(read.available).toBe(false);
+  expect(read.error).toBe('transcript file not found');
+});

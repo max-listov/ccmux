@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Read an exact external Codex address from the archive too. The provider moves a finished thread
+  into `archived_sessions/` beside the live directory without changing its identity, so a lookup that
+  knew only the live directory answered "transcript file not found" about a conversation sitting one
+  directory over — 215 archived against 61 live on one machine, 14 against 0 on another. A live file
+  still wins over an archived one with the same identity.
+
 ## [0.57.0] — 2026-09-09
 
 A message to a session carries its justification
