@@ -15,6 +15,39 @@ import { makeMachine, makeSession } from './helpers.ts';
  * the code in either direction, and fell back to parsing the text.
  */
 
+/** PIDs sharing the pane's process group — the straggler this test is about, before it is killed. */
+function group(m: ReturnType<typeof makeMachine>, name: string): number[] {
+  const pane = Bun.spawnSync(tmuxArgv(m, 'display-message', '-p', '-t', name, '#{pane_pid}'), {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  const panePid = Number.parseInt(pane.stdout.toString().trim(), 10);
+  if (pane.exitCode !== 0 || !Number.isInteger(panePid)) return [];
+  const pgid = Bun.spawnSync(['ps', '-o', 'pgid=', '-p', String(panePid)], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  const value = Number.parseInt(pgid.stdout.toString().trim(), 10);
+  if (pgid.exitCode !== 0 || !Number.isInteger(value)) return [];
+  const all = Bun.spawnSync(['ps', '-axo', 'pgid=,pid='], { stdout: 'pipe', stderr: 'ignore' });
+  return all.stdout
+    .toString()
+    .split('\n')
+    .flatMap((line) => {
+      const [g, pid] = line.trim().split(/\s+/).map(Number);
+      return g === value && Number.isInteger(pid) ? [pid as number] : [];
+    });
+}
+
+/** Poll a condition instead of assuming it, with a bound that fails by NAME rather than by timeout. */
+async function until(what: string, ready: () => boolean, deadlineMs = 10_000): Promise<void> {
+  const deadline = Date.now() + deadlineMs;
+  while (!ready()) {
+    if (Date.now() >= deadline) throw new Error(`timed out waiting until ${what}`);
+    await Bun.sleep(25);
+  }
+}
+
 function fixture(label: string) {
   const tmuxBin = Bun.which('tmux');
   if (!tmuxBin) throw new Error('tmux is required for the removal verdict tests');
@@ -41,6 +74,11 @@ test('a process group that outlives its session is reported, not thrown', async 
     // group does not. This is the branch that used to throw, and it is driven here rather than
     // reasoned about — the deadline is a parameter so the case costs a fraction of a second.
     await newSession(f.m, 'agent-a', f.dir, ['sh', '-c', 'trap "" HUP TERM; sleep 30 & sleep 30']);
+    // Wait for the straggler to EXIST before killing. `newSession` returns when tmux has the pane,
+    // not when the shell inside it has forked, so on a busy machine the kill could arrive first,
+    // take everything down and report no straggler — the test then failed for the one reason that
+    // says nothing about the code. Measured: it did, once, on a loaded release gate.
+    await until('the pane group has more than one process', () => group(f.m, 'agent-a').length > 1);
     const outcome = await killSession(f.m, 'agent-a', 300);
     expect(outcome.killed).toBe(true);
     // The straggler is a number an operator can act on, not an exception the caller must survive.
