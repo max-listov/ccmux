@@ -51,6 +51,21 @@ export async function acceptControlMessage(
             'The exact managed registration is unavailable',
             409,
           );
+        // Attributed input pins the registration it addresses, so a human's message cannot land on a
+        // session that was replaced underneath it. Asked here rather than of the request alone,
+        // because the answer depends on the target: a session without a generation has nothing to
+        // pin, and demanding one of it refuses every ordinary pane — which is every session an
+        // application would write a human's message to.
+        if (
+          input.origin !== undefined &&
+          session.registrationGeneration !== undefined &&
+          input.registrationGeneration === undefined
+        )
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'Attributed input requires registration generation',
+            400,
+          );
         const notification = input.notification ?? 'conversation';
         const origin = admitMessageOrigin(m, from, input.origin, notification);
         if (!chatEnabledFor(session, m) || !supportsManagedInput(session)) {

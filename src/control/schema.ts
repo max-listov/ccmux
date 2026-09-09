@@ -115,10 +115,11 @@ export const ControlMessageSchema = ControlTargetSchema.extend({
   task: z.string().max(256).nullable().default(null),
 })
   .strict()
-  .refine(
-    (value) => value.origin === undefined || value.registrationGeneration !== undefined,
-    'Attributed input requires registration generation',
-  )
+  // Attributed input must pin the exact registration it is addressing — but only a session that HAS
+  // a generation can be pinned, and most do not: they are ordinary panes, not native runtimes. Asked
+  // here, where the target is unknown, the requirement became "supply a value that does not exist",
+  // and it closed the only route an application has for a human's message. It is asked in the
+  // handler instead, which knows the session (see `acceptControlMessage`).
   .refine((value) => value.body.length > 0 || value.images.length > 0, 'Message input is empty');
 export type ControlMessage = z.input<typeof ControlMessageSchema>;
 export const ControlMessageReceiptSchema = z

@@ -25,6 +25,12 @@ for a service caller whose human application channel passes the host's configure
 `messageApplications` bindings. CLI and managed callers cannot self-label as human.
 The raw remote envelope receiver does not admit that exception.
 
+Attributed input also pins the exact registration it addresses, so a person's message cannot
+land on a session that was replaced underneath it — but only where the target HAS a
+generation. Most managed sessions are ordinary panes and carry none; requiring the pin of
+them refused the one route this exemption exists for. The requirement therefore lives with
+the handler, which knows the target, and not with the request, which does not.
+
 CLI callers provide `--communication-authorization <JSON file>`. The reader accepts a
 regular file, reads at most 64 KiB, and does not put the quote in process arguments or
 error output. Caller-owned files containing private quotes should have restricted access.

@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- An application can deliver a person's message to an ordinary session again. Attributed input must
+  pin the exact registration it addresses, but only a session that HAS a generation can be pinned and
+  most are plain panes rather than native runtimes — measured on a live machine, 1 of 15. Asked of
+  the request alone the rule read "supply a value that does not exist", which left the human channel
+  with no route at all: refused for the missing pin with attribution, and for the missing
+  justification without it. The pin is now required by the handler, which knows the target, and only
+  where the target has one.
+
 ## [0.57.1] — 2026-09-09
 
 An archived thread is still the same conversation at the same address

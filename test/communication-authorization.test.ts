@@ -218,3 +218,52 @@ test('history absence stays absent; projections retain complete evidence without
   });
   expect(large.communicationAuthorization.userAuthorizationQuote).toHaveLength(4000);
 });
+
+test("a human's message reaches an ordinary session, which has no generation to pin", async () => {
+  // The route this whole exemption exists for, and the one that was closed: an application delivering
+  // a person's message to a plain pane. Attributed input must pin the exact registration — but only a
+  // session that HAS one can be pinned, and most sessions are ordinary panes rather than native
+  // runtimes (measured on a live machine: 1 of 15). Asked of the request alone, the requirement read
+  // "supply a value that does not exist", so the human channel had no honest route at all: with
+  // attribution it was refused for the missing pin, without it for the missing justification.
+  const f = await fixture();
+  const plain = makeSession({ name: 'agent-b', chat: true, dir: f.m.stateDir });
+  expect(plain.registrationGeneration).toBeUndefined();
+  await writeSessionsUnlocked(f.m, [plain]);
+  const service = servicePrincipal('host-b', 'declared-service');
+  const accepted = await acceptControlMessage(
+    f.m,
+    service,
+    {
+      target: managedPeer(f.m.rcPrefix, plain),
+      messageId: crypto.randomUUID(),
+      body: "a person's message",
+      communicationAuthorization: null,
+      origin: { applicationId: 'app', channelId: 'chat', actor: 'human' },
+    },
+    f.signal,
+  );
+  expect(accepted.accepted).toBe(true);
+  expect(loadLedger(f.m)).toHaveLength(1);
+});
+
+test('a session that HAS a generation still refuses attributed input that does not pin it', async () => {
+  // The other half: where the pin is possible it stays mandatory, so a person's message cannot land
+  // on a registration that was replaced underneath it.
+  const f = await fixture();
+  const service = servicePrincipal('host-b', 'declared-service');
+  await expect(
+    acceptControlMessage(
+      f.m,
+      service,
+      {
+        ...f.input,
+        registrationGeneration: undefined,
+        communicationAuthorization: null,
+        origin: { applicationId: 'app', channelId: 'chat', actor: 'human' },
+      },
+      f.signal,
+    ),
+  ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  expect(loadLedger(f.m)).toHaveLength(0);
+});
