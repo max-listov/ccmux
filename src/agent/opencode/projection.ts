@@ -5,6 +5,7 @@ import { openCodePermissionScope } from '../../runtime/permissionScope.ts';
 import type { NativeItem, NativePendingRequest } from '../../runtime/projectionSchema.ts';
 import type { ManagedRuntimeSnapshot } from '../../runtime/schema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
+import { openCodeUsage, recordUsage } from '../../usage/live.ts';
 import { VERSION } from '../../util/version.ts';
 import {
   OpenCodeDeltaSchema,
@@ -30,7 +31,7 @@ export class OpenCodeProjection {
   revision = 0;
 
   constructor(
-    m: MachineConfig,
+    private m: MachineConfig,
     session: Session,
     providerPid: number,
     private report?: (error: unknown) => void,
@@ -161,6 +162,8 @@ export class OpenCodeProjection {
   }
   message(message: OpenCodeMessage, complete = true): void {
     if (!this.own(message.sessionID)) return;
+    const usage = openCodeUsage(message, new Date().toISOString());
+    if (usage) recordUsage(this.m, this.value.threadId, usage);
     if (message.role === 'user') {
       if (
         this.value.turn?.startedAt &&

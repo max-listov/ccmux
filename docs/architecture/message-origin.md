@@ -69,7 +69,9 @@ The state sequence remains validation → durable acceptance → native admissio
 Accepted input/images survive daemon replacement, retaining exact registration and digest checks.
 
 Agent and unclassified callers require the [communication authorization evidence](../communication-authorization.md)
-object. It records why this recipient is necessary, a verbatim user quote and its source reference;
+object. Its opening basis records why this recipient is necessary, a verbatim quote and source
+reference; a continuation inherits the recorded basis within the same exact pair and task.
+The receipt preserves a referenced peer letter without treating its words as verified human consent;
 the claim grants no authority. Human exemption depends on the host binding above, not a caller boolean.
 
 # Audience and projections

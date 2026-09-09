@@ -1,6 +1,9 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { requireOriginatingBasis } from '../src/chat/communicationAuthorization.ts';
+import { CommunicationAuthorizationInputSchema } from '../src/chat/communicationAuthorizationSchema.ts';
+import { buildEnvelope } from '../src/chat/compose.ts';
 import { externalTarget, managedPeer, servicePrincipal } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/store.ts';
 import { sessionsPath } from '../src/config/paths.ts';
@@ -176,4 +179,51 @@ test('authenticated remote receiver rejects missing evidence and self-attested h
   expect(conflict.code).toBe(1);
   expect(loadLedger(f.machine)).toHaveLength(1);
   expect(loadLedger(f.machine)[0]?.communicationAuthorization).toEqual(communicationAuthorization);
+});
+
+test('remote reception retains a resolved continuation and rejects an unresolved one', async () => {
+  const f = fixture();
+  const to = managedPeer('host-a', f.session);
+  const from = managedPeer('host-b', makeSession({ uuid: crypto.randomUUID(), name: 'sender' }));
+  const openingReceipt = requireOriginatingBasis(
+    from,
+    to,
+    communicationAuthorization,
+    () => null,
+    'review',
+  );
+  const opening = buildEnvelope(from, to, 'opening', {
+    communicationAuthorization,
+    communicationReceipt: openingReceipt,
+    task: 'review',
+  });
+  const claim = CommunicationAuthorizationInputSchema.parse({
+    basis: 'thread-continuation',
+    sourceMessageRef: `${to.threadId}#${opening.id}`,
+  });
+  const receipt = requireOriginatingBasis(
+    from,
+    to,
+    claim,
+    (id) => (id === opening.id ? opening : null),
+    'review',
+  );
+  const message = buildEnvelope(from, to, 'continuation', {
+    communicationAuthorization: claim,
+    communicationReceipt: receipt,
+    task: 'review',
+  });
+  const { communicationReceipt: omitted, ...unresolved } = message;
+  expect((await f.run([], unresolved)).code).toBe(1);
+  expect(loadLedger(f.machine)).toHaveLength(0);
+  // The recipient does not need a local copy of the sender's prior outbound record.
+  expect((await f.run([], message)).code).toBe(0);
+  expect((await f.run([], message)).code).toBe(0);
+  expect(loadLedger(f.machine)).toHaveLength(1);
+  expect(loadLedger(f.machine)[0]?.communicationReceipt).toEqual(opening.communicationReceipt);
+  const conflict = {
+    ...message,
+    communicationReceipt: { ...message.communicationReceipt, rootMessageId: crypto.randomUUID() },
+  };
+  expect((await f.run([], conflict)).code).toBe(1);
 });

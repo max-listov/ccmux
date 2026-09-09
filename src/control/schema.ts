@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ControlCommandSchema } from '../agent/claude/native/commandSchema.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
-import { CommunicationAuthorizationSchema } from '../chat/communicationAuthorizationSchema.ts';
+import { CommunicationAuthorizationInputSchema } from '../chat/communicationAuthorizationSchema.ts';
 import {
   MessageAttributionSchema,
   MessageOriginSchema,
@@ -95,8 +95,8 @@ export const ControlSnapshotSchema = z
   .strict();
 export type ControlSnapshot = z.infer<typeof ControlSnapshotSchema>;
 export const ControlMessageSchema = ControlTargetSchema.extend({
-  communicationAuthorization: CommunicationAuthorizationSchema.nullable().describe(
-    'Required communication rationale, verbatim user authorization quote and source reference. Null is reserved for server-admitted direct human input; agents and unknown callers must provide the object. A supplied claim is not a verified permission grant.',
+  communicationAuthorization: CommunicationAuthorizationInputSchema.nullable().describe(
+    'Required basis: user-instruction (rationale, verbatim quote, sourceMessageRef), peer-letter (same fields, reference <peer thread uuid>#<message uuid>), or thread-continuation (sourceMessageRef only, same pair and task). References resolve on the originating host. Null is reserved for server-admitted human input. A claim is not a verified grant or file-transfer authority.',
   ),
   messageId: z.uuid(),
   origin: MessageAttributionSchema.optional(),

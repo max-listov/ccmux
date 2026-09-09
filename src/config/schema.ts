@@ -24,6 +24,7 @@ export {
 import { CustomLaunchConfigSchema } from '../agent/custom/config.ts';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
 import { CommunicationAuthorizationSchema } from '../chat/communicationAuthorizationSchema.ts';
+import { CommunicationReceiptSchema } from '../chat/communicationReceiptSchema.ts';
 import {
   MessageApplicationsSchema,
   MessageOriginSchema,
@@ -533,6 +534,7 @@ export const ChatMessageSchema = z
     origin: MessageOriginSchema.optional(),
     // Historical records have no claim. New external admission enforces the required input.
     communicationAuthorization: CommunicationAuthorizationSchema.optional(),
+    communicationReceipt: CommunicationReceiptSchema.optional(),
     notification: NotificationAudienceSchema.optional(),
     registrationGeneration: z.uuid().optional(),
     body: z.string(),
@@ -816,6 +818,7 @@ export const TranscriptStatsSchema = z.object({
   assistant: z.number(),
   toolCalls: z.number(),
   thinking: z.number(),
+  usage: UsageAggregateSchema.optional(),
 });
 
 export const TranscriptJsonSchema = z.object({
@@ -1082,3 +1085,5 @@ export const ListJsonSchema = z.object({
   release: ReleaseStandingSchema,
   sessions: z.array(ListItemSchema),
 });
+
+import { UsageAggregateSchema } from '../usage/schema.ts';

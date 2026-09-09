@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CommunicationAuthorizationSchema } from './communicationAuthorizationSchema.ts';
+import { CommunicationReceiptSchema } from './communicationReceiptSchema.ts';
 import { ChatPrincipalSchema, ChatTargetSchema } from './identitySchema.ts';
 import { MessageOriginSchema, NotificationAudienceSchema } from './originSchema.ts';
 
@@ -13,6 +14,7 @@ export const LogRowSchema = z.object({
     'Unverified caller claim; absence means no evidence was recorded, not permission.',
   ),
   notification: NotificationAudienceSchema,
+  communicationReceipt: CommunicationReceiptSchema.optional(),
   registrationGeneration: z.uuid().nullable(),
   machine: z.string(),
   ts: z.string(),

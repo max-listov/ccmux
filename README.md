@@ -57,6 +57,8 @@ ccmux mode cc-api auto     # per-session permission-mode override (see Permissio
 ccmux stop|start|rm cc-api # lifecycle (rm keeps the jsonl history)
 ccmux renew cc-api         # fresh conversation, same session — the way out when its transcript is gone
 ccmux transcript cc-api --json --tail 50   # conversation history as JSON
+ccmux usage cc-api --json   # measured usage and model/day buckets without conversation content
+ccmux usage --fleet --json  # bounded machine pages; unavailable nodes remain explicit
 ccmux doctor               # health check: bins, config, daemon
 ccmux completions zsh > "${fpath[1]}/_ccmux"   # shell completions (bash|zsh|fish)
 ccmux help                 # full command list
@@ -71,6 +73,9 @@ the same snapshot in-process, with cancellation, deadlines and bounded concurren
 poll. Releases also include a self-contained `monitoring-reader.js` ESM asset and SHA-256 file.
 See the [native monitoring contract](docs/architecture/monitoring-status.md) and
 [resident example](examples/monitoring-reader.ts).
+
+Typed `usage.read` / `usage.list` operations provide usage without polling transcript pages.
+See [usage accounting](docs/architecture/usage.md) for coverage, cursors and self/pipeline scopes.
 
 For live control, `ccmux control sessions` reads the prepared inventory and `ccmux control watch`
 streams bounded full snapshots. `ccmux/control-client` provides the same typed local Unix API

@@ -51,6 +51,9 @@ export function rowFromLedgerRecord(machine: string, msg: LedgerSlot): LogRow {
     ...(msg.communicationAuthorization === undefined
       ? {}
       : { communicationAuthorization: msg.communicationAuthorization }),
+    ...(msg.communicationReceipt === undefined
+      ? {}
+      : { communicationReceipt: msg.communicationReceipt }),
     notification: msg.notification ?? 'conversation',
     registrationGeneration: msg.registrationGeneration ?? null,
     kind: 'chat',
@@ -81,6 +84,9 @@ export function rowFromOutbound(
     ...(o.envelope.communicationAuthorization === undefined
       ? {}
       : { communicationAuthorization: o.envelope.communicationAuthorization }),
+    ...(o.envelope.communicationReceipt === undefined
+      ? {}
+      : { communicationReceipt: o.envelope.communicationReceipt }),
     notification: o.envelope.notification ?? 'conversation',
     registrationGeneration: o.envelope.registrationGeneration ?? null,
     kind: 'sent',

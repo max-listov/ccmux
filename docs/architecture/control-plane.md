@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-09-06 14:41 +0700
+updated: 2026-09-09 15:32 +07:00
 ---
 
 # Ownership
@@ -64,6 +64,8 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 
 | Client method / CLI | HTTP | Result |
 | --- | --- | --- |
+| `usage.read` / `usage` | POST `/control/usage` | Измеренный расход exact адреса без переписки |
+| `usage.list` / `usage_list` | POST `/control/usage/list` | Bounded machine page с coverage |
 | `list` / `sessions` | GET `/control/sessions` | Prepared complete bounded snapshot |
 | `get` / `session` | POST `/control/session` | One exact registered identity |
 | `create` / `create-session` | POST `/control/create` | Idempotent workspace-scoped runtime selection; omitted runtime is Codex |

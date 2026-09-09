@@ -3,9 +3,13 @@ import { AppError } from 'stitchkit';
 import { supportsManagedInput } from '../agent/index.ts';
 import { stableJson } from '../agent/launchInputs.ts';
 import { withPinnedAttachments } from '../attachments/pins.ts';
-import { requireCommunicationAuthorization } from '../chat/communicationAuthorization.ts';
+import {
+  requireCommunicationAuthorization,
+  requireOriginatingBasis,
+} from '../chat/communicationAuthorization.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
+import { localMessageLookup } from '../chat/localMessages.ts';
 import { advanceMessageOperation, prepareMessageOperation } from '../chat/messageOperationStore.ts';
 import { admitMessageOrigin } from '../chat/origin.ts';
 import { unknownMessageOrigin } from '../chat/originSchema.ts';
@@ -35,6 +39,14 @@ export async function acceptControlMessage(
     input.notification ?? 'conversation',
   );
   requireCommunicationAuthorization(from, admittedOrigin, input.communicationAuthorization);
+  const communicationReceipt = requireOriginatingBasis(
+    from,
+    input.target,
+    input.communicationAuthorization,
+    // Only a caller whose records live here can have a reference resolved against them.
+    from.machine === m.rcPrefix ? localMessageLookup(m) : null,
+    input.task,
+  );
   const target = controlTarget(m, input.target);
   const accept = () =>
     withSessionRegistryLock(
@@ -142,6 +154,14 @@ export async function acceptControlMessage(
             communicationAuthorization: input.communicationAuthorization,
           }),
           id: input.messageId,
+          ...(communicationReceipt === undefined
+            ? {}
+            : {
+                communicationReceipt: {
+                  ...communicationReceipt,
+                  rootMessageId: communicationReceipt.rootMessageId ?? input.messageId,
+                },
+              }),
           origin,
           notification,
           ...(session.registrationGeneration === undefined

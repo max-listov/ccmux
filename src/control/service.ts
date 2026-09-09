@@ -23,6 +23,8 @@ export function controlServices(
     dependencies,
   );
   const service = implement(controlContract, {
+    'usage.read': ({ input, signal }) => operations.usage(input, signal),
+    'usage.list': ({ input, signal }) => operations.usageList(input, signal),
     'external.history': ({ input, signal }) => operations.externalHistory(input, signal),
     'external.capabilities': ({ input, signal }) => operations.externalCapabilities(input, signal),
     'message.cancel': ({ input, principal }) =>

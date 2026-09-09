@@ -1,9 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { TranscriptUsage } from '../../config/schema.ts';
+import { indexedUsage } from '../../usage/indexed.ts';
 import { MtimeCache } from '../../util/mtimeCache.ts';
 import { rec, str } from '../normalize.ts';
-import { usageOf } from './transcript.ts';
+import { indexTranscript } from '../transcriptIndex.ts';
+import { countStats } from '../transcriptRead.ts';
+import { parse } from './transcript.ts';
 
 // What a Claude subagent left behind, read from its own transcript.
 //
@@ -48,12 +51,7 @@ const EMPTY_USAGE: TranscriptUsage = {
   cacheCreationTokens: null,
 };
 
-function add(total: number | null, part: number | null): number | null {
-  if (part === null) return total;
-  return (total ?? 0) + part;
-}
-
-function compute(lines: string[]): SubagentFacts {
+function compute(path: string, lines: string[]): SubagentFacts {
   const facts: SubagentFacts = {
     startedAt: null,
     lastAt: null,
@@ -63,11 +61,6 @@ function compute(lines: string[]): SubagentFacts {
     lastText: null,
     model: null,
   };
-  // Usage repeats on every content line of one API message (text and tool_use blocks share the
-  // message id) and grows as the message streams: the last line carries the final count. A
-  // message is charged once, by id, at its last line — first-wins would bill a two-block answer
-  // by its opening block, last-wins-without-dedupe would bill it twice.
-  const charged = new Map<string, TranscriptUsage>();
   for (const raw of lines) {
     if (!raw || raw.trim() === '') continue;
     let entry: Record<string, unknown> | null;
@@ -89,9 +82,6 @@ function compute(lines: string[]): SubagentFacts {
     if (assistant) {
       const model = str(message?.model);
       if (model && model !== '<synthetic>') facts.model = model;
-      const id = str(message?.id) ?? str(entry.uuid);
-      const usage = usageOf(entry);
-      if (id !== null && usage) charged.set(id, usage);
       for (const block of blocks) {
         if (str(block.type) === 'tool_use') facts.toolCalls++;
         if (str(block.type) === 'text') {
@@ -105,15 +95,15 @@ function compute(lines: string[]): SubagentFacts {
     facts.idle =
       assistant && blocks.length > 0 && blocks.every((block) => str(block.type) === 'text');
   }
-  for (const usage of charged.values()) {
-    facts.usage.inputTokens = add(facts.usage.inputTokens, usage.inputTokens);
-    facts.usage.outputTokens = add(facts.usage.outputTokens, usage.outputTokens);
-    facts.usage.cacheReadTokens = add(facts.usage.cacheReadTokens, usage.cacheReadTokens);
-    facts.usage.cacheCreationTokens = add(
-      facts.usage.cacheCreationTokens,
-      usage.cacheCreationTokens,
-    );
-  }
+  indexTranscript(path, 'claude', (batch) => countStats({ id: 'claude', parse }, batch));
+  const usage = indexedUsage(path)?.values;
+  if (usage)
+    facts.usage = {
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheReadTokens: usage.cacheReadTokens,
+      cacheCreationTokens: usage.cacheCreationTokens,
+    };
   return facts;
 }
 
@@ -122,5 +112,5 @@ const cache = new MtimeCache<SubagentFacts>(2 * 1024 * 1024, 128);
 /** Facts about one spawned agent, or null when its transcript does not exist (yet, or any more). */
 export function readSubagentFacts(path: string): SubagentFacts | null {
   if (!existsSync(path)) return null;
-  return cache.get(path, () => compute(readFileSync(path, 'utf8').split('\n')));
+  return cache.get(path, () => compute(path, readFileSync(path, 'utf8').split('\n')));
 }

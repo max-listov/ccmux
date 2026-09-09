@@ -58,6 +58,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     return 1;
   }
   switch (verb) {
+    case 'usage':
+      return (await import('./commands/usage.ts')).cmdUsage(rest);
     case 'control':
       return (await import('./commands/control.ts')).cmdControl(rest);
     case 'runtime':

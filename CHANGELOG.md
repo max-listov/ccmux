@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Add incremental session usage accounting for Claude, Codex, OpenCode and Custom runtimes,
+  with bounded SQLite indexing, day/model summaries, cache metrics, cost provenance and explicit
+  partial or unavailable states. Expose `usage.read`, `usage.list` and `ccmux usage` without
+  summing overlapping parent, child or fleet histories.
+- Require a named communication basis for new agent messages. Accept a referenced peer letter,
+  preserve its source text in a receipt, and let subsequent messages inherit that receipt within
+  the same exact pair and task. Reject mismatched peers, threads, tasks and quotes; show all three
+  accepted forms in admission errors. Historical ledger records remain readable without invented
+  permission, and chat receipts do not authorize file transfers.
+
 ## [0.57.3] — 2026-09-09
 
 Native turn start survives observation and reconnect

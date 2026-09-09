@@ -24,6 +24,7 @@ import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
 import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/journalOwner.ts';
 import type { MachineConfig } from '../types.ts';
+import { createUsageObservation } from '../usage/observation.ts';
 import { clearBootGuard } from '../util/bootGuard.ts';
 import { log, setLogLevel } from '../util/log.ts';
 import { VERSION } from '../util/version.ts';
@@ -72,6 +73,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   const externalObserver = new ExternalStatusObserver(initial, external);
   const previous = new Map<string, Observed>();
   const machine = loadMachineConfig;
+  const usageObservation = createUsageObservation(machine, external);
   const projection = defineManagedResource({
     id: 'projection',
     dependsOn: [chronology, processLifecycle],
@@ -228,6 +230,7 @@ export function createDaemonApplication(initial: MachineConfig) {
       controlOwner,
       control,
       observation,
+      usageObservation,
       externalObservation,
       freshness,
       delivery,
@@ -244,6 +247,6 @@ export function createDaemonApplication(initial: MachineConfig) {
     external,
     externalObserver,
     monitoring,
-    schedules: { observation, externalObservation, freshness, delivery, healing },
+    schedules: { observation, usageObservation, externalObservation, freshness, delivery, healing },
   };
 }

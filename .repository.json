@@ -2,28 +2,66 @@
   "schemaVersion": 1,
   "identity": {
     "repositoryId": "max-listov/ccmux",
-    "project": "max-listov/ccmux",
-    "role": "source",
     "policy": "public-source"
   },
   "layout": {
-    "documentationRoots": ["docs"],
+    "documentationRoots": {
+      "values": ["docs"],
+      "reason": "Корень документации явно объявлен для инспекции поставляемого содержимого."
+    },
     "backlogRoots": [],
     "surfaces": [
-      { "path": "src", "classification": "deliverable" },
-      { "path": "test", "classification": "deliverable" },
-      { "path": "scripts", "classification": "deliverable" },
-      { "path": "docs", "classification": "deliverable" },
-      { "path": "README.md", "classification": "deliverable" },
-      { "path": "CHANGELOG.md", "classification": "deliverable" },
-      { "path": "CLAUDE.md", "classification": "deliverable" },
-      { "path": "package.json", "classification": "deliverable" },
-      { "path": "biome.json", "classification": "deliverable" },
-      { "path": "tsconfig.json", "classification": "deliverable" },
-      { "path": ".repository.json", "classification": "deliverable" }
+      {
+        "path": "src",
+        "classification": "deliverable"
+      },
+      {
+        "path": "test",
+        "classification": "deliverable"
+      },
+      {
+        "path": "scripts",
+        "classification": "deliverable"
+      },
+      {
+        "path": "docs",
+        "classification": "deliverable"
+      },
+      {
+        "path": "README.md",
+        "classification": "deliverable"
+      },
+      {
+        "path": "CHANGELOG.md",
+        "classification": "deliverable"
+      },
+      {
+        "path": "CLAUDE.md",
+        "classification": "deliverable"
+      },
+      {
+        "path": "package.json",
+        "classification": "deliverable"
+      },
+      {
+        "path": "biome.json",
+        "classification": "deliverable"
+      },
+      {
+        "path": "tsconfig.json",
+        "classification": "deliverable"
+      },
+      {
+        "path": ".repository.json",
+        "classification": "deliverable"
+      }
     ]
   },
   "rules": {
-    "boundaries": { "uiPrimitives": [], "mcpAdapter": [], "apiPathPrefix": null }
+    "boundaries": {
+      "uiPrimitives": [],
+      "mcpAdapter": [],
+      "apiPathPrefix": null
+    }
   }
 }

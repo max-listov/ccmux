@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
-import { closeSync, mkdirSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { CACHE_DIR } from '../config/paths.ts';
 import { TranscriptStatsSchema } from '../config/schema.ts';
 import type { TranscriptStats } from '../types.ts';
-import { atomicWriteSync } from '../util/atomic.ts';
+import { parseUsageRecord } from '../usage/normalize.ts';
+import type { UsageFact } from '../usage/schema.ts';
+import { UsageStore } from '../usage/store.ts';
+import { rec } from './normalize.ts';
 
 /**
  * Where a transcript's lines are, so reading the last hundred does not cost the whole file.
@@ -34,12 +37,21 @@ export const SCAN_CHUNK = 4 * 1024 * 1024;
  *  has a different beginning, and its old offsets would point into the middle of other records. */
 const HEAD_BYTES = 4096;
 
-const StoredIndexSchema = z
+export const StoredIndexSchema = z
   .object({
     version: z.literal(1),
     /** Whose parser produced `stats`. A session that changed runtime must not inherit them. */
     agent: z.string().min(1).max(64),
     head: z.string().length(64),
+    identity: z.string(),
+    mtime: z.number(),
+    observedAt: z.iso.datetime(),
+    observedSize: z.int().nonnegative(),
+    readOffset: z.int().nonnegative(),
+    pending: z.string(),
+    skipping: z.boolean(),
+    malformed: z.int().nonnegative(),
+    context: z.object({ model: z.string().nullable(), epoch: z.string() }),
     /** Bytes indexed. Always ends immediately after a newline, so a record still being written is
      *  outside the index rather than half inside it. */
     size: z.number().int().nonnegative(),
@@ -59,8 +71,8 @@ export const EMPTY_STATS: TranscriptStats = {
   thinking: 0,
 };
 
-const indexPath = (path: string): string =>
-  join(CACHE_DIR, 'transcript-index', `${createHash('sha256').update(path).digest('hex')}.json`);
+export const transcriptIndexPath = (path: string): string =>
+  join(CACHE_DIR, 'transcript-index', `${createHash('sha256').update(path).digest('hex')}.sqlite`);
 
 function headDigest(fd: number, size: number): string {
   const buffer = Buffer.alloc(Math.min(HEAD_BYTES, size));
@@ -68,17 +80,27 @@ function headDigest(fd: number, size: number): string {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
-function loadStored(path: string, agent: string, head: string, size: number): StoredIndex | null {
-  let stored: StoredIndex;
-  try {
-    stored = StoredIndexSchema.parse(JSON.parse(readFileSync(indexPath(path), 'utf8')));
-  } catch {
-    return null;
-  }
+function loadStored(
+  store: UsageStore,
+  agent: string,
+  head: string,
+  size: number,
+  identity: string,
+  mtime: number,
+): StoredIndex | null {
+  const stored = store.read('index', StoredIndexSchema);
+  if (!stored) return null;
   // A file that shrank, or whose beginning changed, is not the file this index describes. Reusing
   // it would seek to offsets that now land inside other records — silently, and only for the reader
   // unlucky enough to be looking at that part of the conversation.
-  if (stored.agent !== agent || stored.head !== head || stored.size > size) return null;
+  if (
+    stored.agent !== agent ||
+    stored.head !== head ||
+    stored.readOffset > size ||
+    stored.identity !== identity ||
+    (stored.observedSize === size && stored.mtime !== mtime)
+  )
+    return null;
   return stored;
 }
 
@@ -86,6 +108,8 @@ function loadStored(path: string, agent: string, head: string, size: number): St
 export interface TranscriptIndex {
   totalLines: number;
   stats: TranscriptStats;
+  indexedBytes: number;
+  sourceBytes: number;
   /** Absolute inclusive line range, 1-based. Returns exactly the lines that exist in it. */
   read(from: number, to: number): string[];
 }
@@ -102,39 +126,64 @@ export function indexTranscript(
   path: string,
   agent: string,
   accumulate: (lines: string[]) => TranscriptStats,
+  maxBytes = Number.MAX_SAFE_INTEGER,
 ): TranscriptIndex | null {
-  let size: number;
-  try {
-    size = statSync(path).size;
-  } catch {
-    return null;
-  }
   let fd: number;
   try {
-    fd = openSync(path, 'r');
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch {
     return null;
   }
+  let store: UsageStore | undefined;
   try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return null;
+    const size = stat.size;
     const head = headDigest(fd, size);
-    const stored = loadStored(path, agent, head, size);
-    const index: StoredIndex = stored ?? {
-      version: 1,
-      agent,
-      head,
-      size: 0,
-      lines: 0,
-      checkpoints: [0],
-      stats: { ...EMPTY_STATS },
-    };
-    if (index.size < size) scanForward(fd, index, size, accumulate);
-    if (stored === null || index.size !== stored.size) save(path, index);
+    store = new UsageStore(transcriptIndexPath(path));
+    const owner = store;
+    const identity = `${stat.dev}:${stat.ino}`;
+    const index = owner.transaction(() => {
+      const stored = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
+      if (!stored) owner.reset();
+      const index: StoredIndex = stored ?? {
+        version: 1,
+        agent,
+        head,
+        identity,
+        mtime: stat.mtimeMs,
+        observedAt: new Date().toISOString(),
+        observedSize: size,
+        readOffset: 0,
+        pending: '',
+        skipping: false,
+        malformed: 0,
+        context: { model: null, epoch: head },
+        size: 0,
+        lines: 0,
+        checkpoints: [0],
+        stats: { ...EMPTY_STATS },
+      };
+      const oldOffset = index.readOffset;
+      if (index.readOffset < size)
+        scanForward(fd, index, Math.min(size, oldOffset + maxBytes), accumulate, owner);
+      index.observedSize = size;
+      index.mtime = stat.mtimeMs;
+      if (!stored || index.readOffset !== oldOffset) {
+        index.observedAt = new Date().toISOString();
+        owner.write('index', index);
+      }
+      return index;
+    });
     return {
       totalLines: index.lines,
       stats: index.stats,
+      indexedBytes: index.readOffset,
+      sourceBytes: size,
       read: (from, to) => readRange(path, index, from, to),
     };
   } finally {
+    store?.close();
     closeSync(fd);
   }
 }
@@ -152,15 +201,33 @@ function scanForward(
   index: StoredIndex,
   size: number,
   accumulate: (lines: string[]) => TranscriptStats,
+  store: UsageStore,
 ): void {
-  let offset = index.size;
+  let offset = index.readOffset;
   // Bytes, not a string: a chunk boundary can fall inside a multi-byte character, and decoding each
   // fragment separately turns it into two replacement characters. Transcripts here are mostly not
   // ASCII, so that is the common case rather than the exotic one.
-  let pending: Buffer[] = [];
+  let pending: Buffer[] = index.pending ? [Buffer.from(index.pending, 'base64')] : [];
+  let pendingBytes = pending.reduce((n, b) => n + b.length, 0);
   let batch: string[] = [];
   const flush = () => {
     if (batch.length === 0) return;
+    const observedAt = new Date().toISOString();
+    for (const raw of batch) {
+      if (!raw.trim()) continue;
+      let fact: UsageFact | null = null;
+      try {
+        const entry = rec(JSON.parse(raw));
+        if (!entry) {
+          index.malformed++;
+          continue;
+        }
+        fact = parseUsageRecord(index.agent, entry, index.context, observedAt);
+      } catch {
+        index.malformed++;
+      }
+      if (fact) store.put(fact);
+    }
     const added = accumulate(batch);
     index.stats = {
       messages: index.stats.messages + added.messages,
@@ -183,31 +250,34 @@ function scanForward(
       // The byte just after the newline is where the next line starts, and therefore the only
       // offset a checkpoint may hold.
       const tail = buffer.subarray(from, at);
-      batch.push(
-        pending.length === 0
-          ? tail.toString('utf8')
-          : Buffer.concat([...pending, tail]).toString('utf8'),
-      );
+      if (!index.skipping)
+        batch.push(
+          pending.length === 0
+            ? tail.toString('utf8')
+            : Buffer.concat([...pending, tail]).toString('utf8'),
+        );
+      else index.malformed++;
       const lineEnd = offset - read + at + 1;
       pending = [];
+      pendingBytes = 0;
+      index.skipping = false;
       index.lines += 1;
       index.size = lineEnd;
       if (index.lines % CHECKPOINT_LINES === 0) index.checkpoints.push(lineEnd);
       from = at + 1;
       if (batch.length >= 4096) flush();
     }
-    if (from < read) pending.push(Buffer.from(buffer.subarray(from, read)));
+    if (from < read && !index.skipping) {
+      pendingBytes += read - from;
+      if (pendingBytes > 16 * 1024 * 1024) {
+        pending = [];
+        index.skipping = true;
+      } else pending.push(Buffer.from(buffer.subarray(from, read)));
+    }
   }
   flush();
-}
-
-function save(path: string, index: StoredIndex): void {
-  try {
-    mkdirSync(join(CACHE_DIR, 'transcript-index'), { recursive: true });
-    atomicWriteSync(indexPath(path), JSON.stringify(index), 0o600);
-  } catch {
-    // Derivable state: a machine that cannot write it reads the file the slow way and stays correct.
-  }
+  index.readOffset = offset;
+  index.pending = Buffer.concat(pending).toString('base64');
 }
 
 /** Read one absolute line range by seeking to the checkpoint at or before it. */

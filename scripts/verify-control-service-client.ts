@@ -36,9 +36,20 @@ try {
   );
   await Bun.write(
     join(consumer, 'check.ts'),
-    `import { controlContract, createInjectedControlClient } from '@ccmux/control-service-client';
+    `import { controlContract, createInjectedControlClient, type UsageSummary } from '@ccmux/control-service-client';
+const aggregate: UsageSummary['self'] = {
+  values:{inputTokens:10,outputTokens:5,cacheReadTokens:null,cacheCreationTokens:null,reasoningTokens:null,totalTokens:null},
+  measured:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheCreationTokens:0,reasoningTokens:0,totalTokens:0},
+  fieldCoverage:{inputTokens:'full',outputTokens:'full',cacheReadTokens:'unknown',cacheCreationTokens:'unknown',reasoningTokens:'unknown',totalTokens:'unknown'},
+  observations:1,coverage:'full',costs:[]
+};
+const summary: UsageSummary = {address:'host-a:agent-a',runtime:'claude',identity:{sessionId:null,nativeSessionId:null},additivity:'session-only',
+  source:'readable',state:'ready',reason:null,revision:'1',observedAt:null,sourceEventRange:{first:null,last:null},indexedBytes:100,sourceBytes:100,
+  malformedRecords:0,history:'native-history',self:aggregate,unattributed:aggregate,
+  delegated:{coverage:'unknown',addresses:[]},reportedPipeline:null,buckets:[],timezone:'UTC',nextCursor:null,reset:false};
 const client = createInjectedControlClient(async (input, init) => {
   const url = new URL(String(input));
+  if (url.pathname === '/control/usage') return Response.json(summary);
   if (url.pathname !== '/control/directories') throw new Error('canonical route lost');
   const body = JSON.parse(String(init?.body));
   return Response.json({path:body.path,parent:null,entries:[],nextCursor:null});
@@ -46,6 +57,9 @@ const client = createInjectedControlClient(async (input, init) => {
 if (!controlContract.endpoints['directory.list']) throw new Error('canonical contract missing');
 const result = await client['directory.list']({path:'/tmp'});
 if (result.path !== '/tmp' || result.entries.length !== 0) throw new Error('typed client failed');
+if (!controlContract.endpoints['usage.read'] || !controlContract.endpoints['usage.list']) throw new Error('usage contract missing');
+const usage = await client['usage.read']({address:'host-a:agent-a'});
+if (usage.self.values.inputTokens !== 10 || usage.self.values.outputTokens !== 5) throw new Error('typed usage lost');
 `,
   );
   if (!run('bun', ['install', '--ignore-scripts'])) throw new Error('consumer install failed');

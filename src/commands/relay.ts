@@ -1,6 +1,8 @@
 import {
+  COMMUNICATION_AUTHORIZATION_HELP,
   readCommunicationAuthorization,
   requireCommunicationAuthorization,
+  requireOriginatingBasis,
 } from '../chat/communicationAuthorization.ts';
 import type { CommunicationAuthorization } from '../chat/communicationAuthorizationSchema.ts';
 import { buildEnvelope } from '../chat/compose.ts';
@@ -18,6 +20,7 @@ import {
   principalLabel,
   targetLabel,
 } from '../chat/identity.ts';
+import { localMessageLookup } from '../chat/localMessages.ts';
 import { principalOrigin } from '../chat/origin.ts';
 import { appendMessage, loadLedger } from '../chat/store.ts';
 import { loadMachineConfig } from '../config/machine.ts';
@@ -55,7 +58,9 @@ export async function cmdRelay(args: string[]): Promise<number> {
       try {
         communicationAuthorization = await readCommunicationAuthorization(path);
       } catch {
-        console.error('relay: invalid communication authorization file');
+        console.error(
+          `relay: invalid communication authorization file. ${COMMUNICATION_AUTHORIZATION_HELP}`,
+        );
         return 1;
       }
     } else if (value === '--task') task = args[++i] ?? null;
@@ -117,13 +122,24 @@ export async function cmdRelay(args: string[]): Promise<number> {
       : ownerTarget();
 
   const from = cliPrincipal(m.rcPrefix);
+  let communicationReceipt: ReturnType<typeof requireOriginatingBasis>;
   if (target.kind === 'managed') {
     try {
       requireCommunicationAuthorization(from, principalOrigin(from), communicationAuthorization);
     } catch {
-      console.error(
-        'relay: --communication-authorization <JSON file> is required before contacting a session',
+      console.error(`relay: ${COMMUNICATION_AUTHORIZATION_HELP}`);
+      return 1;
+    }
+    try {
+      communicationReceipt = requireOriginatingBasis(
+        from,
+        target,
+        communicationAuthorization,
+        localMessageLookup(m),
+        letter.msg.task,
       );
+    } catch (error) {
+      console.error(`relay: ${error instanceof Error ? error.message : String(error)}`);
       return 1;
     }
   }
@@ -132,6 +148,7 @@ export async function cmdRelay(args: string[]): Promise<number> {
     buildEnvelope(from, target, body, {
       task: letter.msg.task,
       communicationAuthorization,
+      communicationReceipt,
       defer: false,
       onBehalfOf: externalAddress(external.name),
       notBefore: null,

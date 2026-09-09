@@ -24,8 +24,14 @@ export {
 } from './attachments/schema.ts';
 export {
   type CommunicationAuthorization,
+  type CommunicationAuthorizationInput,
+  CommunicationAuthorizationInputSchema,
   CommunicationAuthorizationSchema,
 } from './chat/communicationAuthorizationSchema.ts';
+export {
+  type CommunicationReceipt,
+  CommunicationReceiptSchema,
+} from './chat/communicationReceiptSchema.ts';
 export {
   type LogFrame,
   LogFrameSchema,
@@ -202,3 +208,12 @@ export {
   SteeringSelectorSchema,
 } from './steering/schema.ts';
 export type { LaunchRecipeMetadata, LaunchRecipeReference } from './types.ts';
+export {
+  UsageListResultSchema,
+  UsageListSchema,
+  type UsageQuery,
+  UsageQuerySchema,
+  UsageReadSchema,
+  type UsageSummary,
+  UsageSummarySchema,
+} from './usage/schema.ts';

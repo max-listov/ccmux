@@ -1,7 +1,10 @@
 import { supportsManagedInput } from '../agent/index.ts';
 import { hasAuthenticatedRemoteAncestor } from '../chat/auth.ts';
 import { resolveCodexAppPeer } from '../chat/codexApp.ts';
-import { requireCommunicationAuthorization } from '../chat/communicationAuthorization.ts';
+import {
+  COMMUNICATION_AUTHORIZATION_HELP,
+  requireCommunicationAuthorization,
+} from '../chat/communicationAuthorization.ts';
 import { managedPeer, principalLabel, targetLabel } from '../chat/identity.ts';
 import { principalOrigin } from '../chat/origin.ts';
 import { appendMessageOnce } from '../chat/store.ts';
@@ -45,8 +48,15 @@ export async function cmdReceiveChat(
       principalOrigin(message.from),
       message.communicationAuthorization,
     );
+    if (
+      message.communicationAuthorization?.basis !== 'user-instruction' &&
+      message.communicationReceipt === undefined
+    )
+      throw new Error('Referenced authorization requires the originating host receipt');
   } catch {
-    console.error('chat receive: communicationAuthorization is required');
+    console.error(
+      `chat receive: communicationAuthorization is required; referenced bases also require the originating host receipt. ${COMMUNICATION_AUTHORIZATION_HELP}`,
+    );
     return 1;
   }
   if (message.to.machine !== machine.rcPrefix) {

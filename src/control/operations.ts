@@ -36,6 +36,8 @@ import { readRuntimeCatalog } from '../runtime/catalog.ts';
 import type { SteeringInputSchema, SteeringSelectorSchema } from '../steering/schema.ts';
 import { readNativeSteering, steerNativeTurn } from '../steering/service.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
+import type { UsageListSchema, UsageReadSchema } from '../usage/schema.ts';
+import { listSessionUsage, readSessionUsage } from '../usage/service.ts';
 import {
   controlMcpServer,
   readControlCommands,
@@ -136,6 +138,37 @@ export function createControlOperations(
     policy: { global: { maxConcurrent: 4 } },
   });
   const operations = {
+    usage: (input: z.output<typeof UsageReadSchema>, signal?: AbortSignal) =>
+      reads
+        .run(
+          undefined,
+          ({ signal: admitted }) =>
+            readSessionUsage(m, input.address, input.query, false, admitted),
+          {
+            ...(signal ? { signal } : {}),
+            timeoutMs: 6_000,
+          },
+        )
+        .catch(controlRefusal),
+    usageList: (input: z.output<typeof UsageListSchema>, signal?: AbortSignal) =>
+      reads
+        .run(
+          undefined,
+          ({ signal: admitted }) =>
+            listSessionUsage(
+              m,
+              input.query,
+              input.cursor,
+              input.limit,
+              external.read().sessions.map((s) => s.identity.threadId),
+              admitted,
+            ),
+          {
+            ...(signal ? { signal } : {}),
+            timeoutMs: 6_000,
+          },
+        )
+        .catch(controlRefusal),
     externalHistory: (input: z.output<typeof ExternalContentReadSchema>, signal?: AbortSignal) =>
       reads
         .run(

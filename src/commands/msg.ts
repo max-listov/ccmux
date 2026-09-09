@@ -3,8 +3,10 @@ import { supportsManagedInput } from '../agent/index.ts';
 import { type RemoteTransport, remoteTransportAncestor } from '../chat/auth.ts';
 import { resolveCodexAppPeer } from '../chat/codexApp.ts';
 import {
+  COMMUNICATION_AUTHORIZATION_HELP,
   readCommunicationAuthorization,
   requireCommunicationAuthorization,
+  requireOriginatingBasis,
 } from '../chat/communicationAuthorization.ts';
 import type { CommunicationAuthorization } from '../chat/communicationAuthorizationSchema.ts';
 import { buildEnvelope } from '../chat/compose.ts';
@@ -19,6 +21,7 @@ import {
   samePrincipal,
   targetLabel,
 } from '../chat/identity.ts';
+import { localMessageLookup } from '../chat/localMessages.ts';
 import { principalOrigin } from '../chat/origin.ts';
 import { isRoleToken, resolveRole } from '../chat/roleAddress.ts';
 import {
@@ -39,7 +42,7 @@ import { routeFor } from '../fleet/address.ts';
 import { RETRY_WINDOW_MS } from '../fleet/flush.ts';
 import { appendOutbound, loadOutbox } from '../fleet/outbox.ts';
 import { queuedForRetryNotice, relay, runPeer } from '../fleet/transport.ts';
-import type { AgentKind, CodexAppPeer } from '../types.ts';
+import type { AgentKind, ChatTarget, CodexAppPeer } from '../types.ts';
 import { log } from '../util/log.ts';
 import { preview } from '../util/preview.ts';
 import { usageLine } from './help.ts';
@@ -74,7 +77,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
         communicationAuthorization = await readCommunicationAuthorization(path);
       } catch {
         console.error(
-          'msg: invalid communication authorization file; provide a rationale (40–4000 characters), verbatim user quote and sourceMessageRef',
+          `msg: invalid communication authorization file. ${COMMUNICATION_AUTHORIZATION_HELP}`,
         );
         return 1;
       }
@@ -238,10 +241,28 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     requireCommunicationAuthorization(from, principalOrigin(from), communicationAuthorization);
   } catch {
     console.error(
-      'msg: --communication-authorization <JSON file> is required before contacting a session',
+      `msg: communicationAuthorization must name its basis. ${COMMUNICATION_AUTHORIZATION_HELP}`,
     );
     return 1;
   }
+  // Resolved lazily and once: reading the ledger and outbox costs nothing on the ordinary path where
+  // the basis is the user's own instruction, and the same index answers all three target shapes.
+  const lookup = localMessageLookup(machine);
+  let communicationReceipt: ReturnType<typeof requireOriginatingBasis>;
+  const unverifiedBasis = (to: ChatTarget): string | null => {
+    try {
+      communicationReceipt = requireOriginatingBasis(
+        from,
+        to,
+        communicationAuthorization,
+        lookup,
+        task,
+      );
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  };
   const route = routeFor(targetToken, machine);
   if (route.kind === 'error') {
     console.error(route.message);
@@ -267,11 +288,17 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.error(`msg: ${mismatch}`);
       return 1;
     }
+    const unverified = unverifiedBasis(resolved);
+    if (unverified !== null) {
+      console.error(`msg: ${unverified}`);
+      return 1;
+    }
     const envelope = buildEnvelope(from, resolved, body, {
       task,
       defer,
       onBehalfOf,
       communicationAuthorization,
+      communicationReceipt,
     });
     const result = await runPeer(
       machine,
@@ -332,6 +359,11 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.error(`msg: ${mismatch}`);
       return 1;
     }
+    const unverified = unverifiedBasis(target);
+    if (unverified !== null) {
+      console.error(`msg: ${unverified}`);
+      return 1;
+    }
     // Replace-on-task belongs to TIMERS, not to ordinary mail. A re-armed watchdog means "forget the
     // previous alarm"; two letters under one task name do not mean "forget the first one". Now that
     // waiting for a turn boundary is the default, keying this on deferral would silently eat a
@@ -350,6 +382,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       onBehalfOf,
       notBefore,
       communicationAuthorization,
+      communicationReceipt,
     });
     appendMessage(machine, envelope);
     warnAboutAnonymousRemote(from, senderTransport);
@@ -388,6 +421,11 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     console.error(`msg: recipient '${targetToken}' cannot receive chat`);
     return 1;
   }
+  const unverified = unverifiedBasis(target);
+  if (unverified !== null) {
+    console.error(`msg: ${unverified}`);
+    return 1;
+  }
   if ((defer || notBefore !== null) && task !== null) {
     const prior = pendingConditional(loadLedger(machine), loadAckedIds(machine), {
       from,
@@ -402,6 +440,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     onBehalfOf,
     notBefore,
     communicationAuthorization,
+    communicationReceipt,
   });
   appendMessage(machine, envelope);
   warnAboutAnonymousRemote(from, senderTransport);

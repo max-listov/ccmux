@@ -173,4 +173,13 @@ export {
   SteeringSelectorSchema,
 } from './steering/schema.ts';
 export type { LaunchRecipeMetadata, LaunchRecipeReference } from './types.ts';
+export {
+  UsageListResultSchema,
+  UsageListSchema,
+  type UsageQuery,
+  UsageQuerySchema,
+  UsageReadSchema,
+  type UsageSummary,
+  UsageSummarySchema,
+} from './usage/schema.ts';
 export { VERSION as CONTROL_CLIENT_VERSION } from './util/version.ts';

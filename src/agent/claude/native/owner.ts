@@ -35,6 +35,7 @@ import { launchEnv } from '../launch.ts';
 /** How often the sample is CHECKED, not how often it is read: `planLimitsDue` decides the read. */
 const PLAN_LIMITS_TICK_MS = 15_000;
 
+import { recordClaudeSdkUsage } from '../../../usage/claudeSdk.ts';
 import { classifySdkMessage, isFailureResult, summarise } from './content.ts';
 import {
   type Discovery,
@@ -101,6 +102,7 @@ export class ClaudeNativeOwner {
   private pending = new Map<string, PendingApproval>();
   /** Everything this session publishes about itself, and the only thing that changes it. */
   private projection = new NativeProjection();
+  private usageEpoch = crypto.randomUUID();
 
   /** What the six requests need. Assembled rather than passed piecemeal, so adding one is one line. */
   private get mailboxes(): Mailboxes {
@@ -204,6 +206,7 @@ export class ClaudeNativeOwner {
       // the same value. `sessionId` names a NEW conversation and cannot combine with `resume`.
       ...(this.started ? { resume: managedId } : { sessionId: managedId }),
     } as unknown as Options;
+    this.usageEpoch = crypto.randomUUID();
     this.query = sdk.query({ prompt: this.queue.iterable(), options });
     this.projection.connected = true;
     void this.drain();
@@ -321,6 +324,7 @@ export class ClaudeNativeOwner {
     try {
       for await (const message of query) {
         await this.rememberConversation();
+        recordClaudeSdkUsage(this.m, this.session.uuid, this.usageEpoch, message);
         const failed = isFailureResult(message);
         const classified = classifySdkMessage(message.type);
         this.projection.turn = advanceTurn(this.projection.turn, {

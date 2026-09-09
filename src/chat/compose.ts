@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { CHAT_GENERATION, ChatMessageSchema } from '../config/schema.ts';
 import type { ChatMessage, ChatPrincipal, ChatTarget } from '../types.ts';
 import type { CommunicationAuthorization } from './communicationAuthorizationSchema.ts';
+import type { CommunicationReceipt } from './communicationReceiptSchema.ts';
 import { principalOrigin } from './origin.ts';
 
 /**
@@ -24,11 +25,15 @@ export function buildEnvelope(
     onBehalfOf?: string | null;
     notBefore?: string | null;
     communicationAuthorization?: CommunicationAuthorization | null | undefined;
+    communicationReceipt?:
+      | (Omit<CommunicationReceipt, 'rootMessageId'> & { rootMessageId?: string })
+      | undefined;
   },
 ): ChatMessage {
+  const id = randomUUID();
   return ChatMessageSchema.parse({
     v: CHAT_GENERATION,
-    id: randomUUID(),
+    id,
     ts: new Date().toISOString(),
     from,
     to,
@@ -38,6 +43,14 @@ export function buildEnvelope(
     ...(opts?.communicationAuthorization == null
       ? {}
       : { communicationAuthorization: opts.communicationAuthorization }),
+    ...(opts?.communicationReceipt === undefined
+      ? {}
+      : {
+          communicationReceipt: {
+            ...opts.communicationReceipt,
+            rootMessageId: opts.communicationReceipt.rootMessageId ?? id,
+          },
+        }),
     task: opts?.task ?? null,
     // Waiting for the turn boundary is the DEFAULT, not a sender's courtesy. Typed input reaches a
     // working agent as steering: it lands inside the turn and redirects it, so a peer's routine

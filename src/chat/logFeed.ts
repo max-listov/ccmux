@@ -122,7 +122,11 @@ export function boundFrame(frame: LogFrame): LogFrame {
   if (Buffer.byteLength(JSON.stringify(bounded)) <= MAX_FRAME_BYTES) return bounded;
   // Never truncate a verbatim quote into different evidence. Keep the full claim on disk and
   // explicitly report its omission in this bounded projection.
-  const { communicationAuthorization: omitted, ...row } = bounded.row;
+  const {
+    communicationAuthorization: omitted,
+    communicationReceipt: omittedReceipt,
+    ...row
+  } = bounded.row;
   return {
     ...bounded,
     row: {

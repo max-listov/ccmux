@@ -4,10 +4,14 @@ description: Как ccmux читает историю сессии разных 
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-09-06 18:17 +0700
+updated: 2026-09-09 15:32 +07:00
 ---
 
 # Транскрипт-адаптеры
+
+`stats.usage` читает [канонический usage ledger](usage.md), как CLI/control и расход субагентов.
+Usage display-блоков не суммируется: native message identity и cumulative semantics обрабатывает
+один reducer. Index/checkpoint и usage contributions публикуются атомарно в SQLite cache.
 
 ccmux агент-агностичен: сессию может бэкать разный агентский CLI. Их форматы истории
 **структурно разные**, поэтому чтение идёт через **адаптер на формат + единый контракт**

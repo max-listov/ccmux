@@ -29,6 +29,12 @@ import {
   SteeringSelectorSchema,
 } from '../steering/schema.ts';
 import {
+  UsageListResultSchema,
+  UsageListSchema,
+  UsageReadSchema,
+  UsageSummarySchema,
+} from '../usage/schema.ts';
+import {
   ControlCompactSchema,
   ControlContextOperationReadSchema,
   ControlContextOperationResultSchema,
@@ -85,6 +91,28 @@ import {
 export const controlContract = defineContract(
   { prefix: 'control', scope: 'local' },
   {
+    'usage.read': {
+      method: 'POST',
+      path: '/usage',
+      desc: 'Read measured usage without conversation content',
+      input: UsageReadSchema,
+      output: UsageSummarySchema,
+      idempotent: true,
+      toolName: 'usage',
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 7_000,
+    },
+    'usage.list': {
+      method: 'POST',
+      path: '/usage/list',
+      desc: 'Read a bounded page of local session usage',
+      input: UsageListSchema,
+      output: UsageListResultSchema,
+      idempotent: true,
+      toolName: 'usage_list',
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 7_000,
+    },
     'external.history': {
       method: 'POST',
       path: '/external/history',

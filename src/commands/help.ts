@@ -106,7 +106,7 @@ export const COMMANDS: HelpEntry[] = [
     verb: 'msg',
     args: '<to|machine:to|app/UUID|machine:app/UUID|owner> <text...> [--communication-authorization <JSON file>] [--to-agent claude|codex|opencode] [--to-thread UUID] [--task X] [--interrupt] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>',
     desc: "chat a managed session, an exact Codex App thread, or 'owner'; --to-agent/--to-thread pin replies; mail ARRIVES AT THE RECIPIENT'S TURN BOUNDARY by default (an idle session gets it at once) — --interrupt breaks into a running turn instead, --after N is a timer",
-    note: 'sender is automatic and verified: managed session, exact App thread, or cli. Every session target requires --communication-authorization: JSON with whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope (40–4000 chars), userAuthorizationQuote (verbatim), sourceMessageRef. Stored as an unverified caller claim, not a grant. Owner messages and cancellation do not require it. See docs/communication-authorization.md.',
+    note: 'sender is automatic and verified: managed session, exact App thread, or cli. Every session target requires --communication-authorization: JSON naming a basis — user-instruction (whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope 40–4000 chars, verbatim userAuthorizationQuote, sourceMessageRef), peer-letter (the same, with sourceMessageRef as <peer thread uuid>#<message uuid> resolved against this machine\u2019s records), or thread-continuation (that reference alone, repeating nothing). A prose reference stays an unverified caller claim, not a grant. Owner messages and cancellation do not require it. See docs/communication-authorization.md.',
     example:
       "ccmux msg host-b:app/4e117aea-… 'build is green' --communication-authorization /absolute/authorization.json --to-agent codex --to-thread 4e117aea-…",
   },
@@ -134,6 +134,11 @@ export const COMMANDS: HelpEntry[] = [
     args: '<name|machine:name|app/UUID|machine:app/UUID> <--json [--tail N] [--cursor LINE] [--before LINE --limit N] | --last-message>',
     desc: "conversation history as JSON (incremental reads via --cursor), or --last-message for just the agent's final answer as text (full, not clipped)",
     example: 'ccmux transcript cc-api --last-message',
+  },
+  {
+    verb: 'usage',
+    args: '[address|--fleet] [--json] [--since ISO] [--until ISO] [--timezone IANA] [--cursor TOKEN] [--limit N]',
+    desc: 'measured token usage, cache and daily/model breakdown without conversation content; exit 2 means incomplete coverage',
   },
   {
     verb: 'wait',

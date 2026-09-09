@@ -1,5 +1,6 @@
 import { existsSync, statSync } from 'node:fs';
 import type { AgentKind, TranscriptMessage, TranscriptStats } from '../types.ts';
+import { indexedUsage } from '../usage/indexed.ts';
 import type { AgentProvider } from './index.ts';
 import { EMPTY_STATS, indexTranscript } from './transcriptIndex.ts';
 
@@ -34,7 +35,7 @@ export function unavailableTranscript(
  * once and keeps the running sum. The four counters survive being cut into batches: a tool_result
  * separated from its call is folded into none of them either way, so a boundary changes no number.
  */
-function countStats(provider: TranscriptParser, lines: string[]): TranscriptStats {
+export function countStats(provider: TranscriptParser, lines: string[]): TranscriptStats {
   let user = 0;
   let assistant = 0;
   let toolCalls = 0;
@@ -94,7 +95,8 @@ export function readTranscriptFile(
   // index exists. `seq` stays the absolute line number a `--cursor` is expressed in.
   const window = index.read(start, endLine ?? total);
   const messages = provider.parse(window, start, opts.textLimit, endLine, start, { path });
-  const stats = index.stats;
+  const usage = indexedUsage(path);
+  const stats = { ...index.stats, ...(usage ? { usage } : {}) };
   let mtimeMs: number | null = null;
   try {
     mtimeMs = Math.floor(statSync(path).mtimeMs);

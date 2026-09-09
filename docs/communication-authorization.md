@@ -1,61 +1,124 @@
-# Communication authorization evidence
+# Основание для межсессионной переписки
 
-`message.send`, `ccmux msg` session targets, session-directed `ccmux relay`, and remote
-chat reception require a structured explanation before accepting a new message. The
-same requirement applies to local, fleet-prefixed, role and exact App addresses.
-Transport availability, a peer's request, a reply address and `onBehalfOf` are not user
-permission. Do not use another input tool to evade a refused message.
+`message.send`, `ccmux msg`, адресованный сессии `ccmux relay` и remote chat reception
+требуют основание до записи письма. Правило одинаково для managed, role, fleet-prefixed
+и exact App addresses. Наличие транспорта, reply address или `onBehalfOf` не является
+разрешением. Обход отказа другим инструментом ввода не допускается.
 
-The canonical `CommunicationAuthorizationSchema` is exported by the control service
-client. Its required fields are:
+## Три основания
 
-| Field | Meaning | Bound |
+| basis | Что передаёт отправитель | Что проверяет CCMux |
 | --- | --- | --- |
-| `whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope` | Why this recipient is necessary, the intended result and the current user-authorized scope | Trimmed, 40–4000 characters |
-| `userAuthorizationQuote` | Verbatim user instruction permitting this communication | 1–4000 characters, not whitespace-only, preserved without trimming |
-| `sourceMessageRef` | Reference identifying the source user message | Trimmed, 1–1000 characters |
+| `user-instruction` | Обоснование, дословную цитату человека, ссылку на его сообщение | Форму заявления; содержимое внешнего разговора CCMux не удостоверяет |
+| `peer-letter` | Обоснование, дословную цитату из письма соседа, `<peer thread uuid>#<message uuid>` | Наличие письма, точных отправителя и получателя, совпадение треда и task, наличие цитаты в тексте |
+| `thread-continuation` | Только `sourceMessageRef` на собственное принятое письмо этой переписки | Ту же пару endpoints, тред, task и наличие сохранённой начальной расписки |
 
-Unknown object fields are rejected. No value is synthesized from the message body, a
-task title, tool availability or an agent's claim that the user asked.
+`CommunicationAuthorizationInputSchema` — схема новых запросов, экспортируемая control
+service client. `basis` обязателен. `CommunicationAuthorizationSchema` описывает
+сохранённые наблюдения: историческая запись без `basis` остаётся без него, но не
+принимается как новый запрос. Отсутствие факта не превращается в разрешение.
 
-## Admission and storage
+У двух открывающих оснований обязательны:
 
-The control input always contains `communicationAuthorization`. `null` is admitted only
-for a service caller whose human application channel passes the host's configured
-`messageApplications` bindings. CLI and managed callers cannot self-label as human.
-The raw remote envelope receiver does not admit that exception.
+- `whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope`: 40–4000 символов
+  после trim — зачем нужен этот адресат, какой результат ожидается и чем ограничена работа.
+- `userAuthorizationQuote`: 1–4000 символов, не пробельная строка; сохраняется дословно.
+- `sourceMessageRef`: 1–1000 символов после trim.
 
-Attributed input also pins the exact registration it addresses, so a person's message cannot
-land on a session that was replaced underneath it — but only where the target HAS a
-generation. Most managed sessions are ordinary panes and carry none; requiring the pin of
-them refused the one route this exemption exists for. The requirement therefore lives with
-the handler, which knows the target, and not with the request, which does not.
+Неизвестные поля запрещены. У continuation обоснование и цитата запрещены: оно ссылается
+на уже принятое основание, а не переписывает его. Один файл continuation можно повторно
+использовать для той же пары и того же `--task`, ссылаясь на одно принятое письмо.
 
-CLI callers provide `--communication-authorization <JSON file>`. The reader accepts a
-regular file, reads at most 64 KiB, and does not put the quote in process arguments or
-error output. Caller-owned files containing private quotes should have restricted access.
-Owner notifications and cancellation do not require this peer-communication explanation.
+## Форма файлов
 
-Accepted evidence lives with the exact sender, target, timestamp and message ID in the
-append-only chat ledger and outbound envelope. It is included in JSON log/feed rows,
-not appended to the recipient's message text or notification body. It participates in
-idempotency: retrying an ID with different evidence is a conflict. Historical records
-without evidence remain readable, unchanged; absence means no evidence was recorded,
-not that permission was granted. A bounded feed may omit an oversized claim with an
-explicit note; the source ledger retains the complete quote under the same message ID.
+Первое письмо по разрешению в собственном разговоре:
 
-## Trust boundary
+```json
+{
+  "basis": "user-instruction",
+  "whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope": "Contact the designated reviewer to obtain the requested review result within the agreed scope.",
+  "userAuthorizationQuote": "<дословные слова пользователя>",
+  "sourceMessageRef": "<ссылка на сообщение пользователя>"
+}
+```
 
-This object is an **unverified caller claim**, not a credential or a verified grant.
-CCMux checks shape and admission, not the semantic truth of the explanation. The layer
-owning the source conversation must check the real author, exact quote, recipient and
-action scope, and any subsequent restriction. A matching substring alone is not consent.
-An unavailable source must remain unknown, never become approved.
+Ответ на разрешение, переданное соседом:
 
-This contract governs CCMux message admission. It does not intercept other products'
-native task/chat tools, raw terminal keystrokes, or runtime control operations. Their
-owners must enforce their own admission policy; this is not a sandbox for a malicious
-agent with general shell access.
+```json
+{
+  "basis": "peer-letter",
+  "whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope": "Reply to the designated reviewer within the work authorized in the referenced letter.",
+  "userAuthorizationQuote": "<дословная цитата из письма>",
+  "sourceMessageRef": "<peer thread uuid>#<message uuid>"
+}
+```
 
-Live acceptance scripts sending messages require the same authorization file. Isolated
-unit tests use synthetic fixture evidence only and do not contact real sessions.
+Следующие письма:
+
+```json
+{
+  "basis": "thread-continuation",
+  "sourceMessageRef": "<peer thread uuid>#<идентификатор своего принятого письма>"
+}
+```
+
+UUID берутся из адресной строки письма, а не придумываются. Peer thread — тред соседа,
+написавшего исходное письмо, либо адресата продолжаемой переписки.
+
+CLI получает файл через `--communication-authorization <JSON file>`; чтение ограничено
+64 КиБ и regular file. Цитата не попадает в process arguments или error output.
+Отказ показывает три основания и форму файла. Файл с частными цитатами следует хранить
+с ограниченными правами доступа.
+
+## Пара, задача и долговечная расписка
+
+Переписка связана с exact identities обеих сторон: machine, runtime, managed session и
+thread либо App thread. Переиспользованное имя сессии не означает ту же переписку.
+`task` должен точно совпадать, включая `null`; для другой работы нужно новое основание.
+`peer-letter` разрешает ссылку только при ответе автору этого письма, не третьей стороне.
+
+В `communicationReceipt` сохраняются `rootMessageId`, исходное заявление и
+`sourceLetter` — полный текст, ID, время, стороны и task письма-основания. Для прямого
+user instruction `sourceLetter=null`: CCMux не заявляет, что прочитал внешний разговор.
+Письмо-основание ограничено 16 384 символами; превышение явно отклоняется, текст не режется.
+
+Каждое continuation наследует одну исходную расписку, без растущей цепочки копий и
+повторного объяснения. Сообщение без разрешения или без разрешённой начальной расписки
+не может служить основанием continuation. Источник — append-only ledger и outbound
+envelope, а не отдельный изменяемый registry разрешений.
+
+Ссылка разрешается на originating host. Входящий транспорт несёт уже разрешённую
+расписку; принимающий узел не выдумывает результат чтения чужого диска. Remote
+`message.send` с reference-based основанием отклоняется: его следует разрешить на
+originating host через `msg`. Прямое `user-instruction` остаётся явно непроверенным
+заявлением. Это не remote lookup и не fallback.
+
+## Приёмка и проекции
+
+Control input содержит `communicationAuthorization`; `null` допустим только для
+service caller с human application channel, допущенным host `messageApplications`.
+CLI и managed caller не могут объявить себя человеком. Raw remote envelope не
+предоставляет этого исключения. Attributed input дополнительно пиннит registration
+generation, когда она есть у адресуемой сессии.
+
+Исходное заявление и расписка доступны в JSON log/feed. Они не добавляются к тексту
+доставленного сообщения или уведомления. Oversized feed явно исключает evidence целиком,
+не обрезая цитату; полная запись остаётся в ledger по message ID. Повтор одного ID с
+другим заявлением конфликтует. Owner notifications и cancellation не требуют основания
+межсессионного обращения.
+
+## Граница доверия
+
+Расписка подтверждает запись заявления, **не согласие человека**. Даже точное совпадение
+цитаты с письмом агента не доказывает, что человек это говорил. Смысл разрешения, срок,
+ограничение числа писем, последующий отзыв и допустимость конкретного действия проверяет
+слой, владеющий разговором. CCMux не извлекает ограничения из прозы и не выдаёт credential
+по совпадению подстроки.
+
+Разрешение переписки не разрешает передачу файлов или изменение чужого репозитория.
+Такие операции сохраняют собственную пообъектную приёмку; этот контракт не заменяет
+handoff authorization. Он также не перехватывает инструменты других продуктов или
+произвольный shell и не является sandbox для злонамеренного агента.
+
+Live acceptance требует настоящего разрешения. Изолированные тесты используют только
+синтетические письма и не обращаются к живым сессиям.

@@ -12,6 +12,7 @@ import type { NativePendingRequest } from '../../runtime/projectionSchema.ts';
 import type { ManagedRuntimeSnapshot } from '../../runtime/schema.ts';
 import type { NativeModelSelection } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
+import { customUsage, recordUsage } from '../../usage/live.ts';
 import { VERSION } from '../../util/version.ts';
 import { customMessageContent, customToolEvent } from './content.ts';
 import { CustomInputMetadataSchema } from './input.ts';
@@ -59,7 +60,7 @@ export class CustomProjection {
   private value: ManagedRuntimeSnapshot;
   private cursor: AgentRuntimeEventCursor = {};
   constructor(
-    m: MachineConfig,
+    private m: MachineConfig,
     s: Session,
     private content: ContentBuffer,
     generation: string,
@@ -181,6 +182,24 @@ export class CustomProjection {
       throw new Error('Native event identity differs');
     const advanced = advanceAgentRuntimeEventCursor(this.cursor, event);
     if (advanced.status === 'duplicate') return;
+    if (event.type === 'terminal' && event.metrics?.usage) {
+      const selection =
+        this.value.nativeSelection?.turnId === event.runId
+          ? this.value.nativeSelection.model
+          : null;
+      recordUsage(
+        this.m,
+        this.value.threadId,
+        customUsage(
+          event.metrics.usage,
+          event.runId,
+          event.conversationId,
+          event.emittedAt,
+          selection?.model ?? null,
+          selection?.provider ?? null,
+        ),
+      );
+    }
     const epochChanged =
       'runtimeEpoch' in event &&
       this.cursor.runtimeEpoch !== undefined &&
