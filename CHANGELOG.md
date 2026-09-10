@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.59.1] — 2026-09-10
+
+Endpoint causes are classified by which step failed, not by an errno that varies with the runtime
 ## [0.59.0] — 2026-09-10
 
 External endpoint failures name their cause and cure; a letter belongs to its session
