@@ -6,10 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.58.2] — 2026-09-10
+
+Read external Codex and Claude transcripts by inventory key
+
 - Read external Codex and Claude transcripts by their exact inventory key, preserving native
   records, authorship roles, timestamps and bounded line cursors across local and remote routing.
   Refuse unsupported providers, inaccessible storage and managed identities without adoption.
-
 ## [0.58.1] — 2026-09-10
 
 Stable authored history pagination across appends
