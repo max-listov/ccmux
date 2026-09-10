@@ -6,11 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.58.1] — 2026-09-10
+
+Stable authored history pagination across appends
+
 - Page external authored history from bounded immutable snapshots, avoiding tool-only page
   chains. Preserve cursors across append, verify changed source prefixes, and explicitly reject
   replaced/truncated/rewritten sources or expired snapshots. Bound retained projections, concurrent
   scans and serialized response bytes, including escaped text.
-
 ## [0.58.0] — 2026-09-09
 
 Incremental usage accounting and thread-bound communication receipts
