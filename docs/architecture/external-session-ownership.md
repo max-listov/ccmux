@@ -102,14 +102,15 @@ not recognise — and it is never `null` as a way of saying "unknown".
 | `connection-lost` | An established connection dropped mid-read | The next observation reconnects |
 | `connection-unavailable` | A failure this build cannot name | Connect by hand and read the operating system error |
 
-The first two are kept apart deliberately, and **not** by the errno. Measured on this runtime,
+The first two are kept apart deliberately, and **not** by the errno — whose value for one outage is
+not stable across environments. Measured on Bun 1.3.14, on macOS and on a Linux host alike:
 `net.createConnection` reports `ENOENT` both for a path that does not exist and for a socket whose
-listener has exited, while a direct syscall to that same socket answers `ECONNREFUSED`. Classifying
-on the code the runtime chose would therefore merge "the app never created it" with "the app created
-it and died" — the exact pair a reader needs, and the pair that cost one live diagnosis: fifty
-threads read `connection-unavailable` while the app was open and being typed into. The distinction
-survives because the path is checked before the connect, so the cause is decided by which step
-failed. A path that exists but is not a socket is `endpoint-not-listening`, never `endpoint-absent`:
+listener has exited, while a direct syscall to that same socket answers `ECONNREFUSED`. Measured on
+the CI runner, which installs the latest Bun: that case reports `ECONNREFUSED`. A cause read from
+the errno would therefore be right on one machine of a fleet and wrong on another, and would change
+on both at the next runtime upgrade, with nothing in the output to say so. The distinction is taken
+from which step failed — the path is checked before the connect — so it is the same answer under
+every runtime. A path that exists but is not a socket is `endpoint-not-listening`, never `endpoint-absent`:
 the endpoint is there, so telling a person to start an app that already runs would be false.
 
 The resident snapshot publishes the same reason vocabulary, and a row that loses freshness keeps the

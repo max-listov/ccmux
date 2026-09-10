@@ -15,13 +15,17 @@ const RpcMessageSchema = z.object({
 /**
  * WHY the control endpoint could not be used, decided where the fact is still available.
  *
- * The runtime cannot answer this for us: `net.createConnection` under Bun reports `ENOENT` both for
- * a path that does not exist and for a socket file whose server has exited — measured on this
- * machine against the live endpoint, where the same connect that Bun calls ENOENT answers
- * ECONNREFUSED to a direct syscall. Classifying on the errno would therefore merge the two cases
- * a reader most needs apart: "the app never created it" and "the app created it and died". The
- * distinction survives because the path is checked before the connect, so the kind is decided by
- * which step failed rather than by the code the runtime chose to report.
+ * Not from the errno, and the reason is stronger than "it is imprecise": what it reports for one
+ * outage is not stable across environments. Measured on Bun 1.3.14, both on macOS and on a Linux
+ * host: connecting to a socket whose server has exited reports `ENOENT` — the same code a path that
+ * never existed gives — while a direct syscall to that same socket answers `ECONNREFUSED`. Measured
+ * on the CI runner, which installs the latest Bun: that case reports `ECONNREFUSED`. So the same
+ * failure is two different codes depending on which runtime reads it, and a classifier built on the
+ * errno would diagnose one machine of a fleet correctly and another wrongly — then change its mind
+ * on both at the next runtime upgrade, with nothing in its output to say so.
+ *
+ * The path is checked before the connect instead, so the kind is decided by which step failed —
+ * the same answer under every runtime.
  */
 export type CodexAppFailureKind =
   | 'endpoint-absent'

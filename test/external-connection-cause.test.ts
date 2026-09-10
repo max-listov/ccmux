@@ -16,10 +16,14 @@ import { makeMachine, UUID } from './helpers.ts';
 // two cases a reader most needs apart were the same word: "the app never created the endpoint" and
 // "the app created it and its server is gone".
 //
-// The obvious classifier is the errno, and it does not work here: measured on this runtime,
-// `net.createConnection` answers ENOENT for BOTH a missing path and a socket whose listener has
-// exited — while a direct syscall to that same socket answers ECONNREFUSED. A fake connector would
-// have hidden that completely, which is why every case below drives the real one.
+// The obvious classifier is the errno, and what it reports for one outage is not stable across
+// environments. Measured on Bun 1.3.14 — macOS and a Linux host alike — `net.createConnection`
+// answers ENOENT for BOTH a missing path and a socket whose listener has exited; on the CI runner,
+// which installs the latest Bun, that same case answers ECONNREFUSED. So the classification comes
+// from which STEP failed, and the assertions below pin that outcome rather than the code the runtime
+// happened to report — asserting the code itself is what made an earlier version of this test pass
+// here and fail in CI. A fake connector would have hidden the question entirely, which is why every
+// case drives the real one.
 
 const roots: string[] = [];
 afterEach(() => {
@@ -61,13 +65,9 @@ test('the runtime cannot tell the two outages apart, so the connector does not a
     });
     probe.on('error', (error: NodeJS.ErrnoException) => resolve(error.code ?? 'unknown'));
   });
-  const missingErrno = await new Promise<string>((resolve) => {
-    const probe = net.createConnection(missing);
-    probe.on('error', (error: NodeJS.ErrnoException) => resolve(error.code ?? 'unknown'));
-  });
-  // The measurement this whole design rests on: identical errno, opposite meanings.
-  expect(errno).toBe(missingErrno);
-
+  // Whatever this runtime reports, the endpoint is there and unusable, and the classification below
+  // must not move with the code.
+  expect(errno).not.toBe('connected');
   expect(await kindOf(missing)).toBe('endpoint-absent');
   expect(await kindOf(stale)).toBe('endpoint-not-listening');
 });
