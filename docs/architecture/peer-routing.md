@@ -318,6 +318,16 @@ outbox as well as the ledger: a task whose only letters went to another machine 
 announcing it as a misspelling one line above the line saying where those letters went sent readers
 hunting a mistake that was not there.
 
+**A letter whose recipient was removed is not waiting.** Delivery walks the live sessions, so no
+one will ever pick it up; counting it as outstanding says a colleague is owed an answer nobody can
+give — seventeen such letters were found on one machine, aged seven to twelve days, and thirty-six
+on another. They are matched by exact peer key, not by name, so a freed name taken by a new session
+never adopts the previous occupant's mail, and they are counted and named on their own line rather
+than dropped: the ledger is append-only and a lost letter must stay visible as one. Nothing is
+tombstoned — a tombstone would have been the wrong instrument anyway, and saying so is worth more
+than the correction: immediate mail is judged by the delivery cursor and never consults the ack log,
+so a cancel row would have moved nothing for thirteen of those seventeen.
+
 `msg pending [<task>]` reads the queue: age, kind, sender, recipient, task and the opening of each
 undelivered letter, with a closing line naming how many belong to another session and therefore
 cannot be retracted from here. Before it, `cancel` was the only way to learn anything about

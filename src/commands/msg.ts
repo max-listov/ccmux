@@ -12,6 +12,7 @@ import type { CommunicationAuthorization } from '../chat/communicationAuthorizat
 import { buildEnvelope } from '../chat/compose.ts';
 import { isExternalToken, lookupExternal } from '../chat/external.ts';
 import {
+  chatTargetKey,
   codexAppThreadId,
   externalTarget,
   isCodexAppToken,
@@ -27,6 +28,7 @@ import { isRoleToken, resolveRole } from '../chat/roleAddress.ts';
 import {
   appendAck,
   appendMessage,
+  deliverableTargets,
   loadAckedIds,
   loadCursors,
   loadLedger,
@@ -134,11 +136,12 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   if (positionals[0] === 'pending') {
     const wanted = positionals[1];
     const ledger = loadLedger(machine);
+    const live = deliverableTargets(machine);
     const waiting = [
       ...pendingConditional(
         ledger,
         loadAckedIds(machine),
-        wanted === undefined ? {} : { task: wanted },
+        wanted === undefined ? { live } : { task: wanted, live },
       ).map((msg) => ({
         msg,
         kind: msg.notBefore !== null ? 'timer' : 'deferred',
@@ -146,18 +149,39 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       ...pendingImmediate(
         ledger,
         loadCursors(machine),
-        wanted === undefined ? {} : { task: wanted },
+        wanted === undefined ? { live } : { task: wanted, live },
       ).map((msg) => ({
         msg,
         kind: 'immediate',
       })),
     ].sort((left, right) => left.msg.ts.localeCompare(right.msg.ts));
+    // Counted separately and never mixed into the queue: a letter whose recipient was removed is
+    // not waiting, but it is not nothing either — somebody wrote it and nobody will ever read it.
+    // Folding it into "waiting" said a colleague was owed an answer; dropping it silently would
+    // hide that a letter was lost. It is history now, and history is what the ledger keeps.
+    const stranded = [
+      ...pendingConditional(
+        ledger,
+        loadAckedIds(machine),
+        wanted === undefined ? {} : { task: wanted },
+      ),
+      ...pendingImmediate(
+        ledger,
+        loadCursors(machine),
+        wanted === undefined ? {} : { task: wanted },
+      ),
+    ].filter((msg) => msg.to.kind === 'managed' && !live.has(chatTargetKey(msg.to))).length;
+    const strandedLine =
+      stranded === 0
+        ? null
+        : `${stranded} letter(s) can never be delivered — the session they were addressed to no longer exists`;
     if (waiting.length === 0) {
       console.log(
         wanted === undefined
           ? 'nothing is waiting: every message in this machine’s ledger has been handed over'
           : `nothing is waiting for task '${wanted}'`,
       );
+      if (strandedLine !== null) console.log(strandedLine);
       return 0;
     }
     const now = Date.now();
@@ -193,6 +217,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.log(
         `${waiting.length - mine} of these were sent by another session; only their own sender can retract them`,
       );
+    if (strandedLine !== null) console.log(strandedLine);
     return 0;
   }
 

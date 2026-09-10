@@ -20,6 +20,7 @@ import type {
 import { atomicWrite } from '../util/atomic.ts';
 import {
   chatTargetKey,
+  managedPeer,
   managedPeerKey,
   principalLabel,
   sameSender,
@@ -105,6 +106,27 @@ export function appendAck(
   );
 }
 
+/**
+ * Recipients this machine can still deliver to, by exact peer key.
+ *
+ * A letter addressed to a session that has since been removed is not waiting for anything: delivery
+ * walks the live sessions, so nobody will ever pick it up, and counting it as outstanding says a
+ * colleague is owed an answer that no one can give. Seventeen such letters were found on one
+ * machine, aged seven to twelve days, and thirty-six on another.
+ *
+ * By KEY, not by name: the key carries the conversation uuid, so a name freed and taken by a new
+ * session does not silently adopt the previous occupant's mail. Absence is therefore permanent —
+ * which is what makes it safe to stop counting these rather than to tombstone them. Nothing is
+ * deleted; the ledger is append-only and keeps every letter that was ever sent.
+ */
+export function deliverableTargets(m: MachineConfig): ReadonlySet<string> {
+  return new Set(loadSessions(m).map((session) => chatTargetKey(managedPeer(m.rcPrefix, session))));
+}
+
+function undeliverable(msg: ChatMessage, live: ReadonlySet<string> | undefined): boolean {
+  return live !== undefined && msg.to.kind === 'managed' && !live.has(chatTargetKey(msg.to));
+}
+
 /** `from` matches the sender's SESSION, not the life of it that sent the letter: see `sameSender`.
  *  Undelivered CONDITIONAL messages (deferred or time-delayed), optionally filtered by sender /
  *  recipient / task. "Undelivered" = not yet in the ack-log (neither delivered nor already
@@ -113,10 +135,11 @@ export function appendAck(
 export function pendingConditional(
   ledger: readonly LedgerSlot[],
   acked: Set<string>,
-  filter: { from?: ChatPrincipal; to?: ChatTarget; task?: string },
+  filter: { from?: ChatPrincipal; to?: ChatTarget; task?: string; live?: ReadonlySet<string> },
 ): ChatMessage[] {
   return ledger.filter((msg): msg is ChatMessage => {
     if (msg === null) return false; // a record this build cannot read is not a message it can cancel
+    if (undeliverable(msg, filter.live)) return false;
     if (!(msg.defer || msg.notBefore !== null)) return false; // immediate mail is delivered at once
     if (acked.has(msg.id)) return false; // already delivered or cancelled
     if (filter.from !== undefined && !sameSender(msg.from, filter.from)) return false;
@@ -138,10 +161,11 @@ export function pendingConditional(
 export function pendingImmediate(
   ledger: readonly LedgerSlot[],
   cursors: ChatCursors,
-  filter: { from?: ChatPrincipal; task?: string },
+  filter: { from?: ChatPrincipal; task?: string; live?: ReadonlySet<string> },
 ): ChatMessage[] {
   return ledger.filter((msg, idx): msg is ChatMessage => {
     if (msg === null) return false;
+    if (undeliverable(msg, filter.live)) return false;
     if (msg.defer || msg.notBefore !== null) return false;
     if (filter.from !== undefined && !sameSender(msg.from, filter.from)) return false;
     if (filter.task !== undefined && msg.task !== filter.task) return false;

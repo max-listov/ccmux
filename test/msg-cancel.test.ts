@@ -7,10 +7,12 @@ import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../src/chat/auth.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
 import { managedPeer } from '../src/chat/identity.ts';
 import {
+  deliverableTargets,
   loadAckedIds,
   loadCursors,
   loadLedger,
   pendingConditional,
+  pendingImmediate,
   saveCursors,
 } from '../src/chat/store.ts';
 import { chatAuthPath, outboxPath, sessionsPath } from '../src/config/paths.ts';
@@ -292,4 +294,39 @@ test('mail the owner was already sent is not shown as waiting', async () => {
   await saveCursors(m, { ...loadCursors(m), telegram: loadLedger(m).length });
   const after = await runMsg(cfgPath, 'router', ['pending', 'mirrored']);
   expect(after.out).toContain("nothing is waiting for task 'mirrored'");
+});
+
+test('mail to a session that was removed is not waiting — and is not silently dropped either', async () => {
+  // Seventeen letters were found "waiting" on a live machine, aged seven to twelve days, every one
+  // addressed to a session that had since been removed; thirty-six more on another machine. They
+  // are not outstanding: delivery walks the live sessions, so nobody will ever pick them up, and
+  // counting them said a colleague was owed an answer no one could give.
+  //
+  // The first attempt at this wrote cancel tombstones and was WRONG, which the live queue showed at
+  // once: thirteen of the seventeen were immediate mail, and immediate mail is judged by the
+  // delivery cursor and never consults the ack log — so the count did not move. Hence both kinds
+  // below; a test that took only the deferred path is what let the mistake through.
+  const { cfgPath, m } = setup();
+  await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 'deferred-to-dead', 'a']);
+  await runMsg(cfgPath, 'router', ['worker', '--interrupt', '--task', 'immediate-to-dead', 'b']);
+  await runMsg(cfgPath, 'router', ['router2', '--after', '600', '--task', 'to-the-living', 'c']);
+  expect(pendingConditional(loadLedger(m), loadAckedIds(m), {})).toHaveLength(2);
+
+  // The recipient leaves. Nothing about the letters changes; the ledger keeps every one of them.
+  const rows = loadSessions(m).filter((session) => session.name !== 'worker');
+  writeFileSync(sessionsPath(m), `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`);
+
+  const listed = await runMsg(cfgPath, 'router2', ['pending']);
+  expect(listed.out).not.toContain('deferred-to-dead');
+  expect(listed.out).not.toContain('immediate-to-dead');
+  // Both kinds, counted — the half the first attempt missed is exactly the immediate one.
+  expect(listed.out).toContain('2 letter(s) can never be delivered');
+  // A live recipient is untouched: a cleanup that swallowed real mail would be worse than the lie.
+  expect(listed.out).toContain('to-the-living');
+
+  const live = deliverableTargets(m);
+  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { live })).toHaveLength(1);
+  expect(pendingImmediate(loadLedger(m), loadCursors(m), { live })).toHaveLength(0);
+  // And nothing was erased: without the filter the record is still there to be read.
+  expect(pendingConditional(loadLedger(m), loadAckedIds(m), {})).toHaveLength(2);
 });
