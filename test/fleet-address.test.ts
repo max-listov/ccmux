@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { formatChatInjection } from '../src/chat/format.ts';
 import { SessionSchema } from '../src/config/schema.ts';
@@ -175,13 +176,36 @@ test("an inherited prototype key is not a machine — 'toString:api' is unknown,
   if (r.kind === 'error') expect(r.message).toContain('unknown machine');
 });
 
-test('sub-verbs keep their word order across the remote transport: `chat on <name>`, never `chat <name> on`', () => {
-  // `chat on/off` and `router on/off` put the sub-verb BEFORE the session, so a forwarder that
-  // always appended the session right after the verb would rebuild a DIFFERENT command remotely.
-  // Asserted on the real construction site (it is one line, and mocking ssh to reach it would test
-  // the mock instead of the code).
-  const src = readFileSync(join(import.meta.dir, '..', 'src', 'fleet', 'forward.ts'), 'utf8');
-  expect(src).toContain(
-    "const argv = ['ccmux', verb, ...(opts.verbArgs ?? []), route.session, ...args];",
-  );
+test('sub-verbs keep their word order across the remote transport: `chat on <name>`, never `chat <name> on`', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-forward-order-'));
+  try {
+    const argv = join(root, 'argv');
+    // The transport endpoint only captures what the real forwarder actually sent.
+    writeFileSync(join(root, 'ssh'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${shellQuote(argv)}\n`, {
+      mode: 0o700,
+    });
+    const module = join(import.meta.dir, '..', 'src', 'fleet', 'forward.ts');
+    const m = makeMachine({ rcPrefix: 'host-a', fleet: { 'host-b': 'alias-b' } });
+    for (const [verb, action] of [
+      ['chat', 'on'],
+      ['router', 'off'],
+    ]) {
+      const script = `import { forwardIfRemote } from ${JSON.stringify(module)};
+        const result = await forwardIfRemote('host-b:api', ${JSON.stringify(verb)}, ['--json'],
+          {m: ${JSON.stringify(m)}, verbArgs: [${JSON.stringify(action)}]});
+        if (!result.done || result.code !== 0) process.exit(1);`;
+      const proc = Bun.spawn([process.execPath, '-e', script], {
+        env: { ...process.env, PATH: `${root}:${process.env.PATH}` },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const stderr = await new Response(proc.stderr).text();
+      expect(await proc.exited, stderr).toBe(0);
+      expect(readFileSync(argv, 'utf8').trim().split('\n').at(-1)).toBe(
+        `'ccmux' '${verb}' '${action}' 'api' '--json'`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
