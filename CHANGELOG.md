@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.59.0] — 2026-09-10
+
+External endpoint failures name their cause and cure; a letter belongs to its session
 ## [0.58.2] — 2026-09-10
 
 Read external Codex and Claude transcripts by inventory key
