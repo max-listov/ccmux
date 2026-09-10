@@ -90,6 +90,29 @@ export function samePrincipal(left: ChatPrincipal, right: ChatPrincipal): boolea
   return chatPrincipalKey(left) === chatPrincipalKey(right);
 }
 
+/**
+ * The sender as a NAMED SESSION rather than one of its lives.
+ *
+ * A managed principal carries the conversation uuid, and that uuid is an instance: restart, renew or
+ * a fresh conversation gives the same `machine:session` a new one. Retracting a letter matched on it
+ * therefore worked only until the sender's next restart, after which nobody could — the sender was
+ * gone and the new life of the same session was a stranger to its own outstanding mail. Measured:
+ * a letter sent by `<session>` four days earlier could not be withdrawn by `<session>`.
+ *
+ * The runtime stays in the key. A name freed and taken by another provider is a different sender,
+ * and inheriting the previous owner's mail is the failure this granularity avoids on the other side.
+ * Nothing else about a session's identity varies across its lives.
+ */
+export function senderKey(principal: ChatPrincipal): string {
+  return principal.kind === 'managed'
+    ? `${principal.source}:${principal.machine}:${principal.agent}:${principal.session}`
+    : chatPrincipalKey(principal);
+}
+
+export function sameSender(left: ChatPrincipal, right: ChatPrincipal): boolean {
+  return senderKey(left) === senderKey(right);
+}
+
 export function sameTarget(left: ChatTarget, right: ChatTarget): boolean {
   return chatTargetKey(left) === chatTargetKey(right);
 }

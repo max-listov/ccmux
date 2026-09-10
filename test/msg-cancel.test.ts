@@ -6,7 +6,13 @@ import { join } from 'node:path';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../src/chat/auth.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { loadAckedIds, loadLedger, pendingConditional } from '../src/chat/store.ts';
+import {
+  loadAckedIds,
+  loadCursors,
+  loadLedger,
+  pendingConditional,
+  saveCursors,
+} from '../src/chat/store.ts';
 import { chatAuthPath, outboxPath, sessionsPath } from '../src/config/paths.ts';
 import { MachineConfigSchema } from '../src/config/schema.ts';
 import { loadSessions } from '../src/config/sessions.ts';
@@ -102,7 +108,8 @@ test("cancel is scoped to the sender — one router can't cancel another's watch
   const { cfgPath, m } = setup();
   await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 'shared', 'mine']);
   const { out } = await runMsg(cfgPath, 'router2', ['cancel', 'shared']); // different sender
-  expect(out).toContain('cancelled 0');
+  expect(out).toContain('nothing of yours is waiting');
+  expect(out).toContain('only their own sender can retract them');
   expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 'shared' }).length).toBe(1); // untouched
 });
 
@@ -163,7 +170,7 @@ test('cancel names the immediate mail it could not withdraw, so its zero is not 
   expect(code).toBe(0);
   // Nothing conditional to tombstone — and a bare zero here reads as an empty queue while the
   // letter is still on its way, which is exactly the conclusion a sender acts on.
-  expect(out).toContain('cancelled 0');
+  expect(out).toContain('nothing to cancel');
   expect(out).toContain("1 immediate message(s) for 't4' are still on their way");
   expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't4' }).length).toBe(0);
 });
@@ -185,6 +192,104 @@ test('cancel says it cannot reach mail that went to another machine, instead of 
     `${JSON.stringify({ kind: 'msg', envelope, result: { ok: true, detail: '' } })}\n`,
   );
   const { out } = await runMsg(cfgPath, 'router', ['cancel', 't5']);
-  expect(out).toContain('cancelled 0');
+  // And the name is NOT reported as unknown: the outbox knows it. Saying "check the name" one line
+  // above "it went to another machine" sent a reader hunting a typo that was not there.
+  expect(out).not.toContain("no task 't5'");
+  expect(out).toContain('nothing to cancel');
   expect(out).toContain("1 message(s) for 't5' went to another machine");
+});
+
+// A named session outlives its own lives. `ccmux renew`, a restart, a fresh conversation — the
+// address `<machine>:<session>` stays, the conversation uuid does not. Matching a sender by that
+// uuid meant a letter could be retracted only until its sender next restarted, and after that by
+// nobody at all: the instance that sent it was gone, and the same session's new life was a stranger
+// to its own outstanding mail. Measured on a live machine: a letter four days old, its sender still
+// running under the same name, `cancelled 0`.
+
+function reincarnate(m: ReturnType<typeof setup>['m'], name: string, extra: object = {}): void {
+  const rows = loadSessions(m).map((session) =>
+    session.name === name ? { ...session, uuid: randomUUID(), ...extra } : session,
+  );
+  writeFileSync(sessionsPath(m), `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`);
+  for (const session of loadSessions(m)) rotateChatCredential(m, session);
+}
+
+test('a letter outlives the life that sent it, and its session can still retract it', async () => {
+  const { cfgPath, m } = setup();
+  await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 'outlives', 'watchdog']);
+  const sent = loadLedger(m).at(-1);
+  expect(sent?.from.kind === 'managed' && sent.from.session).toBe('router');
+
+  reincarnate(m, 'router');
+  const sender = loadSessions(m).find((row) => row.name === 'router');
+  // The premise, asserted rather than assumed: this really is a different instance of one session.
+  expect(sender?.uuid).not.toBe(sent?.from.kind === 'managed' ? sent.from.threadId : undefined);
+
+  const result = await runMsg(cfgPath, 'router', ['cancel', 'outlives']);
+  expect(result.out).toContain('cancelled 1 undelivered message(s)');
+  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 'outlives' })).toEqual([]);
+});
+
+test('a name taken over by another runtime does not inherit the previous owner’s mail', async () => {
+  // The other side of loosening the key. A freed name can be taken by a different provider, and
+  // letting the new owner retract the old one's letters would be the same defect pointing the other
+  // way — so the runtime stays part of who the sender is.
+  const { cfgPath, m } = setup();
+  await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 'handover', 'watchdog']);
+  reincarnate(m, 'router', { agent: 'codex' });
+  const result = await runMsg(cfgPath, 'router', ['cancel', 'handover']);
+  expect(result.out).toContain('belong to');
+  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 'handover' })).toHaveLength(1);
+});
+
+test('the three ways nothing was cancelled are told apart, because each needs a different move', async () => {
+  const { cfgPath } = setup();
+  await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 'theirs', 'watchdog']);
+
+  // Someone else's letter: naming the sender is what stops the reader concluding the queue is stuck.
+  const foreign = await runMsg(cfgPath, 'router2', ['cancel', 'theirs']);
+  expect(foreign.out).toContain('nothing of yours is waiting');
+  expect(foreign.out).toContain('router');
+
+  // A task this ledger never carried — almost always a typo, and the one case where retrying the
+  // same command verbatim is pointless.
+  const unknown = await runMsg(cfgPath, 'router', ['cancel', 'theris']);
+  expect(unknown.out).toContain("no task 'theris'");
+
+  // Nothing left to retract: the letters under that task are already resolved.
+  await runMsg(cfgPath, 'router', ['cancel', 'theirs']);
+  const again = await runMsg(cfgPath, 'router', ['cancel', 'theirs']);
+  expect(again.out).toContain('has been delivered or already retracted');
+  expect(again.out).not.toContain('nothing of yours is waiting');
+});
+
+test('the queue can be read, and each letter carries how long it has waited', async () => {
+  const { cfgPath, m } = setup();
+  await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 'visible', 'watchdog']);
+  const older = loadLedger(m).at(-1);
+  expect(older).not.toBeNull();
+
+  const listed = await runMsg(cfgPath, 'router2', ['pending']);
+  expect(listed.out).toContain('visible');
+  expect(listed.out).toContain('test:worker');
+  expect(listed.out).toMatch(/\b\d+[smhd]/); // an age, not a timestamp nobody subtracts by hand
+  expect(listed.out).toContain('sent by another session');
+
+  const filtered = await runMsg(cfgPath, 'router', ['pending', 'nothing-like-this']);
+  expect(filtered.out).toContain("nothing is waiting for task 'nothing-like-this'");
+});
+
+test('mail the owner was already sent is not shown as waiting', async () => {
+  // The owner has no pane, so no delivery cursor ever advances for them: their notices are consumed
+  // by the Telegram mirror, which keeps its own index. Judged by the pane cursor instead, every
+  // notice ever sent to the owner reads as still queued — eleven days of already-mirrored messages
+  // presented as a stuck queue, which is the same false reading this command exists to end.
+  const { cfgPath, m } = setup();
+  await runMsg(cfgPath, 'router', ['owner', '--task', 'mirrored', 'a notice']);
+  const before = await runMsg(cfgPath, 'router', ['pending', 'mirrored']);
+  expect(before.out).toContain('a notice');
+
+  await saveCursors(m, { ...loadCursors(m), telegram: loadLedger(m).length });
+  const after = await runMsg(cfgPath, 'router', ['pending', 'mirrored']);
+  expect(after.out).toContain("nothing is waiting for task 'mirrored'");
 });

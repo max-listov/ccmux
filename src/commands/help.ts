@@ -104,8 +104,8 @@ export const COMMANDS: HelpEntry[] = [
   },
   {
     verb: 'msg',
-    args: '<to|machine:to|app/UUID|machine:app/UUID|owner> <text...> [--communication-authorization <JSON file>] [--to-agent claude|codex|opencode] [--to-thread UUID] [--task X] [--interrupt] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>',
-    desc: "chat a managed session, an exact Codex App thread, or 'owner'; --to-agent/--to-thread pin replies; mail ARRIVES AT THE RECIPIENT'S TURN BOUNDARY by default (an idle session gets it at once) — --interrupt breaks into a running turn instead, --after N is a timer",
+    args: '<to|machine:to|app/UUID|machine:app/UUID|owner> <text...> [--communication-authorization <JSON file>] [--to-agent claude|codex|opencode] [--to-thread UUID] [--task X] [--interrupt] [--after <sec>] [--on-behalf-of <who>]  |  cancel <task>  |  pending [task]',
+    desc: "chat a managed session, an exact Codex App thread, or 'owner'; 'pending' shows what is still undelivered and how long it has waited, 'cancel' withdraws your own conditional mail — by SESSION, so a restart does not orphan it; --to-agent/--to-thread pin replies; mail ARRIVES AT THE RECIPIENT'S TURN BOUNDARY by default (an idle session gets it at once) — --interrupt breaks into a running turn instead, --after N is a timer",
     note: 'sender is automatic and verified: managed session, exact App thread, or cli. Every session target requires --communication-authorization: JSON naming a basis — user-instruction (whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope 40–4000 chars, verbatim userAuthorizationQuote, sourceMessageRef), peer-letter (the same, with sourceMessageRef as <peer thread uuid>#<message uuid> resolved against this machine\u2019s records), or thread-continuation (that reference alone, repeating nothing). A prose reference stays an unverified caller claim, not a grant. Owner messages and cancellation do not require it. See docs/communication-authorization.md.',
     example:
       "ccmux msg host-b:app/4e117aea-… 'build is green' --communication-authorization /absolute/authorization.json --to-agent codex --to-thread 4e117aea-…",

@@ -303,6 +303,29 @@ is local-only for the same reason `--after` is. Both limits are printed beside t
 bare "cancelled 0" is read as "nothing of mine is waiting" — the opposite of the truth in exactly
 the two cases a sender cannot check from here.
 
+**Who may withdraw a letter is its SESSION, not the life of it that wrote it.** A managed principal
+carries the conversation uuid; that uuid is an instance, and `<machine>:<session>` outlives it —
+restart, renew or a fresh conversation gives the same address a new one. Matched on the uuid,
+withdrawal worked only until the sender's next restart and then belonged to nobody: the instance was
+gone, and the same session's next life was a stranger to its own outstanding mail. The runtime stays
+in the key, so a freed name taken by another provider is a different sender and does not inherit the
+previous owner's queue.
+
+**A count is not an answer.** `cancelled 0` covered four different states at once — nothing of mine
+is waiting, someone else's is, the task name is a typo, and the instance that could retract it is
+gone — and each needs a different next move, so each is said by name. The typo verdict consults the
+outbox as well as the ledger: a task whose only letters went to another machine is known, and
+announcing it as a misspelling one line above the line saying where those letters went sent readers
+hunting a mistake that was not there.
+
+`msg pending [<task>]` reads the queue: age, kind, sender, recipient, task and the opening of each
+undelivered letter, with a closing line naming how many belong to another session and therefore
+cannot be retracted from here. Before it, `cancel` was the only way to learn anything about
+outstanding mail, and it answered with a number. Mail addressed to the owner is judged by the
+Telegram mirror's own index rather than a delivery cursor — the owner has no pane, so no delivery
+cursor ever advances for them, and read the other way every notice ever sent to the owner appears as
+a stuck queue.
+
 **Those two limits stay.** A letter that events have overtaken is not withdrawn; the sender writes
 another one. This is a decision, not a gap waiting to be filled: a ledger is what makes "who said
 what, and when" answerable, and mail that can vanish from it answers nothing — a recipient that

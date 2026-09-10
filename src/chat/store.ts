@@ -22,7 +22,7 @@ import {
   chatTargetKey,
   managedPeerKey,
   principalLabel,
-  samePrincipal,
+  sameSender,
   sameTarget,
   targetLabel,
 } from './identity.ts';
@@ -105,7 +105,8 @@ export function appendAck(
   );
 }
 
-/** Undelivered CONDITIONAL messages (deferred or time-delayed), optionally filtered by sender /
+/** `from` matches the sender's SESSION, not the life of it that sent the letter: see `sameSender`.
+ *  Undelivered CONDITIONAL messages (deferred or time-delayed), optionally filtered by sender /
  *  recipient / task. "Undelivered" = not yet in the ack-log (neither delivered nor already
  *  cancelled). This is the set `msg cancel` tombstones and the set a re-armed `--task` replaces.
  *  notBefore due-ness is intentionally NOT considered — a future-dated watchdog is still pending. */
@@ -118,7 +119,7 @@ export function pendingConditional(
     if (msg === null) return false; // a record this build cannot read is not a message it can cancel
     if (!(msg.defer || msg.notBefore !== null)) return false; // immediate mail is delivered at once
     if (acked.has(msg.id)) return false; // already delivered or cancelled
-    if (filter.from !== undefined && !samePrincipal(msg.from, filter.from)) return false;
+    if (filter.from !== undefined && !sameSender(msg.from, filter.from)) return false;
     if (filter.to !== undefined && !sameTarget(msg.to, filter.to)) return false;
     if (filter.task !== undefined && msg.task !== filter.task) return false;
     return true;
@@ -142,8 +143,13 @@ export function pendingImmediate(
   return ledger.filter((msg, idx): msg is ChatMessage => {
     if (msg === null) return false;
     if (msg.defer || msg.notBefore !== null) return false;
-    if (filter.from !== undefined && !samePrincipal(msg.from, filter.from)) return false;
+    if (filter.from !== undefined && !sameSender(msg.from, filter.from)) return false;
     if (filter.task !== undefined && msg.task !== filter.task) return false;
+    // The owner has no pane, so no delivery cursor ever advances for them: their mail is consumed by
+    // the Telegram mirror, which keeps its own index. Judged by the pane cursor, every notice ever
+    // sent to the owner reads as still waiting — eleven days of already-mirrored messages presented
+    // as a stuck queue, which is the same lie in a new place.
+    if (msg.to.kind === 'owner') return (cursors.telegram ?? 0) <= idx;
     return (cursors.delivered[chatTargetKey(msg.to)] ?? 0) <= idx;
   });
 }

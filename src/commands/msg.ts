@@ -18,7 +18,7 @@ import {
   managedPeer,
   ownerTarget,
   principalLabel,
-  samePrincipal,
+  sameSender,
   targetLabel,
 } from '../chat/identity.ts';
 import { localMessageLookup } from '../chat/localMessages.ts';
@@ -38,13 +38,16 @@ import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { AgentKindSchema } from '../config/schema.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
+import { promptInvocation } from '../env.ts';
 import { routeFor } from '../fleet/address.ts';
 import { RETRY_WINDOW_MS } from '../fleet/flush.ts';
 import { appendOutbound, loadOutbox } from '../fleet/outbox.ts';
 import { queuedForRetryNotice, relay, runPeer } from '../fleet/transport.ts';
 import type { AgentKind, ChatTarget, CodexAppPeer } from '../types.ts';
+import { humanizeDuration } from '../util/duration.ts';
 import { log } from '../util/log.ts';
 import { preview } from '../util/preview.ts';
+
 import { usageLine } from './help.ts';
 import {
   assertExpected,
@@ -125,6 +128,74 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
         : null
       : transport;
 
+  // What is waiting, before anyone asks what to withdraw. Without it the queue could only be acted
+  // on blindly: `cancel` was the only way to learn anything about outstanding mail, and it answered
+  // with a number that meant four different things.
+  if (positionals[0] === 'pending') {
+    const wanted = positionals[1];
+    const ledger = loadLedger(machine);
+    const waiting = [
+      ...pendingConditional(
+        ledger,
+        loadAckedIds(machine),
+        wanted === undefined ? {} : { task: wanted },
+      ).map((msg) => ({
+        msg,
+        kind: msg.notBefore !== null ? 'timer' : 'deferred',
+      })),
+      ...pendingImmediate(
+        ledger,
+        loadCursors(machine),
+        wanted === undefined ? {} : { task: wanted },
+      ).map((msg) => ({
+        msg,
+        kind: 'immediate',
+      })),
+    ].sort((left, right) => left.msg.ts.localeCompare(right.msg.ts));
+    if (waiting.length === 0) {
+      console.log(
+        wanted === undefined
+          ? 'nothing is waiting: every message in this machine’s ledger has been handed over'
+          : `nothing is waiting for task '${wanted}'`,
+      );
+      return 0;
+    }
+    const now = Date.now();
+    const rows = waiting.map(({ msg, kind }) => [
+      humanizeDuration((now - Date.parse(msg.ts)) / 1000),
+      kind,
+      principalLabel(msg.from),
+      targetLabel(msg.to),
+      msg.task ?? '-',
+      preview(msg.body),
+    ]);
+    // Widths come from the rows, because these are addresses: a fixed column that fits the header
+    // splits every real one, and a reader who has to reassemble an address by eye is the reason the
+    // wrong session gets written to.
+    const header = ['AGE', 'KIND', 'FROM', 'TO', 'TASK', 'TEXT'];
+    const width = header.map((label, column) =>
+      Math.max(label.length, ...rows.map((row) => (row[column] ?? '').length)),
+    );
+    for (const row of [header, ...rows])
+      console.log(
+        row
+          .map((cell, column) =>
+            column === row.length - 1 ? cell : cell.padEnd(width[column] ?? 0),
+          )
+          .join('  ')
+          .trimEnd(),
+      );
+    // A letter cannot be withdrawn by a stranger, and after a restart the sender's own new life used
+    // to be one. It no longer is — but a letter from ANOTHER session still is, and saying so here is
+    // what keeps the reader from concluding the queue is stuck.
+    const mine = waiting.filter(({ msg }) => sameSender(msg.from, from)).length;
+    if (mine < waiting.length)
+      console.log(
+        `${waiting.length - mine} of these were sent by another session; only their own sender can retract them`,
+      );
+    return 0;
+  }
+
   if (positionals[0] === 'cancel') {
     const cancelTask = positionals[1];
     if (!cancelTask) {
@@ -132,14 +203,42 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       return 1;
     }
     const ledger = loadLedger(machine);
-    const pending = pendingConditional(ledger, loadAckedIds(machine), {
+    const acked = loadAckedIds(machine);
+    const pending = pendingConditional(ledger, acked, {
       from,
       task: cancelTask,
     });
     for (const message of pending) appendAck(machine, message.id, 'cancel', message.to);
-    console.log(
-      `cancelled ${pending.length} undelivered message(s) from ${principalLabel(from)} for task '${cancelTask}'`,
-    );
+    if (pending.length > 0)
+      console.log(
+        `cancelled ${pending.length} undelivered message(s) from ${principalLabel(from)} for task '${cancelTask}'`,
+      );
+    else {
+      // Zero used to be the whole answer, and it covered four different states at once: nothing of
+      // mine is waiting, someone else's is, the task name is a typo, and — before `sameSender` —
+      // "the life of this session that sent it is gone". Each needs a different next move, so each
+      // is said.
+      const others = pendingConditional(ledger, acked, { task: cancelTask });
+      // The outbox counts as knowing the name. Without it a task whose only letters went to another
+      // machine was announced as a typo — one line above the line saying where those letters went.
+      const known =
+        ledger.some((slot) => slot?.task === cancelTask) ||
+        loadOutbox(machine).some((record) => record.envelope.task === cancelTask);
+      if (others.length > 0) {
+        const senders = [...new Set(others.map((msg) => principalLabel(msg.from)))].join(', ');
+        console.log(
+          `nothing of yours is waiting for '${cancelTask}': ${others.length} message(s) under that task belong to ${senders}, and only their own sender can retract them`,
+        );
+      } else if (known) {
+        console.log(
+          `nothing to cancel for '${cancelTask}': every message under that task has been delivered or already retracted`,
+        );
+      } else {
+        console.log(
+          `no task '${cancelTask}' in this machine’s ledger — check the name, or run ${promptInvocation()} msg pending to see what is waiting`,
+        );
+      }
+    }
     const carried = pendingImmediate(ledger, loadCursors(machine), { from, task: cancelTask });
     if (carried.length > 0) {
       console.log(
@@ -153,7 +252,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     const away = loadOutbox(machine).filter(
       (record) =>
         record.envelope.task === cancelTask &&
-        samePrincipal(record.envelope.from, from) &&
+        sameSender(record.envelope.from, from) &&
         (record.envelope.to.kind === 'managed' || record.envelope.to.kind === 'codex-app') &&
         record.envelope.to.machine !== machine.rcPrefix,
     );
