@@ -18,6 +18,8 @@ export type Forwarded =
 
 export interface ForwardOpts {
   m?: MachineConfig;
+  /** Preserve a structured selector whose embedded machine was used only for routing. */
+  remoteTarget?: string;
   /** Hard deadline for the remote call. MUST exceed what the remote verb may legitimately take:
    *  `wait` blocks for its own timeout, so the transport default (30s) would kill a healthy link and
    *  report "transport failed" for a worker that was simply still working. */
@@ -43,7 +45,13 @@ export async function forwardIfRemote(
 
   const args = remoteArgs;
 
-  const argv = ['ccmux', verb, ...(opts.verbArgs ?? []), route.session, ...args];
+  const argv = [
+    'ccmux',
+    verb,
+    ...(opts.verbArgs ?? []),
+    opts.remoteTarget ?? route.session,
+    ...args,
+  ];
   const r = await runPeer(
     cfg,
     route.machine,

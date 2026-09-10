@@ -55,14 +55,40 @@ export async function validateExternalPath(root: string, path: string) {
   if ((await realpath(path)) !== path) throw new Error('Storage path changed');
 }
 
-export async function readExternalCodexMetadata(file: FileHandle, threadId: string) {
+async function metadataLines(file: FileHandle) {
   const stat = await file.stat();
   const head = Buffer.alloc(Math.min(limits.metadataBytes, stat.size));
   const { bytesRead } = await file.read(head, 0, head.length, 0);
   const end = head.subarray(0, bytesRead).indexOf(10);
   if (end < 0) throw new Error('External metadata is unpublished or exceeds its byte budget');
-  const meta = CodexMetaSchema.safeParse(JSON.parse(head.toString('utf8', 0, end)));
+  const last = head.subarray(0, bytesRead).lastIndexOf(10);
+  return head.toString('utf8', 0, last).split('\n');
+}
+
+export async function readExternalCodexMetadata(file: FileHandle, threadId: string) {
+  const meta = CodexMetaSchema.safeParse(JSON.parse((await metadataLines(file))[0] ?? ''));
   if (!meta.success || meta.data.payload.id !== threadId)
     throw new Error('External metadata identity differs');
   return meta.data.payload;
+}
+
+const ClaudeMetaSchema = z.object({
+  sessionId: z.uuid(),
+  cwd: z.string().startsWith('/').optional(),
+});
+
+export async function readExternalClaudeMetadata(file: FileHandle, threadId: string) {
+  for (const line of await metadataLines(file)) {
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const meta = ClaudeMetaSchema.safeParse(value);
+    if (!meta.success) continue;
+    if (meta.data.sessionId !== threadId) throw new Error('External metadata identity differs');
+    return meta.data;
+  }
+  throw new Error('External metadata is unpublished or exceeds its byte budget');
 }

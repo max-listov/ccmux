@@ -12,8 +12,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TranscriptJsonSchema } from '../src/config/schema.ts';
+import { ExternalInventoryJsonSchema, TranscriptJsonSchema } from '../src/config/schema.ts';
 import { appendSession, loadSessions } from '../src/config/sessions.ts';
+import { externalSessionKey } from '../src/external/keys.ts';
 import { readExternalTranscript } from '../src/external/transcript.ts';
 import { shellQuote } from '../src/util/shellQuote.ts';
 import { makeMachine, makeSession } from './helpers.ts';
@@ -57,6 +58,7 @@ function setup() {
     stateDir: state,
     projectsDir: join(root, 'claude'),
     codexSessionsDir: storage,
+    codexHome: join(root, 'codex-home'),
     externalInventory: true,
   });
   const config = join(root, 'machine.json');
@@ -173,6 +175,117 @@ test('remote machine prefix reaches the target CLI with exact app identity and o
   expect(readFileSync(argv, 'utf8')).toContain(
     `'transcript' '${ADDRESS}' '--json' '--before' '9' '--limit' '2'`,
   );
+  const key = externalSessionKey('codex', 'host-b', THREAD);
+  const external = await f.cli(key, ['--json', '--before', '9', '--limit', '2']);
+  expect(external.code, external.stderr).toBe(0);
+  const selected = TranscriptJsonSchema.parse(JSON.parse(external.stdout));
+  expect(selected.session.rc).toBe(key);
+  expect(selected.session.machine).toBe('host-b');
+  expect(selected.messages.map((m) => m.text)).toEqual(['message 6', 'message 7']);
+  expect(readFileSync(argv, 'utf8')).toContain(`'transcript' '${key}'`);
+});
+
+test('inventory keys read Codex and Claude records with native authorship and timestamps', async () => {
+  const f = setup();
+  mkdirSync(join(f.m.projectsDir, 'project'), { recursive: true });
+  const claude = join(f.m.projectsDir, 'project', `${OTHER}.jsonl`);
+  const at = '2026-09-01T01:02:03.000Z';
+  const userId = '33333333-3333-4333-8333-333333333333';
+  const assistantId = '44444444-4444-4444-8444-444444444444';
+  const row = (role: string, uuid: string, text: string) =>
+    JSON.stringify({
+      type: role,
+      uuid,
+      sessionId: OTHER,
+      cwd: f.root,
+      timestamp: at,
+      message: { role, content: [{ type: 'text', text }] },
+    });
+  writeFileSync(
+    claude,
+    `${row('user', userId, 'exact quoted text')}\n${row('assistant', assistantId, 'answer')}\n`,
+    { mode: 0o600 },
+  );
+  const bin = join(f.root, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'ps'), `#!/bin/sh\nprintf '%s\\n' ' 42 1 claude --resume ${OTHER}'\n`, {
+    mode: 0o700,
+  });
+  const proc = Bun.spawn([process.execPath, CLI, 'external', '--json'], {
+    env: { ...f.env, PATH: `${bin}:${f.env.PATH}` },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const inventory = ExternalInventoryJsonSchema.parse(
+    await new Response(proc.stdout).json(),
+  ).sessions;
+  expect(await proc.exited).toBe(0);
+  for (const provider of ['codex', 'claude']) {
+    const entry = inventory.find(
+      (r) => r.provider === provider && r.threadId === (provider === 'codex' ? THREAD : OTHER),
+    );
+    expect(entry?.capabilities.inspect).toBe(true);
+    if (!entry) throw new Error('fixture missing from inventory');
+    const result = await f.cli(entry.key);
+    expect(result.code, result.stderr).toBe(0);
+    const page = TranscriptJsonSchema.parse(JSON.parse(result.stdout));
+    expect(page.session.rc).toBe(entry.key);
+    expect(page.source.kind).toBe(`${provider}-jsonl`);
+    expect(page.messages.every((m) => m.id && m.createdAt)).toBe(true);
+    expect(new Set(page.messages.map((m) => m.role))).toEqual(new Set(['user', 'assistant']));
+    if (provider === 'claude') {
+      expect(page.messages.map((m) => [m.role, m.text, m.createdAt])).toEqual([
+        ['user', 'exact quoted text', at],
+        ['assistant', 'answer', at],
+      ]);
+      const older = await f.cli(entry.key, ['--json', '--before', '2', '--limit', '1']);
+      expect(
+        TranscriptJsonSchema.parse(JSON.parse(older.stdout)).messages.map((m) => m.text),
+      ).toEqual(['exact quoted text']);
+    }
+  }
+  expect(loadSessions(f.m)).toEqual([]);
+  const key = externalSessionKey('claude', 'host-a', OTHER);
+  chmodSync(claude, 0o666);
+  const denied = await f.cli(key);
+  expect(denied.code).toBe(1);
+  expect(JSON.parse(denied.stdout).source.error).toBe('transcript file unreadable');
+  chmodSync(claude, 0o600);
+  writeFileSync(claude, `${row('user', userId, 'wrong identity').replace(OTHER, THREAD)}\n`);
+  expect((await f.cli(key)).code).toBe(1);
+  rmSync(claude);
+  const absent = await f.cli(key);
+  expect(absent.code).toBe(1);
+  expect(JSON.parse(absent.stdout).source.error).toBe('transcript file not found');
+});
+
+test('inventory selectors refuse malformed, unknown-host, unsupported and managed identities', async () => {
+  const f = setup();
+  for (const key of [
+    'external:codex:host-a#bad',
+    `external:codex:unknown#${THREAD}`,
+    `external:codex:host-a#${THREAD}#extra`,
+  ])
+    expect((await f.cli(key)).code).toBe(1);
+  const unsupported = await f.cli(externalSessionKey('opencode', 'host-a', THREAD));
+  expect(unsupported.code).toBe(1);
+  expect(JSON.parse(unsupported.stdout).source.error).toBe(
+    'external transcript provider is unsupported',
+  );
+  const agent = await f.cli(externalSessionKey('codex', 'host-a', THREAD), [
+    '--json',
+    '--agent',
+    'child',
+  ]);
+  expect(agent.code).toBe(1);
+  expect(agent.stderr).toContain('external agent transcripts are not supported');
+  await appendSession(
+    f.m,
+    makeSession({ name: 'agent-a', uuid: THREAD, agent: 'codex', dir: f.root }),
+  );
+  const managed = await f.cli(externalSessionKey('codex', 'host-a', THREAD));
+  expect(managed.code).toBe(1);
+  expect(managed.stderr).toContain('managed session address');
 });
 
 test('missing and unreadable external storage are unavailable, not an empty success', async () => {
@@ -218,19 +331,32 @@ test('explicit inspection is independent of fleet scanning; invalid and ambiguou
   const f = setup();
   expect((await f.cli('app/not-a-uuid')).code).toBe(1);
   expect(
-    (await readExternalTranscript({ ...f.m, externalInventory: false }, THREAD, { tail: 3 })).read
-      .available,
+    (
+      await readExternalTranscript(
+        { ...f.m, externalInventory: false },
+        { provider: 'codex', threadId: THREAD },
+        { tail: 3 },
+      )
+    ).read.available,
   ).toBe(true);
   writeFileSync(f.path, `${f.metadata.replace(THREAD, OTHER)}\n${record(1)}\n`);
-  expect((await readExternalTranscript(f.m, THREAD, { tail: 3 })).read.available).toBe(false);
+  expect(
+    (await readExternalTranscript(f.m, { provider: 'codex', threadId: THREAD }, { tail: 3 })).read
+      .available,
+  ).toBe(false);
   writeFileSync(f.path, `${f.metadata}\n`);
-  const empty = await readExternalTranscript(f.m, THREAD, { tail: 3 });
+  const empty = await readExternalTranscript(
+    f.m,
+    { provider: 'codex', threadId: THREAD },
+    { tail: 3 },
+  );
   expect(empty.read.available).toBe(true);
   expect(empty.read.messages).toEqual([]);
   writeFileSync(join(f.storage, `rollout-other-${THREAD}.jsonl`), `${f.metadata}\n`);
-  expect((await readExternalTranscript(f.m, THREAD, { tail: 3 })).read.error).toBe(
-    'transcript file unreadable',
-  );
+  expect(
+    (await readExternalTranscript(f.m, { provider: 'codex', threadId: THREAD }, { tail: 3 })).read
+      .error,
+  ).toBe('transcript file unreadable');
 });
 
 test('managed transcript remains readable only by its registered address', async () => {
@@ -265,7 +391,11 @@ test('a thread the provider archived is still readable at the same address', asy
     `${JSON.stringify({ type: 'session_meta', payload: { id: OTHER, cwd: f.root } })}\n${record(1)}\n${record(2)}\n`,
     { mode: 0o600 },
   );
-  const { read, dir } = await readExternalTranscript(f.m, OTHER, { tail: 3 });
+  const { read, dir } = await readExternalTranscript(
+    f.m,
+    { provider: 'codex', threadId: OTHER },
+    { tail: 3 },
+  );
   expect(read.available).toBe(true);
   expect(read.path).toBe(realpathSync(path));
   expect(read.messages.length).toBe(2);
@@ -283,7 +413,11 @@ test('a live thread still wins over an archived file with the same identity', as
     `${JSON.stringify({ type: 'session_meta', payload: { id: THREAD, cwd: f.root } })}\n${record(99)}\n`,
     { mode: 0o600 },
   );
-  const { read } = await readExternalTranscript(f.m, THREAD, { tail: 3 });
+  const { read } = await readExternalTranscript(
+    f.m,
+    { provider: 'codex', threadId: THREAD },
+    { tail: 3 },
+  );
   expect(read.available).toBe(true);
   expect(read.path).toContain('/sessions/');
   expect(read.path).not.toContain('archived_sessions');
@@ -292,7 +426,11 @@ test('a live thread still wins over an archived file with the same identity', as
 test('an identity in neither directory is still reported as missing', async () => {
   const f = setup();
   mkdirSync(join(f.root, 'archived_sessions'));
-  const { read } = await readExternalTranscript(f.m, OTHER, { tail: 3 });
+  const { read } = await readExternalTranscript(
+    f.m,
+    { provider: 'codex', threadId: OTHER },
+    { tail: 3 },
+  );
   expect(read.available).toBe(false);
   expect(read.error).toBe('transcript file not found');
 });

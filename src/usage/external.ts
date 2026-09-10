@@ -31,7 +31,7 @@ export async function readExternalUsage(
     const prior = locations.read(threadId, LocationSchema);
     const result = await withExternalTranscript(
       m,
-      threadId,
+      { provider: 'codex', threadId },
       (path) => ({
         path,
         summary: readUsageFile(exact, path, 'codex', query, advance),

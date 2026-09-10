@@ -4,7 +4,7 @@ description: Provider-neutral identity, advisory writer evidence and atomic Code
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-09-09 13:21 +0700
+updated: 2026-09-10 09:44 +07:00
 ---
 
 # External session discovery and ownership
@@ -13,6 +13,11 @@ External inventory is a local, read-only projection. Its identity is
 `external:<provider>:<host>#<threadId>`. Cwd, transcript path, mtime and persisted origin are display
 metadata and never selectors. Managed rows use a separate plane key including provider, host,
 registry name and UUID, so equal cwd or UUID fixtures remain independently selectable.
+
+Pass an exact external `key` to `ccmux transcript <key> --json` for stored Codex/Claude
+records, including native roles, IDs and timestamps. The key carries its routing host;
+this read never becomes a write address or acquires a provider writer. Read errors distinguish
+missing files, inaccessible storage and unsupported providers. See [transcript selection](transcript-adapters.md#exact-external-selection).
 
 `ccmux external` reads that projection explicitly; `ccmux external --json` returns its strict
 machine-readable shape. The command is local because the rows are observations, not lifecycle

@@ -181,6 +181,17 @@ Every action re-reads the exact provider+host+UUID row before mutating. External
 `ccmux fleet` remains the managed-session wire. Adopted-in-place Codex sessions gain lifecycle
 management but no hidden management/chat prompt is inserted into the existing conversation.
 
+Read a stored external Codex or Claude thread using the exact `key` returned by that inventory:
+
+```bash
+ccmux transcript 'external:codex:<machine>#<uuid>' --json --tail 50
+```
+
+The embedded machine selects the host. Records retain their native role, timestamp, ID and text;
+`--cursor` and `--before --limit` use the same line windows as managed transcripts. Missing,
+unreadable and unsupported storage return distinct errors with exit 1. Reading does not adopt,
+resume, send to or otherwise take ownership of the thread.
+
 `ccmux external --json` exposes independent `turnState` evidence from an accessible native Codex
 App Server; a shared writer lock never means the thread is working. States include working, idle,
 approval/input wait and unknown, with provenance and a five-second expiry. Unsupported or

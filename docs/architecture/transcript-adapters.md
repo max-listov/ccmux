@@ -4,7 +4,7 @@ description: Как ccmux читает историю сессии разных 
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-09-09 15:32 +07:00
+updated: 2026-09-10 09:49 +07:00
 ---
 
 # Транскрипт-адаптеры
@@ -45,7 +45,12 @@ interface AgentProvider {
 adapters остаются чистыми трансформами. `detect(lines)` — сниффер формата по содержимому для
 неизвестного исторического файла.
 
-## Exact external Codex address
+## Exact external selection
+
+`ccmux transcript 'external:<provider>:<machine>#<UUID>' --json` принимает точный key
+из inventory для Codex и Claude. Встроенная machine выбирает existing fleet transport,
+provider выбирает штатный parser. Это storage selector, не managed session alias и не
+новый write address. Remote hop сохраняет key целиком; cwd/path не принимаются от caller.
 
 `ccmux transcript app/<UUID> --json --tail 3` и форма с префиксом машины
 `<machine>:app/<UUID>` читают persisted Codex JSONL без adopt, fork, запуска provider или записи
@@ -55,7 +60,9 @@ host account и разрешённым remote CLI transport; managed UUID тре
 Service API `external.history` сохраняет собственный access policy и не расширяется этой командой.
 
 `src/external/storage.ts` владеет общим с external-content lookup: configured root,
-не более 8192 entries и восьми уровней, exact UUID filename и совпадающая первая metadata record.
+не более 8192 entries и восьми уровней, exact UUID filename и совпадающая metadata identity.
+Codex проверяет первую `session_meta`; Claude — bounded metadata с `sessionId`.
+Claude registry UUID и native continuation ID исключены из external read одинаково.
 Требуются same-user regular file и отсутствие group/world write; symlink не обходится.
 `src/external/transcript.ts` подключает подтверждённый файл к общему line reader.
 
@@ -67,12 +74,17 @@ Tail и backward limit ограничены 1000 строками. `seq` и `--c
 явно не поддерживается. Это полный transcript projection, не authored-text external.history API
 с его отдельным revision-pinned byte cursor.
 
-Stored transcript: `source.available=true`, `kind=codex-jsonl`, exit 0; пустое успешно прочитанное
+Роль `user` означает native роль записи, а не криптографическое доказательство, что
+текст напечатал человек: caller проверяет происхождение разрешения отдельно. Отсутствующая
+native отметка времени остаётся null; время чтения не подставляется вместо неё.
+
+Stored transcript: `source.available=true`, `kind=codex-jsonl|claude-jsonl`, exit 0; пустое успешно прочитанное
 окно остаётся доступным. Missing: `source.available=false`, error `transcript file not found`.
 Unreadable, invalid metadata, ambiguous identity или смена файла: false и `transcript file unreadable`.
 В обоих отказах JSON содержит пустые messages и null cursor, exit 1; неизвестные cwd/path — пустые
 строки. Неверный UUID и managed identity дают явный CLI refusal. Для external `session.rc`
-содержит exact `<machine>:app/<UUID>`; managed RC labels не меняются.
+содержит переданный inventory key либо exact `<machine>:app/<UUID>`; managed RC labels не меняются.
+Неподдержанный provider возвращает `external transcript provider is unsupported`, exit 1.
 
 ## Форматы (выверено на реальных файлах)
 

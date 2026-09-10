@@ -5,6 +5,7 @@ import type { TranscriptRead } from '../agent/transcriptRead.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
 import { rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
+import { parseExternalSessionKey } from '../external/keys.ts';
 import { readExternalTranscript } from '../external/transcript.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import type { MachineConfig, Session, TranscriptJson, TranscriptMessage } from '../types.ts';
@@ -23,7 +24,7 @@ export function lastAssistantText(messages: TranscriptMessage[]): string | null 
 const LAST_MESSAGE_WINDOW = 200; // enough lines back to find the last answer without reading the file
 
 const USAGE =
-  'usage: ccmux transcript <name|app/UUID|machine:app/UUID> --json [--tail N] [--cursor LINE] [--before LINE --limit N] [--text-limit CHARS] [--agent ID]\n' +
+  'usage: ccmux transcript <name|app/UUID|machine:app/UUID|external:provider:machine#UUID> --json [--tail N] [--cursor LINE] [--before LINE --limit N] [--text-limit CHARS] [--agent ID]\n' +
   "       ccmux transcript <name> --last-message        (just the agent's final answer, as text)\n" +
   '       ccmux transcript <name> --image <address>     (one image, as a data URL)';
 
@@ -103,19 +104,40 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     console.log(USAGE);
     return 1;
   }
-  const fwd = await forwardIfRemote(name, 'transcript', args);
+  let external: ReturnType<typeof parseExternalSessionKey> | undefined;
+  try {
+    if (name.startsWith('external:')) external = parseExternalSessionKey(name);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+  const fwd = await forwardIfRemote(
+    external ? `${external.machine}:${external.threadId}` : name,
+    'transcript',
+    args,
+    external ? { remoteTarget: name } : {},
+  );
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
-  name = session;
-  if (isCodexAppToken(name)) {
+  if (!external) name = session;
+  if (external || isCodexAppToken(name)) {
+    if (o.agent !== undefined) {
+      console.error(`${name}: external agent transcripts are not supported`);
+      return 1;
+    }
     if (o.image !== undefined) {
       console.error(`${name}: external transcript images are not supported`);
       return 1;
     }
     try {
-      const threadId = codexAppThreadId(name);
+      const target =
+        external ??
+        ({ provider: 'codex', threadId: codexAppThreadId(name) } satisfies Parameters<
+          typeof readExternalTranscript
+        >[1]);
+      const { threadId } = target;
       const window = o.lastMessage ? { tail: LAST_MESSAGE_WINDOW, textLimit: FULL_TEXT_LIMIT } : o;
-      const { read, dir } = await readExternalTranscript(m, threadId, window);
+      const { read, dir } = await readExternalTranscript(m, target, window);
       if (o.lastMessage) {
         const last = lastAssistantText(read.messages);
         if (!read.available || last === null) {
@@ -126,7 +148,12 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
       } else {
         await printLine(
           JSON.stringify(
-            transcriptReadJson(m, { name, uuid: threadId, dir }, read, `${m.rcPrefix}:${name}`),
+            transcriptReadJson(
+              m,
+              { name, uuid: threadId, dir },
+              read,
+              external ? name : `${m.rcPrefix}:${name}`,
+            ),
           ),
         );
       }

@@ -5,10 +5,13 @@ import { z } from 'zod';
 import { getProvider } from '../agent/index.ts';
 import { readTranscriptFile, unavailableTranscript } from '../agent/transcriptRead.ts';
 import { loadSessions } from '../config/sessions.ts';
-import type { MachineConfig } from '../types.ts';
+import type { AgentKind, MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
+import { ownedClaudeConversations } from './claude.ts';
+import type { ExternalContentTarget } from './contentSchema.ts';
 import {
   locateExternalStorage,
+  readExternalClaudeMetadata,
   readExternalCodexMetadata,
   validateExternalPath,
 } from './storage.ts';
@@ -32,12 +35,12 @@ const metadataCache = new Map<
  * shared one.
  */
 async function locateInConfiguredRoots(
-  sessionsDir: string,
+  candidates: string[],
   machine: string,
-  threadId: string,
+  target: Pick<ExternalContentTarget, 'provider' | 'threadId'>,
   signal: AbortSignal,
 ): Promise<{ root: string; path: string } | null> {
-  for (const candidate of [sessionsDir, join(dirname(sessionsDir), 'archived_sessions')]) {
+  for (const candidate of candidates) {
     let root: string;
     try {
       root = await realpath(candidate);
@@ -46,11 +49,7 @@ async function locateInConfiguredRoots(
       if (code.success && code.data.code === 'ENOENT') continue;
       throw error;
     }
-    const found = await locateExternalStorage(
-      root,
-      { provider: 'codex', machine, threadId },
-      signal,
-    );
+    const found = await locateExternalStorage(root, { ...target, machine }, signal);
     if (found) return { root, path: found };
   }
   return null;
@@ -59,14 +58,20 @@ async function locateInConfiguredRoots(
 /** Exact provider identity, never a title, caller path, or request to acquire its writer. */
 export async function withExternalTranscript<T>(
   m: MachineConfig,
-  threadId: string,
+  target: Pick<ExternalContentTarget, 'provider' | 'threadId'>,
   read: (path: string) => T,
   signal?: AbortSignal,
 ): Promise<
   { source: 'readable'; value: T; dir: string } | { source: 'missing' | 'unreadable'; dir: string }
 > {
-  if (!z.uuid().safeParse(threadId).success) throw new Error('Invalid external Codex thread ID');
-  if (loadSessions(m).some((s) => s.agent === 'codex' && s.uuid === threadId))
+  const { provider, threadId } = target;
+  if (!z.uuid().safeParse(threadId).success) throw new Error('Invalid external thread ID');
+  const managed = loadSessions(m);
+  if (
+    provider === 'claude'
+      ? ownedClaudeConversations(managed).has(threadId)
+      : managed.some((s) => s.agent === provider && s.uuid === threadId)
+  )
     throw new Error('Use the managed session address for this identity');
   let path = '';
   let dir = '';
@@ -74,14 +79,17 @@ export async function withExternalTranscript<T>(
     source: 'missing',
     dir,
   });
-  if (!m.codexSessionsDir) return missing();
+  const sourceRoot = provider === 'codex' ? m.codexSessionsDir : m.projectsDir;
+  if (!sourceRoot) return missing();
   try {
     const bounded = AbortSignal.any([AbortSignal.timeout(10_000), ...(signal ? [signal] : [])]);
     bounded.throwIfAborted();
     const located = await locateInConfiguredRoots(
-      m.codexSessionsDir,
+      provider === 'codex'
+        ? [sourceRoot, join(dirname(sourceRoot), 'archived_sessions')]
+        : [sourceRoot],
       m.rcPrefix,
-      threadId,
+      target,
       bounded,
     );
     if (!located) return missing();
@@ -93,7 +101,7 @@ export async function withExternalTranscript<T>(
       const stat = await file.stat();
       if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o022) !== 0)
         throw new Error('External storage is not accessible');
-      const identity = `${stat.dev}:${stat.ino}`;
+      const identity = `${provider}:${stat.dev}:${stat.ino}`;
       const cached = metadataCache.get(path);
       if (
         cached &&
@@ -104,7 +112,11 @@ export async function withExternalTranscript<T>(
       )
         dir = cached.dir;
       else {
-        dir = (await readExternalCodexMetadata(file, threadId)).cwd ?? '';
+        const metadata =
+          provider === 'codex'
+            ? await readExternalCodexMetadata(file, threadId)
+            : await readExternalClaudeMetadata(file, threadId);
+        dir = metadata.cwd ?? '';
         if (metadataCache.size >= 256)
           metadataCache.delete(metadataCache.keys().next().value ?? '');
         metadataCache.set(path, { identity, size: stat.size, mtime: stat.mtimeMs, threadId, dir });
@@ -129,11 +141,17 @@ export async function withExternalTranscript<T>(
 
 export async function readExternalTranscript(
   m: MachineConfig,
-  threadId: string,
+  target: { provider: AgentKind; threadId: string },
   window: Parameters<typeof readTranscriptFile>[2],
 ) {
-  const result = await withExternalTranscript(m, threadId, (path) =>
-    readTranscriptFile(path, getProvider('codex'), window),
+  const { provider, threadId } = target;
+  if (provider !== 'codex' && provider !== 'claude')
+    return {
+      dir: '',
+      read: unavailableTranscript(provider, '', 'external transcript provider is unsupported'),
+    };
+  const result = await withExternalTranscript(m, { provider, threadId }, (path) =>
+    readTranscriptFile(path, getProvider(provider), window),
   );
   return {
     dir: result.dir,
@@ -141,7 +159,7 @@ export async function readExternalTranscript(
       result.source === 'readable'
         ? result.value
         : unavailableTranscript(
-            'codex',
+            provider,
             '',
             result.source === 'missing'
               ? 'transcript file not found'
