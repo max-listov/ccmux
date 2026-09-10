@@ -8,13 +8,20 @@ import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import {
   ExternalContentCapabilitiesSchema,
-  type ExternalContentEntry,
   type ExternalContentReadSchema,
   type ExternalContentResult,
   ExternalContentResultSchema,
   type ExternalContentTarget,
   EXTERNAL_CONTENT_LIMITS as limits,
 } from './contentSchema.ts';
+import {
+  buildContentSnapshot,
+  fileIdentity,
+  findContentSnapshot,
+  getContentSnapshot,
+  publishContentSnapshot,
+  validateContentSnapshot,
+} from './contentSnapshot.ts';
 import {
   locateExternalStorage,
   readExternalCodexMetadata,
@@ -23,25 +30,8 @@ import {
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const CursorSchema = z
-  .object({ identity: z.string(), revision: z.string(), end: z.number().int().nonnegative() })
+  .object({ identity: z.string(), snapshot: z.uuid(), end: z.number().int().nonnegative() })
   .strict();
-const TextSchema = z.object({
-  type: z.enum(['text', 'input_text', 'output_text']),
-  text: z.string(),
-});
-const MessageSchema = z.object({
-  role: z.enum(['user', 'assistant']),
-  content: z.union([z.string(), z.array(z.unknown())]),
-});
-const CodexMessageSchema = MessageSchema.extend({ type: z.literal('message') });
-const RecordSchema = z.object({
-  type: z.string().optional(),
-  sessionId: z.string().optional(),
-  isMeta: z.boolean().optional(),
-  isCompactSummary: z.boolean().optional(),
-  payload: z.unknown().optional(),
-  message: z.unknown().optional(),
-});
 
 function authorize(m: MachineConfig, target: ExternalContentTarget) {
   if (target.machine !== m.rcPrefix)
@@ -56,57 +46,7 @@ function authorize(m: MachineConfig, target: ExternalContentTarget) {
     );
 }
 
-function stamp(
-  stat: Awaited<ReturnType<typeof lstat>>,
-  root: string,
-  target: ExternalContentTarget,
-) {
-  return digest(
-    JSON.stringify([target, root, stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]),
-  );
-}
-
-function project(
-  raw: string,
-  target: ExternalContentTarget,
-  offset: number,
-): ExternalContentEntry | null {
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  const parsed = RecordSchema.safeParse(value);
-  if (!parsed.success) return null;
-  const record = parsed.data;
-  if (record.isMeta || record.isCompactSummary) return null;
-  if (target.provider === 'claude' && record.sessionId !== target.threadId) return null;
-  if (target.provider === 'codex' && record.type !== 'response_item') return null;
-  const message =
-    target.provider === 'codex'
-      ? CodexMessageSchema.safeParse(record.payload)
-      : MessageSchema.safeParse(record.message);
-  if (!message.success) return null;
-  const text =
-    typeof message.data.content === 'string'
-      ? message.data.content
-      : message.data.content
-          .flatMap((part) => {
-            const item = TextSchema.safeParse(part);
-            return item.success ? [item.data.text] : [];
-          })
-          .join('\n');
-  if (!text) return null;
-  return {
-    id: String(offset),
-    role: message.data.role,
-    text: text.slice(0, limits.textCharacters),
-    truncated: text.length > limits.textCharacters,
-  };
-}
-
-/** One bounded persisted view. Reading never contacts, starts or takes ownership of a writer. */
+/** Read an immutable authored-text snapshot; never contact or start a provider writer. */
 export async function readExternalContent(
   m: MachineConfig,
   input: z.output<typeof ExternalContentReadSchema>,
@@ -124,7 +64,7 @@ export async function readExternalContent(
     truncated: false,
     omittedRecords: 0,
   };
-  const identity = digest(JSON.stringify(input.target));
+  const identity = digest(JSON.stringify([m.stateDir, input.target]));
   let cursor: z.output<typeof CursorSchema> | null = null;
   if (input.cursor !== null) {
     try {
@@ -139,7 +79,7 @@ export async function readExternalContent(
   }
   try {
     const configuredRoot = input.target.provider === 'codex' ? m.codexSessionsDir : m.projectsDir;
-    if (!configuredRoot) return result;
+    if (!configuredRoot) return { ...result, outcome: cursor ? 'stale' : 'history-absent' };
     const root = await realpath(configuredRoot);
     const path = await locateExternalStorage(root, input.target, signal);
     if (path === null) return { ...result, outcome: cursor ? 'stale' : 'history-absent' };
@@ -149,68 +89,60 @@ export async function readExternalContent(
       const stat = await file.stat();
       if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o022) !== 0)
         throw new AppError('PERMISSION_DENIED', 'External storage is not accessible', 403);
-      const revision = stamp(stat, root, input.target);
-      if (stamp(await lstat(path), root, input.target) !== revision)
-        throw new Error('Storage replaced');
-      if (cursor && (cursor.revision !== revision || cursor.end > stat.size))
-        return { ...result, outcome: 'stale', revision };
+      if (fileIdentity(await lstat(path), path) !== fileIdentity(stat, path))
+        return { ...result, outcome: 'stale' };
       if (input.target.provider === 'codex')
         await readExternalCodexMetadata(file, input.target.threadId);
-      const end = cursor?.end ?? stat.size;
-      const start = Math.max(0, end - limits.sourceBytes);
-      const bytes = Buffer.alloc(end - start);
-      let read = 0;
-      while (read < bytes.length) {
-        signal.throwIfAborted();
-        const part = await file.read(bytes, read, bytes.length - read, start + read);
-        if (part.bytesRead === 0) break;
-        read += part.bytesRead;
-      }
-      if (read !== bytes.length) return { ...result, outcome: 'stale', revision };
-      const first = start === 0 ? 0 : bytes.indexOf(10) + 1;
-      let position = first;
-      const rows: { offset: number; value: ExternalContentEntry }[] = [];
-      let omitted = start > 0 ? 1 : 0;
-      while (position < bytes.length) {
-        signal.throwIfAborted();
-        const newline = bytes.indexOf(10, position);
-        if (newline < 0) {
-          omitted++;
-          break;
-        }
-        const row = project(
-          bytes.toString('utf8', position, newline),
-          input.target,
-          start + position,
-        );
-        if (row) rows.push({ offset: start + position, value: row });
-        else omitted++;
-        position = newline + 1;
-      }
-      const selected = rows.slice(-input.limit);
-      const boundary = start + first < end ? start + first : start;
-      const nextEnd = rows.length > selected.length ? (selected[0]?.offset ?? boundary) : boundary;
+      const snapshot = cursor
+        ? getContentSnapshot(cursor.snapshot)
+        : (findContentSnapshot(identity, stat, path) ??
+          (await buildContentSnapshot(file, stat, path, identity, input.target, signal)));
+      if (
+        !snapshot ||
+        snapshot.identity !== identity ||
+        (cursor && cursor.end > snapshot.entries.length)
+      )
+        return { ...result, outcome: 'stale' };
+      if (!(await validateContentSnapshot(snapshot, file, path, signal)))
+        return { ...result, outcome: 'stale' };
       await validateExternalPath(root, path);
       authorize(m, input.target);
-      if (
-        stamp(await file.stat(), root, input.target) !== revision ||
-        stamp(await lstat(path), root, input.target) !== revision
-      )
-        return { ...result, outcome: 'stale', revision };
-      return ExternalContentResultSchema.parse({
+      if (fileIdentity(await lstat(path), path) !== snapshot.fileIdentity)
+        return { ...result, outcome: 'stale' };
+      const end = cursor?.end ?? snapshot.entries.length;
+      let start = end;
+      let entryBytes = 0;
+      while (start > 0 && end - start < input.limit) {
+        const entry = snapshot.entries[start - 1];
+        if (!entry) break;
+        const bytes = Buffer.byteLength(JSON.stringify(entry)) + 1;
+        if (entryBytes + bytes > limits.responseBytes - 8192) break;
+        entryBytes += bytes;
+        start--;
+      }
+      const entries = snapshot.entries.slice(start, end);
+      const page = ExternalContentResultSchema.parse({
         ...result,
         outcome: 'available',
-        revision,
-        entries: selected.map((row) => row.value),
+        revision: snapshot.revision,
+        entries,
         nextCursor:
-          nextEnd > 0
-            ? Buffer.from(JSON.stringify({ identity, revision, end: nextEnd })).toString(
+          start > 0
+            ? Buffer.from(JSON.stringify({ identity, snapshot: snapshot.id, end: start })).toString(
                 'base64url',
               )
             : null,
-        truncated: nextEnd > 0 || omitted > 0 || selected.some((row) => row.value.truncated),
-        omittedRecords: omitted,
+        truncated: start > 0 || snapshot.omitted > 0 || entries.some((row) => row.truncated),
+        omittedRecords: snapshot.omitted,
       });
+      if (Buffer.byteLength(JSON.stringify(page)) > limits.responseBytes)
+        throw new AppError(
+          'RESOURCE_EXHAUSTED',
+          'External history response exceeds its byte budget',
+          413,
+        );
+      if (!cursor) publishContentSnapshot(snapshot);
+      return page;
     } finally {
       await file.close();
     }

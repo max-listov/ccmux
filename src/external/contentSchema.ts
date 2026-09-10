@@ -2,7 +2,14 @@ import { z } from 'zod';
 import { RC_PREFIX_RE } from '../config/schema.ts';
 
 export const EXTERNAL_CONTENT_LIMITS = {
-  sourceBytes: 256 * 1024,
+  sourceBytes: 512 * 1024 * 1024,
+  chunkBytes: 256 * 1024,
+  recordBytes: 256 * 1024,
+  snapshotBytes: 16 * 1024 * 1024,
+  cacheBytes: 64 * 1024 * 1024,
+  snapshots: 16,
+  concurrentBuilds: 2,
+  snapshotTtlMs: 10 * 60 * 1000,
   metadataBytes: 256 * 1024,
   textCharacters: 4096,
   entries: 64,

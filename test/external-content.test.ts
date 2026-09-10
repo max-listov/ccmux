@@ -6,8 +6,10 @@ import {
   mkdtemp,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
+  truncate,
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -122,7 +124,12 @@ test('empty, absent, changed and malformed cursors are distinct', async () => {
   const page = await p.read(null, 1);
   expect(page.nextCursor).not.toBeNull();
   await appendFile(p.path, message('three'));
-  expect(await p.read(page.nextCursor)).toMatchObject({ outcome: 'stale', entries: [] });
+  expect(await p.read(page.nextCursor)).toMatchObject({
+    outcome: 'available',
+    entries: [{ text: 'one' }],
+    revision: page.revision,
+  });
+  expect((await p.read()).entries.map((row) => row.text)).toEqual(['one', 'two', 'three']);
   await expect(p.read('broken')).rejects.toMatchObject({ code: 'INVALID_CURSOR' });
   await expect(
     readExternalContent(p.m, { target: missing, cursor: page.nextCursor, limit: 1 }, signal()),
@@ -184,17 +191,91 @@ test('partial/oversized records are bounded and never prevent cursor progress', 
     `${message('older') + message('x'.repeat(400000)) + message('newer')}{"partial":`,
   );
   const first = await p.read();
-  expect(first.entries.map((row) => row.text)).toEqual(['newer']);
+  expect(first.entries.map((row) => row.text)).toEqual(['older', 'newer']);
   expect(first.truncated).toBe(true);
-  const older = await p.read(first.nextCursor);
-  expect(older.nextCursor).not.toBe(first.nextCursor);
-  const oldest = await p.read(older.nextCursor);
-  expect(oldest.nextCursor).toBeNull();
-  expect([...older.entries, ...oldest.entries].map((row) => row.text)).toEqual(['older']);
+  expect(first.nextCursor).toBeNull();
   await appendFile(p.path, `true}\n${message('y'.repeat(5000))}`);
   const text = await p.read(null, 1);
   expect(text.entries[0]?.text.length).toBe(4096);
   expect(text.entries[0]?.truncated).toBe(true);
+});
+
+test('sparse snapshots return useful pages and never mix appended generations', async () => {
+  for (const provider of ['codex', 'claude']) {
+    if (provider !== 'codex' && provider !== 'claude') throw Error('provider');
+    const p = await fixture(provider);
+    const row = (text: string) =>
+      provider === 'codex'
+        ? message(text)
+        : `${JSON.stringify({ type: 'assistant', sessionId: p.target.threadId, message: { role: 'assistant', content: text } })}\n`;
+    const noise = `${JSON.stringify({ type: 'tool', data: 'x'.repeat(200000) })}\n`.repeat(8);
+    await appendFile(p.path, row('older') + noise + row('middle') + noise + row('newer'));
+    const first = await p.read(null, 2);
+    expect(first.entries.map((r) => r.text)).toEqual(['middle', 'newer']);
+    await appendFile(p.path, row('appended'));
+    const second = await p.read(first.nextCursor, 2);
+    expect(second).toMatchObject({
+      outcome: 'available',
+      revision: first.revision,
+      nextCursor: null,
+    });
+    expect(second.entries.map((r) => r.text)).toEqual(['older']);
+    expect((await p.read(null, 4)).entries.map((r) => r.text)).toEqual([
+      'older',
+      'middle',
+      'newer',
+      'appended',
+    ]);
+  }
+});
+
+test('snapshots reject replacement, truncate and same-inode middle rewrites including append', async () => {
+  for (const mutation of ['replace', 'truncate', 'rewrite', 'rewrite-append']) {
+    const p = await fixture();
+    await appendFile(p.path, message('a'.repeat(8000)) + message('middle') + message('last'));
+    const first = await p.read(null, 1);
+    const original = await readFile(p.path, 'utf8');
+    if (mutation === 'replace') {
+      await rename(p.path, `${p.path}.old`);
+      await writeFile(p.path, original, { mode: 0o600 });
+    } else if (mutation === 'truncate') await truncate(p.path, 100);
+    else
+      await writeFile(
+        p.path,
+        original.replace('middle', 'MIDDLE') +
+          (mutation === 'rewrite-append' ? message('appended') : ''),
+      );
+    expect(await p.read(first.nextCursor)).toMatchObject({ outcome: 'stale', entries: [] });
+  }
+});
+
+test('expired or evicted snapshots reset explicitly, never restart silently', async () => {
+  const p = await fixture();
+  await appendFile(p.path, message('older') + message('newer'));
+  const first = await p.read(null, 1);
+  for (let i = 0; i < 17; i++) {
+    await appendFile(p.path, message(`next-${i}`));
+    await p.read(null, 1);
+  }
+  expect(await p.read(first.nextCursor)).toMatchObject({ outcome: 'stale', entries: [] });
+});
+
+test('encoded response budget paginates escaped text without dropping entries', async () => {
+  const p = await fixture();
+  const expected = Array.from({ length: 64 }, (_, i) => `${i}:${'\u0001'.repeat(4000)}`);
+  await appendFile(p.path, expected.map((text) => message(text)).join(''));
+  const pages: string[][] = [];
+  let cursor: string | null = null;
+  for (let i = 0; i < 10; i++) {
+    const page = await p.read(cursor, 64);
+    expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(384 * 1024);
+    expect(page.entries.length).toBeGreaterThan(0);
+    pages.unshift(page.entries.map((e) => e.text));
+    cursor = page.nextCursor;
+    if (!cursor) break;
+  }
+  expect(cursor).toBeNull();
+  expect(pages.flat()).toEqual(expected);
 });
 
 test('Claude content uses record identity and excludes synthetic context', async () => {
@@ -253,6 +334,17 @@ test('real local and declared-service readers share one nonmutating external ope
     (await service['external.capabilities']({ target: p.target })).control.message.supported,
   ).toBe(false);
   expect(await readFile(p.path, 'utf8')).toBe(before);
+  await appendFile(p.path, message('second'));
+  const snapshot = await service['external.history']({ target: p.target, limit: 1 });
+  await appendFile(p.path, message('third'));
+  expect(
+    await local['external.history']({ target: p.target, cursor: snapshot.nextCursor, limit: 1 }),
+  ).toMatchObject({
+    outcome: 'available',
+    entries: [{ text: 'live transcript' }],
+    revision: snapshot.revision,
+    nextCursor: null,
+  });
   current = { ...p.m, externalInventory: false };
   await expect(service['external.history']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',

@@ -5,10 +5,6 @@
     "policy": "public-source"
   },
   "layout": {
-    "documentationRoots": {
-      "values": ["docs"],
-      "reason": "Корень документации явно объявлен для инспекции поставляемого содержимого."
-    },
     "backlogRoots": [],
     "surfaces": [
       {
