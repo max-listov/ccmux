@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { connectCodexAppServer } from '../agent/codex/appServer.ts';
 import type { CodexAppRpc } from '../agent/codex/rpc.ts';
+import { CodexAppUnavailable } from '../agent/codex/socket.ts';
 import type { ExternalSession, MachineConfig } from '../types.ts';
 import { supportsNativeStatus } from './native-list.ts';
 import { readNativeTurns, withNativeTurn } from './native-turn.ts';
-import { type ExternalTurnState, unknownTurnState } from './turnSchema.ts';
+import { type ConnectionReason, type ExternalTurnState, unknownTurnState } from './turnSchema.ts';
 
 export const TURN_OBSERVATION_TTL_MS = 5_000;
 export const TURN_OBSERVATION_DEADLINE_MS = 2_000;
@@ -29,8 +30,9 @@ export function nativeTurnState(status: unknown, now: number): ExternalTurnState
   let result = unknownTurnState('codex-app-server', 'unsupported-status');
   if (parsed.success) {
     const value = parsed.data;
-    if (value.type === 'notLoaded') result.reason = 'not-loaded';
-    else if (value.type === 'systemError') result.reason = 'system-error';
+    if (value.type === 'notLoaded') result = unknownTurnState('codex-app-server', 'not-loaded');
+    else if (value.type === 'systemError')
+      result = unknownTurnState('codex-app-server', 'system-error');
     else {
       result = {
         ...result,
@@ -52,6 +54,16 @@ export function nativeTurnState(status: unknown, now: number): ExternalTurnState
     observedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + TURN_OBSERVATION_TTL_MS).toISOString(),
   };
+}
+
+/**
+ * The failure keeps the name the connector gave it. Anything else — an unreadable page, a schema
+ * that did not parse — is a failure this layer cannot name, and it says so rather than blaming the
+ * endpoint it reached successfully.
+ */
+export function reasonFor(error: unknown): ConnectionReason {
+  if (!(error instanceof CodexAppUnavailable)) return 'connection-unavailable';
+  return error.kind;
 }
 
 /** No cached working state survives a failed read. Ownership and admission are never inputs. */
@@ -136,11 +148,11 @@ export async function observeExternalTurns(
       abort.signal,
     );
     for (const [id, state] of observed) observed.set(id, withNativeTurn(state, turns.get(id)));
-  } catch {
+  } catch (error) {
     observed.clear();
     missing = abort.signal.aborted
       ? unknownTurnState('codex-app-server', 'deadline', 'stale')
-      : unknownTurnState('codex-app-server', 'connection-unavailable', 'unavailable');
+      : unknownTurnState('codex-app-server', reasonFor(error), 'unavailable');
   } finally {
     clearTimeout(timer);
     rpc?.close();

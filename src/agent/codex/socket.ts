@@ -12,6 +12,32 @@ const RpcMessageSchema = z.object({
   error: z.object({ code: z.number().optional(), message: z.string().optional() }).optional(),
 });
 
+/**
+ * WHY the control endpoint could not be used, decided where the fact is still available.
+ *
+ * The runtime cannot answer this for us: `net.createConnection` under Bun reports `ENOENT` both for
+ * a path that does not exist and for a socket file whose server has exited — measured on this
+ * machine against the live endpoint, where the same connect that Bun calls ENOENT answers
+ * ECONNREFUSED to a direct syscall. Classifying on the errno would therefore merge the two cases
+ * a reader most needs apart: "the app never created it" and "the app created it and died". The
+ * distinction survives because the path is checked before the connect, so the kind is decided by
+ * which step failed rather than by the code the runtime chose to report.
+ */
+export type CodexAppFailureKind =
+  | 'endpoint-absent'
+  | 'endpoint-not-listening'
+  | 'upgrade-refused'
+  | 'connection-lost';
+
+export class CodexAppUnavailable extends Error {
+  readonly kind: CodexAppFailureKind;
+  constructor(kind: CodexAppFailureKind, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'CodexAppUnavailable';
+    this.kind = kind;
+  }
+}
+
 const REQUEST_TIMEOUT_MS = 10_000;
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -42,7 +68,11 @@ export async function connectCodexSocket(
   options: CodexRpcOptions = {},
 ): Promise<CodexAppRpc> {
   options.signal?.throwIfAborted();
-  if (!existsSync(socketPath)) throw new Error('Codex App Server control socket is unavailable');
+  if (!existsSync(socketPath))
+    throw new CodexAppUnavailable(
+      'endpoint-absent',
+      'Codex App Server control socket is unavailable',
+    );
 
   const socket = net.createConnection(socketPath);
   const maxBytes = options.maxMessageBytes ?? 16 * 1024 * 1024;
@@ -198,7 +228,12 @@ export async function connectCodexSocket(
         !headers.startsWith('HTTP/1.1 101') ||
         !headers.toLowerCase().includes(`sec-websocket-accept: ${expected.toLowerCase()}`)
       ) {
-        return failAll(new Error('Codex App Server rejected the WebSocket upgrade'));
+        return failAll(
+          new CodexAppUnavailable(
+            'upgrade-refused',
+            'Codex App Server rejected the WebSocket upgrade',
+          ),
+        );
       }
       frames = handshake.subarray(end + 4);
       handshake = Buffer.alloc(0);
@@ -214,10 +249,26 @@ export async function connectCodexSocket(
     frames = Buffer.concat([frames, bytes]);
     parseFrames();
   });
+  // Still handshaking means the endpoint never accepted us; after that the same event means a
+  // connection we HAD went away. One `error` event, two different things to tell a reader.
+  const connecting = () => resolveOpen !== null;
   socket.on('error', (error) =>
-    failAll(new Error(`Codex App Server connection failed: ${error.message}`)),
+    failAll(
+      new CodexAppUnavailable(
+        connecting() ? 'endpoint-not-listening' : 'connection-lost',
+        `Codex App Server connection failed: ${error.message}`,
+        { cause: error },
+      ),
+    ),
   );
-  socket.on('close', () => failAll(new Error('Codex App Server connection closed')));
+  socket.on('close', () =>
+    failAll(
+      new CodexAppUnavailable(
+        connecting() ? 'endpoint-not-listening' : 'connection-lost',
+        'Codex App Server connection closed',
+      ),
+    ),
+  );
 
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {

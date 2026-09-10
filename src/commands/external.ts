@@ -34,6 +34,17 @@ export function externalTableLines(sessions: ExternalSession[]): string[] {
       `${pad(session.provider, 8)} ${pad(session.origin, 10)} ${pad(session.storage, 8)} ${pad(writer, 25)} ${pad(session.turnState.state, 16)} ${pad(session.threadId, 36)} ${session.dir ?? '-'}`,
     );
   }
+  // A column of fifty identical `unknown`s says something is wrong and nothing about what to do.
+  // The cure is printed once per distinct cause, under the table rather than in it: repeating one
+  // sentence on every row would bury the rows, and printing none leaves the reader to go read our
+  // source to find out what `unknown` was about.
+  const remedies = new Map<string, number>();
+  for (const session of sessions) {
+    const { reason, remedy } = session.turnState;
+    if (remedy !== null)
+      remedies.set(`${reason}: ${remedy}`, (remedies.get(`${reason}: ${remedy}`) ?? 0) + 1);
+  }
+  for (const [text, count] of remedies) lines.push(`${count} × ${text}`);
   return lines;
 }
 

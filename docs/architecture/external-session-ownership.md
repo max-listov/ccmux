@@ -87,6 +87,34 @@ matching. Native `status`, not inclusion in the loaded set, is authoritative:
 | `idle` after completion or interruption | `idle` |
 | `notLoaded`, `systemError`, missing or unsupported status | `unknown` |
 
+### Why the endpoint failed, and what a person does about it
+
+A row that cannot be observed carries the cause and, when there is one, the cure: `turnState.reason`
+names the state, `turnState.remedy` names the action. Both are required fields; `remedy` is `null`
+exactly when nothing a person does would change the outcome — a deadline, a status this build does
+not recognise — and it is never `null` as a way of saying "unknown".
+
+| `reason` | What happened | `remedy` |
+|---|---|---|
+| `endpoint-absent` | The control socket does not exist under the configured Codex home | Start the app, or enable its app server |
+| `endpoint-not-listening` | The socket exists and nothing accepts on it | Its app server exited — restart the app |
+| `upgrade-refused` | Something answered and refused the RPC upgrade | Find out which app owns that endpoint |
+| `connection-lost` | An established connection dropped mid-read | The next observation reconnects |
+| `connection-unavailable` | A failure this build cannot name | Connect by hand and read the operating system error |
+
+The first two are kept apart deliberately, and **not** by the errno. Measured on this runtime,
+`net.createConnection` reports `ENOENT` both for a path that does not exist and for a socket whose
+listener has exited, while a direct syscall to that same socket answers `ECONNREFUSED`. Classifying
+on the code the runtime chose would therefore merge "the app never created it" with "the app created
+it and died" — the exact pair a reader needs, and the pair that cost one live diagnosis: fifty
+threads read `connection-unavailable` while the app was open and being typed into. The distinction
+survives because the path is checked before the connect, so the cause is decided by which step
+failed. A path that exists but is not a socket is `endpoint-not-listening`, never `endpoint-absent`:
+the endpoint is there, so telling a person to start an app that already runs would be false.
+
+The resident snapshot publishes the same reason vocabulary, and a row that loses freshness keeps the
+snapshot's own connection cause instead of being rewritten to the generic name.
+
 Approval takes precedence if both waiting flags occur. Unknown active flags fail closed. Provider
 protocols were verified at versions 0.144.6, 0.149.0 and 0.150.0-alpha.8; an absent/unrecognized initialize user agent
 or a version below 0.144.6 produces `unknown/unsupported-runtime` **without** a list request, because

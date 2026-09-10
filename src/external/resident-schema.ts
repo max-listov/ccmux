@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { ExternalTurnStateSchema } from './turnSchema.ts';
+import {
+  CONNECTION_REASONS,
+  type ConnectionReason,
+  ExternalTurnStateSchema,
+  remedyFor,
+} from './turnSchema.ts';
+
+const CONNECTION_REASON_SET: ReadonlySet<string> = new Set(CONNECTION_REASONS);
 
 export const EXTERNAL_MAX_ROWS = 512;
 export const EXTERNAL_MAX_BYTES = 1024 * 1024;
@@ -34,7 +41,7 @@ export const ExternalStatusSnapshotSchema = z
     reason: z
       .enum([
         'observation-pending',
-        'connection-unavailable',
+        ...CONNECTION_REASONS,
         'unsupported-runtime',
         'deadline',
         'invalid-response',
@@ -82,7 +89,16 @@ export function currentExternalStatus(
       state.turnId = null;
       state.startedAt = null;
       state.evidence = current.status === 'unavailable' ? 'unavailable' : 'stale';
-      state.reason = current.status === 'unavailable' ? 'connection-unavailable' : 'deadline';
+      // The row keeps the SNAPSHOT's own cause when that cause is a connection one: rewriting it to
+      // the generic name here would throw away the distinction the observer just established, one
+      // layer below, and hand the consumer back the unactionable word this all started with.
+      state.reason =
+        current.status !== 'unavailable'
+          ? 'deadline'
+          : current.reason !== null && CONNECTION_REASON_SET.has(current.reason)
+            ? (current.reason as ConnectionReason)
+            : 'connection-unavailable';
+      state.remedy = remedyFor(state.reason);
     }
   }
   return current;

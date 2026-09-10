@@ -21,7 +21,7 @@ import {
   type ExternalStatusRow,
   type ExternalStatusSnapshot,
 } from './resident-schema.ts';
-import { nativeTurnState, TURN_OBSERVATION_DEADLINE_MS } from './turnState.ts';
+import { nativeTurnState, reasonFor, TURN_OBSERVATION_DEADLINE_MS } from './turnState.ts';
 
 const EventSchema = z.object({ threadId: z.uuid(), status: NativeStatusEnvelopeSchema });
 type Connection = { abort: AbortController; root: string | undefined; rpc?: CodexAppRpc };
@@ -89,7 +89,7 @@ export class ExternalStatusObserver {
           onClose: (error) => {
             if (this.connection === connection)
               log.debug({ msg: 'external provider connection closed', err: String(error) });
-            this.disconnect('connection-unavailable', connection);
+            this.disconnect(reasonFor(error), connection);
           },
         });
         if (this.connection !== connection || this.stopped) {
@@ -144,7 +144,7 @@ export class ExternalStatusObserver {
       if (this.connection === connection) {
         log.debug({ msg: 'external native observation failed', err: String(error) });
         this.disconnect(
-          error instanceof z.ZodError ? 'invalid-response' : 'connection-unavailable',
+          error instanceof z.ZodError ? 'invalid-response' : reasonFor(error),
           connection,
         );
       }
