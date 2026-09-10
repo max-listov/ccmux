@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.59.2] — 2026-09-10
+
+A letter whose recipient was removed is no longer counted as waiting
 ## [0.59.1] — 2026-09-10
 
 Endpoint causes are classified by which step failed, not by an errno that varies with the runtime
