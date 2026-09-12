@@ -6,11 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.59.3] — 2026-09-12
+
+Native runtimes answer transcript from their own history feed
+
 - `ccmux transcript` and control `transcript.read` read openCode and custom conversations from the
   runtime's structured history instead of reporting `transcript file not found`; Claude's native mode
   reads its own jsonl. Absolute `seq`, `--cursor`, `--before` and `--tail` keep the file reader's
   meaning, and `source.kind` names the native source.
-
 ## [0.59.2] — 2026-09-10
 
 A letter whose recipient was removed is no longer counted as waiting
