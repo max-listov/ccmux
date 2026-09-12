@@ -6,11 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.59.4] — 2026-09-12
+
+Preserve native transcript cursors and every paginated history part
+
 - Preserve every OpenCode history part across bounded pages, including continuations inside a
   message. Native transcript cursors use a complete, verified history chain instead of a sliding
   suffix; incomplete, inconsistent or over-budget reads report unavailable rather than losing
   appended messages. Cancellation also interrupts waiting for the native history reader lock.
-
 ## [0.59.3] — 2026-09-12
 
 Native runtimes answer transcript from their own history feed
