@@ -6,8 +6,6 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-Native runtimes answer `transcript` from their own history feed
-
 - `ccmux transcript` and control `transcript.read` read openCode and custom conversations from the
   runtime's structured history instead of reporting `transcript file not found`; Claude's native mode
   reads its own jsonl. Absolute `seq`, `--cursor`, `--before` and `--tail` keep the file reader's
