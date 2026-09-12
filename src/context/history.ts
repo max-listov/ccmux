@@ -21,7 +21,7 @@ const CursorSchema = z
     nativeId: z.string().min(1).max(256),
     revision: z.number().int().nonnegative(),
     generation: z.uuid().nullable(),
-    cursor: z.string().min(1).max(4_096),
+    cursor: z.string().min(1).max(8_192),
   })
   .strict();
 export function historyCursor(m: MachineConfig, s: Session, cursor?: string): string | undefined {

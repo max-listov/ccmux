@@ -18,6 +18,7 @@ import type {
   TranscriptStats,
 } from '../types.ts';
 import { nativeTranscriptPath } from './claude.ts';
+import { completeNativeHistory } from './nativeTranscriptHistory.ts';
 import { HISTORY_LIMITS, type NativeHistoryEntry } from './schema.ts';
 import { readNativeHistory } from './service.ts';
 
@@ -79,10 +80,6 @@ function readClaudeNative(session: Session, window: TranscriptWindowOptions): Tr
     : readTranscriptFile(agentPath, claudeProvider, window);
 }
 
-/** Pages fetched before the answer is declared partial. A conversation longer than this keeps its
- *  newest entries; without a native total there is no absolute index to page deeper by. */
-const NATIVE_TRANSCRIPT_MAX_PAGES = 16;
-
 /**
  * The newest bounded window of a native conversation.
  *
@@ -97,25 +94,20 @@ export async function readNativeTranscript(
   window: TranscriptWindowOptions,
   signal?: AbortSignal,
 ): Promise<TranscriptRead> {
-  const budget = signal ?? AbortSignal.timeout(HISTORY_LIMITS.deadlineMs);
-  const pages: NativeHistoryEntry[][] = [];
-  let cursor: string | undefined;
-  let complete = false;
+  const deadline = AbortSignal.timeout(HISTORY_LIMITS.deadlineMs);
+  const budget = signal === undefined ? deadline : AbortSignal.any([signal, deadline]);
   try {
-    for (let page = 0; page < NATIVE_TRANSCRIPT_MAX_PAGES; page++) {
-      const result = await readNativeHistory(
-        m,
-        session,
-        { limit: HISTORY_LIMITS.entries, ...(cursor === undefined ? {} : { cursor }) },
-        budget,
-      );
-      pages.push(result.entries);
-      if (result.completeness === 'complete' || result.nextCursor === null) {
-        complete = true;
-        break;
-      }
-      cursor = result.nextCursor;
-    }
+    const entries = await completeNativeHistory(
+      (cursor) =>
+        readNativeHistory(
+          m,
+          session,
+          { limit: HISTORY_LIMITS.entries, ...(cursor === undefined ? {} : { cursor }) },
+          budget,
+        ),
+      budget,
+    );
+    return nativeTranscriptWindow(session.agent, entries, window);
   } catch {
     // No live owner, a cursor that no longer belongs to this context, a runtime that stopped
     // mid-read: all of these are "cannot read it now", which is an answer, not a fault to escalate
@@ -123,11 +115,6 @@ export async function readNativeTranscript(
     // operator said nothing" call for different reactions.
     return unavailableTranscript(session.agent, '', 'native history unavailable', 'native');
   }
-  // Pages arrive newest-first; each holds the older end of the previous page and is itself ordered
-  // oldest-first, so reversing the page order and concatenating yields the whole conversation in
-  // chronological order.
-  const entries = pages.reverse().flat();
-  return nativeTranscriptWindow(session.agent, entries, complete, window);
 }
 
 /** Pure window composition over a native conversation ordered oldest-first. Exported so the window
@@ -135,7 +122,6 @@ export async function readNativeTranscript(
 export function nativeTranscriptWindow(
   agent: AgentKind,
   entries: NativeHistoryEntry[],
-  complete: boolean,
   window: TranscriptWindowOptions,
 ): TranscriptRead {
   const total = entries.length;
@@ -174,7 +160,7 @@ export function nativeTranscriptWindow(
     messages,
     mtimeMs: null,
     firstLine: start,
-    reachedStart: complete && start <= 1,
+    reachedStart: start <= 1,
     stats: nativeStats(entries),
   };
 }

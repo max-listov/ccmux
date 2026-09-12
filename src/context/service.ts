@@ -103,6 +103,8 @@ export async function readNativeHistory(
       throw new AppError('HISTORY_UNAVAILABLE', 'Native history deadline exceeded', 503);
     },
     'native history reader',
+    undefined,
+    signal,
   );
 }
 

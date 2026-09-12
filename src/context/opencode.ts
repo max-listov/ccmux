@@ -1,40 +1,12 @@
-import { z } from 'zod';
 import type { OpenCodeClient } from '../agent/opencode/server.ts';
-import {
-  OpenCodeToolFieldsSchema,
-  openCodeToolObservation,
-} from '../agent/opencode/toolObservation.ts';
+import { openCodeToolObservation } from '../agent/opencode/toolObservation.ts';
 import { toolHistoryStatus } from '../content/toolSchema.ts';
 import { readSelection } from '../runtime/selection.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { boundedHistoryPage, historyCursor, historyImageReferences } from './history.ts';
+import { openCodeHistoryReader } from './opencodeHistory.ts';
 import type { NativeContextApi } from './pump.ts';
 import type { NativeHistoryEntry } from './schema.ts';
-
-const Id = z.string().min(1).max(256);
-const MessageSchema = z.object({
-  info: z.object({
-    id: Id,
-    sessionID: Id,
-    role: z.enum(['user', 'assistant']),
-    parentID: Id.optional(),
-    summary: z.union([z.boolean(), z.object({}).strip()]).optional(),
-    time: z.object({ completed: z.number().optional() }),
-    error: z.unknown().optional(),
-  }),
-  parts: z
-    .array(
-      OpenCodeToolFieldsSchema.extend({
-        id: Id,
-        type: z.string(),
-        text: z.string().optional(),
-        filename: z.string().optional(),
-        synthetic: z.boolean().optional(),
-      }),
-    )
-    .max(256),
-});
-const PageSchema = z.array(MessageSchema).max(64);
 
 /** Classic message/part history is the active writer's authority, not the distinct v2 durable message table. */
 export function openCodeContextApi(
@@ -44,20 +16,10 @@ export function openCodeContextApi(
 ): NativeContextApi {
   const sessionID = s.nativeSession?.id;
   if (!sessionID) throw new Error('Native context identity is absent');
-  const read = async (limit: number, signal: AbortSignal, before?: string) => {
-    const response = await client.session.messages(
-      { sessionID, limit, ...(before === undefined ? {} : { before }) },
-      { signal },
-    );
-    const cursor = response.response.headers.get('X-Next-Cursor');
-    return {
-      items: PageSchema.parse(response.data),
-      cursor: cursor === null ? null : z.string().min(1).max(4_096).parse(cursor),
-    };
-  };
+  const reader = openCodeHistoryReader(client, sessionID);
   return {
     async history(query, signal) {
-      const page = await read(query.limit, signal, historyCursor(m, s, query.cursor));
+      const page = await reader.parts(query.limit, signal, historyCursor(m, s, query.cursor));
       const entries: NativeHistoryEntry[] = [];
       for (const { info, parts } of page.items) {
         if (info.sessionID !== sessionID) throw new Error('Native history identity mismatch');
@@ -106,7 +68,7 @@ export function openCodeContextApi(
       );
     },
     async compactionMarker(signal) {
-      const page = await read(64, signal);
+      const page = await reader.messages(64, signal);
       return (
         page.items
           .filter(

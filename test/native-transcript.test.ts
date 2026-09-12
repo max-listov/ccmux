@@ -3,11 +3,18 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
-import type { TranscriptRead } from '../src/agent/transcriptRead.ts';
-import { boundedHistoryPage } from '../src/context/history.ts';
+import { managedPeer } from '../src/chat/identity.ts';
+import { transcriptJson } from '../src/commands/transcript.ts';
+import { withDirectoryLock } from '../src/config/registryLock.ts';
+import { appendSession } from '../src/config/sessions.ts';
+import { boundedHistoryPage, historyCursor } from '../src/context/history.ts';
 import { applyContextCommands, type NativeContextApi } from '../src/context/pump.ts';
 import type { NativeHistoryEntry } from '../src/context/schema.ts';
+import { readNativeHistory } from '../src/context/service.ts';
+import { contextPath } from '../src/context/store.ts';
 import { nativeTranscriptWindow, readTranscriptWindow } from '../src/context/transcriptWindow.ts';
+import { ControlTranscriptReadSchema } from '../src/control/schema.ts';
+import { readControlTranscript } from '../src/control/transcript.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/status.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
@@ -45,7 +52,7 @@ test('a native window maps entries to the transcript contract and keeps absolute
     tool,
     entry('user', 'i5', 'follow-up'),
   ];
-  const read = nativeTranscriptWindow('opencode', entries, true, { tail: 3 });
+  const read = nativeTranscriptWindow('opencode', entries, { tail: 3 });
   expect(read.source).toBe('native');
   expect(read.available).toBe(true);
   expect(read.mtimeMs).toBeNull();
@@ -72,9 +79,9 @@ test('a native cursor answers what came after it, and before pages backward', ()
   const entries = Array.from({ length: 6 }, (_, i) =>
     entry(i % 2 === 0 ? 'user' : 'assistant', `i${i + 1}`, `m${i + 1}`),
   );
-  const afterCursor = nativeTranscriptWindow('opencode', entries, true, { tail: 3, cursor: 3 });
+  const afterCursor = nativeTranscriptWindow('opencode', entries, { tail: 3, cursor: 3 });
   expect(afterCursor.messages.map((m) => m.seq)).toEqual([4, 5, 6]);
-  const before = nativeTranscriptWindow('opencode', entries, true, {
+  const before = nativeTranscriptWindow('opencode', entries, {
     tail: 10,
     before: 5,
     limit: 2,
@@ -89,21 +96,16 @@ test('a textless native part is dropped without shifting the absolute seq', () =
     entry('other', 'i2', null),
     entry('assistant', 'i3', 'answer'),
   ];
-  const read = nativeTranscriptWindow('opencode', entries, true, { tail: 50 });
+  const read = nativeTranscriptWindow('opencode', entries, { tail: 50 });
   expect(read.messages.map((m) => m.seq)).toEqual([1, 3]);
   expect(read.totalLines).toBe(3);
 });
 
 test('a complete short native conversation reports its own start', () => {
-  const read = nativeTranscriptWindow('custom', [entry('user', 'i1', 'hi')], true, { tail: 50 });
+  const read = nativeTranscriptWindow('custom', [entry('user', 'i1', 'hi')], { tail: 50 });
   expect(read.reachedStart).toBe(true);
   expect(read.firstLine).toBe(1);
   expect(read.messages).toHaveLength(1);
-});
-
-test('a capped native read never claims the start it did not reach', () => {
-  const read = nativeTranscriptWindow('opencode', [entry('user', 'i1', 'hi')], false, { tail: 50 });
-  expect(read.reachedStart).toBe(false);
 });
 
 async function nativeFixture() {
@@ -162,12 +164,12 @@ test('a codex app-server session keeps its real rollout file, not the native fee
   }
 });
 
-async function drive(
-  read: Promise<TranscriptRead>,
+async function drive<T>(
+  read: Promise<T>,
   f: Awaited<ReturnType<typeof nativeFixture>>,
   api: NativeContextApi,
   signal: AbortSignal,
-): Promise<TranscriptRead> {
+): Promise<T> {
   let settled = false;
   void read.then(
     () => {
@@ -237,6 +239,82 @@ test('an openCode transcript read pages the native feed and orders it chronologi
     f.cleanup();
   }
 });
+
+test('control and CLI builder keep the appended native item after eighteen mailbox pages', async () => {
+  const f = await nativeFixture();
+  await appendSession(f.m, f.session);
+  let size = 1100;
+  const api: NativeContextApi = {
+    history: async (query) => {
+      const end =
+        query.cursor === undefined ? size : Number(historyCursor(f.m, f.session, query.cursor));
+      const start = Math.max(0, end - 64);
+      return boundedHistoryPage(
+        f.m,
+        f.session,
+        Array.from({ length: end - start }, (_, i) =>
+          entry('user', `i${start + i + 1}`, `m${start + i + 1}`),
+        ),
+        start === 0 ? null : String(start),
+        start === 0 ? 'complete' : 'more',
+      );
+    },
+    compactionMarker: async () => null,
+    compact: async () => {},
+  };
+  const signal = AbortSignal.timeout(5_000);
+  try {
+    const first = await drive(
+      readControlTranscript(
+        f.m,
+        ControlTranscriptReadSchema.parse({
+          target: managedPeer(f.m.rcPrefix, f.session),
+          tail: 2,
+        }),
+        signal,
+      ),
+      f,
+      api,
+      signal,
+    );
+    expect(first.cursor.line).toBe(1100);
+    if (first.cursor.line === null) throw new Error('native cursor missing');
+    expect(first.messages.map((item) => item.id)).toEqual(['i1099', 'i1100']);
+    size++;
+    const next = await drive(
+      transcriptJson(f.m, f.session, { tail: 2, cursor: first.cursor.line }, signal),
+      f,
+      api,
+      signal,
+    );
+    expect(next.source.available).toBe(true);
+    expect(next.cursor.line).toBe(1101);
+    expect(next.messages.map((item) => [item.id, item.seq])).toEqual([['i1101', 1101]]);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('native history cancellation releases a waiter without releasing the holder first', async () => {
+  const f = await nativeFixture();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const holder = withDirectoryLock(contextPath(f.m, f.session, 'history-reader.lock'), async () => {
+    entered.resolve();
+    await release.promise;
+  });
+  await entered.promise;
+  try {
+    const cancellation = new AbortController();
+    const waiting = readNativeHistory(f.m, f.session, { limit: 1 }, cancellation.signal);
+    cancellation.abort(new Error('reader cancelled'));
+    await expect(waiting).rejects.toThrow('reader cancelled');
+  } finally {
+    release.resolve();
+    await holder;
+    f.cleanup();
+  }
+}, 1000);
 
 test('a native read whose feed fails answers unavailable, not an empty conversation', async () => {
   const f = await nativeFixture();
