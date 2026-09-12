@@ -13,9 +13,10 @@ import { controlTarget } from './target.ts';
  * left, and it is the one cost a resident service removes. Same answer, same cursor, same builder
  * as the command — the window is not a second view of the conversation.
  */
-export function readControlTranscript(
+export async function readControlTranscript(
   m: MachineConfig,
   input: z.output<typeof ControlTranscriptReadSchema>,
+  signal?: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
   const window: TranscriptWindow = { tail: input.tail };
@@ -24,7 +25,7 @@ export function readControlTranscript(
   if (input.limit !== null) window.limit = input.limit;
   if (input.textLimit !== null) window.textLimit = input.textLimit;
   if (input.agent !== null) window.agent = input.agent;
-  const answer = transcriptJson(m, session, window);
+  const answer = await transcriptJson(m, session, window, signal);
   // A runtime that keeps no transcript on disk is not an error to retry: it is an answer, and it
   // says which runtime it is. Refusing here instead would send a caller looking for a fault.
   if (!answer.source.available && answer.source.error === null)

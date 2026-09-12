@@ -4,7 +4,7 @@ description: Как ccmux читает историю сессии разных 
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-09-10 09:49 +07:00
+updated: 2026-09-12 07:36 +07:00
 ---
 
 # Транскрипт-адаптеры
@@ -85,6 +85,33 @@ Unreadable, invalid metadata, ambiguous identity или смена файла: f
 строки. Неверный UUID и managed identity дают явный CLI refusal. Для external `session.rc`
 содержит переданный inventory key либо exact `<machine>:app/<UUID>`; managed RC labels не меняются.
 Неподдержанный provider возвращает `external transcript provider is unsupported`, exit 1.
+
+## Нативные рантаймы без файла транскрипта
+
+Часть нативных рантаймов не пишет jsonl: openCode и custom хранят переписку в собственной
+структурированной истории. Для них `ccmux transcript` и control `transcript.read` отвечают из
+того же feed, что и `history.read`, а не ищут несуществующий файл. Признак ветки — источник, а не
+режим: `providerFor(session).historyFile(session, m) === null`. Это НЕ `hasNativeRuntime`:
+codex app-server нативен, но его rollout-файл настоящий, и уводить его на feed значило бы
+обменять рабочий транскрипт на частичный.
+
+Окно собирает `src/context/transcriptWindow.ts`. Рантайм листает историю назад (первая страница —
+самые новые записи, курсор ведёт к более старым), поэтому читатель забирает страницы до
+`completeness: complete` и разворачивает их порядок: получается вся переписка по возрастанию.
+Над ней применяется та же арифметика `tail`/`cursor`/`before`/`limit`, что и над строками файла,
+и `seq` — абсолютный номер записи, так что курсор потребителя сохраняет смысл. `mtimeMs` равен
+`null` (у feed нет времени файла), `source.kind` — `<agent>-native`. Общее число страниц
+ограничено (`NATIVE_TRANSCRIPT_MAX_PAGES`); если предел достигнут, окно всё равно отдаётся, но
+`reachedStart: false` — непройденное начало не выдаётся за пройденное.
+
+Claude в нативном режиме остаётся файловым: рантайм пишет собственный jsonl рядом со своими
+`projects`, и его читает тот же claude-парсер по `nativeTranscriptPath`, с абсолютными строками.
+Он не проходит через feed. Неподдержанный `--agent` (субагент) для не-Claude нативного рантайма
+даёт `unavailable` со словами «this runtime keeps no agent transcripts»; у Claude нативного
+субагентский файл лежит рядом с основным и читается тем же путём.
+
+Отсутствие живого владельца — это «не знаю», а не «пусто»: если feed недоступен, ответ
+`available: false` с названной причиной, а не пустая успешная лента.
 
 ## Форматы (выверено на реальных файлах)
 

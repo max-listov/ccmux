@@ -212,7 +212,7 @@ export function createControlOperations(
     ) => readMessageOperation(m, ChatPrincipalSchema.parse(principal), input),
     transcript: (input: z.output<typeof ControlTranscriptReadSchema>, signal?: AbortSignal) =>
       reads
-        .run(undefined, () => Promise.resolve(readControlTranscript(m, input)), {
+        .run(undefined, ({ signal: admitted }) => readControlTranscript(m, input, admitted), {
           ...(signal ? { signal } : {}),
           timeoutMs: 6_000,
         })

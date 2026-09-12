@@ -211,6 +211,23 @@ try {
     readFileSync(join(root, 'workspace', 'effect.txt'), 'utf8').trim() === 'effect',
     'Tool side effect duplicated',
   );
+  // A native runtime keeps no transcript file, so the conversation must come from the native
+  // history feed. An "unavailable" answer here is the exact defect this asserts against.
+  const transcript = await service['transcript.read']({ target });
+  check(transcript.source.available, 'Native transcript is unavailable');
+  check(transcript.stats.messages > 0, 'Native transcript reports no messages');
+  check(
+    transcript.messages.some((row) => row.role === 'user') &&
+      transcript.messages.some((row) => row.role === 'assistant'),
+    'Native transcript is missing the operator or the agent',
+  );
+  report('native-transcript', {
+    source: transcript.source.kind,
+    messages: transcript.stats.messages,
+    firstLine: transcript.window.firstLine,
+    lastLine: transcript.window.lastLine,
+    reachedStart: transcript.window.reachedStart,
+  });
   await verifyRuntimeConfidentiality(m, session, frame, root, cli);
   report('native-tool-turn', {
     kinds: [...new Set(content.map((item) => item.kind))],

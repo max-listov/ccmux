@@ -48,11 +48,11 @@ const target = (machine: string) =>
 
 test('the service answers the same window as the command, from one builder', async () => {
   const { m, session } = await setup(400);
-  const overService = readControlTranscript(
+  const overService = await readControlTranscript(
     m,
     ControlTranscriptReadSchema.parse({ target: target(m.rcPrefix), tail: 20 }),
   );
-  const overCommand = transcriptJson(m, session, { tail: 20 });
+  const overCommand = await transcriptJson(m, session, { tail: 20 });
   // Everything except the instant the answer was generated. Two builders of one answer drift, and
   // this one carries the cursor a consumer pages by — a drift here is a consumer walking through a
   // slightly different conversation depending on how it asked.
@@ -68,7 +68,7 @@ test('the service answers the same window as the command, from one builder', asy
 
 test('a cursor asks for what came after it, and the answer says where it now ends', async () => {
   const { m } = await setup(400);
-  const answer = readControlTranscript(
+  const answer = await readControlTranscript(
     m,
     ControlTranscriptReadSchema.parse({ target: target(m.rcPrefix), cursor: 397 }),
   );

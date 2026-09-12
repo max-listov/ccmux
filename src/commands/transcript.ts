@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readImage } from '../agent/claude/transcript.ts';
-import { providerFor, readTranscript } from '../agent/index.ts';
+import { providerFor } from '../agent/index.ts';
 import type { TranscriptRead } from '../agent/transcriptRead.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
 import { rcName } from '../config/machine.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
+import { readTranscriptWindow } from '../context/transcriptWindow.ts';
 import { parseExternalSessionKey } from '../external/keys.ts';
 import { readExternalTranscript } from '../external/transcript.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
@@ -188,7 +189,10 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
   // `--last-message`: the agent's final answer as plain text — the "take the report" gesture, so an
   // orchestrator doesn't have to pull a window of JSON and dig the last assistant block out of it.
   if (o.lastMessage) {
-    const read = readTranscript(s, m, { tail: LAST_MESSAGE_WINDOW, textLimit: FULL_TEXT_LIMIT });
+    const read = await readTranscriptWindow(m, s, {
+      tail: LAST_MESSAGE_WINDOW,
+      textLimit: FULL_TEXT_LIMIT,
+    });
     const last = lastAssistantText(read.messages);
     if (last === null) {
       console.error(`${name}: no assistant message yet`);
@@ -203,7 +207,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
   if (o.limit !== undefined) readOpts.limit = o.limit;
   if (o.textLimit !== undefined) readOpts.textLimit = o.textLimit;
   if (o.agent !== undefined) readOpts.agent = o.agent;
-  await printLine(JSON.stringify(transcriptJson(m, s, readOpts)));
+  await printLine(JSON.stringify(await transcriptJson(m, s, readOpts)));
   return 0;
 }
 
@@ -225,12 +229,13 @@ export interface TranscriptWindow {
  * drift — and this one carries the cursor a consumer hands back, so a drift between them would be a
  * consumer paging through a slightly different conversation depending on how it asked.
  */
-export function transcriptJson(
+export async function transcriptJson(
   m: MachineConfig,
   s: Session,
   window: TranscriptWindow,
-): TranscriptJson {
-  const read = readTranscript(s, m, window);
+  signal?: AbortSignal,
+): Promise<TranscriptJson> {
+  const read = await readTranscriptWindow(m, s, window, signal);
   return transcriptReadJson(m, s, read);
 }
 
@@ -245,7 +250,11 @@ function transcriptReadJson(
     generatedAt: new Date().toISOString(),
     session: { name: s.name, uuid: s.uuid, rc, dir: s.dir, machine: m.rcPrefix },
     source: {
-      kind: read.available ? `${read.agent}-jsonl` : 'unavailable',
+      kind: read.available
+        ? read.source === 'native'
+          ? `${read.agent}-native`
+          : `${read.agent}-jsonl`
+        : 'unavailable',
       path: read.path,
       available: read.available,
       error: read.error,

@@ -6,13 +6,19 @@ import { EMPTY_STATS, indexTranscript } from './transcriptIndex.ts';
 
 type TranscriptParser = Pick<AgentProvider, 'id' | 'parse'>;
 
+/** Storage a transcript window was read from. A file-backed runtime and a native runtime answer the
+ *  same contract from different places, and a consumer can tell which it got without guessing. */
+export type TranscriptSource = 'file' | 'native';
+
 export function unavailableTranscript(
   agent: AgentKind,
   path: string,
   error: string,
+  source: TranscriptSource = 'file',
 ): TranscriptRead {
   return {
     agent,
+    source,
     available: false,
     error,
     path,
@@ -53,6 +59,8 @@ export function countStats(provider: TranscriptParser, lines: string[]): Transcr
 
 export interface TranscriptRead {
   agent: AgentKind;
+  /** Where the records came from: a runtime's own jsonl file, or its structured native feed. */
+  source: TranscriptSource;
   available: boolean;
   error: string | null;
   path: string;
@@ -105,6 +113,7 @@ export function readTranscriptFile(
   }
   return {
     agent: provider.id,
+    source: 'file',
     available: true,
     error: null,
     path,
