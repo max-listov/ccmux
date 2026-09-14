@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Usage accounting no longer reports itself unavailable while another process is indexing the same
+  transcript. Opening the usage store is now a read — its schema is written only when missing, so a
+  reader no longer queues for the write lock and gives up as "database is locked" — and a process
+  that loses the race to advance a transcript index answers from the last committed index instead
+  of failing.
+
 ## [0.60.0] — 2026-09-14
 
 Fleet listing survives a caller without runtimes on PATH, the host model catalog answers from the daemon's last read, the daemon no longer freezes on a stalled rename, and cold Codex creates fit their budget

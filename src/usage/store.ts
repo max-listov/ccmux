@@ -9,6 +9,27 @@ import { type UsageFact, UsageFactSchema } from './schema.ts';
 
 const RowSchema = z.object({ body: z.string() });
 const RevisionSchema = z.object({ value: z.number() });
+const NameSchema = z.object({ name: z.string() });
+
+const SCHEMA = `CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, body TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, body TEXT NOT NULL, seq INTEGER NOT NULL);
+  CREATE INDEX IF NOT EXISTS fact_sequence ON facts(seq);
+  CREATE INDEX IF NOT EXISTS fact_event_time ON facts(json_extract(body,'$.at'));
+  CREATE INDEX IF NOT EXISTS fact_epoch ON facts(json_extract(body,'$.epoch'),seq);
+  CREATE TABLE IF NOT EXISTS contributions (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS buckets (query TEXT NOT NULL, key TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(query,key));
+  CREATE TABLE IF NOT EXISTS revision (value INTEGER NOT NULL);
+  INSERT INTO revision SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM revision);`;
+const SCHEMA_OBJECTS = [
+  'metadata',
+  'facts',
+  'fact_sequence',
+  'fact_event_time',
+  'fact_epoch',
+  'contributions',
+  'buckets',
+  'revision',
+];
 
 /** Checkpoints and facts commit together. Live-only facts belong in durable state, not cache. */
 export class UsageStore {
@@ -19,16 +40,22 @@ export class UsageStore {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.db = new Database(path, { create: true });
     chmodSync(path, 0o600);
-    this.db.exec(`PRAGMA busy_timeout=1000;
-      CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, body TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, body TEXT NOT NULL, seq INTEGER NOT NULL);
-      CREATE INDEX IF NOT EXISTS fact_sequence ON facts(seq);
-      CREATE INDEX IF NOT EXISTS fact_event_time ON facts(json_extract(body,'$.at'));
-      CREATE INDEX IF NOT EXISTS fact_epoch ON facts(json_extract(body,'$.epoch'),seq);
-      CREATE TABLE IF NOT EXISTS contributions (id TEXT PRIMARY KEY, body TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS buckets (query TEXT NOT NULL, key TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(query,key));
-      CREATE TABLE IF NOT EXISTS revision (value INTEGER NOT NULL);
-      INSERT INTO revision SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM revision);`);
+    this.db.exec('PRAGMA busy_timeout=1000');
+    // Opening is a read. The schema statements are writes even when they change nothing — the seed
+    // INSERT asks for the write lock whether or not it inserts — so running them on every open made
+    // every reader queue behind whichever process was advancing the same index, and give up after
+    // the busy timeout as "database is locked". They run only when something is actually missing.
+    if (!this.schemaPresent()) this.db.exec(SCHEMA);
+  }
+  private schemaPresent(): boolean {
+    const names = new Set(
+      this.db
+        .query("SELECT name FROM sqlite_master WHERE type IN ('table','index')")
+        .all()
+        .map((row) => NameSchema.parse(row).name),
+    );
+    if (!SCHEMA_OBJECTS.every((name) => names.has(name))) return false;
+    return this.db.query('SELECT 1 FROM revision LIMIT 1').get() !== null;
   }
   close() {
     this.db.close();

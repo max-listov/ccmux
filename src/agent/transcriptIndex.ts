@@ -143,38 +143,42 @@ export function indexTranscript(
     store = new UsageStore(transcriptIndexPath(path));
     const owner = store;
     const identity = `${stat.dev}:${stat.ino}`;
-    const index = owner.transaction(() => {
-      const stored = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
-      if (!stored) owner.reset();
-      const index: StoredIndex = stored ?? {
-        version: 1,
-        agent,
-        head,
-        identity,
-        mtime: stat.mtimeMs,
-        observedAt: new Date().toISOString(),
-        observedSize: size,
-        readOffset: 0,
-        pending: '',
-        skipping: false,
-        malformed: 0,
-        context: { model: null, epoch: head },
-        size: 0,
-        lines: 0,
-        checkpoints: [0],
-        stats: { ...EMPTY_STATS },
-      };
-      const oldOffset = index.readOffset;
-      if (index.readOffset < size)
-        scanForward(fd, index, Math.min(size, oldOffset + maxBytes), accumulate, owner);
-      index.observedSize = size;
-      index.mtime = stat.mtimeMs;
-      if (!stored || index.readOffset !== oldOffset) {
-        index.observedAt = new Date().toISOString();
-        owner.write('index', index);
-      }
-      return index;
-    });
+    const index = advanceOrCommitted(
+      owner,
+      () => {
+        const stored = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
+        if (!stored) owner.reset();
+        const index: StoredIndex = stored ?? {
+          version: 1,
+          agent,
+          head,
+          identity,
+          mtime: stat.mtimeMs,
+          observedAt: new Date().toISOString(),
+          observedSize: size,
+          readOffset: 0,
+          pending: '',
+          skipping: false,
+          malformed: 0,
+          context: { model: null, epoch: head },
+          size: 0,
+          lines: 0,
+          checkpoints: [0],
+          stats: { ...EMPTY_STATS },
+        };
+        const oldOffset = index.readOffset;
+        if (index.readOffset < size)
+          scanForward(fd, index, Math.min(size, oldOffset + maxBytes), accumulate, owner);
+        index.observedSize = size;
+        index.mtime = stat.mtimeMs;
+        if (!stored || index.readOffset !== oldOffset) {
+          index.observedAt = new Date().toISOString();
+          owner.write('index', index);
+        }
+        return index;
+      },
+      () => loadStored(owner, agent, head, size, identity, stat.mtimeMs),
+    );
     return {
       totalLines: index.lines,
       stats: index.stats,
@@ -185,6 +189,31 @@ export function indexTranscript(
   } finally {
     store?.close();
     closeSync(fd);
+  }
+}
+
+/**
+ * Advance the index, or answer from its last committed state when another process is advancing it.
+ *
+ * Two readers of one transcript each try to move its index forward, and only one can hold the write
+ * lock. The other used to fail after the busy timeout, and its caller reported usage as unavailable —
+ * when the index it needed was there, correct up to its own offset, and being extended that moment.
+ * That state is exactly what a partially advanced index already describes, so the loser answers from
+ * it. Anything other than a busy lock, or a committed index that no longer matches the file, is still
+ * the failure it was.
+ */
+function advanceOrCommitted(
+  store: UsageStore,
+  advance: () => StoredIndex,
+  committed: () => StoredIndex | null,
+): StoredIndex {
+  try {
+    return store.transaction(advance);
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'SQLITE_BUSY')) throw error;
+    const index = committed();
+    if (index === null) throw error;
+    return index;
   }
 }
 
