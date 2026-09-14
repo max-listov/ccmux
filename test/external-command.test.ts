@@ -118,18 +118,35 @@ describe('external inventory command', () => {
       expect(bundled).toBe(true);
       // The shipped bundle plus an intermediate pipe is the production failure shape: running the
       // source file or redirecting straight to disk can both hide a buffered-write truncation.
+      const started = performance.now();
       const proc = Bun.spawn(
         ['sh', '-c', 'bun "$1" external --json | { sleep 0.1; cat; }', 'sh', bundle],
         {
           env,
           stdout: 'pipe',
           stderr: 'pipe',
+          // Its own process group, so the whole pipeline can be stopped: killing only the shell
+          // leaves the stages it forked holding the pipes open.
+          detached: true,
         },
       );
-      const stdout = await new Response(proc.stdout).text();
-      const stderr = await new Response(proc.stderr).text();
-      expect(await proc.exited).toBe(0);
-      expect(stderr).toBe('');
+      // A child that outlives this bound is stopped here, so the failure reports what it wrote and
+      // how long it ran, instead of surfacing as the test's own timeout with neither.
+      const stop = setTimeout(() => process.kill(-proc.pid, 'SIGKILL'), 20_000);
+      // Both pipes at once: a child that fills stderr while stdout is still open would otherwise
+      // wait on a reader that is not reading, and that looks exactly like a flush that never ends.
+      const [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      const exitCode = await proc.exited;
+      clearTimeout(stop);
+      expect({
+        exitCode,
+        signal: proc.signalCode,
+        stderr: stderr.slice(0, 4096),
+        elapsedMs: exitCode === 0 ? 'ok' : Math.round(performance.now() - started),
+      }).toEqual({ exitCode: 0, signal: null, stderr: '', elapsedMs: 'ok' });
       expect(stdout.length).toBeGreaterThan(1024 * 1024);
       expect(ExternalInventoryJsonSchema.parse(JSON.parse(stdout)).sessions).toHaveLength(rowCount);
     } finally {
