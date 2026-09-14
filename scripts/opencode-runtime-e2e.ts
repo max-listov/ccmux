@@ -10,7 +10,11 @@ import { createInjectedControlClient } from '../src/control/transportBoundary.ts
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
-import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+import {
+  acceptanceAuthorizationArgs,
+  acceptancePositionals,
+  readAcceptanceCommunicationAuthorization,
+} from './acceptance-communication.ts';
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
@@ -33,7 +37,7 @@ async function until(label: string, probe: () => Promise<boolean>, timeoutMs = 1
   }
 }
 
-const root = process.argv[2];
+const [root] = acceptancePositionals();
 if (root === undefined) {
   const probe = mkdtempSync(join(tmpdir(), 'ccmux-opencode-e2e-'));
   const source = loadMachineConfig();
@@ -74,12 +78,21 @@ if (root === undefined) {
   };
   delete env.CCMUX_SESSION;
   delete env.CCMUX_CHAT_CREDENTIAL;
-  const child = Bun.spawn([process.execPath, '--no-env-file', import.meta.filename, probe], {
-    env,
-    stdin: 'ignore',
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '--no-env-file',
+      import.meta.filename,
+      probe,
+      ...acceptanceAuthorizationArgs(),
+    ],
+    {
+      env,
+      stdin: 'ignore',
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
   report('isolated-probe', { root: probe });
   process.exit(await child.exited);
 }
@@ -99,7 +112,12 @@ const spawnDaemon = () =>
   });
 let daemon = spawnDaemon();
 const local = createControlClient({ socket: controlSocket(m) });
-const service = createInjectedControlClient(localControlFetch(controlSocket(m), 'probe-client'));
+// The daemon gives `session.create` 60 s; a caller that gives up first reports the caller's clock,
+// not the daemon's — a cold Codex create was cut at 30 s while its own budget still ran.
+const service = createInjectedControlClient(
+  localControlFetch(controlSocket(m), 'probe-client'),
+  65_000,
+);
 try {
   await until(
     'prepared empty baseline',
@@ -127,7 +145,7 @@ try {
     requestId: crypto.randomUUID(),
     name: 'native-agent',
     workspace: join(root, 'workspace'),
-    modelSelection: { provider: 'openrouter', model: 'z-ai/glm-5.3-flash' },
+    modelSelection: { provider: 'openrouter', model: 'deepseek/deepseek-v4.1-flash' },
   } satisfies Parameters<(typeof service)['session.create']>[0];
   const receipt = await service['session.create'](create);
   const retry = await service['session.create'](create);

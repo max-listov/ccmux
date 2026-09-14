@@ -62,6 +62,11 @@ has an independent byte budget; commands, output, cwd, diffs and arbitrary provi
 enter the projection. Native RPC messages are capped at 2 MiB; oversized/invalid messages disconnect fail-closed.
 Metadata reconciliation is at most once per 500 ms per session, not per reader. Reconnect backoff
 is bounded at 500 ms..10 s. The only history reconciliation is a one-turn native summary at resume.
+Every App Server request has a 10 s deadline, except the three that load a thread — `thread/start`,
+`thread/resume`, `thread/fork` — which get 45 s inside `session.create`'s 60 s. Loading a thread
+starts the host's configured MCP servers: a fresh server answered `thread/start` in 5.2 s with
+them and in 0.3 s without, and from cold not within 10 s, which made a Codex session impossible to
+create on a loaded host.
 
 The provider process and interactive client survive a CCMux daemon restart. A lost observer
 reconnects without restarting the writer. A provider crash terminates its owned process group

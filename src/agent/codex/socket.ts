@@ -288,14 +288,18 @@ export async function connectCodexSocket(
     };
   });
 
-  const request = (method: string, params: unknown): Promise<unknown> => {
+  const request = (
+    method: string,
+    params: unknown,
+    requestOptions?: { timeoutMs?: number },
+  ): Promise<unknown> => {
     if (closed) return Promise.reject(closed);
     const id = nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`Codex App Server ${method} timed out`));
-      }, REQUEST_TIMEOUT_MS);
+      }, requestOptions?.timeoutMs ?? REQUEST_TIMEOUT_MS);
       pending.set(id, { resolve, reject, timer });
       socket.write(clientFrame(0x1, JSON.stringify({ method, id, params })), (error) => {
         if (!error) return;

@@ -15,7 +15,7 @@ export function controlServices(
   upstream?: ApplicationAdmission,
   dependencies: ControlOperationDependencies = {},
 ) {
-  const { operations, mutations, waits, reads } = createControlOperations(
+  const { operations, mutations, waits, reads, catalog } = createControlOperations(
     m,
     publisher,
     external,
@@ -82,5 +82,5 @@ export function controlServices(
     watchNative: ({ input, signal }) =>
       subscribeControlNative(m, input.target, input.cursor, signal),
   });
-  return { services: [service, events], service, mutations, waits, reads };
+  return { services: [service, events], service, mutations, waits, reads, catalog };
 }

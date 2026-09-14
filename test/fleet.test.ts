@@ -33,6 +33,7 @@ function row(
     running: true,
     lifecycleError: null,
     stale: [],
+    staleUnknown: null,
     turnStartedAt: null,
     account: null,
     planLimits: null,

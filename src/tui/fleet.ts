@@ -116,6 +116,8 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     waitingFor: null, // external sessions are observed, never driven — we do not read their menus
     state: 'external',
     lifecycleError: null,
+    // Not launched by this machine: there is no recipe to compare, so nothing is unmeasured either.
+    staleUnknown: null,
     model: prettyModel(ext.lastModel),
     // A discovered thread is observed, not driven: nobody asked its runtime which account it is on.
     account: null,

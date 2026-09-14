@@ -18,7 +18,11 @@ import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
-import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+import {
+  acceptanceAuthorizationArgs,
+  acceptancePositionals,
+  readAcceptanceCommunicationAuthorization,
+} from './acceptance-communication.ts';
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
@@ -31,7 +35,7 @@ import {
   until,
 } from './native-policy-fixture.ts';
 
-const requestedRoot = process.argv[2];
+const [requestedRoot] = acceptancePositionals();
 if (requestedRoot === undefined) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-selection-e2e-')));
   chmodSync(root, 0o700);
@@ -80,12 +84,21 @@ if (requestedRoot === undefined) {
   delete env.CCMUX_SESSION;
   delete env.CCMUX_CHAT_CREDENTIAL;
   report('isolated-probe', { directoryHash: hash(root), retainedDirectoryName: basename(root) });
-  const child = Bun.spawn([process.execPath, '--no-env-file', import.meta.filename, root], {
-    env,
-    stdin: 'ignore',
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '--no-env-file',
+      import.meta.filename,
+      root,
+      ...acceptanceAuthorizationArgs(),
+    ],
+    {
+      env,
+      stdin: 'ignore',
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
   process.exit(await child.exited);
 }
 const root = requestedRoot;

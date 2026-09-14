@@ -985,6 +985,10 @@ export const ListItemSchema = z.object({
   // Deliberately unaffected by `role`: a role is addressing metadata, not launch input, so declaring
   // one must never paint a session as needing a restart.
   stale: z.array(z.string()).default([]),
+  // Why `stale` could not be computed by the reader that built this row — its launch recipe does not
+  // build there — or null when it could. Unmeasured is its own answer: an empty `stale` beside it
+  // does not mean "nothing to pick up".
+  staleUnknown: z.string().max(200).nullable().default(null),
   /** What this session is FOR, when it declares it. Null is an ordinary state, not missing data —
    *  such a session is addressed by name, as it always was. */
   role: z.string().nullable().default(null),

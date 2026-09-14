@@ -357,19 +357,22 @@ export const ControlModelCatalogSchema = z
         runtime: AgentKindSchema,
         launchRecipe: LaunchRecipeMetadataSchema.optional(),
         /**
-         * When this list was observed, for a runtime whose catalog only a running session can ask.
+         * When this list was observed: for a runtime whose catalog only a running session can ask,
+         * and for the Codex host catalog, which the daemon reads in the background and serves from
+         * its last read because one read costs a metadata App Server start.
          *
          * Null where the answer is computed on the spot and the question does not arise. Where it
-         * is not null it is load-bearing: a list left behind by a session that has since stopped is
-         * still the best answer this host has, and calling it current would be the lie.
+         * is not null it is load-bearing: a list left behind by a session that has since stopped, or
+         * read some minutes ago, is still the best answer this host has, and calling it current
+         * would be the lie.
          */
         observedAt: z.string().max(64).nullable().default(null),
         /**
-         * Whether the session that published this list is still running.
+         * Whether that observation is current: the publishing session is still running, or the host
+         * catalog was read within the last ten minutes.
          *
-         * `stale` is not a failure — it is "nobody is holding this runtime right now, and this is
-         * what it last said". A caller choosing a model before creating a session wants exactly
-         * that, and wants to know which of the two it got.
+         * `stale` is not a failure — it is "this is what it last said". A caller choosing a model
+         * before creating a session wants exactly that, and wants to know which of the two it got.
          */
         freshness: z.enum(['live', 'stale']).nullable().default(null),
       })

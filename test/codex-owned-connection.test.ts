@@ -22,6 +22,7 @@ import { makeMachine, makeSession, UUID } from './helpers.ts';
 function fixture(
   publication: 'none' | 'delayed' | 'empty' | 'malformed' = 'none',
   collaboration = false,
+  threadStartDelayMs = 0,
 ) {
   const codexSessionsDir = mkdtempSync('/tmp/ccmux-native-rollouts-');
   const m = makeMachine({
@@ -99,18 +100,21 @@ function fixture(
           mkdirSync(directory, { recursive: true });
           const rollout = join(directory, `rollout-2026-08-29T00-00-00-${s.uuid}.jsonl`);
           writeFileSync(rollout, publication === 'malformed' ? '{broken}\n' : '');
-          respond({
-            thread: {
-              id: s.uuid,
-              name: null,
-              source: 'cli',
-              status: native,
-              canAcceptDirectInput: true,
-            },
-            model: 'model-current',
-            modelProvider: 'openai',
-            reasoningEffort: 'low',
-          });
+          const started = () =>
+            respond({
+              thread: {
+                id: s.uuid,
+                name: null,
+                source: 'cli',
+                status: native,
+                canAcceptDirectInput: true,
+              },
+              model: 'model-current',
+              modelProvider: 'openai',
+              reasoningEffort: 'low',
+            });
+          if (threadStartDelayMs > 0) setTimeout(started, threadStartDelayMs);
+          else started();
         }
         if (message.method === 'turn/start') {
           turnParams.push(message.params);
@@ -553,3 +557,18 @@ test('approval and input responses stay on the owning RPC connection and reject 
     f.close();
   }
 });
+
+test('a thread that takes longer to load than an ordinary request still loads', async () => {
+  // A fresh App Server with the host's MCP servers answered `thread/start` in 5.2 s warm and not
+  // within 10 s cold. The shared request deadline is 10 s; loading a thread has its own.
+  const f = fixture('delayed', false, 10_500);
+  const connection = new OwnedCodexConnection(f.m, f.s, process.pid);
+  try {
+    await connection.open(new AbortController().signal);
+    await connection.admit(true, new AbortController().signal);
+    expect(f.requests).toContain('thread/start');
+  } finally {
+    await connection.close('stopped');
+    f.close();
+  }
+}, 30_000);

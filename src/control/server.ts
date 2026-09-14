@@ -44,6 +44,7 @@ export function createControlServer(
           log.info({
             msg: 'control request',
             action: event.action,
+            caller: event.dimensions?.caller ?? null,
             ok: event.ok,
             code: event.errorCode,
             durationMs: Math.round(event.durationMs),

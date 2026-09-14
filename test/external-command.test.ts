@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,17 @@ import { ExternalInventoryJsonSchema, ExternalSessionSchema } from '../src/confi
 
 const THREAD = '11111111-1111-4111-8111-111111111111';
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
+
+// Setup, not the subject. The flush test runs the shipped bundle, and building it costs whatever the
+// host's CPU allows — fifteen seconds were measured on a loaded machine. Built here, under a budget
+// of its own, the test's budget measures the flush and not how busy the host is.
+const bundleRoot = mkdtempSync(join(tmpdir(), 'ccmux-external-bundle-'));
+const bundle = join(bundleRoot, 'ccmux.js');
+let bundled = false;
+beforeAll(async () => {
+  bundled = await buildBundle(bundle);
+}, 180_000);
+afterAll(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
 const session = ExternalSessionSchema.parse({
   key: `external:codex:host-a#${THREAD}`,
@@ -64,7 +75,6 @@ describe('external inventory command', () => {
     const stateDir = join(root, 'state');
     const fakeBin = join(root, 'bin');
     const config = join(root, 'machine.json');
-    const bundle = join(root, 'ccmux.js');
     mkdirSync(sessionsDir, { recursive: true });
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(fakeBin, '#!/bin/sh\nexit 0\n');
@@ -105,7 +115,7 @@ describe('external inventory command', () => {
     env.CCMUX_CONFIG = config;
 
     try {
-      expect(await buildBundle(bundle)).toBe(true);
+      expect(bundled).toBe(true);
       // The shipped bundle plus an intermediate pipe is the production failure shape: running the
       // source file or redirecting straight to disk can both hide a buffered-write truncation.
       const proc = Bun.spawn(
@@ -125,9 +135,9 @@ describe('external inventory command', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-    // Declared rather than inherited. This case builds the shipped bundle and then runs a real
-    // discovery over two thousand threads, whose cost includes one `lsof` pass over every process
-    // on the machine — so its wall time tracks how busy the host is, not whether the flush works.
+    // Declared rather than inherited. The bundle is built before this test, so the budget pays only
+    // a real discovery over two thousand threads and the flush through a pipe. The fixture holds no
+    // writer lock, so discovery never asks `lsof` — only a lock file that exists is worth a scan.
     // The default five seconds was never chosen for it; the assertion above is what it measures.
   }, 30_000);
 

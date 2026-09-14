@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ExternalSessionSchema } from '../src/config/schema.ts';
@@ -363,23 +371,40 @@ describe('thread lock inspection cost', () => {
 
   test('a lock file that does exist is still asked about', () => {
     // The saving must come from skipping absent paths only. A present lock is the case the whole
-    // mechanism exists for, so it keeps costing a real query.
+    // mechanism exists for, so it keeps costing a query.
+    //
+    // The query is answered by a stand-in `lsof` that records what it was asked. The real one
+    // walks every process on the machine before looking at a path — 27–40 s on a loaded host —
+    // and this test is about WHICH paths are asked, not about how many processes the host runs.
     const home = mkdtempSync(join(tmpdir(), 'ccmux-locks-'));
+    const previousPath = process.env.PATH;
     try {
       const dir = join(home, 'thread-writer-locks');
       mkdirSync(dir, { recursive: true });
       const [held = '', absent = ''] = ids(2);
       writeFileSync(join(dir, `${held}.lock`), '');
+      const bin = join(home, 'bin');
+      const asked = join(home, 'asked');
+      mkdirSync(bin);
+      // lsof exits 1 for a valid query with no open file — the answer for an unheld lock.
+      writeFileSync(join(bin, 'lsof'), `#!/bin/sh\nprintf '%s\\n' "$@" >> '${asked}'\nexit 1\n`);
+      chmodSync(join(bin, 'lsof'), 0o755);
+      process.env.PATH = `${bin}:${previousPath ?? ''}`;
       const m = makeMachine({ codexHome: home });
       expect(codexThreadLockState(m, held)?.present).toBe(true);
       expect(codexThreadLockState(m, absent)?.present).toBe(false);
       const seen = inspectCodexThreadLocks(m, [held, absent]);
+      const queried = readFileSync(asked, 'utf8').split('\n');
+      expect(queried).toContain(realpathSync(join(dir, `${held}.lock`)));
+      expect(queried).not.toContain(join(dir, `${absent}.lock`));
       // Nothing holds it, so the verdict matches — but it was reached by looking, and the path was
       // canonicalised, which only happens for a file that is really there.
       expect(seen.get(held)?.evidence).toBe('none-observed');
       expect(seen.get(held)?.path).toBe(realpathSync(join(dir, `${held}.lock`)));
       expect(seen.get(absent)?.path).toBe(join(dir, `${absent}.lock`));
     } finally {
+      // Restored whatever failed above: a stand-in `lsof` left on PATH would answer later tests.
+      process.env.PATH = previousPath;
       rmSync(home, { recursive: true, force: true });
     }
   });

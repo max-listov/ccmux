@@ -67,6 +67,7 @@ import {
 import { acceptControlMessage } from './message.ts';
 import { cancelControlMessage } from './messageCancel.ts';
 import { readMessageOperation } from './messageOperation.ts';
+import { HostCatalogCache } from './modelCatalogCache.ts';
 import { readControlModels } from './models.ts';
 import { interruptControlTurn, waitControlSession } from './native.ts';
 import { readControlNative, respondControlNative } from './nativeFeed.ts';
@@ -137,6 +138,8 @@ export function createControlOperations(
     ...(upstream ? { upstream } : {}),
     policy: { global: { maxConcurrent: 4 } },
   });
+  // The host catalog outlives the call that asked for it; see `modelCatalogCache.ts`.
+  const catalog = new HostCatalogCache((input, signal) => readControlModels(m, input, signal));
   const operations = {
     usage: (input: z.output<typeof UsageReadSchema>, signal?: AbortSignal) =>
       reads
@@ -436,10 +439,19 @@ export function createControlOperations(
         .catch(controlRefusal),
     models: (input: ModelsReadInput, signal?: AbortSignal) =>
       reads
-        .run(undefined, ({ signal: admitted }) => readControlModels(m, input, admitted), {
-          ...(signal ? { signal } : {}),
-          timeoutMs: CONTROL_MODELS_CALL_BUDGET_MS,
-        })
+        .run(
+          undefined,
+          ({ signal: admitted }) =>
+            // Only the Codex host catalog costs a process start per read; a session's own catalog
+            // and other runtimes' catalogs answer from something already running.
+            input.target === undefined && (input.runtime ?? 'codex') === 'codex'
+              ? catalog.get(input, admitted)
+              : readControlModels(m, input, admitted),
+          {
+            ...(signal ? { signal } : {}),
+            timeoutMs: CONTROL_MODELS_CALL_BUDGET_MS,
+          },
+        )
         .catch(controlRefusal),
     commands: (input: z.output<typeof ControlCommandsReadSchema>) =>
       readControlCommands(m, input.target),
@@ -507,7 +519,7 @@ export function createControlOperations(
         )
         .catch(controlRefusal),
   };
-  return { operations, mutations, waits, reads };
+  return { operations, mutations, waits, reads, catalog };
 }
 
 export type ControlOperations = ReturnType<typeof createControlOperations>['operations'];

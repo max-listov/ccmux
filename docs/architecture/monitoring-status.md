@@ -123,6 +123,11 @@ Snapshot fields are protocol, producer version, boot generation UUID, monotonic 
 sequence, producer pid, rcPrefix, scope (managed), observedAt, generatedAt,
 refreshDurationMs, maxAgeMs, limits, omitted and sessions.
 observedAt is the start of the observation pass, not the instant a reader fetched it.
+A pass shares the daemon's one event loop with control calls and delivery, so the snapshot is only
+as fresh as that loop lets it be: every state file is written with the promise forms of `chmod` and
+`rename`, which wait on a pool thread, and a loop that was nonetheless blocked for five seconds or
+more is logged as `daemon event loop blocked` with `blockedMs`. A filesystem that stalled a rename
+for fifteen seconds on the main thread was measured on a loaded host; it made the snapshot expire.
 Generation changes on daemon restart; sequence alone is never a durable cursor.
 
 Each row carries:

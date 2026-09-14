@@ -1,7 +1,8 @@
 import { AppError } from 'stitchkit';
+import { setRequestDimensions } from 'stitchkit/observability';
 import { createAuthHook } from 'stitchkit/server';
 import { hasChatCredential } from '../chat/auth.ts';
-import { managedPeer, servicePrincipal } from '../chat/identity.ts';
+import { chatPrincipalKey, managedPeer, servicePrincipal } from '../chat/identity.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { ChatPrincipalSchema } from '../config/schema.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
@@ -45,6 +46,9 @@ export function controlAuth(m: MachineConfig) {
     rules: { local: 'authenticated' },
     inject: (ctx, principal) => {
       ctx.principal = principal;
+      // Carried to the request log: a failure nobody can attribute is a failure nobody can fix —
+      // 314 catalog timeouts were recorded with no way to say who kept asking.
+      if (principal !== null) setRequestDimensions({ caller: chatPrincipalKey(principal) });
     },
   });
 }

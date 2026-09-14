@@ -24,7 +24,7 @@ import { setSessionChatEnabled } from '../config/sessions.ts';
 import { loadOutboxAcked } from '../fleet/flush.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
-import { peersOf, runPeer } from '../fleet/transport.ts';
+import { peersOf, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { printLine } from '../util/stdout.ts';
@@ -93,7 +93,10 @@ async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
         { timeoutMs: 20_000 },
       );
       if (r.transportFailed) return fail(r.failureDetail ?? 'unreachable (no transit right now)');
-      if (r.code !== 0) return fail(`remote ccmux failed (exit ${r.code})`);
+      if (r.code !== 0)
+        return fail(
+          `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
+        );
       try {
         const envelope = RemoteEnvelopeSchema.safeParse(JSON.parse(r.stdout)).data;
         if (envelope === undefined) return fail(unreadableReason(r.stdout, r.stderr));

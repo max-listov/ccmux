@@ -9,7 +9,7 @@ import {
   sessionUsedTokens,
 } from '../agent/index.ts';
 import { envFilePath } from '../agent/launchInputs.ts';
-import { computeStamp, staleReasons } from '../agent/launchStamp.ts';
+import { launchStaleReasons } from '../agent/launchStamp.ts';
 import {
   type LifecycleStatus,
   readLaunchStamp,
@@ -81,6 +81,8 @@ export interface ListRow {
   // What a restart WOULD change for this session ("chat" / "mode" / "modules" / "config").
   // Empty = up to date, or launched before stamping existed (unknown is never shown as stale).
   stale: string[];
+  /** Why `stale` could not be computed for this reader (its recipe does not build), or null. */
+  staleUnknown: string | null;
   /** When the turn that is running now began (ISO), or null. See `turnStartedAt` in the JSON
    *  contract for why it is an instant rather than an elapsed time. */
   turnStartedAt: string | null;
@@ -129,6 +131,7 @@ async function buildRow(
       },
       uptimeText: '—',
       stale: [],
+      staleUnknown: null,
       turnStartedAt: null, // a stopped session is not in a turn
       uptimeSeconds: null,
       createdAt: null,
@@ -202,6 +205,7 @@ async function buildRow(
     }
   }
   const uptimeSeconds = startedAt === undefined ? null : Math.floor(nowSec - startedAt);
+  const restart = launchStaleReasons(readLaunchStamp(s.name), s, m, promptInvocation());
   return {
     session: s,
     running: true,
@@ -224,7 +228,8 @@ async function buildRow(
     context,
     uptimeText: uptimeSeconds === null ? '—' : humanizeDuration(uptimeSeconds),
     // A stopped session is never "stale": it will pick everything up whenever it next starts.
-    stale: staleReasons(readLaunchStamp(s.name), computeStamp(s, m, promptInvocation())),
+    stale: restart.reasons,
+    staleUnknown: restart.unknown,
     turnStartedAt: native === null ? turnStartedAt(state, lifecycle) : native.turnStartedAt,
     uptimeSeconds,
     createdAt: startedAt === undefined ? null : new Date(startedAt * 1000).toISOString(),
@@ -286,7 +291,7 @@ function printTable(m: MachineConfig, rows: ListRow[]): void {
   );
   for (const r of rows) {
     console.log(
-      `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(r.model ?? '-', 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(',') : '-', 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
+      `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(r.model ?? '-', 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(',') : r.staleUnknown !== null ? '?' : '-', 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
     );
     if (r.lifecycleError !== null) console.log(`  blocked: ${r.lifecycleError}`);
     // A declared env file that is not on disk. The session still starts — that was the deliberate
@@ -335,6 +340,7 @@ export function toListItem(m: MachineConfig, r: ListRow): ListItem {
     context: r.context,
     uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     stale: r.stale,
+    staleUnknown: r.staleUnknown,
     role: r.session.role ?? null,
     turnStartedAt: r.turnStartedAt,
     envFile: envFileEntry(r.session),

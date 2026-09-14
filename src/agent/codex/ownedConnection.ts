@@ -36,7 +36,12 @@ import { OwnedCodexProjection } from './ownedProjection.ts';
 import { connectOwnedCodex } from './ownedRpc.ts';
 import { OwnedCodexStatusWriter } from './ownedStatus.ts';
 import { rolloutReadiness } from './resume.ts';
-import type { CodexAppRpc, CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
+import {
+  CODEX_THREAD_BOOTSTRAP_TIMEOUT_MS,
+  type CodexAppRpc,
+  type CodexRpcEvent,
+  type CodexRpcRequest,
+} from './rpc.ts';
 import { codexTextInput } from './turnInput.ts';
 
 /**
@@ -215,10 +220,14 @@ export class OwnedCodexConnection {
     const response =
       fork === null
         ? CodexAppThreadContextSchema.parse(
-            await rpc.request(fresh ? 'thread/start' : 'thread/resume', {
-              ...ownedCodexThreadParams(this.initial, this.m),
-              ...(fresh ? {} : { threadId: this.initial.uuid, excludeTurns: true }),
-            }),
+            await rpc.request(
+              fresh ? 'thread/start' : 'thread/resume',
+              {
+                ...ownedCodexThreadParams(this.initial, this.m),
+                ...(fresh ? {} : { threadId: this.initial.uuid, excludeTurns: true }),
+              },
+              { timeoutMs: CODEX_THREAD_BOOTSTRAP_TIMEOUT_MS },
+            ),
           )
         : await admitNativeFork(
             this.m,
@@ -227,25 +236,33 @@ export class OwnedCodexConnection {
               fork: async (source, nativeSignal) => {
                 nativeSignal.throwIfAborted();
                 return CodexAppThreadContextSchema.parse(
-                  await rpc.request('thread/fork', {
-                    ...ownedCodexThreadParams(this.initial, this.m),
-                    threadId: source.nativeId,
-                    ...(source.turnId === null ? {} : { lastTurnId: source.turnId }),
-                    excludeTurns: true,
-                    deferGoalContinuation: true,
-                  }),
+                  await rpc.request(
+                    'thread/fork',
+                    {
+                      ...ownedCodexThreadParams(this.initial, this.m),
+                      threadId: source.nativeId,
+                      ...(source.turnId === null ? {} : { lastTurnId: source.turnId }),
+                      excludeTurns: true,
+                      deferGoalContinuation: true,
+                    },
+                    { timeoutMs: CODEX_THREAD_BOOTSTRAP_TIMEOUT_MS },
+                  ),
                 );
               },
               identity: (result) => result.thread.id,
               resume: async (threadId, nativeSignal) => {
                 nativeSignal.throwIfAborted();
                 return CodexAppThreadContextSchema.parse(
-                  await rpc.request('thread/resume', {
-                    ...ownedCodexThreadParams(this.initial, this.m),
-                    threadId,
-                    excludeTurns: true,
-                    deferGoalContinuation: true,
-                  }),
+                  await rpc.request(
+                    'thread/resume',
+                    {
+                      ...ownedCodexThreadParams(this.initial, this.m),
+                      threadId,
+                      excludeTurns: true,
+                      deferGoalContinuation: true,
+                    },
+                    { timeoutMs: CODEX_THREAD_BOOTSTRAP_TIMEOUT_MS },
+                  ),
                 );
               },
             },

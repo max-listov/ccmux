@@ -40,6 +40,23 @@ function detectClaudeBin(): string {
   return found;
 }
 
+/**
+ * The caller's PATH is not configuration. Every command loads this config, and a caller started
+ * with a minimal PATH — a launchd job, a hub's worker, a non-login shell — would otherwise build a
+ * different machine than the daemon did: a runtime the daemon launched becomes "not configured" for
+ * that one reader. The install locations come after PATH so that PATH still wins when it has one.
+ */
+function detectOptionalBin(name: 'codex' | 'opencode'): string | undefined {
+  return firstExisting([
+    Bun.which(name),
+    `${HOME}/.bun/bin/${name}`,
+    `${HOME}/.local/bin/${name}`,
+    `${HOME}/.opencode/bin/${name}`,
+    `/opt/homebrew/bin/${name}`,
+    `/usr/local/bin/${name}`,
+  ]);
+}
+
 function detectTmuxBin(): string {
   const found = firstExisting([Bun.which('tmux'), '/opt/homebrew/bin/tmux', '/usr/bin/tmux']);
   if (!found) throw new Error('tmux binary not found — set tmuxBin in machine.json');
@@ -63,11 +80,11 @@ export function loadMachineConfig(): MachineConfig {
   };
   if (merged.claudeBin === undefined) merged.claudeBin = detectClaudeBin();
   if (merged.codexBin === undefined) {
-    const codex = Bun.which('codex');
+    const codex = detectOptionalBin('codex');
     if (codex) merged.codexBin = codex;
   }
   if (merged.opencodeBin === undefined) {
-    const opencode = Bun.which('opencode');
+    const opencode = detectOptionalBin('opencode');
     if (opencode) merged.opencodeBin = opencode;
   }
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();

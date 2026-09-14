@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { LOG_FILE } from '../src/config/paths.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import type { MachineConfig, Session } from '../src/types.ts';
 
@@ -25,7 +26,9 @@ export async function verifyRuntimeConfidentiality(
     JSON.stringify(publicFrame),
     JSON.stringify(session),
     argv.stdout.toString(),
-    readFileSync(join(m.stateDir, 'ccmux.log'), 'utf8'),
+    // The daemon's own file name, not a spelling of it: a daemon run from source writes
+    // `ccmux.dev.log`, and a hard-coded `ccmux.log` failed the check before it could look.
+    readFileSync(join(m.stateDir, basename(LOG_FILE)), 'utf8'),
   ];
   if (evidence.some((value) => value.includes(fixture)))
     throw new Error('Secret-like fixture escaped its environment boundary');

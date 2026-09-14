@@ -60,6 +60,10 @@ providers before a chat. Session-scoped model reads use that exact writer's prep
 
 OpenCode requires 1.18.20 or newer and the pinned SDK 1.18.20. Configure/install `opencodeBin` on the
 execution host and authenticate using OpenCode itself. The control caller supplies no credentials.
+When `opencodeBin` or `codexBin` is not set in `machine.json`, it is resolved from PATH and then
+from the usual install locations (`~/.bun/bin`, `~/.local/bin`, `~/.opencode/bin`,
+`/opt/homebrew/bin`, `/usr/local/bin`), so a caller started with a minimal PATH — a launchd job, a
+non-login shell — sees the same machine as the daemon.
 CLI creation is `ccmux new agent-a ~/code/demo --agent opencode`; native input and history use the
 control service, not an invented terminal composer. OpenCode does not accept Codex launch recipes or
 caller flags. Claude exposes its existing interactive lifecycle, not native model/request parity.

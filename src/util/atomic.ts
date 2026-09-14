@@ -1,4 +1,5 @@
 import { chmodSync, renameSync, writeFileSync } from 'node:fs';
+import { chmod, rename } from 'node:fs/promises';
 
 /**
  * A name no other write in this process can be using.
@@ -18,8 +19,12 @@ let sequence = 0;
 export async function atomicWrite(path: string, text: string, mode?: number): Promise<void> {
   const tmp = `${path}.tmp-${process.pid}-${Date.now()}-${sequence++}`;
   await Bun.write(tmp, text);
-  if (mode !== undefined) chmodSync(tmp, mode);
-  renameSync(tmp, path); // atomic on the same filesystem
+  // The promise forms, not the sync ones, and for the daemon's sake rather than style: a sync call
+  // runs on the event loop, so a filesystem that stalls a rename for seconds froze every schedule,
+  // control call and delivery with it — measured on a loaded machine as fifteen seconds inside
+  // `rename` on the main thread. The promise forms wait on a pool thread and the loop keeps turning.
+  if (mode !== undefined) await chmod(tmp, mode);
+  await rename(tmp, path); // atomic on the same filesystem
 }
 
 /** The same guarantee without an await, for callers that are synchronous all the way down. */

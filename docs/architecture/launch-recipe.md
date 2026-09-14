@@ -101,7 +101,10 @@ layer, because that one comes from the supervisor's own runtime rather than from
 
 Unknown is never stale. A stamp written before an input existed carries `null` for it and is never
 reported — the same doctrine as a missing stamp, and the reason the first upgrade to a build that
-knows about a new input does not paint the whole fleet red.
+knows about a new input does not paint the whole fleet red. A recipe the reader cannot build at all —
+its runtime's executable does not resolve for this reader — is a third answer, unmeasured: the
+column shows `?`, `fleet` shows `⟳ ?`, and `list --json` carries the cause in `staleUnknown`. It
+stays on its own row: `list` and `fleet` still answer for every other session.
 
 ## The env layer: from an accident to a declaration
 

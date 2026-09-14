@@ -235,6 +235,38 @@ export function peersOf(m: MachineConfig): Peer[] {
   return [...out.values()].sort((a, b) => a.machine.localeCompare(b.machine));
 }
 
+/**
+ * The one line of a failed remote command that says why.
+ *
+ * A remote `ccmux` reports its failure as a JSON log line whose `err` carries a stack; anything else
+ * says it in plain text. Without this the fleet printed only the exit code, and "the machine is
+ * asleep", "a policy refused it" and "the command crashed" read the same.
+ */
+export function remoteFailureCause(stderr: string): string | null {
+  const lines = stderr
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  for (const line of lines) {
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        'err' in parsed &&
+        typeof parsed.err === 'string'
+      ) {
+        const first = parsed.err.split('\n')[0]?.trim();
+        if (first) return first.slice(0, 160);
+      }
+    } catch {
+      // not a log line
+    }
+  }
+  const first = lines[0];
+  return first === undefined ? null : first.slice(0, 160);
+}
+
 export interface FleetCheck {
   machine: string;
   via: 'ssh' | 'remote';
@@ -272,7 +304,7 @@ export async function checkFleet(m: MachineConfig): Promise<FleetCheck[]> {
           ok: false,
           reachable: true,
           reported: null,
-          detail: `remote ccmux failed (exit ${r.code}) — is ccmux on the non-interactive PATH there?`,
+          detail: `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported — is ccmux on the non-interactive PATH there?'}`,
         };
       }
       // Lenient on purpose: the far side may run an older ccmux whose `list --json` has a different

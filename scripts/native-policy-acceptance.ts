@@ -16,7 +16,11 @@ import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer, Session } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
-import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
+import {
+  acceptanceAuthorizationArgs,
+  acceptancePositionals,
+  readAcceptanceCommunicationAuthorization,
+} from './acceptance-communication.ts';
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
@@ -31,18 +35,27 @@ import {
   until,
 } from './native-policy-fixture.ts';
 
-const requestedRoot = process.argv[2];
+const [requestedRoot] = acceptancePositionals();
 if (requestedRoot === undefined) {
   const fixture = await createPolicyFixture();
   const env: Record<string, string | undefined> = { ...fixture.env };
   delete env.CCMUX_SESSION;
   delete env.CCMUX_CHAT_CREDENTIAL;
-  const child = Bun.spawn([process.execPath, '--no-env-file', import.meta.filename, fixture.root], {
-    env,
-    stdin: 'ignore',
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '--no-env-file',
+      import.meta.filename,
+      fixture.root,
+      ...acceptanceAuthorizationArgs(),
+    ],
+    {
+      env,
+      stdin: 'ignore',
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
   report('isolated-probe', {
     directoryHash: hash(fixture.root),
     retainedDirectoryName: basename(fixture.root),

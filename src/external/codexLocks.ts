@@ -14,7 +14,8 @@ export type CodexLockInspection = {
 };
 
 function lsofBin(): string | null {
-  const detected = Bun.which('lsof');
+  // The PATH the process has now, not the one it started with.
+  const detected = Bun.which('lsof', { PATH: process.env.PATH ?? '' });
   if (detected) return detected;
   if (existsSync('/usr/sbin/lsof')) return '/usr/sbin/lsof';
   if (existsSync('/usr/bin/lsof')) return '/usr/bin/lsof';

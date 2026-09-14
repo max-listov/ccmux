@@ -13,6 +13,7 @@ import { autoUpdateOnce } from '../commands/update.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { BOOT_ATTEMPTS } from '../config/paths.ts';
 import { ControlPublisher } from '../control/publisher.ts';
+import { ControlModelsReadSchema } from '../control/schema.ts';
 import { createControlServer } from '../control/server.ts';
 import { IS_DEV } from '../env.ts';
 import { type Observed, observeOnce } from '../events/observe.ts';
@@ -29,6 +30,7 @@ import { clearBootGuard } from '../util/bootGuard.ts';
 import { log, setLogLevel } from '../util/log.ts';
 import { VERSION } from '../util/version.ts';
 import { createDaemonLifecycle } from './lifecycle.ts';
+import { watchLoopStalls } from './loopStall.ts';
 
 /** The daemon owns these resources, not the independently supervised provider writers. */
 export function createDaemonApplication(initial: MachineConfig) {
@@ -102,7 +104,12 @@ export function createDaemonApplication(initial: MachineConfig) {
         machine,
         external,
       );
+      // Read once at start, so the first caller after a restart finds a catalog instead of a cold
+      // metadata App Server; later reads happen when a caller finds the copy old.
+      if (initial.codexBin && initial.codexHome)
+        void owned.controls.catalog.refresh(ControlModelsReadSchema.parse({})).catch(() => {});
       closeAudit = async () => {
+        owned.controls.catalog.close();
         await owned.observability.close();
       };
       return { value: owned };
@@ -220,9 +227,21 @@ export function createDaemonApplication(initial: MachineConfig) {
     onError: (error) =>
       log.warn({ msg: 'config re-read / auto-update failed', err: String(error) }),
   });
+  let stopLoopWatch = (): void => {};
+  const loopStalls = defineManagedResource({
+    id: 'loop-stall-watch',
+    start: () => {
+      stopLoopWatch = watchLoopStalls((blockedMs) =>
+        log.warn({ msg: 'daemon event loop blocked', blockedMs }),
+      );
+      return { value: null };
+    },
+    close: () => stopLoopWatch(),
+  });
   const application: ApplicationHandle = createApplication({
     id: 'ccmux-daemon',
     resources: [
+      loopStalls,
       chronology,
       processLifecycle,
       projection,

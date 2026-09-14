@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { computeStamp, staleReasons } from '../src/agent/launchStamp.ts';
+import { computeStamp, launchStaleReasons, staleReasons } from '../src/agent/launchStamp.ts';
 import { MachineConfigSchema, SessionSchema } from '../src/config/schema.ts';
 
 const machine = (over: Record<string, unknown> = {}) =>
@@ -26,6 +26,23 @@ const stamp = (s = session(), m = machine()) => ({ ...computeStamp(s, m, 'ccmux'
 
 test('a fresh session is not stale', () => {
   expect(staleReasons(stamp(), computeStamp(session(), machine(), 'ccmux'))).toEqual([]);
+});
+
+test('a row whose runtime this reader cannot resolve is UNKNOWN, not a failed listing', () => {
+  const s = session({ agent: 'opencode', runtime: 'native' });
+  const launched = machine({ opencodeBin: '/opt/opencode' });
+  const reader = machine();
+  // The recipe really cannot be built for this reader — otherwise this test would prove nothing.
+  expect(() => computeStamp(s, reader, 'ccmux')).toThrow('Native executable is unavailable');
+  // Unmeasured, with its cause — neither "nothing to pick up" nor a restart reason.
+  expect(launchStaleReasons(stamp(s, launched), s, reader, 'ccmux')).toEqual({
+    reasons: [],
+    unknown: 'launch recipe cannot be built: Native executable is unavailable',
+  });
+  expect(launchStaleReasons(stamp(s, launched), s, launched, 'ccmux')).toEqual({
+    reasons: [],
+    unknown: null,
+  });
 });
 
 test('no stamp means UNKNOWN, never stale', () => {

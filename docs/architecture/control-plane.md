@@ -217,6 +217,16 @@ initializes it, reads `config/read` and `model/list`, then closes the socket and
 process group. It never calls `thread/start` or `thread/resume`. Failure retains only the last
 bounded diagnostic in owner-only `control/catalog-diagnostic.json` (0600), never in the response.
 
+That read outlives the call that asked for it. A metadata App Server's cold start was measured at
+18–22 s on a loaded host against the 5 s call budget, so every call timed out and the next paid the
+same start again. The daemon reads the host catalog once at start and keeps the last answer per
+input; a call returns it with `source.observedAt` and `freshness` — `live` within ten minutes of the
+read, `stale` after, when the same call also starts one fresh read in the background. A call that
+finds no answer yet waits four seconds and is then refused as `UNAVAILABLE` with a message that says
+the read is still running; the read itself has its own 60 s budget and fills the answer for the
+next call. A failed read keeps the previous answer. Session-scoped and OpenCode catalogs are not
+cached: they answer from a runtime that is already running.
+
 An optional exact `target` instead connects to that session's own socket; target and launch recipe
 are mutually exclusive. There is no fallback to a machine socket or another session. The returned
 `source: { kind: "host" | "session", machine, provider, launchRecipe? }` names the actual scope;

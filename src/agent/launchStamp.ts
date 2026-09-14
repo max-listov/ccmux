@@ -110,6 +110,29 @@ export function computeStamp(s: Session, m: MachineConfig, cli: string): Omit<La
 }
 
 /**
+ * The RESTART answer for one row, and why it could not be given.
+ *
+ * A recipe that cannot be built right now — its runtime's executable is not resolvable for this
+ * reader — is neither "up to date" nor "stale": it is unmeasured, and says so with its cause. It
+ * stays on its own row: one runtime this reader cannot resolve must not take every other row down.
+ */
+export function launchStaleReasons(
+  stamp: LaunchStamp | null,
+  s: Session,
+  m: MachineConfig,
+  cli: string,
+): { reasons: string[]; unknown: string | null } {
+  let now: Omit<LaunchStamp, 'ts'>;
+  try {
+    now = computeStamp(s, m, cli);
+  } catch (error) {
+    const cause = error instanceof Error ? error.message : String(error);
+    return { reasons: [], unknown: `launch recipe cannot be built: ${cause}`.slice(0, 200) };
+  }
+  return { reasons: staleReasons(stamp, now), unknown: null };
+}
+
+/**
  * What changed since this session started, in words a human can act on. Empty = up to date.
  * A MISSING stamp yields empty too: "we don't know" must never be displayed as "stale", or the
  * first upgrade of ccmux itself would paint the whole fleet red for no reason.

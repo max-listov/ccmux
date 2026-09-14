@@ -6,6 +6,38 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `ccmux list` and `ccmux fleet` no longer fail as a whole when the caller's PATH does not contain
+  a runtime that a managed session uses. The Codex and OpenCode executables are found in their usual
+  install locations after PATH, so a launchd job or a non-login shell sees the same machine as the
+  daemon; a row whose launch recipe still cannot be built reports its restart reasons as unknown
+  instead of aborting every other row.
+- The RESTART column says `?` when this reader cannot build a session's launch recipe, and
+  `list --json` names why in `staleUnknown`, instead of an empty column that reads as "nothing to
+  pick up". A fleet row for a machine whose remote `ccmux` failed carries that command's own error
+  line, not only its exit code.
+- The Codex host model catalog is read by the daemon in the background and served from its last
+  read with `observedAt` and `freshness`. A metadata App Server's cold start outlasted the 5 s call
+  budget, so every call used to time out; a caller that arrives before the first read finishes is
+  told the read is still running. Control request log lines name the caller.
+- The daemon no longer freezes while the filesystem stalls a rename: atomic writes wait on a pool
+  thread instead of the event loop, and a blocked event loop is reported in the log with how long it
+  was blocked.
+- Acceptance scripts that re-run themselves in an isolated probe accept `--communication-authorization`
+  and pass it on; the flag used to be taken for the probe directory. The runtime confidentiality
+  check reads the daemon's own log file name, which is `ccmux.dev.log` for a daemon run from source.
+  The flush test builds its bundle before its own budget starts, so a busy host no longer fails it.
+- A managed Codex session can be created from a cold start on a loaded host. Loading a thread —
+  `thread/start`, `thread/resume`, `thread/fork` — gets its own 45 s deadline inside
+  `session.create`'s 60 s; every other App Server request keeps 10 s. A fresh server answered
+  `thread/start` in 5.2 s with the host's MCP servers configured and in 0.3 s without them, and not
+  within 10 s from cold.
+- The lock inspection test asks a stand-in `lsof`, so it tests which paths are queried rather than
+  how many processes the host runs.
+- Dependencies move to their latest releases: Stitchkit 0.89.0, Zod 4.6.5, the AI SDK 7.0.99 with
+  its OpenAI-compatible provider 3.0.48, the OpenCode SDK 1.18.30, MCP ext-apps 2.0.0, React 19.3.0,
+  clack prompts 1.8.1, and on the development side the Claude agent SDK 0.3.270, Biome 2.5.13 and
+  the Bun and React type packages.
+
 ## [0.59.4] — 2026-09-12
 
 Preserve native transcript cursors and every paginated history part

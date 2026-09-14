@@ -14,7 +14,7 @@ import {
   ReleaseStandingSchema,
   TranscriptMessageSchema,
 } from '../config/schema.ts';
-import { peersOf, runPeer } from '../fleet/transport.ts';
+import { peersOf, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
@@ -188,7 +188,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
           machine,
           alias: label,
           ok: false,
-          error: `remote ccmux failed (exit ${r.code})`,
+          error: `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
           version: '?',
           release: null,
           behind: null,
@@ -268,7 +268,13 @@ export function formatFleetSession(
   machine: string,
   session: z.infer<typeof RemoteSessionSchema>,
 ): string {
-  const restart = session.stale.length > 0 ? `  ⟳ ${session.stale.join(',')}` : '';
+  // `⟳ ?`: this reader could not tell what a restart would change — not "nothing", not "stale".
+  const restart =
+    session.stale.length > 0
+      ? `  ⟳ ${session.stale.join(',')}`
+      : session.staleUnknown !== null
+        ? '  ⟳ ?'
+        : '';
   const agent = session.agent ?? 'unknown';
   // The role rides on the ADDRESS line, not in a column of its own, because it is part of the answer
   // to "which of these do I write to" — and the line above is the one people copy from.
