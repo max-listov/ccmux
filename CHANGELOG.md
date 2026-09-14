@@ -6,6 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A `daemon event loop blocked` line now carries `cpuMs`, the CPU time the whole process spent
+  during the stall, beside `blockedMs`. Near `blockedMs` means the daemon was busy with synchronous
+  work of its own; near zero means it was not running — waiting in a blocking system call or not
+  scheduled by a loaded host. The length alone could not tell the two apart.
+
 ## [0.60.1] — 2026-09-14
 
 Usage accounting no longer reports itself unavailable while another process is indexing the same transcript

@@ -231,8 +231,8 @@ export function createDaemonApplication(initial: MachineConfig) {
   const loopStalls = defineManagedResource({
     id: 'loop-stall-watch',
     start: () => {
-      stopLoopWatch = watchLoopStalls((blockedMs) =>
-        log.warn({ msg: 'daemon event loop blocked', blockedMs }),
+      stopLoopWatch = watchLoopStalls((stall) =>
+        log.warn({ msg: 'daemon event loop blocked', ...stall }),
       );
       return { value: null };
     },
