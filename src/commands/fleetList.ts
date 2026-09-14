@@ -14,7 +14,7 @@ import {
   ReleaseStandingSchema,
   TranscriptMessageSchema,
 } from '../config/schema.ts';
-import { peersOf, remoteFailureCause, runPeer } from '../fleet/transport.ts';
+import { peersOf, type RemoteResult, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
@@ -170,73 +170,61 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
         timeoutMs: 20_000,
         connectTimeoutSeconds: 3,
       });
-      const label = via === 'remote' ? 'remote' : alias;
-      if (r.transportFailed) {
-        return {
-          machine,
-          alias: label,
-          ok: false,
-          error: r.failureDetail ?? 'unreachable (no transit right now)',
-          version: '?',
-          release: null,
-          behind: null,
-          sessions: [],
-        };
-      }
-      if (r.code !== 0)
-        return {
-          machine,
-          alias: label,
-          ok: false,
-          error: `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
-          version: '?',
-          release: null,
-          behind: null,
-          sessions: [],
-        };
-      try {
-        const parsed = RemoteListSchema.safeParse(JSON.parse(r.stdout)).data;
-        if (parsed === undefined)
-          return {
-            machine,
-            alias: label,
-            ok: false,
-            error: 'unreadable list output (older ccmux?)',
-            version: '?',
-            release: null,
-            behind: null,
-            sessions: [],
-          };
-        return {
-          machine,
-          alias: label,
-          ok: true,
-          error: null,
-          version: parsed.version,
-          release: parsed.release,
-          behind: null,
-          // A peer reports its raw run-state; the parked/running verdict is reached here so both
-          // halves of the map are read by the same rule.
-          sessions: parsed.sessions.map((session) => ({
-            ...session,
-            state: rowStateLabel(session.state, session.running, session.archived),
-          })),
-        };
-      } catch {
-        return {
-          machine,
-          alias: label,
-          ok: false,
-          error: 'unreadable list output (older ccmux?)',
-          version: '?',
-          release: null,
-          behind: null,
-          sessions: [],
-        };
-      }
+      return peerListMachine(machine, via === 'remote' ? 'remote' : alias, r);
     }),
   );
   return [self, ...remote];
+}
+
+/**
+ * One peer's `list --json` answer, as the row the fleet view draws for that machine.
+ *
+ * Every way the answer can fail keeps its own sentence: the transport's own detail, the remote
+ * command's first error line with its exit code, or output this version cannot read. A machine that
+ * failed is never drawn as an empty one.
+ */
+export function peerListMachine(
+  machine: string,
+  alias: string | null,
+  r: RemoteResult,
+): FleetMachine {
+  const failed = (error: string): FleetMachine => ({
+    machine,
+    alias,
+    ok: false,
+    error,
+    version: '?',
+    release: null,
+    behind: null,
+    sessions: [],
+  });
+  if (r.transportFailed) return failed(r.failureDetail ?? 'unreachable (no transit right now)');
+  if (r.code !== 0)
+    return failed(
+      `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
+    );
+  let parsed: z.infer<typeof RemoteListSchema> | undefined;
+  try {
+    parsed = RemoteListSchema.safeParse(JSON.parse(r.stdout)).data;
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed === undefined) return failed('unreadable list output (older ccmux?)');
+  return {
+    machine,
+    alias,
+    ok: true,
+    error: null,
+    version: parsed.version,
+    release: parsed.release,
+    behind: null,
+    // A peer reports its raw run-state; the parked/running verdict is reached here so both
+    // halves of the map are read by the same rule.
+    sessions: parsed.sessions.map((session) => ({
+      ...session,
+      state: rowStateLabel(session.state, session.running, session.archived),
+    })),
+  };
 }
 
 /**
