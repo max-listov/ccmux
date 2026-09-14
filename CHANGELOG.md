@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.60.0] — 2026-09-14
+
+Fleet listing survives a caller without runtimes on PATH, the host model catalog answers from the daemon's last read, the daemon no longer freezes on a stalled rename, and cold Codex creates fit their budget
+
 - `ccmux list` and `ccmux fleet` no longer fail as a whole when the caller's PATH does not contain
   a runtime that a managed session uses. The Codex and OpenCode executables are found in their usual
   install locations after PATH, so a launchd job or a non-login shell sees the same machine as the
@@ -37,7 +41,6 @@ the GitHub Release with that section as the notes.
   its OpenAI-compatible provider 3.0.48, the OpenCode SDK 1.18.30, MCP ext-apps 2.0.0, React 19.3.0,
   clack prompts 1.8.1, and on the development side the Claude agent SDK 0.3.270, Biome 2.5.13 and
   the Bun and React type packages.
-
 ## [0.59.4] — 2026-09-12
 
 Preserve native transcript cursors and every paginated history part
