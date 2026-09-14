@@ -16,6 +16,7 @@ import { fixture, row } from './fixtures/external-resident.ts';
 import { makeSession, UUID } from './helpers.ts';
 
 const OTHER = '22222222-2222-4222-8222-222222222222';
+const BOOT_BUDGET_MS = 30_000;
 
 test('resident HTTP reads and subscriptions share one provider connection without importing managed identities', async () => {
   const f = await fixture();
@@ -256,16 +257,32 @@ test('the real daemon owns observation across restart but never stops its extern
         client = createControlClient({ socket: controlSocket(machine), timeoutMs: 1000 });
       const log = new Response(daemon.stderr).text();
       try {
+        // Booting a daemon from source is setup, not the subject, and it costs whatever the host
+        // allows: counting attempts made it five seconds of wall clock, because a refused socket
+        // answers instantly. The bound is a deadline of its own, a daemon that died ends the wait at
+        // once, and a failure says what the daemon said rather than only that nothing was live.
         let live: Awaited<ReturnType<(typeof client)['external.list']>> | undefined;
-        for (let n = 0; n < 100; n++) {
+        let last: unknown = 'no answer yet';
+        const bootDeadline = Date.now() + BOOT_BUDGET_MS;
+        while (Date.now() < bootDeadline && daemon.exitCode === null) {
           try {
             const result = await client['external.list']();
             if (result.status === 'live') {
               live = result;
               break;
             }
-          } catch {}
+            last = `status ${result.status}`;
+          } catch (error) {
+            last = error;
+          }
           await Bun.sleep(50);
+        }
+        if (!live) {
+          daemon.kill('SIGTERM');
+          const exitCode = await daemon.exited;
+          throw new Error(
+            `daemon published no live external status (exit ${exitCode}, last ${String(last)}):\n${(await log).slice(-4000)}`,
+          );
         }
         expect(live?.sessions.map((s) => s.identity.threadId)).toEqual([UUID, OTHER]);
         expect(live?.generation).not.toBe(generation);
@@ -323,4 +340,5 @@ test('the real daemon owns observation across restart but never stops its extern
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-}, 20_000);
+  // Two boots under BOOT_BUDGET_MS and two waits for a frame under 10 s each, plus shutdowns.
+}, 90_000);
