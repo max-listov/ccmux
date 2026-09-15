@@ -9,7 +9,7 @@ import {
   type UsageQuery,
   UsageQuerySchema,
 } from './schema.ts';
-import type { UsageStore } from './store.ts';
+import { isSqliteBusy, type UsageStore } from './store.ts';
 
 const CacheSchema = z
   .object({
@@ -90,13 +90,40 @@ export function nextPage(offset: number, key: string, revision: string) {
   return Buffer.from(JSON.stringify({ offset, key, revision })).toString('base64url');
 }
 
-/** A new time query builds at most 500 contributions; warm reads only fetch their bounded page. */
+/**
+ * A new time query builds at most 500 contributions; warm reads only fetch their bounded page.
+ *
+ * Building the query cache is a write, so a read of usage asks for the write lock — and another
+ * process indexing the same transcript holds it for its whole slice. Waiting past the busy timeout
+ * used to fail the read as "database is locked", reported as usage unavailable, while a correct
+ * aggregate sat committed in the same file. The cache is how the answer is made cheap, not what the
+ * answer is: without the lock this answers read-only from what is committed — the last stored cache,
+ * still `building` if it was — and leaves extending it to the next read that gets the lock.
+ */
 export function aggregateUsage(store: UsageStore, query: UsageQuery) {
-  return store.transaction(() => {
+  try {
+    return store.transaction(() => aggregate(store, query, true));
+  } catch (error) {
+    if (!isSqliteBusy(error)) throw error;
+    return aggregate(store, query, false);
+  }
+}
+
+function aggregate(store: UsageStore, query: UsageQuery, writable: boolean) {
+  {
     const revision = String(store.revision()),
       key = queryKey(query, store.identity),
       cacheKey = `query:${key}`;
     let cache = store.read(cacheKey, CacheSchema);
+    if (!cache && !writable)
+      cache = {
+        query,
+        self: emptyAggregate(),
+        unattributed: emptyAggregate(),
+        ambiguousCount: 0,
+        through: 0,
+        complete: false,
+      };
     if (!cache) {
       cache = {
         query,
@@ -112,7 +139,7 @@ export function aggregateUsage(store: UsageStore, query: UsageQuery) {
         .run();
       store.db.exec('DELETE FROM buckets WHERE query NOT IN (SELECT key FROM metadata)');
     }
-    if (!cache.complete) {
+    if (!cache.complete && writable) {
       const rows = store.contributionPage(cache.through, 501);
       for (const row of rows.slice(0, 500)) {
         apply(store, cacheKey, cache, row.fact, 1);
@@ -151,5 +178,5 @@ export function aggregateUsage(store: UsageStore, query: UsageQuery) {
           ? nextPage(start + buckets.length, key, revision)
           : null,
     };
-  });
+  }
 }

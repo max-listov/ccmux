@@ -31,6 +31,11 @@ const SCHEMA_OBJECTS = [
   'revision',
 ];
 
+/** Another connection held the write lock past the busy timeout. */
+export function isSqliteBusy(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'SQLITE_BUSY';
+}
+
 /** Checkpoints and facts commit together. Live-only facts belong in durable state, not cache. */
 export class UsageStore {
   readonly db: Database;

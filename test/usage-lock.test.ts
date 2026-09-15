@@ -4,6 +4,9 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EMPTY_STATS, indexTranscript, transcriptIndexPath } from '../src/agent/transcriptIndex.ts';
+import { aggregateUsage } from '../src/usage/aggregate.ts';
+import { readUsageFile } from '../src/usage/file.ts';
+import { UsageQuerySchema } from '../src/usage/schema.ts';
 import { UsageStore } from '../src/usage/store.ts';
 
 const numbered = (from: number, count: number) =>
@@ -18,6 +21,58 @@ const holdWriteLock = (path: string) => {
     holder.close();
   };
 };
+
+test('a usage read whose cache another process is writing answers from what is committed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
+  try {
+    const path = join(dir, 'usage.sqlite');
+    const query = UsageQuerySchema.parse({});
+    const store = new UsageStore(path);
+    try {
+      const cold = holdWriteLock(path);
+      try {
+        // No cache yet and no lock to build one: an honest "still building", not a failure.
+        const building = aggregateUsage(store, query);
+        expect(building.building).toBe(true);
+        expect(building.buckets).toEqual([]);
+      } finally {
+        cold();
+      }
+      const warm = aggregateUsage(store, query);
+      const release = holdWriteLock(path);
+      try {
+        expect(aggregateUsage(store, query)).toEqual(warm);
+      } finally {
+        release();
+      }
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('usage for a transcript another process is indexing is never "accounting unavailable"', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
+  try {
+    const path = join(dir, 'transcript.jsonl');
+    writeFileSync(path, numbered(1, 1_000));
+    const query = UsageQuerySchema.parse({});
+    expect(readUsageFile('host-a:agent-a', path, 'claude', query, true).state).not.toBe('failed');
+    appendFileSync(path, numbered(1_001, 5));
+    const release = holdWriteLock(transcriptIndexPath(path));
+    try {
+      const summary = readUsageFile('host-a:agent-a', path, 'claude', query, true);
+      expect(summary.state).not.toBe('failed');
+      expect(summary.reason).not.toBe('accounting-unavailable');
+    } finally {
+      release();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('opening a usage store is a read, so a writer on the same file does not refuse it', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));

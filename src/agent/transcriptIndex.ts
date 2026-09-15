@@ -7,7 +7,7 @@ import { TranscriptStatsSchema } from '../config/schema.ts';
 import type { TranscriptStats } from '../types.ts';
 import { parseUsageRecord } from '../usage/normalize.ts';
 import type { UsageFact } from '../usage/schema.ts';
-import { UsageStore } from '../usage/store.ts';
+import { isSqliteBusy, UsageStore } from '../usage/store.ts';
 import { rec } from './normalize.ts';
 
 /**
@@ -210,7 +210,7 @@ function advanceOrCommitted(
   try {
     return store.transaction(advance);
   } catch (error) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'SQLITE_BUSY')) throw error;
+    if (!isSqliteBusy(error)) throw error;
     const index = committed();
     if (index === null) throw error;
     return index;
