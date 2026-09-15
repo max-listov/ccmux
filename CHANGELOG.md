@@ -6,8 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-- The `user-instruction` example in the communication-authorization help, the managed-session prompt and the docs shows the reference as prose — `<your address> · user message <date time>` — and says it is not checked, so nobody searches a transcript for a message id that is not there.
+## [0.61.8] — 2026-09-15
 
+The user-instruction reference is shown as prose naming where and when the person said it, and the help says it is not checked, so nobody searches a transcript for a message id
+
+- The `user-instruction` example in the communication-authorization help, the managed-session prompt and the docs shows the reference as prose — `<your address> · user message <date time>` — and says it is not checked, so nobody searches a transcript for a message id that is not there.
 ## [0.61.7] — 2026-09-15
 
 A pane-injected letter pickup is proved from the transcript line it was injected at, not by parsing the whole history every delivery pass, which stopped the daemon loop for 48 s on a gigabyte transcript
