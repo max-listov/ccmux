@@ -100,13 +100,20 @@ export async function prepareOpenCodeCatalog(
 }
 export function preparedOpenCodeChoices(m: MachineConfig, s: Session) {
   const value = readPrivateJson(path(m, s), PreparedCatalogSchema, 2 * 1024 * 1024);
-  if (
-    value === null ||
-    value.registrationGeneration !== s.registrationGeneration ||
-    readManagedRuntimeStatus(m, s).status !== 'live'
-  )
-    throw new AppError('UNAVAILABLE', 'Native runtime catalog is unavailable', 503);
+  // Three gates answer with one status code; the message names which one closed, because a caller
+  // cannot tell a missing catalog from a runtime whose lease lapsed for a moment.
+  if (value === null) catalogUnavailable('no prepared catalog');
+  if (value.registrationGeneration !== s.registrationGeneration)
+    catalogUnavailable('catalog prepared for another registration');
+  const runtime = readManagedRuntimeStatus(m, s);
+  if (runtime.status !== 'live') catalogUnavailable(runtimeGate(runtime));
   return value;
+}
+function runtimeGate(runtime: { status: string; reason: string | null }): string {
+  return `runtime ${runtime.status}${runtime.reason === null ? '' : ` (${runtime.reason})`}`;
+}
+function catalogUnavailable(gate: string): never {
+  throw new AppError('UNAVAILABLE', `Native runtime catalog is unavailable: ${gate}`, 503);
 }
 async function hostCatalog(
   m: MachineConfig,
@@ -150,8 +157,10 @@ export async function readOpenCodeModels(
 ): Promise<ControlModelCatalog> {
   if (input.launchRecipe !== undefined)
     throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
-  if (session !== undefined && readManagedRuntimeStatus(m, session).status !== 'live')
-    throw new AppError('UNAVAILABLE', 'Native runtime catalog is unavailable', 503);
+  if (session !== undefined) {
+    const runtime = readManagedRuntimeStatus(m, session);
+    if (runtime.status !== 'live') catalogUnavailable(runtimeGate(runtime));
+  }
   const prepared = session === undefined ? null : preparedOpenCodeChoices(m, session);
   const models = prepared?.models ?? (await hostCatalog(m, HOME, signal));
   const visible = input.includeHidden ? models : models.filter((model) => !model.hidden);

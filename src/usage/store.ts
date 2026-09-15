@@ -46,11 +46,27 @@ export class UsageStore {
     this.db = new Database(path, { create: true });
     chmodSync(path, 0o600);
     this.db.exec('PRAGMA busy_timeout=1000');
+    // A rollback journal refuses even a shared lock while a writer commits or has spilled its
+    // transaction to disk, so a reader of this file waited on the writer and failed after the busy
+    // timeout. In WAL readers never wait for a writer. The mode lives in the file: it is set once,
+    // and a switch refused because another connection has the file open is retried on a later open.
+    this.walOnce();
     // Opening is a read. The schema statements are writes even when they change nothing — the seed
     // INSERT asks for the write lock whether or not it inserts — so running them on every open made
     // every reader queue behind whichever process was advancing the same index, and give up after
     // the busy timeout as "database is locked". They run only when something is actually missing.
     if (!this.schemaPresent()) this.db.exec(SCHEMA);
+  }
+  private walOnce(): void {
+    const mode = z
+      .object({ journal_mode: z.string() })
+      .parse(this.db.query('PRAGMA journal_mode').get()).journal_mode;
+    if (mode === 'wal') return;
+    try {
+      this.db.query('PRAGMA journal_mode=WAL').get();
+    } catch (error) {
+      if (!isSqliteBusy(error)) throw error;
+    }
   }
   private schemaPresent(): boolean {
     const names = new Set(

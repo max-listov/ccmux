@@ -74,6 +74,31 @@ test('usage for a transcript another process is indexing is never "accounting un
   }
 });
 
+test('usage stays readable while another process holds the index through its commit', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
+  try {
+    const path = join(dir, 'transcript.jsonl');
+    writeFileSync(path, numbered(1, 1_000));
+    const query = UsageQuerySchema.parse({});
+    expect(readUsageFile('host-a:agent-a', path, 'claude', query, true).state).not.toBe('failed');
+    // A writer committing, or one whose large transaction spilled to disk, holds the file
+    // exclusively. A reader that cannot even take a shared lock for that long is the same busy
+    // lock as a writer queue, and must not read as "accounting unavailable" either.
+    const holder = new Database(transcriptIndexPath(path));
+    holder.exec('BEGIN EXCLUSIVE');
+    try {
+      const summary = readUsageFile('host-a:agent-a', path, 'claude', query, false);
+      expect(summary.reason).not.toBe('accounting-unavailable');
+      expect(summary.state).not.toBe('failed');
+    } finally {
+      holder.exec('ROLLBACK');
+      holder.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('opening a usage store is a read, so a writer on the same file does not refuse it', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
   try {

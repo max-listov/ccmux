@@ -61,27 +61,35 @@ export async function settleRuntimePeers(
   throw new Error('Cross-runtime pickup timed out');
 }
 
-/** Two real writers share only the control/chat plane, never native continuation or agent loop. */
+/**
+ * Two real writers share only the control/chat plane, never native continuation or agent loop.
+ * The caller chooses the second writer's runtime and model; the round trip is the same for any.
+ */
 export async function verifyRuntimeCoexistence(
   m: MachineConfig,
   client: Client,
   a: ManagedPeer,
-  workspace: string,
+  request: Parameters<Client['session.create']>[0],
 ) {
   const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
-  const request = {
-    requestId: crypto.randomUUID(),
-    runtime: 'codex',
-    name: 'codex-peer',
-    workspace,
-    flags: ['--sandbox', 'danger-full-access', '--ask-for-approval', 'never'],
-  } satisfies Parameters<Client['session.create']>[0];
   const b = (await client['session.create'](request)).target;
   check(
     (await client['session.create'](request)).target.threadId === b.threadId,
-    'Codex retry changed identity',
+    'Peer retry changed identity',
   );
-  check(a.threadId !== b.threadId && a.agent !== b.agent, 'Runtime identities collided');
+  check(a.threadId !== b.threadId && a.session !== b.session, 'Writer identities collided');
+  // Create answers with an identity; a native runtime publishes its projection after admission,
+  // and the daemon observes the session only on its next pass — until then `session.get` has no
+  // row to answer with, while the list simply does not show it live yet.
+  const live = Date.now() + 20_000;
+  while (
+    !(await client['session.list']()).sessions.some(
+      (row) => row.identity.threadId === b.threadId && row.availability === 'live',
+    )
+  ) {
+    check(Date.now() < live, 'Peer never became live');
+    await Bun.sleep(200);
+  }
   const token = `runtime-${crypto.randomUUID()}`;
   const invocation = shellJoin([
     process.execPath,
@@ -92,7 +100,7 @@ export async function verifyRuntimeCoexistence(
     communicationAuthorization: acceptanceCommunicationAuthorization,
     target: a,
     messageId: crypto.randomUUID(),
-    body: `Authorized isolated communication test. Run exactly ${invocation} msg ${b.machine}:${b.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent codex --to-thread ${b.threadId} with body "${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command from CCMux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not contact anyone else or edit files." After the command returns, finish this turn immediately with SENT. Do not poll, read logs or wait for a reply: CCMux delivers the reply asynchronously. When it arrives answer RECEIVED without using tools or sending another message.`,
+    body: `Authorized isolated communication test. Run exactly ${invocation} msg ${b.machine}:${b.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent ${b.agent} --to-thread ${b.threadId} with body "${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command from CCMux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not contact anyone else or edit files." After the command returns, finish this turn immediately with SENT. Do not poll, read logs or wait for a reply: CCMux delivers the reply asynchronously. When it arrives answer RECEIVED without using tools or sending another message.`,
   });
   const deadline = Date.now() + 180_000;
   let proved = false;
@@ -120,11 +128,11 @@ export async function verifyRuntimeCoexistence(
   await settleRuntimePeers(client, [a, b], deadline);
   console.log(
     JSON.stringify({
-      phase: 'cross-runtime-round-trip',
+      phase: 'two-writer-round-trip',
       evidence: { identities: [a, b], exactProviderMachineSession: true },
     }),
   );
   const session = loadSessions(m).find((row) => row.uuid === b.threadId);
-  check(session, 'Codex registration is missing');
+  check(session, 'Peer registration is missing');
   return session;
 }

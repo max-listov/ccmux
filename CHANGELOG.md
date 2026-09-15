@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Usage stays readable while another process commits to the same index: the usage store runs in WAL, where a reader never waits for a writer. Under the rollback journal a reader could not take even a shared lock while a writer committed or had spilled its transaction, and reported "accounting unavailable" after the busy timeout.
+
+- An OpenCode session whose native catalog cannot be served answers 503 naming the gate that closed — no prepared catalog, a catalog prepared for another registration, or the runtime's lease status and reason — instead of one message for all three.
+
 ## [0.61.3] — 2026-09-15
 
 A resumed event or chat feed reads its cursor from the variable the stream profile names with --cursor-env (0.61.2 was tagged but not published: its new test needed an installed agent binary)

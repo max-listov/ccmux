@@ -253,7 +253,13 @@ try {
     model: (await service['session.get']({ target })).model,
   });
   await verifyOpenCodeActions(service, target);
-  const peer = await verifyRuntimeCoexistence(m, service, target, join(root, 'workspace'));
+  const peer = await verifyRuntimeCoexistence(m, service, target, {
+    runtime: 'opencode',
+    requestId: crypto.randomUUID(),
+    name: 'opencode-peer',
+    workspace: join(root, 'workspace'),
+    modelSelection: create.modelSelection,
+  });
   const baseline = await local['session.list']();
   const before = [session, peer].map((row) => readManagedRuntimeStatus(m, row).snapshot);
   check(
