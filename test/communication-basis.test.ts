@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../src/chat/auth.ts';
 import { CommunicationAuthorizationSchema } from '../src/chat/communicationAuthorizationSchema.ts';
+import { resolveCommunicationBasis } from '../src/chat/communicationBasis.ts';
 import { managedPeer } from '../src/chat/identity.ts';
 import { localMessageLookup } from '../src/chat/localMessages.ts';
 import { appendMessage, loadLedger } from '../src/chat/store.ts';
@@ -13,6 +14,7 @@ import { ChatMessageSchema, MachineConfigSchema } from '../src/config/schema.ts'
 import { loadSessions } from '../src/config/sessions.ts';
 import { appendOutbound } from '../src/fleet/outbox.ts';
 import type { ChatMessage, MachineConfig, Session } from '../src/types.ts';
+import { makeSession } from './helpers.ts';
 
 // The case this file exists for. A person gave two sessions leave to correspond and said it to ONE
 // of them; the other holds no such line in its own conversation. Quoting a neighbour is prose, so
@@ -253,6 +255,31 @@ test('the refusal names all three bases, so the reader learns what would be acce
   expect(result.stderr).toContain('<peer thread uuid>#<message uuid>');
   expect(result.stderr).toContain('"basis": "user-instruction"');
   expect(result.stderr).toContain('"basis": "thread-continuation"');
+  // The user-instruction reference is a pointer for the reader, and the help says so: an example
+  // shaped like a record id sent agents searching a transcript for one that does not exist.
+  expect(result.stderr).toContain(
+    '"sourceMessageRef": "<your address> · user message <date time>"',
+  );
+  expect(result.stderr).toContain('Do not search a transcript for a message id');
+});
+
+test('a user-instruction reference in the documented prose form is accepted as before', () => {
+  const sourceMessageRef = 'host-a:agent-a · user message 2026-09-15 13:31 +07:00';
+  const authorization = CommunicationAuthorizationSchema.parse({
+    basis: 'user-instruction',
+    whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope:
+      'Contact the designated reviewer to obtain the requested review result within scope.',
+    userAuthorizationQuote: 'write to the reviewer',
+    sourceMessageRef,
+  });
+  const receipt = resolveCommunicationBasis(
+    managedPeer('host-a', makeSession({ name: 'agent-a' })),
+    managedPeer('host-a', makeSession({ name: 'agent-b' })),
+    null,
+    authorization,
+    () => null,
+  );
+  expect(receipt?.authorization.sourceMessageRef).toBe(sourceMessageRef);
 });
 
 test('a receipt written before the basis was named stays readable and claims nothing', () => {

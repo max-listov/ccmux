@@ -28,11 +28,12 @@ ${JSON.stringify(
     whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope:
       '<40–4000 characters: why this peer and this authorized work>',
     userAuthorizationQuote: '<verbatim user words>',
-    sourceMessageRef: '<source user message>',
+    sourceMessageRef: '<your address> · user message <date time>',
   },
   null,
   2,
 )}
+For user-instruction the reference is prose for the reader and is not checked: it says where and when the person said it, e.g. "host-a:agent-a · user message 2026-09-15 13:31 +07:00". Do not search a transcript for a message id.
 For peer-letter use the same rationale, a verbatim quote from that letter and sourceMessageRef "<peer thread uuid>#<message uuid>".
 Continuation file (reuse for the same pair and --task):
 ${JSON.stringify({ basis: 'thread-continuation', sourceMessageRef: '<peer thread uuid>#<your accepted message uuid>' }, null, 2)}

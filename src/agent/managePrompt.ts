@@ -85,7 +85,9 @@ Inter-agent chat (enabled for this session):
   Supply --communication-authorization <JSON file> naming the basis you stand on:
   "user-instruction" — the user said it in YOUR conversation:
   whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope (40–4000 characters on the
-  recipient, intended result and permission), userAuthorizationQuote (verbatim), sourceMessageRef;
+  recipient, intended result and permission), userAuthorizationQuote (verbatim), sourceMessageRef
+  as prose saying where and when the user said it ("<your address> · user message <date time>") —
+  it is not checked, so never search a transcript for a message id;
   "peer-letter" — a peer letter carried the permission: the same three fields, with sourceMessageRef
   as <peer thread uuid>#<message uuid> copied from that letter's own tag, which ccmux resolves
   against this machine's records;

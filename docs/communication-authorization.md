@@ -38,9 +38,15 @@ service client. `basis` обязателен. `CommunicationAuthorizationSchema`
   "basis": "user-instruction",
   "whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope": "Contact the designated reviewer to obtain the requested review result within the agreed scope.",
   "userAuthorizationQuote": "<дословные слова пользователя>",
-  "sourceMessageRef": "<ссылка на сообщение пользователя>"
+  "sourceMessageRef": "host-a:agent-a · user message 2026-09-15 13:31 +07:00"
 }
 ```
+
+Для `user-instruction` ссылка — текст для читающего: где и когда человек это сказал, в форме
+`<свой адрес> · user message <дата время>`. CCMux её не проверяет, поэтому идентификатор сообщения
+в транскрипте не ищут: сообщение, пришедшее посреди хода, отдельной записью туда не ложится.
+Проверяемая ссылка `<peer thread uuid>#<message uuid>` бывает только у двух оснований ниже — её
+копируют из тега письма.
 
 Ответ на разрешение, переданное соседом:
 
