@@ -6,8 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-- The release ceremony has two halves a conductor can run separately: `bun scripts/release.ts --commit X.Y.Z "notes"` makes the local release commit (version bump and CHANGELOG section), and `--tag X.Y.Z` tags a HEAD that declares that version and pushes it. `bun run release X.Y.Z "notes"` is their composition around the check, as before.
+## [0.61.9] — 2026-09-15
 
+The release ceremony has --commit and --tag halves, so a conductor can run the check between them and report each step as it goes
+
+- The release ceremony has two halves a conductor can run separately: `bun scripts/release.ts --commit X.Y.Z "notes"` makes the local release commit (version bump and CHANGELOG section), and `--tag X.Y.Z` tags a HEAD that declares that version and pushes it. `bun run release X.Y.Z "notes"` is their composition around the check, as before.
 ## [0.61.8] — 2026-09-15
 
 The user-instruction reference is shown as prose naming where and when the person said it, and the help says it is not checked, so nobody searches a transcript for a message id
