@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { MachineConfig } from '../types.ts';
+import { log } from '../util/log.ts';
 import { shellJoin } from '../util/shellQuote.ts';
 import { run, runWithInput } from '../util/spawn.ts';
 import { writeErr, writeOut } from '../util/stdout.ts';
@@ -65,6 +66,8 @@ export interface RemoteResult {
   transportFailed: boolean;
   /** Remote execution certainty, independent of its exit code or a local HTTP acknowledgement. */
   delivery: 'not-sent' | 'unknown' | 'received';
+  /** This answer came over ssh because the remote route never dispatched the call: its reason. */
+  fallback?: string;
   /** What actually went wrong, when the transport can say. ssh cannot distinguish "no route" from
    *  "no agent forwarding", so it leaves this unset and the generic sentence stands; the remote transport knows
    *  the difference between offline, denied and timed out, and saying "ssh unreachable" for a
@@ -193,23 +196,33 @@ const ReportedPrefixSchema = z.object({ rcPrefix: z.string() });
  * a direction can move onto the remote transport by editing config, and no command has to learn that two
  * transports exist.
  */
-export function runPeer(
+export async function runPeer(
   m: MachineConfig,
   machine: string,
   alias: string | null,
   argv: string[],
   opts?: { stdin?: string; timeoutMs?: number; connectTimeoutSeconds?: number },
 ): Promise<RemoteResult> {
-  if (isRemotePeer(m, machine)) return runRemoteAdapter(m, machine, argv, opts);
+  if (isRemotePeer(m, machine)) {
+    const remote = await runRemoteAdapter(m, machine, argv, opts);
+    // ssh stays the fallback where the remote route is down, and only for a call that route never
+    // dispatched: `unknown` may already have run on the far side, and a second path would run it
+    // twice. The fallback is logged and carried on the answer, because a route that quietly became
+    // ssh again is exactly how a fleet ends up logging into its servers on every call.
+    if (!remote.transportFailed || remote.delivery !== 'not-sent' || alias === null) return remote;
+    const reason = remote.failureDetail ?? 'the remote route did not dispatch the call';
+    log.warn({ msg: 'remote route fell back to ssh', machine, reason });
+    return { ...(await runRemote(alias, argv, opts)), fallback: reason };
+  }
   if (alias === null) {
-    return Promise.resolve({
+    return {
       code: 1,
       stdout: '',
       stderr: '',
       transportFailed: true,
       delivery: 'not-sent',
       failureDetail: `no route to '${machine}': it is in neither the ssh fleet map nor remoteTransport.peers`,
-    });
+    };
   }
   return runRemote(alias, argv, opts);
 }

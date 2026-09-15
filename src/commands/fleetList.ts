@@ -135,6 +135,9 @@ export interface FleetMachine {
   /** That machine's published inventory — what its `inventory` events continue from. Null when it
    *  failed, publishes none, or runs a build that does not. */
   inventory: InventorySnapshot | null;
+  /** Why this machine was asked over ssh although its route is the remote transport; null when it
+   *  was asked on its configured route. */
+  fallback: string | null;
 }
 
 /** The fleet's answer, with ONE yardstick for the whole of it. */
@@ -161,6 +164,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
     release: releaseStanding(m, VERSION),
     behind: null, // filled by `fleetView`, which is the only place that holds the yardstick
     inventory: readInventory(m),
+    fallback: null,
     // This machine's own rows, built by the same function that builds `list --json`. Two builders
     // for one row is what made a field arrive locally and vanish remotely for a release at a time;
     // the fleet view simply relabels the state, which is the only thing it says differently.
@@ -187,7 +191,8 @@ function collectPeers(m: MachineConfig): Promise<FleetMachine[]> {
         timeoutMs: 20_000,
         connectTimeoutSeconds: 3,
       });
-      return peerListMachine(machine, via === 'remote' ? 'remote' : alias, r);
+      // The row names the path the answer actually took: a fallback came over ssh.
+      return peerListMachine(machine, via === 'remote' && !r.fallback ? 'remote' : alias, r);
     }),
   );
 }
@@ -214,6 +219,7 @@ export function peerListMachine(
     behind: null,
     sessions: [],
     inventory: null,
+    fallback: r.fallback ?? null,
   });
   if (r.transportFailed) return failed(r.failureDetail ?? 'unreachable (no transit right now)');
   if (r.code !== 0)
@@ -236,6 +242,7 @@ export function peerListMachine(
     release: parsed.release,
     behind: null,
     inventory: parsed.inventory,
+    fallback: r.fallback ?? null,
     // A peer reports its raw run-state; the parked/running verdict is reached here so both
     // halves of the map are read by the same rule.
     sessions: parsed.sessions.map((session) => ({
@@ -375,7 +382,9 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
         ? `${fm.machine} (this machine)`
         : fm.alias === 'remote'
           ? `${fm.machine} via remote adapter`
-          : `${fm.machine} → ${fm.alias}`;
+          : fm.fallback !== null
+            ? `${fm.machine} → ${fm.alias} (ssh fallback: ${fm.fallback})`
+            : `${fm.machine} → ${fm.alias}`;
     if (!fm.ok) {
       console.log(`${label}: ${fm.error}`);
       continue;

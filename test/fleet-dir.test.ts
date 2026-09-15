@@ -89,6 +89,7 @@ test('the field rides through the fleet view untouched', () => {
     behind: null,
     sessions: [RemoteSession.parse({ name: 'agent-a', dir: '/Users/u/src/api' })],
     inventory: null,
+    fallback: null,
   };
   const view = fleetView([machine]);
   expect(view.machines[0]?.sessions[0]?.dir).toBe('/Users/u/src/api');

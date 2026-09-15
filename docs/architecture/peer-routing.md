@@ -376,6 +376,14 @@ A machine listed in `remoteTransport.peers` is reached over the remote transport
 what makes the remote transport adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.
 
+When such a machine also has an ssh alias, ssh is its fallback — for a call the remote route never
+dispatched (`delivery: not-sent`: no local adapter, no route, a refusal before sending), and for no
+other. A call the route may already have delivered (`unknown`) is not repeated over ssh, because a
+second path would run it twice. The fallback is logged as `remote route fell back to ssh` with the
+machine and the route's reason, and `fleet` names it on that machine's row: `→ <alias> (ssh fallback:
+<reason>)`, and `fallback` in `--json`. A route that silently became ssh again is how a fan-out ends
+up opening a login on every server for every call, so the fallback is never quiet.
+
 ### What the remote transport's answer says, beyond yes and no
 
 The local door separates **who** said no (`failure`) from **what kind** of no it is (`refusal`), and
