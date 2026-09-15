@@ -11,24 +11,53 @@
  * this process was busy — synchronous work of its own — or it was not running at all, waiting in a
  * blocking system call or not given a CPU by a loaded host. `cpuMs` is the CPU time the whole process
  * spent across the same window: close to `blockedMs` means the first, close to zero the second.
+ *
+ * A process that was not running is itself two different stories, and the kernel counts both:
+ * `majorFaults` are page faults served from disk — its memory had been paged out and it waited to
+ * get it back; `preemptions` are the times the scheduler took the CPU away while it wanted to run —
+ * a loaded host. Neither is a statement about this process's code; both are the window's deltas.
+ * (Voluntary switches would name the third story, a blocking call, but Bun on macOS reports them as
+ * zero, so a stall with neither counter is read as that by elimination.)
  */
-export type LoopStall = { blockedMs: number; cpuMs: number };
+export type LoopStall = {
+  blockedMs: number;
+  cpuMs: number;
+  majorFaults: number;
+  preemptions: number;
+};
+
+export type ProcessCounters = { cpuMicros: number; majorFaults: number; preemptions: number };
+
+export function processCounters(): ProcessCounters {
+  const usage = process.resourceUsage();
+  return {
+    cpuMicros: usage.userCPUTime + usage.systemCPUTime,
+    majorFaults: usage.majorPageFault,
+    preemptions: usage.involuntaryContextSwitches,
+  };
+}
 
 export function watchLoopStalls(
   onStall: (stall: LoopStall) => void,
   periodMs = 1_000,
   thresholdMs = 5_000,
+  counters: () => ProcessCounters = processCounters,
 ): () => void {
   let last = performance.now();
-  let lastCpu = process.cpuUsage();
+  let before = counters();
   const timer = setInterval(() => {
     const now = performance.now();
-    const cpu = process.cpuUsage(lastCpu);
+    const after = counters();
     const late = now - last - periodMs;
     last = now;
-    lastCpu = process.cpuUsage();
     if (late >= thresholdMs)
-      onStall({ blockedMs: Math.round(late), cpuMs: Math.round((cpu.user + cpu.system) / 1_000) });
+      onStall({
+        blockedMs: Math.round(late),
+        cpuMs: Math.round((after.cpuMicros - before.cpuMicros) / 1_000),
+        majorFaults: after.majorFaults - before.majorFaults,
+        preemptions: after.preemptions - before.preemptions,
+      });
+    before = after;
   }, periodMs);
   timer.unref?.();
   return () => clearInterval(timer);

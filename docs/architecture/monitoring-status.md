@@ -129,7 +129,11 @@ as fresh as that loop lets it be: every state file is written with the promise f
 more is logged as `daemon event loop blocked` with `blockedMs` and `cpuMs` — the CPU time the
 whole process spent in the same window. `cpuMs` close to `blockedMs` means the process was busy with
 synchronous work of its own; close to zero means it was not running — waiting in a blocking system
-call or not scheduled by a loaded host. The two call for different fixes. A filesystem that stalled a rename
+call or not scheduled by a loaded host. The two call for different fixes, and the second is split
+by two more deltas of the same window: `majorFaults`, page faults served from disk — the process's
+memory had been paged out and it waited to get it back — and `preemptions`, the times the scheduler
+took the CPU away while it wanted to run. A stall with neither was a blocking call (Bun on macOS
+reports no voluntary switches, so that one is read by elimination). A filesystem that stalled a rename
 for fifteen seconds on the main thread was measured on a loaded host; it made the snapshot expire.
 Generation changes on daemon restart; sequence alone is never a durable cursor.
 
