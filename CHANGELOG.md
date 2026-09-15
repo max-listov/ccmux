@@ -6,8 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-- A pane-injected letter's pickup is proved from the transcript line it was injected at, not by parsing the session's whole history on every delivery pass while its turn runs. On a transcript of a gigabyte that parse cost seconds of CPU and gigabytes of memory per pass on the daemon's event loop, and stopped the loop for 48 s. A transcript shorter than the recorded line is searched from the start.
+## [0.61.7] — 2026-09-15
 
+A pane-injected letter pickup is proved from the transcript line it was injected at, not by parsing the whole history every delivery pass, which stopped the daemon loop for 48 s on a gigabyte transcript
+
+- A pane-injected letter's pickup is proved from the transcript line it was injected at, not by parsing the session's whole history on every delivery pass while its turn runs. On a transcript of a gigabyte that parse cost seconds of CPU and gigabytes of memory per pass on the daemon's event loop, and stopped the loop for 48 s. A transcript shorter than the recorded line is searched from the start.
 ## [0.61.6] — 2026-09-15
 
 A daemon loop stall names why the process did not run: majorFaults (paged out) and preemptions (CPU taken away), counted over the stall itself
