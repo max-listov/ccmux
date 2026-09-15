@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.61.1] — 2026-09-15
+
+Usage reads no longer fail as locked while another process indexes the same transcript: they answer from the committed cache
 ## [0.61.0] — 2026-09-15
 
 Session inventory changes travel in the event feed with a revision; list and fleet carry the matching inventory snapshot; fleet builds local rows while peers answer
