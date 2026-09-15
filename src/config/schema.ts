@@ -585,6 +585,9 @@ export const ChatCursorsSchema = z.object({
           // cannot hide a submitted turn without leaving the exact transcript barrier behind.
           ledgerIndex: z.number().int().nonnegative().nullable().default(null),
           conditional: z.boolean().default(false),
+          // The transcript's line count when the letter was injected. Pickup is proved by reading
+          // from here; a record without it is read from the first line.
+          transcriptLine: z.number().int().nonnegative().optional(),
           native: z
             .object({
               phase: z.enum(['intent', 'accepted']),

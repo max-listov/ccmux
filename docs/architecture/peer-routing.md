@@ -102,6 +102,12 @@ For a hookless provider, the cursors file also carries one exact message pickup 
 The barrier and immediate cursor advance are persisted together before submission; `wait` cannot
 finish until that immutable ID appears as a user transcript record and a later assistant boundary
 settles. A pane-local submission receipt reconciles a daemon crash without a duplicate paste.
+The barrier also records the transcript's line count at injection (`transcriptLine`), and pickup is
+proved by reading from that line: the marker can only appear after it, and every delivery pass
+repeats the check while the turn runs, so reading the whole history cost a full parse of the session
+per pass — seconds of CPU and gigabytes of memory on a transcript of a gigabyte, on the daemon's
+event loop. A transcript shorter than that line was rewritten and is searched from the first line;
+a barrier written without the field is read from the first line too.
 Lifecycle operations are not chat: `restart --then` does not exist, and a work hand-off must use a
 recorded `msg` envelope.
 

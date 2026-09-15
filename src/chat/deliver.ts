@@ -253,15 +253,44 @@ export function chatTurnProgressFromMessages(
     : 'running';
 }
 
-/** Provider-neutral normalized transcript proof for a pane-injected turn. Full history is read
- * because a tool-heavy turn may put thousands of records between the exact user marker and answer. */
+type PickupRecord = { messageId: string; transcriptLine?: number | undefined };
+type PickupRead = { totalLines: number; messages: TranscriptMessage[] };
+
+/**
+ * Pickup progress from the transcript lines written since the letter was injected.
+ *
+ * Everything after that line is read — a tool-heavy turn may put thousands of records between the
+ * marker and the answer — and nothing before it. Reading the whole history instead parsed every
+ * record of the session on each delivery pass while a turn ran: on a transcript of a gigabyte, a
+ * few seconds of CPU and gigabytes of memory per pass, on the daemon's one event loop. A transcript
+ * now shorter than that line was rewritten, so it is searched from the first line once rather than
+ * reporting a pickup that has not happened, which would inject the same letter again.
+ */
+export function pickupProgressFrom(
+  readFrom: (cursor: number) => PickupRead,
+  pickup: PickupRecord,
+): ChatTurnProgress {
+  const from = pickup.transcriptLine ?? 0;
+  let read = readFrom(from);
+  if (read.totalLines < from) read = readFrom(0);
+  return chatTurnProgressFromMessages(read.messages, pickup.messageId);
+}
+
 export function chatTurnProgress(
   m: MachineConfig,
   s: Session,
-  messageId: string,
+  pickup: PickupRecord,
 ): ChatTurnProgress {
-  const messages = readTranscript(s, m, { tail: Number.MAX_SAFE_INTEGER }).messages;
-  return chatTurnProgressFromMessages(messages, messageId);
+  return pickupProgressFrom(
+    (cursor) => readTranscript(s, m, { tail: Number.MAX_SAFE_INTEGER, cursor }),
+    pickup,
+  );
+}
+
+/** The transcript's line count now: a letter injected next appears after it. */
+export function transcriptLineCount(m: MachineConfig, s: Session): number | undefined {
+  const read = readTranscript(s, m, { tail: 1 });
+  return read.available ? read.totalLines : undefined;
 }
 
 /** Persisted pre-submit transition. Cursor and pickup move in one atomic cursors-file write. */
@@ -270,6 +299,7 @@ export function armTranscriptPickup(
   recipientKey: string,
   pick: { msg: ChatMessage; idx: number },
   injectedAt: string,
+  transcriptLine?: number,
 ): void {
   const conditional = isConditional(pick.msg);
   cursors.pickups[recipientKey] = {
@@ -277,6 +307,7 @@ export function armTranscriptPickup(
     injectedAt,
     ledgerIndex: pick.idx,
     conditional,
+    ...(transcriptLine === undefined ? {} : { transcriptLine }),
   };
   if (!conditional) {
     cursors.delivered[recipientKey] = pick.idx + 1;
@@ -431,7 +462,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
 
     const activePickup = cursors.pickups[recipientKey];
     if (provider.chatPickup === 'transcript' && activePickup !== undefined) {
-      const progress = chatTurnProgress(m, s, activePickup.messageId);
+      const progress = chatTurnProgress(m, s, activePickup);
       if (progress !== 'answered' && progress !== 'interrupted') {
         // The intent is durable before Enter. A restart in that window must not select a second
         // ledger item or immediately paste this one twice. If Enter never happened, a structurally
@@ -584,7 +615,13 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         : [pick.msg];
     const delivery = await deliverToPane(m, s.name, batch, provider, async () => {
       if (!transcriptPickup) return;
-      armTranscriptPickup(cursors, recipientKey, pick, new Date(now).toISOString());
+      armTranscriptPickup(
+        cursors,
+        recipientKey,
+        pick,
+        new Date(now).toISOString(),
+        transcriptLineCount(m, s),
+      );
       await saveCursors(m, cursors);
     });
     if (delivery.hold !== null) {

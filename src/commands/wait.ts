@@ -313,7 +313,7 @@ async function runWait(name: string, args: string[], opts: WaitOpts): Promise<nu
         provider.chatPickup === 'transcript'
           ? loadCursors(m).pickups[managedPeerKey(managedPeer(m.rcPrefix, s))]
           : undefined;
-      const progress = pickup === undefined ? null : chatTurnProgress(m, s, pickup.messageId);
+      const progress = pickup === undefined ? null : chatTurnProgress(m, s, pickup);
       if (progress === 'awaiting-pickup') {
         lastWhy = 'awaiting-pickup';
         mailWhy = null;
