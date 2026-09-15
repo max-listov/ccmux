@@ -794,7 +794,12 @@ The release tooling lives in the source checkout only — clients ship a single 
 bun run stage                   # build → the cache's staged/ccmux.js, then `ccmux update` to test locally
 bun run release X.Y.Z "notes"   # the ONE release entrypoint: guards → check → bump + CHANGELOG
                                 # → commit → tag vX.Y.Z → push; CI builds, gates and publishes
+bun scripts/release.ts --commit X.Y.Z "notes"   # its first half: bump + CHANGELOG → local commit
+bun scripts/release.ts --tag X.Y.Z              # its second half: tag the release HEAD → push
 ```
+
+The two halves exist for a conductor that runs the check between them and reports each step;
+`--tag` refuses a HEAD whose `package.json` or CHANGELOG does not name the version.
 
 Publishing happens only in CI (`.github/workflows/ci.yml`), off the tag: gate (typecheck +
 tests + a smoke run of the built bundle) → tag==version guard → assets → atomic GitHub

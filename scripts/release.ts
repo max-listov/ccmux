@@ -9,7 +9,11 @@
 //                                    vX.Y.Z → push. Publishing happens in CI off the tag —
 //                                    there is NO local publish path (tag ↔ code ↔ assets
 //                                    stay one atomic story; see .github/workflows/ci.yml).
-//   bun run stage                  → build bundle → the cache's staged/ (local `ccmux update` test)
+//   bun scripts/release.ts --commit X.Y.Z "notes" → guards → bump + CHANGELOG → local commit
+//   bun scripts/release.ts --tag X.Y.Z   → HEAD declares X.Y.Z → tag vX.Y.Z → push (pre-push gate)
+//                                    The two halves of the ceremony, for a conductor that runs
+//                                    the check between them and reports each step as it goes.
+//   bun run stage                 → build bundle → the cache's staged/ (local `ccmux update` test)
 //   bun scripts/release.ts --local          → bundle + file:// manifest (sandbox e2e)
 //   bun scripts/release.ts --ci-assets URL  → bundle + manifest at URL (CI release job only)
 
@@ -133,32 +137,37 @@ function rollChangelog(version: string, notes: string, today: string): string | 
   return `${src.slice(0, at)}${section}${src.slice(bodyEnd === src.length ? bodyEnd : bodyEnd + 1)}`;
 }
 
-/**
- * The one human entrypoint: `bun run release X.Y.Z "notes"`. Local side is ONLY the git
- * ceremony — guards, bump, changelog, commit, tag, push. CI builds and publishes off the
- * tag, so the tag always points at exactly the commit the assets are built from.
- */
-async function doCeremony(version: string, notes: string): Promise<number> {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) return fail(`bad version '${version}' (expected X.Y.Z)`);
-  if (compareSemver(version, VERSION) <= 0)
-    return fail(`version ${version} must be > current ${VERSION}`);
-
+/** A release is cut from a clean main whose tag does not exist yet; null when it may proceed. */
+async function releasableTree(version: string): Promise<string | null> {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) return `bad version '${version}' (expected X.Y.Z)`;
   const branch = (await git(['rev-parse', '--abbrev-ref', 'HEAD'], true)).out;
   if (branch !== 'main' && branch !== 'master')
-    return fail(`releases cut from main only (on '${branch}')`);
+    return `releases cut from main only (on '${branch}')`;
   const dirty = (await git(['status', '--porcelain'], true)).out;
-  if (dirty !== '') return fail(`working tree is dirty — commit or stash first:\n${dirty}`);
+  if (dirty !== '') return `working tree is dirty — commit or stash first:\n${dirty}`;
   if ((await git(['rev-parse', '--verify', '--quiet', `refs/tags/v${version}`], true)).ok) {
-    return fail(`tag v${version} already exists — releases are immutable`);
+    return `tag v${version} already exists — releases are immutable`;
   }
+  return null;
+}
 
+async function gate(): Promise<boolean> {
   console.log('pre-gate: bun run check …');
   const check = Bun.spawn(['bun', 'run', 'check'], {
     cwd: ROOT,
     stdout: 'inherit',
     stderr: 'inherit',
   });
-  if ((await check.exited) !== 0) return fail('check failed — nothing released');
+  return (await check.exited) === 0;
+}
+
+/** The release commit: version bump and the `[Unreleased]` CHANGELOG section rolled into
+ *  `[X.Y.Z]`. Local only — nothing leaves the machine until `--tag`. */
+async function doCommit(version: string, notes: string): Promise<number> {
+  const refused = await releasableTree(version);
+  if (refused !== null) return fail(refused);
+  if (compareSemver(version, VERSION) <= 0)
+    return fail(`version ${version} must be > current ${VERSION}`);
 
   // bump version — targeted textual replace keeps package.json formatting untouched
   const pkg = readFileSync(PKG_JSON, 'utf8');
@@ -177,15 +186,48 @@ async function doCeremony(version: string, notes: string): Promise<number> {
   for (const step of [
     ['add', 'package.json', 'CHANGELOG.md'],
     ['commit', '-m', msg],
-    ['tag', `v${version}`],
-    ['push', 'origin', 'HEAD', `refs/tags/v${version}`],
   ]) {
     if (!(await git(step)).ok)
       return fail(`git ${step[0]} failed — resolve manually (tree may hold the bump)`);
   }
+  console.log(`release commit ${version}: ${(await git(['rev-parse', 'HEAD'], true)).out}`);
+  return 0;
+}
+
+/** Tag the release commit at HEAD and push both. HEAD must already declare the version and carry
+ *  its CHANGELOG section — the same facts CI checks before it publishes. */
+async function doTag(version: string): Promise<number> {
+  const refused = await releasableTree(version);
+  if (refused !== null) return fail(refused);
+  // Read from disk: the imported VERSION predates a `--commit` made in this same process.
+  const declared = JSON.parse(readFileSync(PKG_JSON, 'utf8')).version;
+  if (declared !== version) return fail(`package.json declares ${declared}, not ${version}`);
+  if (changelogSection(version) === null) return fail(`CHANGELOG.md has no [${version}] section`);
+  for (const step of [
+    ['tag', `v${version}`],
+    ['push', 'origin', 'HEAD', `refs/tags/v${version}`],
+  ]) {
+    if (!(await git(step)).ok) return fail(`git ${step[0]} failed — resolve manually`);
+  }
   console.log(`\nv${version} tagged and pushed — CI takes it from here (gate → build → publish).`);
   console.log('watch: gh run watch   ·   fleet picks the release up via releaseUrl within ~5 min');
   return 0;
+}
+
+/**
+ * The one-shot entrypoint: `bun run release X.Y.Z "notes"` = guards → check → `--commit` →
+ * `--tag`. Local side is ONLY the git ceremony; CI builds and publishes off the tag, so the tag
+ * always points at exactly the commit the assets are built from. A conductor that reports each
+ * step runs `--commit`, the check and `--tag` itself.
+ */
+async function doCeremony(version: string, notes: string): Promise<number> {
+  const refused = await releasableTree(version);
+  if (refused !== null) return fail(refused);
+  if (compareSemver(version, VERSION) <= 0)
+    return fail(`version ${version} must be > current ${VERSION}`);
+  if (!(await gate())) return fail('check failed — nothing released');
+  const committed = await doCommit(version, notes);
+  return committed !== 0 ? committed : await doTag(version);
 }
 
 function fail(msg: string): number {
@@ -203,10 +245,16 @@ if (args.includes('--stage')) {
 } else if (args.includes('--ci-assets')) {
   const url = positional[0];
   code = url === undefined ? fail('--ci-assets <bundle-url>') : await doCiAssets(url);
+} else if (args.includes('--commit') && positional[0] !== undefined) {
+  code = await doCommit(positional[0], positional.slice(1).join(' '));
+} else if (args.includes('--tag') && positional[0] !== undefined) {
+  code = await doTag(positional[0]);
 } else if (positional.length > 0 && positional[0] !== undefined) {
   code = await doCeremony(positional[0], positional.slice(1).join(' '));
 } else {
-  console.log('usage: bun run release X.Y.Z "notes"   (or: --stage · --local · --ci-assets URL)');
+  console.log(
+    'usage: bun run release X.Y.Z "notes"   (or: --commit X.Y.Z "notes" · --tag X.Y.Z · --stage · --local · --ci-assets URL)',
+  );
   code = 1;
 }
 process.exit(code);
