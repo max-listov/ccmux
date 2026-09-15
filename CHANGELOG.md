@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.61.0] — 2026-09-15
+
+Session inventory changes travel in the event feed with a revision; list and fleet carry the matching inventory snapshot; fleet builds local rows while peers answer
 ## [0.60.2] — 2026-09-14
 
 A daemon loop stall says whether the daemon was busy or not running
