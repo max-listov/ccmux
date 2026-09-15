@@ -562,15 +562,27 @@ test('a follower run with --cursor-env resumes from that variable, end to end', 
       '2026-08-25T09:00:00.000Z',
     );
     writeFileSync(eventsPath(m), `${JSON.stringify(early)}\n${JSON.stringify(late)}\n`);
+    // Its own config and a PATH with no agent binary on it: without them the child auto-detects the
+    // provider CLI, and the test passes only on a machine that has one installed.
+    const config = join(state, 'machine.json');
+    writeFileSync(
+      config,
+      JSON.stringify({ ...m, claudeBin: '/nonexistent/claude', tmuxBin: '/nonexistent/tmux' }),
+    );
     const run = (args: string[], extra: Record<string, string>) =>
       Bun.spawnSync(
-        ['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'events', '--json', ...args],
+        [
+          process.execPath,
+          join(import.meta.dir, '..', 'src', 'cli.ts'),
+          'events',
+          '--json',
+          ...args,
+        ],
         {
           env: {
-            ...process.env,
-            CCMUX_CONFIG: join(state, 'absent.json'),
-            CCMUX_STATE_DIR: state,
-            CCMUX_RC_PREFIX: 'host-a',
+            HOME: state,
+            PATH: '/usr/bin:/bin',
+            CCMUX_CONFIG: config,
             ...extra,
           },
         },
