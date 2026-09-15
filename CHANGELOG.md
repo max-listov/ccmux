@@ -6,8 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-- A `daemon event loop blocked` report names why a process that was not running did not run: `majorFaults` (memory paged out and read back from disk) and `preemptions` (the scheduler took the CPU away), both counted over the stall's own window beside `cpuMs`.
+## [0.61.6] — 2026-09-15
 
+A daemon loop stall names why the process did not run: majorFaults (paged out) and preemptions (CPU taken away), counted over the stall itself
+
+- A `daemon event loop blocked` report names why a process that was not running did not run: `majorFaults` (memory paged out and read back from disk) and `preemptions` (the scheduler took the CPU away), both counted over the stall's own window beside `cpuMs`.
 ## [0.61.5] — 2026-09-15
 
 A peer on the remote transport falls back to its ssh alias only for a call the remote route never dispatched; the fallback is logged and named on the fleet row
