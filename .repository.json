@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "identity": {
     "repositoryId": "max-listov/ccmux",
+    "project": "ccmux",
+    "productName": "CCMux",
     "policy": "public-source"
   },
   "layout": {
