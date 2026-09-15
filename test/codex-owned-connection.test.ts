@@ -487,6 +487,14 @@ test('approval and input responses stay on the owning RPC connection and reject 
       outcome: 'submitted',
       requestId: 's:approval-1',
     });
+    // The status is published after the response is sent, so it is waited for like every other
+    // state in this test: read at once, it raced the publish under a loaded full run.
+    for (
+      let i = 0;
+      i < 400 && readOwnedCodexStatus(f.m, f.s).snapshot?.pendingRequests.length !== 0;
+      i++
+    )
+      await Bun.sleep(5);
     expect(readOwnedCodexStatus(f.m, f.s).snapshot?.pendingRequests).toEqual([]);
 
     f.request(42, 'item/tool/requestUserInput', {
