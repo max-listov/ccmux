@@ -66,19 +66,25 @@ export function framedLine(event: SessionEvent): string {
 }
 
 /**
- * Where the transport hands back a resume point.
+ * Where the transport hands back a resume point: the variable `--cursor-env` names.
  *
- * A stream that has no natural end is capped by a deadline, so it is reopened on a schedule — every
- * fifteen minutes under the profile this feed runs behind. On reopen the transport passes the cursor
- * the reader got to through the producer's ENVIRONMENT, not through its arguments, because the node
- * profile deliberately refuses caller-supplied arguments.
+ * A stream that has no natural end is capped by a deadline, so it is reopened on a schedule, and
+ * on every lost lane. On reopen the transport passes the cursor the reader got to through the
+ * producer's ENVIRONMENT, not through its arguments, because the node profile refuses
+ * caller-supplied arguments. Which variable is the transport's choice, so the profile that runs this
+ * command says it — the static argv is the profile owner's, not the caller's.
  *
- * A producer that ignores it starts from "now" and nothing fails: the stream opens, frames flow, and
- * everything that happened during the gap is silently absent. That is the worst shape a defect can
- * take here — there is no error to notice, only events that quietly do not exist for the consumer —
- * and it is why the resume promise (`stableCursor`) cannot be declared until this is read.
+ * A producer that reads the wrong variable starts from "now" and nothing fails: the stream opens,
+ * frames flow, and everything that happened during the gap is silently absent. That happened here —
+ * a fixed name this command read was never the one the transport set, so no reconnect ever resumed.
+ * Naming the variable where the transport is configured is what makes the two agree.
  */
-const RESUME_CURSOR_ENV = 'CCMUX_REMOTE_STREAM_CURSOR';
+export function resumeCursor(
+  name: string | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  return name === undefined ? undefined : env[name];
+}
 
 /**
  * Which instant to resume from. An explicit `--since` wins: it is a person asking a deliberate
@@ -98,6 +104,7 @@ export async function cmdEvents(args: string[]): Promise<number> {
   let json = false;
   let framed = false;
   let since: string | undefined;
+  let cursorEnv: string | undefined;
   let session: string | undefined;
   let limit: number | undefined;
   for (let i = 0; i < args.length; i++) {
@@ -109,7 +116,13 @@ export async function cmdEvents(args: string[]): Promise<number> {
     // would make the common case pay for the transport's contract.
     else if (a === '--framed') framed = true;
     else if (a === '--since') since = args[++i];
-    else if (a === '--session') session = args[++i];
+    else if (a === '--cursor-env') {
+      cursorEnv = args[++i];
+      if (cursorEnv === undefined || cursorEnv === '') {
+        console.error('events: --cursor-env needs the name of an environment variable');
+        return 1;
+      }
+    } else if (a === '--session') session = args[++i];
     else if (a === '-n') {
       const parsed = Number.parseInt(args[++i] ?? '', 10);
       if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -123,13 +136,13 @@ export async function cmdEvents(args: string[]): Promise<number> {
     }
   }
   const explicitSince = since;
-  since = resolveSince(since, process.env[RESUME_CURSOR_ENV]);
+  since = resolveSince(since, resumeCursor(cursorEnv));
   if (since !== undefined && !Number.isFinite(Date.parse(since))) {
     // Loud, deliberately — including when it came from the environment. The transport only ever
     // hands back a cursor this same producer emitted, so an unparseable one is a defect somewhere,
     // and the alternative (ignore it, start from "now") is precisely the silent gap this reads the
     // variable to close.
-    const source = explicitSince === undefined ? `${RESUME_CURSOR_ENV} carried` : '--since needs';
+    const source = explicitSince === undefined ? `${cursorEnv} carried` : '--since needs';
     console.error(
       `events: ${source} an ISO instant (e.g. ${new Date().toISOString()}), got '${since}'`,
     );

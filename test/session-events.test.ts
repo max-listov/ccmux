@@ -7,7 +7,7 @@ import { z } from 'zod';
 import type { LifecycleStatus } from '../src/agent/sessionStatus.ts';
 import { closedTurnRecord, SUPERVISOR_CLOSED_EVENT } from '../src/agent/sessionStatus.ts';
 import { INTERRUPTED_MS, turnState } from '../src/chat/turnState.ts';
-import { formatEvent, framedLine, resolveSince } from '../src/commands/events.ts';
+import { formatEvent, framedLine, resolveSince, resumeCursor } from '../src/commands/events.ts';
 import { eventForLifecycle, lifecycleToWrite } from '../src/commands/hookStatus.ts';
 import { turnStartedAt } from '../src/commands/list.ts';
 import { eventsEnabledFor } from '../src/config/events.ts';
@@ -534,4 +534,63 @@ test('no variable and no flag leaves the behaviour exactly as it was', () => {
   // An empty variable is "not set", not "resume from the epoch": the transport clears it that way on
   // a first open, and treating it as a value would replay the entire retained feed on every start.
   expect(resolveSince(undefined, '')).toBeUndefined();
+});
+
+test('the resume point is read from the variable the profile names, and from no other', () => {
+  const env = { RESUME_AT: '2026-08-25T09:00:00.000Z', CCMUX_REMOTE_STREAM_CURSOR: 'x' };
+  expect(resumeCursor('RESUME_AT', env)).toBe('2026-08-25T09:00:00.000Z');
+  // No name, no resume: a fixed name the transport never sets is how every reopen started from "now".
+  expect(resumeCursor(undefined, env)).toBeUndefined();
+});
+
+test('a follower run with --cursor-env resumes from that variable, end to end', () => {
+  const state = mkdtempSync(join(tmpdir(), 'ccmux-cursor-env-'));
+  try {
+    const m = makeMachine({ rcPrefix: 'host-a', stateDir: state });
+    const early = buildEvent(
+      m,
+      makeSession(),
+      { event: 'turn-start' },
+      crypto.randomUUID(),
+      '2026-08-25T08:00:00.000Z',
+    );
+    const late = buildEvent(
+      m,
+      makeSession(),
+      { event: 'turn-end' },
+      crypto.randomUUID(),
+      '2026-08-25T09:00:00.000Z',
+    );
+    writeFileSync(eventsPath(m), `${JSON.stringify(early)}\n${JSON.stringify(late)}\n`);
+    const run = (args: string[], extra: Record<string, string>) =>
+      Bun.spawnSync(
+        ['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'events', '--json', ...args],
+        {
+          env: {
+            ...process.env,
+            CCMUX_CONFIG: join(state, 'absent.json'),
+            CCMUX_STATE_DIR: state,
+            CCMUX_RC_PREFIX: 'host-a',
+            ...extra,
+          },
+        },
+      );
+    const resumed = run(['--cursor-env', 'RESUME_AT'], { RESUME_AT: '2026-08-25T08:30:00.000Z' });
+    expect(resumed.stderr.toString()).toBe('');
+    expect(
+      resumed.stdout
+        .toString()
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line).id),
+    ).toEqual([late.id]);
+    // The variable alone does nothing: only the name in the profile's argv makes it the resume point.
+    const unnamed = run([], { RESUME_AT: '2026-08-25T08:30:00.000Z' });
+    expect(unnamed.stdout.toString().trim().split('\n')).toHaveLength(2);
+    const empty = run(['--cursor-env'], {});
+    expect(empty.exitCode).toBe(1);
+    expect(empty.stderr.toString()).toContain('--cursor-env needs the name');
+  } finally {
+    rmSync(state, { recursive: true, force: true });
+  }
 });

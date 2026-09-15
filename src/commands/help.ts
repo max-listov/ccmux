@@ -56,8 +56,8 @@ export const COMMANDS: HelpEntry[] = [
   { verb: 'stop', args: '<name> [--force]', desc: 'kill it (daemon re-heals unless archived)' },
   {
     verb: 'events',
-    args: '[--follow] [--since <iso>] [--session <name>] [-n N] [--json|--framed]',
-    desc: 'what HAPPENED to sessions — turn boundaries, waiting at a menu, stop/blocked; --follow streams them as they occur; --framed wraps each line for a transport that resumes',
+    args: '[--follow] [--since <iso>] [--cursor-env <NAME>] [--session <name>] [-n N] [--json|--framed]',
+    desc: 'what HAPPENED to sessions — turn boundaries, waiting at a menu, stop/blocked, inventory changes; --follow streams them as they occur; --framed wraps each line for a transport that resumes, and --cursor-env names the variable that transport hands the resume point back in',
     example: 'ccmux events --follow --json',
   },
   {

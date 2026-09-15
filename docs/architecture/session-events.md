@@ -286,9 +286,17 @@ hands back after a break, both sides are asking the same question in the same un
 
 **And the way it comes back is through the environment, not the arguments.** A feed with no natural
 end is capped by a deadline, so a transport reopens it on a schedule — every fifteen minutes under
-the profile this one runs behind — and hands the cursor to the producer as an environment variable,
-because the node profile deliberately refuses caller-supplied arguments. `ccmux events` reads it, and
-an explicit `--since` still wins: a person's deliberate question outranks a transport's mechanism.
+the profile this one runs behind — and on every lost lane, and hands the cursor to the producer as an
+environment variable, because the node profile deliberately refuses caller-supplied arguments. Which
+variable is the transport's choice, so the profile says it: its fixed argv carries
+`--cursor-env <NAME>`, and `ccmux events` (and `chat log --follow`) read that variable. An explicit
+`--since` still wins: a person's deliberate question outranks a transport's mechanism.
+
+This was once a fixed name inside ccmux that the transport never set. Nothing failed: every reopen
+started from "now", and whatever happened in the gap was simply absent — measured, an inventory
+change written three seconds before a reconnect never reached the consumer, and a probe that asked
+the stream for the last quarter hour received nothing. Naming the variable where the transport is
+configured is what makes the two sides agree; checking it takes one reconnect with an old cursor.
 
 Reading it is what makes the envelope's promise true. A producer that ignores that variable starts
 from "now" and **nothing fails** — the stream opens, frames flow, and everything from the gap is

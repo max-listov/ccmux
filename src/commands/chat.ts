@@ -28,13 +28,10 @@ import { peersOf, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { printLine } from '../util/stdout.ts';
+import { resolveSince, resumeCursor } from './events.ts';
 
 const USAGE =
-  'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
-
-/** Where the transport hands back a resume point when it reopens a capped stream. The same variable
- *  the session feed reads, because it is the transport's mechanism and not this feed's. */
-const RESUME_CURSOR_ENV = 'CCMUX_REMOTE_STREAM_CURSOR';
+  'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
 
 interface Source {
   machine: LogMachine;
@@ -132,20 +129,27 @@ async function cmdChatFeed(m: MachineConfig, args: string[]): Promise<number> {
   let json = false;
   let framed = false;
   let since: string | undefined;
+  let cursorEnv: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--follow' || a === '-f') continue;
     else if (a === '--json') json = true;
     else if (a === '--framed') framed = true;
     else if (a === '--since') since = args[++i];
-    else if (a?.startsWith('-')) {
+    // The variable the transport hands a resume point back in — see `resumeCursor` in events.ts.
+    else if (a === '--cursor-env') {
+      cursorEnv = args[++i];
+      if (cursorEnv === undefined || cursorEnv === '') {
+        console.error('chat log: --cursor-env needs the name of an environment variable');
+        return 1;
+      }
+    } else if (a?.startsWith('-')) {
       console.error(`chat log: unknown flag '${a}'\n${USAGE}`);
       return 1;
     }
   }
   const explicit = since;
-  const fromEnv = process.env[RESUME_CURSOR_ENV];
-  if (since === undefined && fromEnv !== undefined && fromEnv !== '') since = fromEnv;
+  since = resolveSince(since, resumeCursor(cursorEnv));
 
   let cursor = ZERO_CURSOR;
   if (since !== undefined) {
@@ -156,7 +160,7 @@ async function cmdChatFeed(m: MachineConfig, args: string[]): Promise<number> {
       // with no symptom — the stream opens, rows flow, and the gap simply does not exist.
       const source =
         explicit === undefined
-          ? `${RESUME_CURSOR_ENV} carried an unusable cursor`
+          ? `${cursorEnv} carried an unusable cursor`
           : '--since needs a cursor';
       console.error(`chat log: ${source} — ${parsed.error}`);
       return 1;
