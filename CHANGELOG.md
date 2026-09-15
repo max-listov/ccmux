@@ -6,8 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-- A peer on the remote transport falls back to its ssh alias when the remote route never dispatched the call — and only then: a call that may already have been delivered is not repeated. The fallback is logged with its reason, and `fleet` names it on the machine's row (`fallback` in `--json`).
+## [0.61.5] — 2026-09-15
 
+A peer on the remote transport falls back to its ssh alias only for a call the remote route never dispatched; the fallback is logged and named on the fleet row
+
+- A peer on the remote transport falls back to its ssh alias when the remote route never dispatched the call — and only then: a call that may already have been delivered is not repeated. The fallback is logged with its reason, and `fleet` names it on the machine's row (`fallback` in `--json`).
 ## [0.61.4] — 2026-09-15
 
 Usage stays readable while another process commits to the same index: the usage store runs in WAL, so a reader never reports "accounting unavailable" behind a committing writer
