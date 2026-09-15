@@ -35,6 +35,7 @@ const machine = (
   },
   behind: null,
   sessions: [],
+  inventory: null,
 });
 
 test('behind is classified, not left to each reader to reinvent', () => {
@@ -109,6 +110,7 @@ test('a machine nobody could reach makes no claim about its release', () => {
     release: null,
     behind: null,
     sessions: [],
+    inventory: null,
   };
   const view = fleetView([machine('host-a', '0.35.0', '0.35.0'), unreachable]);
   expect(view.machines[1]?.behind).toBeNull();

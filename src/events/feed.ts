@@ -65,13 +65,16 @@ export interface EmitInput {
   durationMs?: number;
   interrupted?: boolean;
   detail?: string;
+  inventory?: SessionEvent['inventory'];
+  row?: SessionEvent['row'];
 }
 
 /** Build one event from a session. The clock and the RNG are parameters, so the record shape is
- *  testable without stubbing either. */
+ *  testable without stubbing either. Only the identity is read, so a session that has already left
+ *  the registry can still be named by its last inventory row. */
 export function buildEvent(
   m: MachineConfig,
-  s: Session,
+  s: Pick<Session, 'name' | 'agent' | 'uuid'>,
   input: EmitInput,
   id: string,
   nowIso: string,
@@ -88,6 +91,8 @@ export function buildEvent(
     ...(input.durationMs === undefined ? {} : { durationMs: Math.round(input.durationMs) }),
     ...(input.interrupted === undefined ? {} : { interrupted: input.interrupted }),
     ...(input.detail === undefined ? {} : { detail: input.detail }),
+    ...(input.inventory === undefined ? {} : { inventory: input.inventory }),
+    ...(input.row === undefined ? {} : { row: input.row }),
   });
 }
 
@@ -98,7 +103,15 @@ export function buildEvent(
  */
 export function appendEvent(m: MachineConfig, s: Session, input: EmitInput): SessionEvent | null {
   try {
-    const event = buildEvent(m, s, input, randomUUID(), new Date().toISOString());
+    return appendRecord(m, buildEvent(m, s, input, randomUUID(), new Date().toISOString()));
+  } catch {
+    return null;
+  }
+}
+
+/** Append an already-built event, with the same fail-open contract as `appendEvent`. */
+export function appendRecord(m: MachineConfig, event: SessionEvent): SessionEvent | null {
+  try {
     const path = eventsPath(m);
     mkdirSync(dirname(path), { recursive: true });
     rotateIfNeeded(path);

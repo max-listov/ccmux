@@ -124,6 +124,9 @@ export const eventsPath = (m: MachineConfig): string => join(m.stateDir, 'events
 /** Bounded read-only monitoring projection published by the existing observation loop. */
 export const monitoringStatusPath = (m: Pick<MachineConfig, 'stateDir'>): string =>
   join(m.stateDir, 'monitoring-status.json');
+/** The daemon's published inventory, relayed by `list --json`; see `events/inventory.ts`. */
+export const inventoryPath = (m: Pick<MachineConfig, 'stateDir'>): string =>
+  join(m.stateDir, 'inventory.json');
 /**
  * When each session's pane was last seen doing work.
  *

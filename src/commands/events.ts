@@ -26,6 +26,7 @@ const HUMAN: Record<SessionEvent['event'], string> = {
   'session-start': 'session started',
   'session-stop': 'session stopped',
   'session-blocked': 'session is blocked',
+  inventory: 'is now',
 };
 
 /** One event as a line a person can read. Pure, so the wording is testable and cannot drift from
@@ -33,6 +34,12 @@ const HUMAN: Record<SessionEvent['event'], string> = {
 export function formatEvent(event: SessionEvent): string {
   const when = event.ts.slice(11, 19);
   const address = `${event.machine}:${event.session}`;
+  if (event.event === 'inventory')
+    return `${when}  ${address.padEnd(24)} ${
+      event.row == null
+        ? 'left the inventory'
+        : `${HUMAN.inventory} ${event.row.state}${event.row.model === null ? '' : ` · ${event.row.model}`}`
+    }`;
   const parts = [HUMAN[event.event]];
   if (event.durationMs !== undefined)
     parts.push(`after ${humanizeDuration(Math.round(event.durationMs / 1000))}`);

@@ -16,6 +16,7 @@ import { ControlPublisher } from '../control/publisher.ts';
 import { ControlModelsReadSchema } from '../control/schema.ts';
 import { createControlServer } from '../control/server.ts';
 import { IS_DEV } from '../env.ts';
+import { InventoryPublisher } from '../events/inventory.ts';
 import { type Observed, observeOnce } from '../events/observe.ts';
 import { ExternalStatusObserver } from '../external/resident-observer.ts';
 import { ExternalStatusPublisher } from '../external/resident-publisher.ts';
@@ -70,6 +71,7 @@ export function createDaemonApplication(initial: MachineConfig) {
     dependsOn: [chronology],
   };
   const monitoring = new MonitoringPublisher();
+  const inventory = new InventoryPublisher();
   const publisher = new ControlPublisher(initial);
   const external = new ExternalStatusPublisher(initial.rcPrefix);
   const externalObserver = new ExternalStatusObserver(initial, external);
@@ -84,6 +86,7 @@ export function createDaemonApplication(initial: MachineConfig) {
     close: () => {
       publisher.close();
       monitoring.stop();
+      inventory.stop();
     },
   });
   let closeAudit = async (): Promise<void> => {};
@@ -130,9 +133,14 @@ export function createDaemonApplication(initial: MachineConfig) {
     run: async ({ signal }) => {
       const m = machine();
       monitoring.begin(m);
-      await observeOnce(m, previous, Date.now(), monitoring.sample);
+      inventory.begin(m);
+      await observeOnce(m, previous, Date.now(), (m, s, startedAt, pane, seen) => {
+        const row = monitoring.sample(m, s, startedAt, pane, seen);
+        if (row !== null) inventory.sample(m, s, row, startedAt);
+      });
       signal.throwIfAborted();
       const snapshot = await monitoring.publish(m);
+      await inventory.publish(m, m.sessionEvents);
       await journal?.publishStatus();
       // The existing monitoring file follows configuration changes. A bound IPC listener
       // cannot change its address in place: its clients must reconnect after a restart.

@@ -199,6 +199,51 @@ usable:
 build simply omits the field and it reads as null — which is why `version` sits on the machine row
 beside the sessions.
 
+## The inventory travels as changes too
+
+A feed of turn boundaries tells a consumer that something happened, not what the machine now looks
+like: which sessions exist, their state, model and step. A consumer that learns composition only by
+running `list` and `fleet` pays a process per question and asks after every burst of events —
+measured on one consumer, a CLI run every 4.6 seconds, 389 process-seconds in 23 minutes.
+
+The daemon already builds every session's row once per observation pass, for the monitoring
+snapshot. It compares that row with the previous pass and appends one `inventory` event per session
+that appeared, changed or left. The event carries the row (`row`, or null when the session left) and
+the revision it produces: `inventory: { generation, sequence }`, where the generation is this daemon
+run and every change is the next sequence inside it.
+
+A row holds what changes at the pace of the session's own life — state (the monitoring vocabulary),
+model, whole-percent context, `startedAt`, `turnStartedAt`, and `step`: the last transcript entry's
+kind, role, tool and time. It holds no clock that moves by itself: uptime is the start instant, and
+observation times are left out, or every pass would be a change and the feed a poll written to disk.
+The step has no text, for the same reason `detail` never carries conversation: text stays in the
+transcript, behind its own command.
+
+**The snapshot is the same inventory, not a fresh look.** The daemon writes it to `inventory.json`
+with the same `generation` and `sequence`; `list --json` relays it as `inventory`, and `fleet --json`
+carries each machine's. `sessions` beside it is that call's own fresh answer and would drift from
+the stream: a row the call saw differently from the daemon would never be corrected by an event,
+because the daemon never saw it change. A snapshot from a daemon that is no longer running reads as
+null — nothing would ever send the change that makes it wrong.
+
+A consumer:
+
+1. starts following the feeds, then reads `fleet --json` and keeps each machine's `inventory`;
+2. for an `inventory` event of the generation it holds: a sequence at or below its own is one it
+   already has (delivery is at-least-once) — drop it; exactly the next one — apply the row, or
+   remove the session when `row` is null; anything else — a gap or another generation — read the
+   snapshot again;
+3. reads nothing else until that happens.
+
+A restarted daemon is a new generation. Its first pass has nothing to compare with and announces
+every row once: state re-observed, not history replayed, and the signal that makes a consumer on the
+old generation re-read. With `sessionEvents` off the sequence still advances, so a held snapshot is
+seen to be behind instead of silently trusted.
+
+Whether a machine is reachable is not in this feed and cannot be: it is a property of the route
+between the consumer and that machine, which the consumer's own transport — the stream it holds to
+that machine — already knows first.
+
 ## Nothing runs on the event
 
 The turn hook is **blocking** — it is what the agent waits on to finish a turn, and `stop-hook`

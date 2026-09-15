@@ -27,6 +27,7 @@ import { loadMachineConfig, rcName } from '../config/machine.ts';
 import { releaseStanding } from '../config/releaseCheck.ts';
 import { loadSessions } from '../config/sessions.ts';
 import { promptInvocation } from '../env.ts';
+import { readInventory } from '../events/inventory.ts';
 import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
 import { loadOutboxAcked } from '../fleet/flush.ts';
@@ -357,6 +358,7 @@ async function printJson(m: MachineConfig, rows: ListRow[]): Promise<void> {
     stateDir: m.stateDir,
     release: releaseStanding(m, VERSION),
     sessions: rows.map((r) => toListItem(m, r)),
+    inventory: readInventory(m),
   };
   await printLine(JSON.stringify(out));
 }

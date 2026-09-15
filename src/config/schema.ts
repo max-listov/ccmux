@@ -883,9 +883,56 @@ export const SessionEventKindSchema = z.enum([
   'session-start',
   'session-stop',
   'session-blocked',
+  // One session's inventory row changed, appeared or left; see `events/inventory.ts`.
+  'inventory',
 ]);
 
 export const SESSION_EVENT_VERSION = 1;
+
+/**
+ * One session as the daemon's observation pass last saw it — only what changes at the pace of the
+ * session's own life. Read leniently: rows cross machines on mixed builds.
+ */
+export const InventoryRowSchema = z
+  .object({
+    name: z.string().min(1),
+    agent: AgentKindSchema,
+    uuid: z.uuid(),
+    address: z.string().min(1),
+    archived: z.boolean(),
+    running: z.boolean(),
+    /** The monitoring vocabulary: working, idle, prompt, stopped, blocked, unknown. */
+    state: z.string().min(1),
+    model: z.string().nullable(),
+    contextPercent: z.number().int().min(0).max(100).nullable(),
+    /** When the session's tmux session was created; a reader derives uptime from its own clock. */
+    startedAt: z.iso.datetime().nullable(),
+    turnStartedAt: z.iso.datetime().nullable(),
+    /** The last transcript entry's shape — never its text. Null when not running or unknown. */
+    step: z
+      .object({
+        kind: z.string(),
+        role: z.string(),
+        toolName: z.string().nullable(),
+        at: z.string().nullable(),
+      })
+      .loose()
+      .nullable(),
+  })
+  .loose();
+export type InventoryRow = z.infer<typeof InventoryRowSchema>;
+
+/** Where an inventory stands: the daemon run that owns it and how many changes it has made. */
+export const InventoryRevisionSchema = z.object({
+  generation: z.uuid(),
+  sequence: z.number().int().nonnegative(),
+});
+
+export const InventorySnapshotSchema = InventoryRevisionSchema.extend({
+  pid: z.number().int().positive(),
+  sessions: z.array(InventoryRowSchema),
+}).loose();
+export type InventorySnapshot = z.infer<typeof InventorySnapshotSchema>;
 
 export const SessionEventSchema = z
   .object({
@@ -907,6 +954,10 @@ export const SessionEventSchema = z
     /** Free-form context for the kinds that have any: which menu a session waits at, why it is
      *  blocked. Never conversation content — that stays in the transcript, behind its own command. */
     detail: z.string().optional(),
+    /** `inventory` only: the revision this change produces — the next sequence of its generation. */
+    inventory: InventoryRevisionSchema.optional(),
+    /** `inventory` only: the session's row after the change; null when it left the inventory. */
+    row: InventoryRowSchema.nullable().optional(),
   })
   // NOT strict, and that is the point: this record is read by other machines and by outside
   // surfaces, which may be running an older build than the one that wrote it. Strict parsing would
@@ -1088,6 +1139,11 @@ export const ListJsonSchema = z.object({
   stateDir: z.string(),
   release: ReleaseStandingSchema,
   sessions: z.array(ListItemSchema),
+  /**
+   * The daemon's published inventory: the snapshot its `inventory` events continue from. Null when
+   * no live daemon publishes one. `sessions` above is this call's own fresh answer and is not it.
+   */
+  inventory: InventorySnapshotSchema.nullable(),
 });
 
 import { UsageAggregateSchema } from '../usage/schema.ts';

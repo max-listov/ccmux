@@ -40,24 +40,26 @@ export class MonitoringPublisher {
     startedAt: number | undefined,
     pane: string | null,
     seen: Observed,
-  ): void => {
+  ): MonitoringRow | null => {
     if (this.rows.length >= STATUS_MAX_ITEMS) {
       this.omitted++;
-      return;
+      return null;
     }
     const parsed = MonitoringRowSchema.safeParse(projectMonitoringRow(m, s, startedAt, pane, seen));
     if (!parsed.success) {
       this.omitted++;
-      return;
+      return null;
     }
     const size = Buffer.byteLength(JSON.stringify(parsed.data)) + 1;
-    // Reserve header space, including worst-case numeric/string fields.
+    // Reserve header space, including worst-case numeric/string fields. A row that does not fit this
+    // file is still a valid projection, and it is returned: the inventory has no such byte budget.
     if (this.bytes + size > STATUS_MAX_BYTES - 4096) {
       this.omitted++;
-      return;
+      return parsed.data;
     }
     this.rows.push(parsed.data);
     this.bytes += size;
+    return parsed.data;
   };
 
   async publish(m: MachineConfig): Promise<MonitoringSnapshot> {

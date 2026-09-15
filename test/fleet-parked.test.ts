@@ -57,6 +57,7 @@ test("a peer's parked rows are read by the same rule as this machine's", () => {
     version: '0.39.40',
     release: null,
     behind: null,
+    inventory: null,
     // Parsed the way a peer's row is parsed, so the fixture cannot drift from the contract.
     sessions: [
       RemoteSessionSchema.parse({

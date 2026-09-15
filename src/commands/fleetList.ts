@@ -10,10 +10,13 @@ import {
 import {
   AgentKindSchema,
   ContextInfoSchema,
+  type InventorySnapshot,
+  InventorySnapshotSchema,
   ListItemSchema,
   ReleaseStandingSchema,
   TranscriptMessageSchema,
 } from '../config/schema.ts';
+import { readInventory } from '../events/inventory.ts';
 import { peersOf, type RemoteResult, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
@@ -105,6 +108,8 @@ const RemoteListSchema = z.object({
   // exactly the distinction the block itself exists to keep.
   release: ReleaseStandingSchema.nullable().default(null),
   sessions: z.array(RemoteSessionSchema).default([]),
+  // A peer too old to publish one says nothing, and an unreadable one costs only itself.
+  inventory: InventorySnapshotSchema.nullable().default(null).catch(null),
 });
 
 export interface FleetMachine {
@@ -127,6 +132,9 @@ export interface FleetMachine {
    */
   behind: BehindBy;
   sessions: z.infer<typeof RemoteSessionSchema>[];
+  /** That machine's published inventory — what its `inventory` events continue from. Null when it
+   *  failed, publishes none, or runs a build that does not. */
+  inventory: InventorySnapshot | null;
 }
 
 /** The fleet's answer, with ONE yardstick for the whole of it. */
@@ -140,7 +148,10 @@ export interface FleetView {
 
 /** Query every machine in parallel; each failure is contained to its own row. */
 export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
-  const local = await collectRows(m);
+  // This machine's rows are built WHILE the peers answer, not before they are asked: awaited first,
+  // the local pass sat in front of every remote round trip and the answer took both, one after the
+  // other.
+  const [local, remote] = await Promise.all([collectRows(m), collectPeers(m)]);
   const self: FleetMachine = {
     machine: m.rcPrefix,
     alias: null,
@@ -149,6 +160,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
     version: VERSION,
     release: releaseStanding(m, VERSION),
     behind: null, // filled by `fleetView`, which is the only place that holds the yardstick
+    inventory: readInventory(m),
     // This machine's own rows, built by the same function that builds `list --json`. Two builders
     // for one row is what made a field arrive locally and vanish remotely for a release at a time;
     // the fleet view simply relabels the state, which is the only thing it says differently.
@@ -158,7 +170,12 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     })),
   };
-  const remote = await Promise.all(
+  return [self, ...remote];
+}
+
+/** Every peer asked at once; each failure is contained to its own row. */
+function collectPeers(m: MachineConfig): Promise<FleetMachine[]> {
+  return Promise.all(
     peersOf(m).map(async ({ machine, alias, via }): Promise<FleetMachine> => {
       const r = await runPeer(m, machine, alias, ['ccmux', 'list', '--json'], {
         // The execution budget stays generous — a busy machine listing many sessions is answering,
@@ -173,7 +190,6 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
       return peerListMachine(machine, via === 'remote' ? 'remote' : alias, r);
     }),
   );
-  return [self, ...remote];
 }
 
 /**
@@ -197,6 +213,7 @@ export function peerListMachine(
     release: null,
     behind: null,
     sessions: [],
+    inventory: null,
   });
   if (r.transportFailed) return failed(r.failureDetail ?? 'unreachable (no transit right now)');
   if (r.code !== 0)
@@ -218,6 +235,7 @@ export function peerListMachine(
     version: parsed.version,
     release: parsed.release,
     behind: null,
+    inventory: parsed.inventory,
     // A peer reports its raw run-state; the parked/running verdict is reached here so both
     // halves of the map are read by the same rule.
     sessions: parsed.sessions.map((session) => ({
