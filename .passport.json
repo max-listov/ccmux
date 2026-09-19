@@ -50,7 +50,7 @@
         "classification": "deliverable"
       },
       {
-        "path": ".repository.json",
+        "path": ".passport.json",
         "classification": "deliverable"
       }
     ]

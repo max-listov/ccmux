@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.61.10] — 2026-09-19
+
+Dependencies are current and the repository declaration uses the canonical passport filename
+
+- Updated the AI providers, Codex and OpenCode SDKs, Stitchkit and Biome to their latest published releases.
+- Renamed the repository declaration from `.repository.json` to the canonical `.passport.json` filename, with the public documentation and quality configuration updated in lockstep.
+
 ## [0.61.9] — 2026-09-15
 
 The release ceremony has --commit and --tag halves, so a conductor can run the check between them and report each step as it goes
