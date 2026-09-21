@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.62.0] — 2026-09-21
+
+The fleet views render only the cards that fit the terminal, open on the managed fleet, and show a one-cell vendor mark beside every model
+
 - The fleet views render only the cards that FIT the terminal. A frame taller than the terminal is
   one the terminal scrolls, so every repaint — a keypress, the 1.5 s poll — landed at the bottom of
   the scrollback: a reader who scrolled up was thrown back down, and an arrow key read as a jump.
@@ -26,7 +30,6 @@ the GitHub Release with that section as the notes.
 - `list --json` rows carry `modelId`, the model id as the runtime reported it, beside the display
   label `model`. The label has had its vendor prefix removed, so it cannot answer who made an
   unfamiliar family; a peer that predates the field simply has no mark rather than a guessed one.
-
 ## [0.61.10] — 2026-09-19
 
 Dependencies are current and the repository declaration uses the canonical passport filename
