@@ -42,6 +42,7 @@ function row(
     waitingFor: null,
     state: 'idle',
     model: null,
+    modelId: null,
     contextLabel: '-',
     context: {
       text: null,

@@ -21,6 +21,14 @@ import { useDiscover } from './hooks/useDiscover.ts';
 import { useFleet } from './hooks/useFleet.ts';
 import { useSpinner } from './hooks/useSpinner.ts';
 import { useTranscript } from './hooks/useTranscript.ts';
+import {
+  cardIndexAtY,
+  INLINE_CHROME_ROWS,
+  inlineFit,
+  inlineMaxStart,
+  inlineReveal,
+  visibleCardCount,
+} from './listWindow.ts';
 import { describeSgr, logMouse, mouseDebugOn } from './mouseProbe.ts';
 import { FullscreenView } from './views/FullscreenView.tsx';
 import { InlineView } from './views/InlineView.tsx';
@@ -35,38 +43,6 @@ type Focus = 'list' | 'transcript';
 
 const DEFAULT_LIST_WIDTH = 72;
 const MIN_LIST_WIDTH = 44;
-
-// Fullscreen card geometry (must match FullscreenView's framed SessionCard layout) so a
-// mouse Y can be mapped to a card index. header(1) + pane top-border(1) → first card at
-// terminal row 3; each framed card is 6 rows; the external separator adds 1 row.
-const CARD_TOP = 3; // header bar (1) + pane top border (1) → first card body at row 3
-const CARD_H = 8; // stride: 7-row card + 1-row gap
-const CARD_BODY = 7; // clickable rows (the gap is dead space)
-/** How many whole cards fit in the (clipped) list pane. N cards take N·CARD_BODY + (N−1)
- *  gaps = N·CARD_H − 1 rows (the last card has no trailing gap), so +1 before dividing. */
-function visibleCardCount(termRows: number): number {
-  const interior = Math.max(1, termRows - 4); // minus header(1) footer(1) + pane top/bottom border(2)
-  return Math.max(1, Math.floor((interior + 1) / CARD_H));
-}
-/** Map a terminal Y to a GLOBAL card index, accounting for the scroll window + the one-row
- *  external separator. Mirrors FullscreenView's windowed layout exactly. */
-function cardIndexAtY(
-  y: number,
-  winStart: number,
-  visible: number,
-  count: number,
-  externalStart: number,
-): number | null {
-  let rowY = CARD_TOP;
-  for (let k = 0; k < visible; k++) {
-    const gi = winStart + k;
-    if (gi >= count) break;
-    if (gi === externalStart && externalStart < count) rowY += 1; // separator row above the first external card
-    if (y >= rowY && y < rowY + CARD_BODY) return gi;
-    rowY += CARD_H;
-  }
-  return null;
-}
 
 export function App({
   m,
@@ -105,8 +81,11 @@ export function App({
   const [ownershipError, setOwnershipError] = useState<string | null>(null);
   const adoptTarget = useRef<string | null>(null);
 
-  // The machine states the starting answer; `x` changes it for this run only.
-  const [externalOn, setExternalOn] = useState(m.externalInventory);
+  // The view opens on the managed fleet — what a person came here to steer. The local inventory
+  // is a second, much longer list (stopped threads from months back), so it is something you ASK
+  // for with `x`; `m.externalInventory` stays what it always was, the access policy for reading
+  // external content, not a preference about the first frame.
+  const [externalOn, setExternalOn] = useState(false);
   // Gated on `loaded`: the managed fleet is what the view is FOR, and discovery blocks the thread
   // for as long as the box's accumulated history takes to scan. Sessions paint first, always.
   const { list: discovered, scanning } = useDiscover(m, mode === 'list' && externalOn && loaded);
@@ -130,18 +109,28 @@ export function App({
   const messages = useTranscript(m, fullscreen && selected ? selected.session : null, fullscreen);
   const defaultName = `cc-${basename(process.cwd())}`;
 
-  // ── list scroll window: only the cards that fit in the clipped pane render; winStart is the
-  //    clamped listScroll. maxScrollTop is the furthest the window can scroll down.
-  const visibleCards = visibleCardCount(stdout?.rows ?? 28);
-  const maxScrollTop = Math.max(0, count - visibleCards);
+  // ── list scroll window: only the cards that FIT render, in both views — a frame taller than
+  //    the terminal is one the terminal scrolls, and then every poll repaint throws the reader
+  //    back to the bottom. Fullscreen divides by a fixed card stride; inline counts item heights
+  //    (an external card is one row taller). winStart is the clamped listScroll either way.
+  const termRows = stdout?.rows ?? 28;
+  // Modes draw their own prompt under the list; leave it room instead of pushing a card off-screen.
+  const promptRows = mode === 'list' ? 0 : mode === 'adopt' ? 3 : 1;
+  const inlineRows = Math.max(3, termRows - INLINE_CHROME_ROWS - promptRows);
+  const maxScrollTop = fullscreen
+    ? Math.max(0, count - visibleCardCount(termRows))
+    : inlineMaxStart(items, inlineRows, externalStart);
   const winStart = Math.min(Math.max(0, listScroll), maxScrollTop);
+  const visibleCards = fullscreen
+    ? visibleCardCount(termRows)
+    : inlineFit(items, winStart, inlineRows, externalStart);
 
-  // Tell the fleet poll which panes to capture: the selection + the on-screen managed cards
-  // (fullscreen = the scroll window, inline = all). Off-screen running sessions reuse their cached
-  // scan — fewer tmux forks per tick. Recomputed every render so scrolling refreshes what's shown.
+  // Tell the fleet poll which panes to capture: the selection + the on-screen managed cards.
+  // Off-screen running sessions reuse their cached scan — fewer tmux forks per tick. Recomputed
+  // every render so scrolling refreshes what's shown.
   const liveNames = new Set<string>();
   if (selected && !isExternal) liveNames.add(selected.session.name);
-  for (const it of fullscreen ? items.slice(winStart, winStart + visibleCards) : items) {
+  for (const it of items.slice(winStart, winStart + visibleCards)) {
     if (!it.external) liveNames.add(it.row.session.name);
   }
   liveNamesRef.current = liveNames;
@@ -150,6 +139,7 @@ export function App({
   // the selection is never hidden — "доскролл чтобы в экране был").
   const revealCursor = (idx: number): void => {
     setListScroll((s) => {
+      if (!fullscreen) return inlineReveal(items, s, idx, inlineRows, externalStart);
       const top = Math.min(Math.max(0, s), maxScrollTop);
       if (idx < top) return idx;
       if (idx >= top + visibleCards) return idx - visibleCards + 1;
@@ -222,12 +212,12 @@ export function App({
     };
   }, [fullscreen, stdout]);
 
-  // When the activity re-sort MOVES the selected card (cur changed without navigation),
-  // follow it — the selection must never sit outside the scroll window.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Reveal only on selection changes, not on every render or manual scroll.
+  // When the activity re-sort MOVES the selected card (cur changed without navigation), or the
+  // terminal is resized under it, follow it — the selection must never sit outside the window.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reveal on selection and viewport changes, not on every render or manual scroll.
   useEffect(() => {
     revealCursor(cur);
-  }, [cur]);
+  }, [cur, termRows]);
 
   // ── mouse: wheel scrolls the pane under the cursor (zone by x, independent of focus);
   //    the divider is a hover/drag handle for live resize. ?1003h (any-motion) gives
@@ -578,6 +568,8 @@ export function App({
       items={items}
       externalStart={externalStart}
       cursor={cur}
+      winStart={winStart}
+      visibleCards={visibleCards}
       spin={spin}
       rcPrefix={m.rcPrefix}
       load={load}

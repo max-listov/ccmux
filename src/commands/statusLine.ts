@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { type MetricsStatus, readMetricsFile, writeMetricsFile } from '../agent/metricsFile.ts';
+import { vendorGlyph } from '../agent/vendor.ts';
 
 /**
  * `ccmux status-line` — the injected Claude Code statusLine command for a managed session. Claude
@@ -108,7 +109,7 @@ const fmtTok = (n: number): string =>
  *  a useful model + context readout for free. */
 export function minimalStatusline(m: MetricsStatus): string {
   const parts: string[] = [];
-  if (m.model !== null) parts.push(m.model);
+  if (m.model !== null) parts.push(`${vendorGlyph(m.model)} ${m.model}`.trim());
   if (m.pct !== null && m.contextSizeTokens !== null) {
     const used = Math.round((m.contextSizeTokens * m.pct) / 100);
     parts.push(`${fmtTok(used)}/${fmtTok(m.contextSizeTokens)} ${m.pct}%`);

@@ -191,7 +191,7 @@ export const COMMANDS: HelpEntry[] = [
   {
     verb: 'tui',
     args: '[-f|--fullscreen]',
-    desc: 'interactive fleet TUI (bare `ccmux` does this too); `x` toggles the external inventory, which is off unless the machine sets externalInventory',
+    desc: 'interactive fleet TUI (bare `ccmux` does this too); it opens on the managed fleet and `x` adds the local inventory of sessions outside ccmux (`externalInventory` governs external CONTENT access, not this view)',
   },
   { verb: 'version', args: '', desc: 'print version' },
   { verb: 'help', args: '[command]', desc: 'this help, or help for one command' },

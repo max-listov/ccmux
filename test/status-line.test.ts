@@ -110,7 +110,7 @@ test('minimalStatusline: a useful default (model + context%) when the user has n
       renders: 1,
       rendersSince: 7,
     }),
-  ).toBe('Opus 5 · 120k/1.0M 12%');
+  ).toBe('✳ Opus 5 · 120k/1.0M 12%'); // the vendor mark travels with the model
   expect(
     minimalStatusline({
       ts: 1,
@@ -121,7 +121,7 @@ test('minimalStatusline: a useful default (model + context%) when the user has n
       renders: 1,
       rendersSince: 7,
     }),
-  ).toBe('Opus 5');
+  ).toBe('✳ Opus 5');
   expect(
     minimalStatusline({
       ts: 1,

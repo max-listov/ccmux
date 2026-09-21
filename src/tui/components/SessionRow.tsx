@@ -1,4 +1,5 @@
 import { Box } from 'ink';
+import { VENDOR_CELL, vendorMark } from '../../agent/vendor.ts';
 import type { FleetItem } from '../fleet.ts';
 import { pad, provColor } from '../format.ts';
 import { statusMark } from '../status.ts';
@@ -19,6 +20,8 @@ export function SessionRow({
 }) {
   const { row, status, external } = item;
   const s = row.session;
+  // Who MADE the model, beside the model — the runtime word says who HOLDS the session.
+  const mark = vendorMark(row.modelId ?? row.model);
   return (
     <Box>
       {showStatus ? (
@@ -28,6 +31,7 @@ export function SessionRow({
         {pad(s.name, 17)}
       </Txt>
       <Txt color={provColor(s.agent)}>{pad(s.agent, 7)}</Txt>
+      <Txt color={mark?.color}>{`${mark?.glyph ?? VENDOR_CELL} `}</Txt>
       <Txt>{pad(row.model ?? '—', 10)}</Txt>
       {showStatus ? (
         <Txt color={status.color} bold={status.active}>

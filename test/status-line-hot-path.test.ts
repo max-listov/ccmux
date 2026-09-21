@@ -31,10 +31,14 @@ test('the status-line command imports no schema library and no agent graph', () 
   const specifiers = imports(source);
   expect(specifiers).not.toContain('zod');
   expect(specifiers).not.toContain('../agent/sessionStatus.ts');
-  // What it may reach for: node built-ins and the metrics leaf. Anything else is a new graph on the
-  // hottest path this tool has, and belongs behind a deliberate measurement.
+  // What it may reach for: node built-ins, the metrics leaf, and the vendor-mark leaf. Anything
+  // else is a new graph on the hottest path this tool has, and belongs behind a deliberate
+  // measurement — which is how `vendor.ts` got here: it imports nothing at all, and evaluating it
+  // measured 0.46–0.51 ms against the 5.1–6.0 ms of `metricsFile.ts`, which this list already
+  // allows. A module that grows an import stops being that, and this test is where it is caught.
+  const leaves = ['../agent/metricsFile.ts', '../agent/vendor.ts'];
   for (const specifier of specifiers)
-    expect(specifier.startsWith('node:') || specifier === '../agent/metricsFile.ts').toBe(true);
+    expect(specifier.startsWith('node:') || leaves.includes(specifier)).toBe(true);
 });
 
 test('the metrics leaf stays a leaf', () => {
@@ -46,6 +50,11 @@ test('the metrics leaf stays a leaf', () => {
         specifier === '../config/paths.ts' ||
         specifier === '../util/atomic.ts',
     ).toBe(true);
+});
+
+test('the vendor-mark leaf stays a leaf', () => {
+  const vendor = readFileSync(join(import.meta.dir, '..', 'src', 'agent', 'vendor.ts'), 'utf8');
+  expect(imports(vendor)).toEqual([]); // it is on the status line's path: no graph behind it
 });
 
 test('one implementation of the metrics file, re-exported rather than copied', () => {

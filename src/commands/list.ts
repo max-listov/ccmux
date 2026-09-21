@@ -18,6 +18,7 @@ import {
   readWaiting,
   resolveLiveState,
 } from '../agent/sessionStatus.ts';
+import { vendorGlyph } from '../agent/vendor.ts';
 import { localRows } from '../chat/fleetLog.ts';
 import { letterCounts, NO_LETTERS, type SessionLetters } from '../chat/letters.ts';
 import { loadLedger } from '../chat/store.ts';
@@ -65,6 +66,10 @@ export interface ListRow {
   state: SessionState;
   lifecycleError: string | null;
   model: string | null;
+  /** The model id exactly as the runtime reported it. `model` is its display label, and a label
+   *  cannot answer who MADE the model: `prettyModel` strips the `claude-` prefix, so a family
+   *  nobody has heard of yet ("Mythos 6") would lose its vendor. The raw id keeps it. */
+  modelId: string | null;
   /** Which account this session runs on and what it has spent, for the runtimes that report it. */
   account: NativeAccount | null;
   /** The account's plan windows, for the runtimes that report them. Null = never asked. */
@@ -118,6 +123,7 @@ async function buildRow(
       state: block ? 'blocked' : 'stopped',
       lifecycleError: block?.error ?? null,
       model: null,
+      modelId: null,
       account: null,
       planLimits: null,
       costUsd: null,
@@ -207,6 +213,7 @@ async function buildRow(
   }
   const uptimeSeconds = startedAt === undefined ? null : Math.floor(nowSec - startedAt);
   const restart = launchStaleReasons(readLaunchStamp(s.name), s, m, promptInvocation());
+  const modelId = native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m);
   return {
     session: s,
     running: true,
@@ -219,7 +226,8 @@ async function buildRow(
         : null,
     // Model from jsonl (source of truth), formatted for display — NOT scraped from the statusline,
     // so a new family (Fable/Mythos/…) is never dropped by a name whitelist.
-    model: prettyModel(native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m)),
+    model: prettyModel(modelId),
+    modelId,
     // The live answer first, then the one kept from before it stopped: a blocked session still ran
     // on an account, and dropping the row made a consumer's plan bar read as "no plan".
     account: native?.read.snapshot?.account ?? native?.read.retained?.account ?? null,
@@ -288,11 +296,11 @@ function stateLabel(r: ListRow): string {
 
 function printTable(m: MachineConfig, rows: ListRow[]): void {
   console.log(
-    `${pad('SESSION', 14)} ${pad('AGENT', 7)} ${pad('MODEL', 9)} ${pad('CTX', 16)} ${pad('STATE', 8)} ${pad('UPTIME', 7)} ${pad('RESTART', 9)} ${pad('RC', 14)} DIR`,
+    `${pad('SESSION', 14)} ${pad('AGENT', 7)} ${pad('MODEL', 11)} ${pad('CTX', 16)} ${pad('STATE', 8)} ${pad('UPTIME', 7)} ${pad('RESTART', 9)} ${pad('RC', 14)} DIR`,
   );
   for (const r of rows) {
     console.log(
-      `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(r.model ?? '-', 9)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(',') : r.staleUnknown !== null ? '?' : '-', 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
+      `${pad(r.session.name, 14)} ${pad(r.session.agent, 7)} ${pad(`${vendorGlyph(r.modelId ?? r.model)} ${r.model ?? '-'}`, 11)} ${pad(r.contextLabel, 16)} ${pad(stateLabel(r), 8)} ${pad(r.uptimeText, 7)} ${pad(r.stale.length > 0 ? r.stale.join(',') : r.staleUnknown !== null ? '?' : '-', 9)} ${pad(rcName(m, r.session.name), 14)} ${r.session.dir}`,
     );
     if (r.lifecycleError !== null) console.log(`  blocked: ${r.lifecycleError}`);
     // A declared env file that is not on disk. The session still starts — that was the deliberate
@@ -335,6 +343,7 @@ export function toListItem(m: MachineConfig, r: ListRow): ListItem {
     waitingFor: r.waitingFor,
     lifecycleError: r.lifecycleError,
     model: r.model,
+    modelId: r.modelId,
     account: r.account,
     planLimits: r.planLimits,
     costUsd: r.costUsd,

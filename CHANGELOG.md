@@ -6,6 +6,27 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- The fleet views render only the cards that FIT the terminal. A frame taller than the terminal is
+  one the terminal scrolls, so every repaint — a keypress, the 1.5 s poll — landed at the bottom of
+  the scrollback: a reader who scrolled up was thrown back down, and an arrow key read as a jump.
+  Both views now window the list (`src/tui/listWindow.ts`): fullscreen by its fixed card stride,
+  inline by summing card heights, with the external separator counted and the window following the
+  cursor on navigation and on resize. The inline header says which slice it is (`4–9/17`), and an
+  external card's two evidence rows are clipped rather than wrapped, since a wrapped row spends
+  height the window already budgeted.
+- The interactive view opens on the managed fleet, and `x` adds the local inventory of sessions
+  outside ccmux. That inventory is a second, far longer list of threads nobody is steering, so it
+  is something a person asks for rather than something a machine setting opens with;
+  `externalInventory` keeps governing access to external CONTENT, which is a different question.
+- Every place that shows a model shows who MADE it: a one-cell mark in the vendor's colour before
+  the model in the TUI row and card, `ccmux list`, `ccmux fleet` and the minimal status line —
+  Anthropic, OpenAI, DeepSeek and Google today. The runtime column says which harness holds the
+  session, which with OpenCode and Custom recipes is a different answer. Detection is a transform
+  over the model id, not a catalogue, so a family that ships next week resolves with no code change.
+- `list --json` rows carry `modelId`, the model id as the runtime reported it, beside the display
+  label `model`. The label has had its vendor prefix removed, so it cannot answer who made an
+  unfamiliar family; a peer that predates the field simply has no mark rather than a guessed one.
+
 ## [0.61.10] — 2026-09-19
 
 Dependencies are current and the repository declaration uses the canonical passport filename

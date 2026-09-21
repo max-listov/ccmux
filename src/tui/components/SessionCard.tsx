@@ -1,6 +1,7 @@
 import { Box } from 'ink';
 import { memo } from 'react';
-import { externalDetailLines, externalEvidenceText } from '../externalView.ts';
+import { vendorMark } from '../../agent/vendor.ts';
+import { externalDetailLines, externalInlineLines } from '../externalView.ts';
 import type { FleetItem } from '../fleet.ts';
 import { clipWidth, dispWidth, provColor, sanitize, wrapText } from '../format.ts';
 import { statusMark } from '../status.ts';
@@ -58,6 +59,7 @@ function SessionCardImpl({
 }) {
   const { row, status, external } = item;
   const s = row.session;
+  const modelMark = vendorMark(row.modelId ?? row.model); // who made the model, beside the model
   const lm = row.lastMessage;
   const empty = row.lifecycleError === null && !lm?.text?.trim();
   const last = sanitize((row.lifecycleError ?? lm?.text ?? '—').replace(/\s+/g, ' ').trim());
@@ -132,6 +134,7 @@ function SessionCardImpl({
           <Txt color={bc}>{'│ '}</Txt>
           <Txt color={provColor(s.agent)}>{s.agent}</Txt>
           <Txt dim>{' · '}</Txt>
+          {modelMark ? <Txt color={modelMark.color}>{`${modelMark.glyph} `}</Txt> : null}
           <Txt>{row.model ?? '—'}</Txt>
           {/* uptime ("up 2d") only when there IS a running pane; the activity age is always last */}
           <Txt
@@ -228,13 +231,15 @@ function SessionCardImpl({
 
   const bar = selected ? '▌' : ' ';
   if (external && item.ext) {
+    // Two clipped rows, never wrapped: the inline window budgets this card a fixed height.
+    const [evidence, cwd] = externalInlineLines(item.ext, lastWidth);
     return (
       <Box marginBottom={1}>
         <Txt color="cyan">{bar}</Txt>
         <Box flexDirection="column" paddingLeft={1}>
           <SessionRow item={item} selected={selected} spin={spin} />
-          <Txt dim={!selected}>{externalEvidenceText(item.ext)}</Txt>
-          <Txt dim>{`cwd ${item.ext.dir ?? 'unknown'}`}</Txt>
+          <Txt dim={!selected}>{evidence}</Txt>
+          <Txt dim>{cwd}</Txt>
         </Box>
       </Box>
     );

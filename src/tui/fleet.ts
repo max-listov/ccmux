@@ -119,6 +119,7 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     // Not launched by this machine: there is no recipe to compare, so nothing is unmeasured either.
     staleUnknown: null,
     model: prettyModel(ext.lastModel),
+    modelId: ext.lastModel,
     // A discovered thread is observed, not driven: nobody asked its runtime which account it is on.
     account: null,
     planLimits: null,

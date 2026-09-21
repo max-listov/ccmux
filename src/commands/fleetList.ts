@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { vendorGlyph } from '../agent/vendor.ts';
 import { ROLE_SIGIL } from '../chat/roleAddress.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import {
@@ -296,7 +297,7 @@ export function formatFleetSession(
   // — when it is the opposite: unable to proceed until somebody answers. It travels now, so it is
   // shown, in the state column where a reader is already looking.
   const state = session.atPrompt === null ? session.state : session.atPrompt;
-  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(state, 13)} ${pad(session.model ?? '-', 11)} ${pad(session.uptime?.text ?? '', 7)}${role}${restart}`;
+  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(state, 13)} ${pad(`${vendorGlyph(session.modelId ?? session.model)} ${session.model ?? '-'}`, 13)} ${pad(session.uptime?.text ?? '', 7)}${role}${restart}`;
 }
 
 /**

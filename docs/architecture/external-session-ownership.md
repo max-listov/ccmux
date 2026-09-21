@@ -21,8 +21,10 @@ missing files, inaccessible storage and unsupported providers. See [transcript s
 
 `ccmux external` reads that projection explicitly; `ccmux external --json` returns its strict
 machine-readable shape. The command is local because the rows are observations, not lifecycle
-promises. `list` and `fleet` remain managed-only. An explicit read performs the scan regardless of
-the TUI's initial `externalInventory` preference, just as toggling the inventory on in the TUI does.
+promises. `list` and `fleet` remain managed-only, and so does the TUI's first frame: the inventory
+is a second, far longer list of threads nobody is steering, so it is something a person asks for
+with `x` rather than something a machine setting opens with. `externalInventory` stays what it
+governs — access to external CONTENT — and an explicit read performs the scan regardless of it.
 
 ## Independent evidence
 

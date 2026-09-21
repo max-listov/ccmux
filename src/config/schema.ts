@@ -1033,6 +1033,10 @@ export const ListItemSchema = z.object({
   waitingFor: z.string().nullable().default(null),
   lifecycleError: z.string().nullable(),
   model: z.string().nullable(),
+  // The model id as the runtime reported it, beside its display label. The label cannot answer who
+  // MADE the model — the display transform drops the vendor prefix — and a peer that predates this
+  // field simply has no mark, which is the honest answer rather than a guessed one.
+  modelId: z.string().nullable().default(null),
   context: ContextInfoSchema,
   uptime: z.object({ text: z.string().nullable(), seconds: z.number().nullable() }),
   // What a restart would change for this session; empty = nothing (or launched before stamping).
