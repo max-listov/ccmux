@@ -4,10 +4,16 @@ import { join } from 'node:path';
 import { requireOriginatingBasis } from '../src/chat/communicationAuthorization.ts';
 import { CommunicationAuthorizationInputSchema } from '../src/chat/communicationAuthorizationSchema.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
-import { externalTarget, managedPeer, servicePrincipal } from '../src/chat/identity.ts';
+import {
+  cliPrincipal,
+  externalTarget,
+  managedPeer,
+  servicePrincipal,
+} from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/store.ts';
 import { sessionsPath } from '../src/config/paths.ts';
-import { loadOutbox } from '../src/fleet/outbox.ts';
+import { appendOutboxAck } from '../src/fleet/flush.ts';
+import { appendOutbound, loadOutbox } from '../src/fleet/outbox.ts';
 import {
   communicationAuthorization,
   communicationAuthorizationFile,
@@ -205,7 +211,7 @@ test('remote reception retains a resolved continuation and rejects an unresolved
     from,
     to,
     claim,
-    (id) => (id === opening.id ? opening : null),
+    (id) => (id === opening.id ? { message: opening, reachedRecipient: true } : null),
     'review',
   );
   const message = buildEnvelope(from, to, 'continuation', {
@@ -308,4 +314,49 @@ test('a fabricated reference is refused for having no record, not for being unre
   );
   expect(refused.stderr).not.toContain('expected <peer thread uuid>');
   expect(loadLedger(f.machine)).toEqual([]);
+});
+
+test('a letter still held for retry is listed with its state and WITHOUT a reference', async () => {
+  const f = fixture();
+  const away = managedPeer('host-b', makeSession({ uuid: crypto.randomUUID(), name: 'peer' }));
+  const envelope = buildEnvelope(cliPrincipal('host-a'), away, 'queued abroad', {
+    task: 'held-check',
+    communicationAuthorization,
+    communicationReceipt: requireOriginatingBasis(
+      cliPrincipal('host-a'),
+      away,
+      communicationAuthorization,
+      () => null,
+      'held-check',
+    ),
+  });
+  appendOutbound(f.machine, {
+    kind: 'msg',
+    envelope,
+    result: { ok: false, detail: 'transport failed' },
+  });
+  const held = JSON.parse((await f.run(['sent', 'held-check', '--json'])).stdout).sent as {
+    ref: string | null;
+    state: string;
+    id: string;
+  }[];
+  expect(held).toHaveLength(1);
+  expect(held[0]?.state).toBe('held');
+  // The id is the sender's own record and stays visible; the REFERENCE is what a letter that never
+  // reached the recipient's ledger must not hand out, because a continuation would then claim a
+  // correspondence that was never opened.
+  expect(held[0]?.id).toBe(envelope.id);
+  expect(held[0]?.ref).toBeNull();
+  const text = await f.run(['sent', 'held-check']);
+  expect(text.stdout).toContain('held');
+  expect(text.stdout).not.toContain(envelope.id);
+
+  // CONTROL, the other direction: the same row once transit settles it. Nothing else changes.
+  appendOutboxAck(f.machine, envelope.id);
+  const delivered = JSON.parse((await f.run(['sent', 'held-check', '--json'])).stdout).sent as {
+    ref: string | null;
+    state: string;
+  }[];
+  expect(delivered[0]?.state).toBe('accepted');
+  expect(delivered[0]?.ref).toBe(`${away.threadId}#${envelope.id}`);
 });

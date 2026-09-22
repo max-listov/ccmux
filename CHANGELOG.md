@@ -24,7 +24,25 @@ A successful msg names the letter it created, so a thread-continuation can refer
   recipient's ledger and exists here only as an outbound envelope. Letters written by earlier lives
   of the same session are counted separately instead of listed: a continuation references the life
   that wrote the letter, so those references no longer resolve, and printing them would hand out
-  values that are refused on use.
+  values that are refused on use. Each row carries its delivery state — `accepted` once the letter
+  is in the recipient's ledger, `held` while a cross-machine attempt is still being retried,
+  `undelivered` past the retry window — and the reference is offered only by `accepted`, so the
+  listing cannot hand out what a successful send deliberately withholds.
+- A `thread-continuation` referencing a letter that never reached its recipient is REFUSED. A send
+  this machine failed to deliver abroad keeps its id, its record and a complete receipt here, and
+  every other check a continuation makes passes on it — so a correspondence could be claimed out of
+  a letter nobody ever received. The originating host is the only place that knows the difference:
+  a ledger entry is already in a recipient's ledger, while an outbound envelope stays an attempt
+  until transit settles it (`src/chat/localMessages.ts`, `src/chat/communicationBasis.ts`).
+- The daemon settles letters addressed to a session that no longer exists. Delivery walks the live
+  sessions, so such a letter is never looked at again; left in the queue it was reported on every
+  `msg pending` as mail a colleague is still owed — eighteen of them on one machine, the oldest
+  three weeks old — which trains the reader to scroll past the one place that says what has not
+  arrived. Settled, not deleted: the ledger keeps every letter, and the ack row records how the
+  waiting ended. Both tracks are closed, because they are settled by different things — the ack log
+  for a conditional letter, the recipient's delivery cursor for an immediate one, which no ack has
+  ever moved. `message.cancel` reports such a letter as `undeliverable` instead of `delivered`
+  (`src/chat/undeliverable.ts`, `src/chat/store.ts`, `src/control/messageCancel.ts`).
 ## [0.62.0] — 2026-09-21
 
 The fleet views render only the cards that fit the terminal, open on the managed fleet, and show a one-cell vendor mark beside every model

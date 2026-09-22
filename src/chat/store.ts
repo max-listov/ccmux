@@ -55,10 +55,11 @@ export function chatPaths(m: MachineConfig): { ledger: string; cursors: string }
 // a message is injected exactly once. The daemon stays the SOLE writer of `cursors`; the hook only
 // ever touches the ack-log.
 
-/** What became of a conditional message: it reached the pane, or it never will. Both suppress
- *  delivery identically, which is why they share a log — but they are opposite answers to "where is
- *  my message", and only one of them means someone read it. */
-export type AckOutcome = 'delivered' | 'cancelled';
+/** What became of a conditional message: it reached the pane, or it never will. All three suppress
+ *  delivery identically, which is why they share a log — but they are different answers to "where is
+ *  my message", and only one of them means someone read it. `undeliverable` is the third: the
+ *  recipient session no longer exists, so nobody withdrew the letter and nobody ever received it. */
+export type AckOutcome = 'delivered' | 'cancelled' | 'undeliverable';
 
 /** Every acked id with what happened to it. Lenient: a corrupt line is skipped, not thrown — the
  *  hook must never wedge a session's ability to stop over a bad ack line. A later line wins, so a
@@ -72,8 +73,15 @@ export function loadAcks(m: MachineConfig): Map<string, AckOutcome> {
     if (line === '') continue;
     try {
       const o: unknown = JSON.parse(line);
-      if (o && typeof o === 'object' && 'id' in o && typeof o.id === 'string')
-        acks.set(o.id, 'by' in o && o.by === 'cancel' ? 'cancelled' : 'delivered');
+      if (o && typeof o === 'object' && 'id' in o && typeof o.id === 'string') {
+        const by = 'by' in o ? o.by : undefined;
+        // Named explicitly, never by exclusion: a reason this build does not know is a delivery it
+        // cannot attest, and reporting it as one would put a letter's fate in the log wrongly.
+        acks.set(
+          o.id,
+          by === 'cancel' ? 'cancelled' : by === 'undeliverable' ? 'undeliverable' : 'delivered',
+        );
+      }
     } catch {
       // skip — best-effort dedup log, not authoritative history
     }
@@ -90,14 +98,15 @@ export function loadAckedIds(m: MachineConfig): Set<string> {
 
 /** Record a conditional-message resolution in the ack-log. `by`:
  *   - `hook`/`daemon` — DELIVERED (injected into the pane by that process);
- *   - `cancel`        — CANCELLED before delivery (`msg cancel`, or replaced by a re-armed watchdog).
- * All three suppress future delivery identically (both the daemon and the Stop hook skip any id in
+ *   - `cancel`        — CANCELLED before delivery (`msg cancel`, or replaced by a re-armed watchdog);
+ *   - `undeliverable` — the recipient session no longer exists, so it never will be delivered.
+ * All of them suppress future delivery identically (both the daemon and the Stop hook skip any id in
  * this log), so a cancel is just a delivery that will never happen — the honest `by` keeps the log
  * readable. O_APPEND single-line write is atomic across the hook + daemon + sender processes. */
 export function appendAck(
   m: MachineConfig,
   id: string,
-  by: 'hook' | 'daemon' | 'cancel',
+  by: 'hook' | 'daemon' | 'cancel' | 'undeliverable',
   to: ChatTarget,
 ): void {
   appendFileSync(
@@ -111,13 +120,13 @@ export function appendAck(
  *
  * A letter addressed to a session that has since been removed is not waiting for anything: delivery
  * walks the live sessions, so nobody will ever pick it up, and counting it as outstanding says a
- * colleague is owed an answer that no one can give. Seventeen such letters were found on one
- * machine, aged seven to twelve days, and thirty-six on another.
+ * colleague is owed an answer that no one can give.
  *
  * By KEY, not by name: the key carries the conversation uuid, so a name freed and taken by a new
- * session does not silently adopt the previous occupant's mail. Absence is therefore permanent —
- * which is what makes it safe to stop counting these rather than to tombstone them. Nothing is
- * deleted; the ledger is append-only and keeps every letter that was ever sent.
+ * session does not silently adopt the previous occupant's mail. Absence is therefore permanent,
+ * which is what makes it safe for `settleUndeliverable` to close such a letter for good. Nothing is
+ * deleted; the ledger is append-only and keeps every letter that was ever sent — what ends is the
+ * waiting, and the ack row records how it ended.
  */
 export function deliverableTargets(m: MachineConfig): ReadonlySet<string> {
   return new Set(loadSessions(m).map((session) => chatTargetKey(managedPeer(m.rcPrefix, session))));

@@ -408,11 +408,12 @@ service/revision/operation/effect grants.
 `message.cancel` withdraws one letter the caller itself queued and that has not been delivered. The
 mechanism was already there — a cancel tombstone in the ack log — reachable only from the command
 line, so a consumer's stop button answered "nothing to stop" about a letter it had sent and that was
-sitting waiting for a turn boundary. By id, and only the caller's own. Its four outcomes stay apart
+sitting waiting for a turn boundary. By id, and only the caller's own. Its five outcomes stay apart
 because they ask different things of a caller: `cancelled` will not arrive, `delivered` already has,
-`unknown` is no such letter here, and `not-yours` is one that exists and belongs to someone else —
-said plainly rather than disguised as `unknown`, which would make a permissions answer look like a
-missing one. An immediate letter answers `delivered`: it is delivered off the in-order cursor and
+`undeliverable` never did and never will — the recipient session was removed while the letter
+waited, and reporting that as a delivery would credit a letter nobody read — `unknown` is no such
+letter here, and `not-yours` is one that exists and belongs to someone else — said plainly rather
+than disguised as `unknown`, which would make a permissions answer look like a missing one. An immediate letter answers `delivered`: it is delivered off the in-order cursor and
 never waits, so there is no interval in which to take it back.
 
 `transcript.read` answers a bounded window of a session's conversation — the newest `tail`,

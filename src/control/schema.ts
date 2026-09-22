@@ -153,11 +153,13 @@ export const ControlMessageCancelReceiptSchema = z
      *
      * `cancelled` — it will not be delivered. `delivered` — too late, the recipient has it, and a
      * caller that renders this as "cancelled" is telling its user the opposite of what happened.
+     * `undeliverable` — the recipient session no longer exists, so the letter was closed without
+     * ever being received; reporting that as `delivered` would credit a letter nobody read.
      * `unknown` — no such letter on this machine. `not-yours` — it exists and belongs to someone
      * else; said plainly rather than disguised as `unknown`, which would make a permissions answer
      * look like a missing one.
      */
-    outcome: z.enum(['cancelled', 'delivered', 'unknown', 'not-yours']),
+    outcome: z.enum(['cancelled', 'delivered', 'undeliverable', 'unknown', 'not-yours']),
   })
   .strict();
 

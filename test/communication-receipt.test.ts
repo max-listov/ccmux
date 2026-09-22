@@ -43,7 +43,8 @@ function fixture() {
 
 test('peer evidence is pinned to both endpoints, exact thread, task and verbatim text', () => {
   const f = fixture();
-  const lookup = (id: string) => (id === f.letter.id ? f.letter : null);
+  const lookup = (id: string) =>
+    id === f.letter.id ? { message: f.letter, reachedRecipient: true } : null;
   const receipt = resolveCommunicationBasis(f.from, f.to, 'review', f.peer, lookup);
   expect(receipt?.sourceLetter?.body).toBe(f.letter.body);
   const rejects = [
@@ -78,8 +79,8 @@ test('peer evidence is pinned to both endpoints, exact thread, task and verbatim
   for (const reject of rejects) expect(reject).toThrow();
   expect(() =>
     resolveCommunicationBasis(f.from, f.to, 'review', f.peer, () => ({
-      ...f.letter,
-      body: `${f.letter.body}${'x'.repeat(16_384)}`,
+      message: { ...f.letter, body: `${f.letter.body}${'x'.repeat(16_384)}` },
+      reachedRecipient: true,
     })),
   ).toThrow('budget');
 });
@@ -158,7 +159,7 @@ test('an outbound continuation inherits across a remote App endpoint without rea
     f.from,
     to,
     claim,
-    (id) => (id === opened.id ? opened : null),
+    (id) => (id === opened.id ? { message: opened, reachedRecipient: true } : null),
     'review',
   );
   expect(inherited).toEqual(opened.communicationReceipt);
@@ -167,7 +168,7 @@ test('an outbound continuation inherits across a remote App endpoint without rea
       f.from,
       { ...to, threadId: crypto.randomUUID() },
       claim,
-      () => opened,
+      () => ({ message: opened, reachedRecipient: true }),
       'review',
     ),
   ).toThrow('different recipient');
@@ -177,8 +178,8 @@ test('feed preserves source evidence or explicitly omits it whole without trunca
   const f = fixture();
   const body = `${f.letter.body}${'界'.repeat(16000)}`;
   const receipt = resolveCommunicationBasis(f.from, f.to, 'review', f.peer, () => ({
-    ...f.letter,
-    body,
+    message: { ...f.letter, body },
+    reachedRecipient: true,
   }));
   const message = buildEnvelope(f.from, f.to, 'result', {
     task: 'review',

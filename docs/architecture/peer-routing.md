@@ -324,15 +324,25 @@ outbox as well as the ledger: a task whose only letters went to another machine 
 announcing it as a misspelling one line above the line saying where those letters went sent readers
 hunting a mistake that was not there.
 
-**A letter whose recipient was removed is not waiting.** Delivery walks the live sessions, so no
-one will ever pick it up; counting it as outstanding says a colleague is owed an answer nobody can
-give — seventeen such letters were found on one machine, aged seven to twelve days, and thirty-six
-on another. They are matched by exact peer key, not by name, so a freed name taken by a new session
-never adopts the previous occupant's mail, and they are counted and named on their own line rather
-than dropped: the ledger is append-only and a lost letter must stay visible as one. Nothing is
-tombstoned — a tombstone would have been the wrong instrument anyway, and saying so is worth more
-than the correction: immediate mail is judged by the delivery cursor and never consults the ack log,
-so a cancel row would have moved nothing for thirteen of those seventeen.
+**A letter whose recipient was removed is not waiting, and the daemon closes it.** Delivery walks
+the live sessions, so no one will ever pick it up; left in the queue it is reported on every `msg
+pending` as mail a colleague is still owed, which trains its reader to scroll past the one place
+that says what has not arrived. `settleUndeliverable` runs ahead of each delivery pass and settles
+them: recipients are matched by exact peer key, not by name, so a freed name taken by a new session
+never adopts the previous occupant's mail, and absence is therefore permanent.
+
+Settled, not deleted — the ledger is append-only and keeps every letter that was ever sent. What
+ends is the waiting, and the record of how it ended is the ack row: `undeliverable`, a third outcome
+beside `delivered` and `cancelled`, because nobody withdrew the letter and nobody ever received it.
+`message.cancel` reports it under that name rather than as a delivery.
+
+**Both tracks have to be closed, and they are settled by different things.** A conditional letter
+stops being pending when its id is in the ack log; an immediate one stops only when the recipient's
+delivery cursor passes its index, and never consults that log. A tombstone alone would therefore
+have moved nothing for the immediate half — so the pass writes the ack for one track and advances
+the dead recipient's cursor for the other. That cursor entry outlives the session it names, which is
+the price of a cursor being an index into an append-only ledger: one number per removed session,
+written once.
 
 `msg pending [<task>]` reads the queue: age, kind, sender, recipient, task and the opening of each
 undelivered letter, with a closing line naming how many belong to another session and therefore
@@ -342,7 +352,7 @@ Telegram mirror's own index rather than a delivery cursor — the owner has no p
 cursor ever advances for them, and read the other way every notice ever sent to the owner appears as
 a stuck queue.
 
-**Those two limits stay.** A letter that events have overtaken is not withdrawn; the sender writes
+**The limits on WITHDRAWAL stay.** A letter that events have overtaken is not withdrawn; the sender writes
 another one. This is a decision, not a gap waiting to be filled: a ledger is what makes "who said
 what, and when" answerable, and mail that can vanish from it answers nothing — a recipient that
 never saw a letter and one whose letter was pulled back look identical afterwards. Withdrawal across

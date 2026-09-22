@@ -15,18 +15,27 @@ import type { ControlMessageCancelSchema } from './schema.ts';
  *
  * An immediate letter has no cancel: it is delivered off the in-order cursor and does not wait, so
  * there is no interval in which to take it back. Saying `delivered` for one is the truth.
+ *
+ * `undeliverable` is the third thing that can have happened to a waiting letter: its recipient was
+ * removed, so `settleUndeliverable` closed it. Nobody withdrew it and nobody received it.
  */
 export function cancelControlMessage(
   m: MachineConfig,
   input: z.output<typeof ControlMessageCancelSchema>,
   principal: ChatPrincipal,
-): { messageId: string; outcome: 'cancelled' | 'delivered' | 'unknown' | 'not-yours' } {
+): {
+  messageId: string;
+  outcome: 'cancelled' | 'delivered' | 'undeliverable' | 'unknown' | 'not-yours';
+} {
   const message = loadLedger(m).find((slot) => slot !== null && slot.id === input.messageId);
   if (!message) return { messageId: input.messageId, outcome: 'unknown' };
   if (!samePrincipal(message.from, principal))
     return { messageId: input.messageId, outcome: 'not-yours' };
   const resolved = loadAcks(m).get(message.id);
   if (resolved === 'cancelled') return { messageId: input.messageId, outcome: 'cancelled' };
+  // Neither withdrawn nor read: the recipient session was removed while the letter waited, and
+  // saying `delivered` here would report a lost letter as one somebody answered.
+  if (resolved === 'undeliverable') return { messageId: input.messageId, outcome: 'undeliverable' };
   if (resolved === 'delivered' || !isConditional(message))
     return { messageId: input.messageId, outcome: 'delivered' };
   appendAck(m, message.id, 'cancel', message.to);

@@ -6,7 +6,17 @@ import type { CommunicationReceipt } from './communicationReceiptSchema.ts';
 import { chatPrincipalKey, chatTargetKey } from './identity.ts';
 import type { ChatPrincipal, ChatTarget } from './identitySchema.ts';
 
-export type LocalMessageLookup = (id: string) => ChatMessage | null;
+/**
+ * One record this machine holds, WITH the fact that decides whether it can be built on.
+ *
+ * `reachedRecipient` is not bookkeeping: a letter this machine failed to deliver abroad still has an
+ * id, a record and a complete receipt here, and every other check a continuation makes passes on it.
+ * Resolving one would let a sender open a correspondence out of a letter nobody ever received — the
+ * permission would rest on a conversation that never started. The originating host is the only place
+ * that knows the difference, which is the same reason references are resolved here at all.
+ */
+export type LocalMessageRecord = { message: ChatMessage; reachedRecipient: boolean };
+export type LocalMessageLookup = (id: string) => LocalMessageRecord | null;
 
 function refuse(message: string): never {
   throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', message, 403);
@@ -29,9 +39,14 @@ export function resolveCommunicationBasis(
   if (evidence.basis === 'user-instruction') return { authorization: evidence, sourceLetter: null };
   const ref = parseLedgerMessageRef(evidence.sourceMessageRef);
   if (ref === null) refuse('Invalid sourceMessageRef: expected <peer thread uuid>#<message uuid>');
-  const record = lookup(ref.messageId);
-  if (record === null)
+  const found = lookup(ref.messageId);
+  if (found === null)
     refuse(`sourceMessageRef names message ${ref.messageId}, of which this machine has no record`);
+  if (!found.reachedRecipient)
+    refuse(
+      `Referenced message ${ref.messageId} never reached its recipient — it is still held for delivery, so no correspondence was opened by it`,
+    );
+  const record = found.message;
   if (record.task !== task)
     refuse(
       'Referenced message belongs to a different task; retain its --task or establish a new basis',

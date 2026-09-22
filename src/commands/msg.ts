@@ -46,7 +46,7 @@ import { AgentKindSchema } from '../config/schema.ts';
 import { findSession, loadSessions } from '../config/sessions.ts';
 import { promptInvocation } from '../env.ts';
 import { routeFor } from '../fleet/address.ts';
-import { RETRY_WINDOW_MS } from '../fleet/flush.ts';
+import { loadOutboxAcked, RETRY_WINDOW_MS } from '../fleet/flush.ts';
 import { appendOutbound, loadOutbox } from '../fleet/outbox.ts';
 import { queuedForRetryNotice, relay, runPeer } from '../fleet/transport.ts';
 import type { AgentKind, ChatMessage, ChatTarget, CodexAppPeer } from '../types.ts';
@@ -253,13 +253,40 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   // envelope, because cross-machine mail is stored in the RECIPIENT's ledger.
   if (positionals[0] === 'sent') {
     const wanted = positionals[1];
-    const mine = [
-      ...loadLedger(machine).filter((slot): slot is ChatMessage => slot !== null),
-      ...loadOutbox(machine).map((record) => record.envelope),
-    ]
+    // A letter's own state decides whether its reference is offered, and the two halves know it
+    // differently. A letter to a session on THIS machine is in the recipient's ledger the moment it
+    // is written — there is no transport to fail, and WHEN the recipient is shown it is `pending`'s
+    // question, not this one. A letter abroad is only an attempt until transit settles it: the
+    // record says whether the far side accepted it, and the ack log says which later retry did.
+    const acked = loadOutboxAcked(machine);
+    const settled = Date.now();
+    const states = new Map<string, 'accepted' | 'held' | 'undelivered'>();
+    const collected = new Map<string, ChatMessage>();
+    const note = (message: ChatMessage, state: 'accepted' | 'held' | 'undelivered') => {
+      collected.set(message.id, message);
+      // One id can hold several outbox rows — an attempt and its retries — so acceptance wins over
+      // any earlier failure rather than depending on which row is read last.
+      if (states.get(message.id) !== 'accepted') states.set(message.id, state);
+    };
+    for (const slot of loadLedger(machine)) if (slot !== null) note(slot, 'accepted');
+    for (const record of loadOutbox(machine))
+      note(
+        record.envelope,
+        record.result.ok || acked.has(record.envelope.id)
+          ? 'accepted'
+          : settled - Date.parse(record.envelope.ts) > RETRY_WINDOW_MS
+            ? 'undelivered'
+            : 'held',
+      );
+    const mine = [...collected.values()]
       .filter((message) => sameSender(message.from, from))
       .filter((message) => wanted === undefined || message.task === wanted)
       .sort((left, right) => left.ts.localeCompare(right.ts));
+    // Offered only for a letter that reached the recipient's ledger. A letter still held for retry
+    // has an id and a record here, but it has not opened a correspondence, and a continuation of one
+    // that never arrived is the claim this reference must not help anyone make.
+    const refOf = (message: ChatMessage): string | null =>
+      states.get(message.id) === 'accepted' ? continuationRef(message) : null;
     // A continuation references the LIFE that wrote the letter, not the session name: a restart or a
     // renewed conversation gives the same `machine:session` a new thread, and `resolveCommunicationBasis`
     // compares the full principal. Listing an older life's letters here would hand out references
@@ -272,7 +299,8 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
           {
             sender: principalLabel(from),
             sent: current.map((message) => ({
-              ref: continuationRef(message),
+              ref: refOf(message),
+              state: states.get(message.id) ?? 'accepted',
               id: message.id,
               thread:
                 message.to.kind === 'managed' || message.to.kind === 'codex-app'
@@ -303,13 +331,14 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
         humanizeDuration((now - Date.parse(message.ts)) / 1000),
         message.task ?? '-',
         targetLabel(message.to),
-        continuationRef(message) ?? '-',
+        states.get(message.id) ?? 'accepted',
+        refOf(message) ?? '-',
         // One row, one line: a letter's own newlines would otherwise split the row and leave the
         // columns of every following line meaningless — and a reference read out of a broken table
         // is the reference that gets mistyped.
         preview(message.body).replace(/\s+/g, ' '),
       ]);
-      const header = ['AGE', 'TASK', 'TO', 'REF', 'TEXT'];
+      const header = ['AGE', 'TASK', 'TO', 'STATE', 'REF', 'TEXT'];
       const width = header.map((label, column) =>
         Math.max(label.length, ...rows.map((row) => (row[column] ?? '').length)),
       );
@@ -323,7 +352,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
             .trimEnd(),
         );
       console.log(
-        'REF is the sourceMessageRef of a thread-continuation to that recipient under that task; a letter to the owner has none',
+        'REF is the sourceMessageRef of a thread-continuation to that recipient under that task. It is offered only for a letter that reached the recipient\u2019s ledger: one still held for retry has not opened a correspondence, and a letter to the owner has no reference at all',
       );
     }
     if (earlier > 0)

@@ -243,7 +243,7 @@ test('a letter sent to another machine is found where it actually lives', () => 
   });
   appendOutbound(f.m, { kind: 'msg', envelope, result: { ok: true, detail: '' } });
   expect(loadLedger(f.m).find((slot) => slot?.id === envelope.id)).toBeUndefined();
-  expect(localMessageLookup(f.m)(envelope.id)?.body).toBe('sent abroad');
+  expect(localMessageLookup(f.m)(envelope.id)?.message.body).toBe('sent abroad');
 });
 
 test('the refusal names all three bases, so the reader learns what would be accepted', async () => {
@@ -308,4 +308,62 @@ test('a receipt written before the basis was named stays readable and claims not
     { basis: 'thread-continuation', sourceMessageRef: `${randomUUID()}#not-a-uuid` },
   ])
     expect(CommunicationAuthorizationSchema.safeParse(invalid).success).toBe(false);
+});
+
+test('a continuation cannot be opened out of a letter that never reached its recipient', () => {
+  // The looseness this closes: a letter this machine failed to deliver abroad still has an id, a
+  // record and a complete receipt here, and every other check passes on it — so a correspondence
+  // could be claimed from a letter nobody ever received.
+  const f = setup();
+  const from = managedPeer(f.m.rcPrefix, f.named('alice'));
+  const away = { ...managedPeer(f.m.rcPrefix, f.named('bob')), machine: 'host-b' };
+  const opening = ChatMessageSchema.parse({
+    v: 2,
+    id: randomUUID(),
+    ts: new Date().toISOString(),
+    from,
+    to: away,
+    body: 'never arrived',
+    task: 'held',
+    defer: true,
+    onBehalfOf: null,
+    notBefore: null,
+    communicationAuthorization: {
+      basis: 'user-instruction',
+      whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope:
+        'Contact this isolated test recipient to exercise the requested message admission behavior.',
+      userAuthorizationQuote: 'Send the fixture message to the isolated test recipient.',
+      sourceMessageRef: 'fixture://user/message-1',
+    },
+    communicationReceipt: {
+      rootMessageId: randomUUID(),
+      authorization: {
+        basis: 'user-instruction',
+        whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope:
+          'Contact this isolated test recipient to exercise the requested message admission behavior.',
+        userAuthorizationQuote: 'Send the fixture message to the isolated test recipient.',
+        sourceMessageRef: 'fixture://user/message-1',
+      },
+      sourceLetter: null,
+    },
+  });
+  const claim = CommunicationAuthorizationSchema.parse({
+    basis: 'thread-continuation',
+    sourceMessageRef: `${away.threadId}#${opening.id}`,
+  });
+  appendOutbound(f.m, {
+    kind: 'msg',
+    envelope: opening,
+    result: { ok: false, detail: 'transport failed' },
+  });
+  expect(() =>
+    resolveCommunicationBasis(from, away, 'held', claim, localMessageLookup(f.m)),
+  ).toThrow('never reached its recipient');
+
+  // CONTROL, the other direction: the identical reference on a letter transit did settle. Nothing
+  // else about the claim changes, so the refusal above is about delivery and nothing else.
+  appendOutbound(f.m, { kind: 'msg', envelope: opening, result: { ok: true, detail: '' } });
+  expect(
+    resolveCommunicationBasis(from, away, 'held', claim, localMessageLookup(f.m)),
+  ).toMatchObject({ sourceLetter: null });
 });

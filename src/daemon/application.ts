@@ -8,6 +8,7 @@ import {
 } from 'stitchkit/application';
 import { deliverPending } from '../chat/deliver.ts';
 import { mirrorPending } from '../chat/telegram.ts';
+import { settleUndeliverable } from '../chat/undeliverable.ts';
 import { cmdEnsure } from '../commands/ensure.ts';
 import { autoUpdateOnce } from '../commands/update.ts';
 import { loadMachineConfig } from '../config/machine.ts';
@@ -188,6 +189,10 @@ export function createDaemonApplication(initial: MachineConfig) {
     overlap: { mode: 'skip' },
     run: async ({ signal }) => {
       const m = machine();
+      signal.throwIfAborted();
+      // Before delivery, because delivery walks the live sessions and would never look at these:
+      // a letter whose recipient is gone is closed here or it waits in the queue for ever.
+      await settleUndeliverable(m);
       signal.throwIfAborted();
       await deliverPending(m);
       signal.throwIfAborted();
