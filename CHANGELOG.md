@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.64.0] — 2026-09-22
+
+Letters nobody can receive are settled instead of waiting for ever, a continuation cannot be built on a letter that never arrived, and msg sent offers a reference only for a letter that did
 ## [0.63.0] — 2026-09-22
 
 A successful msg names the letter it created, so a thread-continuation can reference it, and msg sent lists those letters again
