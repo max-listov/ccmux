@@ -12,6 +12,12 @@ the GitHub Release with that section as the notes.
   stall watchdog is already watching. Nothing is missed by the skip: removing a session rewrites
   the registry and a new letter grows the ledger, so either change moves one of the two stamps
   (`src/chat/undeliverable.ts`).
+- The codex bootstrap ambiguity test stages its two markers BESIDE the scanned root instead of
+  inside it. Correlation globs `**/rollout-*.jsonl` under the sessions directory and descends into
+  every directory there, staging included, so the "atomic" rename never hid the half-written state:
+  over 200 runs a reader's first non-empty observation saw a single marker 199 times, and the test
+  passed only because the 50 ms poll usually missed that window — under load it did not, and the
+  gate reddened by luck (`test/codex-bootstrap-failures.test.ts`).
 
 ## [0.64.0] — 2026-09-22
 
