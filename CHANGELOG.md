@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.65.0] — 2026-09-22
+
+The supervisor survives an OOM kill inside its cgroup, a forced shutdown records its own stop, and the ssh fallback is logged once per change instead of once per call
+
 - The boot unit sets `OOMPolicy=continue`, so a kernel OOM kill inside the cgroup no longer stops
   the supervisor. Every session ccmux starts — the tmux server, each agent, and whatever those
   agents spawn — lives in the unit's cgroup, and systemd's default is `stop`: a headless browser a
@@ -24,7 +28,6 @@ the GitHub Release with that section as the notes.
   identical lines in a week on one machine, which teaches its reader that the message means nothing.
   The standing state was already published by `ccmux fleet`, `ccmux doctor` and the `fallback` field
   on every answer (`src/fleet/routeState.ts`, `src/fleet/transport.ts`).
-
 ## [0.64.1] — 2026-09-22
 
 The undeliverable sweep stops at two stat calls when nothing changed, and the codex ambiguity test no longer reddens by luck
