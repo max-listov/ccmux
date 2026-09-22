@@ -56,6 +56,15 @@ SuccessExitStatus=143
 # cgroup — including every spawned tmux session — so systemctl restart / ccmux update would
 # drop all live conversations. This is the core "sessions survive the bounce" guarantee.
 KillMode=process
+# The same guarantee, against the other way systemd can take the fleet down with the daemon. Every
+# session this supervisor starts — the tmux server, each agent, and whatever those agents spawn —
+# lives in this unit's cgroup, and the default OOMPolicy is "stop": one process in that cgroup
+# killed by the kernel's OOM killer stops the whole unit. That is not a theory. A headless browser
+# a session had opened was picked by a host-wide OOM kill, and systemd stopped the supervisor over
+# it — "Failed with result 'oom-kill'", every session orphaned, and the shutdown that followed was
+# abrupt enough that the run never recorded its own stop. "continue" keeps the supervisor up so it
+# can do the one thing it exists for — notice what died and heal it.
+OOMPolicy=continue
 
 [Install]
 WantedBy=multi-user.target

@@ -116,6 +116,8 @@ export const chatLedgerPath = (m: MachineConfig): string => join(m.stateDir, 'ch
 export const chatCursorsPath = (m: MachineConfig): string => join(m.stateDir, 'chat-cursors.json');
 export const chatAckPath = (m: MachineConfig): string => join(m.stateDir, 'chat-ack.jsonl');
 export const outboxPath = (m: MachineConfig): string => join(m.stateDir, 'outbox.jsonl');
+/** Which way each peer was last reached — advisory, so a held route is logged on change only. */
+export const routeStatePath = (m: MachineConfig): string => join(m.stateDir, 'route-state.json');
 export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, 'outbox-ack.jsonl');
 /** The session event feed — what HAPPENED, as opposed to what IS. Rotated like the log, because it
  *  is a stream with no natural end, and read by outside surfaces that must not have to know the

@@ -3,6 +3,7 @@ import { ensureInstalledApp } from '../config/installedApp.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { APP_BUNDLE, BOOT_ATTEMPTS } from '../config/paths.ts';
 import { createDaemonApplication } from '../daemon/application.ts';
+import { recordForcedStop } from '../daemon/lifecycle.ts';
 import { IS_DEV } from '../env.ts';
 import { bootGuardStart } from '../util/bootGuard.ts';
 import { log, setLogLevel } from '../util/log.ts';
@@ -19,7 +20,7 @@ export async function cmdDaemon(): Promise<number> {
     log.error({ msg: 'daemon initialization failed', err: String(error) });
     return 1;
   }
-  const { application } = createDaemonApplication(m);
+  const { application, lifecycle } = createDaemonApplication(m);
   let code = 143;
   const signals = bindProcessSignals(application, {
     onShutdown: (sig) => {
@@ -42,7 +43,10 @@ export async function cmdDaemon(): Promise<number> {
     log.info({ msg: 'daemon stopped', result });
     // A forced drain may leave a non-cooperative operation. End only this daemon;
     // otherwise the boot unit could never start its replacement.
-    if (result?.outcome === 'forced') process.exit(code);
+    if (result?.outcome === 'forced') {
+      await recordForcedStop(lifecycle);
+      process.exit(code);
+    }
     return code;
   } catch (error) {
     log.error({ msg: 'daemon lifecycle failed', err: String(error) });

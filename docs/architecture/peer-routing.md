@@ -400,6 +400,16 @@ machine and the route's reason, and `fleet` names it on that machine's row: `→
 <reason>)`, and `fallback` in `--json`. A route that silently became ssh again is how a fan-out ends
 up opening a login on every server for every call, so the fallback is never quiet.
 
+**Once per change, not once per call.** Being on the fallback is a level, not an event: it does not
+become truer the second time. Written per call it produced twelve thousand identical lines in a week
+on one machine — a poller timing every peer, multiplied by an outage that lasted hours — which is
+the same defect as the held pickup above, and the same remedy applies. The warning is written when a
+peer's route or its reason CHANGES, recovery is written too (`remote route recovered`, which nothing
+used to say at all), and the standing state stays where it is already published: the `fallback` field
+on every answer, the `fleet` row, and the `doctor` line naming the missing prerequisite. The record of
+which way each peer was last reached lives in `route-state.json` and is advisory only — a lost write
+costs one repeated warning, never a routing decision.
+
 ### What the remote transport's answer says, beyond yes and no
 
 The local door separates **who** said no (`failure`) from **what kind** of no it is (`refusal`), and

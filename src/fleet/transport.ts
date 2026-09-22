@@ -5,6 +5,7 @@ import { shellJoin } from '../util/shellQuote.ts';
 import { run, runWithInput } from '../util/spawn.ts';
 import { writeErr, writeOut } from '../util/stdout.ts';
 import { isRemotePeer, remotePeers, runRemoteAdapter } from './remoteAdapter.ts';
+import { fallbackIsNew, routeRecovered } from './routeState.ts';
 
 /**
  * Run a ccmux command on another fleet machine over ssh.
@@ -209,9 +210,18 @@ export async function runPeer(
     // dispatched: `unknown` may already have run on the far side, and a second path would run it
     // twice. The fallback is logged and carried on the answer, because a route that quietly became
     // ssh again is exactly how a fleet ends up logging into its servers on every call.
-    if (!remote.transportFailed || remote.delivery !== 'not-sent' || alias === null) return remote;
+    if (!remote.transportFailed || remote.delivery !== 'not-sent' || alias === null) {
+      // Coming back is news too, and the log never said it: a reader who saw the route go down had
+      // no line telling them it returned, only the absence of more warnings.
+      if (!remote.transportFailed && (await routeRecovered(m, machine)))
+        log.info({ msg: 'remote route recovered', machine });
+      return remote;
+    }
     const reason = remote.failureDetail ?? 'the remote route did not dispatch the call';
-    log.warn({ msg: 'remote route fell back to ssh', machine, reason });
+    // On CHANGE, not once per call: the standing state is published by `ccmux fleet` and
+    // `ccmux doctor`, and this answer carries `fallback` whether or not the line was written.
+    if (await fallbackIsNew(m, machine, reason))
+      log.warn({ msg: 'remote route fell back to ssh', machine, reason });
     return { ...(await runRemote(alias, argv, opts)), fallback: reason };
   }
   if (alias === null) {

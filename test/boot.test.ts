@@ -24,6 +24,12 @@ test('systemd unit: supervisor model, correct ExecStart, no ExecStop / no danger
   expect(u).toContain('Environment=HOME=/root');
   expect(u).not.toContain('ExecStop'); // sessions outlive the daemon
   expect(u).not.toContain('dangerously');
+  // Both halves of "the fleet survives what happens to the daemon", and they fail differently:
+  // KillMode guards a deliberate stop, OOMPolicy guards a kernel OOM kill of anything in the
+  // cgroup — every agent and everything an agent spawns. Under the default (`stop`) a browser a
+  // session had opened was OOM-killed and systemd stopped the supervisor over it.
+  expect(u).toContain('KillMode=process');
+  expect(u).toContain('OOMPolicy=continue');
 });
 
 test('launchd plist: valid structure, KeepAlive SuccessfulExit false, daemon arg', () => {
