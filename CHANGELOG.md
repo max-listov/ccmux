@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.64.1] — 2026-09-22
+
+The undeliverable sweep stops at two stat calls when nothing changed, and the codex ambiguity test no longer reddens by luck
+
 - The undeliverable sweep stops at two `stat` calls when nothing has changed. It runs on the
   daemon's event loop before every delivery pass, and measured on a 5 MB ledger it cost 40–270 ms
   each time to settle nothing — a parse of the whole ledger every three seconds, on the loop a
@@ -18,7 +22,6 @@ the GitHub Release with that section as the notes.
   over 200 runs a reader's first non-empty observation saw a single marker 199 times, and the test
   passed only because the 50 ms poll usually missed that window — under load it did not, and the
   gate reddened by luck (`test/codex-bootstrap-failures.test.ts`).
-
 ## [0.64.0] — 2026-09-22
 
 Letters nobody can receive are settled instead of waiting for ever, a continuation cannot be built on a letter that never arrived, and msg sent offers a reference only for a letter that did
