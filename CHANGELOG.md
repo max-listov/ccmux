@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.63.0] — 2026-09-22
+
+A successful msg names the letter it created, so a thread-continuation can reference it, and msg sent lists those letters again
+
 - A successful `ccmux msg` to a session NAMES the letter it just created:
   `letter <peer thread uuid>#<message uuid>`, one value in exactly the form the recipient reads off
   its own delivered line. `thread-continuation` is the cheapest basis — it repeats no rationale and
@@ -21,7 +25,6 @@ the GitHub Release with that section as the notes.
   of the same session are counted separately instead of listed: a continuation references the life
   that wrote the letter, so those references no longer resolve, and printing them would hand out
   values that are refused on use.
-
 ## [0.62.0] — 2026-09-21
 
 The fleet views render only the cards that fit the terminal, open on the managed fleet, and show a one-cell vendor mark beside every model
