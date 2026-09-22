@@ -227,3 +227,85 @@ test('remote reception retains a resolved continuation and rejects an unresolved
   };
   expect((await f.run([], conflict)).code).toBe(1);
 });
+
+test('a successful send names its own letter, and that value is accepted verbatim as a continuation', async () => {
+  const f = fixture();
+  const opening = await f.run([
+    'host-a:worker',
+    'opening letter',
+    '--task',
+    'receipt-check',
+    '--communication-authorization',
+    communicationAuthorizationFile,
+  ]);
+  expect(opening.code).toBe(0);
+  // The whole point is that the sender does not compose this: it copies one value out of its own
+  // success. Parsing it here is the test standing in for that copy.
+  const named = /^letter (\S+)/m.exec(opening.stdout);
+  expect(named).not.toBeNull();
+  const ref = named?.[1] ?? '';
+  expect(ref).toBe(`${f.session.uuid}#${loadLedger(f.machine)[0]?.id}`);
+
+  const continuation = join(f.root, 'continuation.json');
+  writeFileSync(
+    continuation,
+    JSON.stringify({ basis: 'thread-continuation', sourceMessageRef: ref }),
+  );
+  const next = await f.run([
+    'host-a:worker',
+    'second letter',
+    '--task',
+    'receipt-check',
+    '--communication-authorization',
+    continuation,
+  ]);
+  expect(next.stderr).not.toContain('msg:');
+  expect(next.code).toBe(0);
+  const ledger = loadLedger(f.machine);
+  expect(ledger).toHaveLength(2);
+  expect(ledger[1]).toMatchObject({
+    body: 'second letter',
+    communicationAuthorization: { basis: 'thread-continuation', sourceMessageRef: ref },
+    // The continuation inherits the opening receipt rather than opening a second one.
+    communicationReceipt: { rootMessageId: ledger[0]?.id, sourceLetter: null },
+  });
+
+  // And it can be found again later, under the same reference, without reading another machine.
+  const listed = await f.run(['sent', 'receipt-check']);
+  expect(listed.code).toBe(0);
+  expect(listed.stdout).toContain(ref);
+  const asJson = await f.run(['sent', 'receipt-check', '--json']);
+  const rows = JSON.parse(asJson.stdout).sent as { ref: string; id: string; task: string }[];
+  expect(rows.map((row) => row.ref)).toContain(ref);
+  expect(rows.every((row) => row.task === 'receipt-check')).toBe(true);
+});
+
+test('a fabricated reference is refused for having no record, not for being unreadable', async () => {
+  const f = fixture();
+  const invented = join(f.root, 'invented.json');
+  const messageId = crypto.randomUUID();
+  writeFileSync(
+    invented,
+    JSON.stringify({
+      basis: 'thread-continuation',
+      sourceMessageRef: `${f.session.uuid}#${messageId}`,
+    }),
+  );
+  const refused = await f.run([
+    'host-a:worker',
+    'never sent',
+    '--task',
+    'receipt-check',
+    '--communication-authorization',
+    invented,
+  ]);
+  expect(refused.code).toBe(1);
+  // The two refusals mean different things to the sender: "unreadable" says rewrite the reference,
+  // "no record" says this letter does not exist. Swapping one vague reason for another would leave
+  // the defect in place under a new message.
+  expect(refused.stderr).toContain(
+    `names message ${messageId}, of which this machine has no record`,
+  );
+  expect(refused.stderr).not.toContain('expected <peer thread uuid>');
+  expect(loadLedger(f.machine)).toEqual([]);
+});

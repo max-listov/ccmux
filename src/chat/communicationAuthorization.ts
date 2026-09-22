@@ -37,6 +37,7 @@ For user-instruction the reference is prose for the reader and is not checked: i
 For peer-letter use the same rationale, a verbatim quote from that letter and sourceMessageRef "<peer thread uuid>#<message uuid>".
 Continuation file (reuse for the same pair and --task):
 ${JSON.stringify({ basis: 'thread-continuation', sourceMessageRef: '<peer thread uuid>#<your accepted message uuid>' }, null, 2)}
+That reference is printed by the send that created the letter ("letter <peer thread uuid>#<message uuid>") and listed again by 'ccmux msg sent [task] [--json]'; copy it whole rather than composing it.
 These are unverified consent claims, not credentials or permission to transfer files.`;
 
 export function requireCommunicationAuthorization(

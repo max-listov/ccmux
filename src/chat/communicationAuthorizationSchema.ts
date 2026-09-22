@@ -36,6 +36,36 @@ export function parseLedgerMessageRef(ref: string): { threadId: string; messageI
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * The same reference, WRITTEN — one value, not two fields a caller joins by hand.
+ *
+ * It lives beside the parser so the two forms cannot drift, and it is what a successful send prints.
+ * The contract asked for a reference whose only source was the recipient's copy of the letter: an
+ * incoming line carries both ids, an outgoing one carried neither, so a sender continuing its own
+ * correspondence had nothing to paste. The two ways out of that were a prose reference (refused,
+ * honestly, as unreadable) and a slide down to `user-instruction` — which is worse, because it
+ * PASSES: the records then name a basis the correspondence never stood on.
+ */
+export function formatLedgerMessageRef(threadId: string, messageId: string): string {
+  return `${threadId}#${messageId}`;
+}
+
+/**
+ * The reference a continuation of this correspondence must carry, or `null` for a recipient with no
+ * thread — the owner and an owner outside the fleet need no basis at all, so there is nothing to
+ * continue and no reference to offer.
+ */
+export function continuationRef(message: {
+  id: string;
+  to: { kind: string; threadId?: string };
+}): string | null {
+  const thread =
+    message.to.kind === 'managed' || message.to.kind === 'codex-app'
+      ? (message.to.threadId ?? null)
+      : null;
+  return thread === null ? null : formatLedgerMessageRef(thread, message.id);
+}
+
 /** Caller-supplied evidence, never a credential or a verified grant. */
 export const CommunicationAuthorizationSchema = z
   .object({

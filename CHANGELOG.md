@@ -6,6 +6,22 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A successful `ccmux msg` to a session NAMES the letter it just created:
+  `letter <peer thread uuid>#<message uuid>`, one value in exactly the form the recipient reads off
+  its own delivered line. `thread-continuation` is the cheapest basis — it repeats no rationale and
+  no quote — and it requires a reference to the sender's own accepted letter, which until now
+  existed only in the recipient's copy: the sender had nothing to paste. Prose in that field is
+  refused as unreadable (honestly), and the way that passed was sliding down to `user-instruction`,
+  which then records a basis the correspondence never stood on. Only an accepted letter is named; a
+  letter held for retry is not in the recipient's ledger yet (`src/commands/msg.ts`,
+  `src/chat/communicationAuthorizationSchema.ts`).
+- `ccmux msg sent [task] [--json]` lists what this session sent — reference, recipient, task, time
+  and a preview — reading the chat ledger and the outbox, because mail sent abroad lives in the
+  recipient's ledger and exists here only as an outbound envelope. Letters written by earlier lives
+  of the same session are counted separately instead of listed: a continuation references the life
+  that wrote the letter, so those references no longer resolve, and printing them would hand out
+  values that are refused on use.
+
 ## [0.62.0] — 2026-09-21
 
 The fleet views render only the cards that fit the terminal, open on the managed fleet, and show a one-cell vendor mark beside every model

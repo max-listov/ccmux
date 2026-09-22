@@ -8,7 +8,10 @@ import {
   requireCommunicationAuthorization,
   requireOriginatingBasis,
 } from '../chat/communicationAuthorization.ts';
-import type { CommunicationAuthorization } from '../chat/communicationAuthorizationSchema.ts';
+import {
+  type CommunicationAuthorization,
+  continuationRef,
+} from '../chat/communicationAuthorizationSchema.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import { isExternalToken, lookupExternal } from '../chat/external.ts';
 import {
@@ -19,6 +22,7 @@ import {
   managedPeer,
   ownerTarget,
   principalLabel,
+  samePrincipal,
   sameSender,
   targetLabel,
 } from '../chat/identity.ts';
@@ -45,7 +49,7 @@ import { routeFor } from '../fleet/address.ts';
 import { RETRY_WINDOW_MS } from '../fleet/flush.ts';
 import { appendOutbound, loadOutbox } from '../fleet/outbox.ts';
 import { queuedForRetryNotice, relay, runPeer } from '../fleet/transport.ts';
-import type { AgentKind, ChatTarget, CodexAppPeer } from '../types.ts';
+import type { AgentKind, ChatMessage, ChatTarget, CodexAppPeer } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
 import { log } from '../util/log.ts';
 import { preview } from '../util/preview.ts';
@@ -60,6 +64,23 @@ import {
   warnAboutAnonymousRemote,
 } from './messagePeers.ts';
 
+/**
+ * Name the letter that was just accepted, in the exact form a continuation must reference.
+ *
+ * `thread-continuation` is the cheapest of the three bases — it repeats no rationale and no quote —
+ * and it asks for one thing: a reference to the sender's OWN accepted letter. The recipient reads
+ * both ids off the delivered line; the sender was shown neither, so the value the contract demanded
+ * had no source on this side. Printed here, it is copied rather than composed: one value, because
+ * joining a thread id to a message id by hand is where the wrong pair gets written.
+ */
+function announceLetter(envelope: ChatMessage): void {
+  const ref = continuationRef(envelope);
+  if (ref !== null)
+    console.log(
+      `letter ${ref} — sourceMessageRef of a thread-continuation to this recipient under the same --task`,
+    );
+}
+
 export async function cmdMsg(args: string[], transport?: RemoteTransport | null): Promise<number> {
   const positionals: string[] = [];
   let task: string | null = null;
@@ -69,6 +90,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   let afterSec: number | null = null;
   let expectedAgent: AgentKind | null = null;
   let expectedThread: string | null = null;
+  let asJson = false;
   let communicationAuthorization: CommunicationAuthorization | undefined;
   for (let index = 0; index < args.length; index++) {
     const value = args[index];
@@ -87,6 +109,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
         return 1;
       }
     } else if (value === '--task') task = args[++index] ?? null;
+    else if (value === '--json') asJson = true;
     else if (value === '--interrupt') defer = false;
     else if (value === '--on-behalf-of') onBehalfOf = args[++index] ?? null;
     else if (value === '--to-agent') {
@@ -218,6 +241,95 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
         `${waiting.length - mine} of these were sent by another session; only their own sender can retract them`,
       );
     if (strandedLine !== null) console.log(strandedLine);
+    return 0;
+  }
+
+  // What this session SENT, and under which reference. `pending` answers "what has not arrived yet";
+  // this answers "what did I send" — and in particular the one value a thread-continuation has to
+  // name, which used to exist only in the recipient's copy of the letter.
+  //
+  // Both halves are read for the same reason `localMessageLookup` reads both: mail to a session on
+  // this machine lands in the chat ledger, while mail sent abroad exists here only as an outbound
+  // envelope, because cross-machine mail is stored in the RECIPIENT's ledger.
+  if (positionals[0] === 'sent') {
+    const wanted = positionals[1];
+    const mine = [
+      ...loadLedger(machine).filter((slot): slot is ChatMessage => slot !== null),
+      ...loadOutbox(machine).map((record) => record.envelope),
+    ]
+      .filter((message) => sameSender(message.from, from))
+      .filter((message) => wanted === undefined || message.task === wanted)
+      .sort((left, right) => left.ts.localeCompare(right.ts));
+    // A continuation references the LIFE that wrote the letter, not the session name: a restart or a
+    // renewed conversation gives the same `machine:session` a new thread, and `resolveCommunicationBasis`
+    // compares the full principal. Listing an older life's letters here would hand out references
+    // that are refused on use, which is the failure this command exists to end.
+    const current = mine.filter((message) => samePrincipal(message.from, from));
+    const earlier = mine.length - current.length;
+    if (asJson) {
+      console.log(
+        JSON.stringify(
+          {
+            sender: principalLabel(from),
+            sent: current.map((message) => ({
+              ref: continuationRef(message),
+              id: message.id,
+              thread:
+                message.to.kind === 'managed' || message.to.kind === 'codex-app'
+                  ? message.to.threadId
+                  : null,
+              to: targetLabel(message.to),
+              task: message.task,
+              ts: message.ts,
+              preview: preview(message.body),
+            })),
+            fromEarlierLives: earlier,
+          },
+          null,
+          2,
+        ),
+      );
+      return 0;
+    }
+    if (current.length === 0) {
+      console.log(
+        wanted === undefined
+          ? `nothing sent by ${principalLabel(from)} is recorded on this machine`
+          : `nothing sent by ${principalLabel(from)} for task '${wanted}'`,
+      );
+    } else {
+      const now = Date.now();
+      const rows = current.map((message) => [
+        humanizeDuration((now - Date.parse(message.ts)) / 1000),
+        message.task ?? '-',
+        targetLabel(message.to),
+        continuationRef(message) ?? '-',
+        // One row, one line: a letter's own newlines would otherwise split the row and leave the
+        // columns of every following line meaningless — and a reference read out of a broken table
+        // is the reference that gets mistyped.
+        preview(message.body).replace(/\s+/g, ' '),
+      ]);
+      const header = ['AGE', 'TASK', 'TO', 'REF', 'TEXT'];
+      const width = header.map((label, column) =>
+        Math.max(label.length, ...rows.map((row) => (row[column] ?? '').length)),
+      );
+      for (const row of [header, ...rows])
+        console.log(
+          row
+            .map((cell, column) =>
+              column === row.length - 1 ? cell : cell.padEnd(width[column] ?? 0),
+            )
+            .join('  ')
+            .trimEnd(),
+        );
+      console.log(
+        'REF is the sourceMessageRef of a thread-continuation to that recipient under that task; a letter to the owner has none',
+      );
+    }
+    if (earlier > 0)
+      console.log(
+        `${earlier} more were sent by earlier lives of this session — a continuation references the life that wrote the letter, so their references no longer resolve`,
+      );
     return 0;
   }
 
@@ -459,7 +571,12 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       );
       return 0;
     }
-    return await relay(result, `msg ${targetToken}`);
+    // Only an ACCEPTED letter is named. A letter held for retry has an id and a record here, but it
+    // is not yet in the recipient's ledger, and a continuation of a correspondence whose opening
+    // letter never arrived is exactly the claim this reference must not help anyone make.
+    const code = await relay(result, `msg ${targetToken}`);
+    if (code === 0) announceLetter(envelope);
+    return code;
   }
 
   targetToken = route.session;
@@ -517,6 +634,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       task,
     });
     console.log(`sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
+    announceLetter(envelope);
     return 0;
   }
   if (isRoleToken(targetToken)) {
@@ -570,5 +688,6 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   warnAboutAnonymousRemote(from, senderTransport);
   log.info({ msg: 'chat message sent', from: principalLabel(from), to: targetLabel(target), task });
   console.log(`sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
+  announceLetter(envelope);
   return 0;
 }
