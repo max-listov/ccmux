@@ -1,3 +1,5 @@
+import { statSync } from 'node:fs';
+import { chatLedgerPath, sessionsPath } from '../config/paths.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { isConditional } from './deliver.ts';
@@ -28,7 +30,30 @@ import {
  * stops only when the recipient's delivery cursor passes its index. An earlier attempt that
  * tombstoned and called it done left the immediate half exactly where it was.
  */
+/**
+ * What the last completed pass saw, so an unchanged queue costs two `stat` calls instead of a
+ * parse. Keyed by ledger path: one entry per machine in this process, and a fixture gets its own.
+ *
+ * Measured before this existed: 40–270 ms per pass on a 5 MB ledger, every three seconds, settling
+ * nothing — on the daemon's own event loop, which has a stall watchdog. Nothing is missed by the
+ * skip: removing a session rewrites the registry and a new letter grows the ledger, so either
+ * change moves one of the two stamps.
+ */
+const lastPass = new Map<string, string>();
+
+function stamp(path: string): string {
+  try {
+    const info = statSync(path);
+    return `${info.mtimeMs}:${info.size}`;
+  } catch {
+    return 'absent';
+  }
+}
+
 export async function settleUndeliverable(m: MachineConfig): Promise<number> {
+  const ledgerPath = chatLedgerPath(m);
+  const seen = `${stamp(ledgerPath)}|${stamp(sessionsPath(m))}`;
+  if (lastPass.get(ledgerPath) === seen) return 0;
   const live = deliverableTargets(m);
   const ledger = loadLedger(m);
   const acked = loadAckedIds(m);
@@ -65,5 +90,8 @@ export async function settleUndeliverable(m: MachineConfig): Promise<number> {
       cursors.delivered[key] = Math.max(cursors.delivered[key] ?? 0, next);
     await saveCursors(m, cursors);
   }
+  // Recorded only after the pass completed: a throw halfway through must leave the next tick
+  // looking again, not trusting a scan that did not finish.
+  lastPass.set(ledgerPath, `${stamp(ledgerPath)}|${stamp(sessionsPath(m))}`);
   return settled;
 }

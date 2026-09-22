@@ -80,3 +80,25 @@ test('a letter to a session that still exists is never settled by this pass', as
     pendingImmediate(loadLedger(f.machine), loadCursors(f.machine), {}).map((m) => m.id),
   ).toEqual([soon.id]);
 });
+
+test('an unchanged queue costs nothing to re-examine, and neither kind of change is missed', async () => {
+  // The pass runs on the daemon's event loop every three seconds. Measured on a 5 MB ledger it
+  // cost 40-270 ms to settle nothing, so an unchanged queue now stops at two `stat` calls — and
+  // the only thing that must never happen is a change slipping through that skip.
+  const f = fixture();
+  f.write(f.gone, 'first orphan', true);
+  expect(await settleUndeliverable(f.machine)).toBe(1);
+  expect(await settleUndeliverable(f.machine)).toBe(0);
+
+  // A new letter grows the ledger.
+  const late = f.write(f.gone, 'written after the sweep', true);
+  expect(await settleUndeliverable(f.machine)).toBe(1);
+  expect(loadAcks(f.machine).get(late.id)).toBe('undeliverable');
+
+  // A removal rewrites the registry, and it strands letters that were fine a moment ago.
+  const orphaned = f.write(f.alive, 'fine until its recipient was removed', true);
+  expect(await settleUndeliverable(f.machine)).toBe(0);
+  writeFileSync(sessionsPath(f.machine), '');
+  expect(await settleUndeliverable(f.machine)).toBe(1);
+  expect(loadAcks(f.machine).get(orphaned.id)).toBe('undeliverable');
+});
