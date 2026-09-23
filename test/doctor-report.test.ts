@@ -12,7 +12,10 @@ import { makeChatMessage, makeMachine } from './helpers.ts';
  */
 const root = mkdtempSync(join(tmpdir(), 'ccmux-doctor-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
-const machine = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
+// tmux is named at a path that exists nowhere: `/bin/tmux` is missing on one machine and installed on
+// the next, and the report must not depend on which one runs the test.
+const noTmux = join(root, 'no-tmux');
+const machine = makeMachine({ stateDir: root, rcPrefix: 'host-a', tmuxBin: noTmux });
 const configPath = join(root, 'machine.json');
 writeFileSync(configPath, `${JSON.stringify(machine)}\n`);
 writeFileSync(join(root, 'sessions.jsonl'), '# v2\n');
@@ -45,5 +48,5 @@ test('the chat checks reach the JSON, and the text says the same', async () => {
   expect(text).toBe(`${doctorText(report).join('\n')}\n`);
   expect(text).toContain('chat:   PROBLEM — chat cursors unreadable');
   expect(text).toContain('1 ledger record(s) this ccmux cannot read');
-  expect(text).toContain('tmux:   /bin/tmux (missing)');
+  expect(text).toContain(`tmux:   ${noTmux} (missing)`);
 });
