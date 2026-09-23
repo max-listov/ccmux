@@ -6,6 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `ccmux events --follow` no longer drops events once the feed holds multibyte text: it read new
+  lines by cutting the decoded file at a byte position, so each read started late by one character
+  per earlier multibyte character and lost its first line — usually a `turn-end`. The follower now
+  reads, counts and holds partial lines in bytes, including a character split by a write boundary.
+
 ## [0.66.2] — 2026-09-23
 
 Publishes 0.66.0: signed self-update on stitchkit, owned Codex mail through its owner, state files and locks on stitchkit

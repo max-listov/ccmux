@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 
 // Byte-level jsonl line readers, shared by every layer that touches transcript files
 // (agent adapters, TUI discover, fork detection). Transcripts grow to tens of MB, so the
@@ -146,4 +146,54 @@ export function readFirstLine(path: string, maxBytes = 2 * 1024 * 1024): string 
   } finally {
     closeSync(fd);
   }
+}
+
+/** Complete lines appended to a growing file since the previous call. Everything here is BYTES —
+ *  the position, the size it is compared against, and the held partial line — because the position
+ *  comes from the file size: cutting decoded text at it drifts one character per multibyte
+ *  character before it and eats the start of the next line. A character split by a write boundary
+ *  stays undecoded in `carry` until the rest of it arrives; 0x0A never occurs inside one. */
+export interface LineTail {
+  /** New complete lines, or `null` when the file cannot be read right now. */
+  read(): string[] | null;
+  /** Start over at byte 0 of whatever file is at the path now (rotation, truncation). */
+  reset(): void;
+}
+
+export function tailLines(path: string, from: number): LineTail {
+  let offset = from;
+  let carry: Buffer = Buffer.alloc(0);
+  const reset = (): void => {
+    offset = 0;
+    carry = Buffer.alloc(0);
+  };
+  const read = (): string[] | null => {
+    let fd: number;
+    try {
+      fd = openSync(path, 'r');
+    } catch {
+      return null; // gone for a moment (rotation) — the next call finds the new generation
+    }
+    try {
+      const size = fstatSync(fd).size;
+      if (size < offset) reset(); // shrank under us: those bytes belong to a previous generation
+      if (size === offset) return [];
+      const chunk = Buffer.alloc(size - offset);
+      const n = readSync(fd, chunk, 0, chunk.length, offset);
+      offset += n;
+      const bytes = Buffer.concat([carry, chunk.subarray(0, n)]);
+      const end = bytes.lastIndexOf(10);
+      if (end === -1) {
+        carry = bytes;
+        return [];
+      }
+      carry = Buffer.from(bytes.subarray(end + 1));
+      return bytes.toString('utf8', 0, end).split('\n');
+    } catch {
+      return null;
+    } finally {
+      closeSync(fd);
+    }
+  };
+  return { read, reset };
 }

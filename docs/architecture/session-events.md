@@ -265,6 +265,11 @@ a gap, and two writers append without coordinating. So a consumer that *acts* on
 it, blinks a light — must drop ids it has already handled. Exactly-once would need coordination the
 hook cannot afford to wait for.
 
+Inside one generation the live follower does track a position, and it is in **bytes** — the file
+size it compares against is bytes, and so is the partial last line it holds (`tailLines` in
+`src/util/readLines.ts`). Cutting decoded text at a byte position drifts one character per multibyte
+character earlier in the file and drops the head of the next line, which is usually a `turn-end`.
+
 The record is parsed **leniently**: unknown keys ride through untouched. Strict parsing would turn "a
 newer ccmux added a field" into "every event after the upgrade is unreadable on this machine" — a
 fleet-wide silence produced by version skew nobody would think to check.

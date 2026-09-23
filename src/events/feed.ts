@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync, watch } from 'node:fs';
+import { existsSync, mkdirSync, statSync, watch } from 'node:fs';
 import { dirname } from 'node:path';
 import { eventsPath } from '../config/paths.ts';
 import type { MachineConfig, Session, SessionEvent, SessionEventKind } from '../types.ts';
 import { appendJsonl, readJsonl, rotateBySize } from '../util/jsonl.ts';
+import { tailLines } from '../util/readLines.ts';
 import { SESSION_EVENT_VERSION, SessionEventSchema } from './schema.ts';
 
 /**
@@ -161,8 +162,6 @@ export function followEvents(
   opts: { since?: string; session?: string; signal?: AbortSignal } = {},
 ): () => void {
   const path = eventsPath(m);
-  let offset = 0;
-  let carry = '';
 
   // Everything already in the feed at or after the cursor, before watching begins — so a consumer
   // that reconnects does not have to choose between missing the gap and replaying all of history.
@@ -170,35 +169,20 @@ export function followEvents(
   if (opts.since !== undefined) backlog.since = opts.since;
   if (opts.session !== undefined) backlog.session = opts.session;
   if (opts.since !== undefined) for (const event of readEvents(m, backlog)) onEvent(event);
+  let start: number;
   try {
-    offset = statSync(path).size;
+    start = statSync(path).size;
   } catch {
-    offset = 0; // no feed yet — start at the beginning of the one that will appear
+    start = 0; // no feed yet — start at the beginning of the one that will appear
   }
+  const tail = tailLines(path, start);
 
   const drain = (): void => {
-    let size: number;
-    try {
-      size = statSync(path).size;
-    } catch {
-      offset = 0;
-      carry = '';
-      return; // gone for a moment (rotation) — pick it up when it is back
-    }
-    if (size < offset) {
-      offset = 0; // rotated or truncated: the bytes we had live in a previous generation now
-      carry = '';
-    }
-    if (size === offset) return;
-    let chunk: string;
-    try {
-      chunk = readFileSync(path, 'utf8').slice(offset);
-    } catch {
+    const lines = tail.read();
+    if (lines === null) {
+      tail.reset(); // gone for a moment (rotation) — pick the new generation up from its start
       return;
     }
-    offset = size;
-    const lines = (carry + chunk).split('\n');
-    carry = lines.pop() ?? ''; // a line may still be mid-write; hold it until its newline arrives
     for (const line of lines) {
       const event = parseEvent(line);
       if (event === null) continue;
