@@ -6,9 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.66.1] — 2026-09-23
+
+Publishes 0.66.0: signed self-update on stitchkit, owned Codex mail through its owner, state files and locks on stitchkit
+
 - Carries 0.66.0, which was tagged but not published: a test assumed tmux was absent from the
   build machine, and the CI runner has it.
-
 ## [0.66.0] — 2026-09-23
 
 Signed self-update on stitchkit, owned Codex mail through its owner, and state files and locks on stitchkit primitives
