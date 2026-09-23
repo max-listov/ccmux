@@ -16,6 +16,7 @@ import {
   NativeContextPump,
   observeContextCompletion,
 } from '../src/context/pump.ts';
+import { HISTORY_LIMITS } from '../src/context/schema.ts';
 import {
   compactNativeContext,
   readContextOperation,
@@ -29,6 +30,10 @@ import { writeRuntimeInput } from '../src/runtime/input.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
 import { privateRuntimeDirectory } from '../src/runtime/store.ts';
 import { makeMachine, makeSession } from './helpers.ts';
+
+// A guard against a hang, not a measurement: the product gives these reads HISTORY_LIMITS.deadlineMs,
+// and a one-second bound failed on a loaded CI runner while the same read passed everywhere else.
+const HANG_GUARD_MS = HISTORY_LIMITS.deadlineMs;
 
 async function fixture() {
   const root = mkdtempSync('/tmp/ccmux-context-test-');
@@ -66,14 +71,14 @@ test('compact ACK is not completion; same-ID retry, stale events and cursor rese
   try {
     const cursor = encodeHistoryCursor(f.m, f.s, 'native-page-1');
     expect(cursor).not.toBeNull();
-    expect((await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(1_000))).state).toBe(
-      'queued',
-    );
-    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(1_000));
+    expect(
+      (await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(HANG_GUARD_MS))).state,
+    ).toBe('queued');
+    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(HANG_GUARD_MS));
     expect(readContextOperation(f.m, f.s, request.operationId)?.state).toBe('running');
     expect(() => assertNoContextMutation(f.m, f.s)).toThrow();
-    await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(1_000));
-    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(1_000));
+    await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(HANG_GUARD_MS));
+    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(HANG_GUARD_MS));
     expect(calls).toBe(1);
     await observeContextCompletion(f.m, f.s, crypto.randomUUID());
     expect(readContextOperation(f.m, f.s, request.operationId)?.state).toBe('running');
@@ -87,7 +92,7 @@ test('compact ACK is not completion; same-ID retry, stale events and cursor rese
         f.m,
         f.s,
         { ...request, generation: crypto.randomUUID() },
-        AbortSignal.timeout(1_000),
+        AbortSignal.timeout(HANG_GUARD_MS),
       ),
     ).rejects.toMatchObject({ code: 'CONTEXT_CONFLICT' });
     expect(() => refuseNativeRollback()).toThrow('Native rollback cannot guarantee');
@@ -110,16 +115,16 @@ test('lost compact ACK survives restart without retry and reconciles only a new 
   };
   const request = { operationId: crypto.randomUUID(), generation: f.generation };
   try {
-    await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(1_000));
-    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(1_000));
+    await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(HANG_GUARD_MS));
+    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(HANG_GUARD_MS));
     expect(readContextOperation(f.m, f.s, request.operationId)?.state).toBe('uncertain');
     await observeContextCompletion(f.m, f.s, f.generation, 'old-marker');
     expect(readContextOperation(f.m, f.s, request.operationId)?.state).toBe('uncertain');
     const nextGeneration = crypto.randomUUID();
-    await applyContextCommands(f.m, f.s, nextGeneration, api, AbortSignal.timeout(1_000));
+    await applyContextCommands(f.m, f.s, nextGeneration, api, AbortSignal.timeout(HANG_GUARD_MS));
     expect(readContextOperation(f.m, f.s, request.operationId)?.state).toBe('uncertain');
     marker = 'new-marker';
-    await applyContextCommands(f.m, f.s, nextGeneration, api, AbortSignal.timeout(1_000));
+    await applyContextCommands(f.m, f.s, nextGeneration, api, AbortSignal.timeout(HANG_GUARD_MS));
     expect(readContextOperation(f.m, f.s, request.operationId)?.state).toBe('completed');
     expect(calls).toBe(1);
   } finally {
@@ -139,8 +144,8 @@ test('completed compact receipt waits for durable replay boundary and duplicates
     compact: async () => {},
   };
   try {
-    await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(1_000));
-    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(1_000));
+    await compactNativeContext(f.m, f.s, request, AbortSignal.timeout(HANG_GUARD_MS));
+    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(HANG_GUARD_MS));
     const publish = async () => {
       publications++;
       ready.resolve();
@@ -233,15 +238,15 @@ test('history projects native IDs and reasoning summaries, never hidden reasonin
     },
   });
   try {
-    const page = await api.history({ limit: 8 }, AbortSignal.timeout(1_000));
+    const page = await api.history({ limit: 8 }, AbortSignal.timeout(HANG_GUARD_MS));
     expect(page.entries[0]?.omittedBytes).toBeGreaterThan(0);
     expect(page.entries[0]?.text).not.toContain('�');
     expect(page.entries[1]?.text).toBe('brief summary');
     expect(JSON.stringify(page)).not.toMatch(/HIDDEN_REASONING|PRIVATE_COMMAND|PRIVATE_OUTPUT/);
     expect(calls).toEqual(['thread/items/list']);
-    const pending = readNativeHistory(f.m, f.s, { limit: 8 }, AbortSignal.timeout(1_000));
+    const pending = readNativeHistory(f.m, f.s, { limit: 8 }, AbortSignal.timeout(HANG_GUARD_MS));
     await Bun.sleep(30);
-    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(1_000));
+    await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(HANG_GUARD_MS));
     expect((await pending).entries).toEqual(page.entries);
   } finally {
     f.cleanup();
@@ -278,10 +283,14 @@ test('fork ACK preserves destination identity; lost ACK never dispatches another
         return { id };
       },
     };
-    expect(await admitNativeFork(f.m, destination, adapter, AbortSignal.timeout(1_000))).toEqual({
+    expect(
+      await admitNativeFork(f.m, destination, adapter, AbortSignal.timeout(HANG_GUARD_MS)),
+    ).toEqual({
       id: 'destination-native',
     });
-    expect(await admitNativeFork(f.m, destination, adapter, AbortSignal.timeout(1_000))).toEqual({
+    expect(
+      await admitNativeFork(f.m, destination, adapter, AbortSignal.timeout(HANG_GUARD_MS)),
+    ).toEqual({
       id: 'destination-native',
     });
     expect(calls).toBe(1);
@@ -296,10 +305,10 @@ test('fork ACK preserves destination identity; lost ACK never dispatches another
       },
     };
     await expect(
-      admitNativeFork(f.m, uncertain, broken, AbortSignal.timeout(1_000)),
+      admitNativeFork(f.m, uncertain, broken, AbortSignal.timeout(HANG_GUARD_MS)),
     ).rejects.toMatchObject({ code: 'FORK_UNCERTAIN' });
     await expect(
-      admitNativeFork(f.m, uncertain, broken, AbortSignal.timeout(1_000)),
+      admitNativeFork(f.m, uncertain, broken, AbortSignal.timeout(HANG_GUARD_MS)),
     ).rejects.toMatchObject({ code: 'FORK_UNCERTAIN' });
     expect(calls).toBe(2);
     expect(readNativeForkIntent(f.m, uncertain)?.state).toBe('uncertain');
@@ -322,7 +331,7 @@ test('compact refuses already accepted native input before dispatch', async () =
         f.m,
         f.s,
         { operationId: crypto.randomUUID(), generation: f.generation },
-        AbortSignal.timeout(1_000),
+        AbortSignal.timeout(HANG_GUARD_MS),
       ),
     ).rejects.toMatchObject({ code: 'CONTEXT_BUSY' });
     expect(readContextJournal(f.m, f.s).operations).toHaveLength(0);
@@ -411,12 +420,12 @@ test('OpenCode history forwards opaque native header cursor and omits unresolved
   });
   try {
     const api = openCodeContextApi(f.m, session, client);
-    const page = await api.history({ limit: 1 }, AbortSignal.timeout(1_000));
+    const page = await api.history({ limit: 1 }, AbortSignal.timeout(HANG_GUARD_MS));
     expect(page.completeness).toBe('more');
     expect(page.entries[0]?.omittedImages).toBe(1);
     expect(JSON.stringify(page)).not.toContain('PRIVATE_IMAGE');
     if (page.nextCursor === null) throw new Error('Expected native cursor');
-    await api.history({ limit: 1, cursor: page.nextCursor }, AbortSignal.timeout(1_000));
+    await api.history({ limit: 1, cursor: page.nextCursor }, AbortSignal.timeout(HANG_GUARD_MS));
     expect(new URL(urls[1] ?? 'http://invalid').searchParams.get('before')).toBe(
       'opaque-native-cursor',
     );

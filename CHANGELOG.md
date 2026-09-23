@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Carries 0.66.0 and 0.66.1, which were tagged but not published: tests bound on the build
+  machine — tmux assumed absent, a native history read held to one second — failed on the CI
+  runner.
+
 ## [0.66.1] — 2026-09-23
 
 Publishes 0.66.0: signed self-update on stitchkit, owned Codex mail through its owner, state files and locks on stitchkit
