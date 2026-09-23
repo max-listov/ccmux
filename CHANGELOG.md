@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.66.0] — 2026-09-23
+
+Signed self-update on stitchkit, owned Codex mail through its owner, and state files and locks on stitchkit primitives
+
 - An owned Codex session (`--runtime app-server`) now receives mail and interruption through its own
   owner, like every other native runtime: the daemon queues the letter in the session's input slot and
   the owner — the process in the session's pane — starts the turn, and an interrupt goes through the
@@ -155,7 +159,6 @@ the GitHub Release with that section as the notes.
   bytes with a collection between them: a 774 MB Codex rollout is searched whole in 0.9 s at 571 MB
   peak, a 94 MB Claude transcript in 0.4 s. Managed sessions are told about it in their prompt,
   with the reminder that it finds a place, not a result.
-
 ## [0.65.0] — 2026-09-22
 
 The supervisor survives an OOM kill inside its cgroup, a forced shutdown records its own stop, and the ssh fallback is logged once per change instead of once per call
