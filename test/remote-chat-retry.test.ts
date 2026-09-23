@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { managedPeer } from '../src/chat/identity.ts';
-import { loadLedger } from '../src/chat/store.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
 import { sessionsPath } from '../src/config/paths.ts';
 import { flushOutbox, loadOutboxAcked } from '../src/fleet/flush.ts';
 import { appendOutbound } from '../src/fleet/outbox.ts';

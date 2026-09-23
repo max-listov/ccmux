@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
-import { withDirectoryLock, withSessionRegistryLock } from '../config/registryLock.ts';
+import { withSessionRegistryLock } from '../session/registryLock.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
+import { withLock } from '../util/lock.ts';
 import { decodeAttachment } from './decoder.ts';
 import { assertAttachment } from './errors.ts';
 import { attachmentPath, checkPrivateLock, readPrivate } from './files.ts';
@@ -21,7 +22,7 @@ export async function finalizeAttachmentUpload(
   try {
     const root = await withAttachmentStore(m, 'finalize-admit', async (tx) => tx.root, signal);
     checkPrivateLock(join(root, '.decoder-lock'));
-    return await withDirectoryLock(
+    return await withLock(
       join(root, '.decoder-lock'),
       async () => {
         const prepared = await withSessionRegistryLock(m, () =>

@@ -1,17 +1,13 @@
 import { AppError } from 'stitchkit';
-import { readCodexAppThread } from '../agent/codex/appServer.ts';
-import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
-import { connectOwnedCodex } from '../agent/codex/ownedRpc.ts';
-import { readOwnedCodexStatus } from '../agent/codex/ownedStatus.ts';
+import { loadCursors } from '../chat/cursors.ts';
 import { managedPeerKey } from '../chat/identity.ts';
-import { loadCursors } from '../chat/store.ts';
-import { blockingInbound } from '../commands/wait.ts';
-import { withSessionRegistryLock } from '../config/registryLock.ts';
-import { isCancellableTurn, requestRuntimeInterrupt } from '../runtime/interrupt.ts';
+import { blockingInbound } from '../chat/inboundHold.ts';
+import { requestRuntimeInterrupt } from '../runtime/interrupt.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
+import { withSessionRegistryLock } from '../session/registryLock.ts';
 import type { MachineConfig, ManagedPeer } from '../types.ts';
 import type { ControlPublisher } from './publisher.ts';
-import { ControlWaitResultSchema } from './schema.ts';
+import { ControlWaitResultSchema } from './schema/runtimeOps.ts';
 import { controlTarget } from './target.ts';
 
 export async function interruptControlTurn(
@@ -26,40 +22,8 @@ export async function interruptControlTurn(
     const session = controlTarget(m, target);
     if (!hasNativeRuntime(session))
       throw new AppError('UNSUPPORTED', 'Native interruption is unavailable for this runtime', 409);
-    if (!isOwnedCodex(session)) {
-      await requestRuntimeInterrupt(m, session, generation, turnId, signal);
-      return { target, accepted: true } satisfies { target: ManagedPeer; accepted: true };
-    }
-    const read = readOwnedCodexStatus(m, session);
-    if (
-      read.status !== 'live' ||
-      !read.snapshot ||
-      !isCancellableTurn(read.snapshot, generation, turnId)
-    ) {
-      throw new AppError('TURN_MISMATCH', 'The exact active turn is unavailable', 409);
-    }
-    const rpc = await connectOwnedCodex(m, session, { signal });
-    try {
-      const thread = await readCodexAppThread(rpc, session.uuid);
-      controlTarget(m, target);
-      const current = readOwnedCodexStatus(m, session);
-      if (
-        thread.status.type !== 'active' ||
-        thread.status.activeFlags.some(
-          (flag) => !['waitingOnApproval', 'waitingOnUserInput'].includes(flag),
-        ) ||
-        current.status !== 'live' ||
-        !current.snapshot ||
-        !isCancellableTurn(current.snapshot, generation, turnId)
-      ) {
-        throw new AppError('TURN_MISMATCH', 'The exact active turn is unavailable', 409);
-      }
-      signal.throwIfAborted();
-      await rpc.request('turn/interrupt', { threadId: target.threadId, turnId });
-      return { target, accepted: true } satisfies { target: ManagedPeer; accepted: true };
-    } finally {
-      rpc.close();
-    }
+    await requestRuntimeInterrupt(m, session, generation, turnId, signal);
+    return { target, accepted: true } satisfies { target: ManagedPeer; accepted: true };
   });
 }
 

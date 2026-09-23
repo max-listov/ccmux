@@ -3,9 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendMessage, loadAckedIds } from '../src/chat/store.ts';
+import { loadAckedIds } from '../src/chat/ackLog.ts';
+import { appendMessage } from '../src/chat/ledger.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { sessionsPath } from '../src/config/paths.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
 import type { ChatMessage } from '../src/types.ts';
 import { makeChatMessage, makeCli, makePeer } from './helpers.ts';
 

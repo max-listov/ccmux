@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { createControlClient, createControlProxy } from '../control/client.ts';
+import { createControlClient, createControlProxy } from '../control/transport/client.ts';
 import { VERSION } from '../util/version.ts';
 
 export async function cmdControl(args: string[]): Promise<number> {

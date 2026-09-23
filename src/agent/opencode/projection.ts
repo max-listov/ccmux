@@ -8,12 +8,10 @@ import type { MachineConfig, Session } from '../../types.ts';
 import { openCodeUsage, recordUsage } from '../../usage/live.ts';
 import { VERSION } from '../../util/version.ts';
 import {
-  OpenCodeDeltaSchema,
-  OpenCodeEventSchema,
+  decodeOpenCodeEvent,
+  type OpenCodeDelta,
   type OpenCodeMessage,
-  OpenCodeMessageSchema,
   type OpenCodePart,
-  OpenCodePartSchema,
   OpenCodePermissionSchema,
   OpenCodeQuestionSchema,
   OpenCodeStatusSchema,
@@ -254,8 +252,7 @@ export class OpenCodeProjection {
       });
     }
   }
-  private delta(raw: unknown): void {
-    const delta = OpenCodeDeltaSchema.parse(raw);
+  private delta(delta: OpenCodeDelta): void {
     if (
       !this.own(delta.sessionID) ||
       delta.field !== 'text' ||
@@ -305,18 +302,15 @@ export class OpenCodeProjection {
     this.status({ type: this.value.turn?.status === 'inProgress' ? 'busy' : 'idle' });
   }
   event(raw: unknown): void {
-    const event = OpenCodeEventSchema.parse(raw);
+    const decoded = decodeOpenCodeEvent(raw);
     this.revision++;
-    if (event.type === 'message.updated')
-      this.message(
-        OpenCodeMessageSchema.parse(z.object({ info: z.unknown() }).parse(event.properties).info),
-      );
-    else if (event.type === 'message.part.updated')
-      this.part(
-        OpenCodePartSchema.parse(z.object({ part: z.unknown() }).parse(event.properties).part),
-      );
-    else if (event.type === 'message.part.delta') this.delta(event.properties);
-    else if (event.type === 'session.status') {
+    if (decoded.type === 'message.updated') this.message(decoded.message);
+    else if (decoded.type === 'message.part.updated') this.part(decoded.part);
+    else if (decoded.type === 'message.part.delta') this.delta(decoded.delta);
+    else this.other({ type: decoded.name, properties: decoded.properties });
+  }
+  private other(event: { type: string; properties: unknown }): void {
+    if (event.type === 'session.status') {
       const data = z
         .object({ sessionID: z.string(), status: OpenCodeStatusSchema })
         .parse(event.properties);
@@ -330,21 +324,27 @@ export class OpenCodeProjection {
       if (this.own(data.sessionID)) this.resolve(data.requestID);
     }
   }
+  /** The running turn a request belongs to, or null: a request from another session, from outside
+   *  a turn, or from a tool call another turn made is not this turn's to answer. */
+  private runningTurnOf(request: {
+    sessionID: string;
+    tool?: { messageID: string } | undefined;
+  }): string | null {
+    const turn = this.value.turn;
+    if (!this.own(request.sessionID) || !turn || turn.status !== 'inProgress') return null;
+    if (request.tool && this.parents.get(request.tool.messageID) !== turn.id) return null;
+    return turn.id;
+  }
   permission(raw: unknown): void {
     const request = OpenCodePermissionSchema.parse(raw);
-    if (
-      !this.own(request.sessionID) ||
-      !this.value.turn ||
-      this.value.turn.status !== 'inProgress' ||
-      (request.tool && this.parents.get(request.tool.messageID) !== this.value.turn.id)
-    )
-      return;
+    const turnId = this.runningTurnOf(request);
+    if (turnId === null) return;
     this.pending({
       requestId: request.id,
       rpcId: request.id,
       kind: 'approval',
       approvalKind: null,
-      turnId: this.value.turn.id,
+      turnId,
       itemId: request.tool?.callID ?? request.id,
       reason: request.permission,
       scope: openCodePermissionScope(request),
@@ -355,19 +355,14 @@ export class OpenCodeProjection {
   }
   question(raw: unknown): void {
     const request = OpenCodeQuestionSchema.parse(raw);
-    if (
-      !this.own(request.sessionID) ||
-      !this.value.turn ||
-      this.value.turn.status !== 'inProgress' ||
-      (request.tool && this.parents.get(request.tool.messageID) !== this.value.turn.id)
-    )
-      return;
+    const turnId = this.runningTurnOf(request);
+    if (turnId === null) return;
     this.pending({
       requestId: request.id,
       rpcId: request.id,
       kind: 'input',
       approvalKind: null,
-      turnId: this.value.turn.id,
+      turnId,
       itemId: request.tool?.callID ?? request.id,
       reason: null,
       scope: null,

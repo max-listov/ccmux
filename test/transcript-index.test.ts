@@ -7,7 +7,7 @@ import {
   EMPTY_STATS,
   indexTranscript,
   SCAN_CHUNK,
-} from '../src/agent/transcriptIndex.ts';
+} from '../src/agent/transcript/transcriptIndex.ts';
 
 /**
  * Every read here must give exactly what a full read of the same file would.

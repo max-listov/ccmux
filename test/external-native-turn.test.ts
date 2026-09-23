@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test';
-import { ExternalSessionSchema } from '../src/config/schema.ts';
 import {
   MAX_NATIVE_TURN_READS,
   readNativeTurns,
   withNativeTurn,
-} from '../src/external/native-turn.ts';
+} from '../src/external/nativeTurn.ts';
+import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
 import { ExternalTurnStateSchema, unknownTurnState } from '../src/external/turnSchema.ts';
 import { nativeTurnState, observeExternalTurns } from '../src/external/turnState.ts';
 import { makeMachine, UUID } from './helpers.ts';

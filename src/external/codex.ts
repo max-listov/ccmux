@@ -1,16 +1,17 @@
-import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
 import { Glob } from 'bun';
 import { z } from 'zod';
-import { lastModel, parse, usedTokens } from '../agent/codex/transcript.ts';
-import { loadSessions } from '../config/sessions.ts';
+import * as codexTranscript from '../agent/codex/transcript.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { ExternalSession, MachineConfig, WriterRuntime } from '../types.ts';
 import { MtimeCache } from '../util/mtimeCache.ts';
-import { readFirstLine, readTailUntil } from '../util/readLines.ts';
+import { readFirstLine } from '../util/readLines.ts';
 import { externalCapabilities } from './capabilities.ts';
 import { type CodexLockInspection, inspectCodexThreadLocks } from './codexLocks.ts';
 import { externalSessionKey } from './keys.ts';
 import { type ProcessSnapshot, processAncestors, processSnapshot } from './processes.ts';
+import { readExternalTail } from './tail.ts';
 import { unknownTurnState } from './turnSchema.ts';
 
 const CodexSessionMetaSchema = z.object({
@@ -186,30 +187,8 @@ function activity(
 ): Pick<ExternalSession, 'lastActivityMs' | 'lastModel' | 'usedTokens' | 'lastMessage'> {
   return (
     cache.get(path, () => {
-      // Bounded in bytes, not just lines: rollouts carry records large enough that a 2000-line
-      // window once meant reading gigabytes to display a model name.
-      const tail = readTailUntil(
-        path,
-        TAIL_LINES,
-        (lines) => lastModel(lines) !== null && usedTokens(lines) !== null,
-      );
-      const messages = parse(tail.slice(-120), 1, 280);
-      const lastMessage = messages.at(-1) ?? null;
-      const parsedTime = lastMessage?.createdAt ? Date.parse(lastMessage.createdAt) : NaN;
-      let lastActivityMs = Number.isFinite(parsedTime) ? parsedTime : null;
-      if (lastActivityMs === null) {
-        try {
-          lastActivityMs = statSync(path).mtimeMs;
-        } catch {
-          lastActivityMs = null;
-        }
-      }
-      return {
-        lastActivityMs,
-        lastModel: lastModel(tail),
-        usedTokens: usedTokens(tail),
-        lastMessage,
-      };
+      const { tail: _tail, ...summary } = readExternalTail(path, TAIL_LINES, codexTranscript);
+      return summary;
     }) ?? { lastActivityMs: null, lastModel: null, usedTokens: null, lastMessage: null }
   );
 }

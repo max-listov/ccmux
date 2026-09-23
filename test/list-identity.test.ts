@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { formatFleetSession, RemoteSessionSchema } from '../src/commands/fleetList.ts';
 import { helpText } from '../src/commands/help.ts';
-import { ListItemSchema } from '../src/config/schema.ts';
+import { ListItemSchema } from '../src/inventory/listSchema.ts';
 
 const baseItem = {
   name: 'agent-a',

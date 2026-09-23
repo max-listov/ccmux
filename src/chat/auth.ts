@@ -2,8 +2,8 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { chatAuthPath } from '../config/paths.ts';
-import { PLATFORM } from '../env.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { PLATFORM } from '../util/env.ts';
 
 export const CHAT_CREDENTIAL_ENV = 'CCMUX_CHAT_CREDENTIAL';
 

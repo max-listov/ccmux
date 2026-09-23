@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SELF_ARGV_NO_ENV_FILE } from '../env.ts';
+import { SELF_ARGV_NO_ENV_FILE } from '../util/env.ts';
 import { AttachmentFault, assertAttachment } from './errors.ts';
 import { type DecodedImage, DecodedImageSchema } from './imageValidation.ts';
 import { ATTACHMENT_LIMITS } from './reference.ts';

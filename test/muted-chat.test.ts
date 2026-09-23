@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mutedChatSessions } from '../src/commands/doctor.ts';
+import { mutedChatSessions } from '../src/commands/doctorChecks.ts';
 import { chatAuthPath, sessionsPath } from '../src/config/paths.ts';
 import type { Session } from '../src/types.ts';
 import { makeMachine, makeSession } from './helpers.ts';

@@ -1,6 +1,7 @@
 import { loadMachineConfig } from '../config/machine.ts';
 import { readMonitoringStatus } from '../monitoring/read.ts';
 import type { MonitoringRow } from '../monitoring/schema.ts';
+import { parseFlags } from './flags.ts';
 
 /** The statusLine's own cost, as a number rather than an impression: it runs per session on every
  *  transcript event, which is the most frequent thing this tool causes a machine to do. Summed from
@@ -13,12 +14,9 @@ function renderLine(rows: readonly MonitoringRow[]): string {
 }
 
 export async function cmdStatus(args: string[]): Promise<number> {
-  if (args.some((arg) => arg !== '--json')) {
-    console.error('usage: ccmux status [--json]');
-    return 1;
-  }
+  const flags = parseFlags('status', args, [0, 0]);
   const result = readMonitoringStatus(loadMachineConfig());
-  const text = args.includes('--json')
+  const text = flags.bool('json')
     ? JSON.stringify(result)
     : result.snapshot === null
       ? `status ${result.status}: ${result.reason}`

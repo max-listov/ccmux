@@ -58,7 +58,7 @@ monitoring publisher continues to follow live configuration independently.
 
 # Contract
 
-`src/control/contract.ts` is the single schema-derived HTTP/CLI/tool declaration. HTTP paths have
+`src/control/schema/contract.ts` is the single schema-derived HTTP/CLI/tool declaration. HTTP paths have
 no implicit `/api` prefix. The CLI is `ccmux control <command>`; `--help` renders contract inputs.
 Object-valued flags such as `--target` accept JSON; `--json` selects compact output.
 
@@ -270,11 +270,17 @@ Listing is advisory: create still accepts any accessible absolute workspace, not
 `respond` addresses the exact target, projection generation and current request ID. Approval
 decisions are restricted to the provider-advertised simple choices: `accept`, `acceptForSession`,
 `decline` or `cancel`; structured policy amendments are not exposed. Input answers must cover the
-exact question ID set. A private same-user mailbox forwards the command to the session supervisor,
-which responds over the same App Server connection that received the request.
-`submitted` means the JSON-RPC response was written; `serverRequest/resolved` remains the provider's
-separate resolution boundary. A timeout returns `uncertain`, never false delivery. Stale,
-mismatched, terminal and already-resolved requests fail closed.
+exact question ID set; a question that offers options and no free answer takes only one of them,
+and one that declares a single answer takes exactly one. A private same-user mailbox forwards the
+command to the session's owner, which responds over the same connection that received the request.
+Claude, Codex and OpenCode owners apply it through one reader (`answerNativeCommand`,
+`src/runtime/response.ts`): the receipt is `uncertain` before the runtime is told and `submitted`
+after, so a lost acknowledgement is never replayed. A refusal names its reason —
+`projection-generation-mismatch`, `request-is-not-pending`, `request-kind-mismatch`,
+`decision-is-not-available`, `answers-are-required`, `question-id-mismatch`,
+`answer-is-not-available`. For Codex, `submitted` means the JSON-RPC response was written;
+`serverRequest/resolved` remains the provider's separate resolution boundary. A timeout returns
+`uncertain`, never false delivery.
 
 `wait` is native-runtime-only and requires an observation made after the call began. It checks
 the delivery cursor and unresolved pickup as well as idle/terminal state: reading inbox does not
@@ -593,7 +599,7 @@ drain; the existing boot unit starts the new artifact. The daemon never awaits a
 restart of itself. Manual CLI updates retain their ordinary service-manager restart. The bundled
 daemon regression in `test/daemon-update.test.ts` verifies install, clean shutdown and restart.
 
-Tests: `test/control.test.ts`, `test/control-service.test.ts`, `test/control-lifecycle.test.ts`, `test/control-models.test.ts`, `test/codex-owned-connection.test.ts`,
+Tests: `test/control.test.ts`, `test/control-lifecycle.test.ts`, `test/control-models.test.ts`, `test/codex-owned-connection.test.ts`,
 `test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
 and `test/bundle-selfcontained.test.ts`. `scripts/verify-control-service-client.ts` installs the
 fresh tarball outside the checkout and runs Bun, Node, NodeNext and bundler gates. Explicit provider E2E: run

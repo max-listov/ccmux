@@ -1,8 +1,8 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { loadSessions } from '../src/config/sessions.ts';
-import type { ControlCreateReceipt } from '../src/control/schema.ts';
+import type { ControlCreateReceipt } from '../src/control/schema/session.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../src/runtime/status.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { check, type NativeImageProbe, report } from './native-image-steering-fixture.ts';
 
 /** Run in a background acceptance process; never block an interactive agent turn on this window. */

@@ -1,15 +1,14 @@
-import { AppError } from 'stitchkit';
-import { type BoundedChannel, createBoundedChannel } from 'stitchkit/application';
 import { managedPeer } from '../chat/identity.ts';
 import { chatEnabledFor } from '../config/chat.ts';
-import { loadSessions } from '../config/sessions.ts';
 import type { MonitoringSnapshot } from '../monitoring/schema.ts';
-import { blockedPolicyReason, projectApplicationPolicy } from '../policy/projection.ts';
+import { sessionApplicationPolicy } from '../policy/projection.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { hasNativeRuntime, runtimeModes } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
+import { SnapshotPublisher } from '../util/snapshotPublisher.ts';
 import { VERSION } from '../util/version.ts';
 import {
   CONTROL_MAX_BYTES,
@@ -17,35 +16,35 @@ import {
   type ControlRow,
   type ControlSnapshot,
   ControlSnapshotSchema,
-  currentControlSnapshot,
-} from './schema.ts';
+} from './schema/core.ts';
+import { currentControlSnapshot } from './schema/runtimeOps.ts';
 
 /** One producer; readers retain revision notices, never an unbounded queue of snapshots. */
-export class ControlPublisher {
-  private snapshot: ControlSnapshot;
-  private readers = new Set<BoundedChannel<number>>();
-  private closed = false;
+export class ControlPublisher extends SnapshotPublisher<ControlSnapshot> {
   private freshness = '';
 
   constructor(m: MachineConfig) {
     const now = new Date().toISOString();
-    this.snapshot = {
-      protocol: 1,
-      version: VERSION,
-      machine: m.rcPrefix,
-      generation: crypto.randomUUID(),
-      sequence: 0,
-      status: 'unavailable',
-      reason: 'observation-pending',
-      observedAt: now,
-      expiresAt: now,
-      omitted: 0,
-      sessions: [],
-    };
+    super(
+      {
+        protocol: 1,
+        version: VERSION,
+        machine: m.rcPrefix,
+        generation: crypto.randomUUID(),
+        sequence: 0,
+        status: 'unavailable',
+        reason: 'observation-pending',
+        observedAt: now,
+        expiresAt: now,
+        omitted: 0,
+        sessions: [],
+      },
+      { label: 'Control', limit: CONTROL_MAX_READERS },
+    );
   }
 
   publish(m: MachineConfig, source: MonitoringSnapshot): void {
-    if (this.closed) return;
+    if (this.readers.closed) return;
     const sessions = new Map(loadSessions(m).map((s) => [s.name, s]));
     const rows: ControlRow[] = [];
     let omitted = source.omitted;
@@ -86,22 +85,7 @@ export class ControlPublisher {
         ...(native?.snapshot?.nativeProfile === undefined
           ? {}
           : { nativeProfile: native.snapshot.nativeProfile }),
-        ...(session.applicationPolicy === undefined
-          ? {}
-          : {
-              applicationPolicy: projectApplicationPolicy(
-                session.applicationPolicy,
-                native?.status ?? 'unavailable',
-                native?.snapshot?.applicationPolicy,
-                // The policy's own code first: a runtime that never started because of its policy
-                // reports `unavailable`, which names the state and not one of a dozen repairs.
-                // Read only when the runtime is not live — a reason is ignored for a live one, and
-                // this is a per-row file read on the publish path.
-                native?.status === 'live'
-                  ? native.reason
-                  : (blockedPolicyReason(m, session) ?? native?.reason),
-              ),
-            }),
+        ...sessionApplicationPolicy(m, session, session.applicationPolicy, native),
         capabilities: {
           message: chatEnabledFor(session, m),
           start: !session.archived,
@@ -135,7 +119,7 @@ export class ControlPublisher {
   }
 
   expire(now = Date.now()): void {
-    if (this.closed) return;
+    if (this.readers.closed) return;
     const state = this.read(now);
     const freshness = JSON.stringify([state.status, state.sessions.map((s) => s.availability)]);
     if (freshness === this.freshness) return;
@@ -152,50 +136,5 @@ export class ControlPublisher {
       reason,
     };
     this.notify();
-  }
-
-  subscribe(signal: AbortSignal): AsyncIterable<ControlSnapshot> {
-    signal.throwIfAborted();
-    if (this.closed) throw new AppError('UNAVAILABLE', 'Control publisher is stopped', 503);
-    if (this.readers.size >= CONTROL_MAX_READERS)
-      throw new AppError('BUSY', 'Resident subscriber limit reached', 429);
-    const channel = createBoundedChannel<number>({
-      policy: 'latest',
-      maxItems: 1,
-      maxBytes: 8,
-      sizeOf: () => 8,
-      signal,
-    });
-    this.readers.add(channel);
-    channel.offer(this.snapshot.sequence);
-    const remove = () => {
-      this.readers.delete(channel);
-      channel.close({ mode: 'discard' });
-    };
-    signal.addEventListener('abort', remove, { once: true });
-    const publisher = this;
-    return (async function* () {
-      try {
-        for await (const _revision of channel) yield publisher.read();
-      } finally {
-        signal.removeEventListener('abort', remove);
-        remove();
-      }
-    })();
-  }
-
-  get subscribers(): number {
-    return this.readers.size;
-  }
-
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.unavailable('daemon-stopped');
-    for (const channel of this.readers) channel.close();
-  }
-
-  private notify(): void {
-    for (const channel of this.readers) channel.offer(this.snapshot.sequence);
   }
 }

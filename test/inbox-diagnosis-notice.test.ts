@@ -25,6 +25,8 @@ const message = makeChatMessage({ to: managedPeer(machine.rcPrefix, session), bo
 writeFileSync(configPath, `${JSON.stringify(machine)}\n`);
 writeFileSync(join(root, 'sessions.jsonl'), `# v2\n${JSON.stringify(session)}\n`);
 writeFileSync(join(root, 'chat.jsonl'), `${JSON.stringify(message)}\n`);
+// A ledger is born with its cursors (`appendMessage` creates them); one without them reads as lost.
+writeFileSync(join(root, 'chat-cursors.json'), '{}\n');
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');

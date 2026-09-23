@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { loadCursors } from '../src/chat/cursors.ts';
 import { formatChatInjection } from '../src/chat/format.ts';
-import { loadCursors, loadLedger } from '../src/chat/store.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
-import type { ControlMessage } from '../src/control/schema.ts';
+import type { ControlMessage } from '../src/control/schema/message.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import {
   check,
   geometryImage,

@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
 import {
   type CodexTakeoverDependencies,
   takeoverCodexExternalWithDependencies,
-} from '../src/commands/adopt.ts';
-import { ExternalSessionSchema, SessionSchema } from '../src/config/schema.ts';
+} from '../src/session/adopt.ts';
+import { SessionSchema } from '../src/session/schema.ts';
 import type { ExternalSession, WriterRuntime } from '../src/types.ts';
 import { makeMachine } from './helpers.ts';
 

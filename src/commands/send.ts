@@ -1,7 +1,7 @@
 import { chatEnabledFor } from '../config/chat.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { hasNoComposer } from '../runtime/modes.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
 import { sendKeysLiteral, sendKeysNamed } from '../tmux/tmux.ts';
 import { preview } from '../util/preview.ts';
 

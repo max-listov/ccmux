@@ -3,7 +3,11 @@ import { expect, test } from 'bun:test';
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EMPTY_STATS, indexTranscript, transcriptIndexPath } from '../src/agent/transcriptIndex.ts';
+import {
+  EMPTY_STATS,
+  indexTranscript,
+  transcriptIndexPath,
+} from '../src/agent/transcript/transcriptIndex.ts';
 import { aggregateUsage } from '../src/usage/aggregate.ts';
 import { readUsageFile } from '../src/usage/file.ts';
 import { UsageQuerySchema } from '../src/usage/schema.ts';

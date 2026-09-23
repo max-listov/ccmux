@@ -1,12 +1,13 @@
 import { expect, test } from 'bun:test';
 import { LogFrameSchema, LogPayloadSchema, LogRowSchema } from '../src/chat/feedSchema.ts';
 import { LogRowSchema as runtimeRow } from '../src/chat/fleetLog.ts';
-import { ChatPrincipalSchema, ChatTargetSchema } from '../src/chat/identitySchema.ts';
-import { LogFrameSchema as runtimeFrame } from '../src/chat/logFeed.ts';
 import {
+  ChatPrincipalSchema,
+  ChatTargetSchema,
   ChatPrincipalSchema as configPrincipal,
   ChatTargetSchema as configTarget,
-} from '../src/config/schema.ts';
+} from '../src/chat/identitySchema.ts';
+import { LogFrameSchema as runtimeFrame } from '../src/chat/logFeed.ts';
 import * as client from '../src/control-service-client.ts';
 
 test('runtime and public client share the same browser-safe feed and endpoint schemas', async () => {

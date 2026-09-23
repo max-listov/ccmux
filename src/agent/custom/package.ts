@@ -5,9 +5,9 @@ import { pathToFileURL } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { z } from 'zod';
 import { readPrivate } from '../../attachments/files.ts';
-import { withDirectoryLock } from '../../config/registryLock.ts';
+import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import type { MachineConfig } from '../../types.ts';
-import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
+import { withLock } from '../../util/lock.ts';
 
 const EntrySchema = z
   .object({ sha256: z.string().regex(/^[a-f0-9]{64}$/), data: z.string().max(64 * 1024 * 1024) })
@@ -42,7 +42,7 @@ export async function materializeCustomPackage(
   const packages = join(m.stateDir, 'runtime-packages');
   privateRuntimeDirectory(packages);
   const root = join(packages, artifact.digest);
-  await withDirectoryLock(
+  await withLock(
     join(packages, `${artifact.digest}.lock`),
     async () => {
       let present = false;

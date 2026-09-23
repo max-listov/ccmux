@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { ManagedPeerSchema } from '../config/schema.ts';
 import { ChatHoldKindSchema } from './holdKind.ts';
+import { ManagedPeerSchema } from './identitySchema.ts';
 
 const NativeMessageSessionSchema = z
   .object({
@@ -48,15 +48,22 @@ export const MessageOperationStateSchema = z.enum([
   'interrupted',
   'failed',
 ]);
+/** A message's binding to the native turn that carries it — the same fields in the evidence a
+ *  caller reads and in the record the journal keeps, so the two cannot describe it differently. */
+const binding = {
+  turnId: z.string().min(1).max(256).nullable(),
+  continuations: NativeContinuationsSchema.default([]),
+  pendingApprovals: z.array(NativePendingApprovalSchema).max(16).default([]),
+  observedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime().nullable(),
+};
+/** The states after which a record only waits out its retention. */
+const TERMINAL: readonly string[] = ['completed', 'interrupted', 'failed'];
 export const MessageOperationEvidenceSchema = z
   .object({
     state: MessageOperationStateSchema,
     nativeSession: NativeMessageSessionSchema,
-    turnId: z.string().min(1).max(256).nullable(),
-    continuations: NativeContinuationsSchema.default([]),
-    pendingApprovals: z.array(NativePendingApprovalSchema).max(16).default([]),
-    observedAt: z.iso.datetime(),
-    expiresAt: z.iso.datetime().nullable(),
+    ...binding,
     /**
      * Why this is still waiting, when the daemon is holding it and said so.
      *
@@ -88,8 +95,7 @@ export const MessageOperationEvidenceSchema = z
     'Native binding does not match admission state',
   )
   .refine(
-    (value) =>
-      ['completed', 'interrupted', 'failed'].includes(value.state) === (value.expiresAt !== null),
+    (value) => TERMINAL.includes(value.state) === (value.expiresAt !== null),
     'Retention deadline does not match terminal state',
   );
 export const MessageOperationResultSchema = MessageOperationReadSchema.extend({
@@ -107,11 +113,7 @@ export const MessageOperationRecordSchema = z
     principal: z.string().regex(/^[0-9a-f]{64}$/),
     fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
     phase: z.enum(['preparing', ...MessageOperationStateSchema.options]),
-    turnId: z.string().min(1).max(256).nullable(),
-    continuations: NativeContinuationsSchema.default([]),
-    pendingApprovals: z.array(NativePendingApprovalSchema).max(16).default([]),
-    observedAt: z.iso.datetime(),
-    expiresAt: z.iso.datetime().nullable(),
+    ...binding,
   })
   .strict()
   .refine(
@@ -120,8 +122,7 @@ export const MessageOperationRecordSchema = z
     'Native binding does not match receipt phase',
   )
   .refine(
-    (value) =>
-      ['completed', 'interrupted', 'failed'].includes(value.phase) === (value.expiresAt !== null),
+    (value) => TERMINAL.includes(value.phase) === (value.expiresAt !== null),
     'Receipt retention deadline does not match terminal phase',
   );
 export const MessageOperationJournalSchema = z

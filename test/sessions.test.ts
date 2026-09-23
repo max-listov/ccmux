@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sessionsPath } from '../src/config/paths.ts';
-import { appendSession, loadSessions, removeSession } from '../src/config/sessions.ts';
+import { appendSession, loadSessions, removeSession } from '../src/session/registry.ts';
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 function tmpStateDir(): string {

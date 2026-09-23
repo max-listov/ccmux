@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { AppError } from 'stitchkit';
 import { HostCatalogCache } from '../src/control/modelCatalogCache.ts';
-import { type ControlModelCatalog, ControlModelsReadSchema } from '../src/control/schema.ts';
+import { type ControlModelCatalog, ControlModelsReadSchema } from '../src/control/schema/model.ts';
 
 const input = ControlModelsReadSchema.parse({});
 

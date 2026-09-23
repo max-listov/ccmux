@@ -30,11 +30,6 @@ function splitDashDash(rest: string[]): { positionals: string[]; flags: string[]
 }
 
 /** first non-flag positional + whether --force/-f is present (stop/rm self-guard). */
-function nameForce(rest: string[]): { name: string | undefined; force: boolean } {
-  const force = rest.includes('--force') || rest.includes('-f');
-  const name = rest.find((a) => a !== '--force' && a !== '-f');
-  return { name, force };
-}
 
 /** Every public verb supports `<verb> --help` — derived from COMMANDS so the two
  *  lists can't drift (they did: transcript/doctor were help-routed but unlisted). */
@@ -63,7 +58,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     case 'control':
       return (await import('./commands/control.ts')).cmdControl(rest);
     case 'runtime':
-      return (await import('./commands/runtime.ts')).cmdRuntime(rest[0], rest.slice(1));
+      return (await import('./commands/runtime.ts')).cmdRuntime(rest);
     case 'status':
       return (await import('./commands/status.ts')).cmdStatus(rest);
     case 'list':
@@ -71,45 +66,60 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     case 'l':
       return (await import('./commands/list.ts')).cmdList(rest);
     case 'new': {
+      // Everything after `--` is the agent's own command line, passed through untouched.
       const { positionals, flags } = splitDashDash(rest);
-      const router = positionals.includes('--router');
-      const agentIndex = positionals.indexOf('--agent');
-      const agent = agentIndex >= 0 ? (positionals[agentIndex + 1] ?? '') : undefined;
-      const envIndex = positionals.indexOf('--env-file');
-      const envFile = envIndex >= 0 ? positionals[envIndex + 1] : undefined;
-      const runtimeIndex = positionals.indexOf('--runtime');
-      const runtime = runtimeIndex >= 0 ? (positionals[runtimeIndex + 1] ?? '') : undefined;
-      const consumed = new Set<number>();
-      if (agentIndex >= 0) consumed.add(agentIndex).add(agentIndex + 1);
-      if (envIndex >= 0) consumed.add(envIndex).add(envIndex + 1);
-      if (runtimeIndex >= 0) consumed.add(runtimeIndex).add(runtimeIndex + 1);
-      const pos = positionals.filter((a, index) => a !== '--router' && !consumed.has(index));
-      return (await import('./commands/new.ts')).cmdNew(pos[0], pos[1], flags, {
-        router,
-        ...(agent === undefined ? {} : { agent }),
-        ...(envFile === undefined ? {} : { envFile }),
-        ...(runtime === undefined ? {} : { runtime }),
-      });
+      const own = (await import('./commands/flags.ts')).parseFlags('new', positionals, [2, 2]);
+      const agent = own.str('agent');
+      const envFile = own.str('env-file');
+      const runtime = own.str('runtime');
+      return (await import('./commands/new.ts')).cmdNew(
+        own.positionals[0],
+        own.positionals[1],
+        flags,
+        {
+          router: own.bool('router'),
+          ...(agent === undefined ? {} : { agent }),
+          ...(envFile === undefined ? {} : { envFile }),
+          ...(runtime === undefined ? {} : { runtime }),
+        },
+      );
     }
     case 'rm':
     case 'remove': {
-      const { name, force } = nameForce(rest);
-      return (await import('./commands/rm.ts')).cmdRm(name, force);
+      const flags = (await import('./commands/flags.ts')).parseFlags('rm', rest, [1, 1]);
+      return (await import('./commands/rm.ts')).cmdRm(flags.positionals[0], flags.bool('force'));
     }
-    case 'start':
-      return (await import('./commands/lifecycle.ts')).cmdStart(rest[0]);
+    case 'start': {
+      const flags = (await import('./commands/flags.ts')).parseFlags('start', rest, [1, 1]);
+      return (await import('./commands/lifecycle.ts')).cmdStart(flags.positionals[0]);
+    }
     case 'stop': {
-      const { name, force } = nameForce(rest);
-      return (await import('./commands/lifecycle.ts')).cmdStop(name, force);
+      const flags = (await import('./commands/flags.ts')).parseFlags('stop', rest, [1, 1]);
+      return (await import('./commands/lifecycle.ts')).cmdStop(
+        flags.positionals[0],
+        flags.bool('force'),
+      );
     }
-    case 'restart':
-      return rest.includes('--all')
-        ? (await import('./commands/restartAll.ts')).cmdRestartAll(rest)
-        : (await import('./commands/lifecycle.ts')).cmdRestart(rest);
+    case 'restart': {
+      // One session, or every session on this machine — never both.
+      const flags = (await import('./commands/flags.ts')).parseFlags(
+        'restart',
+        rest,
+        rest.includes('--all') ? [0, 0] : [1, 1],
+      );
+      return flags.bool('all')
+        ? (await import('./commands/restartAll.ts')).cmdRestartAll()
+        : (await import('./commands/lifecycle.ts')).cmdRestart(flags.positionals[0] as string);
+    }
     case 'renew':
-      return (await import('./commands/renew.ts')).cmdRenew(rest[0], rest.slice(1));
-    case 'mode':
-      return (await import('./commands/mode.ts')).cmdMode(rest[0], rest[1]);
+      return (await import('./commands/renew.ts')).cmdRenew(rest);
+    case 'mode': {
+      const flags = (await import('./commands/flags.ts')).parseFlags('mode', rest, [2, 2]);
+      return (await import('./commands/mode.ts')).cmdMode(
+        flags.positionals[0],
+        flags.positionals[1],
+      );
+    }
     case 'env-file':
       return (await import('./commands/envFile.ts')).cmdEnvFile(rest);
     case 'dir':
@@ -135,11 +145,15 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     case 'router':
       return (await import('./commands/router.ts')).cmdRouter(rest);
     case 'logs':
-      return (await import('./commands/logs.ts')).cmdLogs(rest[0], rest.slice(1));
+      return (await import('./commands/logs.ts')).cmdLogs(rest);
     case 'transcript':
-      return (await import('./commands/transcript.ts')).cmdTranscript(rest[0], rest.slice(1));
+      return (await import('./commands/transcript.ts')).cmdTranscript(rest);
     case 'wait':
-      return (await import('./commands/wait.ts')).cmdWait(rest[0], rest.slice(1));
+      return (await import('./commands/wait.ts')).cmdWait(rest);
+    case 'state':
+      return (await import('./commands/state.ts')).cmdState(rest);
+    case 'window':
+      return (await import('./commands/window.ts')).cmdWindow(rest);
     case 'models':
       return (await import('./commands/models.ts')).cmdModels(rest);
     case 'doctor':
@@ -221,15 +235,20 @@ try {
   // Loaded here and not at the top: this file evaluates nothing eagerly, because the two Claude
   // hooks and the status-line tee run it on every turn. A failure has already cost more than an
   // import.
-  const { log } = await import('./util/log.ts');
-  log.error({
-    msg: 'command failed',
-    command: Bun.argv[2] ?? null,
-    err:
-      error instanceof Error
-        ? `${error.name}: ${error.message}\n${error.stack ?? ''}`
-        : String(error),
-  });
+  const { UsageError } = await import('./commands/flags.ts');
+  // A command line the command cannot read is the caller's mistake, said with the usage line — not a
+  // failure of the command, so it is not logged as one.
+  if (!(error instanceof UsageError)) {
+    const { log } = await import('./util/log.ts');
+    log.error({
+      msg: 'command failed',
+      command: Bun.argv[2] ?? null,
+      err:
+        error instanceof Error
+          ? `${error.name}: ${error.message}\n${error.stack ?? ''}`
+          : String(error),
+    });
+  }
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 }

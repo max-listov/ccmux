@@ -1,5 +1,5 @@
 import type { AttachmentReference } from '../src/attachments/reference.ts';
-import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import type { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 import {
   check,

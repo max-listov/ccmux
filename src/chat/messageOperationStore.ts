@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import { lstatExists, readPrivate, writePrivateJson } from '../attachments/files.ts';
+import { nativeId } from '../context/store.ts';
 import { managedRuntimeRoot } from '../runtime/status.ts';
+import { privateRuntimeDirectory } from '../runtime/store.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
 import { chatPrincipalKey } from './identity.ts';
 import {
@@ -25,11 +26,11 @@ export function readMessageJournal(m: MachineConfig, s: Session): MessageOperati
   const journal = MessageOperationJournalSchema.parse(
     JSON.parse(readPrivate(path, MESSAGE_OPERATION_LIMITS.bytes).toString()),
   );
-  const nativeId = s.agent === 'codex' ? s.uuid : s.nativeSession?.id;
+  const expected = nativeId(s);
   if (
     journal.registrationGeneration !== s.registrationGeneration ||
     journal.nativeSession.runtime !== s.agent ||
-    journal.nativeSession.id !== nativeId
+    journal.nativeSession.id !== expected
   )
     return messageOperationFailure();
   return journal;
@@ -56,7 +57,7 @@ export function prepareMessageOperation(
     readMessageJournal(m, s) ??
     MessageOperationJournalSchema.parse({
       registrationGeneration: s.registrationGeneration,
-      nativeSession: { runtime: s.agent, id: s.agent === 'codex' ? s.uuid : s.nativeSession?.id },
+      nativeSession: { runtime: s.agent, id: nativeId(s) },
       records: [],
     });
   const prior = journal.records.find((record) => record.messageId === messageId);

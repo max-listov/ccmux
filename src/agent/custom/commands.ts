@@ -4,13 +4,13 @@ import {
   readRuntimeInterrupt,
   writeRuntimeInterrupt,
 } from '../../runtime/interrupt.ts';
-import type { MachineConfig, Session } from '../../types.ts';
 import {
   clearNativeCommand,
   readNativeCommand,
   readNativeReceipt,
   writeNativeReceipt,
-} from '../codex/ownedControl.ts';
+} from '../../runtime/response.ts';
+import type { MachineConfig, Session } from '../../types.ts';
 import type { CustomChronology } from './chronology.ts';
 import type { CustomCorrelation } from './correlation.ts';
 import type { openCustomEngine } from './engine.ts';

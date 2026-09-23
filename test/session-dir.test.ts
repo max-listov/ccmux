@@ -2,13 +2,13 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { staleReasons } from '../src/agent/launchStamp.ts';
+import { staleReasons } from '../src/agent/launch/launchStamp.ts';
 import {
   findSession,
   loadSessions,
   setSessionDir,
   writeSessionsUnlocked,
-} from '../src/config/sessions.ts';
+} from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**

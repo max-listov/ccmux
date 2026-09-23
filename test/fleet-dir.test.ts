@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { z } from 'zod';
 import { type FleetMachine, fleetView, RemoteSessionSchema } from '../src/commands/fleetList.ts';
-import { ListJsonSchema } from '../src/config/schema.ts';
+import { ListJsonSchema } from '../src/inventory/listSchema.ts';
 
 // A fleet consumer joins a session to a project by matching its checkout path — longest same-host
 // prefix wins. That needs the directory the owner DECLARED, byte for byte: shortening it, resolving

@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { createControlClient } from '../control/client.ts';
+import type { ControlNativeSnapshot } from '../control/schema/native.ts';
 import {
   CCMUX_NATIVE_STREAM_HEARTBEAT_MS,
   CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
@@ -7,8 +7,8 @@ import {
   controlNativeStreamFrame,
   NativeStreamFrameUnrepresentable,
   readControlNativeStreamCursor,
-} from '../control/nativeStreamContract.ts';
-import type { ControlNativeSnapshot } from '../control/schema.ts';
+} from '../control/schema/nativeStreamContract.ts';
+import { createControlClient } from '../control/transport/client.ts';
 
 async function boundedStdin(maxBytes: number): Promise<string> {
   const reader = Bun.stdin.stream().getReader();

@@ -1,6 +1,7 @@
-import { setSessionRouter } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { setSessionRouter } from '../session/registry.ts';
 import { log } from '../util/log.ts';
+import { parseFlags } from './flags.ts';
 
 const USAGE = 'usage: ccmux router <on <name> | off <name>>';
 
@@ -11,12 +12,13 @@ const USAGE = 'usage: ccmux router <on <name> | off <name>>';
  * Launch-time, like `ccmux mode`/chat framing: applies on the next `ccmux restart <name>`.
  */
 export async function cmdRouter(args: string[]): Promise<number> {
-  const sub = args[0];
+  const positionals = parseFlags('router', args, [0, 2]).positionals;
+  const sub = positionals[0];
   if (sub !== 'on' && sub !== 'off') {
     console.log(USAGE);
     return sub === undefined ? 0 : 1;
   }
-  const target = args[1];
+  const target = positionals[1];
   if (target === undefined) {
     console.log(
       `usage: ccmux router ${sub} <name>   ·   <machine>:<name> for another fleet machine`,

@@ -1,17 +1,11 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { loadAckedIds, loadAcks } from '../src/chat/ackLog.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
+import { loadCursors } from '../src/chat/cursors.ts';
 import { chatTargetKey, cliPrincipal, managedPeer } from '../src/chat/identity.ts';
-import {
-  appendMessage,
-  deliverableTargets,
-  loadAckedIds,
-  loadAcks,
-  loadCursors,
-  loadLedger,
-  pendingConditional,
-  pendingImmediate,
-} from '../src/chat/store.ts';
+import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
+import { deliverableTargets, pendingConditional, pendingImmediate } from '../src/chat/store.ts';
 import { settleUndeliverable } from '../src/chat/undeliverable.ts';
 import { sessionsPath } from '../src/config/paths.ts';
 import { makeMachine, makeSession } from './helpers.ts';
@@ -50,7 +44,7 @@ test('letters to a session that no longer exists are settled on BOTH tracks, onc
   expect(await settleUndeliverable(f.machine)).toBe(2);
 
   const ledger = loadLedger(f.machine);
-  const acked = loadAckedIds(f.machine);
+  const acked = loadAcks(f.machine);
   const cursors = loadCursors(f.machine);
   // Nothing addressed to the removed session is waiting any more — and the two halves had to be
   // closed differently, because a conditional letter is settled by the ack log and an immediate one
@@ -74,7 +68,7 @@ test('a letter to a session that still exists is never settled by this pass', as
   expect(await settleUndeliverable(f.machine)).toBe(0);
   expect(loadAckedIds(f.machine).size).toBe(0);
   expect(
-    pendingConditional(loadLedger(f.machine), loadAckedIds(f.machine), {}).map((m) => m.id),
+    pendingConditional(loadLedger(f.machine), loadAcks(f.machine), {}).map((m) => m.id),
   ).toEqual([keep.id]);
   expect(
     pendingImmediate(loadLedger(f.machine), loadCursors(f.machine), {}).map((m) => m.id),

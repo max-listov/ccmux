@@ -4,17 +4,14 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { ApiError } from 'stitchkit';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
-import type {
-  ControlCreate,
-  ControlCreateReceipt,
-  ControlModel,
-  ControlNativeSnapshot,
-} from '../src/control/schema.ts';
+import type { ControlModel } from '../src/control/schema/model.ts';
+import type { ControlNativeSnapshot } from '../src/control/schema/native.ts';
+import type { ControlCreate, ControlCreateReceipt } from '../src/control/schema/session.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { type NativeTurnOptions, NativeTurnOptionsSchema } from '../src/runtime/selectionSchema.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';

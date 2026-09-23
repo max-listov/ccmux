@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ChatPrincipalSchema, ManagedPeerSchema } from '../config/schema.ts';
+import { ChatPrincipalSchema, ManagedPeerSchema } from '../chat/identitySchema.ts';
 import {
   ATTACHMENT_LIMITS,
   AttachmentDigestSchema,

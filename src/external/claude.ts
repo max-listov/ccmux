@@ -1,19 +1,20 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { basename } from 'node:path';
-import { lastModel, parse, usedTokens } from '../agent/claude/transcript.ts';
+import * as claudeTranscript from '../agent/claude/transcript.ts';
 import {
   classifyWriters,
   externalResumingUuids,
   parsePs,
   type Writer,
 } from '../agent/claude/writers.ts';
-import { rec, str } from '../agent/normalize.ts';
-import { loadSessions } from '../config/sessions.ts';
+import { rec, str } from '../agent/transcript/normalize.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { ExternalSession, MachineConfig, Session, WriterRuntime } from '../types.ts';
 import { MtimeCache } from '../util/mtimeCache.ts';
-import { readHeadLines, readTailUntil } from '../util/readLines.ts';
+import { readHeadLines } from '../util/readLines.ts';
 import { externalCapabilities } from './capabilities.ts';
 import { externalSessionKey } from './keys.ts';
+import { readExternalTail } from './tail.ts';
 import { unknownTurnState } from './turnSchema.ts';
 
 const HEAD_BYTES = 64 * 1024;
@@ -83,30 +84,10 @@ function readSession(
   'dir' | 'lastActivityMs' | 'lastModel' | 'usedTokens' | 'lastMessage'
 > | null {
   return cache.get(path, () => {
-    const tail = readTailUntil(
-      path,
-      TAIL_LINES,
-      (lines) => lastModel(lines) !== null && usedTokens(lines) !== null,
-    );
-    if (tail.length === 0) return null;
-    const messages = parse(tail.slice(-120), 1, 280);
-    const lastMessage = messages.at(-1) ?? null;
-    const parsedTime = lastMessage?.createdAt ? Date.parse(lastMessage.createdAt) : NaN;
-    let lastActivityMs = Number.isFinite(parsedTime) ? parsedTime : null;
-    if (lastActivityMs === null) {
-      try {
-        lastActivityMs = statSync(path).mtimeMs;
-      } catch {
-        lastActivityMs = null;
-      }
-    }
-    return {
-      dir: firstCwd(readHeadLines(path, HEAD_BYTES)) ?? firstCwd(tail),
-      lastActivityMs,
-      lastModel: lastModel(tail),
-      usedTokens: usedTokens(tail),
-      lastMessage,
-    };
+    const read = readExternalTail(path, TAIL_LINES, claudeTranscript);
+    if (read.tail.length === 0) return null;
+    const { tail, ...summary } = read;
+    return { dir: firstCwd(readHeadLines(path, HEAD_BYTES)) ?? firstCwd(tail), ...summary };
   });
 }
 

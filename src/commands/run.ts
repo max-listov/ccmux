@@ -1,17 +1,21 @@
 import { existsSync } from 'node:fs';
 import { type AgentProvider, providerFor } from '../agent/index.ts';
-import { computeStamp } from '../agent/launchStamp.ts';
-import { readLaunchStamp, writeLaunchStamp } from '../agent/sessionStatus.ts';
-import { droppedDeadAgentKeys, withoutDeadAgentEnv } from '../agent/sshEnv.ts';
+import { computeStamp } from '../agent/launch/launchStamp.ts';
+import { droppedDeadAgentKeys, withoutDeadAgentEnv } from '../agent/launch/sshEnv.ts';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../chat/auth.ts';
-import { readLifecycleBlockForSession, writeLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
-import { promptInvocation } from '../env.ts';
 import { nativeDriver } from '../runtime/driver.ts';
 import { ManagedRuntimeExit } from '../runtime/exit.ts';
+import {
+  readLifecycleBlockForSession,
+  sessionBlock,
+  writeLifecycleBlock,
+} from '../session/lifecycleBlocks.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
+import { readLaunchStamp, writeLaunchStamp } from '../session/status.ts';
 import { capturePane, sendKeysNamed } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { promptInvocation } from '../util/env.ts';
 import { log, setStderrLogging } from '../util/log.ts';
 
 const MIN_BACKOFF_MS = 2_000;
@@ -169,6 +173,14 @@ export async function cmdRun(name: string | undefined): Promise<number> {
   return superviseReady(m, name, initial.agent);
 }
 
+/** Stop for good. The block is what keeps the daemon from starting the session again until an
+ *  explicit start or restart clears it; the line says why to whoever attaches to the pane. */
+async function refuse(m: MachineConfig, s: Session, error: string): Promise<number> {
+  await writeLifecycleBlock(m, sessionBlock(s, error));
+  console.error(`ccmux: ${error}`);
+  return 1;
+}
+
 /** Supervise only a READY registry Session. Every child launch reloads canonical identity. */
 export async function superviseReady(
   m: MachineConfig,
@@ -183,14 +195,14 @@ export async function superviseReady(
     const s = findSession(loadSessions(m), name);
     if (!s) return 1;
     if (s.agent !== expectedAgent) {
-      await writeLifecycleBlock(m, {
-        name,
-        agent: expectedAgent,
-        uuid: s.uuid,
-        ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
-        error: `provider changed from ${expectedAgent} to ${s.agent} while supervisor was alive`,
-        at: new Date().toISOString(),
-      });
+      await writeLifecycleBlock(
+        m,
+        sessionBlock(
+          s,
+          `provider changed from ${expectedAgent} to ${s.agent} while supervisor was alive`,
+          expectedAgent,
+        ),
+      );
       return 1;
     }
     const provider = providerFor(s);
@@ -214,16 +226,7 @@ export async function superviseReady(
           await Bun.sleep(backoff);
           continue;
         }
-        await writeLifecycleBlock(m, {
-          name,
-          agent: s.agent,
-          uuid: s.uuid,
-          ...(s.registrationGeneration === undefined
-            ? {}
-            : { generation: s.registrationGeneration }),
-          error: String(error),
-          at: new Date().toISOString(),
-        });
+        await writeLifecycleBlock(m, sessionBlock(s, String(error)));
         return 1;
       }
     }
@@ -231,16 +234,7 @@ export async function superviseReady(
     const present = hf !== null && existsSync(hf); // re-checked every loop
     if (provider.id === 'codex' && !present) {
       const error = `ready Codex session ${name} is missing rollout ${s.uuid}`;
-      await writeLifecycleBlock(m, {
-        name,
-        agent: s.agent,
-        uuid: s.uuid,
-        ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
-        error,
-        at: new Date().toISOString(),
-      });
-      console.error(`ccmux: ${error}`);
-      return 1;
+      return refuse(m, s, error);
     }
     // "No history here" means one of two very different things, and treating them alike is how a
     // month-old conversation gets a blank one written on top of it with the same uuid. A session that
@@ -262,16 +256,7 @@ export async function superviseReady(
         // they are in — naming only the recoverable one leaves the other guessing.
         `If it can be recovered (the project directory moved?), put it where this session now points, then: ccmux start ${name}   ·   ` +
         `If it is gone for good: ccmux renew ${name}   — a fresh conversation for this session, keeping its dir, mode, chat and prompt modules`;
-      await writeLifecycleBlock(m, {
-        name,
-        agent: s.agent,
-        uuid: s.uuid,
-        ...(s.registrationGeneration !== undefined ? { generation: s.registrationGeneration } : {}),
-        error,
-        at: new Date().toISOString(),
-      });
-      console.error(`ccmux: ${error}`);
-      return 1;
+      return refuse(m, s, error);
     }
     let env = provider.launchEnv(m, s);
     // A session outlives the login that created it; that login's agent socket does not. A DEAD
@@ -343,18 +328,7 @@ export async function superviseReady(
         const error = writerConflict
           ? `Codex thread ${s.uuid} already has an active writer; lifecycle blocked`
           : `Codex resume exited before admission for ${name}; lifecycle blocked to prevent a retry storm or second writer`;
-        await writeLifecycleBlock(m, {
-          name,
-          agent: s.agent,
-          uuid: s.uuid,
-          ...(s.registrationGeneration !== undefined
-            ? { generation: s.registrationGeneration }
-            : {}),
-          error,
-          at: new Date().toISOString(),
-        });
-        console.error(`ccmux: ${error}`);
-        return 1;
+        return refuse(m, s, error);
       }
       if (fastFails >= FAST_FAILS_BEFORE_FORK) {
         forkNext = true;

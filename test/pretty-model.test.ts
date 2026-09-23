@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { prettyModel } from '../src/agent/format.ts';
+import { prettyModel } from '../src/inventory/modelName.ts';
 
 test('prettyModel formats known families by TRANSFORM, not a lookup table', () => {
   expect(prettyModel('claude-fable-5')).toBe('Fable 5');

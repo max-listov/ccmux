@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { prettyModel } from '../src/agent/format.ts';
-import { modelVendor, VENDOR_CELL, vendorGlyph, vendorMark } from '../src/agent/vendor.ts';
+import { prettyModel } from '../src/inventory/modelName.ts';
+import { modelVendor, VENDOR_CELL, vendorGlyph, vendorMark } from '../src/inventory/vendor.ts';
 
 describe('model vendor', () => {
   test('reads the maker out of the id, raw or already prettified', () => {

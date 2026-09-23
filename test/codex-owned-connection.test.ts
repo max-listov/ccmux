@@ -4,19 +4,20 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ServerWebSocket } from 'bun';
 import { z } from 'zod';
-import { OwnedCodexConnection } from '../src/agent/codex/ownedConnection.ts';
+import { OwnedCodexConnection } from '../src/agent/codex/owned/connection.ts';
+import { supportsOwnedCodexVersion } from '../src/agent/codex/owned/launch.ts';
+import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
+import { OWNED_CODEX_OMIT_NOTIFICATIONS } from '../src/agent/codex/owned/rpc.ts';
+import { OwnedCodexStatusWriter, readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
+import { readContent } from '../src/content/read.ts';
+import { ContentWriter } from '../src/content/store.ts';
+import { readEvents } from '../src/events/feed.ts';
 import {
   nativeResponseFingerprint,
   readNativeReceipt,
   writeNativeCommand,
-} from '../src/agent/codex/ownedControl.ts';
-import { supportsOwnedCodexVersion } from '../src/agent/codex/ownedLaunch.ts';
-import { ownedCodexSocket, privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
-import { OWNED_CODEX_OMIT_NOTIFICATIONS } from '../src/agent/codex/ownedRpc.ts';
-import { OwnedCodexStatusWriter, readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
-import { readContent } from '../src/content/read.ts';
-import { ContentWriter } from '../src/content/store.ts';
-import { readEvents } from '../src/events/feed.ts';
+} from '../src/runtime/response.ts';
+import { privateRuntimeDirectory } from '../src/runtime/store.ts';
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 function fixture(

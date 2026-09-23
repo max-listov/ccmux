@@ -1,7 +1,7 @@
-import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { sessionsPath } from '../config/paths.ts';
-import { removeSession } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
+import { removeSession } from '../session/registry.ts';
 import { killSession, lingeringNotice } from '../tmux/tmux.ts';
 import { log } from '../util/log.ts';
 import { refusesSelf } from './guard.ts';

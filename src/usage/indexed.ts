@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { StoredIndexSchema, transcriptIndexPath } from '../agent/transcriptIndex.ts';
+import { StoredIndexSchema, transcriptIndexPath } from '../agent/transcript/transcriptIndex.ts';
 import { aggregateUsage } from './aggregate.ts';
 import { partialUsage } from './quality.ts';
 import { UsageQuerySchema } from './schema.ts';

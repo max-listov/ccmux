@@ -1,36 +1,28 @@
-import { chmodSync, renameSync, writeFileSync } from 'node:fs';
-import { chmod, rename } from 'node:fs/promises';
+import { readFileSync, statSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { writeFileAtomic, writeFileAtomicSync } from 'stitchkit/files';
 
 /**
- * A name no other write in this process can be using.
- *
- * Process id and milliseconds are not enough, and the gap is not theoretical: two writes to the
- * same path in one millisecond — one loop, one command — chose the same temp name, and the second
- * chmod'd a file the first had already renamed away. The failure surfaces as ENOENT on the temp
- * file, which reads like a disk problem rather than a collision.
+ * Replace a file atomically — stitchkit's `writeFileAtomic`, which owns the guarantees (random
+ * staging name created exclusively, mode on the descriptor before the file is visible, fsync,
+ * rename, nothing left behind on failure) — creating the parent first, which ccmux's callers rely
+ * on and stitchkit deliberately does not do. `mode` defaults to stitchkit's `0o600`: ccmux's state
+ * directories are readable by other users of the machine, so a file readable by them is stated,
+ * never defaulted.
  */
-let sequence = 0;
-
-/**
- * Write a file atomically: write to a unique temp sibling, then rename over the
- * target. A half-write can never be observed as the live file (used for the
- * sessions file, machine.json, boot units, and the update swap).
- */
-export async function atomicWrite(path: string, text: string, mode?: number): Promise<void> {
-  const tmp = `${path}.tmp-${process.pid}-${Date.now()}-${sequence++}`;
-  await Bun.write(tmp, text);
-  // The promise forms, not the sync ones, and for the daemon's sake rather than style: a sync call
-  // runs on the event loop, so a filesystem that stalls a rename for seconds froze every schedule,
-  // control call and delivery with it — measured on a loaded machine as fifteen seconds inside
-  // `rename` on the main thread. The promise forms wait on a pool thread and the loop keeps turning.
-  if (mode !== undefined) await chmod(tmp, mode);
-  await rename(tmp, path); // atomic on the same filesystem
+export async function atomicWrite(
+  path: string,
+  data: string | Uint8Array,
+  mode?: number,
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFileAtomic(path, data, mode === undefined ? {} : { mode });
 }
 
-/** The same guarantee without an await, for callers that are synchronous all the way down. */
-export function atomicWriteSync(path: string, text: string, mode?: number): void {
-  const tmp = `${path}.tmp-${process.pid}-${Date.now()}-${sequence++}`;
-  writeFileSync(tmp, text);
-  if (mode !== undefined) chmodSync(tmp, mode);
-  renameSync(tmp, path);
+/** Copy `from` over `to` so that `to` is only ever the old file or the whole new one, keeping the
+ *  source's permission bits. A copy straight over `to` that dies midway leaves half a file — and
+ *  for the bundle backup it restores, that half file is the one the daemon must start from. */
+export function copyFileAtomic(from: string, to: string): void {
+  writeFileAtomicSync(to, readFileSync(from), { mode: statSync(from).mode & 0o777 });
 }

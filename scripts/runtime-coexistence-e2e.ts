@@ -1,9 +1,9 @@
 import { join } from 'node:path';
 import { samePrincipal, sameTarget } from '../src/chat/identity.ts';
-import { loadLedger } from '../src/chat/store.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import type { ControlNativeSnapshot } from '../src/control/schema.ts';
-import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
+import type { ControlNativeSnapshot } from '../src/control/schema/native.ts';
+import type { createInjectedControlClient } from '../src/control/transport/boundary.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import type { MachineConfig, ManagedPeer } from '../src/types.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
 import {

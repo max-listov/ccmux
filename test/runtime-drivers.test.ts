@@ -4,16 +4,17 @@ import { join } from 'node:path';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { openCodeTerminal } from '../src/agent/opencode/protocol.ts';
 import { cmdAdopt } from '../src/commands/adopt.ts';
-import type { CreateManagedInput } from '../src/commands/create.ts';
-import { createManagedSession } from '../src/commands/create.ts';
-import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
-import { ControlCreateSchema, ControlModelsReadSchema } from '../src/control/schema.ts';
+import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
+import { ControlCreateSchema } from '../src/control/schema/session.ts';
 import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
 import { readRuntimeCatalog } from '../src/runtime/catalog.ts';
 import { openCodeMessageId } from '../src/runtime/input.ts';
 import { hasNativeRuntime } from '../src/runtime/modes.ts';
 import { ManagedRuntimeStatusWriter, readManagedRuntimeStatus } from '../src/runtime/status.ts';
+import type { CreateManagedInput } from '../src/session/create.ts';
+import { createManagedSession } from '../src/session/create.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 function fixture() {

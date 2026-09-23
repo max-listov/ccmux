@@ -1,17 +1,22 @@
 import { createHash } from 'node:crypto';
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
-import { stableJson } from '../agent/launchInputs.ts';
+import { stableJson } from '../agent/launch/launchInputs.ts';
 import { preparedOpenCodeChoices } from '../agent/opencode/catalog.ts';
 import { managedPeer } from '../chat/identity.ts';
-import { blockingInbound } from '../commands/wait.ts';
+import { blockingInbound } from '../chat/inboundHold.ts';
 import { assertNoContextMutation } from '../context/store.ts';
 import { policyUnavailable } from '../policy/errors.ts';
 import { verifyApplicationPolicy } from '../policy/resolve.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 
-import { readSelection, selectionReceipt, writeSelection } from '../runtime/selection.ts';
+import {
+  initialTurnOptions,
+  readSelection,
+  selectionReceipt,
+  writeSelection,
+} from '../runtime/selection.ts';
 import {
   type AcceptedTurnOptions,
   modelSelectionLabel,
@@ -20,12 +25,12 @@ import {
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { readControlModels } from './models.ts';
-import { type ControlModel, ControlModelsReadSchema } from './schema.ts';
+import { type ControlModel, ControlModelsReadSchema } from './schema/model.ts';
 import {
   type SelectionReadSchema,
   SelectionResultSchema,
   type SelectionUpdateSchema,
-} from './selectionSchema.ts';
+} from './schema/selection.ts';
 import { controlTarget } from './target.ts';
 
 export function exactNativeTarget(
@@ -68,19 +73,7 @@ export async function currentSelection(
   const model = s.modelSelection;
   if (model === undefined)
     throw new AppError('UNAVAILABLE', 'Initial native selection has not been observed', 409);
-  if (s.agent === 'codex')
-    return {
-      revision: 0,
-      options: { runtime: 'codex', model, mode: s.launchRecipe?.collaborationMode ?? 'default' },
-    };
-  if (s.agent === 'opencode') return { revision: 0, options: { runtime: 'opencode', model } };
-  if (s.agent === 'custom') return { revision: 0, options: { runtime: 'custom', model } };
-  // Without this branch every control-plane message to a native Claude session is refused before it
-  // reaches the ledger: `message.send` reads the current selection for any native session first.
-  // Effort is a per-turn choice a caller makes, so the session default carries none: inventing one
-  // here would apply a thinking budget nobody asked for to every turn.
-  if (s.agent === 'claude') return { revision: 0, options: { runtime: 'claude', model } };
-  throw new AppError('UNSUPPORTED', 'Native selection is unavailable', 409);
+  return { revision: 0, options: initialTurnOptions(s, model) };
 }
 
 /**

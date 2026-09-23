@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildBundle } from '../scripts/bundle.ts';
 import { externalInventoryJson, externalTableLines } from '../src/commands/external.ts';
-import { ExternalInventoryJsonSchema, ExternalSessionSchema } from '../src/config/schema.ts';
+import {
+  ExternalInventoryJsonSchema,
+  ExternalSessionSchema,
+} from '../src/external/sessionSchema.ts';
 
 const THREAD = '11111111-1111-4111-8111-111111111111';
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');

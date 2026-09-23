@@ -7,7 +7,7 @@ import {
   SUPERVISOR_CLOSED_EVENT,
   writeLifecycle,
   writeMetrics,
-} from '../src/agent/sessionStatus.ts';
+} from '../src/session/status.ts';
 
 const lifecycle = (state: 'working' | 'idle', event: string) => ({ state, event, ts: 1 });
 

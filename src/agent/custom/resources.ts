@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createAgentHarnessFileResources } from 'stitchkit/agent-runtime/harness';
 import { readPrivate } from '../../attachments/files.ts';
 import { policySha256 } from '../../policy/sources.ts';
-import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
+import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import type { PreparedCustomHost } from './host.ts';
 
 /** Materialize only already-verified immutable source bytes into this registration's private root.

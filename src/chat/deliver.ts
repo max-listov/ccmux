@@ -1,25 +1,8 @@
-import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
-import {
-  type AgentProvider,
-  type ChatPaneState,
-  lastActivityMs,
-  lastTranscriptMessage,
-  providerFor,
-  readTranscript,
-} from '../agent/index.ts';
-import {
-  type ChatHoldKind,
-  clearChatHold,
-  readLifecycle,
-  writeChatHold,
-} from '../agent/sessionStatus.ts';
+import { type AgentProvider, type ChatPaneState, providerFor } from '../agent/index.ts';
 import { chatEnabledFor } from '../config/chat.ts';
-import { loadSessions } from '../config/sessions.ts';
-import { promptInvocation } from '../env.ts';
-import { lastSignOfLife } from '../events/observe.ts';
-import { paneWorkingSince } from '../events/paneActivity.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-
+import { loadSessions } from '../session/registry.ts';
+import { type ChatHoldKind, clearChatHold, writeChatHold } from '../session/status.ts';
 import {
   capturePaneStyled,
   clientTypingRecently,
@@ -27,39 +10,31 @@ import {
   listSessionNames,
   loadPasteBuffer,
   setPaneInputEnabled,
-  stripAnsi,
   submitPasteBuffer,
   submittedChatId,
 } from '../tmux/tmux.ts';
-import type {
-  ChatMessage,
-  ChatTarget,
-  MachineConfig,
-  Session,
-  TranscriptMessage,
-} from '../types.ts';
+import type { ChatMessage, MachineConfig } from '../types.ts';
+import { promptInvocation } from '../util/env.ts';
 import { log } from '../util/log.ts';
-import { deliverCodexAppMessage } from './codexApp.ts';
+import { appendAck, loadAckedIds } from './ackLog.ts';
+import { coalesce } from './coalesce.ts';
+import { loadCursors, saveCursors } from './cursors.ts';
+import { deliverAppPending } from './deliverApp.ts';
 import { formatChatInjection } from './format.ts';
-import {
-  chatTargetKey,
-  managedPeer,
-  managedPeerKey,
-  principalLabel,
-  targetLabel,
-} from './identity.ts';
+import { managedPeer, managedPeerKey, principalLabel } from './identity.ts';
+import { loadLedger } from './ledger.ts';
 import { deliverNativeRuntimePending } from './nativeRuntime.ts';
-import { deliverOwnedCodexPending } from './ownedCodex.ts';
+import { RATE_MAX_INBOUND, recentInboundCount } from './rateGuard.ts';
 import { replyRouteToSender } from './replyRoute.ts';
+import { isConditional, nextDelivery } from './settlement.ts';
 import {
-  appendAck,
-  type LedgerSlot,
-  loadAckedIds,
-  loadCursors,
-  loadLedger,
-  saveCursors,
-} from './store.ts';
-import { assistantEndedCurrentTurn, type TurnState, turnState, WHY_TEXT } from './turnState.ts';
+  armPickup,
+  chatTurnProgress,
+  finishPickup,
+  readTurnState,
+  transcriptLineCount,
+} from './turnProgress.ts';
+import { WHY_TEXT } from './turnState.ts';
 
 /**
  * The pane state, as the kind a consumer reads. `deliverable` and `unknown` are not holds — the
@@ -73,36 +48,6 @@ function holdKindOf(state: ChatPaneState): ChatHoldKind {
 // Backstop against a runaway (e.g. an A→B→A loop): a single pass delivers at most this many
 // messages fleet-wide. Combined with one-message-per-recipient-per-pass, chat can't flood a tick.
 const MAX_PER_PASS = 20;
-
-/**
- * How many waiting letters are handed over at once, and how much text that may be.
- *
- * Bounded because a session that was busy for an hour must not come back to a wall: the rest stay
- * queued and arrive at the next boundary, which is the same promise repeated rather than a new one.
- */
-const MAX_BATCH = 8;
-const MAX_BATCH_BYTES = 16_000;
-
-// Loop/rate guard: hold delivery once a recipient has received more than this many messages within
-// the rolling window. A runaway A→B→A ping-pong inflates BOTH sides' inbound rate → both pause →
-// the loop breaks. Generous for a "phone call" channel; a genuine burst just spreads over time.
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX_INBOUND = 12;
-
-/** Messages addressed to `name` sent within the window (by ledger `ts`). Pure — `nowMs` passed in. */
-export function recentInboundCount(
-  recipient: ChatTarget,
-  ledger: readonly LedgerSlot[],
-  nowMs: number,
-): number {
-  let n = 0;
-  for (const msg of ledger) {
-    if (msg === null || chatTargetKey(msg.to) !== chatTargetKey(recipient)) continue;
-    const t = Date.parse(msg.ts);
-    if (Number.isFinite(t) && nowMs - t <= RATE_WINDOW_MS) n += 1;
-  }
-  return n;
-}
 
 /** Inject a message into the recipient's pane as its next user turn, tagged so the agent knows it's
  *  a PEER message, not the human (shared framer — same tag the Stop hook uses). Bracketed paste keeps
@@ -169,246 +114,6 @@ async function deliverToPane(
 const TYPING_WINDOW_SEC = 3;
 
 /**
- * Gather what `turnState` needs from this session's pane and transcript. The IO lives here so the
- * decision itself stays pure and testable — the previous version was neither, which is how it
- * shipped waiting on an event that a killed turn can never produce.
- *
- * Silence is the evidence a turn is over, and the transcript is only half of what silence means. A
- * session four minutes into a tool call writes nothing while its pane is plainly working, so the
- * supervisor's record of when each pane was last seen working counts as activity beside the
- * transcript's own mtime. Without it, one look at the pane in the gap between a tool finishing and
- * its result being written reads as a turn nobody is coming back to — and `ccmux wait`, which is a
- * fresh process with no memory of its own, would answer "done" about a session mid-work.
- */
-export function readTurnState(
-  m: MachineConfig,
-  s: Session,
-  provider: AgentProvider,
-  pane: string,
-  nowMs: number,
-  injected?: { turnStartedMs: number; assistantAnswered: boolean },
-): TurnState {
-  const plain = stripAnsi(pane);
-  const scan = provider.scanPane(plain);
-  const inspection = provider.inspectChatPane?.(pane);
-  const lm = lastTranscriptMessage(s, m);
-  const activity = lastActivityMs(s, m);
-  const lifecycle = readLifecycle(s.name);
-  const turnStartedMs =
-    injected?.turnStartedMs ?? (lifecycle?.state === 'working' ? lifecycle.ts : null);
-  const mt = lastSignOfLife(
-    activity,
-    scan.state === 'working' ? nowMs : paneWorkingSince(m, s.name),
-    turnStartedMs,
-  );
-  return turnState({
-    paneWorking: scan.state === 'working',
-    // `ready` is a HARD gate here, so it may only be trusted from a provider whose pane detectors are
-    // calibrated. `chatDeliverable` is that marker: an agent that can say "this pane is safe to type
-    // into" has had its chrome mapped; one that cannot has not. Treating an unreliable "not drawn" as
-    // a permanent block would recreate the very hang this change removes, on another agent.
-    paneReady: provider.inspectChatPane === undefined ? true : scan.ready,
-    atMenu: scan.atPrompt !== null,
-    paneBlock:
-      inspection?.state === 'input-busy'
-        ? 'input-occupied'
-        : inspection?.state === 'unknown'
-          ? 'unknown-pane'
-          : null,
-    endedOnAssistantText:
-      injected?.assistantAnswered ?? assistantEndedCurrentTurn(lm, activity, turnStartedMs),
-    msSinceActivity: mt === null ? null : nowMs - mt,
-  });
-}
-
-export type ChatTurnProgress = 'awaiting-pickup' | 'running' | 'answered' | 'interrupted';
-
-export function chatTurnProgressFromMessages(
-  messages: readonly TranscriptMessage[],
-  messageId: string,
-): ChatTurnProgress {
-  const marker = `id: ${messageId}`;
-  let pickedUp = false;
-  let lastAfterPickup: TranscriptMessage | null = null;
-  for (const message of messages) {
-    if (
-      !pickedUp &&
-      message.role === 'user' &&
-      message.kind === 'message' &&
-      message.text?.includes(marker) === true
-    ) {
-      pickedUp = true;
-      continue;
-    }
-    if (pickedUp) lastAfterPickup = message;
-  }
-  if (!pickedUp) return 'awaiting-pickup';
-  if (
-    lastAfterPickup?.role === 'system' &&
-    lastAfterPickup.text?.includes('<turn_aborted>') === true
-  )
-    return 'interrupted';
-  return lastAfterPickup?.role === 'assistant' && lastAfterPickup.kind === 'message'
-    ? 'answered'
-    : 'running';
-}
-
-type PickupRecord = { messageId: string; transcriptLine?: number | undefined };
-type PickupRead = { totalLines: number; messages: TranscriptMessage[] };
-
-/**
- * Pickup progress from the transcript lines written since the letter was injected.
- *
- * Everything after that line is read — a tool-heavy turn may put thousands of records between the
- * marker and the answer — and nothing before it. Reading the whole history instead parsed every
- * record of the session on each delivery pass while a turn ran: on a transcript of a gigabyte, a
- * few seconds of CPU and gigabytes of memory per pass, on the daemon's one event loop. A transcript
- * now shorter than that line was rewritten, so it is searched from the first line once rather than
- * reporting a pickup that has not happened, which would inject the same letter again.
- */
-export function pickupProgressFrom(
-  readFrom: (cursor: number) => PickupRead,
-  pickup: PickupRecord,
-): ChatTurnProgress {
-  const from = pickup.transcriptLine ?? 0;
-  let read = readFrom(from);
-  if (read.totalLines < from) read = readFrom(0);
-  return chatTurnProgressFromMessages(read.messages, pickup.messageId);
-}
-
-export function chatTurnProgress(
-  m: MachineConfig,
-  s: Session,
-  pickup: PickupRecord,
-): ChatTurnProgress {
-  return pickupProgressFrom(
-    (cursor) => readTranscript(s, m, { tail: Number.MAX_SAFE_INTEGER, cursor }),
-    pickup,
-  );
-}
-
-/** The transcript's line count now: a letter injected next appears after it. */
-export function transcriptLineCount(m: MachineConfig, s: Session): number | undefined {
-  const read = readTranscript(s, m, { tail: 1 });
-  return read.available ? read.totalLines : undefined;
-}
-
-/** Persisted pre-submit transition. Cursor and pickup move in one atomic cursors-file write. */
-export function armTranscriptPickup(
-  cursors: ReturnType<typeof loadCursors>,
-  recipientKey: string,
-  pick: { msg: ChatMessage; idx: number },
-  injectedAt: string,
-  transcriptLine?: number,
-): void {
-  const conditional = isConditional(pick.msg);
-  cursors.pickups[recipientKey] = {
-    messageId: pick.msg.id,
-    injectedAt,
-    ledgerIndex: pick.idx,
-    conditional,
-    ...(transcriptLine === undefined ? {} : { transcriptLine }),
-  };
-  if (!conditional) {
-    cursors.delivered[recipientKey] = pick.idx + 1;
-    cursors.read[recipientKey] = Math.max(cursors.read[recipientKey] ?? 0, pick.idx + 1);
-  }
-}
-
-/**
- * A letter an application says a person wrote.
- *
- * An attested claim, not an authenticated identity — the ingress attests the author category and
- * nothing here has verified the human. That is enough for THIS use and for no other: it decides
- * which letter keeps its place in a full batch, which grants no authority and cannot be abused into
- * any. Deciding it by principal was the trap: `cli` means "a person or an agent at a shell" by its
- * own definition, so preferring it would prefer half the agent traffic.
- */
-const fromPerson = (msg: ChatMessage): boolean => msg.origin?.actor === 'human';
-
-/**
- * Every letter now waiting for this recipient's boundary, in the order they were written.
- *
- * The first one is what the gates above were decided on; these are the others that would otherwise
- * each cost the recipient a separate turn — and the second of them would land INSIDE the turn the
- * first had just started, which is the interruption this whole path exists to avoid.
- *
- * The batch is bounded, so something has to be the letter that does not fit, and by arrival time
- * alone that was whatever came last — a person writing to a session with a dozen queued peer
- * letters waited a whole extra turn behind chatter. So the bound cuts agent letters first: what is
- * SELECTED is ordered person-first, and what is SENT is put back in the order it was written,
- * because a conversation read out of order is worse than a letter arriving a turn late.
- *
- * The oldest waiting letter always travels, whoever wrote it. It is the one the delivery gates were
- * decided on above, and a letter that keeps losing its place to newer ones is the starvation this
- * whole queue exists to avoid.
- */
-export function coalesce(
-  ledger: readonly LedgerSlot[],
-  recipientKey: string,
-  acked: ReadonlySet<string>,
-  now: number,
-): ChatMessage[] {
-  const waiting: ChatMessage[] = [];
-  for (const msg of ledger) {
-    if (msg === null || msg.to.kind !== 'managed' || managedPeerKey(msg.to) !== recipientKey)
-      continue;
-    if (!isConditional(msg) || acked.has(msg.id) || !notBeforeDue(msg, now)) continue;
-    waiting.push(msg);
-  }
-  const [oldest, ...rest] = waiting;
-  if (oldest === undefined) return [];
-  const selected = new Set<string>();
-  let bytes = 0;
-  for (const msg of [oldest, ...rest.filter(fromPerson), ...rest.filter((m) => !fromPerson(m))]) {
-    bytes += Buffer.byteLength(msg.body);
-    if (selected.size >= MAX_BATCH || (selected.size > 0 && bytes > MAX_BATCH_BYTES)) break;
-    selected.add(msg.id);
-  }
-  return waiting.filter((msg) => selected.has(msg.id));
-}
-
-/** A message is CONDITIONAL — delivered off the in-order cursor, tracked by id — when it is deferred
- *  or carries a notBefore. Everything else is IMMEDIATE and flows through the monotonic cursor. This
- *  split is what lets a future-dated watchdog (or a held defer) NOT head-of-line-block an immediate
- *  reply that arrives behind it. */
-export function isConditional(msg: ChatMessage): boolean {
-  return msg.defer || msg.notBefore !== null;
-}
-
-/** notBefore satisfied (or absent)? An unparseable timestamp is treated as due — never trap a message
- *  forever over a bad field. Pure: `nowMs` passed in. */
-export function notBeforeDue(msg: ChatMessage, nowMs: number): boolean {
-  if (msg.notBefore === null) return true;
-  const t = Date.parse(msg.notBefore);
-  return !Number.isFinite(t) || nowMs >= t;
-}
-
-/**
- * The last hold reason logged for each App recipient.
- *
- * A held pickup is re-attempted every pass, and a condition that does not change — another client
- * holding the thread's writer while its operator works — restates itself once every three seconds
- * for as long as that work lasts. Six thousand identical lines in five hours record nothing; they
- * teach whoever greps the log that this message is noise, which is the same lesson a false "all
- * clear" teaches. So the line is written when the answer CHANGES, and again after a delivery.
- */
-const lastAppHold = new Map<string, string>();
-
-/** Is this a new answer for that recipient? Records it when it is. Pure over the map it is given,
- *  so the rule can be exercised without the module's own state. */
-export function holdChanged(seen: Map<string, string>, key: string, reason: string): boolean {
-  if (seen.get(key) === reason) return false;
-  seen.set(key, reason);
-  return true;
-}
-
-function noteAppHold(key: string, to: string, reason: string, level: 'info' | 'warn'): void {
-  if (holdChanged(lastAppHold, key, reason))
-    log[level]({ msg: 'Codex App chat pickup held', to, reason });
-}
-
-/**
  * One push-delivery pass (called by the daemon on a fast cadence). For each chat-enabled, running
  * recipient it delivers at most ONE message, choosing between two tracks:
  *  - **Immediate track** — the monotonic `delivered` cursor over NON-conditional mail, in order.
@@ -441,8 +146,7 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     const recipientKey = managedPeerKey(recipient);
     if (hasNativeRuntime(s)) {
       try {
-        const deliver = isOwnedCodex(s) ? deliverOwnedCodexPending : deliverNativeRuntimePending;
-        deliveries += await deliver(
+        deliveries += await deliverNativeRuntimePending(
           m,
           s,
           ledger,
@@ -491,59 +195,13 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         assistantAnswered: true,
       });
       if (!pickupTurn.settled) continue;
-      if (activePickup.conditional) appendAck(m, activePickup.messageId, 'daemon', recipient);
-      else if (activePickup.ledgerIndex !== null) {
-        cursors.delivered[recipientKey] = Math.max(
-          cursors.delivered[recipientKey] ?? 0,
-          activePickup.ledgerIndex + 1,
-        );
-        cursors.read[recipientKey] = Math.max(
-          cursors.read[recipientKey] ?? 0,
-          activePickup.ledgerIndex + 1,
-        );
-      }
-      const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
-      cursors.pickups = remaining;
-      await saveCursors(m, cursors);
+      await finishPickup(m, cursors, recipientKey, recipient);
       changed = false;
     }
 
-    // Track A: advance the cursor past non-recipient + conditional mail to the next IMMEDIATE to-me
-    // message (conditional mail is Track B's; skipping it here is what prevents head-of-line blocking).
-    const from = cursors.delivered[recipientKey] ?? 0;
-    let immediate: { msg: ChatMessage; idx: number } | null = null;
-    for (let i = from; i < ledger.length; i++) {
-      const msg = ledger[i];
-      if (msg?.to.kind !== 'managed' || managedPeerKey(msg.to) !== recipientKey) continue;
-      if (isConditional(msg)) continue; // owned by Track B
-      immediate = { msg, idx: i };
-      break;
-    }
-    const cursorTo = immediate ? immediate.idx : ledger.length; // reach the immediate, or catch up
-    if (cursors.delivered[recipientKey] !== cursorTo) {
-      cursors.delivered[recipientKey] = cursorTo;
-      changed = true;
-    }
-
-    // Track B (only when no immediate is pending): first time-eligible, un-delivered conditional.
-    // defer-readiness needs the pane and is checked after capture, below.
-    let conditional: { msg: ChatMessage; idx: number } | null = null;
-    if (!immediate) {
-      for (let i = 0; i < ledger.length; i++) {
-        const msg = ledger[i];
-        if (
-          msg?.to.kind !== 'managed' ||
-          managedPeerKey(msg.to) !== recipientKey ||
-          !isConditional(msg)
-        )
-          continue;
-        if (acked.has(msg.id) || !notBeforeDue(msg, now)) continue;
-        conditional = { msg, idx: i };
-        break;
-      }
-    }
-
-    const pick = immediate ?? conditional;
+    // Defer-readiness needs the pane and is checked after capture, below.
+    const { pick, moved } = nextDelivery(ledger, recipientKey, cursors, acked, now);
+    if (moved) changed = true;
     if (pick === null) continue; // nothing to deliver to s
 
     if (recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND) {
@@ -615,13 +273,9 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
         : [pick.msg];
     const delivery = await deliverToPane(m, s.name, batch, provider, async () => {
       if (!transcriptPickup) return;
-      armTranscriptPickup(
-        cursors,
-        recipientKey,
-        pick,
-        new Date(now).toISOString(),
-        transcriptLineCount(m, s),
-      );
+      armPickup(cursors, recipientKey, pick, new Date(now).toISOString(), {
+        transcriptLine: transcriptLineCount(m, s),
+      });
       await saveCursors(m, cursors);
     });
     if (delivery.hold !== null) {
@@ -657,122 +311,9 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
     });
   }
 
-  // App threads are ledger peers but not tmux sessions. The shared App Server is their only writer
-  // boundary; delivery uses the immutable client message id as its crash-safe pickup proof.
-  const appRecipients = new Map<string, Extract<ChatTarget, { kind: 'codex-app' }>>();
-  for (const slot of ledger) {
-    if (slot?.to.kind !== 'codex-app' || slot.to.machine !== m.rcPrefix) continue;
-    appRecipients.set(chatTargetKey(slot.to), slot.to);
-  }
-  for (const [recipientKey, recipient] of appRecipients) {
-    if (deliveries >= MAX_PER_PASS) break;
-    const activePickup = cursors.pickups[recipientKey];
-    if (activePickup !== undefined) {
-      const activeMessage = ledger.find((slot) => slot?.id === activePickup.messageId);
-      if (activeMessage === null || activeMessage === undefined) continue;
-      try {
-        const text = formatChatInjection(activeMessage, {
-          cli: promptInvocation(),
-          reply: replyRouteToSender(m, activeMessage.from),
-        });
-        const result = await deliverCodexAppMessage(m, activeMessage, text);
-        if (!result.delivered) {
-          noteAppHold(recipientKey, targetLabel(recipient), result.reason, 'info');
-          continue;
-        }
-        if (activePickup.conditional) appendAck(m, activePickup.messageId, 'daemon', recipient);
-        lastAppHold.delete(recipientKey);
-        const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
-        cursors.pickups = remaining;
-        await saveCursors(m, cursors);
-        deliveries += 1;
-        log.info({
-          msg: 'Codex App chat pickup completed',
-          to: targetLabel(recipient),
-          duplicate: result.duplicate,
-        });
-      } catch (error) {
-        noteAppHold(
-          recipientKey,
-          targetLabel(recipient),
-          `unavailable — barrier retained: ${error instanceof Error ? error.message : String(error)}`,
-          'warn',
-        );
-      }
-      continue;
-    }
-    const from = cursors.delivered[recipientKey] ?? 0;
-    let immediate: { msg: ChatMessage; idx: number } | null = null;
-    for (let i = from; i < ledger.length; i++) {
-      const msg = ledger[i];
-      if (!msg || chatTargetKey(msg.to) !== recipientKey || isConditional(msg)) continue;
-      immediate = { msg, idx: i };
-      break;
-    }
-    const cursorTo = immediate ? immediate.idx : ledger.length;
-    if (cursors.delivered[recipientKey] !== cursorTo) {
-      cursors.delivered[recipientKey] = cursorTo;
-      changed = true;
-    }
-    let conditional: { msg: ChatMessage; idx: number } | null = null;
-    if (!immediate) {
-      for (let i = 0; i < ledger.length; i++) {
-        const msg = ledger[i];
-        if (!msg || chatTargetKey(msg.to) !== recipientKey || !isConditional(msg)) continue;
-        if (acked.has(msg.id) || !notBeforeDue(msg, now)) continue;
-        conditional = { msg, idx: i };
-        break;
-      }
-    }
-    const pick = immediate ?? conditional;
-    if (pick === null) continue;
-    if (recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND) {
-      log.warn({
-        msg: 'chat rate limit — holding App delivery (possible loop)',
-        to: targetLabel(recipient),
-      });
-      continue;
-    }
-    if (isConditional(pick.msg) && loadAckedIds(m).has(pick.msg.id)) continue;
-    try {
-      const text = formatChatInjection(pick.msg, {
-        cli: promptInvocation(),
-        reply: replyRouteToSender(m, pick.msg.from),
-      });
-      armTranscriptPickup(cursors, recipientKey, pick, new Date(now).toISOString());
-      await saveCursors(m, cursors);
-      // This barrier was created in this process immediately before the first submission, so there
-      // is no prior accepted turn to scan for. A restarted process takes the activePickup path above
-      // and performs the persisted client-id proof before it retries.
-      const result = await deliverCodexAppMessage(m, pick.msg, text, undefined, async () => false);
-      if (!result.delivered) {
-        log.info({
-          msg: 'Codex App chat delivery held',
-          to: targetLabel(recipient),
-          from: principalLabel(pick.msg.from),
-          reason: result.reason,
-        });
-        continue;
-      }
-      if (isConditional(pick.msg)) appendAck(m, pick.msg.id, 'daemon', recipient);
-      const { [recipientKey]: _completed, ...remaining } = cursors.pickups;
-      cursors.pickups = remaining;
-      changed = true;
-      deliveries += 1;
-      log.info({
-        msg: 'chat delivered to Codex App',
-        from: principalLabel(pick.msg.from),
-        to: targetLabel(recipient),
-        duplicate: result.duplicate,
-      });
-    } catch (error) {
-      log.warn({
-        msg: 'Codex App chat delivery unavailable — not acked',
-        to: targetLabel(recipient),
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  const app = await deliverAppPending(m, ledger, cursors, acked, now, MAX_PER_PASS - deliveries);
+  deliveries += app.deliveries;
+  changed ||= app.changed;
 
   if (changed) await saveCursors(m, cursors);
 }

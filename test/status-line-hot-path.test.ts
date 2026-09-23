@@ -8,7 +8,7 @@ import { join } from 'node:path';
  *
  * Measured on the built bundle: 127 ms of CPU a call, of which 60 ms is parsing the bundle and the
  * rest was evaluating the module graph this command reached for six numbers — `zod` costs about as
- * much to evaluate as everything else the command does, and `sessionStatus.ts` pulls the agent
+ * much to evaluate as everything else the command does, and `session/status.ts` pulls the agent
  * barrel, chat types and launch stamps behind it. At 29 renders a minute across seven sessions that
  * graph was costing about 2 % of a core to write a file.
  *
@@ -22,7 +22,7 @@ const source = readFileSync(
   join(import.meta.dir, '..', 'src', 'commands', 'statusLine.ts'),
   'utf8',
 );
-const leaf = readFileSync(join(import.meta.dir, '..', 'src', 'agent', 'metricsFile.ts'), 'utf8');
+const leaf = readFileSync(join(import.meta.dir, '..', 'src', 'session', 'metricsFile.ts'), 'utf8');
 
 const imports = (text: string): string[] =>
   [...text.matchAll(/^import[^']*'([^']+)';$/gm)].map((match) => match[1] as string);
@@ -30,13 +30,13 @@ const imports = (text: string): string[] =>
 test('the status-line command imports no schema library and no agent graph', () => {
   const specifiers = imports(source);
   expect(specifiers).not.toContain('zod');
-  expect(specifiers).not.toContain('../agent/sessionStatus.ts');
+  expect(specifiers).not.toContain('../session/status.ts');
   // What it may reach for: node built-ins, the metrics leaf, and the vendor-mark leaf. Anything
   // else is a new graph on the hottest path this tool has, and belongs behind a deliberate
   // measurement — which is how `vendor.ts` got here: it imports nothing at all, and evaluating it
   // measured 0.46–0.51 ms against the 5.1–6.0 ms of `metricsFile.ts`, which this list already
   // allows. A module that grows an import stops being that, and this test is where it is caught.
-  const leaves = ['../agent/metricsFile.ts', '../agent/vendor.ts'];
+  const leaves = ['../session/metricsFile.ts', '../inventory/vendor.ts'];
   for (const specifier of specifiers)
     expect(specifier.startsWith('node:') || leaves.includes(specifier)).toBe(true);
 });
@@ -53,15 +53,12 @@ test('the metrics leaf stays a leaf', () => {
 });
 
 test('the vendor-mark leaf stays a leaf', () => {
-  const vendor = readFileSync(join(import.meta.dir, '..', 'src', 'agent', 'vendor.ts'), 'utf8');
+  const vendor = readFileSync(join(import.meta.dir, '..', 'src', 'inventory', 'vendor.ts'), 'utf8');
   expect(imports(vendor)).toEqual([]); // it is on the status line's path: no graph behind it
 });
 
 test('one implementation of the metrics file, re-exported rather than copied', () => {
-  const status = readFileSync(
-    join(import.meta.dir, '..', 'src', 'agent', 'sessionStatus.ts'),
-    'utf8',
-  );
+  const status = readFileSync(join(import.meta.dir, '..', 'src', 'session', 'status.ts'), 'utf8');
   // The heavy module keeps the names its callers use, and gets them from the leaf: a second reader
   // or writer of this file would be a second authority on its format, which is how a field arrives
   // in one place and vanishes in another.
@@ -99,13 +96,15 @@ test('the status-line program answers exactly as the bundled verb does', async (
 
   const run = async (argv: string[], home: string) => {
     mkdirSync(home, { recursive: true });
+    // The location here is chosen through XDG, so the suite's own state root must not override it.
+    const { CCMUX_STATE_DIR: _suiteRoot, ...inherited } = process.env;
     const proc = Bun.spawn(argv, {
       stdin: new Response(payload),
       stdout: 'pipe',
       stderr: 'pipe',
       cwd: home,
       env: {
-        ...process.env,
+        ...inherited,
         HOME: home,
         XDG_STATE_HOME: join(home, 'state'),
         CCMUX_SESSION: 'sl-equal',

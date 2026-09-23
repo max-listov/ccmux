@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema } from '../config/schema.ts';
+import { AgentKindSchema } from '../chat/identitySchema.ts';
 
 export const STATUS_MAX_ITEMS = 256;
 export const STATUS_MAX_BYTES = 512 * 1024;

@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildControlClient } from '../scripts/build-control-client.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { CONTROL_MAX_READERS } from '../src/control/schema.ts';
-import { createControlServer } from '../src/control/server.ts';
+import { CONTROL_MAX_READERS } from '../src/control/schema/core.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
 import { VERSION } from '../src/util/version.ts';
 import { makeMachine } from './helpers.ts';
 

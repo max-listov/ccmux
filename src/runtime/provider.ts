@@ -1,6 +1,6 @@
 import type { AgentProvider } from '../agent/index.ts';
+import { sessionEnvRecipe } from '../agent/launch/sessionEnv.ts';
 import { preflightOpenCode } from '../agent/opencode/server.ts';
-import { sessionEnvRecipe } from '../agent/sessionEnv.ts';
 import { CHAT_CREDENTIAL_ENV } from '../chat/auth.ts';
 
 /** Native runtimes have no JSONL/pane parser. Their observations use the prepared native feed. */

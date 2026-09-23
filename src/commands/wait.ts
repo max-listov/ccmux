@@ -1,18 +1,16 @@
 import { providerFor } from '../agent/index.ts';
-import { clearWaiting, readChatHold, writeWaiting } from '../agent/sessionStatus.ts';
-import { chatTurnProgress, notBeforeDue, readTurnState } from '../chat/deliver.ts';
-import { holdReason } from '../chat/holdReason.ts';
+import { loadCursors } from '../chat/cursors.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
-import { pickPendingDelivery } from '../chat/pendingDelivery.ts';
-import { loadAckedIds, loadCursors, loadLedger, unreadFor } from '../chat/store.ts';
+import { blockingInbound, mailHold } from '../chat/inboundHold.ts';
+import { chatTurnProgress, readTurnState } from '../chat/turnProgress.ts';
 import { type TurnWhy, WHY_TEXT } from '../chat/turnState.ts';
-import { chatEnabledFor } from '../config/chat.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
+import { clearWaiting, writeWaiting } from '../session/status.ts';
 import { capturePaneStyled, hasSession } from '../tmux/tmux.ts';
-import type { ChatMessage, MachineConfig, Session } from '../types.ts';
+import { parseFlags } from './flags.ts';
 
 /**
  * `ccmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
@@ -52,112 +50,22 @@ export interface WaitOpts {
   quiet: boolean;
 }
 
-/** Pure arg parsing — `--timeout N` (seconds), `--quiet`; bad/missing value falls back to the default. */
-export function parseWaitOpts(args: string[]): WaitOpts {
-  let timeoutSec = DEFAULT_TIMEOUT_SEC;
-  let quiet = false;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--timeout') {
-      const n = Number.parseInt(args[++i] ?? '', 10);
-      if (Number.isFinite(n) && n > 0) timeoutSec = n;
-    } else if (a === '--quiet' || a === '-q') quiet = true;
-  }
-  return { timeoutSec, quiet };
+/** `--timeout N` (whole seconds from 1) and `--quiet`. A timeout that is not one is refused, not
+ *  replaced by the default: a caller who asked for a bound and silently got five minutes waits on a
+ *  number it never chose. */
+export function parseWaitOpts(args: string[]): WaitOpts & { name: string; flagArgs: string[] } {
+  const flags = parseFlags('wait', args, [1, 1]);
+  return {
+    name: flags.positionals[0] as string,
+    timeoutSec: flags.int('timeout') ?? DEFAULT_TIMEOUT_SEC,
+    quiet: flags.bool('quiet'),
+    flagArgs: flags.flagArgs,
+  };
 }
 
-/**
- * Chat addressed to this session that is both undelivered AND actually on its way — read fresh on
- * every poll, because mail can arrive mid-wait and a wait that ignored it would answer about the
- * wrong turn.
- *
- * Two kinds of mail are deliberately NOT counted, because waiting on them is waiting on something
- * that cannot happen now (or ever):
- *  - **not due yet** — a router arms its own watchdog with `--after 600`; counting that would make
- *    every `wait` on that router useless for ten minutes while it sits idle;
- *  - **never deliverable** — the recipient has chat off, or its agent has no way to receive chat, so
- *    the daemon skips it forever. `holdReason` already calls this permanent; `wait` must agree.
- */
-export function mailBlocksSettle(
-  unread: ChatMessage[],
-  opts: { chatEnabled: boolean; canReceiveChat: boolean; nowMs: number },
-): ChatMessage[] {
-  if (!opts.chatEnabled || !opts.canReceiveChat) return [];
-  return unread.filter((msg) => notBeforeDue(msg, opts.nowMs));
-}
-
-/**
- * Why the mail this session is waiting on has not landed.
- *
- * `wait` runs ON the machine that holds the message — everything needed to answer this is a file
- * away, and saying only "waiting on undelivered mail" threw it away. That silence is what the
- * timeout costs: a caller reads it as "the peer is thinking", reports "waiting for a reply", and the
- * peer meanwhile has nothing to reply to. Measured on this fleet: a message held for eleven hours
- * behind a parked composer, three more sent on top of it, and a working session spent reporting a
- * wait that could never end.
- */
-function mailHold(
-  m: MachineConfig,
-  s: Session,
-  blocking: ChatMessage[],
-  nowMs: number,
-): string | null {
-  const first = blocking[0];
-  if (first === undefined) return null;
-  try {
-    return holdReason(first, {
-      recipient: s,
-      chatEnabled: chatEnabledFor(s, m),
-      running: true, // `wait` only reaches this with the session present
-      nowMs,
-      chatDeliverable: providerFor(s).inspectChatPane !== undefined,
-      daemonHold: readChatHold(s.name),
-    }).text;
-  } catch {
-    return null; // diagnosis is a courtesy; never let it break the wait itself
-  }
-}
-
-export function blockingInbound(m: MachineConfig, s: Session, nowMs: number): ChatMessage[] {
-  try {
-    if (hasNativeRuntime(s)) {
-      if (!chatEnabledFor(s, m)) return [];
-      const key = managedPeerKey(managedPeer(m.rcPrefix, s));
-      // Reading inbox does not cancel daemon delivery. The delivery cursor, not the
-      // human/read cursor, decides whether another native turn is still due.
-      const pick = pickPendingDelivery(
-        loadLedger(m),
-        key,
-        loadCursors(m).delivered[key] ?? 0,
-        loadAckedIds(m),
-        nowMs,
-      ).pick;
-      return pick === null ? [] : [pick.msg];
-    }
-    return mailBlocksSettle(
-      unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map(
-        (u) => u.msg,
-      ),
-      {
-        chatEnabled: chatEnabledFor(s, m),
-        canReceiveChat: providerFor(s).inspectChatPane !== undefined,
-        nowMs,
-      },
-    );
-  } catch {
-    // Chat is optional; a missing or unreadable ledger must never break a plain `wait`.
-    return [];
-  }
-}
-
-export async function cmdWait(name: string | undefined, args: string[] = []): Promise<number> {
-  if (!name) {
-    console.log(
-      'usage: ccmux wait <name> [--timeout N] [--quiet]   (exit 0 = between turns, 2 = timed out)',
-    );
-    return 1;
-  }
+export async function cmdWait(args: string[] = []): Promise<number> {
   const opts = parseWaitOpts(args);
+  const name = opts.name;
   // Declared BEFORE forwarding, and this is the whole subtlety: a cross-machine wait forwards, so
   // from there on the polling runs on the TARGET's machine and has no idea who asked. The waiter is
   // known only here, from the environment of the session that invoked the command — the same
@@ -183,7 +91,7 @@ export async function cmdWait(name: string | undefined, args: string[] = []): Pr
     process.once('SIGTERM', onSignal);
   }
   try {
-    return await runWait(name, args, opts);
+    return await runWait(name, opts);
   } finally {
     if (keepalive) clearInterval(keepalive);
     if (waiting) {
@@ -212,12 +120,12 @@ async function refreshWaiting(w: WaitingDeclaration): Promise<void> {
   });
 }
 
-async function runWait(name: string, args: string[], opts: WaitOpts): Promise<number> {
+async function runWait(name: string, opts: WaitOpts & { flagArgs: string[] }): Promise<number> {
   // The remote `wait` blocks for ITS OWN timeout, so the ssh deadline has to sit above it. With the
   // transport default (30s) a perfectly healthy link was killed mid-wait and reported as
   // "transport failed" for any worker that took longer — turning the primary cross-machine use case
   // into a false alarm. +30s covers connection setup and the remote's own exit.
-  const fwd = await forwardIfRemote(name, 'wait', args, {
+  const fwd = await forwardIfRemote(name, 'wait', opts.flagArgs, {
     timeoutMs: (opts.timeoutSec + 30) * 1000,
   });
   if (fwd.done) return fwd.code;

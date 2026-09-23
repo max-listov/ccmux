@@ -6,7 +6,7 @@ import {
   turnState,
   WHY_TEXT,
 } from '../src/chat/turnState.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 
 const facts = (over: Partial<TurnFacts> = {}): TurnFacts => ({
   paneWorking: false,

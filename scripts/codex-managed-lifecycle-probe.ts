@@ -11,8 +11,10 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Glob } from 'bun';
-import { ListJsonSchema, MachineConfigSchema, SessionSchema } from '../src/config/schema.ts';
-import { readSession } from '../src/lib.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { ListJsonSchema } from '../src/inventory/listSchema.ts';
+import { SessionSchema } from '../src/session/schema.ts';
+import { readSession } from '../src/session-reader.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-lifecycle-'));

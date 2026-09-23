@@ -8,8 +8,9 @@
 // Load/syntax failures never reach this code — `update` preflights the candidate bundle
 // before swapping (see update.ts). This guard catches the rarer runtime crash loop.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { copyFileAtomic } from './atomic.ts';
 import { log } from './log.ts';
 
 export const MAX_ATTEMPTS = 3;
@@ -44,7 +45,7 @@ export function bootGuardStart(counterFile: string, appBundle: string): 'ok' | '
     return 'ok';
   }
   try {
-    copyFileSync(bak, appBundle);
+    copyFileAtomic(bak, appBundle);
     clearBootGuard(counterFile);
     log.error({ msg: 'boot-guard: daemon crash-looped — reverted bundle from .bak', attempts });
     return 'revert';

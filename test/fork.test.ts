@@ -6,7 +6,7 @@ import { detectFork, lastMessageMs } from '../src/agent/claude/fork.ts';
 import { encodeDir } from '../src/agent/claude/resume.ts';
 import { forkedUuid } from '../src/agent/index.ts';
 import { sessionsPath } from '../src/config/paths.ts';
-import { loadSessions, updateSessionUuid } from '../src/config/sessions.ts';
+import { loadSessions, updateSessionUuid } from '../src/session/registry.ts';
 import type { MachineConfig } from '../src/types.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 

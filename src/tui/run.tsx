@@ -1,6 +1,6 @@
 import { render } from 'ink';
 import { loadMachineConfig } from '../config/machine.ts';
-import { tmuxArgv } from '../tmux/tmux.ts';
+import { tmuxArgv } from '../tmux/argv.ts';
 import type { MachineConfig } from '../types.ts';
 import { LOG_FILE, log, setStderrLogging } from '../util/log.ts';
 import type { Intent } from './App.tsx';

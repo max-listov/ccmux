@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { preflightBundle } from '../src/commands/update.ts';
+import { preflightBundle } from '../src/release/update.ts';
 
 // preflightBundle runs `bun <path> version` and checks the printed version. We build tiny
 // fake "bundles" (plain bun scripts) to exercise the three outcomes without a real build.

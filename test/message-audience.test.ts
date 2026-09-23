@@ -3,17 +3,12 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildEnvelope } from '../src/chat/compose.ts';
+import { loadCursors, saveCursors } from '../src/chat/cursors.ts';
 import { rowFromLedgerRecord, rowFromOutbound } from '../src/chat/fleetLog.ts';
 import { externalTarget, servicePrincipal } from '../src/chat/identity.ts';
+import { appendMessage, appendMessageOnce, loadLedger } from '../src/chat/ledger.ts';
 import { rowsAfter, ZERO_CURSOR } from '../src/chat/logFeed.ts';
-import {
-  appendMessage,
-  appendMessageOnce,
-  chatPaths,
-  loadCursors,
-  loadLedger,
-  saveCursors,
-} from '../src/chat/store.ts';
+import { chatPaths } from '../src/chat/store.ts';
 import { mirrorPending } from '../src/chat/telegram.ts';
 import { makeChatMessage, makeMachine, makeOwner, makePeer } from './helpers.ts';
 

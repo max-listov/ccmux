@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { scanPane } from '../src/agent/claude/pane.ts';
-import { resolveLiveState } from '../src/agent/sessionStatus.ts';
 import { turnState } from '../src/chat/turnState.ts';
+import { resolveLiveState } from '../src/session/status.ts';
 
 // Real captured chrome (ansi-stripped) from a booted claude pane — the ready marker is the
 // permission-mode footer while idle, the interrupt hint while working. Both are claude-native and

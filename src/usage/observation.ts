@@ -1,6 +1,6 @@
 import { createManagedSchedule, type ManagedScheduleClock } from 'stitchkit/application';
-import { loadSessions } from '../config/sessions.ts';
-import type { ExternalStatusPublisher } from '../external/resident-publisher.ts';
+import type { ExternalStatusPublisher } from '../external/residentPublisher.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { pendingUsageIndexes } from './queue.ts';

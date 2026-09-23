@@ -4,8 +4,8 @@ import { resolveControlLaunchRecipe } from '../../config/launchRecipes.ts';
 import { MAX_POLICY_BYTES, readPolicySource } from '../../policy/sources.ts';
 import { modelSelectionLabel } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { stableJson } from '../launchInputs.ts';
-import { isReservedEnvKey, sessionEnvRecipe } from '../sessionEnv.ts';
+import { stableJson } from '../launch/launchInputs.ts';
+import { isReservedEnvKey, sessionEnvRecipe } from '../launch/sessionEnv.ts';
 import type { CustomLaunchConfig } from './config.ts';
 
 export function prepareCustomHost(

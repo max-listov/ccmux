@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 import { readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { steerNativeTurn } from '../src/steering/service.ts';
 import { readSteeringJournal, writeSteeringJournal } from '../src/steering/store.ts';
 import { steeringFixture } from './steering-fixture.test.ts';

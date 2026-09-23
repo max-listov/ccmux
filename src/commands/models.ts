@@ -3,6 +3,7 @@ import { registrySettled, verdictLines, verifyCustomRegistry } from '../agent/cu
 import { resolveControlLaunchRecipe } from '../config/launchRecipes.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { printLine } from '../util/stdout.ts';
+import { parseFlags } from './flags.ts';
 
 /**
  * Check a host's declared model registry against the provider that must serve it.
@@ -12,13 +13,9 @@ import { printLine } from '../util/stdout.ts';
  * runtime — which is exactly the trade this check exists to avoid making.
  */
 export async function cmdModels(args: string[]): Promise<number> {
-  const json = args.includes('--json');
-  const positional = args.filter((arg) => !arg.startsWith('--'));
-  const recipeId = positional[0];
-  if (!recipeId || args.some((arg) => arg.startsWith('--') && arg !== '--json')) {
-    console.error('usage: ccmux models <launch-recipe-id> [--json]');
-    return 1;
-  }
+  const flags = parseFlags('models', args, [1, 1]);
+  const json = flags.bool('json');
+  const recipeId = flags.positionals[0] as string;
   const m = loadMachineConfig();
   const recipe = m.launchRecipes[recipeId];
   if (!recipe?.custom) {

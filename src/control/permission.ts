@@ -9,7 +9,7 @@ import type {
   ControlPermissionReadSchema,
   ControlPermissionResultSchema,
   ControlPermissionUpdateSchema,
-} from './schema.ts';
+} from './schema/runtimeOps.ts';
 import { controlTarget } from './target.ts';
 
 /**

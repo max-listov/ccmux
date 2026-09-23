@@ -4,10 +4,10 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cliPrincipal, managedPeer } from '../src/chat/identity.ts';
-import { appendMessage, loadLedger } from '../src/chat/store.ts';
+import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
 import { anonymousRemoteWarning } from '../src/commands/messagePeers.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { sessionsPath } from '../src/config/paths.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
 import { communicationAuthorizationFile } from './communication-fixture.ts';
 import { makeChatMessage, makeCli, makeSession } from './helpers.ts';
 

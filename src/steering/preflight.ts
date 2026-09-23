@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { ThreadStatusSchema } from '../agent/codex/appServer.ts';
-import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
+import { isOwnedCodex } from '../agent/codex/owned/paths.ts';
 import type { CodexAppRpc } from '../agent/codex/rpc.ts';
+import { loadCursors } from '../chat/cursors.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
-import { loadCursors, loadLedger } from '../chat/store.ts';
+import { loadLedger } from '../chat/ledger.ts';
 import { assertNoContextMutation } from '../context/store.ts';
 import { validateTurnOptions } from '../control/selection.ts';
 import { controlTarget } from '../control/target.ts';

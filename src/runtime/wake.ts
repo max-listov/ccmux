@@ -1,11 +1,11 @@
 import { type FSWatcher, lstatSync, type WatchListener, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createRevisionSignal } from 'stitchkit/application';
-import { nativeCommandPath } from '../agent/codex/ownedControl.ts';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import { pendingSessionsPath, sessionsPath } from '../config/paths.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { nativeCommandPath } from './response.ts';
 import { managedRuntimeRoot } from './status.ts';
+import { privateRuntimeDirectory } from './store.ts';
 
 function fileStamp(path: string): string | null {
   try {

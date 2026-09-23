@@ -3,15 +3,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { encodeDir } from '../src/agent/claude/resume.ts';
+import { managedPeerKey } from '../src/chat/identity.ts';
+import { ChatCursorsSchema } from '../src/chat/messageSchema.ts';
+import { unreadFor } from '../src/chat/store.ts';
 import {
-  armTranscriptPickup,
+  armPickup,
   chatTurnProgress,
   chatTurnProgressFromMessages,
   transcriptLineCount,
-} from '../src/chat/deliver.ts';
-import { managedPeerKey } from '../src/chat/identity.ts';
-import { unreadFor } from '../src/chat/store.ts';
-import { ChatCursorsSchema } from '../src/config/schema.ts';
+} from '../src/chat/turnProgress.ts';
 import type { TranscriptMessage } from '../src/types.ts';
 import { makeChatMessage, makeMachine, makePeer, makeSession } from './helpers.ts';
 
@@ -93,7 +93,7 @@ test('crash after durable arm keeps one pickup barrier and hides the same ledger
   const msg = makeChatMessage({ id: ID, to: recipient });
   const cursors = ChatCursorsSchema.parse({});
   const key = managedPeerKey(recipient);
-  armTranscriptPickup(cursors, key, { msg, idx: 0 }, '2026-08-26T00:00:00.000Z', 42);
+  armPickup(cursors, key, { msg, idx: 0 }, '2026-08-26T00:00:00.000Z', { transcriptLine: 42 });
 
   // JSON round-trip models a daemon crash/restart between the atomic cursor write and Enter.
   const restarted = ChatCursorsSchema.parse(JSON.parse(JSON.stringify(cursors)));

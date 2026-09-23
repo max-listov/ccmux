@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { cacheBusted, decideUpdate } from '../src/commands/update.ts';
+import { cacheBusted, decideUpdate } from '../src/release/update.ts';
 
 const base = {
   force: false,

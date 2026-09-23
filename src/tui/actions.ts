@@ -8,12 +8,12 @@ import {
   LiveWritersError,
   takeoverAdopt,
   takeoverCodexExternal,
-} from '../commands/adopt.ts';
-import { createManagedSession } from '../commands/create.ts';
-import { removeSession } from '../config/sessions.ts';
-import { SELF_ARGV } from '../env.ts';
+} from '../session/adopt.ts';
+import { createManagedSession } from '../session/create.ts';
+import { removeSession } from '../session/registry.ts';
 import { capturePane, killSession, sendKeysLiteral, sendKeysNamed } from '../tmux/tmux.ts';
 import type { AgentKind, MachineConfig, Session } from '../types.ts';
+import { SELF_ARGV } from '../util/env.ts';
 import { runDetached } from '../util/spawn.ts';
 import type { DiscoveredSession } from './discover.ts';
 

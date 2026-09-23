@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { shellJoin } from '../util/shellQuote.ts';
-import { run, runWithInput } from '../util/spawn.ts';
+import { run } from '../util/spawn.ts';
 import { writeErr, writeOut } from '../util/stdout.ts';
 import { isRemotePeer, remotePeers, runRemoteAdapter } from './remoteAdapter.ts';
 import { fallbackIsNew, routeRecovered } from './routeState.ts';
@@ -104,10 +104,10 @@ export async function runRemote(
     cmd,
   ];
   const timeoutMs = opts?.timeoutMs ?? 30_000;
-  const r =
-    opts?.stdin !== undefined
-      ? await runWithInput(full, opts.stdin, { timeoutMs })
-      : await run(full, { timeoutMs });
+  const r = await run(full, {
+    timeoutMs,
+    ...(opts?.stdin === undefined ? {} : { input: opts.stdin }),
+  });
   const transportFailed = r.timedOut === true || r.code === SSH_EXIT_TRANSPORT;
   return {
     code: r.code,

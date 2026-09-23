@@ -6,6 +6,156 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- An owned Codex session (`--runtime app-server`) now receives mail and interruption through its own
+  owner, like every other native runtime: the daemon queues the letter in the session's input slot and
+  the owner — the process in the session's pane — starts the turn, and an interrupt goes through the
+  interrupt mailbox. The owner holds the pane's input while it checks the composer, since a person may
+  be typing in the Codex client there; a lost `turn/start` reply is settled from the provider's record
+  and never sent twice. The daemon no longer talks to an owned Codex runtime directly. **Owned Codex
+  sessions have to be restarted after updating** (`ccmux restart <name>`): an owner started by an
+  earlier version does not read the input slot, and a letter left untaken beside an idle runtime now
+  says so, naming that command.
+- `msg` no longer drops a letter for sharing a `--task` with an earlier one. Waiting for the
+  recipient's turn boundary became the default for managed sessions, and the send path for them
+  still replaced any waiting letter under the same task — so of two ordinary letters sent while the
+  recipient was busy, only the second arrived. Only a `--after` timer replaces its predecessor now,
+  on every path.
+- Claude, Codex and OpenCode apply an approval or input response through one reader. Codex now
+  records `uncertain` before answering its server, as the other two did, so a lost acknowledgement is
+  never answered a second time; it also refuses an answer that is not one of a question's options
+  when the question takes no free answer. A refusal names its reason (`request-is-not-pending`,
+  `answer-is-not-available`, …) instead of the single `request-identity-mismatch` two runtimes used.
+- A stopping daemon's external status stream now says `daemon-stopped` before it ends. It closed its
+  readers first, so the call that should have said so found the publisher already closed and the
+  last snapshot a reader saw was still `live`.
+- Releases are signed, and self-update installs only a release signed by the key compiled into
+  ccmux (`src/release/trust.ts`; the private half is the CI secret `CCMUX_RELEASE_SIGNING_KEY`).
+  `release.json` is now a signed stitchkit build manifest (`name`, `commit`, `builtAt`, `assets`,
+  `signature`) and keeps its flat fields (`version`, `notes`, `sha256`, `url`, `releasedAt`), so an
+  earlier ccmux and the install script update to it as before; from this version on, an unsigned or
+  foreign-signed release, or one whose assets were changed after signing, is refused before
+  anything is downloaded. A feed its own operator signs is trusted with `releaseTrustKeys` in
+  `machine.json`. CI refuses to publish a release it cannot sign.
+- Self-update goes through stitchkit's `applyCliUpdate`. The download is bounded in size and time
+  and refused for a non-https URL or a private host; the new bundle is started (`bun <candidate>
+  version`, which must report the release's version) before it replaces anything, and a candidate
+  that fails leaves the live bundle and its backup untouched. A feed on the local network is allowed
+  only with `releaseAllowPrivateHosts: true` in `machine.json`. `ccmux update --rollback` restores
+  the backup only if it is the one recorded when it was taken (`ccmux.js.bak.sha256`); a backup taken
+  by an earlier ccmux, which recorded none, is restored as it is. `bun scripts/release.ts --local`
+  (a `file://` release) is gone: a local build is tested with `bun run stage` + `ccmux update`.
+- Rolling back — by `ccmux update --rollback` or by the boot guard after a crash loop — puts the
+  backup back as a whole file or not at all. Both copied it straight over the live bundle, so a
+  revert that died midway left half a bundle — the one file the daemon must start from.
+- Every state file is written by stitchkit's `writeFileAtomic`: its mode is set before it is
+  visible, it is synced before the rename, and a failed write leaves nothing beside the target.
+  Files without a stated mode are now `0600` rather than `0644` — ccmux's state, config and cache
+  directories are readable by other local users, and a file written `0644` and narrowed afterwards
+  was readable by them in between.
+- Locks between ccmux processes (the session registry, cursors, mailboxes, the bundle update, …)
+  are stitchkit's `withExclusiveLock`: a file recording its owner instead of a directory. A process
+  of an earlier ccmux still takes the directory form at the same path, and the two exclude each
+  other; a directory left by a dead earlier process is cleared, one held by a live one is waited for.
+- Dependencies: stitchkit 0.94.1, `ai` 7.0.111, `@opencode-ai/sdk` 1.18.32; development on Bun 1.4.2,
+  as CI and the fleet already were.
+- The control client (`ccmux/control-client`) exports the communication authorization and receipt schemas the service
+  client already had, so its users can validate what they send. Both clients take their shared
+  schema exports from one module.
+
+- A stopped owned-Codex session keeps its account row, as every other native runtime does: its status
+  reader had its own liveness check that dropped the account together with the state. The same
+  reader now refuses a status file with group read access, like every other runtime's private state.
+- Code shared by the native runtimes lives in `runtime/`: the approval/input response mailbox, private
+  runtime directories, boundary events (which now also stop replaying the ring when a session's
+  events are turned on), the status writer and liveness check, and model-catalog paging. Before, these
+  sat in the Codex adapter and every other runtime imported them from there, or carried a copy. The
+  Codex and OpenCode content observers moved beside their runtimes, and OpenCode's event decoding is
+  one function. No file on disk moved.
+- The daemon no longer re-reads the chat ledger and outbox in full every three seconds. All the
+  append-only stores read through one reader that decodes only what was appended since its last read:
+  on a 6.7 MB ledger a pass with nothing new went from 23 ms per read, several reads per pass, to
+  0.02 ms; the outbox from 7.5 ms to 0.02 ms. Each store keeps its own meaning for a damaged line, and a
+  line still being written is never read as damage. The ledger and outbox are not rotated — their
+  positions are cursors other parties hold (see the decision record).
+- Where a letter stands is decided in one module, `chat/settlement.ts`: which letter is next, whether it
+  is conditional or due, and whether it is pending, delivered, cancelled or undeliverable. The tmux and
+  App delivery passes, native delivery, `wait`, `msg pending/cancel` and the undeliverable sweep each
+  carried their own copy of these rules.
+- Every command reads its command line the same way, from a flag spec declared beside its help:
+  an unknown flag, a missing value, a flag given twice and a number that is not a whole number in
+  range are refused with the flag named and the usage line. Before, some commands ignored an unknown
+  flag and some numbers fell back to a default or were dropped — `transcript --tail abc` answered as
+  if nothing had been asked, `wait --timeout abc` waited five minutes. A word starting with a single
+  dash is an argument unless it is a declared short flag, so a letter body "- item" or a pattern
+  `--grep -foo` reads as written. `transcript`'s bare-number tail form is gone (`--tail N`), and
+  `env-file <name> none` is `--none`. The documented caps (`transcript --tail`/`--limit` at 1000) still
+  serve a larger request at the cap.
+- Help now names every flag a command reads — `list --json/--all`, `fleet --all`, `logs --json`,
+  `chat log --follow/--framed/--since/--cursor-env`, `new --env-file/--router`, `install --force`,
+  `usage --pipeline-cursor`, the short `-f`/`-q` forms — and a test keeps help and parser identical.
+- `doctor --json` carries every check the text shows: stalled mail, unreadable ledger records,
+  unreadable cursors and sessions at a menu were computed only after the JSON had been printed. One
+  report now feeds both outputs, and a machine without tmux reports it instead of failing.
+- `list`, `fleet`, `external` and `dir` align their columns to the data, so a long session name no
+  longer shifts the row; `list` and `fleet` show the same state for a session at a menu. `msg sent
+  --json`, `logs --json` and the other JSON outputs go through the writer that waits for the pipe.
+- The agent's pane is addressed by the pane id tmux gave it, recorded when the session is created,
+  instead of by the index `=<name>:0.0`. Once a session held a second window and the agent's pane
+  died, that index resolved to the other window's pane — a letter for the agent would have been
+  typed there — and the session still counted as alive, so nothing healed it. The daemon now treats
+  a session whose agent pane is gone as down: it takes the session down and starts it again. Sessions
+  created by an earlier version are given the id on first use when they have a single pane.
+- `list --json` and `fleet --json` declare each running session's tmux target: `tmux.socket`,
+  `tmux.session` and `tmux.agentPane`.
+- `ccmux window <name|machine:name> [--json]` opens a terminal window beside a running agent, detached,
+  in its directory, and prints the pane and window ids. It lives and dies with the session, and ccmux
+  never types into it.
+- Session options now reach the session. They were set on the target `=<name>`, which `set-option`
+  answers with "no such session" (tmux 3.4 and 3.7), unchecked — so no session had `mouse on`,
+  `history-limit 50000`, or renaming turned off. Sessions started from this version have them; an
+  attached terminal now gets tmux mouse mode in ccmux sessions.
+- `ccmux state [<name|machine:name>] [--since ISO] [--json]` answers for one session by its ordinary
+  address, for a job the session started: whether it runs, its state, when its current life began and
+  its conversation id. `--since` (the job's start) says whether that life is the `same`, `restarted`
+  or `stopped`. Exit 0 the session exists, 3 it does not (with the reason), 1 the question could not
+  be asked — so an unreachable machine never reads as a missing session. The row comes from the same
+  builder as `list`; the name defaults to `CCMUX_SESSION`.
+- The transcript index cache is pruned. An index now records the transcript it describes, and once
+  a day the daemon removes indexes whose transcript is gone, indexes nothing has advanced for 14 days,
+  and every file of the retired JSON format. An index is opened for this only after a day of quiet,
+  and the pass yields every 100 indexes. Nothing removed an index before: on one machine 3137 of
+  3420 described transcripts that no longer existed.
+- The test suite runs in a private ccmux home. A preload points state, cache, data and config at a
+  temporary directory before any test loads, and a guard test fails if it stops doing so; tests had
+  been writing indexes into the operator's cache and thousands of lines, fake warnings included,
+  into the daemon's log.
+- Chat cursors can no longer replay a history. An unreadable cursors file used to be read as empty,
+  and with no delivered position the daemon delivers each recipient's mail again from the first
+  letter; it now holds inbound delivery with the reason (logged once, shown by `doctor`) until the
+  file is repaired or moved aside. A missing cursors file beside a non-empty ledger resumes at the
+  present instead of at zero — a ledger is now created together with its cursors, so only a lost
+  file reaches that path. On an install whose cursors were never written, a letter still queued at
+  upgrade stays in the ledger rather than being delivered.
+- `ccmux inbox` and the daemon no longer overwrite each other's cursors. Every write re-reads the
+  file under a lock and applies its own change, and `read` keeps the further of the two positions:
+  a daemon pass no longer reverts a read marked meanwhile, and marking read no longer risks the
+  pickup record that prevents a letter from being typed twice.
+- Remote chat reception uses the shared owner-tokened lock instead of its own age-reclaimed
+  directory, whose holder could remove a lock another receiver had taken. A ledger read that
+  overtakes a writer skips the unterminated last line instead of failing the delivery pass.
+- `ccmux transcript <addr> --grep PATTERN` searches a session's whole history — managed, remote,
+  App and external threads alike — and prints one line per match (`SEQ AGE ROLE KIND FIELD MATCH`,
+  with an excerpt around it) followed by the range it searched, so "no matches" always says what
+  was looked at. It matches what the conversation said: message text, tool arguments decoded from
+  their JSON, and tool output — never ids, paths or timestamps. Case is smart (a capital makes it
+  sensitive; `-i`/`-s` override), `-F` takes a literal, `--role`/`--kind` narrow it, and
+  `--cursor`/`--before`/`--tail` narrow the range. The newest `--limit` matches (default 50) are
+  kept and the total counts all of them; each `SEQ` is the line `--before` accepts. `--json` gives
+  the same list. Exit 0 when something was found, 1 when not. The file is read in batches sized by
+  bytes with a collection between them: a 774 MB Codex rollout is searched whole in 0.9 s at 571 MB
+  peak, a 94 MB Claude transcript in 0.4 s. Managed sessions are told about it in their prompt,
+  with the reminder that it finds a place, not a result.
+
 ## [0.65.0] — 2026-09-22
 
 The supervisor survives an OOM kill inside its cgroup, a forced shutdown records its own stop, and the ssh fallback is logged once per change instead of once per call

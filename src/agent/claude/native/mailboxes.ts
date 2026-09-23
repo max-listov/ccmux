@@ -5,6 +5,7 @@ import {
   writeRuntimeInterrupt,
 } from '../../../runtime/interrupt.ts';
 import { readRuntimeMcpRequest, writeRuntimeMcpRequest } from '../../../runtime/mcpControl.ts';
+import { answerNativeCommand } from '../../../runtime/response.ts';
 import { readRuntimeRewind, writeRuntimeRewind } from '../../../runtime/rewind.ts';
 import { RewindResultSchema } from '../../../runtime/rewindSchema.ts';
 import {
@@ -13,14 +14,8 @@ import {
   writeRuntimeMode,
 } from '../../../runtime/sessionMode.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
-import {
-  clearNativeCommand,
-  readNativeCommand,
-  readNativeReceipt,
-  writeNativeReceipt,
-} from '../../codex/ownedControl.ts';
 import { type Discovery, refreshMcpServers } from './discovery.ts';
-import type { PendingApproval } from './owner.ts';
+import type { PendingApproval } from './permission.ts';
 import { permissionResult } from './permission.ts';
 import type { NativeProjection } from './projection.ts';
 import { advanceTurn } from './turn.ts';
@@ -47,50 +42,27 @@ export interface Mailboxes {
 
 /** Apply one decision the control plane wrote, and acknowledge it. */
 export async function applyResponse(o: Mailboxes): Promise<void> {
-  const command = readNativeCommand(o.m, o.session.name);
-  if (!command) return;
-  const prior = readNativeReceipt(o.m, o.session.name);
-  if (prior?.operationId === command.operationId) {
-    clearNativeCommand(o.m, o.session.name);
-    return;
-  }
-  const receipt = (outcome: 'submitted' | 'rejected' | 'uncertain', reason: string | null) =>
-    writeNativeReceipt(o.m, o.session.name, {
-      operationId: command.operationId,
-      requestId: command.requestId,
-      fingerprint: command.fingerprint,
-      outcome,
-      reason,
-    });
-  const waiting = o.pending.get(command.requestId);
-  if (
-    command.generation !== o.session.registrationGeneration ||
-    !waiting ||
-    command.kind !== 'approval' ||
-    command.decision === null
-  ) {
-    // Refused rather than guessed: a response that does not match a request this runtime holds
-    // would otherwise resume some other turn, or none.
-    await receipt('rejected', 'request-identity-mismatch');
-    clearNativeCommand(o.m, o.session.name);
-    return;
-  }
-  // Written BEFORE the effect. A crash in the window then reads as uncertain, which is the truth;
-  // writing only afterwards reported an applied decision as rejected on the next start.
-  await receipt('uncertain', null);
-  o.pending.delete(command.requestId);
-  waiting.settle(permissionResult(command.decision, { toolName: waiting.toolName }));
-  o.projection.turn = advanceTurn(o.projection.turn, { step: 'answered' });
-  o.projection.content?.buffer.lifecycle(
-    'request',
-    waiting.request.turnId,
-    command.requestId,
-    command.decision,
-  );
-  o.projection.content?.publish();
-  await receipt('submitted', null);
-  clearNativeCommand(o.m, o.session.name);
-  await o.publish();
+  await answerNativeCommand(o.m, o.session.name, {
+    generation: o.session.registrationGeneration,
+    pending: (requestId) => o.pending.get(requestId)?.request ?? null,
+    submit: async (command) => {
+      const waiting = o.pending.get(command.requestId);
+      // Only approvals are published by this runtime, so a refusal has already ruled out the rest.
+      if (waiting === undefined || command.decision === null)
+        throw new Error('Validated approval disappeared');
+      o.pending.delete(command.requestId);
+      waiting.settle(permissionResult(command.decision, { toolName: waiting.toolName }));
+      o.projection.turn = advanceTurn(o.projection.turn, { step: 'answered' });
+      o.projection.content?.buffer.lifecycle(
+        'request',
+        waiting.request.turnId,
+        command.requestId,
+        command.decision,
+      );
+      o.projection.content?.publish();
+      await o.publish();
+    },
+  });
 }
 
 /**

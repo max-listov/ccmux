@@ -1,6 +1,6 @@
+import { findOwnedCodexReceipt } from '../agent/codex/owned/receipt.ts';
 import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import { chatPrincipalKey } from '../chat/identity.ts';
-import { findOwnedCodexReceipt } from '../chat/ownedCodexReceipt.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
 import {
   type SteeringJournal,

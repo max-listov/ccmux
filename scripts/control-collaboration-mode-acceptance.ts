@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { controlSocket } from '../src/control/path.ts';
-import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { hasSession, killSession, newSession } from '../src/tmux/tmux.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

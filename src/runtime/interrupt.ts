@@ -1,12 +1,12 @@
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import type { OwnedCodexSnapshot } from '../agent/codex/ownedSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { defineMailbox } from './mailbox.ts';
+import type { NativeSnapshot } from './projectionSchema.ts';
 import { readManagedRuntimeStatus } from './status.ts';
 
 export function isCancellableTurn(
-  snapshot: Pick<OwnedCodexSnapshot, 'generation' | 'state' | 'turn'>,
+  snapshot: Pick<NativeSnapshot, 'generation' | 'state' | 'turn'>,
   generation: string,
   turnId: string,
 ): boolean {

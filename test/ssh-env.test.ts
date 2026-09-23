@@ -6,7 +6,7 @@ import {
   droppedDeadAgentKeys,
   staleAgentSocket,
   withoutDeadAgentEnv,
-} from '../src/agent/sshEnv.ts';
+} from '../src/agent/launch/sshEnv.ts';
 
 const liveSocket = (): string => {
   const p = join(mkdtempSync(join(tmpdir(), 'ccmux-sock-')), 'agent.sock');

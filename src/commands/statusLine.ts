@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { type MetricsStatus, readMetricsFile, writeMetricsFile } from '../agent/metricsFile.ts';
-import { vendorGlyph } from '../agent/vendor.ts';
+import { vendorGlyph } from '../inventory/vendor.ts';
+import { type MetricsStatus, readMetricsFile, writeMetricsFile } from '../session/metricsFile.ts';
 
 /**
  * `ccmux status-line` — the injected Claude Code statusLine command for a managed session. Claude

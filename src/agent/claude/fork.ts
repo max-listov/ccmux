@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import type { MachineConfig, Session } from '../../types.ts';
 import { readHeadLines, readTailLines } from '../../util/readLines.ts';
-import { rec, str } from '../normalize.ts';
+import { rec, str } from '../transcript/normalize.ts';
 import { encodeDir, histFile } from './resume.ts';
 
 // ── follow the fork ─────────────────────────────────────────────────────────────

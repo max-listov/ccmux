@@ -2,12 +2,12 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { ResolvedControlLaunch } from '../../config/launchRecipes.ts';
+import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import type { MachineConfig } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
-import { sessionEnvRecipe } from '../sessionEnv.ts';
-import { stopOwnedChildGroup } from './ownedChild.ts';
-import { ownedCodexFlags } from './ownedLaunch.ts';
-import { privateRuntimeDirectory } from './ownedPaths.ts';
+import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
+import { stopOwnedChildGroup } from './owned/child.ts';
+import { ownedCodexFlags } from './owned/launch.ts';
 import type { CodexAppRpc } from './rpc.ts';
 import { connectCodexSocket } from './socket.ts';
 

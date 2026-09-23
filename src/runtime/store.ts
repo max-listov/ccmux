@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync } from 'node:fs';
 import type { z } from 'zod';
 
 /** Private bounded state, never symlinks, devices or shared-writable files. */
@@ -27,5 +27,20 @@ export function readPrivateJson<T>(
     return null;
   } finally {
     if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** Create (or accept) a runtime state directory only if it is private: a real directory, owned by the
+ *  current user, with no group or world access. Every runtime's private state lives under one. */
+export function privateRuntimeDirectory(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(path);
+  if (
+    !stat.isDirectory() ||
+    stat.isSymbolicLink() ||
+    stat.uid !== process.getuid?.() ||
+    (stat.mode & 0o077) !== 0
+  ) {
+    throw new Error('Runtime directory must be a private directory owned by the current user');
   }
 }

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { holdReason, STALLED_HOLD_MS } from '../src/chat/holdReason.ts';
-import { CHAT_GENERATION, ChatMessageSchema } from '../src/config/schema.ts';
+import { CHAT_GENERATION, ChatMessageSchema } from '../src/chat/messageSchema.ts';
 import type { ChatMessage } from '../src/types.ts';
 import { makeSession } from './helpers.ts';
 

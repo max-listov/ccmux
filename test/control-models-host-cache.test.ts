@@ -3,8 +3,8 @@ import { chmodSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createControlOperations } from '../src/control/operations.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { ControlModelsReadSchema } from '../src/control/schema.ts';
-import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
+import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
+import { ExternalStatusPublisher } from '../src/external/residentPublisher.ts';
 import { makeMachine } from './helpers.ts';
 
 function fixture() {

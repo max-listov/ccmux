@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { PLATFORM } from '../env.ts';
+import { PLATFORM } from './env.ts';
 
 /** claude/codex draw their box-rules with Unicode; with NO UTF-8 locale they fall back to
  *  ASCII ('_' '|' '-') — the stray-underscore look. Boot daemons (launchd/systemd) start with

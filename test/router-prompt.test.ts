@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { buildPrompt } from '../src/agent/managePrompt.ts';
-import { knownPromptModules, resolvePromptModules } from '../src/agent/promptModules.ts';
+import { buildPrompt } from '../src/agent/prompt/managePrompt.ts';
+import { knownPromptModules, resolvePromptModules } from '../src/agent/prompt/promptModules.ts';
 
 test('router is a known module; unknown keys fail loud', () => {
   expect(knownPromptModules()).toContain('router');

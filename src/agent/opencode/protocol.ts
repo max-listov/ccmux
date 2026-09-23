@@ -89,6 +89,44 @@ export const OpenCodeQuestionSchema = z.object({
   tool: z.object({ messageID: Id, callID: Id }).optional(),
 });
 export const OpenCodeEventSchema = z.object({ type: z.string(), properties: z.unknown() });
+export type OpenCodeDelta = z.infer<typeof OpenCodeDeltaSchema>;
+
+/**
+ * One server event, with the three message events already unwrapped to their records.
+ *
+ * The runtime projection and the content observer read the same stream, and each unwrapped these
+ * three by hand — the same `properties.info` / `properties.part` / delta parse, twice. Every other
+ * event is passed through by name for whichever reader cares about it.
+ */
+export type OpenCodeEvent =
+  | { type: 'message.updated'; message: OpenCodeMessage }
+  | { type: 'message.part.updated'; part: OpenCodePart }
+  | { type: 'message.part.delta'; delta: OpenCodeDelta }
+  | { type: 'other'; name: string; properties: unknown };
+
+export function decodeOpenCodeEvent(raw: unknown): OpenCodeEvent {
+  const event = OpenCodeEventSchema.parse(raw);
+  switch (event.type) {
+    case 'message.updated':
+      return {
+        type: event.type,
+        message: OpenCodeMessageSchema.parse(
+          z.object({ info: z.unknown() }).parse(event.properties).info,
+        ),
+      };
+    case 'message.part.updated':
+      return {
+        type: event.type,
+        part: OpenCodePartSchema.parse(
+          z.object({ part: z.unknown() }).parse(event.properties).part,
+        ),
+      };
+    case 'message.part.delta':
+      return { type: event.type, delta: OpenCodeDeltaSchema.parse(event.properties) };
+    default:
+      return { type: 'other', name: event.type, properties: event.properties };
+  }
+}
 
 /** A tool step is not a turn. Transport EOF and session idle are not assistant completion. */
 export function openCodeTerminal(

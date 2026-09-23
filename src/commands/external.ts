@@ -1,14 +1,12 @@
 import { loadMachineConfig } from '../config/machine.ts';
-import { ExternalInventoryJsonSchema } from '../config/schema.ts';
 import { discoverExternal } from '../external/discover.ts';
+import { ExternalInventoryJsonSchema } from '../external/sessionSchema.ts';
 import { observeExternalTurns } from '../external/turnState.ts';
 import type { ExternalInventoryJson, ExternalSession } from '../types.ts';
+import { printLine } from '../util/stdout.ts';
+import { tableLines } from '../util/table.ts';
 import { VERSION } from '../util/version.ts';
-import { usageLine } from './help.ts';
-
-function pad(value: string, width: number): string {
-  return value.length >= width ? value : value + ' '.repeat(width - value.length);
-}
+import { parseFlags } from './flags.ts';
 
 export function externalInventoryJson(
   rcPrefix: string,
@@ -24,16 +22,18 @@ export function externalInventoryJson(
 }
 
 export function externalTableLines(sessions: ExternalSession[]): string[] {
-  const lines = [
-    `${pad('PROVIDER', 8)} ${pad('ORIGIN', 10)} ${pad('STORAGE', 8)} ${pad('WRITER', 25)} ${pad('TURN', 16)} ${pad('THREAD', 36)} DIR`,
-  ];
-  for (const session of sessions) {
-    const runtime = session.writerRuntime?.kind ?? '-';
-    const writer = `${session.writerEvidence}/${runtime}`;
-    lines.push(
-      `${pad(session.provider, 8)} ${pad(session.origin, 10)} ${pad(session.storage, 8)} ${pad(writer, 25)} ${pad(session.turnState.state, 16)} ${pad(session.threadId, 36)} ${session.dir ?? '-'}`,
-    );
-  }
+  const lines = tableLines(
+    ['PROVIDER', 'ORIGIN', 'STORAGE', 'WRITER', 'TURN', 'THREAD', 'DIR'],
+    sessions.map((session) => [
+      session.provider,
+      session.origin,
+      session.storage,
+      `${session.writerEvidence}/${session.writerRuntime?.kind ?? '-'}`,
+      session.turnState.state,
+      session.threadId,
+      session.dir ?? '-',
+    ]),
+  );
   // A column of fifty identical `unknown`s says something is wrong and nothing about what to do.
   // The cure is printed once per distinct cause, under the table rather than in it: repeating one
   // sentence on every row would bury the rows, and printing none leaves the reader to go read our
@@ -48,28 +48,15 @@ export function externalTableLines(sessions: ExternalSession[]): string[] {
   return lines;
 }
 
-function writeStdout(text: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    process.stdout.write(text, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
-}
-
 export async function cmdExternal(args: string[] = []): Promise<number> {
-  const unsupported = args.find((arg) => arg !== '--json');
-  if (unsupported !== undefined) {
-    console.error(`${usageLine('external')}\nunknown option: ${unsupported}`);
-    return 1;
-  }
+  const flags = parseFlags('external', args, [0, 0]);
 
   const machine = loadMachineConfig();
   const sessions = await observeExternalTurns(machine, discoverExternal(machine));
-  if (args.includes('--json')) {
-    // This projection can be much larger than a pipe buffer. Await the stream callback: bundled
-    // Bun may otherwise terminate after queueing only part of a `console.log` string for a pipeline.
-    await writeStdout(`${JSON.stringify(externalInventoryJson(machine.rcPrefix, sessions))}\n`);
+  if (flags.bool('json')) {
+    // This projection can be much larger than a pipe buffer, so it goes through the writer that
+    // waits for the pipe to drain.
+    await printLine(JSON.stringify(externalInventoryJson(machine.rcPrefix, sessions)));
   } else {
     for (const line of externalTableLines(sessions)) console.log(line);
   }

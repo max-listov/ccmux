@@ -7,9 +7,9 @@ import {
   advanceMessageOperation,
   prepareMessageOperation,
 } from '../src/chat/messageOperationStore.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { readMessageOperation } from '../src/control/messageOperation.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeCli, makeMachine, makeSession } from './helpers.ts';
 
 const roots: string[] = [];

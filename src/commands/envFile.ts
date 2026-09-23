@@ -1,12 +1,13 @@
 import { existsSync } from 'node:fs';
-import { envFileKeys, envFilePath, envFiles, fileDigest } from '../agent/launchInputs.ts';
-import { inheritsUndeclaredEnv } from '../agent/sessionEnv.ts';
-import { readLaunchStamp } from '../agent/sessionStatus.ts';
+import { envFileKeys, envFilePath, envFiles, fileDigest } from '../agent/launch/launchInputs.ts';
+import { inheritsUndeclaredEnv } from '../agent/launch/sessionEnv.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { loadSessions, setSessionEnvFile } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { loadSessions, setSessionEnvFile } from '../session/registry.ts';
+import { readLaunchStamp } from '../session/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
+import { parseFlags } from './flags.ts';
 
 const USAGE =
   'usage: ccmux env-file <name> <path>  ·  ccmux env-file <name> --none  ·  ccmux env-file --adopt [--dry-run]\n' +
@@ -76,18 +77,20 @@ async function adopt(m: MachineConfig, dryRun: boolean): Promise<number> {
 }
 
 export async function cmdEnvFile(args: string[]): Promise<number> {
-  if (args[0] === '--adopt') return adopt(loadMachineConfig(), args.includes('--dry-run'));
-  const name = args[0];
-  const value = args[1];
-  if (name === undefined || value === undefined) {
+  const flags = parseFlags('env-file', args, [0, 2]);
+  if (flags.bool('adopt')) return adopt(loadMachineConfig(), flags.bool('dry-run'));
+  const [name, path] = flags.positionals;
+  const clear = flags.bool('none');
+  // Exactly one of a path and --none: both, or neither, is not a declaration.
+  if (name === undefined || (path === undefined) === !clear) {
     console.log(USAGE);
     return 1;
   }
+  const value = clear ? '--none' : (path as string);
   const fwd = await forwardIfRemote(name, 'env-file', [value]);
   if (fwd.done) return fwd.code;
   const { session: local, m } = fwd;
 
-  const clear = value === '--none' || value === 'none';
   if (!clear) {
     const target = loadSessions(m).find((s) => s.name === local);
     if (target === undefined) {

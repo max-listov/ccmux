@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { transcriptIndexPath } from '../src/agent/transcriptIndex.ts';
+import { transcriptIndexPath } from '../src/agent/transcript/transcriptIndex.ts';
 import { readUsageFile } from '../src/usage/file.ts';
 import { USAGE_SLICE_BYTES, UsageQuerySchema } from '../src/usage/schema.ts';
 

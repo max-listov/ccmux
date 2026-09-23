@@ -1,15 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
-import { blockingInbound } from '../commands/wait.ts';
-import { withDirectoryLock } from '../config/registryLock.ts';
+import { blockingInbound } from '../chat/inboundHold.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { readRuntimeInput } from '../runtime/input.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../runtime/status.ts';
-import { readPrivateJson } from '../runtime/store.ts';
+import { privateRuntimeDirectory, readPrivateJson } from '../runtime/store.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { withLock } from '../util/lock.ts';
 import {
   type CompactRequest,
   CompactRequestSchema,
@@ -63,7 +62,7 @@ export async function readNativeHistory(
 ) {
   const parsed = NativeHistoryQuerySchema.parse(query);
   privateRuntimeDirectory(managedRuntimeRoot(m, s));
-  return withDirectoryLock(
+  return withLock(
     contextPath(m, s, 'history-reader.lock'),
     async () => {
       const status = readManagedRuntimeStatus(m, s);

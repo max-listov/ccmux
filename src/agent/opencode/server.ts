@@ -6,8 +6,8 @@ import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import { captureNativeStderr, recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { compareSemver } from '../../util/version.ts';
-import { stopOwnedChildGroup } from '../codex/ownedChild.ts';
-import { sessionEnvRecipe } from '../sessionEnv.ts';
+import { stopOwnedChildGroup } from '../codex/owned/child.ts';
+import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
 import { boundedOpenCodeFetch } from './http.ts';
 
 const HealthSchema = z.object({ healthy: z.literal(true), version: z.string().min(1).max(64) });

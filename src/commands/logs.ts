@@ -1,16 +1,24 @@
-import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { readRuntimeDiagnostics } from '../runtime/diagnostics.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
 import { capturePane, hasSession } from '../tmux/tmux.ts';
+import { printLine } from '../util/stdout.ts';
+import { parseFlags, UsageError } from './flags.ts';
+import { usageLine } from './help.ts';
 
-export async function cmdLogs(name: string | undefined, args: string[]): Promise<number> {
-  if (!name) {
-    console.log(
-      'usage: ccmux logs <name> [lines] [--json]   ·   <machine>:<name> for another fleet machine',
+export async function cmdLogs(args: string[]): Promise<number> {
+  const flags = parseFlags('logs', args, [1, 2]);
+  let name = flags.positionals[0] as string;
+  const lineArg = flags.positionals[1];
+  if (lineArg !== undefined && !/^[1-9]\d*$/.test(lineArg))
+    throw new UsageError(
+      `lines expects a whole number from 1, got '${lineArg}'\n${usageLine('logs')}`,
     );
-    return 1;
-  }
-  const fwd = await forwardIfRemote(name, 'logs', args);
+  const fwd = await forwardIfRemote(
+    name,
+    'logs',
+    args.filter((arg) => arg !== name),
+  );
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;
   name = session;
@@ -20,8 +28,7 @@ export async function cmdLogs(name: string | undefined, args: string[]): Promise
     console.error(`unknown session: ${name}`);
     return 1;
   }
-  const json = args.includes('--json');
-  const lineArg = args.find((a) => /^\d+$/.test(a));
+  const json = flags.bool('json');
   const lines = lineArg ? Number.parseInt(lineArg, 10) : 100;
   // A session whose runtime failed has no pane left to capture, and that is exactly the moment its
   // logs are asked for. Printing nothing then answers "the pane was empty" to the question "why did
@@ -34,7 +41,7 @@ export async function cmdLogs(name: string | undefined, args: string[]): Promise
     ? { matched: [], unattributed: 0 }
     : await readRuntimeDiagnostics(m, name);
   if (json) {
-    console.log(
+    await printLine(
       JSON.stringify({
         session: name,
         capturedAt: new Date().toISOString(),

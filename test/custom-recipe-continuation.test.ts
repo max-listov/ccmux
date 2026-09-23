@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { prepareCustomHost } from '../src/agent/custom/host.ts';
-import { stableJson } from '../src/agent/launchInputs.ts';
+import { stableJson } from '../src/agent/launch/launchInputs.ts';
 import { verifyManagedLaunchRecipe } from '../src/config/launchRecipes.ts';
 import { customFixture } from './custom-fixture.ts';
 

@@ -1,24 +1,14 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { installBoot, uninstallBoot } from '../boot/install.ts';
+import { RC_PREFIX_RE } from '../chat/identitySchema.ts';
 import { loadMachineConfig, scaffoldMachineConfig } from '../config/machine.ts';
-import { RC_PREFIX_RE } from '../config/schema.ts';
-import { HOME, PLATFORM } from '../env.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { HOME, PLATFORM } from '../util/env.ts';
+import { parseFlags } from './flags.ts';
 
 function configPath(): string {
   return process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`;
-}
-
-function parseRcPrefix(args: string[]): string | undefined {
-  const i = args.indexOf('--rc-prefix');
-  if (i !== -1) return args[i + 1];
-  return args.find((a) => !a.startsWith('-'));
-}
-
-function parseReleaseUrl(args: string[]): string | undefined {
-  const i = args.indexOf('--release-url');
-  return i !== -1 ? args[i + 1] : undefined;
 }
 
 function isRcPrefix(v: string | undefined): v is string {
@@ -46,14 +36,16 @@ export function renameRefusal(
 }
 
 export async function cmdInstall(args: string[]): Promise<number> {
-  if (args.includes('--artifacts-only')) {
-    const { ensureStatusLineApp } = await import('../config/statusLineInstall.ts');
+  // The prefix is a flag or, as it always was, the one bare word.
+  const flags = parseFlags('install', args, [0, 1]);
+  if (flags.bool('artifacts-only')) {
+    const { ensureStatusLineApp } = await import('../boot/statusLineInstall.ts');
     console.log(await ensureStatusLineApp());
     return 0;
   }
   const cfg = configPath();
-  const rc = parseRcPrefix(args);
-  const releaseUrl = parseReleaseUrl(args);
+  const rc = flags.str('rc-prefix') ?? flags.positionals[0];
+  const releaseUrl = flags.str('release-url');
   try {
     if (!existsSync(cfg)) {
       if (!isRcPrefix(rc)) {
@@ -74,7 +66,7 @@ export async function cmdInstall(args: string[]): Promise<number> {
       const refusal = renameRefusal(
         current.rcPrefix,
         isRcPrefix(rc) ? rc : undefined,
-        args.includes('--force'),
+        flags.bool('force'),
       );
       if (refusal !== null) {
         console.log(refusal);

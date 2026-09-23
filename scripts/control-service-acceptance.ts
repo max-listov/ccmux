@@ -2,14 +2,14 @@
 import { createHash } from 'node:crypto';
 import { parseNDJSON } from 'stitchkit';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { createControlClient } from '../src/control/client.ts';
 import {
   ControlNativeStreamFrameSchema,
   type ControlNativeStreamRequest,
   createCcmuxNativeStreamProfile,
-} from '../src/control/nativeStreamContract.ts';
-import { controlSocket } from '../src/control/path.ts';
-import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+} from '../src/control/schema/nativeStreamContract.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

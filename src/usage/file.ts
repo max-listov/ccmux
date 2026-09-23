@@ -4,8 +4,8 @@ import {
   indexTranscript,
   StoredIndexSchema,
   transcriptIndexPath,
-} from '../agent/transcriptIndex.ts';
-import { countStats } from '../agent/transcriptRead.ts';
+} from '../agent/transcript/transcriptIndex.ts';
+import { countStats } from '../agent/transcript/transcriptRead.ts';
 import { log } from '../util/log.ts';
 import { aggregateUsage } from './aggregate.ts';
 import { emptyAggregate } from './empty.ts';

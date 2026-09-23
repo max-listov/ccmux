@@ -1,6 +1,6 @@
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
-import type { ControlModelCatalog, ControlModelsReadSchema } from './schema.ts';
+import type { ControlModelCatalog, ControlModelsReadSchema } from './schema/model.ts';
 
 type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
 type CatalogRead = (input: ModelsReadInput, signal: AbortSignal) => Promise<ControlModelCatalog>;

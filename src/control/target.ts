@@ -1,5 +1,5 @@
 import { AppError } from 'stitchkit';
-import { findSession, loadSessions } from '../config/sessions.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
 import type { MachineConfig, ManagedPeer, Session } from '../types.ts';
 
 export function controlTarget(m: MachineConfig, target: ManagedPeer): Session {

@@ -1,5 +1,5 @@
-import { stripAnsi } from '../../tmux/tmux.ts';
-import { parseContext } from '../context.ts';
+import { parseContext } from '../../context/fill.ts';
+import { stripAnsi, typedText } from '../../util/ansi.ts';
 import type { ChatPaneInspection, PaneScan } from '../index.ts';
 
 const WORKING_RE = /\bWorking\b[^\n]*(?:esc to interrupt|\d+s)/i;
@@ -10,10 +10,6 @@ const CONTEXT_RE = /[\d.]+[kKMG]\/[\d.]+[kKMG] +\d+%|\d+%\s*context/i;
 const MENU_CONFIRM_RE =
   /Press enter to (?:continue|confirm)|Press enter to confirm or esc to go back/i;
 const MENU_OPTION_RE = /^\s*(?:›\s*)?\d+\.\s+\S/m;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI dim runs require the literal ESC byte.
-const DIM_RUN_RE = /\u001b\[2m[\s\S]*?(?:\u001b\[(?:0|22)m|$)/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: Strip native terminal SGR sequences, including ESC.
-const ANSI_RE = /\u001b\[[0-9;]*m/g;
 
 function menuTitle(plain: string): string | null {
   const tail = plain.split('\n').slice(-40).join('\n');
@@ -56,7 +52,7 @@ function composerOccupied(line: string | null): boolean {
   const after = line.slice(line.indexOf('›') + 1);
   // Codex, like Claude, may dim only the proposed completion after real typed bytes. Dropping the
   // whole line when ANY dim SGR exists turns `typed<dim completion>` into an empty composer.
-  return after.replace(DIM_RUN_RE, '').replace(ANSI_RE, '').trim() !== '';
+  return typedText(after) !== '';
 }
 
 function liveWorking(plain: string): boolean {

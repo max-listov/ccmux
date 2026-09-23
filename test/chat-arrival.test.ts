@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { buildEnvelope } from '../src/chat/compose.ts';
 import { managedPeer, ownerTarget } from '../src/chat/identity.ts';
-import { conditionalMessage } from '../src/chat/pendingDelivery.ts';
+import { isConditional } from '../src/chat/settlement.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**
@@ -21,7 +21,7 @@ test('an ordinary message waits for the boundary without being asked to', () => 
   const envelope = buildEnvelope(from, to, 'status update');
   expect(envelope.defer).toBe(true);
   // Off the in-order cursor, so a letter waiting on one busy recipient never blocks another's.
-  expect(conditionalMessage(envelope)).toBe(true);
+  expect(isConditional(envelope)).toBe(true);
 });
 
 test('breaking into a running turn is the thing that has to be asked for', () => {
@@ -34,7 +34,7 @@ test('the owner has no turn to wait for', () => {
 });
 
 test('letters that waited out one turn arrive as one turn', async () => {
-  const { coalesce } = await import('../src/chat/deliver.ts');
+  const { coalesce } = await import('../src/chat/coalesce.ts');
   const { managedPeerKey } = await import('../src/chat/identity.ts');
   // Two peers writing to a busy session used to cost it two turns, and the second landed INSIDE the
   // turn the first had just started — the recipient interrupted by its own mail.
@@ -54,7 +54,7 @@ test('letters that waited out one turn arrive as one turn', async () => {
 });
 
 test('a timer that is not due yet does not ride along with mail that is', async () => {
-  const { coalesce } = await import('../src/chat/deliver.ts');
+  const { coalesce } = await import('../src/chat/coalesce.ts');
   const { managedPeerKey } = await import('../src/chat/identity.ts');
   const soon = new Date(Date.now() + 60_000).toISOString();
   const ledger = [
@@ -67,7 +67,7 @@ test('a timer that is not due yet does not ride along with mail that is', async 
 });
 
 test("a person's letter is not the one a full batch cuts, and the batch still reads in order", async () => {
-  const { coalesce } = await import('../src/chat/deliver.ts');
+  const { coalesce } = await import('../src/chat/coalesce.ts');
   const { managedPeerKey } = await import('../src/chat/identity.ts');
   // The measured shape: eleven peer letters queued for a busy session, and a person writes the
   // twelfth. By arrival time alone the person waits a whole extra turn behind the chatter.
@@ -93,7 +93,7 @@ test("a person's letter is not the one a full batch cuts, and the batch still re
 });
 
 test('the oldest letter travels whoever wrote it', async () => {
-  const { coalesce } = await import('../src/chat/deliver.ts');
+  const { coalesce } = await import('../src/chat/coalesce.ts');
   const { managedPeerKey } = await import('../src/chat/identity.ts');
   // Enough person-written letters to fill the batch on their own. Without pinning the oldest, an
   // agent's letter that has been waiting longest is displaced by every newer arrival — and it is
@@ -117,7 +117,7 @@ test('the oldest letter travels whoever wrote it', async () => {
 });
 
 test('an agent letter claims nothing, and the ordinary batch is untouched', async () => {
-  const { coalesce } = await import('../src/chat/deliver.ts');
+  const { coalesce } = await import('../src/chat/coalesce.ts');
   const { managedPeerKey } = await import('../src/chat/identity.ts');
   // The negative half: without the claim, arrival order decides, exactly as before.
   const ledger = Array.from({ length: 11 }, (_, i) => buildEnvelope(from, to, `peer ${i}`));

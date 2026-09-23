@@ -1,8 +1,9 @@
 import type { ChatMessage, MachineConfig, TelegramConfig } from '../types.ts';
 import { log } from '../util/log.ts';
+import { loadCursors, saveCursors } from './cursors.ts';
 import { courierNote } from './external.ts';
 import { humanLabel, humanTargetLabel, principalLabel, targetLabel } from './identity.ts';
-import { loadCursors, loadLedger, saveCursors } from './store.ts';
+import { loadLedger } from './ledger.ts';
 
 const SEND_TIMEOUT_MS = 10_000;
 

@@ -2,14 +2,13 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
-import { withDirectoryLock } from '../config/registryLock.ts';
-import { ManagedPeerSchema } from '../config/schema.ts';
+import { ManagedPeerSchema } from '../chat/identitySchema.ts';
 import { recordRuntimeDiagnostic } from '../runtime/diagnostics.ts';
 import { NativeTurnOptionsSchema } from '../runtime/selectionSchema.ts';
-import { readPrivateJson } from '../runtime/store.ts';
+import { privateRuntimeDirectory, readPrivateJson } from '../runtime/store.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { withLock } from '../util/lock.ts';
 
 export const NativeForkSourceSchema = z
   .object({
@@ -77,7 +76,7 @@ export async function admitNativeFork<T>(
 ): Promise<T> {
   const generation = s.registrationGeneration;
   if (!generation) throw new Error('Native fork registration is missing');
-  return withDirectoryLock(
+  return withLock(
     `${path(m, generation)}.lock`,
     async () => {
       const intent = readNativeForkIntent(m, s);

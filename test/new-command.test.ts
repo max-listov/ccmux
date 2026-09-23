@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { loadSessions } from '../src/session/registry.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 

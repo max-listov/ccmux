@@ -6,9 +6,9 @@ import { cliPrincipal, codexAppThreadId, managedPeer, principalLabel } from '../
 import { isRoleToken, type RoleCandidate, resolveRole } from '../chat/roleAddress.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { ListJsonSchema } from '../config/schema.ts';
-import { findSession } from '../config/sessions.ts';
 import { runPeer } from '../fleet/transport.ts';
+import { ListJsonSchema } from '../inventory/listSchema.ts';
+import { findSession } from '../session/registry.ts';
 import type {
   AgentKind,
   ChatPrincipal,
@@ -17,6 +17,7 @@ import type {
   ManagedPeer,
   Session,
 } from '../types.ts';
+import { printLine } from '../util/stdout.ts';
 
 const RemoteListSchema = ListJsonSchema.pick({ sessions: true });
 
@@ -130,7 +131,7 @@ export async function cmdResolveCodexApp(args: string[]): Promise<number> {
     return 1;
   }
   try {
-    console.log(JSON.stringify(await resolveCodexAppPeer(loadMachineConfig(), parsed.data)));
+    await printLine(JSON.stringify(await resolveCodexAppPeer(loadMachineConfig(), parsed.data)));
     return 0;
   } catch (error) {
     console.error(`codex app resolve: ${error instanceof Error ? error.message : String(error)}`);

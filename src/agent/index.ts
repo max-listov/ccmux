@@ -15,17 +15,17 @@ import { readTailLines, readTailUntil } from '../util/readLines.ts';
 import { claudeProvider } from './claude/index.ts';
 import { subagentFile } from './claude/subagent.ts';
 import { codexProvider } from './codex/index.ts';
-import type { LaunchInput } from './launchInputs.ts';
+import type { LaunchInput } from './launch/launchInputs.ts';
 import {
   readTranscriptFile,
   type TranscriptRead,
   unavailableTranscript,
-} from './transcriptRead.ts';
+} from './transcript/transcriptRead.ts';
 
 // Format sniff lives in its own light module (normalize-only deps) so the public library seam can
 // re-export it without pulling in the full providers; re-exported here to keep the existing name.
-export { detect } from './detect.ts';
-export type { TranscriptRead } from './transcriptRead.ts';
+export { detect } from './transcript/detect.ts';
+export type { TranscriptRead } from './transcript/transcriptRead.ts';
 
 /** Live status scraped from a rendered pane (pure: text → status). The MODEL is NOT here — it's
  *  conversation metadata read from jsonl (source of truth), not a live pane signal. */
@@ -73,7 +73,7 @@ export interface AgentProvider {
   buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[];
   /** The environment for the spawned agent. Takes the SESSION, not just its name, because the
    *  environment is a declared recipe (`envFile`) rather than whatever the supervisor happened to
-   *  inherit — see agent/sessionEnv.ts for why that distinction had to become explicit. */
+   *  inherit — see agent/launch/sessionEnv.ts for why that distinction had to become explicit. */
   launchEnv(m: MachineConfig, session: Session): Record<string, string>;
   /** The ccmux-controlled environment variable NAMES this launch injects — never their values.
    *  It exists so the launch stamp can see the one part of the recipe that is deliberately NOT in

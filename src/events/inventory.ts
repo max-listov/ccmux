@@ -2,15 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
 import { lastTranscriptMessage } from '../agent/index.ts';
 import { inventoryPath } from '../config/paths.ts';
-import {
-  type InventoryRow,
-  type InventorySnapshot,
-  InventorySnapshotSchema,
-} from '../config/schema.ts';
 import type { MonitoringRow } from '../monitoring/schema.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { appendRecord, buildEvent } from './feed.ts';
+import { type InventoryRow, type InventorySnapshot, InventorySnapshotSchema } from './schema.ts';
 
 /**
  * The machine's session inventory, as the observation pass sees it, published as CHANGES.

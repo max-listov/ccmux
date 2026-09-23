@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { buildPrompt } from '../src/agent/managePrompt.ts';
+import { buildPrompt } from '../src/agent/prompt/managePrompt.ts';
 import { looksLikeMessage } from '../src/commands/send.ts';
 import { PREVIEW_LIMIT, preview } from '../src/util/preview.ts';
 

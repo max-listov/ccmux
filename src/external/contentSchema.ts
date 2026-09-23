@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RC_PREFIX_RE } from '../config/schema.ts';
+import { RC_PREFIX_RE } from '../chat/identitySchema.ts';
 
 export const EXTERNAL_CONTENT_LIMITS = {
   sourceBytes: 512 * 1024 * 1024,

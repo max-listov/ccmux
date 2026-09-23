@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { join, resolve } from 'node:path';
-import type { ControlCreateReceipt } from '../src/control/schema.ts';
-import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import type { ControlCreateReceipt } from '../src/control/schema/session.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

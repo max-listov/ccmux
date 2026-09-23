@@ -2,7 +2,7 @@ import { loadOutboxAcked } from '../fleet/flush.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
 import type { MachineConfig } from '../types.ts';
 import type { LocalMessageLookup, LocalMessageRecord } from './communicationBasis.ts';
-import { loadLedger } from './store.ts';
+import { loadLedger } from './ledger.ts';
 
 /**
  * Every message THIS machine holds a record of, by id.

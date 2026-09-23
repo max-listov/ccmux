@@ -1,11 +1,11 @@
 import { bindProcessSignals } from 'stitchkit/server';
-import { ensureInstalledApp } from '../config/installedApp.ts';
+import { ensureInstalledApp } from '../boot/installedApp.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { APP_BUNDLE, BOOT_ATTEMPTS } from '../config/paths.ts';
 import { createDaemonApplication } from '../daemon/application.ts';
 import { recordForcedStop } from '../daemon/lifecycle.ts';
-import { IS_DEV } from '../env.ts';
 import { bootGuardStart } from '../util/bootGuard.ts';
+import { IS_DEV } from '../util/env.ts';
 import { log, setLogLevel } from '../util/log.ts';
 
 /** One managed daemon lifetime; tmux/provider processes deliberately outlive it. */

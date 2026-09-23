@@ -14,18 +14,26 @@
 //                                    The two halves of the ceremony, for a conductor that runs
 //                                    the check between them and reports each step as it goes.
 //   bun run stage                 → build bundle → the cache's staged/ (local `ccmux update` test)
-//   bun scripts/release.ts --local          → bundle + file:// manifest (sandbox e2e)
 //   bun scripts/release.ts --ci-assets URL  → bundle + manifest at URL (CI release job only)
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  assertCliPublishable,
+  type CliBuildManifest,
+  CliBuildManifestSchema,
+  cliSignatureAccepted,
+  verifyCliManifest,
+} from 'stitchkit/cli';
+import {
   RELEASE_BUNDLE,
   RELEASE_MANIFEST,
   RELEASES_DIR,
   STAGED_BUNDLE,
 } from '../src/config/paths.ts';
+import { releaseDocument } from '../src/release/document.ts';
+import { RELEASE_KEYS } from '../src/release/trust.ts';
 import { compareSemver, VERSION } from '../src/util/version.ts';
 import { buildCodexRuntimeReader } from './build-codex-runtime-reader.ts';
 import { buildControlClient } from './build-control-client.ts';
@@ -42,19 +50,58 @@ function sha256(path: string): { bytes: number; hex: string } {
   return { bytes: buf.length, hex: new Bun.CryptoHasher('sha256').update(buf).digest('hex') };
 }
 
-async function writeManifest(url: string, notes: string): Promise<string> {
-  const { hex } = sha256(RELEASE_BUNDLE);
+/** The key id the CI secret `CCMUX_RELEASE_SIGNING_KEY` belongs to — see `src/release/trust.ts`. */
+const SIGNING_KEY_ID = 'ccmux-2026-09';
+
+/** `release.json` for the bundle just built: a signed build manifest, plus the flat fields earlier
+ *  ccmux and the install script read (`src/release/document.ts`). Unsigned only when no key is
+ *  given, which `--ci-assets` refuses: a release the fleet cannot verify is not published. */
+async function writeManifest(
+  url: string,
+  notes: string,
+  signingKey: string | undefined,
+): Promise<string> {
+  const bundle = readFileSync(RELEASE_BUNDLE);
+  const commit = (await git(['rev-parse', 'HEAD'], true)).out;
   // Stamped at publish time, so a machine can say how OLD its lag is rather than only how many
   // version components it spans. "Three days behind" is what decides whether anyone cares.
-  const manifest = {
+  const document = releaseDocument({
     version: VERSION,
     notes,
-    sha256: hex,
     url,
-    releasedAt: new Date().toISOString(),
-  };
-  await Bun.write(RELEASE_MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
-  return hex;
+    bundle,
+    commit,
+    builtAt: new Date().toISOString(),
+    ...(signingKey === undefined
+      ? {}
+      : { signing: { keyId: SIGNING_KEY_ID, privateKey: signingKey } }),
+  });
+  if (signingKey !== undefined) {
+    const manifest = CliBuildManifestSchema.parse(document);
+    if (
+      !cliSignatureAccepted(verifyCliManifest(manifest, manifest.signature, { keys: RELEASE_KEYS }))
+    )
+      throw new Error('the signing key is not the one ccmux trusts (src/release/trust.ts)');
+    assertCliPublishable(await publishedManifest(), manifest);
+  }
+  await Bun.write(RELEASE_MANIFEST, `${JSON.stringify(document, null, 2)}\n`);
+  return sha256(RELEASE_BUNDLE).hex;
+}
+
+/** The manifest currently published as latest, when it is one: a version published twice from two
+ *  commits is only visible against what is already out. Absent or pre-manifest — nothing to hold. */
+async function publishedManifest(): Promise<CliBuildManifest | undefined> {
+  const repository = process.env.GITHUB_REPOSITORY;
+  if (repository === undefined) return undefined;
+  try {
+    const resp = await fetch(
+      `https://github.com/${repository}/releases/latest/download/release.json?ccmux=${Date.now()}`,
+    );
+    if (!resp.ok) return undefined;
+    return CliBuildManifestSchema.safeParse(await resp.json()).data;
+  } catch {
+    return undefined;
+  }
 }
 
 async function git(argv: string[], capture = false): Promise<{ ok: boolean; out: string }> {
@@ -73,27 +120,19 @@ async function doStage(): Promise<number> {
   return 0;
 }
 
-/** file:// release for the sandbox e2e (isolated HOME) — never for the real fleet. */
-async function doLocal(notes: string): Promise<number> {
-  mkdirSync(RELEASES_DIR, { recursive: true });
-  if (!(await buildBundle(RELEASE_BUNDLE))) return fail('build failed');
-  const { bytes, hex } = sha256(RELEASE_BUNDLE);
-  await writeManifest(`file://${RELEASE_BUNDLE}`, notes);
-  console.log(
-    `built v${VERSION} → ${RELEASE_MANIFEST} (${(bytes / 1e6).toFixed(2)} MB, sha256 ${hex.slice(0, 12)}…)`,
-  );
-  console.log(`  point machine.json releaseUrl at: file://${RELEASE_MANIFEST}`);
-  return 0;
-}
-
 /** CI-only: build the two fleet assets with the manifest pointing at the VERSIONED
  *  GitHub asset url (atomic manifest+bundle pair). Publishing itself is the workflow's job. */
 async function doCiAssets(url: string): Promise<number> {
   if (!url.startsWith('https://')) return fail('--ci-assets needs the versioned https bundle url');
   mkdirSync(RELEASES_DIR, { recursive: true });
   if (!(await buildBundle(RELEASE_BUNDLE))) return fail('build failed');
+  const signingKey = process.env.CCMUX_RELEASE_SIGNING_KEY;
+  if (signingKey === undefined || signingKey === '')
+    return fail(
+      '--ci-assets needs CCMUX_RELEASE_SIGNING_KEY: an unsigned release is refused by the fleet',
+    );
   const notes = changelogSection(VERSION) ?? `ccmux v${VERSION}`;
-  const hex = await writeManifest(url, notes.split('\n')[0] ?? '');
+  const hex = await writeManifest(url, notes.split('\n')[0] ?? '', signingKey);
   await buildMonitoringReader(RELEASES_DIR);
   await buildCodexRuntimeReader(RELEASES_DIR);
   await buildControlClient(RELEASES_DIR);
@@ -240,8 +279,6 @@ const positional = args.filter((a) => !a.startsWith('--'));
 let code: number;
 if (args.includes('--stage')) {
   code = await doStage();
-} else if (args.includes('--local')) {
-  code = await doLocal(positional.join(' '));
 } else if (args.includes('--ci-assets')) {
   const url = positional[0];
   code = url === undefined ? fail('--ci-assets <bundle-url>') : await doCiAssets(url);
@@ -253,7 +290,7 @@ if (args.includes('--stage')) {
   code = await doCeremony(positional[0], positional.slice(1).join(' '));
 } else {
   console.log(
-    'usage: bun run release X.Y.Z "notes"   (or: --commit X.Y.Z "notes" · --tag X.Y.Z · --stage · --local · --ci-assets URL)',
+    'usage: bun run release X.Y.Z "notes"   (or: --commit X.Y.Z "notes" · --tag X.Y.Z · --stage · --ci-assets URL)',
   );
   code = 1;
 }

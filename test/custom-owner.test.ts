@@ -3,14 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
+import { CustomOwner } from '../src/agent/custom/owner.ts';
+import { prepareMessageOperation, readMessageJournal } from '../src/chat/messageOperationStore.ts';
+import { readRuntimeInput, writeRuntimeInput } from '../src/runtime/input.ts';
 import {
   nativeResponseFingerprint,
   readNativeReceipt,
   writeNativeCommand,
-} from '../src/agent/codex/ownedControl.ts';
-import { CustomOwner } from '../src/agent/custom/owner.ts';
-import { prepareMessageOperation, readMessageJournal } from '../src/chat/messageOperationStore.ts';
-import { readRuntimeInput, writeRuntimeInput } from '../src/runtime/input.ts';
+} from '../src/runtime/response.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
 import { customFixture, textStream, usage } from './custom-fixture.ts';
 import { makeCli } from './helpers.ts';

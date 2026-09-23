@@ -1,16 +1,16 @@
 #!/usr/bin/env bun
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { connectOwnedCodex } from '../src/agent/codex/ownedRpc.ts';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { findOwnedCodexReceipt } from '../src/agent/codex/owned/receipt.ts';
+import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { managedPeer, samePrincipal, sameTarget } from '../src/chat/identity.ts';
-import { findOwnedCodexReceipt } from '../src/chat/ownedCodexReceipt.ts';
-import { loadLedger } from '../src/chat/store.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { readMonitoringStatus } from '../src/monitoring/read.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { killSession, newSession } from '../src/tmux/tmux.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
 import {

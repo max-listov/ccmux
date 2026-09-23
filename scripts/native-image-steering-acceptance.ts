@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import { join } from 'node:path';
 import type { AttachmentReference } from '../src/attachments/reference.ts';
-import { loadLedger } from '../src/chat/store.ts';
-import { loadSessions } from '../src/config/sessions.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';

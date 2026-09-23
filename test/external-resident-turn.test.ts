@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
-import type { NativeTurn } from '../src/external/native-turn.ts';
+import type { NativeTurn } from '../src/external/nativeTurn.ts';
 import {
   currentExternalStatus,
   ExternalStatusSnapshotSchema,
-} from '../src/external/resident-schema.ts';
+} from '../src/external/residentSchema.ts';
 import { fixture } from './fixtures/external-resident.ts';
 import { UUID } from './helpers.ts';
 

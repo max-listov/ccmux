@@ -8,7 +8,7 @@ import {
   CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
   CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
   CCMUX_NATIVE_STREAM_PROFILE,
-} from '../src/control/nativeStreamContract.ts';
+} from '../src/control/schema/nativeStreamContract.ts';
 import { VERSION } from '../src/util/version.ts';
 
 const ROOT = resolve(import.meta.dir, '..');

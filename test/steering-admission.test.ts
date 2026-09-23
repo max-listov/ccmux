@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 import { managedPeer } from '../src/chat/identity.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { withContextJournal } from '../src/context/store.ts';
 import type { ManagedRuntimeSnapshot } from '../src/runtime/schema.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { SteeringInputSchema } from '../src/steering/schema.ts';
 import { steerNativeTurn } from '../src/steering/service.ts';
 import { readSteeringJournal } from '../src/steering/store.ts';

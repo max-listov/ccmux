@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { tmuxArgv } from '../src/tmux/tmux.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { tmuxArgv } from '../src/tmux/argv.ts';
 
 const cfg = (extra: Record<string, unknown>) =>
   MachineConfigSchema.parse({

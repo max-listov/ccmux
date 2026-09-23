@@ -8,10 +8,11 @@
 // Rotation: size-based at write time, ccmux.log → .1 → .2 (≈5MB × 3 ≈ 15MB cap) — fixed
 // sane bounds, intentionally NOT config (a runaway log should never eat a server disk).
 
-import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { createBoundedLogger } from 'stitchkit/observability';
 import { LOG_FILE, STATE_DIR } from '../config/paths.ts';
-import { IS_DEV } from '../env.ts';
+import { IS_DEV } from './env.ts';
+import { rotateBySize } from './jsonl.ts';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type Fields = { msg: string } & Record<string, unknown>;
@@ -36,36 +37,13 @@ export function setLogLevel(level: LogLevel): void {
   threshold = level;
 }
 
-/** Shift ccmux.log → .1 → .2 when the live file exceeds MAX_BYTES. Failures are swallowed —
- *  rotation is best-effort and must never block a log write. */
-function rotateIfNeeded(): void {
-  try {
-    if (statSync(LOG_FILE).size < MAX_BYTES) return;
-  } catch {
-    return; // no file yet — nothing to rotate
-  }
-  try {
-    rmSync(`${LOG_FILE}.${KEEP}`, { force: true });
-    for (let i = KEEP - 1; i >= 1; i--) {
-      try {
-        renameSync(`${LOG_FILE}.${i}`, `${LOG_FILE}.${i + 1}`);
-      } catch {
-        // generation missing — fine
-      }
-    }
-    renameSync(LOG_FILE, `${LOG_FILE}.1`);
-  } catch {
-    // rotation must never crash the app
-  }
-}
-
 function writeFile(line: string): void {
   try {
     if (!dirReady) {
       mkdirSync(STATE_DIR, { recursive: true });
       dirReady = true;
     }
-    rotateIfNeeded();
+    rotateBySize(LOG_FILE, MAX_BYTES, KEEP); // best-effort: never blocks a log write
     appendFileSync(LOG_FILE, line);
   } catch {
     // logging must NEVER crash the app

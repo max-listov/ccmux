@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import { join } from 'node:path';
-import { loadSessions } from '../src/config/sessions.ts';
 import type { ContentRecord } from '../src/content/schema.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

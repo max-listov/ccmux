@@ -3,12 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { createControlServer } from '../src/control/server.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
+import { loadSessions } from '../src/session/registry.ts';
 
 /** Real native catalog with an empty registry: no placeholder conversation or machine socket. */
 function check(value: unknown, message: string): asserts value {

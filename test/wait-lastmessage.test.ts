@@ -30,23 +30,39 @@ const msg = (over: Partial<TranscriptMessage>): TranscriptMessage => ({
   ...over,
 });
 
-test('wait: --timeout parses seconds; a bad or missing value keeps the default', () => {
-  expect(parseWaitOpts(['--timeout', '30']).timeoutSec).toBe(30);
-  expect(parseWaitOpts([]).timeoutSec).toBe(300);
-  expect(parseWaitOpts(['--timeout', 'junk']).timeoutSec).toBe(300);
-  expect(parseWaitOpts(['--timeout', '-5']).timeoutSec).toBe(300); // non-positive → default
+test('wait: --timeout parses seconds; a missing one is the default and a bad one is refused', () => {
+  expect(parseWaitOpts(['agent-a', '--timeout', '30']).timeoutSec).toBe(30);
+  expect(parseWaitOpts(['agent-a']).timeoutSec).toBe(300);
+  // Refused, not replaced: a caller that asked for a bound must not silently wait five minutes.
+  expect(() => parseWaitOpts(['agent-a', '--timeout', 'junk'])).toThrow(
+    "--timeout expects a whole number from 1, got 'junk'",
+  );
+  expect(() => parseWaitOpts(['agent-a', '--timeout', '0'])).toThrow('--timeout expects');
+  expect(() => parseWaitOpts(['agent-a', '--timeout', '-5'])).toThrow("got '-5'");
+  expect(() => parseWaitOpts(['agent-a', '--tiemout', '5'])).toThrow("Unknown option '--tiemout'");
+  expect(() => parseWaitOpts([])).toThrow('missing argument');
 });
 
 test('wait: --quiet / -q for script use', () => {
-  expect(parseWaitOpts(['--quiet']).quiet).toBe(true);
-  expect(parseWaitOpts(['-q']).quiet).toBe(true);
-  expect(parseWaitOpts([]).quiet).toBe(false);
+  expect(parseWaitOpts(['agent-a', '--quiet']).quiet).toBe(true);
+  expect(parseWaitOpts(['agent-a', '-q']).quiet).toBe(true);
+  expect(parseWaitOpts(['agent-a']).quiet).toBe(false);
+  // Forwarded to a peer without the address it was resolved from.
+  expect(parseWaitOpts(['host-b:agent-a', '-q', '--timeout', '9']).flagArgs).toEqual([
+    '-q',
+    '--timeout',
+    '9',
+  ]);
 });
 
 test('transcript: --last-message is recognized and independent of --json', () => {
-  expect(parseOpts(['--last-message']).lastMessage).toBe(true);
-  expect(parseOpts(['--last-message']).json).toBe(false);
-  expect(parseOpts(['--json']).lastMessage).toBe(false);
+  expect(parseOpts(['agent-a', '--last-message']).lastMessage).toBe(true);
+  expect(parseOpts(['agent-a', '--last-message']).json).toBe(false);
+  expect(parseOpts(['agent-a', '--json']).lastMessage).toBe(false);
+  // A window is one answer and is served at its documented cap; a search is not capped.
+  expect(parseOpts(['agent-a', '--json', '--tail', '5000']).tail).toBe(1000);
+  expect(parseOpts(['agent-a', '--grep', 'x', '--tail', '5000']).tail).toBe(5000);
+  expect(() => parseOpts(['agent-a', '--json', '--tail', 'abc'])).toThrow('--tail expects');
 });
 
 test('lastAssistantText takes the newest assistant TEXT, skipping tool calls and results', () => {

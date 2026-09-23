@@ -80,8 +80,11 @@ does not require a runtime version bump or rollout.
    verified; never mark an unperformed check as complete.
 3. Once the task's acceptance is satisfied, set `status: done`, add the actual `completed`
    timestamp and move it to the backlog's `done/` before committing the completed work.
-4. Only when the current mandate includes publication, commit, release and verify the owned runtimes. If acceptance
-   requires post-release evidence, keep those items and the task open until that evidence exists.
+4. Only when the current mandate includes publication, commit, release and verify the owned runtimes. A task
+   whose work is finished but not yet released is still closed to `done/`: releases accumulate for
+   weeks, and a task left open meanwhile claims work that is not being done. Acceptance items that
+   need a running release are closed with a note naming them as that release's verification, and
+   are checked when the release ships — never ticked as if already observed.
 
 This documentation obligation is independent of the checkout rule below: fixing the release
 location must not remove task completion or architecture-documentation requirements. Routine
@@ -152,9 +155,41 @@ Default to using Bun instead of Node.js.
 - Prefer `Bun.file` over `node:fs`'s readFile/writeFile
 - Bun.$`ls` instead of execa.
 
+## Source layout
+A folder is a domain; a module lives with the domain that owns its meaning, and its schema lives beside
+it — `config/` holds configuration only, not every schema. `src/` root holds entry points and nothing
+else: `cli.ts`, one file per published package export named exactly as the export
+(`session-reader.ts`, `monitoring-reader.ts`, `codex-runtime-reader.ts`, `control-client.ts`,
+`control-service-client.ts`) and the shared `types.ts`.
+
+- `agent/` — providers (`claude/`, `codex/` with the App Server owner in `codex/owned/`, `opencode/`,
+  `custom/`), transcript reading (`transcript/`), launch inputs and environment (`launch/`), the
+  managed prompt (`prompt/`).
+- `session/` — the session registry and its lock, create/start/heal/adopt, lifecycle blocks, status files.
+- `chat/` — ledger, cursors, delivery, settlement; `runtime/` — what every native runtime shares
+  (mailboxes, status, admission); `control/` — `schema/` (the wire), `operations/` (domain factories),
+  `transport/` (socket and service), with the handlers beside them.
+- `commands/` reads command lines and prints; nothing but `cli.ts` imports it (`test/layering.test.ts`).
+- `util/` — domain-free helpers (JSONL, locks, spawn, ANSI, tables, the self re-exec in `env.ts`).
+
+File names are camelCase; only the published entry points use the kebab-case of their export.
+
+## Command lines
+A command's flags are declared once, as `flags` on its `COMMANDS` entry in `src/commands/help.ts`, and
+read with `parseFlags` (`src/commands/flags.ts`) — never by hand. The reader is strict: an unknown flag,
+a missing value, a repeated single-value flag and a number that is not a whole number in range are each
+an error naming the flag, with the usage line. `test/help-flag-parity.test.ts` fails when the help text
+and the spec disagree in either direction. Output a machine reads (`--json`, anything that can exceed
+a pipe buffer) goes through `printLine`/`writeOut` (`src/util/stdout.ts`), and aligned columns through
+`tableLines`/`alignedLines` (`src/util/table.ts`).
+
 ## Testing
 
 Use `bun run check` for the complete local gate: Biome, TypeScript, tests and packed clients.
+`bunfig.toml` preloads `test/preload.ts`, which points every ccmux root (state, cache, data, config)
+at a private temporary home before any test module loads; `test/test-isolation.test.ts` fails if
+that ever stops. A test never writes into the operator's real directories, and one that needs its
+own root still sets it itself.
 Tests run with `--timeout 20000`, not Bun's 5-second default: this suite waits on real processes,
 sockets and tmux, and on a loaded machine those legitimately take seconds — five of them failed
 that way in one afternoon, none of them alone. The bound still fails a hang; it just stops being a

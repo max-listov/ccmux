@@ -2,10 +2,9 @@ import { lstat, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type DiagnosticJournal, DiagnosticJournalStatusSchema } from 'stitchkit/application';
 import { z } from 'zod';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
-import { withDirectoryLock } from '../config/registryLock.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { withLock } from '../util/lock.ts';
 import { recordRuntimeDiagnostic } from './diagnostics.ts';
 import {
   createRuntimeJournal,
@@ -13,7 +12,7 @@ import {
   type RuntimeJournalWriter,
   runtimeJournalPath,
 } from './journal.ts';
-import { readPrivateJson } from './store.ts';
+import { privateRuntimeDirectory, readPrivateJson } from './store.ts';
 
 const ClaimSchema = z.object({ pid: z.int().positive(), epoch: z.uuid() }).strict();
 async function recover(path: string): Promise<boolean> {
@@ -54,7 +53,7 @@ export async function openOwnedRuntimeJournal(m: MachineConfig, writer: RuntimeJ
   const ready = Promise.withResolvers<DiagnosticJournal<RuntimeJournalEvent>>();
   const stopping = Promise.withResolvers<void>();
   let recovered = false;
-  const lifecycle = withDirectoryLock(
+  const lifecycle = withLock(
     `${path}.owner-lock`,
     async () => {
       let journal: DiagnosticJournal<RuntimeJournalEvent> | undefined;

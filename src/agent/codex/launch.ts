@@ -2,15 +2,18 @@ import { accessSync, constants } from 'node:fs';
 import { dirname } from 'node:path';
 import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import { chatEnabledFor } from '../../config/chat.ts';
-import { UID } from '../../env.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { ensurePath, ensureUtf8Locale, loginShellPath } from '../../util/envPath.ts';
-import { log } from '../../util/log.ts';
-import { fileSetDigest, type LaunchInput, ruleSetFiles, tomlTableDigest } from '../launchInputs.ts';
-import { buildPrompt } from '../managePrompt.ts';
-import { sessionEnvRecipe } from '../sessionEnv.ts';
-import { ownedCodexArgv } from './ownedLaunch.ts';
-import { isOwnedCodex } from './ownedPaths.ts';
+import { UID } from '../../util/env.ts';
+import {
+  fileSetDigest,
+  type LaunchInput,
+  ruleSetFiles,
+  tomlTableDigest,
+} from '../launch/launchInputs.ts';
+import { providerLaunchEnv } from '../launch/sessionEnv.ts';
+import { buildPrompt } from '../prompt/managePrompt.ts';
+import { ownedCodexArgv } from './owned/launch.ts';
+import { isOwnedCodex } from './owned/paths.ts';
 
 export const CODEX_LAUNCH_MARKER_ENV = 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE';
 
@@ -104,29 +107,19 @@ function stripDangerous(flags: string[]): string[] {
   );
 }
 
-/** Environment for the spawned codex: usable PATH + the self-guard marker. */
 /** Same two keys as every managed provider: the identity pin and the chat capability. */
 export function launchEnvKeys(_m: MachineConfig): readonly string[] {
   return [CHAT_CREDENTIAL_ENV, 'CCMUX_SESSION'];
 }
 
+/** Environment for the spawned codex: the provider launch environment and its own home. */
 export function launchEnv(m: MachineConfig, session: Session): Record<string, string> {
   // Same recipe as every other provider — the env layer is core-owned precisely so two agents cannot
   // end up with two different answers to "what is this session's environment".
-  const { env, refused } = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
-  if (refused.length > 0)
-    log.warn({
-      msg: 'env file tried to set ccmux-controlled names — ignored',
-      name: session.name,
-      keys: refused,
-    });
-  const extra = [m.codexBin ? dirname(m.codexBin) : '', dirname(m.tmuxBin)].filter((p) => p !== '');
-  const login = loginShellPath(); // re-derive the real login PATH (fish-aware) under a thin boot PATH
-  const base = [login, env.PATH]
-    .filter((p): p is string => p !== null && p !== undefined)
-    .join(':');
-  env.PATH = ensurePath(base, extra);
-  ensureUtf8Locale(env); // force UTF-8 so the agent draws Unicode box-rules, not ASCII '_'
+  const env = providerLaunchEnv(
+    session,
+    [m.codexBin ? dirname(m.codexBin) : '', dirname(m.tmuxBin)].filter((p) => p !== ''),
+  );
   if (m.codexHome) env.CODEX_HOME = m.codexHome;
   env.CCMUX_SESSION = session.name;
   return env;

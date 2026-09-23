@@ -3,21 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { loadAcks } from '../src/chat/ackLog.ts';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../src/chat/auth.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
+import { loadCursors, saveCursors } from '../src/chat/cursors.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import {
-  deliverableTargets,
-  loadAckedIds,
-  loadCursors,
-  loadLedger,
-  pendingConditional,
-  pendingImmediate,
-  saveCursors,
-} from '../src/chat/store.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
+import { deliverableTargets, pendingConditional, pendingImmediate } from '../src/chat/store.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { chatAuthPath, outboxPath, sessionsPath } from '../src/config/paths.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { communicationAuthorizationFile } from './communication-fixture.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
@@ -87,23 +82,33 @@ test("msg cancel <task> tombstones this sender's undelivered mail for that task"
   const { cfgPath, m } = setup();
   await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 't1', 'watchdog']);
   // one pending conditional before cancel
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't1' }).length).toBe(1);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 't1' }).length).toBe(1);
   const { code, out } = await runMsg(cfgPath, 'router', ['cancel', 't1']);
   expect(code).toBe(0);
   expect(out).toContain('cancelled 1');
   // gone from pending; the ledger message still exists but is now acked-as-cancel
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't1' }).length).toBe(0);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 't1' }).length).toBe(0);
 });
 
 test('re-arming --after with the same (from,to,task) REPLACES the prior pending — no duplicate watchdog', async () => {
   const { cfgPath, m } = setup();
   await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 't2', 'arm 1']);
   await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 't2', 'arm 2']);
-  const pend = pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't2' });
+  const pend = pendingConditional(loadLedger(m), loadAcks(m), { task: 't2' });
   expect(pend.length).toBe(1); // only the latest survives
   expect(pend[0]?.body).toBe('arm 2');
   // the ledger holds both; the first was tombstoned
   expect(loadLedger(m).filter((x) => x?.task === 't2').length).toBe(2);
+});
+
+test('two ordinary letters under one --task both stay pending — only a timer replaces', async () => {
+  // Waiting for the turn boundary is the default for a managed recipient, so an ordinary letter is
+  // deferred too. Replacing on that would drop a letter whose only sin was arriving mid-turn.
+  const { cfgPath, m } = setup();
+  await runMsg(cfgPath, 'router', ['worker', '--task', 't4', 'first']);
+  await runMsg(cfgPath, 'router', ['worker', '--task', 't4', 'second']);
+  const pend = pendingConditional(loadLedger(m), loadAcks(m), { task: 't4' });
+  expect(pend.map((x) => x.body)).toEqual(['first', 'second']);
 });
 
 test("cancel is scoped to the sender — one router can't cancel another's watchdog", async () => {
@@ -112,7 +117,7 @@ test("cancel is scoped to the sender — one router can't cancel another's watch
   const { out } = await runMsg(cfgPath, 'router2', ['cancel', 'shared']); // different sender
   expect(out).toContain('nothing of yours is waiting');
   expect(out).toContain('only their own sender can retract them');
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 'shared' }).length).toBe(1); // untouched
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 'shared' }).length).toBe(1); // untouched
 });
 
 test('cancel with no task → usage, exit 1', async () => {
@@ -129,8 +134,7 @@ test('dedup replace only fires with a --task — same target, no task, keeps bot
   const worker = loadSessions(m).find((session) => session.name === 'worker');
   if (worker === undefined) throw new Error('worker fixture missing');
   expect(
-    pendingConditional(loadLedger(m), loadAckedIds(m), { to: managedPeer(m.rcPrefix, worker) })
-      .length,
+    pendingConditional(loadLedger(m), loadAcks(m), { to: managedPeer(m.rcPrefix, worker) }).length,
   ).toBe(2);
 });
 
@@ -147,7 +151,7 @@ test('--after + --interrupt prints the trap note but still sends', async () => {
   ]);
   expect(code).toBe(0);
   expect(out).toContain('--after with --interrupt');
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't3' }).length).toBe(1);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 't3' }).length).toBe(1);
 });
 
 test('stdin body: echo … | ccmux msg <to> reads the piped text', async () => {
@@ -174,7 +178,7 @@ test('cancel names the immediate mail it could not withdraw, so its zero is not 
   // letter is still on its way, which is exactly the conclusion a sender acts on.
   expect(out).toContain('nothing to cancel');
   expect(out).toContain("1 immediate message(s) for 't4' are still on their way");
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 't4' }).length).toBe(0);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 't4' }).length).toBe(0);
 });
 
 test('cancel says it cannot reach mail that went to another machine, instead of a bare zero', async () => {
@@ -229,7 +233,7 @@ test('a letter outlives the life that sent it, and its session can still retract
 
   const result = await runMsg(cfgPath, 'router', ['cancel', 'outlives']);
   expect(result.out).toContain('cancelled 1 undelivered message(s)');
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 'outlives' })).toEqual([]);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 'outlives' })).toEqual([]);
 });
 
 test('a name taken over by another runtime does not inherit the previous owner’s mail', async () => {
@@ -241,7 +245,7 @@ test('a name taken over by another runtime does not inherit the previous owner�
   reincarnate(m, 'router', { agent: 'codex' });
   const result = await runMsg(cfgPath, 'router', ['cancel', 'handover']);
   expect(result.out).toContain('belong to');
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { task: 'handover' })).toHaveLength(1);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 'handover' })).toHaveLength(1);
 });
 
 test('the three ways nothing was cancelled are told apart, because each needs a different move', async () => {
@@ -310,7 +314,7 @@ test('mail to a session that was removed is not waiting — and is not silently 
   await runMsg(cfgPath, 'router', ['worker', '--after', '600', '--task', 'deferred-to-dead', 'a']);
   await runMsg(cfgPath, 'router', ['worker', '--interrupt', '--task', 'immediate-to-dead', 'b']);
   await runMsg(cfgPath, 'router', ['router2', '--after', '600', '--task', 'to-the-living', 'c']);
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), {})).toHaveLength(2);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), {})).toHaveLength(2);
 
   // The recipient leaves. Nothing about the letters changes; the ledger keeps every one of them.
   const rows = loadSessions(m).filter((session) => session.name !== 'worker');
@@ -325,8 +329,8 @@ test('mail to a session that was removed is not waiting — and is not silently 
   expect(listed.out).toContain('to-the-living');
 
   const live = deliverableTargets(m);
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), { live })).toHaveLength(1);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), { live })).toHaveLength(1);
   expect(pendingImmediate(loadLedger(m), loadCursors(m), { live })).toHaveLength(0);
   // And nothing was erased: without the filter the record is still there to be read.
-  expect(pendingConditional(loadLedger(m), loadAckedIds(m), {})).toHaveLength(2);
+  expect(pendingConditional(loadLedger(m), loadAcks(m), {})).toHaveLength(2);
 });

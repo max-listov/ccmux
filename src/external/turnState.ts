@@ -3,8 +3,8 @@ import { connectCodexAppServer } from '../agent/codex/appServer.ts';
 import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import { CodexAppUnavailable } from '../agent/codex/socket.ts';
 import type { ExternalSession, MachineConfig } from '../types.ts';
-import { supportsNativeStatus } from './native-list.ts';
-import { readNativeTurns, withNativeTurn } from './native-turn.ts';
+import { supportsNativeStatus } from './nativeList.ts';
+import { readNativeTurns, withNativeTurn } from './nativeTurn.ts';
 import { type ConnectionReason, type ExternalTurnState, unknownTurnState } from './turnSchema.ts';
 
 export const TURN_OBSERVATION_TTL_MS = 5_000;

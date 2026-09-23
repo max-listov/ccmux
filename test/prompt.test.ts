@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { buildPrompt } from '../src/agent/managePrompt.ts';
-import { pickInvocation } from '../src/env.ts';
+import { buildPrompt } from '../src/agent/prompt/managePrompt.ts';
+import { pickInvocation } from '../src/util/env.ts';
 
 test('buildPrompt teaches the bare shim invocation (no absolute-path crutch)', () => {
   const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
@@ -55,6 +55,14 @@ test('every hand-off example is ADDRESSED — the omission that made the first v
   expect(p).toContain('ccmux wait <machine>:<session>');
   expect(p).toContain('ccmux transcript <machine>:<session> --last-message');
   expect(p).toContain('ccmux fleet'); // how to discover an address in the first place
+});
+
+test('searching a peer is one command, and the prompt says it is not how to take a result', () => {
+  // Without this line an agent looking for a place in a peer's history dumped a JSON window of a
+  // guessed size and wrote its own regex parser over it.
+  const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
+  expect(p).toContain("ccmux transcript <machine>:<session> --grep '<regex>'");
+  expect(p).toContain('It finds a place, not a result');
 });
 
 test('the ssh wrapper is banned WITH its consequence, not just forbidden', () => {

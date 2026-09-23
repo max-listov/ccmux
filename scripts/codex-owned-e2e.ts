@@ -2,15 +2,15 @@
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { startCodexAppTurn } from '../src/agent/codex/appServer.ts';
-import { readCodexRuntime } from '../src/agent/codex/ownedRead.ts';
-import { connectOwnedCodex } from '../src/agent/codex/ownedRpc.ts';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { readCodexRuntime } from '../src/agent/codex/owned/read.ts';
+import { findOwnedCodexReceipt } from '../src/agent/codex/owned/receipt.ts';
+import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
 import { chatPrincipalKey, chatTargetKey, managedPeer } from '../src/chat/identity.ts';
-import { findOwnedCodexReceipt } from '../src/chat/ownedCodexReceipt.ts';
-import { loadLedger } from '../src/chat/store.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import type { Session } from '../src/types.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
 

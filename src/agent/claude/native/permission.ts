@@ -1,4 +1,6 @@
 import type { PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
+import type { NativeSnapshot } from '../../../runtime/projectionSchema.ts';
+import { summarise } from './content.ts';
 
 /**
  * Turning a tool permission request into an answerable one, and an answer back into a result.
@@ -115,3 +117,34 @@ export function answersDialog(kind: string): boolean {
 
 /** True when this host declares any dialog kind at all; declaring none is a supported state. */
 export const declaresDialogs = (): boolean => SUPPORTED_DIALOG_KINDS.length > 0;
+
+/** The request a person answers, carrying the arguments: deciding without them is the same blind
+ *  answer the drawn menu forced. */
+export function approvalRequest(
+  requestId: string,
+  toolName: string,
+  input: unknown,
+  turnId: string,
+): NativeSnapshot['pendingRequests'][number] {
+  return {
+    requestId,
+    rpcId: requestId,
+    kind: 'approval',
+    approvalKind: approvalKind(toolName),
+    turnId,
+    itemId: requestId,
+    reason: summarise(toolName, input),
+    scope: null,
+    decisions: ['accept', 'acceptForSession', 'decline', 'cancel'],
+    questions: [],
+    requestedAt: new Date().toISOString(),
+  };
+}
+
+/** A request the runtime is waiting on, and how to answer it. */
+export interface PendingApproval {
+  request: NativeSnapshot['pendingRequests'][number];
+  /** The REAL tool name, kept apart from the human summary — a rule keyed on prose matches nothing. */
+  toolName: string;
+  settle: (result: PermissionResult) => void;
+}

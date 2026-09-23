@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import type { TranscriptUsage } from '../../config/schema.ts';
 import { indexedUsage } from '../../usage/indexed.ts';
 import { MtimeCache } from '../../util/mtimeCache.ts';
-import { rec, str } from '../normalize.ts';
-import { indexTranscript } from '../transcriptIndex.ts';
-import { countStats } from '../transcriptRead.ts';
+import type { TranscriptUsage } from '../transcript/messageSchema.ts';
+import { rec, str } from '../transcript/normalize.ts';
+import { indexTranscript } from '../transcript/transcriptIndex.ts';
+import { countStats } from '../transcript/transcriptRead.ts';
 import { parse } from './transcript.ts';
 
 // What a Claude subagent left behind, read from its own transcript.

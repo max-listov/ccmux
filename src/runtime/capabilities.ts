@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema } from '../config/schema.ts';
+import { AgentKindSchema } from '../chat/identitySchema.ts';
 import type { Session } from '../types.ts';
 import { hasNativeRuntime } from './modes.ts';
 

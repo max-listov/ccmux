@@ -1,15 +1,15 @@
 import { z } from 'zod';
+import { eventsEnabledFor } from '../config/events.ts';
+import { loadMachineConfig } from '../config/machine.ts';
+import type { EmitInput } from '../events/feed.ts';
+import { appendEvent } from '../events/feed.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
 import {
   type LifecycleStatus,
   readLifecycle,
   SUPERVISOR_CLOSED_EVENT,
   writeLifecycle,
-} from '../agent/sessionStatus.ts';
-import { eventsEnabledFor } from '../config/events.ts';
-import { loadMachineConfig } from '../config/machine.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
-import type { EmitInput } from '../events/feed.ts';
-import { appendEvent } from '../events/feed.ts';
+} from '../session/status.ts';
 
 /**
  * `ccmux hook-status` — Claude Code lifecycle hooks (UserPromptSubmit / Stop / SessionStart) for a

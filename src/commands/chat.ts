@@ -10,6 +10,7 @@ import {
   machineColumnWidth,
   mergeFleetLog,
 } from '../chat/fleetLog.ts';
+import { loadLedger } from '../chat/ledger.ts';
 import {
   followRows,
   type LogFrame,
@@ -17,18 +18,18 @@ import {
   parseCursor,
   ZERO_CURSOR,
 } from '../chat/logFeed.ts';
-import { loadLedger } from '../chat/store.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { archiveDir } from '../config/paths.ts';
-import { setSessionChatEnabled } from '../config/sessions.ts';
 import { loadOutboxAcked } from '../fleet/flush.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
 import { peersOf, remoteFailureCause, runPeer } from '../fleet/transport.ts';
+import { setSessionChatEnabled } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { printLine } from '../util/stdout.ts';
 import { resolveSince, resumeCursor } from './events.ts';
+import { type ParsedFlags, parseFlags } from './flags.ts';
 
 const USAGE =
   'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
@@ -125,28 +126,15 @@ async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
  *
  * `--fleet` therefore stays what it is: a snapshot, for first paint. The feed owns what happens next.
  */
-async function cmdChatFeed(m: MachineConfig, args: string[]): Promise<number> {
-  let json = false;
-  let framed = false;
-  let since: string | undefined;
-  let cursorEnv: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--follow' || a === '-f') continue;
-    else if (a === '--json') json = true;
-    else if (a === '--framed') framed = true;
-    else if (a === '--since') since = args[++i];
-    // The variable the transport hands a resume point back in — see `resumeCursor` in events.ts.
-    else if (a === '--cursor-env') {
-      cursorEnv = args[++i];
-      if (cursorEnv === undefined || cursorEnv === '') {
-        console.error('chat log: --cursor-env needs the name of an environment variable');
-        return 1;
-      }
-    } else if (a?.startsWith('-')) {
-      console.error(`chat log: unknown flag '${a}'\n${USAGE}`);
-      return 1;
-    }
+async function cmdChatFeed(m: MachineConfig, flags: ParsedFlags): Promise<number> {
+  const json = flags.bool('json');
+  const framed = flags.bool('framed');
+  let since = flags.str('since');
+  // The variable the transport hands a resume point back in — see `resumeCursor` in events.ts.
+  const cursorEnv = flags.str('cursor-env');
+  if (cursorEnv === '') {
+    console.error('chat log: --cursor-env needs the name of an environment variable');
+    return 1;
   }
   const explicit = since;
   since = resolveSince(since, resumeCursor(cursorEnv));
@@ -209,11 +197,9 @@ function fmtFrame(frame: LogFrame): string {
   return `[${frame.cursor}] ${fmtRow(frame.row)}`;
 }
 
-async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
-  if (args.includes('--follow') || args.includes('-f')) return cmdChatFeed(m, args);
-  const nIdx = args.indexOf('-n');
-  const parsed = nIdx >= 0 ? Number.parseInt(args[nIdx + 1] ?? '', 10) : 30;
-  const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number> {
+  if (flags.bool('follow')) return cmdChatFeed(m, flags);
+  const limit = flags.int('n') ?? 30;
   // Both halves of the exchange: what arrived (ledger) AND what we sent elsewhere (outbox) — the
   // initiator's side is exactly what was missing when a hand-off went to the wrong machine.
   const self: Source = {
@@ -222,11 +208,11 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
   };
   // A peer is always asked WITHOUT `--fleet` (see remoteLogs), so answering about ourselves here is
   // what makes the remote transport format the same shape as the human-facing one.
-  const sources = args.includes('--fleet') ? [self, ...(await remoteLogs(m, limit))] : [self];
+  const sources = flags.bool('fleet') ? [self, ...(await remoteLogs(m, limit))] : [self];
   const machines = sources.map((s) => s.machine);
   const rows = mergeFleetLog(sources, limit);
 
-  if (args.includes('--json')) {
+  if (flags.bool('json')) {
     // Emitted THROUGH the schema, so the shape a peer parses and the shape we print are one
     // definition rather than two that can drift.
     await printLine(JSON.stringify(LogPayloadSchema.parse({ machines, rows })));
@@ -256,13 +242,14 @@ async function cmdChatLog(m: MachineConfig, args: string[]): Promise<number> {
  *   ccmux chat default <name> — clear the override; inherit the machine's chatEnabled
  */
 export async function cmdChat(args: string[]): Promise<number> {
-  const sub = args[0];
+  const flags = parseFlags('chat', args, [1, 2]);
+  const sub = flags.positionals[0];
   const m = loadMachineConfig();
 
-  if (sub === 'log') return cmdChatLog(m, args.slice(1));
+  if (sub === 'log') return cmdChatLog(m, flags);
 
   if (sub === 'on' || sub === 'off' || sub === 'default') {
-    const target = args[1];
+    const target = flags.positionals[1];
     if (target === undefined) {
       console.log(
         `usage: ccmux chat ${sub} <name>   ·   <machine>:<name> for another fleet machine`,

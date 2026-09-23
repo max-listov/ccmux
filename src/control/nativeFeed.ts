@@ -1,22 +1,22 @@
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
+import type { ManagedPeerSchema } from '../chat/identitySchema.ts';
+import { readMessageJournal } from '../chat/messageOperationStore.ts';
+import { readContent, subscribeContent } from '../content/read.ts';
+import type { ContentRead } from '../content/schema.ts';
+import { sessionApplicationPolicy } from '../policy/projection.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
 import {
   nativeResponseFingerprint,
   readNativeCommand,
   readNativeReceipt,
   writeNativeCommand,
-} from '../agent/codex/ownedControl.ts';
-import { readMessageJournal } from '../chat/messageOperationStore.ts';
-import type { ManagedPeerSchema } from '../config/schema.ts';
-import { readContent, subscribeContent } from '../content/read.ts';
-import type { ContentRead } from '../content/schema.ts';
-import { blockedPolicyReason, projectApplicationPolicy } from '../policy/projection.ts';
-import { runtimeCapabilities } from '../runtime/capabilities.ts';
-import { hasNativeRuntime } from '../runtime/modes.ts';
+} from '../runtime/response.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig } from '../types.ts';
-import type { ControlNativeSnapshot } from './schema.ts';
+import type { ControlNativeSnapshot } from './schema/native.ts';
 import { controlTarget } from './target.ts';
 
 type Target = z.infer<typeof ManagedPeerSchema>;
@@ -58,16 +58,7 @@ function nativeFrame(
     nativeSelection: snapshot.nativeSelection ?? null,
     ...(snapshot.nativeProfile === undefined ? {} : { nativeProfile: snapshot.nativeProfile }),
     driverCapabilities: runtimeCapabilities(session),
-    ...(session.applicationPolicy === undefined
-      ? {}
-      : {
-          applicationPolicy: projectApplicationPolicy(
-            session.applicationPolicy,
-            read.status,
-            snapshot.applicationPolicy,
-            read.status === 'live' ? read.reason : (blockedPolicyReason(m, session) ?? read.reason),
-          ),
-        }),
+    ...sessionApplicationPolicy(m, session, session.applicationPolicy, read),
     ...(snapshot.nativeSession === undefined ? {} : { nativeSession: snapshot.nativeSession }),
   };
 }

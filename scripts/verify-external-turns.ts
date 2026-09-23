@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { connectCodexAppServer } from '../src/agent/codex/appServer.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { ExternalInventoryJsonSchema } from '../src/config/schema.ts';
+import { ExternalInventoryJsonSchema } from '../src/external/sessionSchema.ts';
 import { VERSION } from '../src/util/version.ts';
 
 if (Bun.argv[2] !== '--run') {

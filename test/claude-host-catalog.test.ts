@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readClaudeModels, validateClaudeSelection } from '../src/agent/claude/native/catalog.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
-import { ControlModelsReadSchema } from '../src/control/schema.ts';
+import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**

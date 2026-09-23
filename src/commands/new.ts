@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { AgentKindSchema } from '../chat/identitySchema.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { AgentKindSchema } from '../config/schema.ts';
+import { createManagedSession } from '../session/create.ts';
 import { log } from '../util/log.ts';
-import { createManagedSession } from './create.ts';
 
 /**
  * Register a new managed session and start it. Flags after `--` are stored verbatim

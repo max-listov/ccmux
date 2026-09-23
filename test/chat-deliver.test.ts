@@ -1,11 +1,8 @@
 import { expect, test } from 'bun:test';
 import { atInteractiveMenu, chatDeliverable } from '../src/agent/claude/pane.ts';
-import {
-  holdChanged,
-  isConditional,
-  notBeforeDue,
-  recentInboundCount,
-} from '../src/chat/deliver.ts';
+import { holdChanged } from '../src/chat/deliverApp.ts';
+import { recentInboundCount } from '../src/chat/rateGuard.ts';
+import { isConditional, isDue } from '../src/chat/settlement.ts';
 import type { ChatMessage } from '../src/types.ts';
 import { makeChatMessage, makePeer } from './helpers.ts';
 
@@ -25,13 +22,13 @@ test('isConditional: deferred OR time-delayed mail is off-cursor; plain mail is 
   expect(isConditional({ ...baseMsg, notBefore: '2030-01-01T00:00:00.000Z' })).toBe(true);
 });
 
-test('notBeforeDue: null=due, future=not-due, past=due, unparseable=due (never trap forever)', () => {
+test('isDue: null=due, future=not-due, past=due, unparseable=due (never trap forever)', () => {
   const now = 1_000_000_000;
   const mk = (nb: string | null) => ({ ...baseMsg, notBefore: nb });
-  expect(notBeforeDue(mk(null), now)).toBe(true);
-  expect(notBeforeDue(mk(new Date(now + 5000).toISOString()), now)).toBe(false);
-  expect(notBeforeDue(mk(new Date(now - 5000).toISOString()), now)).toBe(true);
-  expect(notBeforeDue(mk('not-a-date'), now)).toBe(true);
+  expect(isDue(mk(null), now)).toBe(true);
+  expect(isDue(mk(new Date(now + 5000).toISOString()), now)).toBe(false);
+  expect(isDue(mk(new Date(now - 5000).toISOString()), now)).toBe(true);
+  expect(isDue(mk('not-a-date'), now)).toBe(true);
 });
 
 test('detects a permission menu (cursor on a numbered option) → not deliverable', () => {

@@ -3,10 +3,8 @@ import { dirname } from 'node:path';
 import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import { chatEnabledFor } from '../../config/chat.ts';
 import { rcName } from '../../config/machine.ts';
-import { HOME, UID } from '../../env.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { ensurePath, ensureUtf8Locale, loginShellPath } from '../../util/envPath.ts';
-import { log } from '../../util/log.ts';
+import { HOME, UID } from '../../util/env.ts';
 import {
   digestOf,
   fileDigest,
@@ -14,9 +12,9 @@ import {
   jsonFieldDigest,
   type LaunchInput,
   ruleSetFiles,
-} from '../launchInputs.ts';
-import { buildPrompt } from '../managePrompt.ts';
-import { sessionEnvRecipe } from '../sessionEnv.ts';
+} from '../launch/launchInputs.ts';
+import { providerLaunchEnv } from '../launch/sessionEnv.ts';
+import { buildPrompt } from '../prompt/managePrompt.ts';
 
 export function preflight(m: MachineConfig): void {
   accessSync(m.claudeBin, constants.X_OK);
@@ -147,13 +145,6 @@ function stripDangerous(flags: string[]): string[] {
   );
 }
 
-/**
- * Environment for the spawned claude:
- *  - drop ccmux's own Claude Code context so the child doesn't think it's nested
- *  - P1-5: guarantee a usable PATH (claude shells out to git/rg/node) even under a
- *    thin systemd/launchd PATH
- *  - OAuth hygiene: if logged in via OAuth, drop ANTHROPIC_API_KEY so OAuth wins
- */
 /** What ccmux itself puts into the child's environment — the identity pin and the chat capability.
  *  Everything else `launchEnv` touches (PATH, locale) is normalisation, not policy, so it is not
  *  part of the recipe a restart would change. */
@@ -163,25 +154,18 @@ export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): re
   return keys;
 }
 
+/**
+ * Environment for the spawned claude: the provider launch environment, without ccmux's own Claude
+ * Code context (so the child does not think it is nested), and without ANTHROPIC_API_KEY when an
+ * OAuth login exists, so the login wins.
+ */
 export function launchEnv(m: MachineConfig, session: Session): Record<string, string> {
   // The environment is BUILT, not inherited: the recipe drops what the working directory's env files
-  // leak in and applies the file this session actually declared. See agent/sessionEnv.ts.
-  const { env, refused } = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
-  if (refused.length > 0)
-    log.warn({
-      msg: 'env file tried to set ccmux-controlled names — ignored',
-      name: session.name,
-      keys: refused,
-    });
+  // leak in and applies the file this session actually declared. See agent/launch/sessionEnv.ts.
+  const env = providerLaunchEnv(session, [dirname(m.claudeBin), dirname(m.tmuxBin)]);
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
   if (hasOauthAccount()) delete env.ANTHROPIC_API_KEY;
-  const login = loginShellPath(); // re-derive the real login PATH (fish-aware) under a thin boot PATH
-  const base = [login, env.PATH]
-    .filter((p): p is string => p !== null && p !== undefined)
-    .join(':');
-  env.PATH = ensurePath(base, [dirname(m.claudeBin), dirname(m.tmuxBin)]);
-  ensureUtf8Locale(env); // no LANG under launchd → claude draws box-rules as ASCII ('_'); force UTF-8
   // so a ccmux run from inside this session can recognize "self" (block rm/stop self)
   env.CCMUX_SESSION = session.name;
   // The declared machines, and only those: this is what the agent's root check reads.

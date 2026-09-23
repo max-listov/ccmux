@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { connectCodexAppServer } from '../src/agent/codex/appServer.ts';
 import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
-import { ExternalSessionSchema } from '../src/config/schema.ts';
+import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
 import { ExternalTurnStateSchema, unknownTurnState } from '../src/external/turnSchema.ts';
 import {
   nativeTurnState,

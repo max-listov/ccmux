@@ -1,17 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readImage } from '../agent/claude/transcript.ts';
 import { providerFor } from '../agent/index.ts';
-import type { TranscriptRead } from '../agent/transcriptRead.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
-import { rcName } from '../config/machine.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
+import { transcriptJson, transcriptReadJson } from '../context/transcriptJson.ts';
+import type { TranscriptWindowOptions } from '../context/transcriptWindow.ts';
 import { readTranscriptWindow } from '../context/transcriptWindow.ts';
 import { parseExternalSessionKey } from '../external/keys.ts';
 import { readExternalTranscript } from '../external/transcript.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import type { MachineConfig, Session, TranscriptJson, TranscriptMessage } from '../types.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
+import type { TranscriptMessage } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
-import { VERSION } from '../util/version.ts';
+import { parseFlags, UsageError } from './flags.ts';
+import { usageLine } from './help.ts';
+import { runSearch, type SearchArgs } from './transcriptSearch.ts';
 
 /** Newest assistant TEXT block (skipping tool calls/results and thinking) — the agent's answer. */
 export function lastAssistantText(messages: TranscriptMessage[]): string | null {
@@ -24,16 +26,15 @@ export function lastAssistantText(messages: TranscriptMessage[]): string | null 
 
 const LAST_MESSAGE_WINDOW = 200; // enough lines back to find the last answer without reading the file
 
-const USAGE =
-  'usage: ccmux transcript <name|app/UUID|machine:app/UUID|external:provider:machine#UUID> --json [--tail N] [--cursor LINE] [--before LINE --limit N] [--text-limit CHARS] [--agent ID]\n' +
-  "       ccmux transcript <name> --last-message        (just the agent's final answer, as text)\n" +
-  '       ccmux transcript <name> --image <address>     (one image, as a data URL)';
-
 // Full text, not the display clip: `--last-message` exists precisely to get the WHOLE report
 // (`list --json` already carries lastMessage, but clipped to 280 chars).
 const FULL_TEXT_LIMIT = 1_000_000;
 
 export interface Opts {
+  /** The session, App thread or external key asked about. */
+  name: string;
+  /** The arguments without the address — what a peer is forwarded. */
+  flagArgs: string[];
   json: boolean;
   lastMessage: boolean;
   /** The address a message's `image` carried; asking for the picture, not the record of it. */
@@ -46,65 +47,64 @@ export interface Opts {
   textLimit?: number;
   /** A spawned agent's transcript, by the id the session's `Agent` call carries. */
   agent?: string;
+  /** A search instead of a window: everything the command line said about it. */
+  search?: Omit<SearchArgs, 'limit' | 'cursor' | 'before' | 'tail' | 'agent'>;
+  /** Whether `--tail` was written. Its default sizes a window; a search is not narrowed by it. */
+  tailGiven: boolean;
 }
 
+/** A window is one answer and has to fit in one, so a larger request is served at this size — the
+ *  documented cap, not an error. A search reads any range in batches and is not capped. */
+const WINDOW_MAX_LINES = 1000;
+
+const capped = (value: number | undefined, cap: number): number | undefined =>
+  value === undefined ? undefined : Math.min(value, cap);
+
 export function parseOpts(args: string[]): Opts {
-  let json = false;
-  let lastMessage = false;
-  let image: string | undefined;
-  let tail = 200;
-  let cursor: number | undefined;
-  let before: number | undefined;
-  let limit: number | undefined;
-  let textLimit: number | undefined;
-  let agent: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--json') json = true;
-    else if (a === '--last-message') lastMessage = true;
-    else if (a === '--image') image = args[++i];
-    else if (a === '--agent') agent = args[++i];
-    else if (a === '--text-limit') {
-      const n = Number.parseInt(args[++i] ?? '', 10);
-      if (Number.isFinite(n)) textLimit = n;
-    } else if (a === '--tail') {
-      const n = Number.parseInt(args[++i] ?? '', 10);
-      if (Number.isFinite(n)) tail = n;
-    } else if (a === '--cursor') {
-      const n = Number.parseInt(args[++i] ?? '', 10);
-      if (Number.isFinite(n)) cursor = n;
-    } else if (a === '--before') {
-      const n = Number.parseInt(args[++i] ?? '', 10);
-      if (Number.isFinite(n)) before = n;
-    } else if (a === '--limit') {
-      const n = Number.parseInt(args[++i] ?? '', 10);
-      if (Number.isFinite(n)) limit = n;
-    } else if (a !== undefined && /^\d+$/.test(a)) {
-      tail = Number.parseInt(a, 10);
-    }
-  }
-  tail = Math.min(Math.max(tail, 1), 1000);
-  if (limit !== undefined) limit = Math.min(Math.max(limit, 1), 1000);
-  const opts: Opts = { json, lastMessage, tail };
-  if (image !== undefined && image !== '') opts.image = image;
-  if (cursor !== undefined) opts.cursor = cursor;
-  if (before !== undefined) opts.before = before;
-  if (limit !== undefined) opts.limit = limit;
-  if (textLimit !== undefined) opts.textLimit = Math.min(Math.max(textLimit, 1), FULL_TEXT_LIMIT);
-  if (agent !== undefined && agent !== '') opts.agent = agent;
+  const flags = parseFlags('transcript', args, [1, 1]);
+  const grep = flags.str('grep');
+  const given = flags.int('tail');
+  const caseMode: SearchArgs['caseMode'] = flags.bool('ignore-case')
+    ? 'ignore'
+    : flags.bool('case-sensitive')
+      ? 'sensitive'
+      : 'smart';
+  const opts: Opts = {
+    name: flags.positionals[0] as string,
+    flagArgs: flags.flagArgs,
+    json: flags.bool('json'),
+    lastMessage: flags.bool('last-message'),
+    tail: grep === undefined ? Math.min(given ?? 200, WINDOW_MAX_LINES) : (given ?? 200),
+    tailGiven: given !== undefined,
+  };
+  const optional = {
+    image: flags.str('image'),
+    agent: flags.str('agent'),
+    cursor: flags.int('cursor'),
+    before: flags.int('before'),
+    limit: capped(flags.int('limit'), WINDOW_MAX_LINES),
+    textLimit: capped(flags.int('text-limit'), FULL_TEXT_LIMIT),
+  };
+  for (const [key, value] of Object.entries(optional))
+    if (value !== undefined && value !== '') Object.assign(opts, { [key]: value });
+  if (grep !== undefined)
+    opts.search = {
+      grep,
+      fixed: flags.bool('fixed-strings'),
+      caseMode,
+      roles: flags.list('role'),
+      kinds: flags.list('kind'),
+    };
   return opts;
 }
 
-export async function cmdTranscript(name: string | undefined, args: string[]): Promise<number> {
-  if (!name) {
-    console.log(USAGE);
-    return 1;
-  }
+export async function cmdTranscript(args: string[]): Promise<number> {
   const o = parseOpts(args);
-  if (!o.json && !o.lastMessage && o.image === undefined) {
-    console.log(USAGE);
-    return 1;
-  }
+  let name = o.name;
+  if (!o.json && !o.lastMessage && o.image === undefined && o.search === undefined)
+    throw new UsageError(
+      `choose what to read: --json, --last-message, --grep or --image\n${usageLine('transcript')}`,
+    );
   let external: ReturnType<typeof parseExternalSessionKey> | undefined;
   try {
     if (name.startsWith('external:')) external = parseExternalSessionKey(name);
@@ -115,7 +115,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
   const fwd = await forwardIfRemote(
     external ? `${external.machine}:${external.threadId}` : name,
     'transcript',
-    args,
+    o.flagArgs,
     external ? { remoteTarget: name } : {},
   );
   if (fwd.done) return fwd.code;
@@ -137,6 +137,23 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
           typeof readExternalTranscript
         >[1]);
       const { threadId } = target;
+      const rc = external ? name : `${m.rcPrefix}:${name}`;
+      if (o.search !== undefined) {
+        let dir = '';
+        return await runSearch(
+          async (window) => {
+            const found = await readExternalTranscript(m, target, window);
+            dir = found.dir;
+            return found.read;
+          },
+          searchArgs(o),
+          {
+            json: o.json,
+            target: rc,
+            header: (read) => transcriptReadJson(m, { name, uuid: threadId, dir }, read, rc),
+          },
+        );
+      }
       const window = o.lastMessage ? { tail: LAST_MESSAGE_WINDOW, textLimit: FULL_TEXT_LIMIT } : o;
       const { read, dir } = await readExternalTranscript(m, target, window);
       if (o.lastMessage) {
@@ -148,14 +165,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
         await printLine(last);
       } else {
         await printLine(
-          JSON.stringify(
-            transcriptReadJson(
-              m,
-              { name, uuid: threadId, dir },
-              read,
-              external ? name : `${m.rcPrefix}:${name}`,
-            ),
-          ),
+          JSON.stringify(transcriptReadJson(m, { name, uuid: threadId, dir }, read, rc)),
         );
       }
       return read.available ? 0 : 1;
@@ -186,6 +196,13 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     return 0;
   }
 
+  if (o.search !== undefined)
+    return runSearch((window) => readTranscriptWindow(m, s, window), searchArgs(o), {
+      json: o.json,
+      target: `${m.rcPrefix}:${s.name}`,
+      header: (read) => transcriptReadJson(m, s, read),
+    });
+
   // `--last-message`: the agent's final answer as plain text — the "take the report" gesture, so an
   // orchestrator doesn't have to pull a window of JSON and dig the last assistant block out of it.
   if (o.lastMessage) {
@@ -201,7 +218,7 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
     console.log(last);
     return 0;
   }
-  const readOpts: TranscriptWindow = { tail: o.tail };
+  const readOpts: TranscriptWindowOptions = { tail: o.tail };
   if (o.cursor !== undefined) readOpts.cursor = o.cursor;
   if (o.before !== undefined) readOpts.before = o.before;
   if (o.limit !== undefined) readOpts.limit = o.limit;
@@ -211,66 +228,12 @@ export async function cmdTranscript(name: string | undefined, args: string[]): P
   return 0;
 }
 
-/** What a caller asks for: the newest `tail`, everything after a `cursor`, or a page `before` a
- *  line. The same three the command line accepts, because they are the same question. */
-export interface TranscriptWindow {
-  tail: number;
-  cursor?: number;
-  before?: number;
-  limit?: number;
-  textLimit?: number;
-  agent?: string;
-}
-
-/**
- * One session's transcript window as the published answer.
- *
- * Built here for both the command and the control service, because two builders of the same answer
- * drift — and this one carries the cursor a consumer hands back, so a drift between them would be a
- * consumer paging through a slightly different conversation depending on how it asked.
- */
-export async function transcriptJson(
-  m: MachineConfig,
-  s: Session,
-  window: TranscriptWindow,
-  signal?: AbortSignal,
-): Promise<TranscriptJson> {
-  const read = await readTranscriptWindow(m, s, window, signal);
-  return transcriptReadJson(m, s, read);
-}
-
-function transcriptReadJson(
-  m: MachineConfig,
-  s: Pick<Session, 'name' | 'uuid' | 'dir'>,
-  read: TranscriptRead,
-  rc = rcName(m, s.name),
-): TranscriptJson {
-  return {
-    version: VERSION,
-    generatedAt: new Date().toISOString(),
-    session: { name: s.name, uuid: s.uuid, rc, dir: s.dir, machine: m.rcPrefix },
-    source: {
-      kind: read.available
-        ? read.source === 'native'
-          ? `${read.agent}-native`
-          : `${read.agent}-jsonl`
-        : 'unavailable',
-      path: read.path,
-      available: read.available,
-      error: read.error,
-    },
-    cursor: {
-      opaque: read.available ? String(read.totalLines) : null,
-      line: read.available ? read.totalLines : null,
-      byteOffset: null,
-      mtimeMs: read.mtimeMs,
-    },
-    window: {
-      firstLine: read.firstLine,
-      lastLine: read.totalLines,
-      reachedStart: read.reachedStart,
-    },
-    stats: read.stats,
-    messages: read.messages,
-  };
+function searchArgs(o: Opts): SearchArgs {
+  const args: SearchArgs = { ...(o.search as NonNullable<Opts['search']>) };
+  if (o.limit !== undefined) args.limit = o.limit;
+  if (o.cursor !== undefined) args.cursor = o.cursor;
+  if (o.before !== undefined) args.before = o.before;
+  if (o.tailGiven) args.tail = o.tail;
+  if (o.agent !== undefined) args.agent = o.agent;
+  return args;
 }

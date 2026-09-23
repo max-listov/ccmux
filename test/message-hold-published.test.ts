@@ -66,7 +66,7 @@ test('the kind survives the round trip to disk, and an older record defaults hon
   // exercised where that environment can be set: in a child, not by reaching around the module.
   const script = `
     const { writeChatHold, readChatHold } = await import(${JSON.stringify(
-      join(import.meta.dir, '..', 'src', 'agent', 'sessionStatus.ts'),
+      join(import.meta.dir, '..', 'src', 'session', 'status.ts'),
     )});
     await writeChatHold('agent-a', 'm1', 'recipient is at a selection menu', 'menu');
     const held = readChatHold('agent-a');

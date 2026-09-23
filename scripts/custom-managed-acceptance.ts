@@ -1,7 +1,7 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { MachineLaunchRecipeSchema } from '../src/config/schema.ts';
+import { MachineLaunchRecipeSchema } from '../src/config/launchSchema.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';

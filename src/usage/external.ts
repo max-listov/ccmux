@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { StoredIndexSchema, transcriptIndexPath } from '../agent/transcriptIndex.ts';
+import { StoredIndexSchema, transcriptIndexPath } from '../agent/transcript/transcriptIndex.ts';
 import { CACHE_DIR } from '../config/paths.ts';
 import { withExternalTranscript } from '../external/transcript.ts';
 import type { MachineConfig } from '../types.ts';

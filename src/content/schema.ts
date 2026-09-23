@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ManagedPeerSchema } from '../config/schema.ts';
+import { ManagedPeerSchema } from '../chat/identitySchema.ts';
 import { ToolObservationSchema } from './toolSchema.ts';
 
 export const CONTENT_FILE_MAX_BYTES = 512 * 1024;

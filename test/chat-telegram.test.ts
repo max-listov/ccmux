@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendMessage, chatPaths } from '../src/chat/store.ts';
+import { appendMessage } from '../src/chat/ledger.ts';
+import { ChatCursorsSchema } from '../src/chat/messageSchema.ts';
+import { chatPaths } from '../src/chat/store.ts';
 import { classifyHttpStatus, formatForTg, mirrorPending } from '../src/chat/telegram.ts';
-import { ChatCursorsSchema, MachineConfigSchema } from '../src/config/schema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import type { ChatMessage } from '../src/types.ts';
 import { makeChatMessage, makeOwner, makePeer } from './helpers.ts';
 
@@ -79,8 +81,10 @@ test('mirrorPending is a fail-soft no-op when telegram is unconfigured (no netwo
     bootLabel: 'b',
   });
   appendMessage(m, msg('a', 'b', 'hi'));
+  // The ledger is born with its cursors; what the mirror owes is to leave them exactly as they were.
+  const before = readFileSync(chatPaths(m).cursors, 'utf8');
   await mirrorPending(m); // must not throw and must not touch the cursor file
-  expect(existsSync(chatPaths(m).cursors)).toBe(false);
+  expect(readFileSync(chatPaths(m).cursors, 'utf8')).toBe(before);
 });
 
 test("turning the mirror ON starts a live feed — it never replays the machine's history", () => {

@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { encodeDir } from '../src/agent/claude/resume.ts';
-import { transcriptJson } from '../src/commands/transcript.ts';
-import { appendSession } from '../src/config/sessions.ts';
-import { ControlTranscriptReadSchema } from '../src/control/schema.ts';
+import { transcriptJson } from '../src/context/transcriptJson.ts';
+import { ControlTranscriptReadSchema } from '../src/control/schema/native.ts';
 import { readControlTranscript } from '../src/control/transcript.ts';
+import { appendSession } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const UUID = 'a1b2c3d4-0000-4000-8000-000000000001';

@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApplication, lifecycleLedgerResource } from 'stitchkit/application';
-import { privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
 import { createDaemonLifecycle, recordForcedStop } from '../src/daemon/lifecycle.ts';
+import { privateRuntimeDirectory } from '../src/runtime/store.ts';
 
 const roots: string[] = [];
 afterEach(async () => {

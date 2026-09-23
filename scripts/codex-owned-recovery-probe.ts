@@ -2,15 +2,15 @@
 import { readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { readCodexAppThread, startCodexAppTurn } from '../src/agent/codex/appServer.ts';
-import { ownedCodexSocket, ownedCodexStatusPath } from '../src/agent/codex/ownedPaths.ts';
-import { readCodexRuntime } from '../src/agent/codex/ownedRead.ts';
-import { connectOwnedCodex } from '../src/agent/codex/ownedRpc.ts';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { ownedCodexSocket, ownedCodexStatusPath } from '../src/agent/codex/owned/paths.ts';
+import { readCodexRuntime } from '../src/agent/codex/owned/read.ts';
+import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { inspectNativeCodexInput } from '../src/agent/codex/pane.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { readEvents } from '../src/events/feed.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import {
   capturePaneStyled,
   killSession,

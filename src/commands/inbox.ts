@@ -1,22 +1,17 @@
 import { providerFor } from '../agent/index.ts';
-import { readChatHold } from '../agent/sessionStatus.ts';
+import { loadAckedIds } from '../chat/ackLog.ts';
+import { loadCursors, markRead } from '../chat/cursors.ts';
 import { holdReason } from '../chat/holdReason.ts';
 import { managedPeer } from '../chat/identity.ts';
-import {
-  fmtMessage,
-  loadAckedIds,
-  loadCursors,
-  loadLedger,
-  markRead,
-  OWNER,
-  unreadableCount,
-  unreadFor,
-} from '../chat/store.ts';
+import { loadLedger, unreadableCount } from '../chat/ledger.ts';
+import { fmtMessage, OWNER, unreadFor } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
+import { readChatHold } from '../session/status.ts';
 import { listSessionNames } from '../tmux/tmux.ts';
+import { parseFlags } from './flags.ts';
 import { outstandingLines } from './relay.ts';
 
 /**
@@ -32,8 +27,9 @@ import { outstandingLines } from './relay.ts';
  */
 export async function cmdInbox(args: string[]): Promise<number> {
   const self = process.env.CCMUX_SESSION;
-  const peek = args.includes('--peek');
-  let name = args.find((a) => !a.startsWith('--')) ?? self;
+  const flags = parseFlags('inbox', args, [0, 1]);
+  const peek = flags.bool('peek');
+  let name = flags.positionals[0] ?? self;
   if (name === undefined || name === '') {
     // Asked from a shell rather than from inside a session. There is no per-session inbox to show,
     // but there IS a machine-wide question worth answering — what has been sent outside the fleet

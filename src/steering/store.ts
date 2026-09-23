@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import { lstatExists, readPrivate, writePrivateJson } from '../attachments/files.ts';
 import { chatPrincipalKey } from '../chat/identity.ts';
 import { managedRuntimeRoot } from '../runtime/status.ts';
+import { privateRuntimeDirectory } from '../runtime/store.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
 import {
   STEERING_LIMITS,

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
+import { CODEX_CONTENT_METHODS, observeCodexContent } from '../src/agent/codex/content.ts';
+import { OpenCodeContentObserver } from '../src/agent/opencode/content.ts';
 import { ContentBuffer } from '../src/content/buffer.ts';
-import { CODEX_CONTENT_METHODS, observeCodexContent } from '../src/content/codex.ts';
-import { OpenCodeContentObserver } from '../src/content/opencode.ts';
 import { contentFrame } from '../src/content/read.ts';
 import {
   CONTENT_FILE_MAX_BYTES,

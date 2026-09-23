@@ -3,20 +3,18 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { loadCursors, markRead } from '../src/chat/cursors.ts';
 import { chatPrincipalKey, managedPeerKey } from '../src/chat/identity.ts';
+import { appendMessage, loadLedger, unreadableCount } from '../src/chat/ledger.ts';
+import { CHAT_GENERATION } from '../src/chat/messageSchema.ts';
 import {
-  appendMessage,
   chatPaths,
   fmtMessage,
-  loadCursors,
-  loadLedger,
-  markRead,
   nextForRecipient,
   pendingConditional,
-  unreadableCount,
   unreadFor,
 } from '../src/chat/store.ts';
-import { CHAT_GENERATION, MachineConfigSchema } from '../src/config/schema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import type {
   AgentKind,
   ChatMessage,
@@ -111,10 +109,10 @@ test('conditional dedup filters by exact principal and target identity', () => {
     notBefore: '2026-08-11T00:00:00.000Z',
   };
   expect(
-    pendingConditional([conditional], new Set(), { from: sender, to: target, task: 'job' }),
+    pendingConditional([conditional], new Map(), { from: sender, to: target, task: 'job' }),
   ).toEqual([conditional]);
   expect(
-    pendingConditional([conditional], new Set(), { from: otherSender, to: target, task: 'job' }),
+    pendingConditional([conditional], new Map(), { from: otherSender, to: target, task: 'job' }),
   ).toEqual([]);
 });
 

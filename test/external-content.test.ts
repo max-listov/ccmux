@@ -13,20 +13,20 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { createControlServer } from '../src/control/server.ts';
 import {
   CCMUX_CONTROL_CALLER_HEADER,
   createInjectedControlClient,
-} from '../src/control/transportBoundary.ts';
+} from '../src/control/transport/boundary.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { readExternalContent, readExternalContentCapabilities } from '../src/external/content.ts';
 import {
   ExternalContentReadSchema,
   type ExternalContentTarget,
 } from '../src/external/contentSchema.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const cleanup: (() => Promise<void>)[] = [];

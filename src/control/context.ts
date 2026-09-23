@@ -13,7 +13,7 @@ import {
   type ControlContextOperationReadSchema,
   type ControlHistoryReadSchema,
   PublicContextOperationSchema,
-} from './contextSchema.ts';
+} from './schema/context.ts';
 import { controlTarget } from './target.ts';
 
 function exactTarget(

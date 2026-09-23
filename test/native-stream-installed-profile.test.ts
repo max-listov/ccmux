@@ -10,13 +10,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { replaceBundle } from '../src/commands/update.ts';
-import { shimContents } from '../src/config/installedApp.ts';
+import { shimContents } from '../src/boot/installedApp.ts';
 import {
   ControlNativeStreamFrameSchema,
   controlNativeStreamFrame,
   createCcmuxNativeStreamProfile,
-} from '../src/control/nativeStreamContract.ts';
+} from '../src/control/schema/nativeStreamContract.ts';
+import { replaceBundle } from '../src/release/update.ts';
 import { makePeer } from './helpers.ts';
 
 function bundle(path: string, sequence: number): void {
@@ -78,7 +78,7 @@ test('standard installed executable runs the native profile with an empty enviro
 
     const candidate = join(root, 'candidate');
     bundle(candidate, 2);
-    await replaceBundle(candidate, app, true);
+    await replaceBundle(candidate, app);
     expect(JSON.parse((await firstFrame(executable)).data).sequence).toBe(2);
 
     copyFileSync(`${app}.bak`, app);

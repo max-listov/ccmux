@@ -1,5 +1,5 @@
 import { Box, Text, useStdout } from 'ink';
-import { IS_DEV } from '../../env.ts';
+import { IS_DEV } from '../../util/env.ts';
 import { VERSION } from '../../util/version.ts';
 import { SessionCard } from '../components/SessionCard.tsx';
 import type { FleetItem, FleetLoad } from '../fleet.ts';

@@ -1,8 +1,20 @@
 import { createHash } from 'node:crypto';
-import type { TranscriptAgent, TranscriptImage, TranscriptUsage } from '../../config/schema.ts';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../../types.ts';
-import { clip, DEFAULT_TEXT_LIMIT, flattenContent, num, rec, str } from '../normalize.ts';
-import { resultSummary } from '../toolSummary.ts';
+import { transcriptEntries } from '../transcript/lines.ts';
+import type {
+  TranscriptAgent,
+  TranscriptImage,
+  TranscriptUsage,
+} from '../transcript/messageSchema.ts';
+import {
+  clip,
+  DEFAULT_TEXT_LIMIT,
+  flattenContent,
+  num,
+  rec,
+  str,
+} from '../transcript/normalize.ts';
+import { resultSummary } from '../transcript/toolSummary.ts';
 import { readSubagentFacts, subagentFile } from './subagent.ts';
 
 // Claude Code transcript parser. Entry shape (one per JSONL line):
@@ -236,23 +248,7 @@ export function parse(
   const results = new Map<string, RawResult>(); // call-id → raw tool_result
   const spawns = new Map<string, Spawn>(); // call-id → the agent that call spawned
   const notifications = new Map<string, Notification>(); // call-id → how its agent stopped
-  // `lines[0]` is absolute line `baseLine`: the window may be a slice of the file rather than all
-  // of it, and `seq` is a CURSOR — `transcript --cursor` hands it back and expects the same line.
-  const lastLine = baseLine + lines.length - 1;
-  const end = endLine !== undefined ? Math.min(lastLine, endLine) : lastLine;
-  for (let line = Math.max(baseLine, startLine); line <= end; line++) {
-    const i = line - baseLine;
-    const raw = lines[i];
-    if (!raw || raw.trim() === '') continue;
-    const seq = line;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    const entry = rec(parsed);
-    if (!entry) continue;
+  for (const { seq, entry } of transcriptEntries(lines, startLine, endLine, baseLine)) {
     const entryUuid = str(entry.uuid) ?? String(seq);
     const createdAt = str(entry.timestamp);
     const spawn = spawnOf(entry);

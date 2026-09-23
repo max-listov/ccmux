@@ -1,8 +1,8 @@
 import { join } from 'node:path';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
-import { withDirectoryLock } from '../config/registryLock.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { withLock } from '../util/lock.ts';
 import { managedRuntimeRoot } from './status.ts';
+import { privateRuntimeDirectory } from './store.ts';
 
 /**
  * How long a pickup waits for the lock before leaving the turn for the next tick.
@@ -29,7 +29,7 @@ export async function tryNativeAdmission(
   privateRuntimeDirectory(root);
   let entered = false;
   try {
-    await withDirectoryLock(
+    await withLock(
       join(root, 'admission.lock'),
       async () => {
         entered = true;
@@ -54,5 +54,5 @@ export function withNativeAdmission<T>(
 ): Promise<T> {
   const root = managedRuntimeRoot(m, s);
   privateRuntimeDirectory(root);
-  return withDirectoryLock(join(root, 'admission.lock'), run, 'native admission');
+  return withLock(join(root, 'admission.lock'), run, 'native admission');
 }

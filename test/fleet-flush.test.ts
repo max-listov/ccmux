@@ -4,8 +4,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { localRows } from '../src/chat/fleetLog.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { outboxAckPath, outboxPath } from '../src/config/paths.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
 import {
   appendOutboxAck,
   loadOutboxAcked,

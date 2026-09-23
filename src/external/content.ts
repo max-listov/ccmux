@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { loadSessions } from '../config/sessions.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import {

@@ -4,10 +4,9 @@ import { z } from 'zod';
 import { hasNativeRuntime } from '../../../runtime/modes.ts';
 
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/status.ts';
-import { readPrivateJson } from '../../../runtime/store.ts';
+import { privateRuntimeDirectory, readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
-import { privateRuntimeDirectory } from '../../codex/ownedPaths.ts';
 import { type ControlCommand, ControlCommandSchema } from './commandSchema.ts';
 
 /**

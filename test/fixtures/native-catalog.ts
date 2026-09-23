@@ -1,6 +1,7 @@
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { ownedCodexSocket, privateRuntimeDirectory } from '../../src/agent/codex/ownedPaths.ts';
+import { ownedCodexSocket } from '../../src/agent/codex/owned/paths.ts';
+import { privateRuntimeDirectory } from '../../src/runtime/store.ts';
 import type { MachineConfig, Session } from '../../src/types.ts';
 
 export function nativeCatalogFixture(m: MachineConfig, session: Session) {

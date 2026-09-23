@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKindSchema, RC_PREFIX_RE } from '../config/schema.ts';
+import { AgentKindSchema, RC_PREFIX_RE } from '../chat/identitySchema.ts';
 import type { AgentKind, Session } from '../types.ts';
 
 const SelectorSchema = z.object({

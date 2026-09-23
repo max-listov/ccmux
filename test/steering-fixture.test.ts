@@ -1,5 +1,5 @@
 import { expect } from 'bun:test';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
 import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import type { ManagedRuntimeRead } from '../src/runtime/schema.ts';
 import { SteeringInputSchema } from '../src/steering/schema.ts';

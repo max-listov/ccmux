@@ -1,4 +1,4 @@
-import { toolLabel, toolMeta } from '../agent/toolMeta.ts';
+import { toolLabel, toolMeta } from '../agent/transcript/toolMeta.ts';
 import type { TranscriptMessage } from '../types.ts';
 
 // Pure view-model for a tool call rendered as a two-row card. The LAYOUT differs per site (the

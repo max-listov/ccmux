@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import { managedRuntimeRoot } from '../runtime/status.ts';
+import { privateRuntimeDirectory } from '../runtime/store.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { contentNotice } from './notice.ts';

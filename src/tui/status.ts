@@ -1,4 +1,4 @@
-import { toolCategory, toolDisplayName } from '../agent/toolMeta.ts';
+import { toolCategory, toolDisplayName } from '../agent/transcript/toolMeta.ts';
 import type { TranscriptMessage } from '../types.ts';
 
 // Unified, agent-agnostic activity status — derived from the last transcript message +

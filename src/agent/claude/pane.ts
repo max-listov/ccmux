@@ -1,5 +1,5 @@
-import { stripAnsi } from '../../tmux/tmux.ts';
-import { parseContext } from '../context.ts';
+import { parseContext } from '../../context/fill.ts';
+import { stripAnsi, typedText } from '../../util/ansi.ts';
 import type { ChatPaneInspection, PaneScan } from '../index.ts';
 import { atInteractiveMenu as atMenu, detectPrompt as detectPromptImpl } from './prompts.ts';
 
@@ -132,10 +132,6 @@ const COMPOSER_TAIL_LINES = 12;
  * shell-style case right too: type a few characters and Claude dim-completes the rest — the typed
  * part survives the filter and correctly counts as occupied.
  */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI dim runs require the literal ESC byte.
-const DIM_RUN_RE = /\u001b\[2m[\s\S]*?(?:\u001b\[(?:0|22)m|$)/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: Strip native terminal SGR sequences, including ESC.
-const ANSI_RE = /\u001b\[[0-9;]*m/g;
 
 export function inputBusy(styledPaneText: string): boolean {
   const tail = styledPaneText.split('\n').slice(-COMPOSER_TAIL_LINES);
@@ -143,7 +139,7 @@ export function inputBusy(styledPaneText: string): boolean {
     const line = tail[i];
     if (line === undefined || !line.includes('❯')) continue;
     const after = line.slice(line.indexOf('❯') + 1);
-    const typed = after.replace(DIM_RUN_RE, '').replace(ANSI_RE, '').trim();
+    const typed = typedText(after);
     return typed !== '';
   }
   return false; // no composer in view (booting / alt-screen) → nothing typed to clobber

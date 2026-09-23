@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renewRefusal, renewSummary } from '../src/commands/renew.ts';
-import { clearLifecycleBlock } from '../src/config/lifecycleBlocks.ts';
 import { lifecycleBlockPath } from '../src/config/paths.ts';
+import { clearLifecycleBlock } from '../src/session/lifecycleBlocks.ts';
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 test('renewing refuses while the conversation is still there, and says what it would drop', () => {

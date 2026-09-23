@@ -3,13 +3,13 @@ import { lstat, opendir } from 'node:fs/promises';
 import { dirname, join, parse, resolve } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { HOME } from '../env.ts';
+import { HOME } from '../util/env.ts';
 import { log } from '../util/log.ts';
 import {
   type ControlDirectoryReadSchema,
   type ControlDirectoryResult,
   ControlDirectoryResultSchema,
-} from './directorySchema.ts';
+} from './schema/directory.ts';
 
 const CursorSchema = z
   .object({ path: z.string(), version: z.string(), after: z.string(), hidden: z.boolean() })

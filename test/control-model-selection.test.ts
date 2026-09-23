@@ -2,13 +2,13 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { prepareManagedCodexTurn } from '../src/agent/codex/appServer.ts';
-import { ownedCodexArgv, ownedCodexThreadParams } from '../src/agent/codex/ownedLaunch.ts';
-import type { CreateManagedInput } from '../src/commands/create.ts';
+import { ownedCodexArgv, ownedCodexThreadParams } from '../src/agent/codex/owned/launch.ts';
 import { verifyManagedLaunchRecipe } from '../src/config/launchRecipes.ts';
 import { validateModelSelection } from '../src/config/modelSelection.ts';
-import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
-import { ControlCreateSchema } from '../src/control/schema.ts';
+import { ControlCreateSchema } from '../src/control/schema/session.ts';
+import type { CreateManagedInput } from '../src/session/create.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('one profile serves two model selections; retries and restart preserve one writer and selection', async () => {

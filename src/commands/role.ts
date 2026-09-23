@@ -1,9 +1,10 @@
 import { ROLE_SIGIL } from '../chat/roleAddress.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { SessionSchema } from '../config/schema.ts';
-import { findSession, loadSessions, setSessionRole } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { findSession, loadSessions, setSessionRole } from '../session/registry.ts';
+import { SessionSchema } from '../session/schema.ts';
 import { log } from '../util/log.ts';
+import { parseFlags } from './flags.ts';
 
 const USAGE =
   `usage: ccmux role <name> <role>  ·  ccmux role <name> --none  ·  ccmux role (list)\n` +
@@ -18,8 +19,9 @@ const USAGE =
  * corrects goes on being trusted while it lies — worse than having no role at all.
  */
 export async function cmdRole(args: string[]): Promise<number> {
-  const positionals = args.filter((a) => a !== '--none');
-  const clear = args.includes('--none');
+  const flags = parseFlags('role', args, [0, 2]);
+  const positionals = flags.positionals;
+  const clear = flags.bool('none');
   const target = positionals[0];
 
   if (target === undefined) return listRoles();

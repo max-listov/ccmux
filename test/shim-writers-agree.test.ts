@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { shimContents } from '../src/config/installedApp.ts';
+import { shimContents } from '../src/boot/installedApp.ts';
 
 /**
  * Two programs write `~/.local/bin/ccmux`: the installer, before any of our code can run, and the

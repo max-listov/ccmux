@@ -2,11 +2,11 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { type Observed, observeOnce } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { MonitoringReadSchema } from '../src/monitoring/schema.ts';
 import { observationChildCpuUs, observationExecCount } from '../src/monitoring/tmux.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
 
 // Read-only live pane workload. Its archived registry copy prevents lifecycle repair/events;
 // no ensure, chat delivery, supervisor or managed process is started by this harness.

@@ -2,15 +2,15 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { envFilePath } from '../src/agent/launchInputs.ts';
-import type { LaunchStamp } from '../src/agent/launchStamp.ts';
+import { envFilePath } from '../src/agent/launch/launchInputs.ts';
+import type { LaunchStamp } from '../src/agent/launch/launchStamp.ts';
 import {
   inheritsUndeclaredEnv,
   isReservedEnvKey,
   parseEnvFile,
   sessionEnvRecipe,
-} from '../src/agent/sessionEnv.ts';
-import { withNoEnvFile } from '../src/env.ts';
+} from '../src/agent/launch/sessionEnv.ts';
+import { withNoEnvFile } from '../src/util/env.ts';
 
 // What this replaces, measured on a live fleet: 5 of 14 sessions were handed their project's `.env`
 // — API keys among them — because the supervisor is a Bun process whose cwd is the session directory,

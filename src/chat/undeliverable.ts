@@ -2,16 +2,12 @@ import { statSync } from 'node:fs';
 import { chatLedgerPath, sessionsPath } from '../config/paths.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
-import { isConditional } from './deliver.ts';
+import { appendAck, loadAcks } from './ackLog.ts';
+import { loadCursors, saveCursors } from './cursors.ts';
 import { chatTargetKey, targetLabel } from './identity.ts';
-import {
-  appendAck,
-  deliverableTargets,
-  loadAckedIds,
-  loadCursors,
-  loadLedger,
-  saveCursors,
-} from './store.ts';
+import { loadLedger } from './ledger.ts';
+import { isConditional, letterState } from './settlement.ts';
+import { deliverableTargets } from './store.ts';
 
 /**
  * Settle the letters nobody will ever pick up.
@@ -56,7 +52,7 @@ export async function settleUndeliverable(m: MachineConfig): Promise<number> {
   if (lastPass.get(ledgerPath) === seen) return 0;
   const live = deliverableTargets(m);
   const ledger = loadLedger(m);
-  const acked = loadAckedIds(m);
+  const acks = loadAcks(m);
   const cursors = loadCursors(m);
   // One cursor per dead recipient, moved past its last letter. The entry outlives the session it
   // names, which is the price of the cursor being an index into an append-only ledger: it is a
@@ -69,13 +65,11 @@ export async function settleUndeliverable(m: MachineConfig): Promise<number> {
     if (message === null || message.to.kind !== 'managed') continue;
     const key = chatTargetKey(message.to);
     if (live.has(key)) continue;
-    if (isConditional(message)) {
-      if (acked.has(message.id)) continue;
-      appendAck(m, message.id, 'undeliverable', message.to);
-    } else {
-      if ((cursors.delivered[key] ?? 0) > index) continue;
-      advanced.set(key, Math.max(advanced.get(key) ?? 0, index + 1));
-    }
+    if (letterState(message, index, acks, cursors) !== 'pending') continue;
+    // Settled on the track that owns it: a conditional letter in the ack log, an immediate one by
+    // moving its recipient's cursor past it.
+    if (isConditional(message)) appendAck(m, message.id, 'undeliverable', message.to);
+    else advanced.set(key, Math.max(advanced.get(key) ?? 0, index + 1));
     settled++;
     log.info({
       msg: 'chat letter settled as undeliverable — the recipient no longer exists',

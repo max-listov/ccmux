@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { promptAnswer } from '../src/agent/claude/pane.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 
 // A real, schema-valid config (no casts) — only `resumePicker` matters to the pure fn.
 const base = MachineConfigSchema.parse({

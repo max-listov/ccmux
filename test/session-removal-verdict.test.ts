@@ -2,8 +2,9 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendSession } from '../src/config/sessions.ts';
-import { killSession, newSession, tmuxArgv } from '../src/tmux/tmux.ts';
+import { appendSession } from '../src/session/registry.ts';
+import { tmuxArgv } from '../src/tmux/argv.ts';
+import { killSession, newSession } from '../src/tmux/tmux.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**

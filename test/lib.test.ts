@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_TEXT_LIMIT, detect, parseSession, readSession } from '../src/lib.ts';
+import { DEFAULT_TEXT_LIMIT, detect, parseSession, readSession } from '../src/session-reader.ts';
 
 const claudeLine = (role: 'user' | 'assistant', text: string, id = role) =>
   JSON.stringify({

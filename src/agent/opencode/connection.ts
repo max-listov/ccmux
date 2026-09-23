@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { OpenCodeContentObserver } from '../../content/opencode.ts';
 import { ContentProducer } from '../../content/producer.ts';
 import { openCodeContextApi } from '../../context/opencode.ts';
 import {
@@ -12,6 +11,7 @@ import { emitRuntimeBoundaries } from '../../runtime/events.ts';
 import { ManagedRuntimeStatusWriter } from '../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { prepareOpenCodeCatalog } from './catalog.ts';
+import { OpenCodeContentObserver } from './content.ts';
 import { applyOpenCodeInput } from './input.ts';
 import { applyOpenCodeInterrupt } from './interrupt.ts';
 import { OpenCodeProjection } from './projection.ts';
@@ -170,8 +170,12 @@ export class OpenCodeConnection {
   private async publish(): Promise<void> {
     await this.diagnostic;
     const snapshot = this.projection.snapshot();
-    emitRuntimeBoundaries(this.m, this.session, snapshot, this.emittedSequence);
-    this.emittedSequence = snapshot.sequence;
+    this.emittedSequence = emitRuntimeBoundaries(
+      this.m,
+      this.session,
+      snapshot,
+      this.emittedSequence,
+    );
     await this.writer.write(snapshot);
   }
   private async refresh(signal: AbortSignal): Promise<void> {

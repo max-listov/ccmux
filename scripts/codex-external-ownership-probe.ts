@@ -6,10 +6,10 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Glob } from 'bun';
 import { z } from 'zod';
-import { loadPendingSessions } from '../src/config/pendingSessions.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { readSession } from '../src/lib.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { loadPendingSessions } from '../src/session/pending.ts';
+import { loadSessions } from '../src/session/registry.ts';
+import { readSession } from '../src/session-reader.ts';
 
 const COMMAND_TIMEOUT_MS = 30_000;
 const TURN_TIMEOUT_MS = 90_000;

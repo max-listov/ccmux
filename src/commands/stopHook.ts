@@ -1,12 +1,13 @@
-import { coalesce } from '../chat/deliver.ts';
+import { appendAck, loadAckedIds } from '../chat/ackLog.ts';
+import { coalesce } from '../chat/coalesce.ts';
 import { formatChatInjection } from '../chat/format.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
+import { loadLedger } from '../chat/ledger.ts';
 import { replyRouteToSender } from '../chat/replyRoute.ts';
-import { appendAck, loadAckedIds, loadLedger } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
-import { promptInvocation } from '../env.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
+import { promptInvocation } from '../util/env.ts';
 import { writeOut } from '../util/stdout.ts';
 
 /**

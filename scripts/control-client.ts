@@ -1,5 +1,5 @@
 import type { ClientFetch } from 'stitchkit';
-import { CCMUX_CONTROL_CALLER_HEADER } from '../src/control/transportBoundary.ts';
+import { CCMUX_CONTROL_CALLER_HEADER } from '../src/control/transport/boundary.ts';
 
 /** Bind the public contract client to one authenticated local CCMux Unix socket. */
 export function localControlFetch(

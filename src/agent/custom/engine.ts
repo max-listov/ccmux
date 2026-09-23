@@ -17,8 +17,8 @@ import {
 import { createBunSqliteAgentRuntimeStore } from 'stitchkit/agent-runtime/sqlite/bun';
 import { mountAgent, type RuntimeToolDefinition } from 'stitchkit/tools';
 import { z } from 'zod';
+import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import type { Session } from '../../types.ts';
-import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
 import { customArtifactStore } from './artifacts.ts';
 import { declaredCustomToolNames } from './config.ts';
 import type { PreparedCustomHost } from './host.ts';

@@ -1,18 +1,18 @@
 import { join } from 'node:path';
 import { rotateChatCredential } from '../../chat/auth.ts';
-import { withDirectoryLock } from '../../config/registryLock.ts';
-import { loadSessions } from '../../config/sessions.ts';
-import { promptInvocation } from '../../env.ts';
 import { policyUnavailableReason } from '../../policy/errors.ts';
 import { verifyApplicationPolicy } from '../../policy/resolve.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { ManagedRuntimeExit } from '../../runtime/exit.ts';
 import { managedRuntimeRoot } from '../../runtime/status.ts';
+import { privateRuntimeDirectory } from '../../runtime/store.ts';
+import { loadSessions } from '../../session/registry.ts';
+import { writeLaunchStamp } from '../../session/status.ts';
 import type { MachineConfig, Session } from '../../types.ts';
+import { promptInvocation } from '../../util/env.ts';
+import { withLock } from '../../util/lock.ts';
 import { log } from '../../util/log.ts';
-import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
-import { computeStamp } from '../launchStamp.ts';
-import { writeLaunchStamp } from '../sessionStatus.ts';
+import { computeStamp } from '../launch/launchStamp.ts';
 import { admitOpenCode } from './admission.ts';
 import { OpenCodeConnection } from './connection.ts';
 import { startOpenCodeServer } from './server.ts';
@@ -39,7 +39,7 @@ export async function runOpenCodeProcess(
     verifyApplicationPolicy(m, 'opencode', initial.applicationPolicy);
   const root = managedRuntimeRoot(m, initial);
   privateRuntimeDirectory(root);
-  await withDirectoryLock(
+  await withLock(
     join(root, 'owner.lock'),
     async () => {
       const abort = new AbortController();

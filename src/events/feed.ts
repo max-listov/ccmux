@@ -1,18 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  watch,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, watch } from 'node:fs';
 import { dirname } from 'node:path';
 import { eventsPath } from '../config/paths.ts';
-import { SESSION_EVENT_VERSION, SessionEventSchema } from '../config/schema.ts';
 import type { MachineConfig, Session, SessionEvent, SessionEventKind } from '../types.ts';
+import { appendJsonl, readJsonl, rotateBySize } from '../util/jsonl.ts';
+import { SESSION_EVENT_VERSION, SessionEventSchema } from './schema.ts';
 
 /**
  * The session event feed: an append-only record of what HAPPENED to the sessions on this machine.
@@ -36,29 +28,6 @@ import type { MachineConfig, Session, SessionEvent, SessionEventKind } from '../
 const MAX_BYTES = 5 * 1024 * 1024;
 const KEEP = 2; // rotated generations: .1, .2
 const FEED_NAME = 'events.jsonl';
-
-/** Shift events.jsonl → .1 → .2 past the size cap. Best-effort: rotation must never cost an event,
- *  and must never throw inside a hook the agent is waiting on. */
-function rotateIfNeeded(path: string): void {
-  try {
-    if (statSync(path).size < MAX_BYTES) return;
-  } catch {
-    return; // no file yet
-  }
-  try {
-    rmSync(`${path}.${KEEP}`, { force: true });
-    for (let i = KEEP - 1; i >= 1; i--) {
-      try {
-        renameSync(`${path}.${i}`, `${path}.${i + 1}`);
-      } catch {
-        // that generation does not exist — fine
-      }
-    }
-    renameSync(path, `${path}.1`);
-  } catch {
-    // never crash a turn over housekeeping
-  }
-}
 
 export interface EmitInput {
   event: SessionEventKind;
@@ -113,9 +82,9 @@ export function appendEvent(m: MachineConfig, s: Session, input: EmitInput): Ses
 export function appendRecord(m: MachineConfig, event: SessionEvent): SessionEvent | null {
   try {
     const path = eventsPath(m);
-    mkdirSync(dirname(path), { recursive: true });
-    rotateIfNeeded(path);
-    appendFileSync(path, `${JSON.stringify(event)}\n`);
+    // Rotation must never cost an event, and never throw inside a hook the agent is waiting on.
+    rotateBySize(path, MAX_BYTES, KEEP);
+    appendJsonl(path, event);
     return event;
   } catch {
     return null;
@@ -133,6 +102,13 @@ export function parseEvent(line: string): SessionEvent | null {
     return null;
   }
 }
+
+/** A torn line from a crash, or a record from a newer build, costs that line and nothing else. */
+const FEED = {
+  label: 'events',
+  badLine: 'skip',
+  decode: (raw: unknown): SessionEvent | undefined => SessionEventSchema.safeParse(raw).data,
+} as const;
 
 /** Oldest generation first, so a read spans a rotation without reordering history. */
 export function feedFiles(m: MachineConfig): string[] {
@@ -156,15 +132,13 @@ export function readEvents(m: MachineConfig, opts: ReadOptions = {}): SessionEve
   const sinceMs = opts.since === undefined ? null : Date.parse(opts.since);
   const out: SessionEvent[] = [];
   for (const file of feedFiles(m)) {
-    let text: string;
+    let events: SessionEvent[];
     try {
-      text = readFileSync(file, 'utf8');
+      events = readJsonl(file, FEED);
     } catch {
       continue; // rotated out from under us mid-read — later generations still carry what matters
     }
-    for (const line of text.split('\n')) {
-      const event = parseEvent(line);
-      if (event === null) continue;
+    for (const event of events) {
       if (opts.session !== undefined && event.session !== opts.session) continue;
       if (sinceMs !== null && Number.isFinite(sinceMs) && Date.parse(event.ts) < sinceMs) continue;
       out.push(event);

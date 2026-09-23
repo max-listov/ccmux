@@ -1,3 +1,4 @@
+import { parseFlags } from './flags.ts';
 import { COMMANDS } from './help.ts';
 
 // Shell completion scripts, GENERATED from the COMMANDS registry — one source, so a new/renamed verb
@@ -63,7 +64,7 @@ const isShell = (s: string | undefined): s is Shell =>
   s !== undefined && (SHELLS as readonly string[]).includes(s);
 
 export function cmdCompletions(args: string[]): number {
-  const shell = args[0];
+  const shell = parseFlags('completions', args, [1, 1]).positionals[0];
   if (!isShell(shell)) {
     console.error('usage: ccmux completions <bash|zsh|fish>');
     return 1;

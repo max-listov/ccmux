@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { ListRow } from '../src/commands/list.ts';
 import { managedSessionKey } from '../src/external/keys.ts';
+import type { ListRow } from '../src/inventory/rows.ts';
 import type { DiscoveredSession } from '../src/tui/discover.ts';
 import { externalDetailLines } from '../src/tui/externalView.ts';
 import {
@@ -55,6 +55,7 @@ function row(
     uptimeText: '1h',
     uptimeSeconds: 3600,
     createdAt,
+    tmux: null,
     lastMessage: null,
     letters: { total: 0, lastAt: null },
     lastActivityMs,

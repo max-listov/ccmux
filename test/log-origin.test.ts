@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { LOG_FILE, STATE_DIR } from '../src/config/paths.ts';
-import { IS_DEV } from '../src/env.ts';
+import { IS_DEV } from '../src/util/env.ts';
 
 test('a checkout writes its own record, and never into the machine history', () => {
   // The suite itself runs from a checkout, so this test IS the case being guarded: without the

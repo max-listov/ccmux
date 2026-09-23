@@ -2,7 +2,7 @@ import { type FSWatcher, watch } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { AppError } from 'stitchkit';
 import { type BoundedChannel, createBoundedChannel } from 'stitchkit/application';
-import { ownedCodexStatusPath } from '../agent/codex/ownedPaths.ts';
+import { ownedCodexStatusPath } from '../agent/codex/owned/paths.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { readPrivateJson } from '../runtime/store.ts';
 import type { MachineConfig, Session } from '../types.ts';

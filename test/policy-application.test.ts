@@ -11,8 +11,6 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { nativeRuntimeFailure } from '../src/agent/opencode/process.ts';
-import { writeLifecycleBlock } from '../src/config/lifecycleBlocks.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { composePolicyDeveloperInstructions, policySkillInputs } from '../src/policy/codex.ts';
 import { selectOpenCodePolicyAgent } from '../src/policy/opencode.ts';
 import { blockedPolicyReason, projectApplicationPolicy } from '../src/policy/projection.ts';
@@ -27,6 +25,8 @@ import {
   MaterializedPolicySchema,
 } from '../src/policy/schema.ts';
 import { MAX_POLICY_SOURCE_BYTES, policySha256 } from '../src/policy/sources.ts';
+import { writeLifecycleBlock } from '../src/session/lifecycleBlocks.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { log } from '../src/util/log.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 

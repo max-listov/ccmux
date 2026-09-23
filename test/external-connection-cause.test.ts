@@ -4,7 +4,7 @@ import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CodexAppUnavailable, connectCodexSocket } from '../src/agent/codex/socket.ts';
-import { ExternalSessionSchema } from '../src/config/schema.ts';
+import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
 import { unknownTurnState } from '../src/external/turnSchema.ts';
 import { observeExternalTurns, reasonFor } from '../src/external/turnState.ts';
 import { makeMachine, UUID } from './helpers.ts';

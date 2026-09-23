@@ -2,9 +2,9 @@ import { expect, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { managedPeer } from '../src/chat/identity.ts';
-import type { CreateManagedInput } from '../src/commands/create.ts';
-import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { archiveControlSession, createControlSession } from '../src/control/lifecycle.ts';
+import type { CreateManagedInput } from '../src/session/create.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('control create request is durable and idempotent across a lost reply', async () => {
@@ -112,7 +112,7 @@ test('archive is exact, idempotent and keeps the canonical registry identity', a
 });
 
 test('a retry of a create that already finished is answered, not refused as busy', async () => {
-  const { settledCreateRequest } = await import('../src/control/lifecycle.ts');
+  const { settledCreateRequest } = await import('../src/control/createReceipts.ts');
   const { mkdirSync, writeFileSync, mkdtempSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');

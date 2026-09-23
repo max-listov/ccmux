@@ -3,22 +3,22 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ServerWebSocket } from 'bun';
-import { ownedCodexSocket } from '../src/agent/codex/ownedPaths.ts';
+import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
 import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
 import { type ControlModelsConnector, readControlModels } from '../src/control/models.ts';
-import { controlSocket } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { ControlModelCatalogSchema, ControlModelsReadSchema } from '../src/control/schema.ts';
-import { createControlServer } from '../src/control/server.ts';
+import { ControlModelCatalogSchema, ControlModelsReadSchema } from '../src/control/schema/model.ts';
 import {
   CCMUX_CONTROL_CALLER_HEADER,
   createInjectedControlClient,
-} from '../src/control/transportBoundary.ts';
+} from '../src/control/transport/boundary.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const cleanup: (() => Promise<void>)[] = [];

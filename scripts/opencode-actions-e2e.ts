@@ -1,4 +1,4 @@
-import type { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import type { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

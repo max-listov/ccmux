@@ -1,9 +1,8 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
-import { privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
-import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
 import { managedPeer } from '../src/chat/identity.ts';
 import { ContentProducer } from '../src/content/producer.ts';
 import { readContent } from '../src/content/read.ts';
@@ -28,6 +27,7 @@ import {
 import { assertNoContextMutation, readContextJournal } from '../src/context/store.ts';
 import { writeRuntimeInput } from '../src/runtime/input.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
+import { privateRuntimeDirectory } from '../src/runtime/store.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 async function fixture() {

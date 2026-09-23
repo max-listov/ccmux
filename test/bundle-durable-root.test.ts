@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownsInstalledShim } from '../src/config/installedApp.ts';
+import { ownsInstalledShim } from '../src/boot/installedApp.ts';
 import { DEFAULT_DATA_DIR } from '../src/config/paths.ts';
 
 function tmpRoot(): string {

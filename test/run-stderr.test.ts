@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { mailBlocksSettle } from '../src/commands/wait.ts';
+import { mailBlocksSettle } from '../src/chat/inboundHold.ts';
 import type { ChatMessage } from '../src/types.ts';
 import { makeChatMessage, makePeer } from './helpers.ts';
 

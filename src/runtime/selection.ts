@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { withNativeAdmission } from './admission.ts';
@@ -12,7 +11,7 @@ import {
   type NativeTurnOptions,
 } from './selectionSchema.ts';
 import { managedRuntimeRoot } from './status.ts';
-import { readPrivateJson } from './store.ts';
+import { privateRuntimeDirectory, readPrivateJson } from './store.ts';
 
 const ReceiptSchema = z
   .object({
@@ -109,4 +108,29 @@ export async function seedNativeSelection(
     privateRuntimeDirectory(managedRuntimeRoot(m, s));
     await atomicWrite(selectionPath(m, s), JSON.stringify(row), 0o600);
   });
+}
+
+/**
+ * The turn options a session starts with before any turn has chosen its own: the model it was
+ * created with and, for Codex, the collaboration mode its launch recipe names.
+ *
+ * Every native runtime has one — without Claude's, every control-plane message to a native Claude
+ * session was refused before it reached the ledger, since `message.send` reads the current
+ * selection first. Effort is a per-turn choice a caller makes, so no default carries one: inventing
+ * one here would apply a thinking budget nobody asked for to every turn.
+ */
+export function initialTurnOptions(
+  s: Session,
+  model: NonNullable<Session['modelSelection']>,
+): NativeTurnOptions {
+  switch (s.agent) {
+    case 'codex':
+      return { runtime: 'codex', model, mode: s.launchRecipe?.collaborationMode ?? 'default' };
+    case 'opencode':
+      return { runtime: 'opencode', model };
+    case 'custom':
+      return { runtime: 'custom', model };
+    case 'claude':
+      return { runtime: 'claude', model };
+  }
 }

@@ -1,21 +1,21 @@
-import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import type { ModelSelection } from '../../config/modelSelectionFlags.ts';
+import { pageModelCatalog } from '../../control/modelPage.ts';
 import {
   type ControlModel,
   type ControlModelCatalog,
   ControlModelSchema,
   type ControlModelsRead,
-} from '../../control/schema.ts';
-import { HOME } from '../../env.ts';
+} from '../../control/schema/model.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { modelSelectionLabel } from '../../runtime/selectionSchema.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../runtime/status.ts';
 import { readPrivateJson } from '../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
+import { HOME } from '../../util/env.ts';
 import { type OpenCodeClient, startOpenCodeServer } from './server.ts';
 
 const ModelSchema = z.object({
@@ -163,19 +163,10 @@ export async function readOpenCodeModels(
   }
   const prepared = session === undefined ? null : preparedOpenCodeChoices(m, session);
   const models = prepared?.models ?? (await hostCatalog(m, HOME, signal));
-  const visible = input.includeHidden ? models : models.filter((model) => !model.hidden);
-  const digest = createHash('sha256').update(JSON.stringify(visible)).digest('hex').slice(0, 16);
-  let offset = 0;
-  if (input.cursor) {
-    const [revision, start] = input.cursor.split(':');
-    if (revision !== digest || !start || !/^\d+$/.test(start) || Number(start) > visible.length)
-      throw new AppError('INVALID_CURSOR', 'Native catalog cursor requires a fresh baseline', 409);
-    offset = Number(start);
-  }
-  const limit = input.limit ?? 64;
-  return {
-    ...(input.target === undefined ? {} : { target: input.target }),
-    source: {
+  const page = pageModelCatalog(
+    models,
+    input,
+    {
       kind: session === undefined ? 'host' : 'session',
       machine: m.rcPrefix,
       runtime: 'opencode',
@@ -186,8 +177,7 @@ export async function readOpenCodeModels(
       observedAt: null,
       freshness: null,
     },
-    ...(prepared === null ? {} : { agents: prepared.agents }),
-    data: visible.slice(offset, offset + limit),
-    nextCursor: offset + limit < visible.length ? `${digest}:${offset + limit}` : null,
-  };
+    input.target,
+  );
+  return prepared === null ? page : { ...page, agents: prepared.agents };
 }

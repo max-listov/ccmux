@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { ControlCreateReceipt } from '../src/control/schema.ts';
-import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import type { ControlCreateReceipt } from '../src/control/schema/session.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

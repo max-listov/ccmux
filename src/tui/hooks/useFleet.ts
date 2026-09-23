@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { ListRow } from '../../commands/list.ts';
-import { collectRows } from '../../commands/list.ts';
+import type { ListRow } from '../../inventory/rows.ts';
+import { collectRows } from '../../inventory/rows.ts';
 import type { MachineConfig } from '../../types.ts';
 
 /** Poll the live fleet on an interval. `reload()` forces an immediate refresh (after an action like

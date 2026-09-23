@@ -4,8 +4,8 @@ import { open, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentCodingArtifactStore } from 'stitchkit/agent-runtime/coding-tools';
 import { z } from 'zod';
-import { withDirectoryLock } from '../../config/registryLock.ts';
-import { privateRuntimeDirectory } from '../codex/ownedPaths.ts';
+import { privateRuntimeDirectory } from '../../runtime/store.ts';
+import { withLock } from '../../util/lock.ts';
 
 export const CUSTOM_ARTIFACT_LIMITS = {
   maxItems: 256,
@@ -28,7 +28,7 @@ export function customArtifactStore(root: string): AgentCodingArtifactStore {
     async write({ data }) {
       if (data.byteLength > CUSTOM_ARTIFACT_LIMITS.maxBytes)
         throw new Error('Custom output exceeds the artifact limit');
-      return withDirectoryLock(
+      return withLock(
         join(root, 'write.lock'),
         async () => {
           const files = await readdir(root);

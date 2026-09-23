@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from 'bun:test';
-import { ownedChildAlive, stopOwnedChildGroup } from '../src/agent/codex/ownedChild.ts';
+import { ownedChildAlive, stopOwnedChildGroup } from '../src/agent/codex/owned/child.ts';
 
 test('a denied zero-signal group probe does not abort owned child cleanup or claim absence', async () => {
   const child = Bun.spawn(

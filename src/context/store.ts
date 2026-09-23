@@ -2,12 +2,11 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
-import { withDirectoryLock } from '../config/registryLock.ts';
 import { managedRuntimeRoot } from '../runtime/status.ts';
-import { readPrivateJson } from '../runtime/store.ts';
+import { privateRuntimeDirectory, readPrivateJson } from '../runtime/store.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { withLock } from '../util/lock.ts';
 import { ContextOperationSchema } from './schema.ts';
 
 const JournalSchema = z
@@ -53,7 +52,7 @@ export async function withContextJournal<T>(
   run: (journal: ContextJournal, persist: () => Promise<void>) => Promise<T>,
 ) {
   privateRuntimeDirectory(managedRuntimeRoot(m, s));
-  return withDirectoryLock(
+  return withLock(
     contextPath(m, s, 'context.lock'),
     async () => {
       const journal = readContextJournal(m, s);

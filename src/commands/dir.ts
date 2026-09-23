@@ -2,16 +2,14 @@ import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { getProvider } from '../agent/index.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { findSession, loadSessions, setSessionDir } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { findSession, loadSessions, setSessionDir } from '../session/registry.ts';
 import { hasSession } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { printLine } from '../util/stdout.ts';
-
-const USAGE =
-  `usage: ccmux dir <name> <path>  ·  ccmux dir <name>  ·  ccmux dir (list)\n` +
-  `       <machine>:<name> for another fleet machine`;
+import { alignedLines } from '../util/table.ts';
+import { parseFlags } from './flags.ts';
 
 /**
  * `ccmux dir` — move a session's registered directory without losing its conversation.
@@ -26,14 +24,10 @@ const USAGE =
  * worse than saying so. `list` marks the session `dir` until it is restarted.
  */
 export async function cmdDir(args: string[]): Promise<number> {
-  const target = args[0];
+  const [target, path] = parseFlags('dir', args, [0, 2]).positionals;
   if (target === undefined) return listDirs();
-  if (target === '--help' || target === '-h') {
-    await printLine(USAGE);
-    return 0;
-  }
 
-  const forwarded = await forwardIfRemote(target, 'dir', args.slice(1));
+  const forwarded = await forwardIfRemote(target, 'dir', path === undefined ? [] : [path]);
   if (forwarded.done) return forwarded.code;
   const { m, session: name } = forwarded;
 
@@ -44,7 +38,6 @@ export async function cmdDir(args: string[]): Promise<number> {
     return 1;
   }
 
-  const path = args[1];
   if (path === undefined) {
     // Asking where a session is registered is a reading, not a malformed write.
     await printLine(`${name}: ${session.dir}`);
@@ -130,14 +123,13 @@ async function listDirs(): Promise<number> {
     await printLine('no sessions on this machine.');
     return 0;
   }
-  const width = Math.max(...sessions.map((s) => s.name.length));
-  for (const s of [...sessions].sort((a, b) => a.name.localeCompare(b.name))) {
-    // A registered directory that no longer exists is the visible half of this problem; the invisible
-    // half — a path that exists but is no longer the project — is why the marker says "gone" rather
-    // than claiming the rest are right.
-    const gone = existsSync(s.dir) ? '' : '   ← gone';
-    await printLine(`${s.name.padEnd(width)}  ${s.dir}${gone}`);
-  }
+  // A registered directory that no longer exists is the visible half of this problem; the invisible
+  // half — a path that exists but is no longer the project — is why the marker says "gone" rather
+  // than claiming the rest are right.
+  const rows = [...sessions]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((s) => [s.name, `${s.dir}${existsSync(s.dir) ? '' : '   ← gone'}`]);
+  for (const line of alignedLines(rows)) await printLine(line);
   return 0;
 }
 

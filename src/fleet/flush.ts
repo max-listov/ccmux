@@ -1,8 +1,7 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { z } from 'zod';
 import { outboxAckPath } from '../config/paths.ts';
 import type { MachineConfig } from '../types.ts';
+import { appendJsonl, readJsonl } from '../util/jsonl.ts';
 import { log } from '../util/log.ts';
 import { run } from '../util/spawn.ts';
 import { routeFor } from './address.ts';
@@ -30,27 +29,22 @@ import { peersOf, runPeer } from './transport.ts';
 // ended up delivered.
 
 export function loadOutboxAcked(m: MachineConfig): Set<string> {
-  const p = outboxAckPath(m);
-  const ids = new Set<string>();
-  if (!existsSync(p)) return ids;
-  for (const line of readFileSync(p, 'utf8').split('\n')) {
-    if (line.trim() === '') continue;
-    try {
-      const o: unknown = JSON.parse(line);
-      if (o !== null && typeof o === 'object' && 'id' in o && typeof o.id === 'string')
-        ids.add(o.id);
-    } catch {
-      // one bad line costs that line, never the file
-    }
-  }
-  return ids;
+  return new Set(readJsonl(outboxAckPath(m), OUTBOX_ACKS));
 }
+
+/** One bad line costs that line, never the file. */
+const OUTBOX_ACKS = {
+  label: 'outbox ack log',
+  badLine: 'skip',
+  decode: (raw: unknown): string | undefined =>
+    raw !== null && typeof raw === 'object' && 'id' in raw && typeof raw.id === 'string'
+      ? raw.id
+      : undefined,
+} as const;
 
 export function appendOutboxAck(m: MachineConfig, id: string): void {
   try {
-    const p = outboxAckPath(m);
-    mkdirSync(dirname(p), { recursive: true });
-    appendFileSync(p, `${JSON.stringify({ id, ts: new Date().toISOString() })}\n`);
+    appendJsonl(outboxAckPath(m), { id, ts: new Date().toISOString() });
   } catch {
     // best-effort: a lost ack costs one harmless extra retry, which is a no-op on the far side
   }

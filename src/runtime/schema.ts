@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { NativeSessionSchema } from '../config/schema.ts';
+import { NativeSessionSchema } from '../config/launchSchema.ts';
 import { NativeAccountSchema, NativeSnapshotSchema } from './projectionSchema.ts';
 
 /** The native projection vocabulary is shared; protocol-specific records remain driver-owned. */

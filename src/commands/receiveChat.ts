@@ -6,12 +6,12 @@ import {
   requireCommunicationAuthorization,
 } from '../chat/communicationAuthorization.ts';
 import { managedPeer, principalLabel, targetLabel } from '../chat/identity.ts';
+import { appendMessageOnce } from '../chat/ledger.ts';
+import { ChatMessageSchema } from '../chat/messageSchema.ts';
 import { principalOrigin } from '../chat/origin.ts';
-import { appendMessageOnce } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { ChatMessageSchema } from '../config/schema.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
 import type { ChatMessage } from '../types.ts';
 import { assertExpected } from './messagePeers.ts';
 

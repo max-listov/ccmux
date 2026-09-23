@@ -2,20 +2,20 @@ import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { codexRuntimeUpdates } from '../src/agent/codex/ownedCursor.ts';
+import { codexRuntimeUpdates } from '../src/agent/codex/owned/cursor.ts';
 import {
   ownedCodexArgv,
   ownedCodexClientArgv,
   ownedCodexFlags,
-} from '../src/agent/codex/ownedLaunch.ts';
-import { ownedCodexSocket, ownedCodexStatusPath } from '../src/agent/codex/ownedPaths.ts';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
-import type { OwnedCodexRead } from '../src/agent/codex/ownedSchema.ts';
+} from '../src/agent/codex/owned/launch.ts';
+import { ownedCodexSocket, ownedCodexStatusPath } from '../src/agent/codex/owned/paths.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import type { OwnedCodexRead } from '../src/agent/codex/owned/schema.ts';
 import {
   OwnedCodexStatusWriter,
   readOwnedCodexStatus,
   validateOwnedCodex,
-} from '../src/agent/codex/ownedStatus.ts';
+} from '../src/agent/codex/owned/status.ts';
 import {
   NATIVE_RUNTIME_MAX_BYTES,
   NATIVE_RUNTIME_MAX_EVENTS,
@@ -191,6 +191,24 @@ test('reader never exposes expired, dead, wrong identity or disconnected positiv
   });
 });
 
+test('a stopped Codex session keeps the account it ran on, as every other runtime does', () => {
+  const p = new OwnedCodexProjection(machine, session, process.pid);
+  state(p, { type: 'idle' }, 10_000);
+  const account = {
+    label: 'user@example.com',
+    organization: null,
+    subscription: 'plus',
+    provider: 'openai',
+  };
+  const identity = { machine: machine.rcPrefix, session: session.name, threadId: session.uuid };
+  const bytes = JSON.stringify({ ...p.snapshot(), account });
+  // Stale: the state is dropped, the identity stays.
+  const stale = validateOwnedCodex(bytes, identity, 10_000 + NATIVE_RUNTIME_TTL_MS);
+  expect(stale).toMatchObject({ status: 'stale', snapshot: null, retained: { account } });
+  // Live: nothing is retained, because nothing was dropped.
+  expect(validateOwnedCodex(bytes, identity, 10_001).retained).toBeNull();
+});
+
 test('prepared file reader rejects symlinks, permissive files and oversize; coalesced writes retain last state', async () => {
   const m = makeMachine({ stateDir: mkdtempSync('/tmp/ccmux-native-state-test-') });
   const p = new OwnedCodexProjection(m, session, process.pid);
@@ -204,6 +222,9 @@ test('prepared file reader rejects symlinks, permissive files and oversize; coal
   expect(readOwnedCodexStatus(m, session).snapshot?.sequence).toBe(p.snapshot().sequence);
   const file = ownedCodexStatusPath(m, session.name);
   chmodSync(file, 0o666);
+  expect(readOwnedCodexStatus(m, session).reason).toBe('unauthorized');
+  // Group read alone is refused too — the rule every runtime's private state follows.
+  chmodSync(file, 0o640);
   expect(readOwnedCodexStatus(m, session).reason).toBe('unauthorized');
   chmodSync(file, 0o600);
   writeFileSync(file, ' '.repeat(NATIVE_RUNTIME_MAX_BYTES + 1));

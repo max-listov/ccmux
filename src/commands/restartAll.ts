@@ -2,19 +2,19 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { forkedUuid, providerFor } from '../agent/index.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import { cliPrincipal, managedPeer, ownerTarget, targetLabel } from '../chat/identity.ts';
-import { appendMessage } from '../chat/store.ts';
+import { appendMessage } from '../chat/ledger.ts';
 import { chatEnabledFor } from '../config/chat.ts';
-import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { STATE_DIR } from '../config/paths.ts';
-import { findSession, loadSessions, updateSessionUuid } from '../config/sessions.ts';
-import { SELF_ARGV } from '../env.ts';
+import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
+import { findSession, loadSessions, updateSessionUuid } from '../session/registry.ts';
+import { startSession } from '../session/start.ts';
 import { killSession, listSessionNames } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { SELF_ARGV } from '../util/env.ts';
 import { log } from '../util/log.ts';
 import { runDetached } from '../util/spawn.ts';
-import { startSession } from './lifecycle.ts';
 
 /**
  * `ccmux restart --all` — bounce the WHOLE fleet on this machine with one command, so a changed
@@ -187,13 +187,7 @@ function sweepRunning(): boolean {
 }
 
 /** The public entry: validate, then hand the sweep to a DETACHED worker and return immediately. */
-export async function cmdRestartAll(args: string[]): Promise<number> {
-  if (args.some((a) => !a.startsWith('--'))) {
-    console.error(
-      'restart --all takes no session name — it restarts every session on this machine',
-    );
-    return 1;
-  }
+export async function cmdRestartAll(): Promise<number> {
   if (sweepRunning()) {
     console.error('restart --all: a sweep is already running');
     return 1;

@@ -2,10 +2,10 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { emitOwnedCodexBoundary } from '../src/agent/codex/ownedEvents.ts';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
-import type { OwnedCodexSnapshot } from '../src/agent/codex/ownedSchema.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import type { OwnedCodexSnapshot } from '../src/agent/codex/owned/schema.ts';
 import { eventsPath } from '../src/config/paths.ts';
+import { emitRuntimeBoundaries } from '../src/runtime/events.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**
@@ -39,13 +39,34 @@ test('native turn boundaries reach the feed exactly once each', () => {
   });
 
   // One turn, then the same ring read again with nothing new: the publish that follows must be silent.
-  let cursor = emitOwnedCodexBoundary(m, s, snapshot(['turn-start']), 0);
-  cursor = emitOwnedCodexBoundary(m, s, snapshot(['turn-start']), cursor);
-  cursor = emitOwnedCodexBoundary(m, s, snapshot(['turn-start']), cursor);
+  let cursor = emitRuntimeBoundaries(m, s, snapshot(['turn-start']), 0);
+  cursor = emitRuntimeBoundaries(m, s, snapshot(['turn-start']), cursor);
+  cursor = emitRuntimeBoundaries(m, s, snapshot(['turn-start']), cursor);
   expect(feed(m).map((row) => row.event)).toEqual(['turn-start']);
 
   // The end arrives behind a state change, so it is never the ring's last entry — and must still land.
-  cursor = emitOwnedCodexBoundary(m, s, snapshot(['turn-start', 'turn-end', 'state']), cursor);
+  cursor = emitRuntimeBoundaries(m, s, snapshot(['turn-start', 'turn-end', 'state']), cursor);
   expect(feed(m).map((row) => row.event)).toEqual(['turn-start', 'turn-end']);
   expect(cursor).toBe(3);
+});
+
+test('boundaries passed while the feed is off are not replayed when it is turned on', () => {
+  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'ccmux-boundary-off-')) });
+  const off = makeSession({ agent: 'opencode', runtime: 'native', eventsEnabled: false });
+  const events = (count: number) => ({
+    events: Array.from({ length: count }, (_, index) => ({
+      sequence: index + 1,
+      at: new Date(1_700_000_000_000 + index * 1000).toISOString(),
+      kind: index % 2 === 0 ? 'turn-start' : 'turn-end',
+      turn: { startedAt: null, status: 'completed' },
+    })),
+  });
+  // Off: nothing is written, and the mark still moves past what happened.
+  const mark = emitRuntimeBoundaries(m, off, events(4), 0);
+  expect(mark).toBe(4);
+  expect(() => readFileSync(eventsPath(m), 'utf8')).toThrow();
+  // On: only what happens from now reaches the feed.
+  const on = { ...off, eventsEnabled: true };
+  expect(emitRuntimeBoundaries(m, on, events(6), mark)).toBe(6);
+  expect(feed(m).map((event) => event.event)).toEqual(['turn-start', 'turn-end']);
 });

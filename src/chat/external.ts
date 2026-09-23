@@ -21,7 +21,7 @@
 
 import type { ChatMessage, ChatPrincipal, MachineConfig } from '../types.ts';
 import { EXTERNAL_PREFIX, externalAddress, samePrincipal } from './identity.ts';
-import type { LedgerSlot } from './store.ts';
+import type { LedgerSlot } from './ledger.ts';
 
 export { EXTERNAL_PREFIX };
 

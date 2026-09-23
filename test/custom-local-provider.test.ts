@@ -3,7 +3,7 @@ import { readCustomModels } from '../src/agent/custom/catalog.ts';
 import { CustomLaunchConfigSchema } from '../src/agent/custom/config.ts';
 import { isLocalAddress, parseLocalEndpoint } from '../src/agent/custom/endpoint.ts';
 import { customModel, customProviderLabel } from '../src/agent/custom/host.ts';
-import { ControlModelsReadSchema } from '../src/control/schema.ts';
+import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
 import { customFixture as fixture } from './custom-fixture.ts';
 
 const LOCAL_MODEL = { provider: 'local', model: 'local/fixture' } as const;

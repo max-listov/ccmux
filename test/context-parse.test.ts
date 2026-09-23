@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { parseContext, tokNum } from '../src/agent/context.ts';
+import { parseContext, tokNum } from '../src/context/fill.ts';
 
 // The CTX column of `list` / `list --json` is built from this parse of the agent statusline label.
 

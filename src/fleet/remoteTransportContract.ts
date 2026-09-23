@@ -1,6 +1,6 @@
 import { defineContract } from 'stitchkit/contract';
 import { z } from 'zod';
-import { RC_PREFIX_RE } from '../config/schema.ts';
+import { RC_PREFIX_RE } from '../chat/identitySchema.ts';
 
 const RemoteTransportDeliverySchema = z.enum(['not-sent', 'unknown', 'received']);
 

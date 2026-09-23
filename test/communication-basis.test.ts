@@ -7,12 +7,13 @@ import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../src/chat/auth.ts';
 import { CommunicationAuthorizationSchema } from '../src/chat/communicationAuthorizationSchema.ts';
 import { resolveCommunicationBasis } from '../src/chat/communicationBasis.ts';
 import { managedPeer } from '../src/chat/identity.ts';
+import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
 import { localMessageLookup } from '../src/chat/localMessages.ts';
-import { appendMessage, loadLedger } from '../src/chat/store.ts';
+import { ChatMessageSchema } from '../src/chat/messageSchema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { chatAuthPath, sessionsPath } from '../src/config/paths.ts';
-import { ChatMessageSchema, MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
 import { appendOutbound } from '../src/fleet/outbox.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import type { ChatMessage, MachineConfig, Session } from '../src/types.ts';
 import { makeSession } from './helpers.ts';
 

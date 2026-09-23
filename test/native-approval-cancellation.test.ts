@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { applyOpenCodeInterrupt } from '../src/agent/opencode/interrupt.ts';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
-import { ControlInterruptSchema } from '../src/control/schema.ts';
+import { ControlInterruptSchema } from '../src/control/schema/message.ts';
 import {
   isCancellableTurn,
   readRuntimeInterrupt,

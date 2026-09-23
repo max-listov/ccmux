@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
-import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { appendSession } from '../src/config/sessions.ts';
 import { ContentProducer } from '../src/content/producer.ts';
 import { readContent, subscribeContent } from '../src/content/read.ts';
 import { contentPath } from '../src/content/store.ts';
 import { subscribeControlNative } from '../src/control/nativeFeed.ts';
+import { appendSession } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('idle content does not rewrite files; omissions and closure still publish', async () => {

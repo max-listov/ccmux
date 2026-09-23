@@ -1,6 +1,6 @@
 import { basename, join } from 'node:path';
-import { HOME, IS_DEV, SELF_ARGV } from '../env.ts';
 import type { MachineConfig } from '../types.ts';
+import { HOME, IS_DEV, SELF_ARGV } from '../util/env.ts';
 
 /**
  * Where ccmux keeps everything — ONE module that knows the whole layout.

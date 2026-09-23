@@ -1,13 +1,13 @@
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { connectOwnedCodex } from '../agent/codex/ownedRpc.ts';
+import { connectOwnedCodex } from '../agent/codex/owned/rpc.ts';
 import { inspectNativeCodexInput } from '../agent/codex/pane.ts';
 import { codexTextInput } from '../agent/codex/turnInput.ts';
 import { resolveMessageAttachments, withPinnedAttachments } from '../attachments/pins.ts';
 import { chatPrincipalKey } from '../chat/identity.ts';
-import { withSessionRegistryLock } from '../config/registryLock.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
+import { withSessionRegistryLock } from '../session/registryLock.ts';
 import { capturePaneStyled, clientTypingRecently, setPaneInputEnabled } from '../tmux/tmux.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
 import {

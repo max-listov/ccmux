@@ -8,7 +8,7 @@ import type { MockLanguageModelV4 } from 'ai/test';
 import { CustomLaunchConfigSchema } from '../src/agent/custom/config.ts';
 import { prepareCustomHost } from '../src/agent/custom/host.ts';
 import { resolveControlLaunchRecipe } from '../src/config/launchRecipes.ts';
-import { MachineLaunchRecipeSchema } from '../src/config/schema.ts';
+import { MachineLaunchRecipeSchema } from '../src/config/launchSchema.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const roots: string[] = [];

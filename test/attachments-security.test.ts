@@ -21,7 +21,7 @@ import {
 } from '../src/attachments/service.ts';
 import { withAttachmentStore } from '../src/attachments/store.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { attachmentFixture, digest, imageBytes, upload } from './attachments-fixture.test.ts';
 
 test('unknown principal, wrong target and mismatched immutable reference cannot preview', async () => {

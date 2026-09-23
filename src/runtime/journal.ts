@@ -2,8 +2,8 @@ import { join } from 'node:path';
 import type { DiagnosticJournalFailure, DiagnosticJournalLimits } from 'stitchkit/application';
 import { createDiagnosticJournal } from 'stitchkit/application/diagnostic-journal';
 import { z } from 'zod';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import type { MachineConfig } from '../types.ts';
+import { privateRuntimeDirectory } from './store.ts';
 
 /** Metadata only. Prompts, tool arguments, native errors and names have no field here. */
 export const RuntimeJournalEventSchema = z

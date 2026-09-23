@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { LifecycleStateSchema } from 'stitchkit/application';
 import { histFile } from '../src/agent/claude/resume.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { readMonitoringStatus } from '../src/monitoring/read.ts';
 import type { MonitoringSnapshot } from '../src/monitoring/schema.ts';
 import { readMonitoringStatus as readNativeStatus } from '../src/monitoring-reader.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test.skipIf(!Bun.which('tmux'))(

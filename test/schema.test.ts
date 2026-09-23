@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { MachineConfigSchema, SessionSchema } from '../src/config/schema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { SessionSchema } from '../src/session/schema.ts';
 
 const UUID = '11111111-1111-4111-8111-111111111111';
 

@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from 'bun:test';
-import { clearWaiting, readWaiting, writeWaiting } from '../src/agent/sessionStatus.ts';
 import { RemoteSessionSchema } from '../src/commands/fleetList.ts';
+import { clearWaiting, readWaiting, writeWaiting } from '../src/session/status.ts';
 
 /**
  * A session standing on `ccmux wait` is mid-turn and therefore reads as working — which is true at

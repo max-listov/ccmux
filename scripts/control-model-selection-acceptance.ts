@@ -8,14 +8,14 @@ import {
   resumeCodexAppThreadContext,
   startCodexAppTurn,
 } from '../src/agent/codex/appServer.ts';
-import { connectOwnedCodex } from '../src/agent/codex/ownedRpc.ts';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { controlSocket } from '../src/control/path.ts';
-import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { killSession, newSession } from '../src/tmux/tmux.ts';
 import type { ManagedPeer, Session } from '../src/types.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';

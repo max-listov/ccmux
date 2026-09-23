@@ -7,7 +7,7 @@ import {
 } from '../../chat/messageOperationStore.ts';
 import { type RuntimeInput, writeRuntimeInput } from '../../runtime/input.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { stableJson } from '../launchInputs.ts';
+import { stableJson } from '../launch/launchInputs.ts';
 import type { openCustomEngine } from './engine.ts';
 import { CustomInputMetadataSchema, customInputParts } from './input.ts';
 import { type CustomProjection, customTerminal } from './projection.ts';

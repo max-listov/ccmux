@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { connectCodexAppServer } from '../src/agent/codex/appServer.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { createControlServer } from '../src/control/server.ts';
-import { ExternalStatusObserver } from '../src/external/resident-observer.ts';
-import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
-import { currentExternalStatus } from '../src/external/resident-schema.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { ExternalStatusObserver } from '../src/external/residentObserver.ts';
+import { ExternalStatusPublisher } from '../src/external/residentPublisher.ts';
+import { currentExternalStatus } from '../src/external/residentSchema.ts';
 import { VERSION } from '../src/util/version.ts';
 
 if (!Bun.argv.includes('--run')) {

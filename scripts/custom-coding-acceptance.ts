@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ControlCreateReceipt } from '../src/control/schema.ts';
+import type { ControlCreateReceipt } from '../src/control/schema/session.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

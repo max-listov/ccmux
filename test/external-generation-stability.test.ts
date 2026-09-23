@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { ExternalStatusObserver } from '../src/external/resident-observer.ts';
-import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
+import { ExternalStatusObserver } from '../src/external/residentObserver.ts';
+import { ExternalStatusPublisher } from '../src/external/residentPublisher.ts';
 import { makeMachine } from './helpers.ts';
 
 /**
@@ -65,4 +65,16 @@ test('a refusal that changes is still published at once', async () => {
   expect(changed.reason).toBe('config-changed');
   expect(changed.sequence).toBeGreaterThan(pending.sequence);
   expect(changed.generation).toBe(pending.generation);
+});
+
+test('a stopped publisher says it stopped, to the readers it still has', async () => {
+  const publisher = new ExternalStatusPublisher('host-a');
+  publisher.publish([], false, Date.now());
+  const controller = new AbortController();
+  const stream = publisher.subscribe(controller.signal)[Symbol.asyncIterator]();
+  expect((await stream.next()).value?.status).toBe('live');
+  publisher.close();
+  // The last thing a reader is told is why it stops, not the last observation before it did.
+  expect(publisher.read()).toMatchObject({ status: 'unavailable', reason: 'daemon-stopped' });
+  controller.abort();
 });

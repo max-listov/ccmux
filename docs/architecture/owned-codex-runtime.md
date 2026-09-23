@@ -78,17 +78,32 @@ unverified orphan. Resolve that exact endpoint owner before an explicit restart.
 # Messages and acknowledgement
 
 Existing immutable ledger records and provider + machine + session + UUID reply identities are
-unchanged. The daemon waits for fresh native idle evidence, serializes delivery, gates the managed
-terminal's input, and checks for a blank known composer. It then rechecks native admission and
-registry identity. Menus, partial input, unknown UI, busy state, approval and input waits hold
-delivery; no automatic approval or input response is sent. Spinner text is not native turn state.
+unchanged. Mail reaches an owned Codex session the way it reaches every native runtime: the daemon
+picks the next letter, persists the pickup intent in the cursors file and queues the formatted text
+in the session's `runtime/input` slot under the ledger message id (`chat/nativeRuntime.ts`). The
+owner — the `_run` process in the session's own pane — starts the turn (`agent/codex/owned/input.ts`,
+one check per owner tick). Only the owner can see what is in the way: its pane carries the
+provider's TUI client, where a person may be typing. So the owner waits for fresh native idle
+evidence, holds when a client keystroke is recent, gates the pane's input, and checks for a blank
+known composer; it then rereads the thread, rechecks registry identity and the collaboration policy.
+Menus, partial input, unknown UI, busy state, approval and input waits hold delivery with a reason
+on the letter; no automatic approval or input response is sent. Spinner text is not native turn
+state. The gate is released on every path.
 
-Before `turn/start`, the immutable message ID is persisted as an intent. The native request uses
-that ID as `clientUserMessageId`. Acceptance records the returned turn ID. The next pickup check
-requires its terminal boundary or an exact persisted `userMessage.clientId` receipt. A timeout or
-lost reply is ambiguous: the durable intent is held and reconciled, never blindly resubmitted.
-Receipt lookup is bounded to 32 recent native turn summaries and the RPC byte limit. Absence is
-not proof of rejection, so an unresolved intent stays held rather than producing duplicate work.
+The input slot records `dispatching` before `turn/start` and `accepted` with the provider's turn id
+after. The request uses the ledger message id as `clientUserMessageId`. A dispatch found in flight
+on the next tick — a lost reply, or an owner that died between the two writes — is settled from the
+provider's own record: a recent turn carrying that `userMessage.clientId` is the receipt. Receipt
+lookup is bounded to 32 recent native turn summaries and the RPC byte limit. Absence is not proof of
+rejection, so the slot becomes `uncertain` and is never resubmitted; the daemon holds the letter as
+indeterminate until the record turns up. The daemon settles the pickup on the terminal boundary of
+the turn the slot names (`turnId`), acknowledges a conditional letter only then, and records the
+message operation against that turn.
+
+Interruption follows the same route. `interrupt` writes the `runtime/interrupt` mailbox; the owner
+checks the exact generation and in-progress turn, rereads the thread (active, and waiting on nothing
+but approval or input), records `uncertain`, checks again, and sends `turn/interrupt` through its
+own connection. A turn that settled in between is refused rather than answered by stopping the next.
 
 Every provider read on this path is bounded by a request parameter, not by hope. The pre-dispatch
 context read asks for the thread without its turns (`excludeTurns`): the fields it uses are the
@@ -125,13 +140,26 @@ not accepted. Discovery/configuration follows the [monitoring reader](monitoring
 same configured OS user/root; configuration is read before and after the prepared file, and any
 change returns `config-changed`. There is no old-root fallback. A later call follows the new root.
 
-The protocol-1 envelope is `{protocol,status,reason,snapshot}`. A live snapshot preserves provider,
+The protocol-1 envelope is `{protocol,status,reason,snapshot,retained?}`. A live snapshot preserves provider,
 machine, session, threadId, generation, sequence, worker pid, provider pid, producer version,
 connected, state, reason, observedAt, expiresAt, turn and a 128-entry event window. No message body,
 environment value, credential or arbitrary filesystem path is returned.
 
 Configuration and snapshot are capped at 128 KiB each. Readers use same-user regular files,
-O_NOFOLLOW/O_NONBLOCK and reject group/world-writable files. The producer writes mode 0600 atomically.
+O_NOFOLLOW/O_NONBLOCK and reject any file with group or world access — the rule every runtime's
+private state follows. The producer writes mode 0600 atomically. When the lease has expired the
+snapshot is dropped and `retained.account` keeps the account the session ran on, exactly as for the
+other native runtimes (`validateRuntimeLiveness`, `src/runtime/statusFile.ts`).
+
+What is shared with the other native runtimes and what is not. Liveness, the coalesced status writer
+(`RuntimeStatusWriter`), boundary events (`emitRuntimeBoundaries`), the approval/input response
+mailbox (`src/runtime/response.ts`), the input and interrupt mailboxes (`runtime/input`,
+`runtime/interrupt`), model-catalog paging (`src/control/modelPage.ts`) and private runtime
+directories (`privateRuntimeDirectory`, `src/runtime/store.ts`) are one implementation. The status
+FILE stays at `codex-runtime/<hash>.json` rather than under `native-runtime/`: an owner outlives an
+update of ccmux, and this reader reads the path directly. An owner started by a version that did not
+read the input and interrupt mailboxes does not start queued turns: owned Codex sessions are
+restarted at the rollout that brings them this protocol.
 Freshness is at most 5 seconds, checked again when delivering each result. Dead worker/provider
 PIDs immediately invalidate positive state. A restricted reader receiving EPERM from a PID probe
 does not mistake permission denial for death; its result is still bounded by the five-second
@@ -167,7 +195,8 @@ This release supplies the owner runtime/reader contract, not another application
 
 Regression tests cover native flags, exact identity, snapshot/event races, retired generations,
 private/bounded files, cancellation/deadlines/root changes, coalescing, process-group cleanup,
-composer gates, intent/receipt recovery and existing provider compatibility.
+composer gates in the owner (`test/codex-owned-chat.test.ts`), intent/receipt recovery and existing
+provider compatibility.
 
 Real opt-in probes are `scripts/codex-owned-runtime-probe.ts`, `codex-owned-e2e.ts`,
 `codex-owned-safety-probe.ts` and `codex-owned-recovery-probe.ts`. They require isolated state and

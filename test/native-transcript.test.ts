@@ -1,21 +1,21 @@
 import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { privateRuntimeDirectory } from '../src/agent/codex/ownedPaths.ts';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { transcriptJson } from '../src/commands/transcript.ts';
-import { withDirectoryLock } from '../src/config/registryLock.ts';
-import { appendSession } from '../src/config/sessions.ts';
 import { boundedHistoryPage, historyCursor } from '../src/context/history.ts';
 import { applyContextCommands, type NativeContextApi } from '../src/context/pump.ts';
 import type { NativeHistoryEntry } from '../src/context/schema.ts';
 import { readNativeHistory } from '../src/context/service.ts';
 import { contextPath } from '../src/context/store.ts';
+import { transcriptJson } from '../src/context/transcriptJson.ts';
 import { nativeTranscriptWindow, readTranscriptWindow } from '../src/context/transcriptWindow.ts';
-import { ControlTranscriptReadSchema } from '../src/control/schema.ts';
+import { ControlTranscriptReadSchema } from '../src/control/schema/native.ts';
 import { readControlTranscript } from '../src/control/transcript.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/status.ts';
+import { privateRuntimeDirectory } from '../src/runtime/store.ts';
+import { appendSession } from '../src/session/registry.ts';
+import { withLock } from '../src/util/lock.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const entry = (
@@ -299,10 +299,14 @@ test('native history cancellation releases a waiter without releasing the holder
   const f = await nativeFixture();
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const holder = withDirectoryLock(contextPath(f.m, f.session, 'history-reader.lock'), async () => {
-    entered.resolve();
-    await release.promise;
-  });
+  const holder = withLock(
+    contextPath(f.m, f.session, 'history-reader.lock'),
+    async () => {
+      entered.resolve();
+      await release.promise;
+    },
+    'history reader',
+  );
   await entered.promise;
   try {
     const cancellation = new AbortController();

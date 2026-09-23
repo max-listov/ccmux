@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { privateRuntimeDirectory } from '../agent/codex/ownedPaths.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { privateRuntimeDirectory } from './store.ts';
 
 /** Exact native causes are private owner evidence, never API errors or stderr mirrors. */
 export async function recordRuntimeDiagnostic(

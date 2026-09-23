@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { AppError } from 'stitchkit';
-import { stableJson } from '../agent/launchInputs.ts';
+import { stableJson } from '../agent/launch/launchInputs.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import type { MessageAttribution, MessageOrigin, NotificationAudience } from './originSchema.ts';

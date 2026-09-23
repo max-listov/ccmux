@@ -1,5 +1,7 @@
+import { CHAT_GENERATION } from '../src/chat/messageSchema.ts';
 import { principalOrigin } from '../src/chat/origin.ts';
-import { CHAT_GENERATION, MachineConfigSchema, SessionSchema } from '../src/config/schema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { SessionSchema } from '../src/session/schema.ts';
 import type {
   ChatMessage,
   ChatPrincipal,

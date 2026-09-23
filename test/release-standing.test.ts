@@ -6,7 +6,7 @@ import {
   bestKnownRelease,
   releaseStanding,
   writeReleaseCheck,
-} from '../src/config/releaseCheck.ts';
+} from '../src/release/check.ts';
 import { makeMachine } from './helpers.ts';
 
 // A fleet view could show which version each machine RUNS and nothing about whether that is the

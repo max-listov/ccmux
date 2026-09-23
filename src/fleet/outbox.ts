@@ -1,10 +1,9 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { z } from 'zod';
 import { targetLabel } from '../chat/identity.ts';
+import { ChatMessageSchema } from '../chat/messageSchema.ts';
 import { outboxPath } from '../config/paths.ts';
-import { ChatMessageSchema } from '../config/schema.ts';
 import type { MachineConfig } from '../types.ts';
+import { appendJsonl, readJsonl } from '../util/jsonl.ts';
 import { log } from '../util/log.ts';
 
 /**
@@ -50,9 +49,7 @@ export function outboundTimestamp(record: Outbound): string {
  *  bookkeeping failure must not break the send it is recording. */
 export function appendOutbound(m: MachineConfig, rec: Outbound): void {
   try {
-    const p = outboxPath(m);
-    mkdirSync(dirname(p), { recursive: true });
-    appendFileSync(p, `${JSON.stringify(OutboundSchema.parse(rec))}\n`);
+    appendJsonl(outboxPath(m), OutboundSchema.parse(rec));
   } catch (e) {
     // Never throws — the send already happened, and failing here would report a delivered message as
     // an error. But it must not vanish quietly either: this record's entire purpose is to be proof
@@ -65,17 +62,12 @@ export function appendOutbound(m: MachineConfig, rec: Outbound): void {
 }
 
 export function loadOutbox(m: MachineConfig): Outbound[] {
-  const p = outboxPath(m);
-  if (!existsSync(p)) return [];
-  const out: Outbound[] = [];
-  for (const line of readFileSync(p, 'utf8').split('\n')) {
-    if (line.trim() === '') continue;
-    try {
-      const rec = OutboundSchema.safeParse(JSON.parse(line)).data;
-      if (rec !== undefined) out.push(rec);
-    } catch {
-      // skip a malformed line rather than lose the whole file
-    }
-  }
-  return out;
+  return readJsonl(outboxPath(m), OUTBOX);
 }
+
+/** A malformed line costs that line, never the file: the outbox is a record of attempts. */
+const OUTBOX = {
+  label: 'outbox',
+  badLine: 'skip',
+  decode: (raw: unknown): Outbound | undefined => OutboundSchema.safeParse(raw).data,
+} as const;

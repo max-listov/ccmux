@@ -1,6 +1,6 @@
 import { Box } from 'ink';
 import { memo } from 'react';
-import { vendorMark } from '../../agent/vendor.ts';
+import { vendorMark } from '../../inventory/vendor.ts';
 import { externalDetailLines, externalInlineLines } from '../externalView.ts';
 import type { FleetItem } from '../fleet.ts';
 import { clipWidth, dispWidth, provColor, sanitize, wrapText } from '../format.ts';

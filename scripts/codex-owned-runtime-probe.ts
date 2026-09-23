@@ -2,13 +2,13 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { readCodexAppThread } from '../src/agent/codex/appServer.ts';
-import { ownedCodexSocket } from '../src/agent/codex/ownedPaths.ts';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
+import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { connectCodexSocket } from '../src/agent/codex/socket.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { withSessionRegistryLock } from '../src/config/registryLock.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
+import { withSessionRegistryLock } from '../src/session/registryLock.ts';
 import { killSession, newSession } from '../src/tmux/tmux.ts';
 
 // Deliberately separate state and tmux socket; real provider authentication stays native.

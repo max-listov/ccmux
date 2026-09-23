@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { computeStamp, staleReasons } from '../src/agent/launchStamp.ts';
+import { computeStamp, staleReasons } from '../src/agent/launch/launchStamp.ts';
 import { chatEnabledFor, chatOverrideLabel } from '../src/config/chat.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
@@ -63,8 +63,8 @@ test("nothing reads the raw field behind the resolver's back", () => {
       else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
         if (
           p.endsWith(join('config', 'chat.ts')) ||
-          p.endsWith(join('config', 'schema.ts')) ||
-          p.endsWith(join('config', 'sessions.ts'))
+          p.endsWith(join('session', 'schema.ts')) ||
+          p.endsWith(join('session', 'registry.ts'))
         )
           continue;
         for (const line of readFileSync(p, 'utf8').split('\n')) {

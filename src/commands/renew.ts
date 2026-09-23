@@ -2,15 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { providerFor } from '../agent/index.ts';
 import { chatOverrideLabel } from '../config/chat.ts';
-import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
-import { findSession, loadSessions, updateSessionUuid } from '../config/sessions.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-
+import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
+import { findSession, loadSessions, updateSessionUuid } from '../session/registry.ts';
+import { startSession } from '../session/start.ts';
 import { killSession } from '../tmux/tmux.ts';
 import type { Session } from '../types.ts';
 import { log } from '../util/log.ts';
-import { startSession } from './lifecycle.ts';
+import { parseFlags } from './flags.ts';
 
 /**
  * Why this refuses by default. A session's conversation is the work in it; renewing pins a fresh
@@ -55,14 +55,10 @@ export function renewSummary(s: Session, uuid: string): string {
  * past it was `rm` + `new` — which also threw away the session's mode, chat override and prompt
  * modules, none of which had anything to do with the missing file.
  */
-export async function cmdRenew(name: string | undefined, args: string[] = []): Promise<number> {
-  if (name === undefined) {
-    console.log(
-      'usage: ccmux renew <name> [--force]   ·   <machine>:<name> for another fleet machine',
-    );
-    return 1;
-  }
-  const force = args.includes('--force');
+export async function cmdRenew(args: string[] = []): Promise<number> {
+  const flags = parseFlags('renew', args, [1, 1]);
+  let name = flags.positionals[0] as string;
+  const force = flags.bool('force');
   const fwd = await forwardIfRemote(name, 'renew', force ? ['--force'] : []);
   if (fwd.done) return fwd.code;
   const { session, m } = fwd;

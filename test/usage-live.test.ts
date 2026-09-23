@@ -7,7 +7,7 @@ import { encodeDir } from '../src/agent/claude/resume.ts';
 import { subagentsDir } from '../src/agent/claude/subagent.ts';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { OpenCodeMessageSchema } from '../src/agent/opencode/protocol.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { recordClaudeSdkUsage } from '../src/usage/claudeSdk.ts';
 import { customUsage, recordUsage } from '../src/usage/live.ts';
 import { UsageQuerySchema } from '../src/usage/schema.ts';

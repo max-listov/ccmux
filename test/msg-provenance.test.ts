@@ -4,10 +4,10 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../src/chat/auth.ts';
-import { loadLedger } from '../src/chat/store.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { chatAuthPath, sessionsPath } from '../src/config/paths.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { communicationAuthorizationFile } from './communication-fixture.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');

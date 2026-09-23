@@ -4,32 +4,30 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } 
 import { join } from 'node:path';
 import { createCli } from 'stitchkit/cli';
 import { createToolInvoker } from 'stitchkit/tools/invoker';
-import { readNativeCommand, writeNativeReceipt } from '../src/agent/codex/ownedControl.ts';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
-import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
 import { rotateChatCredential } from '../src/chat/auth.ts';
+import { loadCursors, saveCursors } from '../src/chat/cursors.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
+import { blockingInbound } from '../src/chat/inboundHold.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
 import { principalOrigin } from '../src/chat/origin.ts';
-import { loadCursors, loadLedger, saveCursors } from '../src/chat/store.ts';
-import { blockingInbound } from '../src/commands/wait.ts';
-import { withSessionRegistryLock } from '../src/config/registryLock.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { ContentBuffer } from '../src/content/buffer.ts';
 import { ContentWriter } from '../src/content/store.ts';
-import { createControlClient, createControlProxy } from '../src/control/client.ts';
-import { controlSocket, prepareControlDirectory } from '../src/control/path.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import {
-  CONTROL_MAX_BYTES,
-  CONTROL_MAX_READERS,
-  currentControlSnapshot,
-} from '../src/control/schema.ts';
-import { createControlServer } from '../src/control/server.ts';
-import { CCMUX_CONTROL_CALLER_HEADER } from '../src/control/transportBoundary.ts';
+import { CONTROL_MAX_BYTES, CONTROL_MAX_READERS } from '../src/control/schema/core.ts';
+import { currentControlSnapshot } from '../src/control/schema/runtimeOps.ts';
+import { CCMUX_CONTROL_CALLER_HEADER } from '../src/control/transport/boundary.ts';
+import { createControlClient, createControlProxy } from '../src/control/transport/client.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
+import { controlSocket, prepareControlDirectory } from '../src/control/transport/socketPath.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { observationExecCount } from '../src/monitoring/tmux.ts';
+import { readNativeCommand, writeNativeReceipt } from '../src/runtime/response.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
+import { withSessionRegistryLock } from '../src/session/registryLock.ts';
 import { communicationAuthorization } from './communication-fixture.ts';
 import { nativeCatalogFixture } from './fixtures/native-catalog.ts';
 import { makeMachine, makeSession } from './helpers.ts';

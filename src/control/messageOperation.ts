@@ -1,11 +1,11 @@
 import type { z } from 'zod';
-import { readChatHold } from '../agent/sessionStatus.ts';
 import {
   MessageOperationReadSchema,
   MessageOperationResultSchema,
 } from '../chat/messageOperationSchema.ts';
 import { messagePrincipal, readMessageJournal } from '../chat/messageOperationStore.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
+import { readChatHold } from '../session/status.ts';
 
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { controlTarget } from './target.ts';

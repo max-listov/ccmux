@@ -1,6 +1,6 @@
 import { samePrincipal, sameTarget } from '../src/chat/identity.ts';
-import { loadLedger } from '../src/chat/store.ts';
-import type { ControlCreateReceipt } from '../src/control/schema.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
+import type { ControlCreateReceipt } from '../src/control/schema/session.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
 import { readAcceptanceCommunicationAuthorization } from './acceptance-communication.ts';
 

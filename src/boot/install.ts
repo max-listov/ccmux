@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { bootArgv } from '../config/paths.ts';
-import { HOME, PLATFORM, UID } from '../env.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { HOME, PLATFORM, UID } from '../util/env.ts';
 import { log } from '../util/log.ts';
 import { run } from '../util/spawn.ts';
 import { type BootContext, renderLaunchdPlist, renderSystemdUnit } from './render.ts';

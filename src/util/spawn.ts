@@ -21,14 +21,19 @@ function armTimeout(
   return () => clearTimeout(t);
 }
 
+/**
+ * Run a child to completion and collect what it printed. `input`, when given, is the child's
+ * stdin — for `tmux load-buffer -`, where a payload via stdin avoids argv length limits and any
+ * escaping; otherwise stdin is closed.
+ */
 export async function run(
   argv: string[],
-  opts?: { cwd?: string; timeoutMs?: number },
+  opts?: { cwd?: string; timeoutMs?: number; input?: string },
 ): Promise<RunResult> {
   const cwd = opts?.cwd;
   const proc = Bun.spawn(argv, {
     ...(cwd !== undefined ? { cwd } : {}),
-    stdin: 'ignore',
+    stdin: opts?.input === undefined ? 'ignore' : new TextEncoder().encode(opts.input),
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -45,31 +50,6 @@ export async function run(
   return timedOut ? { code, stdout, stderr, timedOut } : { code, stdout, stderr };
 }
 
-/** Like `run`, but pipes `input` to the child's stdin — for `tmux load-buffer -` (payload via
- *  stdin avoids argv length limits and any escaping). */
-export async function runWithInput(
-  argv: string[],
-  input: string,
-  opts?: { timeoutMs?: number },
-): Promise<RunResult> {
-  const proc = Bun.spawn(argv, {
-    stdin: new TextEncoder().encode(input),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  let timedOut = false;
-  const disarm = armTimeout(proc, opts?.timeoutMs, () => {
-    timedOut = true;
-  });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  disarm();
-  return timedOut ? { code, stdout, stderr, timedOut } : { code, stdout, stderr };
-}
-
 /**
  * Fire-and-forget a fully detached child in its OWN process group.
  *
@@ -82,5 +62,7 @@ export async function runWithInput(
 export function runDetached(argv: string[]): void {
   const [cmd, ...args] = argv;
   if (cmd === undefined) return;
-  nodeSpawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
+  // The current environment, named: left implicit, a child gets the one this process STARTED with,
+  // and a variable set since would silently not reach it.
+  nodeSpawn(cmd, args, { detached: true, stdio: 'ignore', env: process.env }).unref();
 }

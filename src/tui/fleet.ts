@@ -1,8 +1,8 @@
 import { basename } from 'node:path';
-import { prettyModel } from '../agent/format.ts';
 import { NO_LETTERS } from '../chat/letters.ts';
-import type { ListRow } from '../commands/list.ts';
 import { externalSessionKey, managedSessionKey } from '../external/keys.ts';
+import { prettyModel } from '../inventory/modelName.ts';
+import type { ListRow } from '../inventory/rows.ts';
 import type { DiscoveredSession } from './discover.ts';
 import { fmtAge, fmtTokens } from './format.ts';
 import type { AgentStatus } from './status.ts';
@@ -136,6 +136,7 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     uptimeText: '—',
     uptimeSeconds: null,
     createdAt: null,
+    tmux: null, // observed, not ccmux's: no tmux target of ours to declare
     lastMessage: ext.lastMessage,
     // A discovered session is read-only: nothing here hooks its turns, so when its current one
     // began is simply not knowable. Null is that answer, and `state` keeps saying whether it is

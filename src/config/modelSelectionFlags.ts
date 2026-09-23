@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { ModelSelectionSchema } from './schema.ts';
+import type { ModelSelectionSchema } from './launchSchema.ts';
 
 export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
 

@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
 import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadSessions } from '../src/config/sessions.ts';
 import { readControlModels } from '../src/control/models.ts';
-import { ControlModelsReadSchema } from '../src/control/schema.ts';
+import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { makeMachine } from './helpers.ts';
 
 function fixture() {

@@ -1,29 +1,26 @@
-import { parseArgs } from 'node:util';
 import { loadMachineConfig } from '../config/machine.ts';
-import { createControlClient } from '../control/client.ts';
-import { controlSocket } from '../control/path.ts';
+import { createControlClient } from '../control/transport/client.ts';
+import { controlSocket } from '../control/transport/socketPath.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { peersOf, runPeer } from '../fleet/transport.ts';
 import { UsageListResultSchema, UsageQuerySchema } from '../usage/schema.ts';
 import { printLine } from '../util/stdout.ts';
+import { parseFlags } from './flags.ts';
 
 export async function cmdUsage(args: string[]): Promise<number> {
   try {
-    const { values, positionals } = parseArgs({
-      args,
-      allowPositionals: true,
-      strict: true,
-      options: {
-        json: { type: 'boolean' },
-        fleet: { type: 'boolean' },
-        since: { type: 'string' },
-        until: { type: 'string' },
-        timezone: { type: 'string' },
-        cursor: { type: 'string' },
-        'pipeline-cursor': { type: 'string' },
-        limit: { type: 'string' },
-      },
-    });
+    const flags = parseFlags('usage', args, [0, 1]);
+    const positionals = flags.positionals;
+    const values = {
+      json: flags.bool('json'),
+      fleet: flags.bool('fleet'),
+      since: flags.str('since'),
+      until: flags.str('until'),
+      timezone: flags.str('timezone'),
+      cursor: flags.str('cursor'),
+      'pipeline-cursor': flags.str('pipeline-cursor'),
+      limit: flags.int('limit'),
+    };
     if (positionals.length > 1 || (values.fleet && positionals.length))
       throw new Error('Choose one address or --fleet');
     if (values.fleet && values.cursor)
@@ -34,20 +31,14 @@ export async function cmdUsage(args: string[]): Promise<number> {
       since: values.since,
       until: values.until,
       timezone: values.timezone,
-      limit: values.limit === undefined ? undefined : Number(values.limit),
+      limit: values.limit,
       cursor: positionals.length ? values.cursor : undefined,
       pipelineCursor: values['pipeline-cursor'],
     });
     const address = positionals[0];
     const m = loadMachineConfig();
     if (address) {
-      const index = args.indexOf(address);
-      const forwarded = await forwardIfRemote(
-        address,
-        'usage',
-        args.filter((_, i) => i !== index),
-        { m },
-      );
+      const forwarded = await forwardIfRemote(address, 'usage', flags.flagArgs, { m });
       if (forwarded.done) return forwarded.code;
     }
     const client = createControlClient({ socket: controlSocket(m) });

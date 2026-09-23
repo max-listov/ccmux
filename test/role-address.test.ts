@@ -6,7 +6,7 @@ import {
   resolveRole,
   roleOf,
 } from '../src/chat/roleAddress.ts';
-import { SessionSchema } from '../src/config/schema.ts';
+import { SessionSchema } from '../src/session/schema.ts';
 
 // The failure this exists for is SILENT, which is what makes it expensive. A name is chosen once and
 // it is usually the project's; a project has several sessions and only one owns a given decision. So

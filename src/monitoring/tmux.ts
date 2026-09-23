@@ -1,5 +1,5 @@
-import { paneTarget } from '../tmux/target.ts';
-import { tmuxArgv } from '../tmux/tmux.ts';
+import { agentPaneTarget } from '../tmux/agentPane.ts';
+import { tmuxArgv } from '../tmux/argv.ts';
 import type { MachineConfig } from '../types.ts';
 
 const MAX_OUTPUT = 64 * 1024;
@@ -85,7 +85,7 @@ export async function observedSessionInventory(m: MachineConfig): Promise<Map<st
 
 export async function observedPane(m: MachineConfig, name: string): Promise<string | null> {
   const result = await invoke(
-    tmuxArgv(m, 'capture-pane', '-t', paneTarget(name), '-p', '-S', '-40'),
+    tmuxArgv(m, 'capture-pane', '-t', await agentPaneTarget(m, name), '-p', '-S', '-40'),
   );
   return result.code === 0 ? result.stdout : null;
 }

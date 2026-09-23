@@ -1,5 +1,5 @@
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
-import { withSessionRegistryLock } from '../config/registryLock.ts';
+import { withSessionRegistryLock } from '../session/registryLock.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { assertAttachment } from './errors.ts';
 import { attachmentPath, removePrivate } from './files.ts';

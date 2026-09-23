@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { CHAT_GENERATION, ChatMessageSchema } from '../config/schema.ts';
 import type { ChatMessage, ChatPrincipal, ChatTarget } from '../types.ts';
 import type { CommunicationAuthorization } from './communicationAuthorizationSchema.ts';
 import type { CommunicationReceipt } from './communicationReceiptSchema.ts';
+import { CHAT_GENERATION, ChatMessageSchema } from './messageSchema.ts';
 import { principalOrigin } from './origin.ts';
 
 /**

@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
+import { OpenCodeContentObserver } from '../src/agent/opencode/content.ts';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { ContentBuffer } from '../src/content/buffer.ts';
-import { OpenCodeContentObserver } from '../src/content/opencode.ts';
 import { openCodeContextApi } from '../src/context/opencode.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { accessSync, constants, statSync } from 'node:fs';
 import { AppError } from 'stitchkit';
-import { ownedCodexFlags } from '../agent/codex/ownedLaunch.ts';
-import { envFilePath, stableJson } from '../agent/launchInputs.ts';
-import { isReservedEnvKey, sessionEnvRecipe } from '../agent/sessionEnv.ts';
+import { ownedCodexFlags } from '../agent/codex/owned/launch.ts';
+import { envFilePath, stableJson } from '../agent/launch/launchInputs.ts';
+import { isReservedEnvKey, sessionEnvRecipe } from '../agent/launch/sessionEnv.ts';
 import type {
   LaunchRecipeMetadata,
   LaunchRecipeReference,
@@ -12,8 +12,8 @@ import type {
   Session,
 } from '../types.ts';
 import { log } from '../util/log.ts';
+import { MachineLaunchRecipeSchema } from './launchSchema.ts';
 import { modelSelectionFlags } from './modelSelectionFlags.ts';
-import { MachineLaunchRecipeSchema } from './schema.ts';
 
 const MAX_RECIPE_ENV_FILE_BYTES = 1024 * 1024;
 

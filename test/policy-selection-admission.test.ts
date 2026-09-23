@@ -6,8 +6,7 @@ import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { preparedOpenCodeChoices, prepareOpenCodeCatalog } from '../src/agent/opencode/catalog.ts';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { loadLedger } from '../src/chat/store.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
+import { loadLedger } from '../src/chat/ledger.ts';
 import { acceptControlMessage } from '../src/control/message.ts';
 import { readControlSelection, updateControlSelection } from '../src/control/selection.ts';
 import { resolveApplicationPolicy } from '../src/policy/resolve.ts';
@@ -15,6 +14,7 @@ import { policySha256 } from '../src/policy/sources.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
 import type { NativeTurnOptions } from '../src/runtime/selectionSchema.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/status.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { communicationAuthorization } from './communication-fixture.ts';
 import { makeCli, makeMachine, makeSession } from './helpers.ts';
 

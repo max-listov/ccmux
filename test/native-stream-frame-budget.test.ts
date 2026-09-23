@@ -8,7 +8,7 @@ import {
   controlNativeStreamFrame,
   controlNativeStreamFrameBytes,
   NativeStreamFrameUnrepresentable,
-} from '../src/control/nativeStreamContract.ts';
+} from '../src/control/schema/nativeStreamContract.ts';
 
 const target = {
   kind: 'managed',

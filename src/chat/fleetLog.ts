@@ -2,8 +2,8 @@ import type { Outbound } from '../fleet/outbox.ts';
 import { outboundId, outboundTimestamp } from '../fleet/outbox.ts';
 import type { LogMachine, LogRow } from './feedSchema.ts';
 import { principalLabel, targetLabel } from './identity.ts';
+import type { LedgerSlot } from './ledger.ts';
 import { unknownMessageOrigin } from './originSchema.ts';
-import type { LedgerSlot } from './store.ts';
 
 export {
   type LogMachine,

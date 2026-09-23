@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { renderRate } from '../src/agent/sessionStatus.ts';
 import {
   countRender,
   extractMetrics,
@@ -10,6 +9,7 @@ import {
   originalCommand,
   RENDER_WINDOW_MS,
 } from '../src/commands/statusLine.ts';
+import { renderRate } from '../src/session/status.ts';
 
 const L = (o: unknown): string => JSON.stringify(o);
 

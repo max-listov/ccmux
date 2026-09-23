@@ -2,23 +2,22 @@ import { isAbsolute } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { readClaudeModels } from '../agent/claude/native/catalog.ts';
-
 import { nativeModelProvider, withCodexCatalogRuntime } from '../agent/codex/catalogRuntime.ts';
-import { isOwnedCodex } from '../agent/codex/ownedPaths.ts';
-import { connectOwnedCodex } from '../agent/codex/ownedRpc.ts';
+import { connectOwnedCodex } from '../agent/codex/owned/rpc.ts';
 import type { CodexAppRpc, CodexRpcOptions } from '../agent/codex/rpc.ts';
 import { readCustomModels } from '../agent/custom/catalog.ts';
-import { expandHome } from '../agent/launchInputs.ts';
+import { expandHome } from '../agent/launch/launchInputs.ts';
 import { readOpenCodeModels } from '../agent/opencode/catalog.ts';
 import { resolveControlLaunchRecipe } from '../config/launchRecipes.ts';
 import { recordRuntimeDiagnostic } from '../runtime/diagnostics.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import {
   type ControlModelCatalog,
   ControlModelCatalogSchema,
   type ControlModelsReadSchema,
-} from './schema.ts';
+} from './schema/model.ts';
 import { controlTarget } from './target.ts';
 
 export type ControlModelsConnector = (
@@ -144,7 +143,7 @@ export async function readControlModels(
       throw new AppError('UNSUPPORTED', 'This runtime does not expose a model catalog', 409);
     if (input.target !== undefined) {
       const session = controlTarget(m, input.target);
-      if (!isOwnedCodex(session))
+      if (!hasNativeRuntime(session))
         throw new AppError(
           'UNSUPPORTED',
           'Model catalog requires an owned App Server session',

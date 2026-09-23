@@ -6,29 +6,31 @@ import {
   lifecycleLedgerResource,
   managedServerResource,
 } from 'stitchkit/application';
+import { pruneTranscriptIndexes } from '../agent/transcript/transcriptIndex.ts';
+import { CursorsUnreadableError } from '../chat/cursors.ts';
 import { deliverPending } from '../chat/deliver.ts';
 import { mirrorPending } from '../chat/telegram.ts';
 import { settleUndeliverable } from '../chat/undeliverable.ts';
-import { cmdEnsure } from '../commands/ensure.ts';
-import { autoUpdateOnce } from '../commands/update.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { BOOT_ATTEMPTS } from '../config/paths.ts';
 import { ControlPublisher } from '../control/publisher.ts';
-import { ControlModelsReadSchema } from '../control/schema.ts';
-import { createControlServer } from '../control/server.ts';
-import { IS_DEV } from '../env.ts';
+import { ControlModelsReadSchema } from '../control/schema/model.ts';
+import { createControlServer } from '../control/transport/server.ts';
 import { InventoryPublisher } from '../events/inventory.ts';
 import { type Observed, observeOnce } from '../events/observe.ts';
-import { ExternalStatusObserver } from '../external/resident-observer.ts';
-import { ExternalStatusPublisher } from '../external/resident-publisher.ts';
-import { EXTERNAL_INTERVAL_MS } from '../external/resident-schema.ts';
+import { ExternalStatusObserver } from '../external/residentObserver.ts';
+import { ExternalStatusPublisher } from '../external/residentPublisher.ts';
+import { EXTERNAL_INTERVAL_MS } from '../external/residentSchema.ts';
 import { flushOutbox } from '../fleet/flush.ts';
 import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
+import { autoUpdateOnce } from '../release/update.ts';
 import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/journalOwner.ts';
+import { healOnce } from '../session/heal.ts';
 import type { MachineConfig } from '../types.ts';
 import { createUsageObservation } from '../usage/observation.ts';
 import { clearBootGuard } from '../util/bootGuard.ts';
+import { IS_DEV } from '../util/env.ts';
 import { log, setLogLevel } from '../util/log.ts';
 import { VERSION } from '../util/version.ts';
 import { createDaemonLifecycle } from './lifecycle.ts';
@@ -182,6 +184,9 @@ export function createDaemonApplication(initial: MachineConfig) {
       log.warn({ msg: 'external observation failed', err: String(error) });
     },
   });
+  // Held delivery is a condition, not an event: said when it starts, changes and ends — not every
+  // three seconds while it lasts.
+  let heldBy: string | null = null;
   const delivery = createManagedSchedule({
     id: 'delivery',
     everyMs: 3000,
@@ -190,14 +195,25 @@ export function createDaemonApplication(initial: MachineConfig) {
     run: async ({ signal }) => {
       const m = machine();
       signal.throwIfAborted();
-      // Before delivery, because delivery walks the live sessions and would never look at these:
-      // a letter whose recipient is gone is closed here or it waits in the queue for ever.
-      await settleUndeliverable(m);
+      let held: string | null = null;
+      try {
+        // Before delivery, because delivery walks the live sessions and would never look at these:
+        // a letter whose recipient is gone is closed here or it waits in the queue for ever.
+        await settleUndeliverable(m);
+        signal.throwIfAborted();
+        await deliverPending(m);
+        signal.throwIfAborted();
+        await mirrorPending(m);
+      } catch (error) {
+        if (!(error instanceof CursorsUnreadableError)) throw error;
+        held = error.message;
+        if (heldBy !== held) log.error({ msg: held, path: error.path });
+      }
+      if (heldBy !== null && held === null)
+        log.info({ msg: 'chat delivery resumed — cursors readable again' });
+      heldBy = held;
       signal.throwIfAborted();
-      await deliverPending(m);
-      signal.throwIfAborted();
-      await mirrorPending(m);
-      signal.throwIfAborted();
+      // Outbound mail does not depend on the cursors, so a held inbound side does not hold it.
       await flushOutbox(m);
     },
     onError: (error) => log.warn({ msg: 'chat delivery pass failed', err: String(error) }),
@@ -216,7 +232,7 @@ export function createDaemonApplication(initial: MachineConfig) {
       setLogLevel(m.logLevel);
       try {
         try {
-          await cmdEnsure();
+          await healOnce();
           if (!IS_DEV && !guardCleared) {
             clearBootGuard(BOOT_ATTEMPTS);
             guardCleared = true;
@@ -251,6 +267,24 @@ export function createDaemonApplication(initial: MachineConfig) {
     },
     close: () => stopLoopWatch(),
   });
+  // The transcript index cache otherwise only grows: every transcript ever read keeps an index, and
+  // nothing removed one whose transcript was gone. Once a day, and first a minute after start.
+  const cachePrune = createManagedSchedule({
+    id: 'cache-prune',
+    everyMs: 24 * 60 * 60 * 1000,
+    startAfterMs: 60_000,
+    overlap: { mode: 'skip' },
+    run: async () => {
+      const { removed, bytes } = await pruneTranscriptIndexes();
+      if (removed > 0)
+        log.info({
+          msg: 'transcript index cache pruned',
+          removed,
+          megabytes: Math.round(bytes / 2 ** 20),
+        });
+    },
+    onError: (error) => log.warn({ msg: 'transcript index prune failed', err: String(error) }),
+  });
   const application: ApplicationHandle = createApplication({
     id: 'ccmux-daemon',
     resources: [
@@ -267,6 +301,7 @@ export function createDaemonApplication(initial: MachineConfig) {
       freshness,
       delivery,
       healing,
+      cachePrune,
     ],
     shutdown: { gracePeriodMs: 5000, forceTimeoutMs: 2000 },
     onResourceFailure: ({ resourceId, phase, error }) =>

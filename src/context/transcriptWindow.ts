@@ -1,12 +1,12 @@
 import { claudeProvider } from '../agent/claude/index.ts';
 import { subagentFile } from '../agent/claude/subagent.ts';
 import { providerFor, readTranscript } from '../agent/index.ts';
-import { clip, DEFAULT_TEXT_LIMIT } from '../agent/normalize.ts';
+import { clip, DEFAULT_TEXT_LIMIT } from '../agent/transcript/normalize.ts';
 import {
   readTranscriptFile,
   type TranscriptRead,
   unavailableTranscript,
-} from '../agent/transcriptRead.ts';
+} from '../agent/transcript/transcriptRead.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import type {
   AgentKind,

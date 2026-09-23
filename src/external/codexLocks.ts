@@ -43,39 +43,9 @@ export function codexThreadLockPath(m: MachineConfig, threadId: string): string 
   return codexThreadLockState(m, threadId)?.path ?? null;
 }
 
-/** Parse lsof field output (`-Fpcn`) without trusting human-aligned columns. */
-export function parseLsofHolders(output: string, exactPath: string): CodexLockHolder[] {
-  const holders: CodexLockHolder[] = [];
-  let pid: number | null = null;
-  let command: string | null = null;
-  let names: string[] = [];
-  const flush = (): void => {
-    if (pid !== null && names.includes(exactPath)) holders.push({ pid, command });
-    pid = null;
-    command = null;
-    names = [];
-  };
-  for (const field of output.split('\n')) {
-    if (field.startsWith('p')) {
-      flush();
-      const value = Number(field.slice(1));
-      pid = Number.isInteger(value) && value > 0 ? value : null;
-    } else if (field.startsWith('c')) {
-      command = field.slice(1) || null;
-    } else if (field.startsWith('n')) {
-      names.push(field.slice(1));
-    }
-  }
-  flush();
-  return holders;
-}
-
 /**
- * The same field output, grouped once by name instead of re-scanned per path.
- *
- * `parseLsofHolders` answers about one path, which is right when one path is asked about. Calling it
- * for every path in a batch re-reads the whole answer once per question, so a batch of N paths costs
- * N passes over output that already contains every answer.
+ * Parse lsof field output (`-Fpcn`) without trusting human-aligned columns, grouped by name: one
+ * pass answers every path a batch asked about.
  */
 export function groupLsofHolders(output: string): Map<string, CodexLockHolder[]> {
   const byName = new Map<string, CodexLockHolder[]>();
@@ -83,7 +53,7 @@ export function groupLsofHolders(output: string): Map<string, CodexLockHolder[]>
   let command: string | null = null;
   let names: string[] = [];
   const flush = (): void => {
-    // One process listing a name twice is one holder of it, as the single-path reader also reports.
+    // One process listing a name twice is one holder of it.
     if (pid !== null)
       for (const name of new Set(names)) {
         const holders = byName.get(name);
@@ -107,6 +77,11 @@ export function groupLsofHolders(output: string): Map<string, CodexLockHolder[]>
   }
   flush();
   return byName;
+}
+
+/** The processes holding exactly `path`, from the same field output. */
+export function parseLsofHolders(output: string, path: string): CodexLockHolder[] {
+  return groupLsofHolders(output).get(path) ?? [];
 }
 
 /**

@@ -12,11 +12,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Glob } from 'bun';
 import { exhaustedBudgetReason } from '../src/commands/bootstrap.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { lifecycleBlockPath } from '../src/config/paths.ts';
-import { loadPendingSessions, reservePendingSession } from '../src/config/pendingSessions.ts';
-import { MachineConfigSchema, PendingSessionSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { hasSession, tmuxArgv } from '../src/tmux/tmux.ts';
+import { loadPendingSessions, reservePendingSession } from '../src/session/pending.ts';
+import { loadSessions } from '../src/session/registry.ts';
+import { PendingSessionSchema } from '../src/session/schema.ts';
+import { tmuxArgv } from '../src/tmux/argv.ts';
+import { hasSession } from '../src/tmux/tmux.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 type FailureMode = 'crash' | 'timeout' | 'ambiguous';

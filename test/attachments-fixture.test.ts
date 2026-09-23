@@ -12,8 +12,8 @@ import {
   finalizeAttachmentUpload,
 } from '../src/attachments/service.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { withSessionRegistryLock } from '../src/config/registryLock.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
+import { withSessionRegistryLock } from '../src/session/registryLock.ts';
 import { makeCli, makeMachine, makeSession } from './helpers.ts';
 
 const temporary: string[] = [];

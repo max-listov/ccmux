@@ -1,22 +1,28 @@
-import { clearChatHold, writeChatHold } from '../agent/sessionStatus.ts';
-import { loadSessions } from '../config/sessions.ts';
 import { contextMutationPending } from '../context/store.ts';
-import { promptInvocation } from '../env.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
-import { readRuntimeInput, runtimeInputId, writeRuntimeInput } from '../runtime/input.ts';
+import {
+  inputTurnId,
+  readRuntimeInput,
+  runtimeInputId,
+  writeRuntimeInput,
+} from '../runtime/input.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
+import { loadSessions } from '../session/registry.ts';
+import { clearChatHold, readChatHold, writeChatHold } from '../session/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { promptInvocation } from '../util/env.ts';
+import { appendAck } from './ackLog.ts';
+import { type loadCursors, saveCursors } from './cursors.ts';
 import { formatChatInjection } from './format.ts';
 import { managedPeer, managedPeerKey } from './identity.ts';
+import type { LedgerSlot } from './ledger.ts';
 import { advanceMessageOperation } from './messageOperationStore.ts';
-import {
-  conditionalMessage,
-  nativeDeliveryHold,
-  pendingMessageId,
-  pickPendingDelivery,
-} from './pendingDelivery.ts';
 import { replyRouteToSender } from './replyRoute.ts';
-import { appendAck, type LedgerSlot, type loadCursors, saveCursors } from './store.ts';
+import { nativeDeliveryHold, pendingMessageId, pickPendingDelivery } from './settlement.ts';
+import { armPickup } from './turnProgress.ts';
+
+/** How long a queued letter may sit untaken beside an idle runtime before the owner is named. */
+const OWNER_SILENT_MS = 30_000;
 
 /** Existing chat ledger is the only queue. The runtime mailbox is one durable dispatch receipt. */
 export async function deliverNativeRuntimePending(
@@ -81,7 +87,7 @@ async function deliverLocked(
         (input.phase === 'accepted' &&
           (s.agent === 'custom'
             ? input.terminal !== undefined
-            : read.snapshot.turn?.id === input.nativeId &&
+            : read.snapshot.turn?.id === inputTurnId(input) &&
               read.snapshot.turn.status !== 'inProgress'));
       const slot = pickup.ledgerIndex === null ? null : ledger[pickup.ledgerIndex];
       if (
@@ -115,11 +121,24 @@ async function deliverLocked(
     if (input.phase !== 'accepted') {
       if (input.phase === 'uncertain')
         await hold('native acceptance is indeterminate; automatic resubmission is blocked');
+      else if (
+        input.phase === 'queued' &&
+        read.snapshot.state === 'idle' &&
+        now - Date.parse(pickup.injectedAt) > OWNER_SILENT_MS &&
+        readChatHold(s.name)?.msgId !== pickup.messageId
+      )
+        // An owner that is held by something says what, every tick. One that says nothing while its
+        // runtime sits idle is not reading the slot at all — which is what an owner started by an
+        // earlier version of ccmux does, since it predates this mailbox.
+        await hold(
+          `the session's owner has not taken this letter; an owner started by an earlier ccmux takes none — ccmux restart ${s.name}`,
+        );
       return 0;
     }
-    pickup.native = { phase: 'accepted', turnId: input.nativeId };
-    advanceMessageOperation(m, s, pickup.messageId, 'admitted', input.nativeId, now);
-    const currentTurnId = input.continuations.at(-1)?.turnId ?? input.nativeId;
+    const turnId = inputTurnId(input);
+    pickup.native = { phase: 'accepted', turnId };
+    advanceMessageOperation(m, s, pickup.messageId, 'admitted', turnId, now);
+    const currentTurnId = input.continuations.at(-1)?.turnId ?? turnId;
     const terminal =
       s.agent === 'custom'
         ? input.terminal !== undefined
@@ -127,14 +146,7 @@ async function deliverLocked(
     if (terminal && read.snapshot.state === 'idle') {
       const turn = read.snapshot.turn;
       if (turn !== null && turn.status !== 'inProgress')
-        advanceMessageOperation(
-          m,
-          s,
-          pickup.messageId,
-          input.terminal ?? turn.status,
-          input.nativeId,
-          now,
-        );
+        advanceMessageOperation(m, s, pickup.messageId, input.terminal ?? turn.status, turnId, now);
       if (pickup.conditional) appendAck(m, pickup.messageId, 'daemon', recipient);
       delete cursors.pickups[key];
       clearChatHold(s.name);
@@ -153,19 +165,10 @@ async function deliverLocked(
     );
     return 0;
   }
-  const conditional = conditionalMessage(pick.msg);
   advanceMessageOperation(m, s, pick.msg.id, 'uncertain', null, now);
-  cursors.pickups[key] = {
-    messageId: pick.msg.id,
-    ledgerIndex: pick.idx,
-    conditional,
-    injectedAt: new Date(now).toISOString(),
+  armPickup(cursors, key, pick, new Date(now).toISOString(), {
     native: { phase: 'intent', turnId: null },
-  };
-  if (!conditional) {
-    cursors.delivered[key] = pick.idx + 1;
-    cursors.read[key] = Math.max(cursors.read[key] ?? 0, pick.idx + 1);
-  }
+  });
   await saveCursors(m, cursors);
   await writeRuntimeInput(m, s, {
     messageId: pick.msg.id,

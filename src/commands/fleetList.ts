@@ -1,29 +1,25 @@
 import { z } from 'zod';
-import { vendorGlyph } from '../agent/vendor.ts';
+import { TranscriptMessageSchema } from '../agent/transcript/messageSchema.ts';
+import { AgentKindSchema } from '../chat/identitySchema.ts';
 import { ROLE_SIGIL } from '../chat/roleAddress.ts';
 import { loadMachineConfig } from '../config/machine.ts';
+import { readInventory } from '../events/inventory.ts';
+import { type InventorySnapshot, InventorySnapshotSchema } from '../events/schema.ts';
+import { peersOf, type RemoteResult, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import {
-  type BehindBy,
-  behindBy,
-  bestKnownRelease,
-  releaseStanding,
-} from '../config/releaseCheck.ts';
-import {
-  AgentKindSchema,
   ContextInfoSchema,
-  type InventorySnapshot,
-  InventorySnapshotSchema,
   ListItemSchema,
   ReleaseStandingSchema,
-  TranscriptMessageSchema,
-} from '../config/schema.ts';
-import { readInventory } from '../events/inventory.ts';
-import { peersOf, type RemoteResult, remoteFailureCause, runPeer } from '../fleet/transport.ts';
+} from '../inventory/listSchema.ts';
+import { collectRows, rowStateLabel, stateCell, toListItem } from '../inventory/rows.ts';
+import { vendorGlyph } from '../inventory/vendor.ts';
+import { type BehindBy, behindBy, bestKnownRelease, releaseStanding } from '../release/check.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
+import { alignedLines } from '../util/table.ts';
 import { VERSION } from '../util/version.ts';
 import { accountLines, fleetAccounts } from './accounts.ts';
-import { collectRows, rowStateLabel, toListItem } from './list.ts';
+import { parseFlags } from './flags.ts';
 
 /**
  * `ccmux fleet` — every session on every machine of the fleet, in one view.
@@ -276,12 +272,13 @@ export function fleetView(machines: FleetMachine[]): FleetView {
   };
 }
 
-const pad = (s: string, n: number): string => (s.length >= n ? s : s + ' '.repeat(n - s.length));
-
-export function formatFleetSession(
+/** One session's cells on the fleet map. The role and the restart mark ride on the last cell, not in
+ *  columns of their own: they belong to the answer "which of these do I write to", read on the line
+ *  people copy the address from. */
+function fleetSessionCells(
   machine: string,
   session: z.infer<typeof RemoteSessionSchema>,
-): string {
+): string[] {
   // `⟳ ?`: this reader could not tell what a restart would change — not "nothing", not "stale".
   const restart =
     session.stale.length > 0
@@ -289,15 +286,30 @@ export function formatFleetSession(
       : session.staleUnknown !== null
         ? '  ⟳ ?'
         : '';
-  const agent = session.agent ?? 'unknown';
-  // The role rides on the ADDRESS line, not in a column of its own, because it is part of the answer
-  // to "which of these do I write to" — and the line above is the one people copy from.
   const role = session.role === null ? '' : `  ${ROLE_SIGIL}${session.role}`;
-  // A session sitting at a menu reads as idle from every other signal — still pane, no tool running
-  // — when it is the opposite: unable to proceed until somebody answers. It travels now, so it is
-  // shown, in the state column where a reader is already looking.
-  const state = session.atPrompt === null ? session.state : session.atPrompt;
-  return `  ${pad(`${machine}:${session.name}`, 28)} ${pad(agent, 8)} ${pad(state, 13)} ${pad(`${vendorGlyph(session.modelId ?? session.model)} ${session.model ?? '-'}`, 13)} ${pad(session.uptime?.text ?? '', 7)}${role}${restart}`;
+  return [
+    `  ${machine}:${session.name}`,
+    session.agent ?? 'unknown',
+    stateCell(session.state, session.atPrompt),
+    `${vendorGlyph(session.modelId ?? session.model)} ${session.model ?? '-'}`,
+    `${session.uptime?.text ?? ''}${role}${restart}`,
+  ];
+}
+
+/** One machine's sessions, aligned as a block under its heading. */
+export function fleetSessionLines(
+  machine: string,
+  sessions: readonly z.infer<typeof RemoteSessionSchema>[],
+): string[] {
+  return alignedLines(sessions.map((session) => fleetSessionCells(machine, session)));
+}
+
+/** A single session's line — the block of one. */
+export function formatFleetSession(
+  machine: string,
+  session: z.infer<typeof RemoteSessionSchema>,
+): string {
+  return fleetSessionLines(machine, [session])[0] as string;
 }
 
 /**
@@ -350,10 +362,11 @@ export function partitionParked<T extends { archived: boolean }>(
 }
 
 export async function cmdFleet(args: string[] = []): Promise<number> {
+  const flags = parseFlags('fleet', args, [0, 0]);
   const m = loadMachineConfig();
   const machines = await collectFleet(m);
   const view = fleetView(machines);
-  if (args.includes('--json')) {
+  if (flags.bool('json')) {
     await printLine(
       JSON.stringify({
         version: VERSION,
@@ -392,12 +405,13 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
     }
     const standing = machineStanding(fm);
     console.log(`${label}  [ccmux ${fm.version}]${standing}`);
-    const { shown, parked } = partitionParked(fm.sessions, args.includes('--all'));
-    for (const s of shown) {
-      // Full address on every line — the thing you copy into `ccmux msg` without guessing.
-      // A session that a restart would change is flagged right here, so "who is still on the old
-      // prompt" is readable across the fleet instead of remembered.
-      await printLine(formatFleetSession(fm.machine, s));
+    const { shown, parked } = partitionParked(fm.sessions, flags.bool('all'));
+    // Full address on every line — the thing you copy into `ccmux msg` without guessing. A session
+    // that a restart would change is flagged right here, so "who is still on the old prompt" is
+    // readable across the fleet instead of remembered.
+    const lines = fleetSessionLines(fm.machine, shown);
+    for (const [index, s] of shown.entries()) {
+      await printLine(lines[index] as string);
       const detail = fleetSessionDetail(s);
       if (detail !== null) await printLine(detail);
     }

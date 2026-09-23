@@ -17,6 +17,13 @@ export const RuntimeInputSchema = z
     text: z.string().min(1).max(32_768),
     phase: z.enum(['queued', 'dispatching', 'accepted', 'uncertain']),
     /**
+     * The native turn this input started, when the runtime names its turns itself.
+     *
+     * Claude and OpenCode take `nativeId` as the turn's own id; a Codex App Server answers `turn/start`
+     * with an id of its choosing. Written with `accepted`; absent means the turn is `nativeId`.
+     */
+    turnId: z.string().min(1).max(256).optional(),
+    /**
      * When the dispatch that is still in flight began.
      *
      * Written with `dispatching`, and read only by whoever has to decide what an interrupted
@@ -70,5 +77,14 @@ export function openCodeMessageId(messageId: string, timestamp: number): string 
   return `msg_${time}${suffix}`;
 }
 
+/**
+ * The id a queued input is submitted under. Custom and Codex take the ledger message id itself —
+ * Codex as the turn's client id, which is what finds the turn again when `turn/start`'s response is
+ * lost; the others need an id shaped the way their runtime orders messages.
+ */
 export const runtimeInputId = (s: Pick<Session, 'agent'>, messageId: string, timestamp: number) =>
-  s.agent === 'custom' ? messageId : openCodeMessageId(messageId, timestamp);
+  s.agent === 'custom' || s.agent === 'codex' ? messageId : openCodeMessageId(messageId, timestamp);
+
+/** The native turn an accepted input started. */
+export const inputTurnId = (input: Pick<RuntimeInput, 'nativeId' | 'turnId'>): string =>
+  input.turnId ?? input.nativeId;

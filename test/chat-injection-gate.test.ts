@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test';
+import { tmuxArgv } from '../src/tmux/argv.ts';
 import {
   capturePane,
   loadPasteBuffer,
   sendKeysLiteral,
   setPaneInputEnabled,
   submitPasteBuffer,
-  tmuxArgv,
 } from '../src/tmux/tmux.ts';
 import { makeMachine } from './helpers.ts';
 

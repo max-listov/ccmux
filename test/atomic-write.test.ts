@@ -1,45 +1,54 @@
-import { expect, mock, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { atomicWrite, copyFileAtomic } from '../src/util/atomic.ts';
 
-// A filesystem that stalls a rename is not reproducible on demand, so the stall is injected: the
-// promise form of `rename` is held open while a timer runs. A write that went back to the sync
-// form would never reach this rename, and the timer would not be the thing that measured it.
-//
-// The mock is process-wide in `bun test` and outlives this file, so it holds only renames into this
-// test's own directory. Holding every rename slowed unrelated suites run after it in the same
-// process — three context tests failed the full gate that way while passing alone.
-const real = await import('node:fs/promises');
-// Captured before the mock: the namespace is live, and read afterwards `real.rename` IS the mock.
-const realRename = real.rename;
-let heldDir: string | null = null;
-let held = 0;
-mock.module('node:fs/promises', () => ({
-  ...real,
-  rename: async (from: string, to: string) => {
-    if (heldDir !== null && String(to).startsWith(heldDir)) {
-      held++;
-      await Bun.sleep(150);
-    }
-    return realRename(from, to);
-  },
-}));
-const { atomicWrite } = await import('../src/util/atomic.ts');
-
-test('an atomic write waits for its rename without holding the event loop', async () => {
+// The atomic replace itself is stitchkit's `writeFileAtomic`, tested there. What is ccmux's is what
+// its callers rely on around it: a missing parent is created, and a file is private unless a mode
+// is stated.
+test('an atomic write creates its parent and is private unless a mode is stated', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ccmux-atomic-'));
-  heldDir = dir;
   try {
-    const path = join(dir, 'state.json');
-    let ticks = 0;
-    const timer = setInterval(() => ticks++, 10);
-    await atomicWrite(path, '{"ok":true}', 0o600);
-    clearInterval(timer);
-    expect(held).toBe(1);
-    expect(ticks).toBeGreaterThanOrEqual(5);
-    expect(readFileSync(path, 'utf8')).toBe('{"ok":true}');
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    const nested = join(dir, 'a', 'b', 'state.json');
+    await atomicWrite(nested, '{"ok":true}');
+    expect(readFileSync(nested, 'utf8')).toBe('{"ok":true}');
+    expect(statSync(nested).mode & 0o777).toBe(0o600);
+    const shim = join(dir, 'shim');
+    await atomicWrite(shim, '#!/bin/sh\n', 0o755);
+    expect(statSync(shim).mode & 0o777).toBe(0o755);
+    expect(readdirSync(join(dir, 'a', 'b'))).toEqual(['state.json']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a write that cannot land leaves no staging file beside its target', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-atomic-fail-'));
+  try {
+    const target = join(dir, 'occupied');
+    mkdirSync(target);
+    await expect(atomicWrite(target, 'x')).rejects.toThrow();
+    expect(readdirSync(dir)).toEqual(['occupied']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an atomic copy keeps the bytes and the permission bits of its source', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-atomic-copy-'));
+  try {
+    const from = join(dir, 'ccmux.js.bak');
+    const to = join(dir, 'ccmux.js');
+    Bun.spawnSync([
+      'sh',
+      '-c',
+      `printf previous > '${from}' && chmod 755 '${from}' && printf broken > '${to}'`,
+    ]);
+    copyFileAtomic(from, to);
+    expect(readFileSync(to, 'utf8')).toBe('previous');
+    expect(statSync(to).mode & 0o777).toBe(0o755);
+    expect(readdirSync(dir).sort()).toEqual(['ccmux.js', 'ccmux.js.bak']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -2,7 +2,7 @@ import { loadMachineConfig } from '../config/machine.ts';
 import { followEvents, readEvents } from '../events/feed.ts';
 import type { SessionEvent } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
-import { usageLine } from './help.ts';
+import { parseFlags } from './flags.ts';
 
 /**
  * `ccmux events` — the contract an outside surface reads the feed through.
@@ -100,41 +100,21 @@ export function resolveSince(
 }
 
 export async function cmdEvents(args: string[]): Promise<number> {
-  let follow = false;
-  let json = false;
-  let framed = false;
-  let since: string | undefined;
-  let cursorEnv: string | undefined;
-  let session: string | undefined;
-  let limit: number | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--follow' || a === '-f') follow = true;
-    else if (a === '--json') json = true;
-    // Kept separate from `--json` on purpose: `--json` is the clean stream of events, which is what a
-    // person reads and what a local consumer wants. Wrapping every line in an envelope by default
-    // would make the common case pay for the transport's contract.
-    else if (a === '--framed') framed = true;
-    else if (a === '--since') since = args[++i];
-    else if (a === '--cursor-env') {
-      cursorEnv = args[++i];
-      if (cursorEnv === undefined || cursorEnv === '') {
-        console.error('events: --cursor-env needs the name of an environment variable');
-        return 1;
-      }
-    } else if (a === '--session') session = args[++i];
-    else if (a === '-n') {
-      const parsed = Number.parseInt(args[++i] ?? '', 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        console.error('events: -n needs a positive count');
-        return 1;
-      }
-      limit = parsed;
-    } else if (a?.startsWith('-')) {
-      console.error(`events: unknown flag '${a}'\n${usageLine('events')}`);
-      return 1;
-    }
+  const flags = parseFlags('events', args, [0, 0]);
+  const follow = flags.bool('follow');
+  const json = flags.bool('json');
+  // Kept separate from `--json` on purpose: `--json` is the clean stream of events, which is what a
+  // person reads and what a local consumer wants. Wrapping every line in an envelope by default
+  // would make the common case pay for the transport's contract.
+  const framed = flags.bool('framed');
+  let since = flags.str('since');
+  const cursorEnv = flags.str('cursor-env');
+  if (cursorEnv === '') {
+    console.error('events: --cursor-env needs the name of an environment variable');
+    return 1;
   }
+  const session = flags.str('session');
+  const limit = flags.int('n');
   const explicitSince = since;
   since = resolveSince(since, resumeCursor(cursorEnv));
   if (since !== undefined && !Number.isFinite(Date.parse(since))) {

@@ -3,16 +3,13 @@ import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { ApiError } from 'stitchkit';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { loadPendingSessions } from '../src/config/pendingSessions.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
-import type {
-  ControlCreate,
-  ControlCreateReceipt,
-  ControlNativeSnapshot,
-} from '../src/control/schema.ts';
+import type { ControlNativeSnapshot } from '../src/control/schema/native.ts';
+import type { ControlCreate, ControlCreateReceipt } from '../src/control/schema/session.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
+import { loadPendingSessions } from '../src/session/pending.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer, Session } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';

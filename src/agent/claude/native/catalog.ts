@@ -1,24 +1,23 @@
-import { createHash } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { loadSessions } from '../../../config/sessions.ts';
+import { pageModelCatalog } from '../../../control/modelPage.ts';
 import type {
   ControlModel,
   ControlModelCatalog,
   ControlModelsRead,
-} from '../../../control/schema.ts';
+} from '../../../control/schema/model.ts';
 import { hasNativeRuntime } from '../../../runtime/modes.ts';
 import {
   modelSelectionLabel,
   type NativeModelSelection,
 } from '../../../runtime/selectionSchema.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/status.ts';
-import { readPrivateJson } from '../../../runtime/store.ts';
+import { privateRuntimeDirectory, readPrivateJson } from '../../../runtime/store.ts';
+import { loadSessions } from '../../../session/registry.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
-import { privateRuntimeDirectory } from '../../codex/ownedPaths.ts';
 import { probeClaudeModels } from './hostProbe.ts';
 import { resolveAgentSdk } from './resolve.ts';
 
@@ -65,36 +64,6 @@ const PreparedSchema = z
   .strict();
 const MAX_BYTES = 512 * 1024;
 const path = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m, s), 'models.json');
-
-/**
- * One page of a catalog, and one place that decides what a page is.
- *
- * Both reads — the session's and the host's — answer from the same stored list, so paging them
- * differently would give a caller two cursor vocabularies for one catalog.
- */
-function page(
-  models: readonly ControlModel[],
-  input: ControlModelsRead,
-  source: ControlModelCatalog['source'],
-  target?: ControlModelCatalog['target'],
-): ControlModelCatalog {
-  const visible = input.includeHidden ? models : models.filter((model) => !model.hidden);
-  const digest = createHash('sha256').update(JSON.stringify(visible)).digest('hex').slice(0, 16);
-  let offset = 0;
-  if (input.cursor) {
-    const [revision, start] = input.cursor.split(':');
-    if (revision !== digest || !start || !/^\d+$/.test(start) || Number(start) > visible.length)
-      throw new AppError('INVALID_CURSOR', 'Native catalog cursor requires a fresh baseline', 409);
-    offset = Number(start);
-  }
-  const limit = input.limit ?? 64;
-  return {
-    ...(target === undefined ? {} : { target }),
-    source,
-    data: visible.slice(offset, offset + limit),
-    nextCursor: offset + limit < visible.length ? `${digest}:${offset + limit}` : null,
-  };
-}
 
 /** What the runtime reported about a model, kept to the fields a chooser needs. */
 export interface SupportedModel {
@@ -277,7 +246,7 @@ async function readClaudeHostModels(
     throw new AppError('UNSUPPORTED', 'This host does not publish a catalog for this runtime', 409);
   const best = hostCatalog(m);
   if (best !== null)
-    return page(best.models, input, {
+    return pageModelCatalog(best.models, input, {
       kind: 'host',
       machine: m.rcPrefix,
       runtime: 'claude',
@@ -300,7 +269,7 @@ async function readClaudeHostModels(
       503,
     );
   }
-  return page(probed.models, input, {
+  return pageModelCatalog(probed.models, input, {
     kind: 'host',
     machine: m.rcPrefix,
     runtime: 'claude',
@@ -333,7 +302,7 @@ export async function readClaudeModels(
     readManagedRuntimeStatus(m, session).status !== 'live'
   )
     throw new AppError('UNAVAILABLE', 'Native runtime catalog is unavailable', 503);
-  return page(
+  return pageModelCatalog(
     prepared.models,
     input,
     {

@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { HOME, PLATFORM } from '../env.ts';
 import type { MachineConfig } from '../types.ts';
-import { machineConfigPath, resolveMonitoringLocation } from './monitoring-location.ts';
+import { HOME, PLATFORM } from '../util/env.ts';
+import { machineConfigPath, resolveMonitoringLocation } from './location.ts';
+import { MachineConfigSchema } from './machineSchema.ts';
 import { STATE_DIR } from './paths.ts';
-import { MachineConfigSchema } from './schema.ts';
 
 /** Per-platform defaults; everything here is overridable by machine.json. */
 function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {

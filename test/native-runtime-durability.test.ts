@@ -4,9 +4,8 @@ import { join } from 'node:path';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
 import { prepareMessageOperation, readMessageJournal } from '../src/chat/messageOperationStore.ts';
+import { ChatCursorsSchema } from '../src/chat/messageSchema.ts';
 import { deliverNativeRuntimePending } from '../src/chat/nativeRuntime.ts';
-import { ChatCursorsSchema } from '../src/config/schema.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import {
   captureNativeStderr,
   readRuntimeDiagnostics,
@@ -14,6 +13,7 @@ import {
 } from '../src/runtime/diagnostics.ts';
 import { readRuntimeInput, writeRuntimeInput } from '../src/runtime/input.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/status.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 
 async function fixture() {

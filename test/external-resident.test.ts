@@ -1,17 +1,17 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
-import { ExternalStatusPublisher } from '../src/external/resident-publisher.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { ExternalStatusPublisher } from '../src/external/residentPublisher.ts';
 import {
   currentExternalStatus,
   EXTERNAL_MAX_BYTES,
   EXTERNAL_MAX_READERS,
   ExternalStatusSnapshotSchema,
-} from '../src/external/resident-schema.ts';
+} from '../src/external/residentSchema.ts';
 import { nativeTurnState } from '../src/external/turnState.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { fixture, row } from './fixtures/external-resident.ts';
 import { makeSession, UUID } from './helpers.ts';
 

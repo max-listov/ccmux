@@ -3,11 +3,11 @@ import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
-import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { killSession } from '../src/tmux/tmux.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
 import {

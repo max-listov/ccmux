@@ -3,21 +3,21 @@ import { forkRolloutIdsForMarker, rolloutIdsForMarker } from '../agent/codex/cor
 import { buildAdoptArgv, buildForkArgv, CODEX_LAUNCH_MARKER_ENV } from '../agent/codex/launch.ts';
 import { getProvider } from '../agent/index.ts';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../chat/auth.ts';
-import { writeLifecycleBlock } from '../config/lifecycleBlocks.ts';
 import { loadMachineConfig } from '../config/machine.ts';
+import { readNativeForkIntent } from '../context/fork.ts';
+import { codexLockHeldByDescendant } from '../external/codexLocks.ts';
+import { nativeDriver } from '../runtime/driver.ts';
+import { ManagedRuntimeExit } from '../runtime/exit.ts';
+import { writeLifecycleBlock } from '../session/lifecycleBlocks.ts';
 import {
   loadPendingSessions,
   markPendingBlocked,
   promotePendingSession,
   removePendingSession,
-} from '../config/pendingSessions.ts';
-import { SessionSchema } from '../config/schema.ts';
-import { loadSessions, removeSessionIfGeneration } from '../config/sessions.ts';
-import { readNativeForkIntent } from '../context/fork.ts';
-import { promptInvocation } from '../env.ts';
-import { codexLockHeldByDescendant } from '../external/codexLocks.ts';
-import { nativeDriver } from '../runtime/driver.ts';
-import { ManagedRuntimeExit } from '../runtime/exit.ts';
+} from '../session/pending.ts';
+import { loadSessions, removeSessionIfGeneration } from '../session/registry.ts';
+import { SessionSchema } from '../session/schema.ts';
+import { promptInvocation } from '../util/env.ts';
 import { setStderrLogging } from '../util/log.ts';
 import { superviseReady } from './run.ts';
 

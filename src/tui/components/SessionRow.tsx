@@ -1,5 +1,5 @@
 import { Box } from 'ink';
-import { VENDOR_CELL, vendorMark } from '../../agent/vendor.ts';
+import { VENDOR_CELL, vendorMark } from '../../inventory/vendor.ts';
 import type { FleetItem } from '../fleet.ts';
 import { pad, provColor } from '../format.ts';
 import { statusMark } from '../status.ts';

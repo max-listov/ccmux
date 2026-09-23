@@ -6,7 +6,7 @@ import {
   partitionParked,
   RemoteSessionSchema,
 } from '../src/commands/fleetList.ts';
-import { rowStateLabel } from '../src/commands/list.ts';
+import { rowStateLabel } from '../src/inventory/rows.ts';
 
 // Measured 2026-08-31: of 96 rows the fleet map printed, 61 were sessions somebody had deliberately
 // archived — and every one of them read as `stopped`, which is what a live session that is down

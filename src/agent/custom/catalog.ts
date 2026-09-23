@@ -2,7 +2,10 @@ import { isAbsolute } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { resolveControlLaunchRecipe } from '../../config/launchRecipes.ts';
-import { ControlModelCatalogSchema, type ControlModelsReadSchema } from '../../control/schema.ts';
+import {
+  ControlModelCatalogSchema,
+  type ControlModelsReadSchema,
+} from '../../control/schema/model.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { customProviderLabel, prepareCustomHost } from './host.ts';
 

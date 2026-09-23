@@ -1,9 +1,10 @@
 import type { z } from 'zod';
-import { isConditional } from '../chat/deliver.ts';
+import { appendAck, loadAcks } from '../chat/ackLog.ts';
 import { samePrincipal } from '../chat/identity.ts';
-import { appendAck, loadAcks, loadLedger } from '../chat/store.ts';
+import { loadLedger } from '../chat/ledger.ts';
+import { isConditional } from '../chat/settlement.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
-import type { ControlMessageCancelSchema } from './schema.ts';
+import type { ControlMessageCancelSchema } from './schema/message.ts';
 
 /**
  * Withdraw one accepted letter that has not reached the recipient.

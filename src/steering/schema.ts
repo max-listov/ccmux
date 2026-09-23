@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AttachmentReferencesSchema } from '../attachments/reference.ts';
-import { ManagedPeerSchema } from '../config/schema.ts';
+import { ManagedPeerSchema } from '../chat/identitySchema.ts';
 
 export const STEERING_LIMITS = {
   operations: 256,

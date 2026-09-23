@@ -5,23 +5,23 @@ import { join } from 'node:path';
 import {
   readLifecycleBlockForSession,
   writeLifecycleBlock,
-} from '../src/config/lifecycleBlocks.ts';
+} from '../src/session/lifecycleBlocks.ts';
 import {
   loadPendingSessions,
   promotePendingSession,
   removePendingSession,
   reservePendingSession,
-} from '../src/config/pendingSessions.ts';
-import { loadPendingRows, writePendingRows } from '../src/config/pendingStore.ts';
-import { PendingSessionSchema, SessionSchema } from '../src/config/schema.ts';
-import { promotedPending } from '../src/config/sessionRegistry.ts';
-import { loadReadyRows, writeReadyRows } from '../src/config/sessionStore.ts';
+} from '../src/session/pending.ts';
+import { loadPendingRows, writePendingRows } from '../src/session/pendingStore.ts';
+import { promotedPending } from '../src/session/promotion.ts';
+import { loadReadyRows, writeReadyRows } from '../src/session/readyStore.ts';
 import {
   appendSession,
   loadSessions,
   removeSession,
   removeSessionIfGeneration,
-} from '../src/config/sessions.ts';
+} from '../src/session/registry.ts';
+import { PendingSessionSchema, SessionSchema } from '../src/session/schema.ts';
 import { makeMachine } from './helpers.ts';
 
 const GENERATION = '11111111-1111-4111-8111-111111111111';

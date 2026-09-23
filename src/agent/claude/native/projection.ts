@@ -2,6 +2,7 @@ import type { ContentProducer } from '../../../content/producer.ts';
 import { mergeRateLimitEvent } from '../../../runtime/planLimits.ts';
 import type { NativeSnapshot, PermissionMode } from '../../../runtime/projectionSchema.ts';
 import { deltaText, toolBlocks } from './content.ts';
+import { composeSnapshot, type SnapshotIdentity } from './snapshot.ts';
 import { initialTurn, type TurnState } from './turn.ts';
 import { nativeUsage, type SdkModelUsage, turnDelta } from './usage.ts';
 
@@ -194,5 +195,32 @@ export class NativeProjection {
     const delta = turnDelta(record.modelUsage, this.usageSoFar);
     this.usageSoFar = record.modelUsage;
     return nativeUsage({ reported: true, delta });
+  }
+
+  /** The observation to publish now, from what has been collected and the requests still open. */
+  snapshot(
+    identity: SnapshotIdentity,
+    pending: readonly NativeSnapshot['pendingRequests'][number][],
+    fileCheckpoints: boolean,
+  ): NativeSnapshot {
+    return composeSnapshot({
+      identity,
+      sequence: this.sequence,
+      connected: this.connected,
+      turn: this.turn,
+      turnId: this.turnId,
+      turnStartedAt: this.turnStartedAt,
+      items: this.items,
+      pending,
+      selection: this.selection,
+      permissionMode: this.permissionMode,
+      contextUsage: this.contextUsage,
+      planLimits: this.planLimits,
+      account: this.account,
+      spend: this.spend,
+      fileCheckpoints,
+      mcpServers: this.mcpServers,
+      now: Date.now(),
+    });
   }
 }

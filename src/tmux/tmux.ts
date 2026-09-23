@@ -1,17 +1,13 @@
-import { clearStatus } from '../agent/sessionStatus.ts';
+import { clearStatus } from '../session/status.ts';
 import type { MachineConfig } from '../types.ts';
-import { run, runWithInput } from '../util/spawn.ts';
-import { exactTarget, paneTarget } from './target.ts';
+import { log } from '../util/log.ts';
+import { run } from '../util/spawn.ts';
+import { AGENT_PANE_OPTION, forgetAgentPane, onAgentPane, rememberAgentPane } from './agentPane.ts';
+import { tmuxArgv } from './argv.ts';
+import { exactTarget, sessionOptionTarget } from './target.ts';
 
 // Typed tmux wrappers — every call is an argv array via util/spawn. All targeting
 // goes through target.ts; no bare `-t name` anywhere.
-
-/** Base tmux argv, scoped to the config's optional dedicated socket (`-L`). EVERY tmux invocation
- *  goes through this, so an isolated instance (dev) is fully confined to its own tmux server. Unset
- *  socket → the default socket (prod), i.e. current behaviour. Exported for the test. */
-export function tmuxArgv(m: MachineConfig, ...args: string[]): string[] {
-  return m.tmuxSocket ? [m.tmuxBin, '-L', m.tmuxSocket, ...args] : [m.tmuxBin, ...args];
-}
 
 export async function hasSession(m: MachineConfig, name: string): Promise<boolean> {
   const { code } = await run(tmuxArgv(m, 'has-session', '-t', exactTarget(name)));
@@ -74,13 +70,36 @@ export async function newSession(
   // tmux treats the rest as command tokens.
   const envArgs = [...instanceEnvArgs()];
   for (const [key, value] of Object.entries(extraEnv)) envArgs.push('-e', `${key}=${value}`);
+  forgetAgentPane(m, name);
   const result = await run(
-    tmuxArgv(m, 'new-session', '-d', '-s', name, '-c', dir, ...envArgs, '--', ...cmd),
+    tmuxArgv(
+      m,
+      'new-session',
+      '-d',
+      '-s',
+      name,
+      '-c',
+      dir,
+      '-P',
+      '-F',
+      '#{pane_id}',
+      ...envArgs,
+      '--',
+      ...cmd,
+    ),
   );
   if (result.code !== 0)
     throw new Error(
       `tmux could not create '${name}': ${result.stderr.trim() || result.stdout.trim()}`,
     );
+  const pane = result.stdout.trim();
+  const recorded = pane.startsWith('%')
+    ? await run(tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), AGENT_PANE_OPTION, pane))
+    : null;
+  if (recorded?.code === 0) rememberAgentPane(m, name, pane);
+  // Without the id the session is still addressed the old way; said, because that way is the one a
+  // second window can misdirect.
+  else log.warn({ msg: 'agent pane id not recorded — addressed by index', name, pane });
 }
 
 export async function killSessionIfGeneration(
@@ -123,9 +142,13 @@ export async function killSession(
   // the production value is the one every caller gets.
   lingerDeadlineMs = 5_000,
 ): Promise<KillOutcome> {
-  const pane = await run(
-    tmuxArgv(m, 'display-message', '-p', '-t', paneTarget(name), '#{pane_pid}'),
-  );
+  const pane = await onAgentPane(m, name, (target) => [
+    'display-message',
+    '-p',
+    '-t',
+    target,
+    '#{pane_pid}',
+  ]);
   const panePid = Number.parseInt(pane.stdout.trim(), 10);
   let processGroup: number | null = null;
   if (pane.code === 0 && Number.isInteger(panePid) && panePid > 1) {
@@ -136,6 +159,7 @@ export async function killSession(
     const value = Number.parseInt(pg.stdout.toString().trim(), 10);
     if (pg.exitCode === 0 && Number.isInteger(value) && value > 1) processGroup = value;
   }
+  forgetAgentPane(m, name);
   const { code } = await run(tmuxArgv(m, 'kill-session', '-t', exactTarget(name)));
   // Single funnel for stop/rm/restart (CLI + TUI) — drop the session's structured status files so a
   // stopped/removed session never shows a stale live state; a restart re-writes them via SessionStart.
@@ -164,7 +188,7 @@ export async function setOption(
   key: string,
   value: string,
 ): Promise<void> {
-  await run(tmuxArgv(m, 'set-option', '-t', exactTarget(name), key, value)); // best-effort
+  await run(tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), key, value)); // best-effort
 }
 
 /** Pane-scoped option on the session's single pane (e.g. allow-passthrough) — kept
@@ -175,7 +199,7 @@ export async function setPaneOption(
   key: string,
   value: string,
 ): Promise<void> {
-  await run(tmuxArgv(m, 'set-option', '-p', '-t', paneTarget(name), key, value)); // best-effort
+  await onAgentPane(m, name, (target) => ['set-option', '-p', '-t', target, key, value]); // best-effort
 }
 
 /** Literal text (`-l`) — for sending user/prompt text. */
@@ -185,7 +209,14 @@ export async function sendKeysLiteral(
   text: string,
 ): Promise<boolean> {
   // `--` so a payload starting with "-" is treated as literal text, not a tmux flag
-  const { code } = await run(tmuxArgv(m, 'send-keys', '-t', paneTarget(name), '-l', '--', text));
+  const { code } = await onAgentPane(m, name, (target) => [
+    'send-keys',
+    '-t',
+    target,
+    '-l',
+    '--',
+    text,
+  ]);
   return code === 0;
 }
 
@@ -193,7 +224,7 @@ export async function sendKeysLiteral(
 /** Returns whether tmux accepted the key — a dead pane reports failure, and a caller that submits a
  *  message needs to know its Enter never landed rather than record a delivery that did not happen. */
 export async function sendKeysNamed(m: MachineConfig, name: string, key: string): Promise<boolean> {
-  const { code } = await run(tmuxArgv(m, 'send-keys', '-t', paneTarget(name), key));
+  const { code } = await onAgentPane(m, name, (target) => ['send-keys', '-t', target, key]);
   return code === 0;
 }
 
@@ -203,7 +234,7 @@ export async function sendKeysNamed(m: MachineConfig, name: string, key: string)
  */
 export async function loadPasteBuffer(m: MachineConfig, text: string): Promise<string | null> {
   const buffer = `ccmux-chat-${crypto.randomUUID()}`;
-  const loaded = await runWithInput(tmuxArgv(m, 'load-buffer', '-b', buffer, '-'), text);
+  const loaded = await run(tmuxArgv(m, 'load-buffer', '-b', buffer, '-'), { input: text });
   return loaded.code === 0 ? buffer : null;
 }
 
@@ -213,9 +244,12 @@ export async function setPaneInputEnabled(
   name: string,
   enabled: boolean,
 ): Promise<boolean> {
-  const { code } = await run(
-    tmuxArgv(m, 'select-pane', enabled ? '-e' : '-d', '-t', paneTarget(name)),
-  );
+  const { code } = await onAgentPane(m, name, (target) => [
+    'select-pane',
+    enabled ? '-e' : '-d',
+    '-t',
+    target,
+  ]);
   return code === 0;
 }
 
@@ -230,44 +264,45 @@ export async function submitPasteBuffer(
   buffer: string,
   messageId: string,
 ): Promise<boolean> {
-  const target = paneTarget(name);
-  const { code } = await run(
-    tmuxArgv(
-      m,
-      'select-pane',
-      '-e',
-      '-t',
-      target,
-      ';',
-      'paste-buffer',
-      '-p',
-      '-d',
-      '-b',
-      buffer,
-      '-t',
-      target,
-      ';',
-      'send-keys',
-      '-t',
-      target,
-      'Enter',
-      ';',
-      'set-option',
-      '-p',
-      '-t',
-      target,
-      '@ccmux-chat-submitted',
-      messageId,
-    ),
-  );
+  const { code } = await onAgentPane(m, name, (target) => [
+    'select-pane',
+    '-e',
+    '-t',
+    target,
+    ';',
+    'paste-buffer',
+    '-p',
+    '-d',
+    '-b',
+    buffer,
+    '-t',
+    target,
+    ';',
+    'send-keys',
+    '-t',
+    target,
+    'Enter',
+    ';',
+    'set-option',
+    '-p',
+    '-t',
+    target,
+    '@ccmux-chat-submitted',
+    messageId,
+  ]);
   return code === 0;
 }
 
 /** Last chat id whose paste+Enter command queue completed on this pane. */
 export async function submittedChatId(m: MachineConfig, name: string): Promise<string | null> {
-  const { code, stdout } = await run(
-    tmuxArgv(m, 'show-options', '-p', '-v', '-t', paneTarget(name), '@ccmux-chat-submitted'),
-  );
+  const { code, stdout } = await onAgentPane(m, name, (target) => [
+    'show-options',
+    '-p',
+    '-v',
+    '-t',
+    target,
+    '@ccmux-chat-submitted',
+  ]);
   return code === 0 && stdout.trim() !== '' ? stdout.trim() : null;
 }
 
@@ -276,16 +311,16 @@ export async function deletePasteBuffer(m: MachineConfig, buffer: string): Promi
 }
 
 export async function capturePane(m: MachineConfig, name: string, lines: number): Promise<string> {
-  const { stdout } = await run(
-    tmuxArgv(m, 'capture-pane', '-t', paneTarget(name), '-p', '-S', `-${lines}`),
-  );
+  const { stdout } = await onAgentPane(m, name, (target) => [
+    'capture-pane',
+    '-t',
+    target,
+    '-p',
+    '-S',
+    `-${lines}`,
+  ]);
   return stdout;
 }
-
-/** Every ANSI colour/attribute sequence — for turning a styled capture back into plain text. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: Terminal SGR sequences are intentionally matched by ESC byte.
-const ANSI_RE = /\u001b\[[0-9;]*m/g;
-export const stripAnsi = (text: string): string => text.replace(ANSI_RE, '');
 
 /**
  * The same capture, but KEEPING colour and attribute sequences (`-e`).
@@ -301,9 +336,15 @@ export async function capturePaneStyled(
   name: string,
   lines: number,
 ): Promise<string> {
-  const { stdout } = await run(
-    tmuxArgv(m, 'capture-pane', '-t', paneTarget(name), '-p', '-e', '-S', `-${lines}`),
-  );
+  const { stdout } = await onAgentPane(m, name, (target) => [
+    'capture-pane',
+    '-t',
+    target,
+    '-p',
+    '-e',
+    '-S',
+    `-${lines}`,
+  ]);
   return stdout;
 }
 

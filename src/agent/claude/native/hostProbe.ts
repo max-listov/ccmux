@@ -1,6 +1,6 @@
 import type { Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { AppError } from 'stitchkit';
-import type { ControlModel } from '../../../control/schema.ts';
+import type { ControlModel } from '../../../control/schema/model.ts';
 import type { MachineConfig } from '../../../types.ts';
 import { claudeModels, type SupportedModel } from './catalog.ts';
 import { resolveAgentSdk } from './resolve.ts';

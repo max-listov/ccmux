@@ -14,8 +14,9 @@ import {
   humanTargetLabel,
   targetLabel,
 } from '../src/chat/identity.ts';
+import { CHAT_GENERATION, ChatMessageSchema } from '../src/chat/messageSchema.ts';
 import { formatForTg } from '../src/chat/telegram.ts';
-import { CHAT_GENERATION, ChatMessageSchema, MachineConfigSchema } from '../src/config/schema.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import type { ChatMessage, ChatPrincipal, ChatTarget } from '../src/types.ts';
 
 // The route to a component owner outside the fleet is a PERSON, and that is the design: one hop

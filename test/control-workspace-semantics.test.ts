@@ -2,11 +2,11 @@ import { afterEach, expect, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CreateManagedInput } from '../src/commands/create.ts';
-import { appendSession, loadSessions } from '../src/config/sessions.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
-import { ControlCreateSchema } from '../src/control/schema.ts';
+import { ControlCreateSchema } from '../src/control/schema/session.ts';
 import { controlTarget } from '../src/control/target.ts';
+import type { CreateManagedInput } from '../src/session/create.ts';
+import { appendSession, loadSessions } from '../src/session/registry.ts';
 import type { MachineConfig } from '../src/types.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 

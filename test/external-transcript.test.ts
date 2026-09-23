@@ -12,10 +12,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ExternalInventoryJsonSchema, TranscriptJsonSchema } from '../src/config/schema.ts';
-import { appendSession, loadSessions } from '../src/config/sessions.ts';
+import { TranscriptJsonSchema } from '../src/context/transcriptJsonSchema.ts';
 import { externalSessionKey } from '../src/external/keys.ts';
+import { ExternalInventoryJsonSchema } from '../src/external/sessionSchema.ts';
 import { readExternalTranscript } from '../src/external/transcript.ts';
+import { appendSession, loadSessions } from '../src/session/registry.ts';
 import { shellQuote } from '../src/util/shellQuote.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 

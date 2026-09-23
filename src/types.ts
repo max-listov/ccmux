@@ -1,46 +1,59 @@
 import type { z } from 'zod';
 import type {
+  TranscriptKindSchema,
+  TranscriptMessageSchema,
+  TranscriptRoleSchema,
+} from './agent/transcript/messageSchema.ts';
+import type {
   AgentKindSchema,
-  ChatCursorsSchema,
-  ChatMessageSchema,
   ChatPrincipalSchema,
   ChatTargetSchema,
   CliPrincipalSchema,
   CodexAppPeerSchema,
+  ExternalTargetSchema,
+  ManagedPeerSchema,
+  OwnerTargetSchema,
+} from './chat/identitySchema.ts';
+import type { ChatCursorsSchema, ChatMessageSchema } from './chat/messageSchema.ts';
+import type {
   CodexCollaborationModeSchema,
-  ContextInfoSchema,
+  LaunchRecipeMetadataSchema,
+  LaunchRecipeReferenceSchema,
+  MachineLaunchRecipeSchema,
+  PermissionModeSchema,
+} from './config/launchSchema.ts';
+import type {
+  MachineConfigSchema,
+  ReleaseSchema,
+  TelegramConfigSchema,
+} from './config/machineSchema.ts';
+import type {
+  TranscriptJsonSchema,
+  TranscriptStatsSchema,
+} from './context/transcriptJsonSchema.ts';
+import type { SessionEventKindSchema, SessionEventSchema } from './events/schema.ts';
+import type {
   ExternalCapabilitiesSchema,
   ExternalInventoryJsonSchema,
   ExternalSessionSchema,
-  ExternalTargetSchema,
-  LaunchRecipeMetadataSchema,
-  LaunchRecipeReferenceSchema,
-  LifecycleBlockSchema,
+  WriterRuntimeSchema,
+} from './external/sessionSchema.ts';
+import type {
+  ContextInfoSchema,
   ListItemSchema,
   ListJsonSchema,
-  MachineConfigSchema,
-  MachineLaunchRecipeSchema,
-  ManagedPeerSchema,
-  OwnerTargetSchema,
-  PendingSessionSchema,
-  PermissionModeSchema,
-  ReleaseSchema,
   ReleaseStandingSchema,
-  SessionEventKindSchema,
-  SessionEventSchema,
-  SessionSchema,
   SessionStateSchema,
-  TelegramConfigSchema,
-  TranscriptJsonSchema,
-  TranscriptKindSchema,
-  TranscriptMessageSchema,
-  TranscriptRoleSchema,
-  TranscriptStatsSchema,
-  WriterRuntimeSchema,
-} from './config/schema.ts';
+} from './inventory/listSchema.ts';
+import type {
+  LifecycleBlockSchema,
+  PendingSessionSchema,
+  SessionSchema,
+} from './session/schema.ts';
 
-// Single import surface for the inferred types. No bare interfaces anywhere — these
-// are the only shapes, and they come straight from the Zod schemas.
+// The inferred types of the persisted and wire shapes defined in `src/config/*Schema.ts`, under
+// the names the rest of the code uses. No bare interfaces for these shapes: each type is `z.infer` of
+// its schema. A module that owns a schema of its own infers its type beside it.
 export type Session = z.infer<typeof SessionSchema>;
 export type PermissionMode = z.infer<typeof PermissionModeSchema>;
 export type MachineConfig = z.infer<typeof MachineConfigSchema>;

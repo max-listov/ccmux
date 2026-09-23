@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AppError } from 'stitchkit';
 import { supportsManagedInput } from '../agent/index.ts';
-import { stableJson } from '../agent/launchInputs.ts';
+import { stableJson } from '../agent/launch/launchInputs.ts';
 import { withPinnedAttachments } from '../attachments/pins.ts';
 import {
   requireCommunicationAuthorization,
@@ -9,19 +9,19 @@ import {
 } from '../chat/communicationAuthorization.ts';
 import { buildEnvelope } from '../chat/compose.ts';
 import { samePrincipal, sameTarget } from '../chat/identity.ts';
+import { appendMessageOnce, loadLedger } from '../chat/ledger.ts';
 import { localMessageLookup } from '../chat/localMessages.ts';
 import { advanceMessageOperation, prepareMessageOperation } from '../chat/messageOperationStore.ts';
 import { admitMessageOrigin } from '../chat/origin.ts';
 import { unknownMessageOrigin } from '../chat/originSchema.ts';
-import { appendMessageOnce, loadLedger } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
-import { withSessionRegistryLock } from '../config/registryLock.ts';
 import { assertNoContextMutation } from '../context/store.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
+import { withSessionRegistryLock } from '../session/registryLock.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
-import { type ControlMessage, ControlMessageSchema } from './schema.ts';
+import { type ControlMessage, ControlMessageSchema } from './schema/message.ts';
 import { currentSelection, validateTurnOptions } from './selection.ts';
 import { controlTarget } from './target.ts';
 

@@ -1,22 +1,22 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ownedCodexArgv } from '../src/agent/codex/ownedLaunch.ts';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
-import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { ownedCodexArgv } from '../src/agent/codex/owned/launch.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import type { CreateManagedInput } from '../src/commands/create.ts';
 import {
   resolveControlLaunchRecipe,
   verifyManagedLaunchRecipe,
 } from '../src/config/launchRecipes.ts';
-import { loadSessions, writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
 import { readControlNative } from '../src/control/nativeFeed.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { ControlCreateSchema } from '../src/control/schema.ts';
+import { ControlCreateSchema } from '../src/control/schema/session.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
+import type { CreateManagedInput } from '../src/session/create.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const FIXTURE_SECRET = 'fixture-secret-value-never-public';

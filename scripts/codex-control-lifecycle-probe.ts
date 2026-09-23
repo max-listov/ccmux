@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { readOwnedCodexStatus } from '../src/agent/codex/ownedStatus.ts';
+import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { historyFile } from '../src/agent/codex/resume.ts';
-import { MachineConfigSchema } from '../src/config/schema.ts';
-import { loadSessions } from '../src/config/sessions.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { loadSessions } from '../src/session/registry.ts';
 import { hasSession } from '../src/tmux/tmux.ts';
 
 const config = process.argv[2];

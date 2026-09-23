@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { createClient, createHttpClient } from 'stitchkit';
 import { createUnixClientTransport, UnixClientTransportError } from 'stitchkit/server';
-import { HOME } from '../env.ts';
 import type { MachineConfig } from '../types.ts';
+import { HOME } from '../util/env.ts';
 import { remoteTransportContract } from './remoteTransportContract.ts';
 import type { RemoteResult } from './transport.ts';
 

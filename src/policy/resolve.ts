@@ -1,4 +1,4 @@
-import { stableJson } from '../agent/launchInputs.ts';
+import { stableJson } from '../agent/launch/launchInputs.ts';
 import { policyUnavailable } from './errors.ts';
 import type {
   AgentPolicies,

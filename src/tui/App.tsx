@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { Box, Text, useApp, useInput, useStdin, useStdout } from 'ink';
+import { Box, useApp, useInput, useStdout } from 'ink';
 import { useEffect, useRef, useState } from 'react';
 import type { AgentKind, MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
@@ -16,30 +16,27 @@ import {
 import type { DiscoveredSession } from './discover.ts';
 import { discoverActive } from './discover.ts';
 import type { FleetLoad } from './fleet.ts';
-import { buildItems, capabilityReasons, resolveFleetItem, writerSummary } from './fleet.ts';
+import { buildItems, resolveFleetItem } from './fleet.ts';
 import { useDiscover } from './hooks/useDiscover.ts';
 import { useFleet } from './hooks/useFleet.ts';
+import { type Focus, useMouse } from './hooks/useMouse.ts';
 import { useSpinner } from './hooks/useSpinner.ts';
 import { useTranscript } from './hooks/useTranscript.ts';
 import {
-  cardIndexAtY,
   INLINE_CHROME_ROWS,
   inlineFit,
   inlineMaxStart,
   inlineReveal,
   visibleCardCount,
 } from './listWindow.ts';
-import { describeSgr, logMouse, mouseDebugOn } from './mouseProbe.ts';
 import { FullscreenView } from './views/FullscreenView.tsx';
 import { InlineView } from './views/InlineView.tsx';
+import { type Mode, ModePrompt } from './views/ModePrompt.tsx';
 
 export type Intent =
   | { type: 'quit' }
   | { type: 'attach'; name: string }
   | { type: 'new'; name: string; dir: string; agent: AgentKind };
-
-type Mode = 'list' | 'new' | 'confirm' | 'confirm-restart-all' | 'compose' | 'adopt';
-type Focus = 'list' | 'transcript';
 
 const DEFAULT_LIST_WIDTH = 72;
 const MIN_LIST_WIDTH = 44;
@@ -55,7 +52,6 @@ export function App({
 }) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { stdin } = useStdin();
   // names whose tmux pane to capture each poll (visible cards + selection); filled below once the
   // window is known. A ref so the poll reads the latest without re-subscribing on every scroll.
   const liveNamesRef = useRef<Set<string> | undefined>(undefined);
@@ -147,12 +143,9 @@ export function App({
     });
   };
 
-  // Select by INDEX → store the card's route identity. Reads itemsRef (not the closure) so the
-  // long-lived mouse listener can call it without going stale.
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
+  // Select by INDEX → store the card's route identity.
   const selectAt = (idx: number): void => {
-    const it = itemsRef.current[idx];
+    const it = items[idx];
     if (it) setSelKey(it.key);
   };
 
@@ -177,29 +170,6 @@ export function App({
   const scroll = (delta: number): void =>
     setOffset((o) => Math.min(Math.max(0, o + delta), maxScroll));
 
-  // Mirror volatile values into refs so the long-lived mouse listener never goes stale
-  // and a live drag (listWidth changing every motion) doesn't re-attach mid-gesture.
-  const listWidthRef = useRef(listWidth);
-  listWidthRef.current = listWidth;
-  const countRef = useRef(count);
-  countRef.current = count;
-  const maxScrollRef = useRef(maxScroll);
-  maxScrollRef.current = maxScroll;
-  const draggingRef = useRef(false);
-  const externalStartRef = useRef(externalStart);
-  externalStartRef.current = externalStart;
-
-  // Mirror window values into refs so the long-lived mouse listener reads fresh data.
-  const winStartRef = useRef(winStart);
-  winStartRef.current = winStart;
-  const visibleRef = useRef(visibleCards);
-  visibleRef.current = visibleCards;
-  const maxScrollTopRef = useRef(maxScrollTop);
-  maxScrollTopRef.current = maxScrollTop;
-  const [hoverHandle, setHoverHandle] = useState(false);
-  const [hoverPane, setHoverPane] = useState<Focus | null>(null);
-  const [hoverCard, setHoverCard] = useState<number | null>(null);
-
   // Alt-screen is App's concern (driven by the fullscreen toggle), so `f` switches
   // cleanly and exit/attach always restores the terminal.
   // biome-ignore lint/correctness/useExhaustiveDependencies: Only a fullscreen transition may reset the terminal; cursor movement must not re-enter alt-screen.
@@ -219,93 +189,20 @@ export function App({
     revealCursor(cur);
   }, [cur, termRows]);
 
-  // ── mouse: wheel scrolls the pane under the cursor (zone by x, independent of focus);
-  //    the divider is a hover/drag handle for live resize. ?1003h (any-motion) gives
-  //    hover+drag — events are processed IN MEMORY ONLY (never logged → no disk flood).
-  //    Refs keep the listener stable so a drag never re-attaches mid-gesture.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: The mouse listener reads selection through refs and must remain attached during a drag.
-  useEffect(() => {
-    if (!fullscreen) return;
-    stdout?.write('\x1b[?1003h\x1b[?1006h');
-    const onData = (d: Buffer): void => {
-      const s = d.toString();
-      if (!s.includes('\x1b[<')) return;
-      if (mouseDebugOn) logMouse('STDIN', describeSgr(s));
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR mouse reports start with a literal ESC byte.
-      const re = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
-      for (let mm = re.exec(s); mm !== null; mm = re.exec(s)) {
-        const btn = Number(mm[1]);
-        const x = Number(mm[2]);
-        const y = Number(mm[3]);
-        const release = mm[4] === 'm';
-        const lw = listWidthRef.current;
-        const nearHandle = Math.abs(x - (lw + 1)) <= 1;
-        const zone: Focus = x <= lw ? 'list' : 'transcript';
-        if (btn === 64 || btn === 65) {
-          const up = btn === 64;
-          if (x <= lw) {
-            // wheel over the list → SCROLL the window (selection unchanged), like any list pane
-            setListScroll((s) => Math.max(0, Math.min(s + (up ? -1 : 1), maxScrollTopRef.current)));
-          } else {
-            setOffset((o) => Math.min(Math.max(0, o + (up ? 1 : -1)), maxScrollRef.current));
-          }
-          continue;
-        }
-        if (btn === 0 && !release) {
-          // press: on the divider → start a resize drag; on a list card → select it; else focus the pane
-          if (nearHandle) {
-            draggingRef.current = true;
-            setHoverHandle(true);
-          } else if (zone === 'list') {
-            const idx = cardIndexAtY(
-              y,
-              winStartRef.current,
-              visibleRef.current,
-              countRef.current,
-              externalStartRef.current,
-            );
-            if (idx !== null) {
-              selectAt(idx);
-              setOffset(0);
-            }
-            setFocus('list');
-          } else setFocus(zone);
-          continue;
-        }
-        if (release) {
-          draggingRef.current = false;
-          setHoverHandle(nearHandle);
-          continue;
-        }
-        if ((btn & 32) !== 0) {
-          // motion: drag-resize · else hover-highlight (handle + pane + card)
-          if (draggingRef.current) {
-            const cols = stdout?.columns ?? 100;
-            setListWidth(Math.max(MIN_LIST_WIDTH, Math.min(cols - 30, x - 1)));
-          } else {
-            setHoverHandle(nearHandle);
-            setHoverPane(zone);
-            setHoverCard(
-              zone === 'list'
-                ? cardIndexAtY(
-                    y,
-                    winStartRef.current,
-                    visibleRef.current,
-                    countRef.current,
-                    externalStartRef.current,
-                  )
-                : null,
-            );
-          }
-        }
-      }
-    };
-    stdin?.on('data', onData);
-    return () => {
-      stdin?.off('data', onData);
-      stdout?.write('\x1b[?1003l\x1b[?1006l');
-    };
-  }, [fullscreen, stdout, stdin]);
+  const { hoverHandle, hoverPane, hoverCard } = useMouse(
+    fullscreen,
+    {
+      listWidth,
+      minListWidth: MIN_LIST_WIDTH,
+      winStart,
+      visibleCards,
+      count,
+      externalStart,
+      maxScrollTop,
+      maxScroll,
+    },
+    { setListScroll, setOffset, setFocus, setListWidth, selectAt },
+  );
 
   useInput((input, key) => {
     if (input.includes('[<')) return; // mouse SGR — handled by the wheel effect above
@@ -579,86 +476,15 @@ export function App({
   return (
     <Box flexDirection="column">
       {view}
-      {mode === 'new' ? (
-        <Box paddingX={2}>
-          <Text>new session in </Text>
-          <Text dimColor>{process.cwd()}</Text>
-          <Text> → </Text>
-          <Text color="cyan">{draft || defaultName}</Text>
-          <Text> provider: </Text>
-          <Text color="yellow" bold>
-            {newAgent}
-          </Text>
-          <Text dimColor> (tab)</Text>
-          <Text>▏</Text>
-        </Box>
-      ) : null}
-      {mode === 'confirm' && selected ? (
-        <Box paddingX={2}>
-          <Text color="red" bold>
-            delete {selected.session.name}?{' '}
-          </Text>
-          <Text dimColor>(history kept) </Text>
-          <Text color="red">y / d</Text>
-          <Text dimColor> delete · </Text>
-          <Text>n / esc</Text>
-          <Text dimColor> cancel</Text>
-        </Box>
-      ) : null}
-      {mode === 'confirm-restart-all' ? (
-        <Box paddingX={2}>
-          <Text color="yellow" bold>
-            restart ALL {externalStart} session{externalStart === 1 ? '' : 's'}?{' '}
-          </Text>
-          <Text dimColor>(one at a time, conversations kept) </Text>
-          <Text color="yellow">y / R</Text>
-          <Text dimColor> restart · </Text>
-          <Text>n / esc</Text>
-          <Text dimColor> cancel</Text>
-        </Box>
-      ) : null}
-      {mode === 'adopt' ? (
-        <Box paddingX={2} flexDirection="column">
-          <Text>
-            <Text color="yellow" bold>
-              external ownership
-            </Text>
-            <Text dimColor>
-              {adoptSnapshot
-                ? ` — ${adoptSnapshot.provider}@${adoptSnapshot.host} · ${adoptSnapshot.threadId}`
-                : ' — route disappeared'}
-            </Text>
-          </Text>
-          <Text>
-            <Text dimColor>{adoptSnapshot ? `writer ${writerSummary(adoptSnapshot)} · ` : ''}</Text>
-            {adoptSnapshot?.capabilities.fork ? (
-              <>
-                <Text color="green" bold>
-                  f
-                </Text>
-                <Text dimColor> fork (provider-native, original untouched) · </Text>
-              </>
-            ) : null}
-            {adoptSnapshot?.capabilities.terminateAndAdopt ? (
-              <>
-                <Text color="red" bold>
-                  t
-                </Text>
-                <Text dimColor> takeover (confirmed dedicated CLI only) · </Text>
-              </>
-            ) : null}
-            {adoptSnapshot?.capabilities.releaseAtSource ? (
-              <Text dimColor>release at source before adopting · </Text>
-            ) : null}
-            {adoptSnapshot ? (
-              <Text dimColor>{`${capabilityReasons(adoptSnapshot)} · `}</Text>
-            ) : null}
-            <Text>esc</Text>
-            <Text dimColor> cancel</Text>
-          </Text>
-          {ownershipError ? <Text color="red">{ownershipError}</Text> : null}
-        </Box>
-      ) : null}
+      <ModePrompt
+        mode={mode}
+        draft={draft || defaultName}
+        agent={newAgent}
+        selectedName={selected?.session.name ?? null}
+        managedCount={externalStart}
+        adopt={adoptSnapshot}
+        ownershipError={ownershipError}
+      />
     </Box>
   );
 }

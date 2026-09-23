@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureStatusLineApp } from '../src/config/statusLineInstall.ts';
+import { ensureStatusLineApp } from '../src/boot/statusLineInstall.ts';
 
 // Build in the release process shape, outside the test runner's module resolver/cache.
 // A fresh standalone test run otherwise rejects existing relative imports in the custom driver,

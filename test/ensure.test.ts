@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test';
-import { ensureOnce } from '../src/commands/ensure.ts';
+import { ensureOnce } from '../src/session/heal.ts';
 import type { Session } from '../src/types.ts';
 import { makeSession } from './helpers.ts';
 
 const keepPin = (s: Session): Promise<Session> => Promise.resolve(s);
+const agentGone = new Set<string>();
+const retire = (): Promise<void> => Promise.resolve();
 
 test('ensureOnce starts only down, non-archived sessions; re-reads each call', () => {
   let sessionList = [
@@ -20,7 +22,8 @@ test('ensureOnce starts only down, non-archived sessions; re-reads each call', (
       return sessionList;
     },
     // reflects reality: cc-a is up, and anything we start becomes running
-    listRunning: () => Promise.resolve(new Set<string>(['cc-a', ...started])),
+    observe: () => Promise.resolve({ live: new Set<string>(['cc-a', ...started]), agentGone }),
+    retire,
     followFork: keepPin,
     start: (name: string) => {
       started.push(name);
@@ -43,7 +46,8 @@ test('ensureOnce is a no-op when everything is running', async () => {
   const started: string[] = [];
   await ensureOnce({
     sessions: () => [makeSession({ name: 'cc-a' })],
-    listRunning: () => Promise.resolve(new Set(['cc-a'])),
+    observe: () => Promise.resolve({ live: new Set(['cc-a']), agentGone }),
+    retire,
     followFork: keepPin,
     start: (name: string) => {
       started.push(name);
@@ -62,7 +66,8 @@ test('ensureOnce follows forks on EVERY pass (running sessions too), before the 
       makeSession({ name: 'cc-down' }),
       makeSession({ name: 'cc-arch', archived: true }),
     ],
-    listRunning: () => Promise.resolve(new Set(['cc-up'])),
+    observe: () => Promise.resolve({ live: new Set(['cc-up']), agentGone }),
+    retire,
     followFork: (s) => {
       followed.push(s.name);
       return Promise.resolve(s);
@@ -76,4 +81,28 @@ test('ensureOnce follows forks on EVERY pass (running sessions too), before the 
   // archived stay untouched; the down session is started only after its fork check
   expect(followed).toEqual(['cc-up', 'cc-down']);
   expect(started).toEqual(['cc-down']);
+});
+
+test('a session whose agent pane died while another window kept it alive is taken down and started', async () => {
+  const events: string[] = [];
+  await ensureOnce({
+    sessions: () => [
+      makeSession({ name: 'cc-a' }),
+      makeSession({ name: 'cc-arch', archived: true }),
+    ],
+    observe: () =>
+      Promise.resolve({ live: new Set<string>(), agentGone: new Set(['cc-a', 'cc-arch']) }),
+    retire: (name) => {
+      events.push(`retire ${name}`);
+      return Promise.resolve();
+    },
+    followFork: keepPin,
+    start: (name) => {
+      events.push(`start ${name}`);
+      return Promise.resolve();
+    },
+  });
+  // Taken down before it is started (starting a session tmux still has would fail); an archived one
+  // is not healed, so it is not touched either.
+  expect(events).toEqual(['retire cc-a', 'start cc-a']);
 });

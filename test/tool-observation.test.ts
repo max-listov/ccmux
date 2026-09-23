@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
+import { observeCodexContent } from '../src/agent/codex/content.ts';
+import { OpenCodeContentObserver } from '../src/agent/opencode/content.ts';
 import { ContentBuffer } from '../src/content/buffer.ts';
-import { observeCodexContent } from '../src/content/codex.ts';
-import { OpenCodeContentObserver } from '../src/content/opencode.ts';
 import { contentFrame } from '../src/content/read.ts';
 import { ContentSnapshotSchema } from '../src/content/schema.ts';
 import { type ToolObservation, ToolObservationSchema } from '../src/content/toolSchema.ts';

@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildCodexRuntimeReader } from '../scripts/build-codex-runtime-reader.ts';
-import { OwnedCodexProjection } from '../src/agent/codex/ownedProjection.ts';
-import { OwnedCodexStatusWriter } from '../src/agent/codex/ownedStatus.ts';
+import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
 import { VERSION } from '../src/util/version.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 

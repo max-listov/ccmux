@@ -1,61 +1,14 @@
 import { verifyManagedLaunchRecipe } from '../config/launchRecipes.ts';
-import { clearLifecycleBlock } from '../config/lifecycleBlocks.ts';
-import { loadMachineConfig, rcName } from '../config/machine.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
-import { SELF_ARGV, SELF_ARGV_NO_ENV_FILE } from '../env.ts';
+import { loadMachineConfig } from '../config/machine.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import {
-  hasSession,
-  killSession,
-  lingeringNotice,
-  newSession,
-  setOption,
-  setPaneOption,
-} from '../tmux/tmux.ts';
-import type { MachineConfig } from '../types.ts';
+import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
+import { startSession } from '../session/start.ts';
+import { killSession, lingeringNotice } from '../tmux/tmux.ts';
+import { SELF_ARGV } from '../util/env.ts';
 import { log } from '../util/log.ts';
 import { runDetached } from '../util/spawn.ts';
 import { refusesSelf } from './guard.ts';
-
-/** Create the tmux session running ccmux's own `_run` loop. Idempotent. */
-export async function startSession(m: MachineConfig, name: string, dir: string): Promise<void> {
-  if (await hasSession(m, name)) {
-    console.log(`${name} already running`);
-    return;
-  }
-  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, '_run', name]);
-  // lock the window/session name so claude's escape sequences can't rename it out
-  // from under the =NAME exact-match invariant.
-  await setOption(m, name, 'automatic-rename', 'off');
-  await setOption(m, name, 'allow-rename', 'off');
-  await setOption(m, name, 'mouse', 'on');
-  await setOption(m, name, 'history-limit', '50000');
-  // Claude-Code-in-tmux nicety, kept PANE-local (never the shared tmux server's
-  // globals): lets claude's notification/progress escape sequences pass through tmux
-  // when you attach interactively. (focus-events / extended-keys / terminal-features
-  // are server-global in tmux, so ccmux leaves them to your ~/.tmux.conf — see README.)
-  await setPaneOption(m, name, 'allow-passthrough', 'on');
-  log.info({ msg: 'session started', name, rc: rcName(m, name), dir });
-  console.log(`started ${name} (${rcName(m, name)})`);
-}
-
-/** Start the pending Codex bootstrap transaction. It is not a registry Session yet. */
-export async function startBootstrapSession(
-  m: MachineConfig,
-  name: string,
-  dir: string,
-  generation: string,
-): Promise<void> {
-  if (await hasSession(m, name)) throw new Error(`${name} already running`);
-  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, '_bootstrap', generation], {
-    CCMUX_BOOTSTRAP_GENERATION: generation,
-  });
-  await setOption(m, name, 'automatic-rename', 'off');
-  await setOption(m, name, 'allow-rename', 'off');
-  await setOption(m, name, 'mouse', 'on');
-  await setOption(m, name, 'history-limit', '50000');
-  await setPaneOption(m, name, 'allow-passthrough', 'on');
-}
 
 export async function cmdStart(name: string | undefined): Promise<number> {
   if (!name) {
@@ -103,12 +56,7 @@ export async function cmdStop(name: string | undefined, force = false): Promise<
   return 0;
 }
 
-export async function cmdRestart(args: string[]): Promise<number> {
-  const target = args[0];
-  if (!target || args.length !== 1) {
-    console.log('usage: ccmux restart <name>   ·   <machine>:<name> for another fleet machine');
-    return 1;
-  }
+export async function cmdRestart(target: string): Promise<number> {
   const fwd = await forwardIfRemote(target, 'restart', [], { timeoutMs: 120_000 });
   if (fwd.done) return fwd.code;
   const { session: name, m } = fwd;

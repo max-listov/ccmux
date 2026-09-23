@@ -13,8 +13,8 @@ import {
   ruleSetFiles,
   stableJson,
   tomlTableDigest,
-} from '../src/agent/launchInputs.ts';
-import { type LaunchStamp, staleReasons } from '../src/agent/launchStamp.ts';
+} from '../src/agent/launch/launchInputs.ts';
+import { type LaunchStamp, staleReasons } from '../src/agent/launch/launchStamp.ts';
 
 // The blind spot these cover, measured: a global rule set changed, every session on the fleet was
 // running yesterday's rules, and RESTART was blank for all of them. The only remedy left was bouncing

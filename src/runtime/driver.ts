@@ -1,7 +1,7 @@
 import { runClaudeNativeProcess } from '../agent/claude/native/process.ts';
 import { resolveAgentSdk } from '../agent/claude/native/resolve.ts';
-import { preflightOwnedCodex } from '../agent/codex/ownedLaunch.ts';
-import { runOwnedCodexProcess } from '../agent/codex/ownedProcess.ts';
+import { preflightOwnedCodex } from '../agent/codex/owned/launch.ts';
+import { runOwnedCodexProcess } from '../agent/codex/owned/process.ts';
 import { runCustomProcess } from '../agent/custom/process.ts';
 import { runOpenCodeProcess } from '../agent/opencode/process.ts';
 import { preflightOpenCode } from '../agent/opencode/server.ts';

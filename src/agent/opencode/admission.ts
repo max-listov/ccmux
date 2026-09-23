@@ -1,13 +1,13 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { SessionSchema } from '../../config/schema.ts';
 import { admitNativeFork, readNativeForkIntent } from '../../context/fork.ts';
 import { selectOpenCodePolicyAgent } from '../../policy/opencode.ts';
 import { verifyApplicationPolicy } from '../../policy/resolve.ts';
 import { readSelection, seedNativeSelection } from '../../runtime/selection.ts';
 import { managedRuntimeRoot } from '../../runtime/status.ts';
 import { readPrivateJson } from '../../runtime/store.ts';
+import { SessionSchema } from '../../session/schema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
 import { OpenCodeSessionSchema } from './protocol.ts';

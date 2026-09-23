@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
-import { computeStamp, launchStaleReasons, staleReasons } from '../src/agent/launchStamp.ts';
-import { MachineConfigSchema, SessionSchema } from '../src/config/schema.ts';
+import { computeStamp, launchStaleReasons, staleReasons } from '../src/agent/launch/launchStamp.ts';
+import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { SessionSchema } from '../src/session/schema.ts';
 
 const machine = (over: Record<string, unknown> = {}) =>
   MachineConfigSchema.parse({

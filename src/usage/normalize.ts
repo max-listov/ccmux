@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { rec, str } from '../agent/normalize.ts';
+import { rec, str } from '../agent/transcript/normalize.ts';
 import { emptyUsage, type UsageFact, UsageFactSchema, type UsageMetrics } from './schema.ts';
 
 export function token(value: unknown): number | null {

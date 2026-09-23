@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readControlDirectory } from '../src/control/directories.ts';
-import { ControlDirectoryReadSchema } from '../src/control/directorySchema.ts';
+import { ControlDirectoryReadSchema } from '../src/control/schema/directory.ts';
 
 const roots: string[] = [];
 afterEach(() => {

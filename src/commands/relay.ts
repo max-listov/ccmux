@@ -20,14 +20,15 @@ import {
   principalLabel,
   targetLabel,
 } from '../chat/identity.ts';
+import { appendMessage, loadLedger } from '../chat/ledger.ts';
 import { localMessageLookup } from '../chat/localMessages.ts';
 import { principalOrigin } from '../chat/origin.ts';
-import { appendMessage, loadLedger } from '../chat/store.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import { findSession, loadSessions } from '../config/sessions.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
 import type { ChatTarget } from '../types.ts';
 import { log } from '../util/log.ts';
 import { preview } from '../util/preview.ts';
+import { parseFlags } from './flags.ts';
 import { usageLine } from './help.ts';
 
 /**
@@ -44,30 +45,20 @@ import { usageLine } from './help.ts';
  * do honestly: the evidence that these words are theirs is a person's word, and the record says so.
  */
 export async function cmdRelay(args: string[]): Promise<number> {
-  let task: string | null = null;
+  const flags = parseFlags('relay', args);
+  const task = flags.str('task') ?? null;
+  const positionals = flags.positionals;
   let communicationAuthorization: CommunicationAuthorization | undefined;
-  const positionals: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const value = args[i];
-    if (value === '--communication-authorization') {
-      const path = args[++i];
-      if (!path || communicationAuthorization !== undefined) {
-        console.error('relay: one communication authorization JSON file is required');
-        return 1;
-      }
-      try {
-        communicationAuthorization = await readCommunicationAuthorization(path);
-      } catch {
-        console.error(
-          `relay: invalid communication authorization file. ${COMMUNICATION_AUTHORIZATION_HELP}`,
-        );
-        return 1;
-      }
-    } else if (value === '--task') task = args[++i] ?? null;
-    else if (value?.startsWith('--')) {
-      console.error(`relay: unknown flag '${value}'\n${usageLine('relay')}`);
+  const authorizationPath = flags.str('communication-authorization');
+  if (authorizationPath !== undefined) {
+    try {
+      communicationAuthorization = await readCommunicationAuthorization(authorizationPath);
+    } catch {
+      console.error(
+        `relay: invalid communication authorization file. ${COMMUNICATION_AUTHORIZATION_HELP}`,
+      );
       return 1;
-    } else if (value !== undefined) positionals.push(value);
+    }
   }
 
   const token = positionals[0];

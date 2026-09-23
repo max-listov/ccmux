@@ -1,13 +1,12 @@
 import { lastActivityMs, lastTranscriptMessage, providerFor } from '../agent/index.ts';
-import { closeLifecycleTurn, readLifecycle } from '../agent/sessionStatus.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { eventsEnabledFor } from '../config/events.ts';
-import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
-import { loadSessions } from '../config/sessions.ts';
 import { observedPane, observedSessionInventory } from '../monitoring/tmux.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-
 import { managedRuntimeView } from '../runtime/view.ts';
+import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
+import { loadSessions } from '../session/registry.ts';
+import { closeLifecycleTurn, readLifecycle } from '../session/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { appendEvent, type EmitInput } from './feed.ts';
 import { readPaneActivity, writePaneActivity } from './paneActivity.ts';

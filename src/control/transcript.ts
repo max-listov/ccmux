@@ -1,8 +1,9 @@
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
-import { type TranscriptWindow, transcriptJson } from '../commands/transcript.ts';
+import { transcriptJson } from '../context/transcriptJson.ts';
+import type { TranscriptWindowOptions } from '../context/transcriptWindow.ts';
 import type { MachineConfig } from '../types.ts';
-import type { ControlTranscriptReadSchema } from './schema.ts';
+import type { ControlTranscriptReadSchema } from './schema/native.ts';
 import { controlTarget } from './target.ts';
 
 /**
@@ -19,7 +20,7 @@ export async function readControlTranscript(
   signal?: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
-  const window: TranscriptWindow = { tail: input.tail };
+  const window: TranscriptWindowOptions = { tail: input.tail };
   if (input.cursor !== null) window.cursor = input.cursor;
   if (input.before !== null) window.before = input.before;
   if (input.limit !== null) window.limit = input.limit;

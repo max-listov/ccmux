@@ -6,10 +6,10 @@ import { resolveCommunicationBasis } from '../src/chat/communicationBasis.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
 import { rowFromLedgerRecord } from '../src/chat/fleetLog.ts';
 import { codexAppPeer, managedPeer } from '../src/chat/identity.ts';
+import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
 import { boundFrame, MAX_FRAME_BYTES } from '../src/chat/logFeed.ts';
-import { appendMessage, loadLedger } from '../src/chat/store.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
 import { acceptControlMessage } from '../src/control/message.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { communicationAuthorization } from './communication-fixture.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 

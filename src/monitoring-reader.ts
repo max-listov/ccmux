@@ -7,7 +7,7 @@ export {
   MONITORING_MAX_TIMEOUT_MS,
   type MonitoringReadOptions,
   readMonitoringStatus,
-} from './monitoring/native-read.ts';
+} from './monitoring/nativeRead.ts';
 export {
   type MonitoringRead,
   MonitoringReadSchema,

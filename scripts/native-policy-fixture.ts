@@ -9,8 +9,8 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { loadMachineConfig } from '../src/config/machine.ts';
-import { controlSocket } from '../src/control/path.ts';
-import { createInjectedControlClient } from '../src/control/transportBoundary.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import type { AgentPolicies } from '../src/policy/schema.ts';
 import { policySha256 } from '../src/policy/sources.ts';
 import type { MachineConfig } from '../src/types.ts';

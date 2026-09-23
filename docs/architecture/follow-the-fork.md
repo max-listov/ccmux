@@ -40,8 +40,8 @@ jsonl-производные данные ccmux (превью, активнос�
 |---|---|
 | `src/agent/claude/fork.ts` | `detectFork(s, m, rcTitle, takenUuids)` — скан проектной папки, гварды, выбор новейшего титулованного кандидата |
 | `src/agent/index.ts` | опциональный хук контракта `AgentProvider.detectFork` + обёртка `forkedUuid(s, m, all)` (сама исключает uuid других managed-сессий) |
-| `src/config/sessions.ts` | `updateSessionUuid` — атомарная перепривязка одной строки реестра |
-| `src/commands/ensure.ts` | каждый heal-пасс (демон, 30с): сначала follow-fork, потом решение о старте — рестарт всегда резюмит живую беседу |
+| `src/session/registry.ts` | `updateSessionUuid` — атомарная перепривязка одной строки реестра |
+| `src/session/heal.ts` | каждый heal-пасс (демон, 30с): сначала follow-fork, потом решение о старте — рестарт всегда резюмит живую беседу |
 | `src/agent/claude/writers.ts` + `tui/discover.ts` | `externalResumingUuids` — external-дискавери игнорирует процессы ВНУТРИ managed-пейнов (предок — `ccmux _run`): после форка argv пейна всё ещё несёт старый uuid, и без фильтра мёртвая беседа всплывала бы «живым» external-дублем; форк-в-переходе (bg-pty-host — тоже потомок пейна) — забота follow-the-fork, не external |
 | `src/util/readLines.ts` | общие байтовые читалки head/tail (вынесены из agent/index + tui/discover — нужны и форк-детекту, без циклов импортов) |
 

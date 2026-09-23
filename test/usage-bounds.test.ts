@@ -2,7 +2,11 @@ import { afterEach, expect, spyOn, test } from 'bun:test';
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { EMPTY_STATS, indexTranscript, transcriptIndexPath } from '../src/agent/transcriptIndex.ts';
+import {
+  EMPTY_STATS,
+  indexTranscript,
+  transcriptIndexPath,
+} from '../src/agent/transcript/transcriptIndex.ts';
 import { aggregateUsage } from '../src/usage/aggregate.ts';
 import { readUsageFile } from '../src/usage/file.ts';
 import {
@@ -171,7 +175,7 @@ test('independent processes serialize the same cold checkpoint and restart from 
     path,
     `${Array.from({ length: 600 }, (_, i) => JSON.stringify({ type: 'assistant', message: { id: String(i), usage: { input_tokens: 1 } } })).join('\n')}\n`,
   );
-  const module = join(import.meta.dir, '../src/agent/transcriptIndex.ts');
+  const module = join(import.meta.dir, '../src/agent/transcript/transcriptIndex.ts');
   const script = `import {indexTranscript,EMPTY_STATS} from ${JSON.stringify(module)};
     let count=0;const result=indexTranscript(${JSON.stringify(path)},'claude',lines=>{count+=lines.length;return {...EMPTY_STATS,messages:lines.length};});
     console.log(JSON.stringify({count,total:result.totalLines}));`;

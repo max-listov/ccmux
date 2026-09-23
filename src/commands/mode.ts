@@ -1,8 +1,8 @@
 import { escalationRefusal } from '../agent/claude/launch.ts';
-import { PermissionModeSchema } from '../config/schema.ts';
-import { setSessionPermissionMode } from '../config/sessions.ts';
-import { UID } from '../env.ts';
+import { PermissionModeSchema } from '../config/launchSchema.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { setSessionPermissionMode } from '../session/registry.ts';
+import { UID } from '../util/env.ts';
 import { log } from '../util/log.ts';
 
 const CHOICES = PermissionModeSchema.options.join('|');

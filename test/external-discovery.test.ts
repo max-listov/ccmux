@@ -10,7 +10,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ExternalSessionSchema } from '../src/config/schema.ts';
 import { codexOrigin, codexWriterRuntime, isDedicatedCodexCommand } from '../src/external/codex.ts';
 import {
   codexThreadLockPath,
@@ -25,6 +24,7 @@ import {
 import { discoverOne } from '../src/external/discover.ts';
 import { externalSessionKey, managedSessionKey } from '../src/external/keys.ts';
 import { isDescendantProcess, parseProcessSnapshot } from '../src/external/processes.ts';
+import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
 import { makeMachine } from './helpers.ts';
 
 const THREAD_A = '11111111-1111-4111-8111-111111111111';

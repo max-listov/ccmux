@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { withDirectoryLock } from '../config/registryLock.ts';
 import type { MachineConfig } from '../types.ts';
+import { withLock } from '../util/lock.ts';
 import { AttachmentFault, assertAttachment, attachmentRefusal } from './errors.ts';
 import {
   attachmentPath,
@@ -69,7 +69,7 @@ export async function withAttachmentStore<T>(
     root = attachmentRoot(m);
     const ownedRoot = root;
     checkPrivateLock(join(ownedRoot, '.lock'));
-    return await withDirectoryLock(
+    return await withLock(
       join(ownedRoot, '.lock'),
       async () => {
         signal?.throwIfAborted();

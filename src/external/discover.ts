@@ -1,7 +1,7 @@
-import { ExternalSessionSchema } from '../config/schema.ts';
 import type { AgentKind, ExternalSession, MachineConfig } from '../types.ts';
 import { discoverClaude } from './claude.ts';
 import { discoverCodex } from './codex.ts';
+import { ExternalSessionSchema } from './sessionSchema.ts';
 
 export function discoverExternal(m: MachineConfig): ExternalSession[] {
   const rows = [...discoverClaude(m), ...discoverCodex(m)].sort(

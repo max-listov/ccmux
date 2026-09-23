@@ -1,6 +1,6 @@
 import { Box, Text, useStdout } from 'ink';
-import { IS_DEV } from '../../env.ts';
 import type { TranscriptMessage } from '../../types.ts';
+import { IS_DEV } from '../../util/env.ts';
 import { VERSION } from '../../util/version.ts';
 import { Scrollbar } from '../components/Scrollbar.tsx';
 import { SessionCard } from '../components/SessionCard.tsx';

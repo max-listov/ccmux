@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { generateKeyPairSync } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
@@ -12,8 +13,9 @@ import {
 import { join } from 'node:path';
 import { z } from 'zod';
 import { buildBundle } from '../scripts/bundle.ts';
-import { createControlClient } from '../src/control/client.ts';
-import { controlSocket } from '../src/control/path.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { releaseDocument } from '../src/release/document.ts';
 import { VERSION } from '../src/util/version.ts';
 import { makeMachine } from './helpers.ts';
 
@@ -55,8 +57,13 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     mkdirSync(join(root, 'data/app'), { recursive: true });
     copyFileSync(released, bundle);
   } else expect(await buildBundle(bundle)).toBe(true);
-  const bytes = readFileSync(bundle),
-    hash = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+  const bytes = readFileSync(bundle);
+  const pair = generateKeyPairSync('ed25519');
+  const signing = {
+    keyId: 'test-key',
+    privateKey: pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  };
+  const publicKey = pair.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32);
   let requests = 0;
   const server = Bun.serve({
     hostname: '127.0.0.1',
@@ -64,12 +71,17 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     fetch(req): Response {
       requests++;
       if (new URL(req.url).pathname === '/bundle') return new Response(bytes);
-      return Response.json({
-        version: VERSION,
-        notes: 'isolated self-update test',
-        sha256: hash,
-        url: new URL('/bundle', server.url).href,
-      });
+      return Response.json(
+        releaseDocument({
+          version: VERSION,
+          notes: 'isolated self-update test',
+          url: new URL('/bundle', server.url).href,
+          bundle: bytes,
+          commit: 'test',
+          builtAt: new Date().toISOString(),
+          signing,
+        }),
+      );
     },
   });
   const machine = makeMachine({
@@ -83,6 +95,8 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     ensureInterval: 1,
     updateCheckInterval: 1,
     releaseUrl: new URL('/release', server.url).href,
+    releaseAllowPrivateHosts: true,
+    releaseTrustKeys: { 'test-key': publicKey.toString('base64') },
     sessionEvents: false,
     chatEnabled: false,
   });

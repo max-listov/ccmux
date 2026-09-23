@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hasSession, killSessionIfGeneration, newSession, tmuxArgv } from '../src/tmux/tmux.ts';
+import { tmuxArgv } from '../src/tmux/argv.ts';
+import { hasSession, killSessionIfGeneration, newSession } from '../src/tmux/tmux.ts';
 import { makeMachine } from './helpers.ts';
 
 test('bootstrap rollback kills only the tmux session carrying its exact generation', async () => {

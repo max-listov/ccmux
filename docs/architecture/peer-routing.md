@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for managed sessions an
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-30
+updated: 2026-09-23
 ---
 
 # Peer routing and session identity
@@ -42,6 +42,52 @@ keys survive so a newer peer's field reaches a consumer that understands it. A f
 local row with its own "not reported" default therefore travels by construction; the two-list
 arrangement that preceded this shipped four fields present locally and silently absent remotely,
 which a consumer reads as "that session has nothing to show".
+
+### One session by its address: `ccmux state`
+
+A job a session starts — a render, a gate, an upload — runs in its own process and cannot tell
+"still going" from "whoever led it is gone": neither leaves a record. `ccmux state
+[<name|machine:name>] [--since ISO] [--json]` answers for one session by the ordinary address chat and
+the fleet list use, never a second identifier. Its row is built by the same `buildRow` as `list`
+(`collectRows(m, { only })`), so the state vocabulary is the list's and cannot drift from it.
+
+The answer carries `running`, `archived`, `state`, `lifeStartedAt` (the current tmux life) and the
+`conversation` id. With `--since` — the job's own start — `life` says whether the life that was running
+then still is: `same`, `restarted` (the address continues in a new life; ownership is read through the
+address, which a restart keeps) or `stopped`. A renew shows as a changed conversation id at the same
+address. The name defaults to `CCMUX_SESSION`, so a job can record its owner from inside the session.
+
+Exit codes keep apart what a caller must not confuse: 0 the session exists in any state, 3 there is
+no session by that name (with the reason in words, and `exists: false` in JSON), 1 the question could
+not be asked — an unknown machine, an unreachable one, or a peer too old for the verb. ccmux stores no
+jobs and decides nothing about showing them; it answers for its own session only.
+
+### The tmux tree: declared, addressed by id, extended only through ccmux
+
+Every row of `list --json` (and `fleet --json`) carries `tmux: { socket, session, agentPane }` — the
+`-L` socket name (null for the default server), the tmux session name and the agent's pane by tmux's
+own id. A consumer takes these instead of deriving them from the ccmux name, so a rename or a move to a
+named socket is a change in the data, not a silent misdirection. Null for a session that is not running.
+
+The agent pane is addressed by that id, recorded at creation in the session option
+`@ccmux-agent-pane` (`src/tmux/tmux.ts`). The earlier address `=<name>:0.0` is an index: once a session
+holds a second window and the agent's pane dies, tmux resolves that index to the second window's pane
+(measured with `base-index` 0 and 1), so a letter for the agent would be typed into another terminal.
+A pane id resolves to that pane or to nothing. A session created before the id was recorded is given it
+on first use when it has exactly one pane; with more, it keeps the index address until its next start.
+
+Liveness follows the agent pane, not the tmux session: `listAgentLiveness` reads every pane with its
+session's recorded agent pane in one call, and `ensure` takes down a session whose agent pane is gone
+while another window kept it alive, then starts it like any other down session.
+
+`ccmux window <name|machine:name> [--json]` opens a terminal window beside the agent, in the session's
+directory, detached — the agent's window stays current and keeps its size — and prints its pane and
+window ids. It lives and dies with the session: `stop`, `restart` and the heal above take it down, and
+ccmux never types into it. The session environment tmux gives every window holds only the instance
+variables; an agent's chat credential is passed to the agent process alone.
+
+Session options are set with `=<name>:` (`sessionOptionTarget`): `set-option` resolves its target as a
+pane, and a bare `=<name>` there is "no such session" on tmux 3.4 and 3.7 alike.
 
 ## ccmux-managed plane
 
@@ -108,6 +154,39 @@ repeats the check while the turn runs, so reading the whole history cost a full 
 per pass — seconds of CPU and gigabytes of memory on a transcript of a gigabyte, on the daemon's
 event loop. A transcript shorter than that line was rewritten and is searched from the first line;
 a barrier written without the field is read from the first line too.
+
+Every append-only chat store — ledger, ack log, outbox, outbox acks — and the event feed are read
+and appended through `src/util/jsonl.ts`. A long-lived reader decodes only what was appended since its
+last read (same device and inode, not shrunk, same last decoded bytes), so a daemon pass with nothing
+new decodes nothing; each store states what a line that is not JSON means (the ledger refuses the file,
+the ack logs and outbox skip the line, the chat feed keeps it as a hole so line positions hold). The
+ledger and outbox are not rotated: their positions are cursors held elsewhere — see
+`docs/decisions/2026-09-23-chat-stores-are-read-incrementally-not-rotated.md`. Where a letter stands
+is decided in one place, `src/chat/settlement.ts`: `isConditional`, `isDue`, `pickPendingDelivery`
+and `letterState` serve every delivery pass, `msg pending/cancel`, `inbox`, `wait` and the
+undeliverable sweep.
+
+The cursors are not disposable. Immediate mail counts as delivered only by
+`delivered[recipient]`, so a cursors file read as empty would deliver each recipient's mail again
+from its first letter. Three rules keep that from happening:
+
+- **Unreadable is a hold, not a reset.** A cursors file that does not parse or does not match the
+  schema raises `CursorsUnreadableError`: the daemon's inbound delivery stops with the reason logged
+  once per change (outbound flush continues), and `doctor` reports it. Repairing the file, or moving
+  it aside, resumes delivery.
+- **Missing resumes at the present.** A ledger is created together with its cursors, so a ledger
+  without them has lost them. Every recipient in the ledger is then marked delivered and read up to
+  its current length, and that is persisted at once. A letter queued at that moment stays in the
+  ledger (`ccmux chat log`) and is not delivered; nothing is repeated.
+- **One write path.** Every cursor write re-reads the file under `chat-cursors.json.lock` and applies
+  its change to what is there now. The daemon owns every field but `read`, which `ccmux inbox`
+  advances too; `read` only moves forward, and a save keeps the further position per recipient, so
+  a daemon pass that held its cursors for seconds cannot revert an `inbox` that ran meanwhile.
+
+Remote reception admits an envelope under the shared owner-tokened directory lock
+(`chat.jsonl.receive-lock`). The ledger reader treats an unterminated last line as a record still
+being written and skips it; an unparseable line anywhere else is a loud failure.
+
 Lifecycle operations are not chat: `restart --then` does not exist, and a work hand-off must use a
 recorded `msg` envelope.
 
@@ -366,9 +445,11 @@ reaches the recipient before the stale ones it is about. It also leaves both let
 which is the point — the recipient can see that the instruction changed, rather than finding a queue
 that quietly rearranged itself.
 
-Conditional mail is the exception, and only because of what it is: a deferred letter or a timer has
-not been said yet. Re-arming a `--after` watchdog under the same task replaces the pending one for
-the same reason — cancelling an alarm is not unsaying a sentence.
+A timer is the exception, and only because of what it is: it has not been said yet. Re-arming a
+`--after` watchdog under the same task replaces the pending one — cancelling an alarm is not
+unsaying a sentence. A letter that merely waits for the recipient's turn boundary is not a timer:
+waiting is the default for a managed recipient, so two ordinary letters under one task both stay
+pending, and neither is dropped for having arrived while the recipient was busy.
 
 A provider's refusal is a hold, not a failure of ours, and it can come from ANY call in the delivery
 — not the one that is easiest to imagine. A thread another App client is working in reports

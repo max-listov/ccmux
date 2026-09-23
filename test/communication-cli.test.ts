@@ -10,7 +10,7 @@ import {
   managedPeer,
   servicePrincipal,
 } from '../src/chat/identity.ts';
-import { appendMessage, loadLedger } from '../src/chat/store.ts';
+import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
 import { sessionsPath } from '../src/config/paths.ts';
 import { appendOutboxAck } from '../src/fleet/flush.ts';
 import { appendOutbound, loadOutbox } from '../src/fleet/outbox.ts';

@@ -10,13 +10,14 @@ import { CommunicationAuthorizationSchema } from '../src/chat/communicationAutho
 import { LogFrameSchema } from '../src/chat/feedSchema.ts';
 import { rowFromLedgerRecord, rowFromOutbound } from '../src/chat/fleetLog.ts';
 import { managedPeer, servicePrincipal } from '../src/chat/identity.ts';
+import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
 import { boundFrame, MAX_FRAME_BYTES } from '../src/chat/logFeed.ts';
+import { ChatMessageSchema } from '../src/chat/messageSchema.ts';
 import { principalOrigin } from '../src/chat/origin.ts';
-import { appendMessage, chatPaths, loadLedger } from '../src/chat/store.ts';
-import { ChatMessageSchema } from '../src/config/schema.ts';
-import { writeSessionsUnlocked } from '../src/config/sessions.ts';
+import { chatPaths } from '../src/chat/store.ts';
 import { acceptControlMessage } from '../src/control/message.ts';
-import { ControlMessageSchema } from '../src/control/schema.ts';
+import { ControlMessageSchema } from '../src/control/schema/message.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import {
   communicationAuthorization,
   communicationAuthorizationFile,

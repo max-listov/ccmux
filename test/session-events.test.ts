@@ -4,15 +4,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { LifecycleStatus } from '../src/agent/sessionStatus.ts';
-import { closedTurnRecord, SUPERVISOR_CLOSED_EVENT } from '../src/agent/sessionStatus.ts';
 import { INTERRUPTED_MS, turnState } from '../src/chat/turnState.ts';
 import { formatEvent, framedLine, resolveSince, resumeCursor } from '../src/commands/events.ts';
 import { eventForLifecycle, lifecycleToWrite } from '../src/commands/hookStatus.ts';
-import { turnStartedAt } from '../src/commands/list.ts';
 import { eventsEnabledFor } from '../src/config/events.ts';
 import { eventsPath } from '../src/config/paths.ts';
-import { SessionEventSchema } from '../src/config/schema.ts';
 import { appendEvent, buildEvent, feedFiles, parseEvent, readEvents } from '../src/events/feed.ts';
 import {
   lastSignOfLife,
@@ -22,6 +18,10 @@ import {
   transitions,
   UNSEEN,
 } from '../src/events/observe.ts';
+import { SessionEventSchema } from '../src/events/schema.ts';
+import { turnStartedAt } from '../src/inventory/rows.ts';
+import type { LifecycleStatus } from '../src/session/status.ts';
+import { closedTurnRecord, SUPERVISOR_CLOSED_EVENT } from '../src/session/status.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 // Why a feed at all, measured: every outside surface learned about sessions by polling `list --json`
@@ -601,7 +601,7 @@ test('a follower run with --cursor-env resumes from that variable, end to end', 
     expect(unnamed.stdout.toString().trim().split('\n')).toHaveLength(2);
     const empty = run(['--cursor-env'], {});
     expect(empty.exitCode).toBe(1);
-    expect(empty.stderr.toString()).toContain('--cursor-env needs the name');
+    expect(empty.stderr.toString()).toContain('--cursor-env needs a value');
   } finally {
     rmSync(state, { recursive: true, force: true });
   }

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { parse } from '../src/agent/claude/transcript.ts';
-import { toolCategory, toolDisplayName, toolLabel } from '../src/agent/toolMeta.ts';
-import { countLines, resultSummary } from '../src/agent/toolSummary.ts';
+import { toolCategory, toolDisplayName, toolLabel } from '../src/agent/transcript/toolMeta.ts';
+import { countLines, resultSummary } from '../src/agent/transcript/toolSummary.ts';
 
 test('toolCategory buckets the common tools', () => {
   expect(toolCategory('Read')).toBe('read');

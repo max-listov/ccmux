@@ -4,19 +4,13 @@ import {
   providerFor,
   sessionModel,
 } from '../agent/index.ts';
-import {
-  readLifecycle,
-  readMetrics,
-  renderRate,
-  resolveLiveState,
-} from '../agent/sessionStatus.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
-import { readLifecycleBlockForSession } from '../config/lifecycleBlocks.ts';
 import { rcName } from '../config/machine.ts';
 import { lastSignOfLife, type Observed } from '../events/observe.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-
 import { managedRuntimeView } from '../runtime/view.ts';
+import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
+import { readLifecycle, readMetrics, renderRate, resolveLiveState } from '../session/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import type { MonitoringRow } from './schema.ts';
 
