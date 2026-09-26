@@ -51,8 +51,10 @@ export async function readSessionUsage(
     }
     if (Buffer.byteLength(JSON.stringify(result)) > USAGE_MAX_BYTES - 4096)
       throw new Error('Usage response byte budget exceeded');
-    if (result.state === 'building') requestUsageIndex(m.stateDir, exact);
-    else finishUsageIndex(m.stateDir, exact);
+    if (result.state === 'building' || result.reportedPipeline?.state === 'building') {
+      if (!advance) requestUsageIndex(m.stateDir, exact, query);
+    } else finishUsageIndex(m.stateDir, exact, query);
+    result.retryAfterMs = result.state === 'building' ? 1_000 : null;
     return result;
   } catch (error) {
     signal?.throwIfAborted();
@@ -108,7 +110,9 @@ async function readLocalUsage(
         coverage: 'partial',
         addresses: children.slice(0, 100).map((f) => `${exact}#${f.slice(6, -6)}`),
       };
-      for (const address of summary.delegated.addresses) requestUsageIndex(m.stateDir, address);
+      if (!advance)
+        for (const address of summary.delegated.addresses)
+          requestUsageIndex(m.stateDir, address, query);
     }
     const live = liveUsagePath(m, session.uuid);
     if (session.agent === 'claude' && existsSync(live)) {

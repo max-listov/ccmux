@@ -1,4 +1,5 @@
 import { existsSync, lstatSync } from 'node:fs';
+import { z } from 'zod';
 import { getProvider } from '../agent/index.ts';
 import {
   indexTranscript,
@@ -7,7 +8,7 @@ import {
 } from '../agent/transcript/transcriptIndex.ts';
 import { countStats } from '../agent/transcript/transcriptRead.ts';
 import { log } from '../util/log.ts';
-import { aggregateUsage } from './aggregate.ts';
+import { aggregateUsage, queryKey } from './aggregate.ts';
 import { emptyAggregate } from './empty.ts';
 import { partialUsage } from './quality.ts';
 import {
@@ -16,7 +17,9 @@ import {
   type UsageSummary,
   UsageSummarySchema,
 } from './schema.ts';
-import { UsageStore } from './store.ts';
+import { isSqliteBusy, UsageStore } from './store.ts';
+
+const FenceSchema = z.object({ identity: z.string(), bytes: z.int().nonnegative() });
 
 export function unavailableUsage(
   address: string,
@@ -96,19 +99,55 @@ export function readUsageFile(
         source: sourceBytes === null ? result.source : 'readable',
         state: sourceBytes === null ? 'stale' : 'building',
         sourceBytes,
-        reason: 'index-pending',
+        reason: sourceBytes === null ? result.reason : 'index-pending',
+        retryAfterMs: sourceBytes === null ? null : 1_000,
+        ...(sourceBytes === null
+          ? {}
+          : {
+              sourceCoverage: {
+                basis: 'source-snapshot',
+                targetBytes: sourceBytes,
+                throughBytes: 0,
+                complete: false,
+              },
+            }),
       };
     const store = new UsageStore(database);
     try {
       const index = store.read('index', StoredIndexSchema);
       if (!index) return { ...result, state: 'building', reason: 'index-pending' };
       const aggregate = aggregateUsage(store, query);
-      const ready =
+      const caughtUp =
         sourceBytes !== null &&
         index.readOffset === sourceBytes &&
         index.pending === '' &&
         index.identity === sourceIdentity &&
         index.mtime === sourceMtime;
+      // Event timestamps are not ordered. A past window covers a fixed source snapshot,
+      // including late corrections, rather than assuming the first event after `until` is a watermark.
+      const key = `coverage:${queryKey(query, store.identity)}`;
+      let fence = store.read(key, FenceSchema);
+      if (
+        query.until &&
+        sourceBytes !== null &&
+        sourceIdentity !== null &&
+        (!fence || fence.identity !== sourceIdentity || fence.bytes > sourceBytes)
+      ) {
+        fence = { identity: sourceIdentity, bytes: sourceBytes };
+        try {
+          store.write(key, fence);
+        } catch (error) {
+          if (!isSqliteBusy(error)) throw error;
+          fence = null;
+        }
+      }
+      const snapshotReady =
+        !!query.until &&
+        !!fence &&
+        index.identity === sourceIdentity &&
+        index.size >= fence.bytes &&
+        (index.observedSize !== sourceBytes || index.mtime === sourceMtime);
+      const ready = caughtUp || snapshotReady;
       const partial = !ready || index.malformed > 0 || aggregate.ambiguous || aggregate.building;
       if (partial)
         for (const row of [aggregate.self, aggregate.unattributed, ...aggregate.buckets])
@@ -129,12 +168,25 @@ export function readUsageFile(
                 : building
                   ? 'query-building'
                   : ready
-                    ? null
+                    ? aggregate.self.observations === 0
+                      ? 'no-usage-observations'
+                      : null
                     : 'index-pending',
         observedAt: index.observedAt,
         indexedBytes: index.readOffset,
         sourceBytes,
         malformedRecords: index.malformed,
+        retryAfterMs: ready && !building ? null : 1_000,
+        ...(fence
+          ? {
+              sourceCoverage: {
+                basis: 'source-snapshot',
+                targetBytes: fence.bytes,
+                throughBytes: index.size,
+                complete: ready,
+              },
+            }
+          : {}),
       });
     } finally {
       store.close();

@@ -196,3 +196,4 @@ export {
   ControlCreateReceiptSchema,
   ControlCreateSchema,
 } from './session.ts';
+export * from './terminalPrompt.ts';

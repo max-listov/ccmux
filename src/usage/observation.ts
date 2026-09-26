@@ -7,13 +7,15 @@ import { pendingUsageIndexes } from './queue.ts';
 import { UsageQuerySchema } from './schema.ts';
 import { readSessionUsage } from './service.ts';
 
-/** One bounded source slice per tick; busy histories cannot starve another session. */
+/** Requested queries share three ticks, inventory gets the fourth, with round-robin fairness. */
 export function createUsageObservation(
   machine: () => MachineConfig,
   external: ExternalStatusPublisher,
   clock?: ManagedScheduleClock,
 ) {
   let cursor = 0;
+  let requestedCursor = 0;
+  let tick = 0;
   return createManagedSchedule({
     id: 'usage-observation',
     everyMs: 100,
@@ -22,6 +24,13 @@ export function createUsageObservation(
     run: async ({ signal }) => {
       signal.throwIfAborted();
       const m = machine();
+      const pending = pendingUsageIndexes(m.stateDir);
+      const job = pending[requestedCursor % pending.length];
+      if (job && tick++ % 4 !== 3) {
+        requestedCursor++;
+        await readSessionUsage(m, job.address, job.query, true, signal);
+        return;
+      }
       const managed = loadSessions(m);
       const ids = new Set(managed.filter((s) => s.agent === 'codex').map((s) => s.uuid));
       const addresses = [
@@ -31,7 +40,6 @@ export function createUsageObservation(
             .read()
             .sessions.filter((s) => !ids.has(s.identity.threadId))
             .map((s) => `${m.rcPrefix}:app/${s.identity.threadId}`),
-          ...pendingUsageIndexes(m.stateDir),
         ]),
       ];
       if (!addresses.length) return;

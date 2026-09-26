@@ -9,6 +9,7 @@ import { conversationOperations } from './operations/conversation.ts';
 import { sessionOperations } from './operations/session.ts';
 import { usageOperations } from './operations/usage.ts';
 import type { ControlPublisher } from './publisher.ts';
+import { TerminalPrompts } from './terminalPrompt.ts';
 
 /**
  * One domain operation surface shared by local IPC and declared-service ingress.
@@ -45,7 +46,15 @@ export function createControlOperations(
     catalog,
     dependencies,
   };
+  const terminalPrompts = new TerminalPrompts(m);
   const operations = {
+    terminalPrompt: (input: Parameters<TerminalPrompts['read']>[0]) => terminalPrompts.read(input),
+    terminalRespond: (input: Parameters<TerminalPrompts['respond']>[0], signal?: AbortSignal) =>
+      mutations.run(
+        input.target.session,
+        ({ signal: admitted }) => terminalPrompts.respond(input, admitted),
+        { ...(signal ? { signal } : {}), timeoutMs: 5_000 },
+      ),
     ...usageOperations(context),
     ...conversationOperations(context),
     ...attachmentOperations(context),

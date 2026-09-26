@@ -4,8 +4,27 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-09-09 15:32 +07:00
+updated: 2026-09-26 16:00 +07:00
 ---
+
+# Terminal-меню
+
+`terminal.prompt` / CLI `ccmux control terminal_prompt` принимает exact managed target и
+возвращает распознанное меню с option ids, текущим выбором и одноразовым `observationId`
+со сроком 30 секунд. `terminal.respond` / `terminal_respond` принимает target, observationId
+и optionId. Поддержаны интерактивные Claude folder trust, declared permissions, resume picker
+и external imports. Неизвестное меню наблюдаемо, но не получает права на ответ.
+
+Owner читает текущий экран без scrollback и закрепляет pane id, tmux server pid, pane pid и
+время создания сессии. Перед каждой клавишей сверяются lifetime и fingerprint меню; после
+стрелки owner ждёт изменения выбора, а не повторяет её. Наблюдение расходуется до первой
+мутации. Ввод клиента tmux блокируется на время проверки и восстанавливается в `finally`.
+Повторный или устаревший ответ отклоняется. Receipt `submitted` подтверждает отправку Enter,
+не успешное завершение действия провайдера.
+
+Terminal runtime не предоставляет атомарного compare-and-submit: автономная смена экрана
+между capture и обработкой клавиши остаётся ограничением TUI. Контракт не обещает native CAS.
+Для native approval/input используется `native.respond` с provider request identity.
 
 # Ownership
 

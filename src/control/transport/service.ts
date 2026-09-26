@@ -25,6 +25,8 @@ export function controlServices(
     dependencies,
   );
   const service = implement(controlContract, {
+    'terminal.prompt': ({ input }) => operations.terminalPrompt(input.target),
+    'terminal.respond': ({ input, signal }) => operations.terminalRespond(input, signal),
     'usage.read': ({ input, signal }) => operations.usage(input, signal),
     'usage.list': ({ input, signal }) => operations.usageList(input, signal),
     'external.history': ({ input, signal }) => operations.externalHistory(input, signal),

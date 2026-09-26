@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.67.0] — 2026-09-26
+
+- Interactive terminal menus expose single-use observations and guarded option responses through
+  the control contract, CLI and tools. Responses pin the agent pane lifetime, reject stale menus,
+  and check each navigation step; unsupported menus never accept arbitrary keys.
+- Usage window queries complete in the daemon without repeated client polling. Requested queries
+  receive fair priority and bounded 4 MiB indexing slices. Past windows report explicit source
+  snapshot coverage, building responses include retry timing, and empty windows explain missing
+  measurements. Late usage corrections continue to update the result.
+
 ## [0.66.3] — 2026-09-23
 
 events --follow no longer drops events after multibyte text

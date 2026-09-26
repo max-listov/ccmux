@@ -133,10 +133,23 @@ function aggregate(store: UsageStore, query: UsageQuery, writable: boolean) {
         through: 0,
         complete: false,
       };
-      store.db
-        .query(`DELETE FROM metadata WHERE key LIKE 'query:%' AND rowid NOT IN
-        (SELECT rowid FROM metadata WHERE key LIKE 'query:%' ORDER BY rowid DESC LIMIT 31)`)
-        .run();
+      const count = z
+        .object({ n: z.number() })
+        .parse(
+          store.db.query("SELECT COUNT(*) AS n FROM metadata WHERE key LIKE 'query:%'").get(),
+        ).n;
+      if (count >= 32) {
+        const victim = store.db
+          .query(
+            "SELECT key FROM metadata WHERE key LIKE 'query:%' AND json_extract(body,'$.complete')=1 ORDER BY rowid LIMIT 1",
+          )
+          .get();
+        if (victim === null) throw new Error('Usage query cache capacity reached');
+        const name = z.object({ key: z.string() }).parse(victim).key;
+        store.db
+          .query('DELETE FROM metadata WHERE key IN (?,?)')
+          .run(name, `coverage:${name.slice(6)}`);
+      }
       store.db.exec('DELETE FROM buckets WHERE query NOT IN (SELECT key FROM metadata)');
     }
     if (!cache.complete && writable) {

@@ -3,7 +3,7 @@ title: Инкрементальный учёт расхода сессий
 description: Native usage, SQLite checkpoints, bounded запросы и явная полнота измерений без выгрузки переписки.
 status: active
 created: 2026-09-09 15:37 +07:00
-updated: 2026-09-09 15:43 +07:00
+updated: 2026-09-26 16:00 +07:00
 type: architecture
 ---
 
@@ -103,18 +103,31 @@ offset и описывается как частично продвинутый 
 пустой `building` — и оставляет достройку следующему чтению, получившему lock. Кэш делает ответ
 дешёвым, но ответом не является, поэтому занятый lock не превращает расход в `accounting-unavailable`.
 
-Daemon обходит managed/наблюдаемые external/явно запрошенные адреса по очереди: одна порция
-до 64 КиБ каждые 100 мс, skip overlap, shutdown/cancel через application lifecycle.
+Daemon выполняет bounded порции до 4 МиБ каждые 100 мс, skip overlap,
+shutdown/cancel через application lifecycle. Три тика из четырёх отданы round-robin очереди
+явных address + normalized query; четвёртый — фоновому обходу managed/external inventory.
+Без очереди все тики доступны inventory. Читатель не запускает полный scan истории.
 Head-проверка при индексировании читает дополнительно до 4096 байт. Незавершённая строка
 переносится между порциями; record свыше 16 МиБ пропускается с malformed evidence.
 Transcript сохраняет полное initial indexing и прежние absolute-line cursors.
 
-Новый временной query строится порциями до 500 contributions при повторных запросах, до ready
-возвращая building. До 32 prepared queries на ledger. Warm read берёт totals и свою страницу,
+Новый временной query строится порциями до 500 contributions и регистрируется в фоновой очереди:
+одного обращения достаточно для завершения в работающем daemon. `building` возвращает
+`retryAfterMs=1000`. До 32 prepared queries на ledger; незавершённые query не вытесняются новыми.
+Warm read берёт totals и свою страницу,
 не парсит history и не записывает агрегаты. Correction не пересчитывает весь ledger или все дни.
 Bucket page: до 100 строк и 64 КиБ. Summary/machine page: до 256 КиБ. Control reads: concurrency 4,
 admission 6 секунд, contract 7 секунд; cancellation проходит до external lookup.
-Очередь явно запрошенных источников ограничена 512 адресами.
+Очередь ограничена 512 query. Она живёт в daemon; после его рестарта чтение заново регистрирует
+незавершённый запрос, а persistent checkpoints и query caches сохраняют прогресс.
+
+Для окна с `until` `sourceCoverage` фиксирует byte-boundary наблюдаемого источника.
+`basis=source-snapshot`, `targetBytes`, `throughBytes`, `complete` описывают ровно прочитанное
+покрытие. После достижения boundary и построения query ответ становится `ready`, даже если
+источник продолжает расти. Это полнота snapshot, а не гарантия отсутствия будущих correction
+records: event timestamps не обязаны возрастать. Дальнейшее индексирование исправляет totals
+и revision по поздним данным. Замена файла инвалидирует boundary. Пустое готовое окно отвечает
+`reason=no-usage-observations`; `null` метрики не превращаются в нули.
 
 `source` (readable/missing/unreadable/unsupported) независим от `state`
 (building/ready/stale/failed). Malformed/index lag/replay gap/backfill absence не выглядят full.

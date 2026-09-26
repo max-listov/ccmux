@@ -14,7 +14,12 @@ import type { MachineConfig } from '../../types.ts';
  * nobody has made yet, and answering it automatically would hand any checked-in
  * `.claude/settings.local.json` its permissions unread.
  */
-export type PromptKind = 'resume-picker' | 'folder-trust' | 'declared-permissions' | 'unrecognised';
+export type PromptKind =
+  | 'resume-picker'
+  | 'folder-trust'
+  | 'declared-permissions'
+  | 'external-imports'
+  | 'unrecognised';
 
 export type PanePrompt = {
   kind: PromptKind;
@@ -46,7 +51,7 @@ const MENU_CURSOR_RE = /❯\s*\d+\.\s/;
 const MENU_FOOTER_RE = /Enter to confirm\s*·\s*Esc to cancel/;
 
 export function paneTail(paneText: string, lines = 20): string {
-  return paneText.split('\n').slice(-lines).join('\n');
+  return paneText.trimEnd().split('\n').slice(-lines).join('\n');
 }
 
 export function atInteractiveMenu(paneText: string): boolean {
@@ -67,7 +72,38 @@ export function detectPrompt(paneText: string): PanePrompt | null {
       ? { kind: 'declared-permissions', title: 'trust folder + permissions it declares' }
       : { kind: 'folder-trust', title: 'trust this folder' };
   }
+  if (tail.includes('No, disable external imports') && tail.includes('Yes, allow'))
+    return { kind: 'external-imports', title: 'allow external imports' };
   return { kind: 'unrecognised', title: "a choice we don't recognise" };
+}
+
+/** Only complete known option sets are actionable. Numbered and unnumbered menus share labels. */
+export function terminalMenu(paneText: string) {
+  const prompt = detectPrompt(paneText);
+  if (!prompt) return null;
+  const labels =
+    prompt.kind === 'resume-picker'
+      ? [PICKER_SUMMARY, PICKER_FULL]
+      : prompt.kind === 'external-imports'
+        ? ['No, disable external imports', 'Yes, allow']
+        : prompt.kind === 'folder-trust' || prompt.kind === 'declared-permissions'
+          ? ['No, exit', 'Yes, I trust this folder']
+          : [];
+  const options: { id: string; label: string }[] = [];
+  let selected: number | null = null;
+  for (const line of paneTail(paneText, 40).split('\n')) {
+    const match = line.trim().match(/^(❯\s*)?(?:\d+\.\s*)?(.+?)\s*$/);
+    const label = match?.[2];
+    if (!label || !labels.includes(label)) continue;
+    if (match?.[1]) selected = options.length;
+    options.push({ id: String(labels.indexOf(label)), label });
+  }
+  const actionable =
+    labels.length > 0 &&
+    options.length === labels.length &&
+    new Set(options.map((o) => o.id)).size === labels.length &&
+    selected !== null;
+  return { ...prompt, options: actionable ? options : [], selected: actionable ? selected : null };
 }
 
 /** Whether the machine's policy covers this prompt. The levels escalate, so a machine that accepts

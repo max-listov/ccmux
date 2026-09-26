@@ -99,7 +99,7 @@ test('cold file work is byte bounded, survives UTF-8 and partial writes; warm us
     message: {
       id: 'one',
       role: 'assistant',
-      content: [{ type: 'text', text: 'я'.repeat(40000) }],
+      content: [{ type: 'text', text: 'я'.repeat(USAGE_SLICE_BYTES * 0.75) }],
       usage: { input_tokens: 10, output_tokens: 5 },
     },
   });

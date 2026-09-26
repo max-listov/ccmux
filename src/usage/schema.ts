@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const USAGE_MAX_BYTES = 256 * 1024;
-export const USAGE_SLICE_BYTES = 64 * 1024;
+export const USAGE_SLICE_BYTES = 4 * 1024 * 1024;
 export const UsageMetricsSchema = z
   .object({
     inputTokens: z.int().nonnegative().nullable(),
@@ -160,6 +160,16 @@ export const UsageSummarySchema = z
     source: z.enum(['readable', 'missing', 'unreadable', 'unsupported']),
     state: z.enum(['building', 'ready', 'stale', 'failed']),
     reason: z.string().nullable(),
+    retryAfterMs: z.int().positive().nullable().optional(),
+    sourceCoverage: z
+      .object({
+        basis: z.literal('source-snapshot'),
+        targetBytes: z.int().nonnegative(),
+        throughBytes: z.int().nonnegative(),
+        complete: z.boolean(),
+      })
+      .strict()
+      .optional(),
     revision: z.string(),
     observedAt: z.iso.datetime().nullable(),
     sourceEventRange: UsageEventRangeSchema,

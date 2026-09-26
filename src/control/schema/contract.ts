@@ -85,10 +85,36 @@ import {
   ControlCreateReceiptSchema,
   ControlCreateSchema,
 } from './session.ts';
+import {
+  TerminalPromptReadSchema,
+  TerminalPromptReceiptSchema,
+  TerminalPromptRespondSchema,
+  TerminalPromptResultSchema,
+} from './terminalPrompt.ts';
 
 export const controlContract = defineContract(
   { prefix: 'control', scope: 'local' },
   {
+    'terminal.prompt': {
+      method: 'POST',
+      path: '/terminal/prompt',
+      desc: 'Observe a supported interactive terminal menu before choosing an option',
+      input: TerminalPromptReadSchema,
+      output: TerminalPromptResultSchema,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      tool: { name: 'terminal_prompt' },
+      timeout: 7_000,
+    },
+    'terminal.respond': {
+      method: 'POST',
+      path: '/terminal/respond',
+      desc: 'Submit one option from an unexpired single-use terminal observation',
+      input: TerminalPromptRespondSchema,
+      output: TerminalPromptReceiptSchema,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      tool: { name: 'terminal_respond' },
+      timeout: 7_000,
+    },
     'usage.read': {
       method: 'POST',
       path: '/usage',

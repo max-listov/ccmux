@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { createApplication, type ManagedScheduleClock } from 'stitchkit/application';
@@ -69,7 +69,7 @@ test('daemon observation yields between sources and cancels its timer at lifecyc
     await tick();
     for (const path of paths)
       expect(readUsageFile('agent', path, 'claude', UsageQuerySchema.parse({})).indexedBytes).toBe(
-        65536,
+        statSync(path).size,
       );
     expect(observer.status.active).toBe(0);
     expect(observer.status.runsCompleted).toBe(2);
