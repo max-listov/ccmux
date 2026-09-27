@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.67.1] — 2026-09-27
+
+- Codex sender environments with an invalid or missing thread identity fail closed instead of
+  becoming anonymous CLI senders. Exact provider thread verification remains mandatory.
+- Unavailable Desktop control endpoints report their measured failure kind and required capability;
+  native Desktop tools are not treated as a substitute transport or proof of CLI availability.
+
 ## [0.67.0] — 2026-09-26
 
 - Interactive terminal menus expose single-use observations and guarded option responses through

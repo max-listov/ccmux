@@ -42,6 +42,8 @@ function fixture() {
   delete env.CCMUX_CHAT_CREDENTIAL;
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
+  delete env.CODEX_APP_TOOLS_PIPE_PATH;
+  delete env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE;
   async function run(args: string[], envelope?: unknown, command: 'msg' | 'relay' = 'msg') {
     const file = envelope === undefined ? 'msg.ts' : 'receive-chat.ts';
     const invocation =

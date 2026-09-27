@@ -13,8 +13,15 @@ import type { ChatMessage, CodexAppPeer, MachineConfig } from '../types.ts';
 import { codexAppPeer } from './identity.ts';
 
 export function currentCodexAppThreadId(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (
+    env.CODEX_THREAD_ID === undefined &&
+    env.CODEX_APP_TOOLS_PIPE_PATH === undefined &&
+    env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE !== 'Codex Desktop'
+  )
+    return null;
   const parsed = z.uuid().safeParse(env.CODEX_THREAD_ID);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) throw new Error('Codex sender requires a valid CODEX_THREAD_ID');
+  return parsed.data;
 }
 
 export async function resolveCodexAppPeer(
@@ -22,9 +29,10 @@ export async function resolveCodexAppPeer(
   threadId: string,
   connect: (m: MachineConfig) => Promise<CodexAppRpc> = connectCodexAppServer,
 ): Promise<CodexAppPeer> {
+  const id = z.uuid().parse(threadId);
   const rpc = await connect(m);
   try {
-    const thread = await readCodexAppThread(rpc, z.uuid().parse(threadId));
+    const thread = await readCodexAppThread(rpc, id);
     return codexAppPeer(m.rcPrefix, thread.id, thread.name);
   } finally {
     rpc.close();

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CodexAppUnavailable } from '../agent/codex/socket.ts';
 import { lastTranscriptMessage } from '../agent/index.ts';
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, type RemoteTransport } from '../chat/auth.ts';
 import { currentCodexAppThreadId, resolveCodexAppPeer } from '../chat/codexApp.ts';
@@ -62,15 +63,19 @@ export async function senderFor(
     }
     return managedPeer(machine, session);
   }
-  const appThreadId = currentCodexAppThreadId();
-  if (appThreadId !== null) {
-    try {
+  try {
+    const appThreadId = currentCodexAppThreadId();
+    if (appThreadId !== null) {
       return await resolveCodexAppPeer(m, appThreadId);
-    } catch (error) {
-      return {
-        error: `msg: Codex App sender identity could not be verified (${error instanceof Error ? error.message : String(error)})`,
-      };
     }
+  } catch (error) {
+    const capability =
+      error instanceof CodexAppUnavailable
+        ? ` [${error.kind}]. Required: a reachable provider-owned App Server control endpoint with exact thread/read; native Desktop tools are a separate transport. No message was sent`
+        : '';
+    return {
+      error: `msg: Codex App sender identity could not be verified (${error instanceof Error ? error.message : String(error)})${capability}`,
+    };
   }
   return cliPrincipal(machine);
 }

@@ -52,12 +52,20 @@ test('Desktop tool environment becomes an exact App thread identity, never anony
   // Runtime origin flags differ between App hosts; the shared daemon's exact thread/read is the
   // provenance check. A bare UUID is only a candidate until that check succeeds.
   expect(currentCodexAppThreadId({ CODEX_THREAD_ID: UUID })).toBe(UUID);
-  expect(
+  expect(() =>
     currentCodexAppThreadId({
       CODEX_THREAD_ID: 'not-a-uuid',
       CODEX_APP_TOOLS_PIPE_PATH: '/tmp/tools.sock',
     }),
-  ).toBeNull();
+  ).toThrow('valid CODEX_THREAD_ID');
+  expect(currentCodexAppThreadId({})).toBeNull();
+  for (const env of [
+    { CODEX_THREAD_ID: '' },
+    { CODEX_APP_TOOLS_PIPE_PATH: '/tmp/tools.sock' },
+    { CODEX_INTERNAL_ORIGINATOR_OVERRIDE: 'Codex Desktop' },
+  ]) {
+    expect(() => currentCodexAppThreadId(env)).toThrow('valid CODEX_THREAD_ID');
+  }
 });
 
 test('App identity equality ignores title changes and pins machine + UUID', () => {

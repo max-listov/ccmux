@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { cliPrincipal, managedPeer } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
 import { anonymousRemoteWarning } from '../src/commands/messagePeers.ts';
@@ -62,6 +63,7 @@ async function send(
   configPath: string,
   transport: 'ssh' | 'remote' | null,
   args: string[],
+  senderEnv: Record<string, string> = {},
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
@@ -70,6 +72,9 @@ async function send(
   delete env.CCMUX_CHAT_CREDENTIAL;
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
+  delete env.CODEX_APP_TOOLS_PIPE_PATH;
+  delete env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE;
+  Object.assign(env, senderEnv);
   if (transport === null) delete env.CCMUX_TEST_REMOTE_TRANSPORT;
   else env.CCMUX_TEST_REMOTE_TRANSPORT = transport;
   const processHandle = Bun.spawn(
@@ -121,6 +126,102 @@ test('a human using local cli gets no anonymous-ssh warning', async () => {
   expect(result.code).toBe(0);
   expect(result.stderr).not.toContain('warning');
   expect(loadLedger(machine)).toHaveLength(1);
+});
+
+test('invalid or missing Desktop sender identity refuses before ledger admission', async () => {
+  for (const senderEnv of [
+    { CODEX_THREAD_ID: 'not-a-uuid' },
+    { CODEX_THREAD_ID: '' },
+    { CODEX_APP_TOOLS_PIPE_PATH: '/tmp/tools.sock' },
+    { CODEX_INTERNAL_ORIGINATOR_OVERRIDE: 'Codex Desktop' },
+  ]) {
+    const { configPath, machine } = setup();
+    const result = await send(configPath, null, ['worker', 'must not send'], senderEnv);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('valid CODEX_THREAD_ID');
+    expect(result.stdout).not.toContain('sent');
+    expect(loadLedger(machine)).toHaveLength(0);
+  }
+});
+
+test('a valid UUID without provider verification never falls back to CLI', async () => {
+  const { configPath, machine } = setup();
+  writeFileSync(configPath, JSON.stringify({ ...machine, codexHome: machine.stateDir }));
+  const result = await send(configPath, null, ['worker', 'must not send'], {
+    CODEX_THREAD_ID: randomUUID(),
+  });
+  expect(result.code).toBe(1);
+  expect(result.stderr).toContain('[endpoint-absent]');
+  expect(result.stderr).toContain('Required: a reachable provider-owned');
+  expect(loadLedger(machine)).toHaveLength(0);
+});
+
+test('App sender pins the provider response and refuses a different thread before admission', async () => {
+  const { configPath, machine } = setup();
+  const senderId = randomUUID();
+  let returnedId = senderId;
+  const socketDir = join(machine.stateDir, 'app-server-control');
+  mkdirSync(socketDir);
+  writeFileSync(configPath, JSON.stringify({ ...machine, codexHome: machine.stateDir }));
+  const requestSchema = z.object({
+    id: z.number().optional(),
+    method: z.string(),
+    params: z.unknown(),
+  });
+  const server = Bun.serve({
+    unix: join(socketDir, 'app-server-control.sock'),
+    fetch(req, server) {
+      if (server.upgrade(req)) return;
+      return new Response(null, { status: 400 });
+    },
+    websocket: {
+      message(ws, data) {
+        const request = requestSchema.parse(JSON.parse(String(data)));
+        if (request.method === 'initialize')
+          ws.send(JSON.stringify({ id: request.id, result: {} }));
+        if (request.method === 'thread/read') {
+          expect(request.params).toEqual({ threadId: senderId, includeTurns: false });
+          ws.send(
+            JSON.stringify({
+              id: request.id,
+              result: {
+                thread: {
+                  id: returnedId,
+                  name: 'Verified sender',
+                  source: 'appServer',
+                  status: { type: 'active', activeFlags: [] },
+                  canAcceptDirectInput: false,
+                },
+              },
+            }),
+          );
+        }
+      },
+    },
+  });
+  try {
+    const accepted = await send(configPath, null, ['worker', 'verified'], {
+      CODEX_THREAD_ID: senderId,
+    });
+    expect(accepted.code).toBe(0);
+    const ledger = loadLedger(machine);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]?.from).toMatchObject({
+      kind: 'codex-app',
+      threadId: senderId,
+      name: 'Verified sender',
+    });
+    expect(accepted.stdout).toContain(ledger[0]?.id ?? 'missing-receipt');
+    returnedId = randomUUID();
+    const refused = await send(configPath, null, ['worker', 'wrong identity'], {
+      CODEX_THREAD_ID: senderId,
+    });
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain('different thread identity');
+    expect(loadLedger(machine)).toHaveLength(1);
+  } finally {
+    server.stop(true);
+  }
 });
 
 test('the warning predicate is exact to cli over an authenticated remote transport', () => {

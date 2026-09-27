@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for managed sessions an
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-09-23
+updated: 2026-09-27 18:15 +07:00
 ---
 
 # Peer routing and session identity
@@ -574,6 +574,8 @@ narrow bridge into the shared conversation:
 
 - `CODEX_THREAD_ID` is only a candidate sender identity. ccmux confirms that exact UUID through the
   local App Server before writing an envelope; failure is loud and never degrades to `cli`.
+  A present but malformed or empty ID is a refusal, as is a Desktop tool environment without an ID.
+  Only an environment with no Codex sender indicators can select anonymous CLI identity.
 - `app/<uuid>` locally and `<machine>:app/<uuid>` across the fleet resolve through that same server.
   Title is a human-readable snapshot; cwd, recency and title never route.
 - Delivery joins the App's existing shared daemon over its private WebSocket control socket. It uses
@@ -583,6 +585,16 @@ narrow bridge into the shared conversation:
   provider-written `client_id` in JSONL before retrying, so the crash window cannot duplicate a turn.
 - The ordinary ccmux ledger/feed/mirror carries both directions. Native Desktop task messaging
   remains native and is not copied; only explicit `ccmux msg` participates in this channel.
+
+The required capability is a reachable provider-owned Unix WebSocket control endpoint supporting
+`initialize` and exact `thread/read`. A socket file alone does not prove a listener. Connection
+failures distinguish `endpoint-absent`, `endpoint-not-listening`, `upgrade-refused` and
+`connection-lost`; sender resolution refuses before ledger admission in every case.
+An App Server owned by a Desktop host over stdio alone does not expose this capability. Native
+Desktop tools may still work, but their success does not prove CCMux chat delivery or produce a
+CCMux message receipt. CCMux never starts a second App Server or reads a stored transcript as a
+replacement for live sender verification. Testing a consumer's CCMux ledger path requires an
+already verified managed sender or an App host that exposes the required endpoint.
 
 ## Capability-driven routing
 

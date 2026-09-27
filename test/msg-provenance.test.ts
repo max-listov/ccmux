@@ -61,6 +61,8 @@ async function runMsg(
     delete env.CCMUX_SESSION;
     delete env.CODEX_THREAD_ID;
     delete env.CODEX_SESSION_ID;
+    delete env.CODEX_APP_TOOLS_PIPE_PATH;
+    delete env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE;
   }
   const proc = Bun.spawn(
     ['bun', CLI, 'msg', '--communication-authorization', communicationAuthorizationFile, ...args],
