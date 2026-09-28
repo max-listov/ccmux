@@ -1,5 +1,6 @@
 import { loadMachineConfig, rcName } from '../config/machine.ts';
 import { readInventory } from '../events/inventory.ts';
+import { pack, parseKnown } from '../fleet/peerDelta.ts';
 import {
   collectRows,
   envFileEntry,
@@ -44,8 +45,8 @@ function printTable(m: MachineConfig, rows: ListRow[]): void {
   });
 }
 
-async function printJson(m: MachineConfig, rows: ListRow[]): Promise<void> {
-  const out: ListJson = {
+function listJson(m: MachineConfig, rows: ListRow[]): ListJson {
+  return {
     version: VERSION,
     generatedAt: new Date().toISOString(),
     rcPrefix: m.rcPrefix,
@@ -54,7 +55,25 @@ async function printJson(m: MachineConfig, rows: ListRow[]): Promise<void> {
     sessions: rows.map((r) => toListItem(m, r)),
     inventory: readInventory(m),
   };
-  await printLine(JSON.stringify(out));
+}
+
+/**
+ * The same answer for a fleet reader that already holds some of it (see `fleet/peerDelta.ts`): each
+ * session and inventory row it names by digest comes back as that digest. Uptime travels beside
+ * the rows, because it moves every second while nothing happens.
+ */
+export function deltaListJson(answer: ListJson, known: ReadonlySet<string>): unknown {
+  return {
+    ...answer,
+    sessions: pack(answer.sessions, known, ({ uptime, ...stable }) => ({
+      stable,
+      volatile: uptime,
+    })),
+    inventory:
+      answer.inventory === null
+        ? null
+        : { ...answer.inventory, sessions: pack(answer.inventory.sessions, known) },
+  };
 }
 
 /** The three fields the account grouping reads, so `list` and `fleet` answer from one implementation. */
@@ -68,11 +87,23 @@ const fleetRowSlice = (r: ListRow) => ({
 export async function cmdList(args: string[] = []): Promise<number> {
   const m = loadMachineConfig();
   const flags = parseFlags('list', args, [0, 0]);
+  const known = flags.str('known');
+  if (
+    (flags.bool('delta') && !flags.bool('json')) ||
+    (known !== undefined && !flags.bool('delta'))
+  ) {
+    console.error('list: --delta needs --json, and --known needs --delta');
+    return 1;
+  }
   const rows = await collectRows(m);
   // `--json` is a machine's answer and stays complete: a consumer filters for itself, and a reader
-  // that asked for everything must not be given a view. Only the human table folds.
+  // that asked for everything must not be given a view. Only the human table folds. `--delta` is
+  // that same complete answer, minus the rows its reader already holds.
   if (flags.bool('json')) {
-    await printJson(m, rows);
+    const answer = listJson(m, rows);
+    await printLine(
+      JSON.stringify(flags.bool('delta') ? deltaListJson(answer, parseKnown(known)) : answer),
+    );
     return 0;
   }
   const all = flags.bool('all');

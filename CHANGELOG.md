@@ -6,6 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `ccmux fleet` and `ccmux chat log --fleet` read peers by change. The peer is asked with
+  `list --json --delta` / `chat log --json --delta` and `--known` names the rows this reader holds;
+  those rows come back as 16-hex digests, and a running session's uptime travels beside them. With
+  sessions unchanged a peer's list answer drops from tens of kilobytes to a few, and its 30-row log
+  to under a kilobyte. The reader keeps the rows of its latest answer under
+  `~/.cache/ccmux/peer-reads/`.
+- A peer answer that references a row this reader never held fails that machine's row as
+  unreadable; it is never filled in.
+
 ## [0.68.1] — 2026-09-28
 
 Transcript tail no longer answers from a stale index

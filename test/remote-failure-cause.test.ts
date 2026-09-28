@@ -39,7 +39,12 @@ test("a transport failure keeps the transport's detail; unreadable output is not
     peerListMachine(
       'host-b',
       'host-b',
-      answer({ stdout: JSON.stringify({ version: '9.9.9', sessions: [] }) }),
+      answer({
+        stdout: JSON.stringify({
+          version: '9.9.9',
+          sessions: { refs: [], items: {}, volatile: [] },
+        }),
+      }),
     ),
   ).toMatchObject({ ok: true, error: null, version: '9.9.9', sessions: [] });
 });

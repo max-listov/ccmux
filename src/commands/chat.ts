@@ -23,6 +23,7 @@ import { archiveDir } from '../config/paths.ts';
 import { loadOutboxAcked } from '../fleet/flush.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
+import { loadPeerHeld, PackedSchema, pack, parseKnown, unpack } from '../fleet/peerDelta.ts';
 import { peersOf, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import { setSessionChatEnabled } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
@@ -32,18 +33,16 @@ import { resolveSince, resumeCursor } from './events.ts';
 import { type ParsedFlags, parseFlags } from './flags.ts';
 
 const USAGE =
-  'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
+  'usage: ccmux chat <log [-n N] [--fleet] [--json [--delta [--known <digests>]]] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
 
 interface Source {
   machine: LogMachine;
   rows: LogRow[];
 }
 
-/** What we require of a peer's answer before looking at individual rows: just "it has a rows list".
- *  Everything stricter is applied per row, so one bad line is not a lost machine. */
-const RemoteEnvelopeSchema = z.object({
-  rows: z.array(z.record(z.string(), z.unknown())).default([]),
-});
+/** What we require of a peer's answer before looking at individual rows: just "it has its rows,
+ *  packed by change". Everything stricter is applied per row, so one bad line is not a lost machine. */
+const RemoteEnvelopeSchema = z.object({ rows: PackedSchema });
 
 /** The marker the remote transport puts on an answer it had to cut at its stream cap. */
 const TRUNCATION_MARKER = 'output truncated';
@@ -83,11 +82,14 @@ async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
         machine: { machine, ok: false, error },
         rows: [],
       });
+      // Asked by change, like the fleet's session list: a row this reader holds comes back as its
+      // digest, and a log thirty letters deep is otherwise re-sent whole on every read.
+      const held = loadPeerHeld(machine, 'chat-log');
       const r = await runPeer(
         m,
         machine,
         alias,
-        ['ccmux', 'chat', 'log', '-n', String(limit), '--json'],
+        ['ccmux', 'chat', 'log', '-n', String(limit), '--json', '--delta', ...held.knownArgs],
         { timeoutMs: 20_000 },
       );
       if (r.transportFailed) return fail(r.failureDetail ?? 'unreachable (no transit right now)');
@@ -97,13 +99,16 @@ async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
         );
       try {
         const envelope = RemoteEnvelopeSchema.safeParse(JSON.parse(r.stdout)).data;
-        if (envelope === undefined) return fail(unreadableReason(r.stdout, r.stderr));
+        const received = envelope === undefined ? null : unpack(envelope.rows, held.rows);
+        if (envelope === undefined || received === null)
+          return fail(unreadableReason(r.stdout, r.stderr));
+        held.save([envelope.rows]);
         // Row-by-row, so ONE malformed line from a peer costs that line and not the peer's whole
         // history — the same leniency the local ledger loader already applies to its own file.
         // Trust OUR label for the machine, not the peer's self-report: the merged view exists to be
         // copied into an address, and the address that works is the one from this machine's map.
-        const rows = envelope.rows.flatMap((row) => {
-          const parsedRow = LogRowSchema.safeParse({ ...row, machine }).data;
+        const rows = received.flatMap((row) => {
+          const parsedRow = LogRowSchema.safeParse({ ...(row as object), machine }).data;
           return parsedRow === undefined ? [] : [parsedRow];
         });
         return { machine: { machine, ok: true, error: null }, rows };
@@ -199,6 +204,13 @@ function fmtFrame(frame: LogFrame): string {
 
 async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number> {
   if (flags.bool('follow')) return cmdChatFeed(m, flags);
+  if (
+    (flags.bool('delta') && !flags.bool('json')) ||
+    (flags.str('known') !== undefined && !flags.bool('delta'))
+  ) {
+    console.error('chat log: --delta needs --json, and --known needs --delta');
+    return 1;
+  }
   const limit = flags.int('n') ?? 30;
   // Both halves of the exchange: what arrived (ledger) AND what we sent elsewhere (outbox) — the
   // initiator's side is exactly what was missing when a hand-off went to the wrong machine.
@@ -215,7 +227,14 @@ async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number>
   if (flags.bool('json')) {
     // Emitted THROUGH the schema, so the shape a peer parses and the shape we print are one
     // definition rather than two that can drift.
-    await printLine(JSON.stringify(LogPayloadSchema.parse({ machines, rows })));
+    const payload = LogPayloadSchema.parse({ machines, rows });
+    await printLine(
+      JSON.stringify(
+        flags.bool('delta')
+          ? { ...payload, rows: pack(payload.rows, parseKnown(flags.str('known'))) }
+          : payload,
+      ),
+    );
     return 0;
   }
   // Unreachable notices go to stderr so the row stream stays pipeable on stdout.

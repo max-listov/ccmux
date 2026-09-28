@@ -43,6 +43,29 @@ local row with its own "not reported" default therefore travels by construction;
 arrangement that preceded this shipped four fields present locally and silently absent remotely,
 which a consumer reads as "that session has nothing to show".
 
+### A peer answers by change
+
+A fleet reader asks every peer for `list --json` and `chat log -n N --json` every few seconds, and
+between two reads almost nothing moves. So the peer is asked with `--delta`, and the reader names in
+`--known` the rows it already holds. The answer is the same envelope with each large array —
+`sessions`, `inventory.sessions`, the log's `rows` — packed as `{ refs, items, volatile? }`: `refs`
+is every row in order as a 16-hex digest of its bytes, and `items` carries only the rows the reader
+did not name (`src/fleet/peerDelta.ts`).
+
+- **Content-addressed, stateless on the peer.** A changed row has a new digest and is simply not
+  held; the peer remembers nothing it sent. A reader that lost its cache names nothing and receives
+  everything.
+- **What moves without an event travels beside the digest.** A running session's `uptime` is in
+  `volatile`, aligned with `refs`; digesting it would make every row new every second.
+- **The reader's cache** is `~/.cache/ccmux/peer-reads/<machine>.<list|chat-log>.json`, holding
+  exactly the rows of the latest answer. It is loaded once per read and expanded from memory, so a
+  concurrent reader rewriting the file cannot remove a row this read claimed to hold.
+- **A reference the reader never held fails the machine's row** as unreadable. It means the peer
+  broke the exchange, and filling the gap would draw a session list that nobody sent.
+
+With sessions unchanged a peer's list answer is its header, the digests and the uptimes — about
+2 KB for twenty-five sessions; a session taking a step adds that one row.
+
 ### One session by its address: `ccmux state`
 
 A job a session starts — a render, a gate, an upload — runs in its own process and cannot tell

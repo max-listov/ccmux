@@ -248,7 +248,7 @@ test('a peer that publishes no inventory, or an unreadable one, costs only that 
       code: 0,
       stdout: JSON.stringify({
         version: '1.0.0',
-        sessions: [],
+        sessions: { refs: [], items: {}, volatile: [] },
         ...(inventory === undefined ? {} : { inventory }),
       }),
       stderr: '',
@@ -259,7 +259,7 @@ test('a peer that publishes no inventory, or an unreadable one, costs only that 
   expect(answer({ generation: 'not-a-uuid' }).inventory).toBeNull();
   expect(answer({ generation: 'not-a-uuid' }).ok).toBe(true);
   const valid = { generation: UUIDS.b, sequence: 3, pid: 42, sessions: [] };
-  expect(answer(valid).inventory).toEqual(valid);
+  expect(answer({ ...valid, sessions: { refs: [], items: {} } }).inventory).toEqual(valid);
 });
 
 test('an inventory event reads as the state it moved to', () => {

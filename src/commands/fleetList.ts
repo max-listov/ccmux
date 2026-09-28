@@ -5,6 +5,13 @@ import { ROLE_SIGIL } from '../chat/roleAddress.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { readInventory } from '../events/inventory.ts';
 import { type InventorySnapshot, InventorySnapshotSchema } from '../events/schema.ts';
+import {
+  loadPeerHeld,
+  type Packed,
+  PackedSchema,
+  type PeerHeld,
+  unpack,
+} from '../fleet/peerDelta.ts';
 import { peersOf, type RemoteResult, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import {
   ContextInfoSchema,
@@ -109,6 +116,43 @@ const RemoteListSchema = z.object({
   inventory: InventorySnapshotSchema.nullable().default(null).catch(null),
 });
 
+/** A peer's `list --json --delta` envelope: the two row arrays arrive packed (see `peerDelta.ts`). */
+const DeltaListSchema = z
+  .object({
+    sessions: PackedSchema,
+    inventory: z.object({ sessions: PackedSchema }).loose().nullable().default(null).catch(null),
+  })
+  .loose();
+
+/**
+ * A peer's delta answer as the full `list --json` it stands for, plus the packs that name the rows
+ * to keep; null when it is not a delta answer or refers to a row this reader never held.
+ */
+export function expandPeerList(
+  raw: unknown,
+  held: Readonly<Record<string, unknown>>,
+): { answer: unknown; packs: Packed[] } | null {
+  const delta = DeltaListSchema.safeParse(raw).data;
+  if (delta === undefined) return null;
+  const sessions = unpack(delta.sessions, held, (stable, uptime) => ({
+    ...(stable as object),
+    uptime,
+  }));
+  if (sessions === null) return null;
+  const inventoryRows = delta.inventory === null ? null : unpack(delta.inventory.sessions, held);
+  return {
+    answer: {
+      ...delta,
+      sessions,
+      inventory:
+        delta.inventory === null || inventoryRows === null
+          ? null
+          : { ...delta.inventory, sessions: inventoryRows },
+    },
+    packs: delta.inventory === null ? [delta.sessions] : [delta.sessions, delta.inventory.sessions],
+  };
+}
+
 export interface FleetMachine {
   machine: string;
   alias: string | null; // null = this machine
@@ -178,7 +222,11 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
 function collectPeers(m: MachineConfig): Promise<FleetMachine[]> {
   return Promise.all(
     peersOf(m).map(async ({ machine, alias, via }): Promise<FleetMachine> => {
-      const r = await runPeer(m, machine, alias, ['ccmux', 'list', '--json'], {
+      // Asked by change: the rows this reader already holds come back as digests, which is what
+      // keeps a fleet read every few seconds from being the largest flow off the servers.
+      const held = loadPeerHeld(machine, 'list');
+      const argv = ['ccmux', 'list', '--json', '--delta', ...held.knownArgs];
+      const r = await runPeer(m, machine, alias, argv, {
         // The execution budget stays generous — a busy machine listing many sessions is answering,
         // not absent. The DIAL is what gets cut: this view asks every machine at once and has a
         // cell for "not reachable right now", so waiting out one machine's full connect attempt
@@ -189,13 +237,13 @@ function collectPeers(m: MachineConfig): Promise<FleetMachine[]> {
         connectTimeoutSeconds: 3,
       });
       // The row names the path the answer actually took: a fallback came over ssh.
-      return peerListMachine(machine, via === 'remote' && !r.fallback ? 'remote' : alias, r);
+      return peerListMachine(machine, via === 'remote' && !r.fallback ? 'remote' : alias, r, held);
     }),
   );
 }
 
 /**
- * One peer's `list --json` answer, as the row the fleet view draws for that machine.
+ * One peer's `list --json --delta` answer, as the row the fleet view draws for that machine.
  *
  * Every way the answer can fail keeps its own sentence: the transport's own detail, the remote
  * command's first error line with its exit code, or output this version cannot read. A machine that
@@ -205,6 +253,7 @@ export function peerListMachine(
   machine: string,
   alias: string | null,
   r: RemoteResult,
+  held?: PeerHeld,
 ): FleetMachine {
   const failed = (error: string): FleetMachine => ({
     machine,
@@ -224,12 +273,16 @@ export function peerListMachine(
       `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
     );
   let parsed: z.infer<typeof RemoteListSchema> | undefined;
+  let expanded: ReturnType<typeof expandPeerList> = null;
   try {
-    parsed = RemoteListSchema.safeParse(JSON.parse(r.stdout)).data;
+    expanded = expandPeerList(JSON.parse(r.stdout), held?.rows ?? {});
+    parsed = expanded === null ? undefined : RemoteListSchema.safeParse(expanded.answer).data;
   } catch {
     parsed = undefined;
   }
-  if (parsed === undefined) return failed('unreadable list output (older ccmux?)');
+  if (expanded === null || parsed === undefined)
+    return failed('unreadable list output (older ccmux?)');
+  held?.save(expanded.packs);
   return {
     machine,
     alias,
