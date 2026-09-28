@@ -2,6 +2,8 @@ import type { ApplicationAdmission } from 'stitchkit/application';
 import { implement } from 'stitchkit/server';
 import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
 import type { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
+import { peerChatLogAnswer, peerListAnswer } from '../../fleet/peerRead.ts';
+import { peerReadContract } from '../../fleet/peerReadContract.ts';
 import type { MachineConfig } from '../../types.ts';
 import { subscribeControlNative } from '../nativeFeed.ts';
 import type { ControlOperationDependencies } from '../operations/context.ts';
@@ -86,5 +88,11 @@ export function controlServices(
     watchNative: ({ input, signal }) =>
       subscribeControlNative(m, input.target, input.cursor, signal),
   });
-  return { services: [service, events], service, mutations, waits, reads, catalog };
+  // A fleet reader on another machine, relayed by `ccmux _peer-read`: answered here, where the
+  // caches that make building the rows cheap are warm.
+  const peerRead = implement(peerReadContract, {
+    list: ({ input }) => peerListAnswer(m, input.known),
+    'chat-log': ({ input }) => peerChatLogAnswer(m, input.limit, input.known),
+  });
+  return { services: [service, events, peerRead], service, mutations, waits, reads, catalog };
 }

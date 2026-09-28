@@ -136,6 +136,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return (await import('./commands/msg.ts')).cmdMsg(rest);
     case '_chat-receive-v2':
       return (await import('./commands/receiveChat.ts')).cmdReceiveChat();
+    case '_peer-read':
+      return (await import('./commands/peerRead.ts')).cmdPeerRead(rest);
     case '_codex-app-resolve':
       return (await import('./commands/messagePeers.ts')).cmdResolveCodexApp(rest);
     case 'inbox':

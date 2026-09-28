@@ -116,7 +116,7 @@ const RemoteListSchema = z.object({
   inventory: InventorySnapshotSchema.nullable().default(null).catch(null),
 });
 
-/** A peer's `list --json --delta` envelope: the two row arrays arrive packed (see `peerDelta.ts`). */
+/** A peer's `_peer-read list` envelope: the two row arrays arrive packed (see `peerDelta.ts`). */
 const DeltaListSchema = z
   .object({
     sessions: PackedSchema,
@@ -225,7 +225,7 @@ function collectPeers(m: MachineConfig): Promise<FleetMachine[]> {
       // Asked by change: the rows this reader already holds come back as digests, which is what
       // keeps a fleet read every few seconds from being the largest flow off the servers.
       const held = loadPeerHeld(machine, 'list');
-      const argv = ['ccmux', 'list', '--json', '--delta', ...held.knownArgs];
+      const argv = ['ccmux', '_peer-read', 'list', ...held.knownArgs];
       const r = await runPeer(m, machine, alias, argv, {
         // The execution budget stays generous — a busy machine listing many sessions is answering,
         // not absent. The DIAL is what gets cut: this view asks every machine at once and has a
@@ -243,7 +243,7 @@ function collectPeers(m: MachineConfig): Promise<FleetMachine[]> {
 }
 
 /**
- * One peer's `list --json --delta` answer, as the row the fleet view draws for that machine.
+ * One peer's `_peer-read list` answer, as the row the fleet view draws for that machine.
  *
  * Every way the answer can fail keeps its own sentence: the transport's own detail, the remote
  * command's first error line with its exit code, or output this version cannot read. A machine that

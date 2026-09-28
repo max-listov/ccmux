@@ -23,7 +23,7 @@ import { archiveDir } from '../config/paths.ts';
 import { loadOutboxAcked } from '../fleet/flush.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
-import { loadPeerHeld, PackedSchema, pack, parseKnown, unpack } from '../fleet/peerDelta.ts';
+import { loadPeerHeld, PackedSchema, unpack } from '../fleet/peerDelta.ts';
 import { peersOf, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import { setSessionChatEnabled } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
@@ -33,7 +33,7 @@ import { resolveSince, resumeCursor } from './events.ts';
 import { type ParsedFlags, parseFlags } from './flags.ts';
 
 const USAGE =
-  'usage: ccmux chat <log [-n N] [--fleet] [--json [--delta [--known <digests>]]] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
+  'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
 
 interface Source {
   machine: LogMachine;
@@ -89,7 +89,7 @@ async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
         m,
         machine,
         alias,
-        ['ccmux', 'chat', 'log', '-n', String(limit), '--json', '--delta', ...held.knownArgs],
+        ['ccmux', '_peer-read', 'chat-log', '-n', String(limit), ...held.knownArgs],
         { timeoutMs: 20_000 },
       );
       if (r.transportFailed) return fail(r.failureDetail ?? 'unreachable (no transit right now)');
@@ -204,13 +204,6 @@ function fmtFrame(frame: LogFrame): string {
 
 async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number> {
   if (flags.bool('follow')) return cmdChatFeed(m, flags);
-  if (
-    (flags.bool('delta') && !flags.bool('json')) ||
-    (flags.str('known') !== undefined && !flags.bool('delta'))
-  ) {
-    console.error('chat log: --delta needs --json, and --known needs --delta');
-    return 1;
-  }
   const limit = flags.int('n') ?? 30;
   // Both halves of the exchange: what arrived (ledger) AND what we sent elsewhere (outbox) — the
   // initiator's side is exactly what was missing when a hand-off went to the wrong machine.
@@ -227,14 +220,7 @@ async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number>
   if (flags.bool('json')) {
     // Emitted THROUGH the schema, so the shape a peer parses and the shape we print are one
     // definition rather than two that can drift.
-    const payload = LogPayloadSchema.parse({ machines, rows });
-    await printLine(
-      JSON.stringify(
-        flags.bool('delta')
-          ? { ...payload, rows: pack(payload.rows, parseKnown(flags.str('known'))) }
-          : payload,
-      ),
-    );
+    await printLine(JSON.stringify(LogPayloadSchema.parse({ machines, rows })));
     return 0;
   }
   // Unreachable notices go to stderr so the row stream stays pipeable on stdout.

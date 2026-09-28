@@ -45,9 +45,10 @@ which a consumer reads as "that session has nothing to show".
 
 ### A peer answers by change
 
-A fleet reader asks every peer for `list --json` and `chat log -n N --json` every few seconds, and
-between two reads almost nothing moves. So the peer is asked with `--delta`, and the reader names in
-`--known` the rows it already holds. The answer is the same envelope with each large array —
+A fleet reader asks every peer for its session list and its chat log every few seconds, and
+between two reads almost nothing moves. The peer is asked `ccmux _peer-read list` or
+`ccmux _peer-read chat-log -n N`, and the reader names in `--known` the rows it already holds. The
+answer is the `list --json` / `chat log --json` envelope with each large array —
 `sessions`, `inventory.sessions`, the log's `rows` — packed as `{ refs, items, volatile? }`: `refs`
 is every row in order as a 16-hex digest of its bytes, and `items` carries only the rows the reader
 did not name (`src/fleet/peerDelta.ts`).
@@ -65,6 +66,16 @@ did not name (`src/fleet/peerDelta.ts`).
 
 With sessions unchanged a peer's list answer is its header, the digests and the uptimes — about
 2 KB for twenty-five sessions; a session taking a step adds that one row.
+
+**The daemon builds the answer; the command relays it.** Built by a fresh CLI, the session rows
+start cold — transcript tails, the chat ledger parsed from scratch, a pane capture per session —
+about half a second of CPU per read on a machine with two dozen sessions. The daemon holds those
+caches warm and builds the same rows in about a tenth of that. So `_peer-read` loads only a client
+for the internal `ccmux-peer-read` contract (`src/fleet/peerReadContract.ts`), asks the daemon over
+the local control socket and prints the answer; the daemon serves it beside the published control
+contracts, which it is not part of (`src/fleet/peerRead.ts`). Only when the request never reached
+a daemon — none is running — does the command build the same answer itself, with the same
+functions, because a stopped supervisor is not a machine with no sessions.
 
 ### One session by its address: `ccmux state`
 

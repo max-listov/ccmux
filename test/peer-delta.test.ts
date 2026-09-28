@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { expandPeerList, peerListMachine } from '../src/commands/fleetList.ts';
-import { deltaListJson } from '../src/commands/list.ts';
 import {
   loadPeerHeld,
   pack,
@@ -11,6 +10,7 @@ import {
   rowDigest,
   unpack,
 } from '../src/fleet/peerDelta.ts';
+import { packListAnswer as deltaListJson } from '../src/fleet/peerRead.ts';
 import type { RemoteResult } from '../src/fleet/transport.ts';
 import type { ListJson } from '../src/types.ts';
 
