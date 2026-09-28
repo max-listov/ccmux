@@ -86,7 +86,8 @@ requests are refused. There is no TCP listener, caller-selected provider path or
 | Client / CLI | HTTP | Result |
 | --- | --- | --- |
 | `external()` / `ccmux control external --json` | GET `/control/external` | Prepared external snapshot |
-| `watchExternal()` / `ccmux control watch-external` | GET `/control-events/external` | Full baselines and subsequent absolute snapshots |
+| `watchExternal()` | GET `/control-events/external` | Full baselines and subsequent absolute snapshots |
+| `ccmux control watch-external` | the same stream, encoded | Frames: a snapshot, then renewals until the content changes |
 
 `ccmux external --json` remains the explicit, slower discovery/adoption inventory. It is not the
 resident API and should not be run on each status tick. Managed `list`/`watch`, registry and fleet
@@ -97,6 +98,22 @@ availability, reason, observation/expiry times, `truncated`, `omitted` and `sess
 `identity: { provider: 'codex', machine, threadId }`, nullable native title/cwd/update time and the
 existing `turnState` object. Join by exact provider + machine + thread UUID, never title or cwd.
 This is read-only identity, not a managed-session command target.
+
+## The CLI stream carries change
+
+`ccmux control watch-external` writes one frame per line (`src/external/residentFrames.ts`). The
+first frame, and every frame whose content changed, is `{ frame: 'snapshot', snapshot }`. Between
+changes the observer republishes only to move the clock, and the frame is
+`{ frame: 'renewal', generation, after, sequence, observedAt, expiresAt }`: the reader holding the
+snapshot at sequence `after` moves its times, and each row's turn-state times that were the
+snapshot's own, to the new ones. A quiet machine therefore sends a few hundred bytes per pass
+instead of the whole snapshot.
+
+The encoder emits a renewal only when `applyExternalStatusFrame` — the reader's own function,
+exported from `ccmux/control-client` with `ExternalStatusFrameSchema` — reproduces the new snapshot
+exactly; otherwise it sends the snapshot. A renewal whose `generation` or `after` does not match
+what the reader holds returns null: the reader missed a line and reopens, and a reopened stream
+starts with a snapshot. The in-process `watchExternal()` stream keeps absolute snapshots.
 
 Bounds are 512 rows and 1 MiB per snapshot; positive observations take priority over unknown
 history when the byte limit is reached. `omitted` counts rows dropped from the fetched set;
@@ -150,7 +167,7 @@ ssh -o BatchMode=yes -o ControlMaster=no -o ConnectTimeout=10 \
   'ccmux control watch-external'
 ```
 
-Validate each line with `ExternalStatusSnapshotSchema`, cap an unfinished line at 1 MiB + 1 byte,
+Validate each line with `ExternalStatusFrameSchema` and fold it with `applyExternalStatusFrame`, reopening on null; cap an unfinished line at 1 MiB + 1 byte,
 check the returned machine against the configured peer and retain the provider UUID. EOF, invalid
 data or transport failure invalidates only that host; reconnect with bounded backoff and consume
 a fresh baseline. The 5-second evidence lease remains authoritative even before SSH declares a

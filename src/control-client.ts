@@ -13,6 +13,14 @@ export {
   createControlProxy,
 } from './control/transport/client.ts';
 export {
+  applyExternalStatusFrame,
+  createExternalStatusEncoder,
+  type ExternalStatusFrame,
+  ExternalStatusFrameSchema,
+  type ExternalStatusRenewal,
+  ExternalStatusRenewalSchema,
+} from './external/residentFrames.ts';
+export {
   currentExternalStatus,
   type ExternalStatusRow,
   ExternalStatusRowSchema,

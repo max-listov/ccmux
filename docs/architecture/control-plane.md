@@ -100,7 +100,7 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `wait` | POST `/control/wait` | Between-turn outcome, timeout or unavailable |
 | `watch` | GET `/control-events/` | Absolute snapshots over typed NDJSON |
 | `external` | GET `/control/external` | Prepared external native status; no lifecycle rights |
-| `watchExternal` / `watch-external` | GET `/control-events/external` | External absolute snapshots, separate from managed rows |
+| `watchExternal` / `watch-external` | GET `/control-events/external` | External absolute snapshots, separate from managed rows; the CLI encodes them as snapshot and renewal frames |
 | `watchNative` / `watch-native` | POST `/control-events/native` | Cursored native item frames with explicit resync |
 | `selection` / `select` | POST `/control/selection` / `/control/selection/update` | Revisioned defaults, compare-and-swap between turns |
 | `permissionRead` / `permissionUpdate` | POST `/control/permission` / `/control/permission/update` | Observed permission mode with its observation time; replacement checks the observed value |

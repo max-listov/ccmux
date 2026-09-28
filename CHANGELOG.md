@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `ccmux control watch-external` writes frames instead of whole snapshots: the snapshot when the
+  stream opens and whenever its content changes, and in between a renewal of its sequence and
+  times. A quiet machine sends a few hundred bytes per pass instead of ~4 KB. Readers validate
+  lines with `ExternalStatusFrameSchema` and fold them with `applyExternalStatusFrame`
+  (`ccmux/control-client`); a renewal that does not follow the held snapshot returns null and the
+  reader reopens.
+
 ## [0.70.0] — 2026-09-28
 
 Closed readers end commands; sessions outrank their children under OOM
