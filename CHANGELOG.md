@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.68.0] — 2026-09-28
+
+The daemon comes back by itself after a crash reboot
+
 - The daemon comes back by itself after a crash reboot. Locks record their holder's boot and
   process birth (stitchkit 0.100.0), so a pid reused by an unrelated process no longer passes for
   the dead writer; the diagnostic journal reclaims such a lock itself, replacing ccmux's own pid
@@ -16,7 +20,6 @@ the GitHub Release with that section as the notes.
 - The systemd unit no longer has a start limit: its budget was spent by units that `Requires=` the
   daemon, and a tripped limit left the daemon down for good.
 - Removed the migration from the directory lock of ccmux releases before 0.66.0.
-
 ## [0.67.1] — 2026-09-27
 
 - Codex sender environments with an invalid or missing thread identity fail closed instead of
