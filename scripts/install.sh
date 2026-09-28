@@ -98,8 +98,8 @@ fi
 # Required embedded programs must exist before the shim exposes their routes.
 ARTIFACT_STATUS="$(CCMUX_DATA_DIR="$DATA_DIR" "$BUN" "${APP_DIR}/ccmux.js" install --artifacts-only)"
 case "$ARTIFACT_STATUS" in
-  written) note_change "status-line program installed" ;;
-  current) say "status-line program: already correct (unchanged)" ;;
+  written) note_change "embedded programs installed (status line, native backend)" ;;
+  current) say "embedded programs: already correct (unchanged)" ;;
   *) die "unexpected artifact installation result: ${ARTIFACT_STATUS}" ;;
 esac
 

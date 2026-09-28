@@ -60,30 +60,15 @@ test('bundle-mode selfArgv (bun + js) renders into ExecStart (P1-6: no hardcoded
   );
 });
 
-test('the start limit survives the restart burst that actually killed two machines', () => {
+test('systemd never stops restarting the supervisor, at a paced rate', () => {
   const u = renderSystemdUnit(ctx);
-  const value = (key: string) => {
-    const found = new RegExp(`^${key}=(\\d+)$`, 'm').exec(u)?.[1];
-    if (found === undefined) throw new Error(`unit does not set ${key}`);
-    return Number(found);
-  };
-  const windowSec = value('StartLimitIntervalSec');
-  const burst = value('StartLimitBurst');
-  const delaySec = value('RestartSec');
-
-  // Measured, not imagined: an update bounce landed alongside an unrelated systemd re-exec and
-  // produced six starts inside thirty-five seconds. The budget was five per minute, so the sixth
-  // exhausted it — and a tripped start limit is TERMINAL. systemd stops trying, the unit stays
-  // failed, and the supervisor is dead until a person happens to look. Both machines sat that way
-  // for two hours. A burst that is not a crash-loop must not be able to spend the whole budget.
-  const INCIDENT_STARTS = 6;
-  const INCIDENT_SECONDS = 35;
-  expect(INCIDENT_SECONDS).toBeLessThan(windowSec); // the burst falls inside one window
-  expect(INCIDENT_STARTS).toBeLessThan(burst);
-
-  // And a real crash-loop must still trip it: a process that dies at once restarts every
-  // RestartSec, so the whole budget has to be spendable inside the window.
-  expect(burst * delaySec).toBeLessThan(windowSec);
+  // A start limit is terminal, and its budget is shared with every unit that Requires= this one:
+  // a dependent's crash loop spent half of it while the daemon itself was failing on a stale lock.
+  expect(u).toMatch(/^StartLimitIntervalSec=0$/m);
+  expect(u).not.toMatch(/^StartLimitBurst=/m);
+  expect(u).toMatch(/^Restart=always$/m);
+  // Retrying forever is only affordable because each retry waits.
+  expect(Number(/^RestartSec=(\d+)$/m.exec(u)?.[1])).toBeGreaterThanOrEqual(10);
 });
 
 test('the boot unit is rewritten when it differs, never created and never rewritten in place', () => {

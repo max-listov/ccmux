@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureStatusLineApp } from '../src/boot/statusLineInstall.ts';
@@ -102,3 +102,64 @@ test('the shipped bundle carries the status-line program, and it runs on its own
   });
   expect(await proc.exited).toBe(0);
 }, 120_000);
+
+// A lock records its holder's process birth so a pid reused after a crash reboot cannot pass for a
+// dead writer. On macOS that birth is read through stitchkit's native backend, which its loader
+// finds only at `native/` beside the running code's directory. An installed bundle has no
+// node_modules, so the bundle must put the backend exactly there — or every lock records an unknown
+// identity, and a lock a crash left behind can never be reclaimed.
+test.skipIf(process.platform !== 'darwin')(
+  'an installed bundle records its process identity in the locks it takes',
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccmux-bundle-native-'));
+    const out = join(dir, 'ccmux.js');
+    expect(await buildBundle(out)).toBe(true);
+    expect(readFileSync(out, 'utf8')).not.toContain('NATIVE_BACKEND_ARTIFACT = null');
+
+    // A probe bundled the same way the product is, so stitchkit's loader runs from a bundle file.
+    const probeSource = join(dir, 'probe.ts');
+    await Bun.write(
+      probeSource,
+      `import { readFileSync } from 'node:fs';
+       import { withExclusiveLock } from ${JSON.stringify(Bun.resolveSync('stitchkit/files', import.meta.dir))};
+       const lock = process.argv[2];
+       await withExclusiveLock(lock, async () => {
+         console.log(JSON.stringify(JSON.parse(readFileSync(lock, 'utf8')).process ?? null));
+       }, { label: 'probe', timeoutMs: 1000 });`,
+    );
+    const built = await Bun.build({ entrypoints: [probeSource], target: 'bun' });
+    expect(built.success).toBe(true);
+    const probeBytes = await built.outputs[0]?.arrayBuffer();
+    const recorded = async (root: string) => {
+      mkdirSync(join(root, 'app'), { recursive: true });
+      await Bun.write(join(root, 'app', 'probe.js'), probeBytes ?? '');
+      const proc = Bun.spawn(
+        [process.execPath, join(root, 'app', 'probe.js'), join(root, 'probe.lock')],
+        { stdout: 'pipe', stderr: 'pipe' },
+      );
+      const text = await new Response(proc.stdout).text();
+      expect(await proc.exited).toBe(0);
+      return JSON.parse(text);
+    };
+
+    // Negative control: the same bundle with no backend beside it records no identity.
+    expect(await recorded(join(dir, 'bare'))).toBeNull();
+
+    const installed = join(dir, 'installed');
+    const install = Bun.spawn([process.execPath, out, 'install', '--artifacts-only'], {
+      env: { ...process.env, HOME: dir, CCMUX_DATA_DIR: installed },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    expect(await install.exited).toBe(0);
+    const binary = `darwin-${process.arch}.node`;
+    expect(existsSync(join(installed, 'native', binary))).toBe(true);
+    expect(readFileSync(join(installed, 'native', binary))).toEqual(
+      readFileSync(join(import.meta.dir, '..', 'node_modules', 'stitchkit', 'native', binary)),
+    );
+    const identity = await recorded(installed);
+    expect(identity?.platform).toBe('darwin');
+    expect(identity?.startId).toMatch(/^\d+$/);
+  },
+  120_000,
+);

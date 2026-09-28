@@ -1,7 +1,5 @@
-import { lstat, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type DiagnosticJournal, DiagnosticJournalStatusSchema } from 'stitchkit/application';
-import { z } from 'zod';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { withLock } from '../util/lock.ts';
@@ -12,40 +10,14 @@ import {
   type RuntimeJournalWriter,
   runtimeJournalPath,
 } from './journal.ts';
-import { privateRuntimeDirectory, readPrivateJson } from './store.ts';
+import { privateRuntimeDirectory } from './store.ts';
 
-const ClaimSchema = z.object({ pid: z.int().positive(), epoch: z.uuid() }).strict();
-async function recover(path: string): Promise<boolean> {
-  try {
-    const lock = await lstat(`${path}.lock`);
-    if (
-      !lock.isFile() ||
-      lock.isSymbolicLink() ||
-      lock.uid !== process.getuid?.() ||
-      lock.mode & 0o077
-    )
-      throw new Error('Diagnostic writer lock is unsafe');
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
-    throw error;
-  }
-  const claim = readPrivateJson(`${path}.owner.json`, ClaimSchema, 1024);
-  if (!claim) throw new Error('Diagnostic writer has no proven owner');
-  try {
-    process.kill(claim.pid, 0);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
-      await unlink(`${path}.lock`);
-      return true;
-    }
-    throw error;
-  }
-  throw new Error('Diagnostic writer is still alive');
-}
-
-/** The upstream lock is not a crash lease. An owner-aware lifetime lock serializes our own
- * writers, and a private PID claim proves death before removing only a stale upstream lock.
- * An unclaimed lock or live/reused PID fails closed; journal data is never removed for recovery. */
+/** The lifetime lock serializes this machine's writers and waits out one that is still closing.
+ * Inside it, a journal lock left by a crash is reclaimed by the journal itself, and only when its
+ * recorded owner is provably gone: another boot, or the same pid born at another moment. A pid
+ * reused after a crash reboot is therefore not mistaken for the writer. A live owner, an owner
+ * whose identity cannot be read and a lock from before identities were recorded all refuse;
+ * journal data is never removed for recovery. */
 export async function openOwnedRuntimeJournal(m: MachineConfig, writer: RuntimeJournalWriter) {
   const path = runtimeJournalPath(m, writer);
   privateRuntimeDirectory(join(m.stateDir, 'native-diagnostics'));
@@ -59,12 +31,6 @@ export async function openOwnedRuntimeJournal(m: MachineConfig, writer: RuntimeJ
       let journal: DiagnosticJournal<RuntimeJournalEvent> | undefined;
       const failures: unknown[] = [];
       try {
-        recovered = await recover(path);
-        await atomicWrite(
-          `${path}.owner.json`,
-          JSON.stringify({ pid: process.pid, epoch: crypto.randomUUID() }),
-          0o600,
-        );
         journal = await createRuntimeJournal(m, writer, (failure) =>
           recordRuntimeDiagnostic(
             m,
@@ -73,6 +39,7 @@ export async function openOwnedRuntimeJournal(m: MachineConfig, writer: RuntimeJ
             failure.error,
           ),
         );
+        recovered = journal.getStatus().lock.reclaimedStale;
         ready.resolve(journal);
         await stopping.promise;
       } catch (error) {

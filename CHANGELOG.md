@@ -6,6 +6,17 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- The daemon comes back by itself after a crash reboot. Locks record their holder's boot and
+  process birth (stitchkit 0.100.0), so a pid reused by an unrelated process no longer passes for
+  the dead writer; the diagnostic journal reclaims such a lock itself, replacing ccmux's own pid
+  claim. On macOS the installed bundle lays down stitchkit's native backend beside itself, which
+  that identity is read through.
+- The boot guard reverts only a bundle that has never completed a pass on this machine. A crash
+  loop on a proven bundle is left to the supervisor's restarts instead of replacing working code.
+- The systemd unit no longer has a start limit: its budget was spent by units that `Requires=` the
+  daemon, and a tripped limit left the daemon down for good.
+- Removed the migration from the directory lock of ccmux releases before 0.66.0.
+
 ## [0.67.1] — 2026-09-27
 
 - Codex sender environments with an invalid or missing thread identity fail closed instead of

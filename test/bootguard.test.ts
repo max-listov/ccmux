@@ -2,7 +2,12 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bootGuardStart, clearBootGuard, MAX_ATTEMPTS } from '../src/util/bootGuard.ts';
+import {
+  bootGuardStart,
+  clearBootGuard,
+  MAX_ATTEMPTS,
+  proveBootBundle,
+} from '../src/util/bootGuard.ts';
 
 function sandbox(): { counter: string; app: string; bak: string } {
   const dir = mkdtempSync(join(tmpdir(), 'ccmux-guard-'));
@@ -48,4 +53,22 @@ test("no .bak → does NOT revert (can't make things worse), clears to avoid a d
   expect(r).toBe('ok'); // no backup to restore → stay on current
   expect(readFileSync(app, 'utf8')).toBe('CURRENT');
   expect(existsSync(counter)).toBe(false);
+});
+
+// A crash reboot left a lock the daemon could not take; every start failed on it. The bundle had
+// run on that machine, so the loop was the machine's — and reverting put older code in its place.
+test('a crash loop on a bundle that has already worked here does not revert it', () => {
+  const { counter, app } = sandbox();
+  bootGuardStart(counter, app);
+  proveBootBundle(counter);
+  for (let i = 1; i < MAX_ATTEMPTS; i++) expect(bootGuardStart(counter, app)).toBe('ok');
+  expect(bootGuardStart(counter, app)).toBe('ok');
+  expect(readFileSync(app, 'utf8')).toBe('BAD-CURRENT');
+  expect(existsSync(counter)).toBe(false);
+
+  // Negative control: a new bundle that has never passed here is still reverted.
+  writeFileSync(app, 'NEW-UNPROVEN');
+  for (let i = 1; i < MAX_ATTEMPTS; i++) expect(bootGuardStart(counter, app)).toBe('ok');
+  expect(bootGuardStart(counter, app)).toBe('revert');
+  expect(readFileSync(app, 'utf8')).toBe('GOOD-PREVIOUS');
 });

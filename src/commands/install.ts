@@ -39,8 +39,8 @@ export async function cmdInstall(args: string[]): Promise<number> {
   // The prefix is a flag or, as it always was, the one bare word.
   const flags = parseFlags('install', args, [0, 1]);
   if (flags.bool('artifacts-only')) {
-    const { ensureStatusLineApp } = await import('../boot/statusLineInstall.ts');
-    console.log(await ensureStatusLineApp());
+    const { ensureEmbeddedArtifacts } = await import('../boot/installedApp.ts');
+    console.log(await ensureEmbeddedArtifacts());
     return 0;
   }
   const cfg = configPath();

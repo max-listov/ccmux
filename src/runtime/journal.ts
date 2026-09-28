@@ -64,8 +64,9 @@ export function runtimeJournalPath(
 }
 
 /**
- * The owning process supplies its lifetime and failure sink. A stale lock refuses startup;
- * only supervisor evidence that its former writer died may authorize lock recovery.
+ * The owning process supplies its lifetime and failure sink. A lock left by a writer that is
+ * provably gone — another boot, or its pid now held by a process born later — is reclaimed;
+ * every other present lock refuses startup.
  * This journal is not an admission store, fsync receipt or message completion authority.
  */
 export async function createRuntimeJournal(
@@ -80,6 +81,7 @@ export async function createRuntimeJournal(
     eventSchema: RuntimeJournalEventSchema,
     limits: RUNTIME_JOURNAL_LIMITS,
     mode: 0o600,
+    lock: 'reclaim-stale',
     onFailure,
   });
 }

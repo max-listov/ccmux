@@ -57,6 +57,40 @@ async function statusLinePlugin(): Promise<BunPlugin> {
   };
 }
 
+/**
+ * Carry stitchkit's Darwin native backend inside the bundle. Its loader looks beside the running
+ * code, and an installed bundle has no `node_modules`, so the daemon lays the backend down at
+ * `native/` beside the bundle's directory (see `src/boot/nativeBackendInstall.ts`).
+ */
+async function nativeBackendPlugin(): Promise<BunPlugin> {
+  const packaged = async (binary: string) => {
+    const bytes = await Bun.file(
+      join(ROOT, 'node_modules/stitchkit/native', `${binary}.node`),
+    ).bytes();
+    return {
+      data: gzipSync(bytes, { level: 9 }).toString('base64'),
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+  };
+  const artifact = {
+    'darwin-arm64': await packaged('darwin-arm64'),
+    'darwin-x64': await packaged('darwin-x64'),
+  };
+  return {
+    name: 'packaged-native-backend',
+    setup(build) {
+      build.onResolve({ filter: /(^|\/)nativeBackendArtifact\.ts$/ }, () => ({
+        path: 'native-backend-artifact',
+        namespace: 'packaged-native-backend',
+      }));
+      build.onLoad({ filter: /.*/, namespace: 'packaged-native-backend' }, () => ({
+        loader: 'ts',
+        contents: `export const NATIVE_BACKEND_ARTIFACT = ${JSON.stringify(artifact)};`,
+      }));
+    },
+  };
+}
+
 /** Build the single-file prod bundle. The ONE build path — the release ceremony, stage, CI assets,
  *  and the self-contained guard test all go through here, so what the test checks is exactly what
  *  ships. Returns false (and logs) on failure. */
@@ -68,6 +102,7 @@ export async function buildBundle(outfile: string): Promise<boolean> {
     plugins: [
       await customBundlePlugin(),
       await statusLinePlugin(),
+      await nativeBackendPlugin(),
       {
         name: 'stub-react-devtools',
         setup(build) {

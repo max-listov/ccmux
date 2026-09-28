@@ -73,7 +73,7 @@ test('a forced stop the drain could not write is stamped afterwards, so the next
   // What the operator reads next: a forced stop, and a downtime that is a measurement.
   const next = await createDaemonLifecycle({ stateDir }).recordStart({ version: 'test-build' });
   expect(next.previousExit).toBe('forced');
-  expect(next.downtimeMs).not.toBeNull();
+  expect(next.processGapMs).not.toBeNull();
   // The invariant this must not weaken — a run that never reached its own stop is still called
   // abnormal — is pinned on real processes by `test/monitoring-daemon.test.ts`, which SIGKILLs a
   // spawned daemon and asserts the next start says so. It cannot be staged in-process: two ledgers

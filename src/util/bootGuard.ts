@@ -7,9 +7,16 @@
 //
 // Load/syntax failures never reach this code — `update` preflights the candidate bundle
 // before swapping (see update.ts). This guard catches the rarer runtime crash loop.
+//
+// A crash loop is the bundle's fault only while the bundle has never worked here. The first
+// successful pass records the running bundle's digest as proven; a loop on a proven bundle is the
+// machine's — a lock a crash left behind, a full disk, a dependency down — and swapping the bundle
+// would not cure it, only replace working code with older code. That loop is left to the
+// supervisor's restarts, which keep retrying until the cause clears.
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { writeFileAtomicSync } from 'stitchkit/files';
 import { copyFileAtomic } from './atomic.ts';
 import { log } from './log.ts';
 
@@ -26,7 +33,26 @@ function readAttempts(counterFile: string): number {
 
 /** Called at daemon startup. Returns "revert" when the boot loop tripped and the bundle
  *  was restored from .bak (caller must exit non-zero → boot unit relaunches old code). */
+const provenPath = (counterFile: string) => `${counterFile}.proven`;
+function digestOf(path: string): string | null {
+  try {
+    return new Bun.CryptoHasher('sha256').update(readFileSync(path)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+function readProven(counterFile: string): string | null {
+  try {
+    return readFileSync(provenPath(counterFile), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+/** The digest of the bundle this process started from, recorded as proven by its first good pass. */
+let startedDigest: string | null = null;
+
 export function bootGuardStart(counterFile: string, appBundle: string): 'ok' | 'revert' {
+  startedDigest = digestOf(appBundle);
   const attempts = readAttempts(counterFile) + 1;
   try {
     mkdirSync(dirname(counterFile), { recursive: true });
@@ -35,6 +61,14 @@ export function bootGuardStart(counterFile: string, appBundle: string): 'ok' | '
     return 'ok'; // guard must never block a normal start
   }
   if (attempts < MAX_ATTEMPTS) return 'ok';
+  if (startedDigest !== null && startedDigest === readProven(counterFile)) {
+    log.error({
+      msg: 'boot-guard: daemon crash-looped on a bundle that has run here — not reverting; the cause is outside the bundle',
+      attempts,
+    });
+    clearBootGuard(counterFile);
+    return 'ok';
+  }
   const bak = `${appBundle}.bak`;
   if (!existsSync(bak)) {
     log.error({
@@ -58,4 +92,16 @@ export function bootGuardStart(counterFile: string, appBundle: string): 'ok' | '
 /** Called after the daemon's first successful ensure pass — this bundle works. */
 export function clearBootGuard(counterFile: string): void {
   rmSync(counterFile, { force: true });
+}
+
+/** Called once per daemon run after its first successful ensure pass: the bundle it started from
+ * works on this machine, so a later crash loop on the same bytes is not the bundle's. */
+export function proveBootBundle(counterFile: string): void {
+  clearBootGuard(counterFile);
+  if (startedDigest === null) return;
+  try {
+    writeFileAtomicSync(provenPath(counterFile), `${startedDigest}\n`);
+  } catch (error) {
+    log.error({ msg: 'boot-guard: could not record the proven bundle', err: String(error) });
+  }
 }

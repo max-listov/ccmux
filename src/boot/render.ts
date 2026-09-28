@@ -21,19 +21,16 @@ export function renderSystemdUnit(ctx: BootContext): string {
 Description=ccmux — persistent self-healing Claude Code tmux fleet
 After=network-online.target
 Wants=network-online.target
-# A backstop against a genuine crash-loop, sized so that NOTHING the daemon does on purpose can
-# trip it. The daemon restarts itself after applying an update, and a tripped start limit is
-# terminal: systemd stops trying, leaves the unit failed, and the supervisor stays dead until a
-# person happens to look. Two machines spent two hours that way when an update bounce landed
-# alongside an unrelated systemd re-exec and the six starts that followed exhausted a budget of
-# five per minute.
-#
-# A deliberate bounce happens at most once per update check (five minutes apart), so two per window
-# is the ceiling. A real crash-loop exits at once and needs twenty restarts to trip — five minutes
-# at this delay, comfortably inside the window. The macOS side never gives up at all; the daemon
-# being permanently killable on one platform and not the other was the asymmetry, not the policy.
-StartLimitIntervalSec=600
-StartLimitBurst=20
+# systemd never gives up on the supervisor. A tripped start limit is terminal: the unit stays
+# failed and every session is unsupervised until a person happens to look. And the budget is not
+# this unit's alone — every start request counts, including those a unit that Requires= this one
+# makes each time it restarts, so a neighbour's crash loop spends it. After a crash reboot the
+# daemon failed ten times on a lock the crash had left, a dependent adapter looping beside it spent
+# the other ten starts of a budget of twenty, and systemd stopped restarting the daemon for good.
+# A crash loop of the bundle itself is the boot guard's to cure (it reverts an
+# unproven bundle); anything else clears by retrying, which RestartSec paces. launchd's KeepAlive
+# never gives up either: both platforms keep the same promise.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

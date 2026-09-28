@@ -29,7 +29,7 @@ import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/jo
 import { healOnce } from '../session/heal.ts';
 import type { MachineConfig } from '../types.ts';
 import { createUsageObservation } from '../usage/observation.ts';
-import { clearBootGuard } from '../util/bootGuard.ts';
+import { proveBootBundle } from '../util/bootGuard.ts';
 import { IS_DEV } from '../util/env.ts';
 import { log, setLogLevel } from '../util/log.ts';
 import { VERSION } from '../util/version.ts';
@@ -60,13 +60,17 @@ export function createDaemonApplication(initial: MachineConfig) {
           ? fact.startedAt
           : fact.type === 'ready'
             ? fact.readyAt
-            : fact.stoppedAt,
+            : fact.type === 'draining'
+              ? (fact.unavailableAt ?? new Date().toISOString())
+              : fact.stoppedAt,
       kind:
         fact.type === 'ready'
           ? 'bound'
-          : fact.type === 'started' && fact.previousExit === 'abnormal'
-            ? 'recovery'
-            : fact.type,
+          : fact.type === 'draining'
+            ? 'stopping'
+            : fact.type === 'started' && fact.previousExit === 'abnormal'
+              ? 'recovery'
+              : fact.type,
     });
   });
   const processLifecycle = {
@@ -234,7 +238,7 @@ export function createDaemonApplication(initial: MachineConfig) {
         try {
           await healOnce();
           if (!IS_DEV && !guardCleared) {
-            clearBootGuard(BOOT_ATTEMPTS);
+            proveBootBundle(BOOT_ATTEMPTS);
             guardCleared = true;
           }
         } catch (error) {

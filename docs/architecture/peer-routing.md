@@ -183,7 +183,7 @@ from its first letter. Three rules keep that from happening:
   advances too; `read` only moves forward, and a save keeps the further position per recipient, so
   a daemon pass that held its cursors for seconds cannot revert an `inbox` that ran meanwhile.
 
-Remote reception admits an envelope under the shared owner-tokened directory lock
+Remote reception admits an envelope under the shared exclusive file lock
 (`chat.jsonl.receive-lock`). The ledger reader treats an unterminated last line as a record still
 being written and skips it; an unparseable line anywhere else is a loud failure.
 

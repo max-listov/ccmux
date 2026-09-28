@@ -212,9 +212,14 @@ private diagnostic facility. Daemon and worker identities resolve distinct fixed
 The limits are 8 KiB per event, 256 queued items/1 MiB, 2 MiB per file and four files per writer.
 Admission refusal counters, physical-write status, rotation and partial-tail evidence remain
 observable. Admission into memory is not durable delivery, fsync or native-turn completion.
-`src/runtime/journalOwner.ts` integrates the daemon and Custom worker lifetimes. A private PID claim
-and existing owner-aware directory lock authorize removal of only an upstream lock whose writer
-is positively dead. Unclaimed, live or reused PID locks refuse; journal data is retained. Status
+`src/runtime/journalOwner.ts` integrates the daemon and Custom worker lifetimes. An owner lock
+serializes this machine's writers; inside it the journal opens with stitchkit's `reclaim-stale`
+policy. Every lock record carries its holder's boot and process birth, so a lock is reclaimed only
+when that writer is provably gone: another boot, the pid absent, or the pid now held by a process
+born later — the pid reuse a crash reboot produces. A live matching owner, an unreadable identity
+and a record from before identities were recorded refuse; journal data is retained. On macOS the
+birth is read through stitchkit's native backend, which the installed bundle lays down at
+`native/` beside its directory (`src/boot/nativeBackendInstall.ts`). Status
 counters are persisted with a one-second cadence and at bounded close. Request, answer, interrupt,
 gap and terminal transitions carry only allowlisted metadata. Other native engines retain their
 existing private diagnostics; no journal is used as their canonical execution state.

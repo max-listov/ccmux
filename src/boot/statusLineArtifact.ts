@@ -6,10 +6,6 @@
  * this module with the real bytes, so the shipped bundle can lay the program down beside itself
  * without a second download, a second manifest entry or a second thing that can be missing.
  */
-export interface StatusLineArtifact {
-  /** gzip, base64 — the same shape the packaged custom runtime travels in. */
-  data: string;
-  sha256: string;
-}
+import type { PackagedFile } from './packagedFile.ts';
 
-export const STATUS_LINE_ARTIFACT: StatusLineArtifact | null = null;
+export const STATUS_LINE_ARTIFACT: PackagedFile | null = null;

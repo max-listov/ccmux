@@ -84,7 +84,14 @@ list aggregation. It is produced by the existing daemon observation loop.
   `bun <candidate> version` обязан вернуть верную версию ДО свапа (ловит не-загружающийся бандл,
   live не трогается); (2) **boot-guard** — счётчик стартов демона (`~/.ccmux/boot-attempts`):
   3 старта без успешного ensure-тика → возврат `.bak` + exit≠0 → boot-юнит поднимает старый бандл.
-  Демон чистит счётчик после первого хорошего тика. Откат вручную: `ccmux update --rollback`.
+  Первый хороший тик чистит счётчик и записывает sha256 бандла как проверенный
+  (`boot-attempts.proven`). Цикл падений на проверенном бандле — причина вне бандла (lock после
+  аварии, диск, зависимость): `.bak` не копируется, рестарты супервизора продолжаются. Откат
+  вручную: `ccmux update --rollback`.
+- **Супервизор не сдаётся**: systemd-юнит — `StartLimitIntervalSec=0`, `Restart=always`,
+  `RestartSec=15`. Предел запусков у systemd терминален, и его бюджет тратят старты юнитов с
+  `Requires=ccmux.service`: зацикленный соседний адаптер съел половину бюджета, пока демон падал на
+  lock. launchd (`KeepAlive`) тоже не сдаётся.
 - **Новый клиент** — одной командой: `curl -fsSL <repo>/releases/latest/download/install.sh | bash`
   (`scripts/install.sh`): ставит bun при отсутствии, качает бандл + sha256-verify, шим в `~/.local/bin/ccmux`,
   `ccmux install --rc-prefix … --release-url <manifest>` (пишет releaseUrl + autoUpdate). Override

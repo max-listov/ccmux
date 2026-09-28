@@ -57,6 +57,8 @@ export const CACHE_DIR: string =
 
 /** The bundle the boot daemon and the `ccmux` command run; `ccmux update` swaps it atomically. */
 export const APP_BUNDLE = join(DATA_DIR, 'app', 'ccmux.js');
+/** Stitchkit's Darwin native backend, where its loader looks relative to the bundle (`app/../native`). */
+export const NATIVE_BACKEND_DIR = join(DATA_DIR, 'native');
 /** Required status-line program, installed beside the bundle before writing the PATH shim. */
 export const STATUS_LINE_APP = join(DATA_DIR, 'app', 'status-line.js');
 
