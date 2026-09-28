@@ -6,12 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.72.0] — 2026-09-28
+
+Peer reads are answered by the daemon
+
 - A fleet read no longer builds the peer's answer in a fresh process. `ccmux fleet` and
   `chat log --fleet` ask `ccmux _peer-read list|chat-log`, which relays to the peer's daemon over
   its control socket; the daemon builds the rows with its caches warm, about a tenth of the CPU a
   cold `list --json` spends. With no daemon running the command builds the same answer itself.
   `list` and `chat log` no longer take `--delta`/`--known`.
-
 ## [0.71.0] — 2026-09-28
 
 External status streams as a snapshot and renewals
