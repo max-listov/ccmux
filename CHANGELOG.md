@@ -6,10 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.68.1] — 2026-09-28
+
+Transcript tail no longer answers from a stale index
+
 - A transcript read that loses the index lock to another reader no longer ends the file at the
   last commit. It catches up the rest of the file in memory, so `tail` at the end of a turn includes
   the turn's final lines.
-
 ## [0.68.0] — 2026-09-28
 
 The daemon comes back by itself after a crash reboot
