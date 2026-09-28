@@ -18,6 +18,7 @@ function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {
     // local|dev|prod into machine.json; until then every command works as "local".
     rcPrefix: 'local',
     ensureInterval: 30,
+    oomScoreAdj: -300,
     permissionMode: 'auto',
     bootLabel: mac ? 'com.ccmux.daemon' : 'ccmux.service',
     extraFlags: [],

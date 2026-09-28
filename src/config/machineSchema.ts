@@ -149,6 +149,11 @@ export const MachineConfigSchema = z.object({
   stateDir: z.string().startsWith('/'),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.
   ensureInterval: z.number().int().positive().default(30),
+  // Linux: the `oom_score_adj` the supervising spine runs at — the daemon, the tmux server, each
+  // pane's `_run` and its agent — so a shared cgroup's OOM killer takes an agent's browser or build
+  // before the agent. Descendants that merely inherited it are returned to 0. `null` turns it off;
+  // a machine without the privilege to lower it logs that once and leaves it off.
+  oomScoreAdj: z.number().int().min(-1000).max(-1).nullable().default(-300),
   // Machine-wide DEFAULT permission mode (matches `claude --permission-mode` choices).
   // A session can override it per-session (Session.permissionMode). Escalated modes
   // (bypassPermissions/dontAsk) are honored for non-root daemons. Under root they require the

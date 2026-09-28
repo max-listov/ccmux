@@ -224,6 +224,23 @@ counters are persisted with a one-second cadence and at bounded close. Request, 
 gap and terminal transitions carry only allowlisted metadata. Other native engines retain their
 existing private diagnostics; no journal is used as their canonical execution state.
 
+## Memory pressure: who the OOM killer takes
+
+On Linux every session shares one memory cgroup with what it starts, and the kernel picks an OOM
+victim by size and `oom_score_adj`. The daemon keeps the supervising spine below its work
+(`src/runtime/oomPriority.ts`): itself, the tmux server holding the panes, each pane's `_run` and
+the agent `_run` started run at `oomScoreAdj` from the machine config (default `-300`, `null`
+turns it off). The value is inherited at fork, so the same pass, every two seconds, returns each
+descendant of an agent or of the daemon that is still at exactly that value to 0: an agent's tools,
+browsers and builds are the victims before the agent. A descendant that set itself higher — a
+headless browser at 200–300 — or lower on purpose keeps its value, and a spine process already
+protected further is not raised.
+
+The table is read from `/proc`, one file per process, and only interpreters pay a second read to
+be recognised as a pane runner; nothing is spawned. Lowering needs `CAP_SYS_RESOURCE`: a daemon
+refused it logs one warning and leaves the mechanism off until it restarts. macOS has no such knob
+and is untouched.
+
 ## Upgrade and rollback
 
 Runtime selection defaults to Codex at the public create boundary; accepted create identities remain

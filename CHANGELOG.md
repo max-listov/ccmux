@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A command whose reader has left finishes instead of spinning. After a closed pipe the first
+  write fails with EPIPE and later ones never drain; waiting for `drain` there waited forever while
+  the runtime retried the bytes, and `ccmux fleet` from a caller that had finished held a core for
+  hours. Every stdout writer, `control watch` and the native stream now stop on a reader that left.
+- On Linux the supervising spine — the daemon, the tmux server, each pane's `_run` and its agent —
+  runs at `oomScoreAdj` (machine config, default `-300`, `null` off), and every two seconds the
+  daemon returns descendants that merely inherited it to 0, so a shared cgroup's OOM killer takes an
+  agent's browser or build before the agent. Without the privilege to lower it the daemon logs once
+  and leaves it off.
+
 ## [0.69.0] — 2026-09-28
 
 Fleet reads carry only what changed

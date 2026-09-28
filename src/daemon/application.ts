@@ -26,11 +26,18 @@ import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
 import { autoUpdateOnce } from '../release/update.ts';
 import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/journalOwner.ts';
+import {
+  applyOomPriority,
+  isPermissionRefusal,
+  oomPlan,
+  procOomAccess,
+  readProcTable,
+} from '../runtime/oomPriority.ts';
 import { healOnce } from '../session/heal.ts';
 import type { MachineConfig } from '../types.ts';
 import { createUsageObservation } from '../usage/observation.ts';
 import { proveBootBundle } from '../util/bootGuard.ts';
-import { IS_DEV } from '../util/env.ts';
+import { IS_DEV, PLATFORM } from '../util/env.ts';
 import { log, setLogLevel } from '../util/log.ts';
 import { VERSION } from '../util/version.ts';
 import { createDaemonLifecycle } from './lifecycle.ts';
@@ -273,6 +280,31 @@ export function createDaemonApplication(initial: MachineConfig) {
   });
   // The transcript index cache otherwise only grows: every transcript ever read keeps an index, and
   // nothing removed one whose transcript was gone. Once a day, and first a minute after start.
+  // Every two seconds rather than with the heal pass: a build an agent starts inherits the agent's
+  // lowered value, and the time until it is returned to 0 is the time it would be spared instead of
+  // the agent. Reading the table is one file per process and spawns nothing.
+  let oomRefused = false;
+  const oomPriority = createManagedSchedule({
+    id: 'oom-priority',
+    everyMs: 2000,
+    startAfterMs: 0,
+    overlap: { mode: 'skip' },
+    run: async () => {
+      const target = machine().oomScoreAdj;
+      if (PLATFORM !== 'linux' || target === null || oomRefused) return;
+      try {
+        applyOomPriority(oomPlan(readProcTable(), process.pid), target, procOomAccess());
+      } catch (error) {
+        if (!isPermissionRefusal(error)) throw error;
+        oomRefused = true;
+        log.warn({
+          msg: 'oom priority off: this daemon may not lower oom_score_adj here',
+          err: String(error),
+        });
+      }
+    },
+    onError: (error) => log.warn({ msg: 'oom priority pass failed', err: String(error) }),
+  });
   const cachePrune = createManagedSchedule({
     id: 'cache-prune',
     everyMs: 24 * 60 * 60 * 1000,
@@ -305,6 +337,7 @@ export function createDaemonApplication(initial: MachineConfig) {
       freshness,
       delivery,
       healing,
+      oomPriority,
       cachePrune,
     ],
     shutdown: { gracePeriodMs: 5000, forceTimeoutMs: 2000 },
