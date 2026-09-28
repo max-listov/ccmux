@@ -1,5 +1,5 @@
-import { once } from 'node:events';
 import { createControlClient, createControlProxy } from '../control/transport/client.ts';
+import { writeOut } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
 
 export async function cmdControl(args: string[]): Promise<number> {
@@ -23,8 +23,8 @@ export async function cmdControl(args: string[]): Promise<number> {
             ? await client.watchExternal.withOptions({ signal: controller.signal })
             : await client.watch.withOptions({ signal: controller.signal });
         for await (const snapshot of stream) {
-          if (!process.stdout.write(`${JSON.stringify(snapshot)}\n`))
-            await once(process.stdout, 'drain', { signal: controller.signal });
+          // A reader that left ends the watch instead of leaving it to feed a closed pipe.
+          if (!(await writeOut(`${JSON.stringify(snapshot)}\n`))) break;
         }
       } finally {
         await client.close();

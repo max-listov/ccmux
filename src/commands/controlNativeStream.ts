@@ -1,4 +1,3 @@
-import { once } from 'node:events';
 import type { ControlNativeSnapshot } from '../control/schema/native.ts';
 import {
   CCMUX_NATIVE_STREAM_HEARTBEAT_MS,
@@ -9,6 +8,7 @@ import {
   readControlNativeStreamCursor,
 } from '../control/schema/nativeStreamContract.ts';
 import { createControlClient } from '../control/transport/client.ts';
+import { writeOut } from '../util/stdout.ts';
 
 async function boundedStdin(maxBytes: number): Promise<string> {
   const reader = Bun.stdin.stream().getReader();
@@ -37,9 +37,9 @@ async function boundedStdin(maxBytes: number): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-async function writeFrame(snapshot: ControlNativeSnapshot): Promise<void> {
-  const line = `${JSON.stringify(controlNativeStreamFrame(snapshot))}\n`;
-  if (!process.stdout.write(line)) await once(process.stdout, 'drain');
+/** False when the reader is gone, which ends the stream rather than feeding a closed pipe. */
+function writeFrame(snapshot: ControlNativeSnapshot): Promise<boolean> {
+  return writeOut(`${JSON.stringify(controlNativeStreamFrame(snapshot))}\n`);
 }
 
 /**
@@ -87,13 +87,13 @@ export async function cmdControlNativeStream(): Promise<number> {
         if (last !== null) {
           if (Date.parse(last.expiresAt) <= Date.now())
             throw new Error('Native stream lease expired');
-          await writeFrame(last);
+          if (!(await writeFrame(last))) break;
         }
         continue;
       }
       if (outcome.value.done) break;
       last = outcome.value.value;
-      await writeFrame(last);
+      if (!(await writeFrame(last))) break;
       pending = iterator.next();
     }
     return 0;
