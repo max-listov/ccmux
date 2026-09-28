@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,6 +8,7 @@ import {
   EMPTY_STATS,
   indexTranscript,
   SCAN_CHUNK,
+  transcriptIndexPath,
 } from '../src/agent/transcript/transcriptIndex.ts';
 
 /**
@@ -148,5 +150,32 @@ test("another runtime's counts are not inherited", () => {
     // different messages out of the same bytes, so the count belongs to the pair, not the file.
     const other = indexTranscript(path, 'codex', () => ({ ...EMPTY_STATS, messages: 3 }));
     expect(other?.stats.messages).toBe(3);
+  });
+});
+
+// At the end of a turn two readers ask for the same transcript at once, and only one can advance
+// its index. The other answered from the last commit, so its `tail` ended before the turn's final
+// answer while reading as an ordinary, current window.
+test('a reader that loses the index lock still sees the lines appended since the last commit', () => {
+  withFile(numbered(1_000), (path) => {
+    expect(indexTranscript(path, 'claude', noStats)?.totalLines).toBe(1_000);
+    appendFileSync(path, '{"n":1001}\n{"n":1002}\n{"n":1003}\n');
+
+    const holder = new Database(transcriptIndexPath(path));
+    holder.exec('BEGIN IMMEDIATE');
+    try {
+      const index = indexTranscript(path, 'claude', noStats);
+      expect(index?.totalLines).toBe(1_003);
+      expect(index?.indexedBytes).toBe(index?.sourceBytes);
+      expect(index?.read(999, 1_003)).toEqual(
+        [999, 1000, 1001, 1002, 1003].map((n) => JSON.stringify({ n })),
+      );
+    } finally {
+      holder.exec('ROLLBACK');
+      holder.close();
+    }
+
+    // The lock is free again: an ordinary reader advances the stored index itself.
+    expect(indexTranscript(path, 'claude', noStats)?.totalLines).toBe(1_003);
   });
 });

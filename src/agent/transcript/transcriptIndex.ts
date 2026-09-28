@@ -280,7 +280,9 @@ export function indexTranscript(
         };
         const oldOffset = index.readOffset;
         if (index.readOffset < size)
-          scanForward(fd, index, Math.min(size, oldOffset + maxBytes), accumulate, owner);
+          scanForward(fd, index, Math.min(size, oldOffset + maxBytes), accumulate, (fact) =>
+            owner.put(fact),
+          );
         index.observedSize = size;
         index.mtime = stat.mtimeMs;
         if (!stored || index.readOffset !== oldOffset) {
@@ -292,7 +294,19 @@ export function indexTranscript(
         if (!stored || owner.read(SOURCE_KEY, z.string()) === null) owner.write(SOURCE_KEY, path);
         return index;
       },
-      () => loadStored(owner, agent, head, size, identity, stat.mtimeMs),
+      () => {
+        const committed = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
+        // Caught up in memory only: the process holding the lock records these lines itself.
+        if (committed && committed.readOffset < size)
+          scanForward(
+            fd,
+            committed,
+            Math.min(size, committed.readOffset + maxBytes),
+            accumulate,
+            () => {},
+          );
+        return committed;
+      },
     );
     return {
       totalLines: index.lines,
@@ -308,14 +322,14 @@ export function indexTranscript(
 }
 
 /**
- * Advance the index, or answer from its last committed state when another process is advancing it.
+ * Advance the index, or catch up from its last committed state when another process is advancing it.
  *
  * Two readers of one transcript each try to move its index forward, and only one can hold the write
- * lock. The other used to fail after the busy timeout, and its caller reported usage as unavailable —
- * when the index it needed was there, correct up to its own offset, and being extended that moment.
- * That state is exactly what a partially advanced index already describes, so the loser answers from
- * it. Anything other than a busy lock, or a committed index that no longer matches the file, is still
- * the failure it was.
+ * lock. The other does not wait for it and does not fail: it takes the committed index, which is
+ * correct up to its own offset, and scans the rest of the file in memory without writing. Answering
+ * from the committed state alone would end the file where the last commit ended it, and a `tail`
+ * read at the end of a turn would come back `ok` without the turn's final lines. Anything other
+ * than a busy lock, or a committed index that no longer matches the file, is still the failure it was.
  */
 function advanceOrCommitted(
   store: UsageStore,
@@ -345,7 +359,7 @@ function scanForward(
   index: StoredIndex,
   size: number,
   accumulate: (lines: string[]) => TranscriptStats,
-  store: UsageStore,
+  record: (fact: UsageFact) => void,
 ): void {
   let offset = index.readOffset;
   // Bytes, not a string: a chunk boundary can fall inside a multi-byte character, and decoding each
@@ -370,7 +384,7 @@ function scanForward(
       } catch {
         index.malformed++;
       }
-      if (fact) store.put(fact);
+      if (fact) record(fact);
     }
     const added = accumulate(batch);
     index.stats = {

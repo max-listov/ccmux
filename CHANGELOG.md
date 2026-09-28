@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A transcript read that loses the index lock to another reader no longer ends the file at the
+  last commit. It catches up the rest of the file in memory, so `tail` at the end of a turn includes
+  the turn's final lines.
+
 ## [0.68.0] — 2026-09-28
 
 The daemon comes back by itself after a crash reboot
