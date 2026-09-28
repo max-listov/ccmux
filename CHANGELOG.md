@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.70.0] — 2026-09-28
+
+Closed readers end commands; sessions outrank their children under OOM
+
 - A command whose reader has left finishes instead of spinning. After a closed pipe the first
   write fails with EPIPE and later ones never drain; waiting for `drain` there waited forever while
   the runtime retried the bytes, and `ccmux fleet` from a caller that had finished held a core for
@@ -15,7 +19,6 @@ the GitHub Release with that section as the notes.
   daemon returns descendants that merely inherited it to 0, so a shared cgroup's OOM killer takes an
   agent's browser or build before the agent. Without the privilege to lower it the daemon logs once
   and leaves it off.
-
 ## [0.69.0] — 2026-09-28
 
 Fleet reads carry only what changed
