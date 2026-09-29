@@ -98,17 +98,18 @@ fi
 # Required embedded programs must exist before the shim exposes their routes.
 ARTIFACT_STATUS="$(CCMUX_DATA_DIR="$DATA_DIR" "$BUN" "${APP_DIR}/ccmux.js" install --artifacts-only)"
 case "$ARTIFACT_STATUS" in
-  written) note_change "embedded programs installed (status line, native backend)" ;;
+  written) note_change "embedded programs installed (routed programs, native backend)" ;;
   current) say "embedded programs: already correct (unchanged)" ;;
   *) die "unexpected artifact installation result: ${ARTIFACT_STATUS}" ;;
 esac
 
 # ── shim ─────────────────────────────────────────────────────────────────────
-# One verb is routed past the bundle: `status-line` runs on every refresh of every managed session,
-# and requires the packaged program installed above. Kept byte-identical to
-# `shimContents()` in the source; the test suite compares them, because two writers that disagree
-# would rewrite each other on every daemon start.
-WANT_SHIM="$(printf '#!/bin/sh\nif [ "$1" = "status-line" ]; then\n  exec "%s" "%s/status-line.js" "$@"\nfi\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR" "$BUN" "$APP_DIR")"
+# The routed verbs go past the bundle to their own programs, installed above (`status-line` on every
+# refresh of every managed session, `_peer-read` on every fleet read from another machine; the
+# table is `src/boot/routedPrograms.ts`). Kept byte-identical to `shimContents()` in the source; the
+# test suite compares them, because two writers that disagree would rewrite each other on every
+# daemon start.
+WANT_SHIM="$(printf '#!/bin/sh\nif [ "$1" = "status-line" ]; then\n  exec "%s" "%s/status-line.js" "$@"\nfi\nif [ "$1" = "_peer-read" ]; then\n  exec "%s" "%s/peer-read.js" "$@"\nfi\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR" "$BUN" "$APP_DIR" "$BUN" "$APP_DIR")"
 if [ -f "$SHIM" ] && [ "$(cat "$SHIM")" = "$WANT_SHIM" ]; then
   say "shim: already correct (unchanged)"
 else

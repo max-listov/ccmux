@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureStatusLineApp } from '../src/boot/statusLineInstall.ts';
+import { ensureRoutedPrograms } from '../src/boot/routedInstall.ts';
 
 // Build in the release process shape, outside the test runner's module resolver/cache.
 // A fresh standalone test run otherwise rejects existing relative imports in the custom driver,
@@ -59,27 +59,21 @@ test('the shipped bundle starts with an EMPTY bun cache and NO network (the real
   expect(stdout).toContain('ccmux');
 }, 60_000);
 
-test('the shipped bundle carries the status-line program, and it runs on its own', async () => {
+test('the shipped bundle carries the routed programs, and each runs on its own', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ccmux-bundle-sl-'));
   const out = join(dir, 'ccmux.js');
   expect(await buildBundle(out)).toBe(true);
   // The source module is null on purpose, so a build that failed to replace it would ship a bundle
-  // whose required status-line program could never be installed.
-  expect(readFileSync(out, 'utf8')).not.toContain('STATUS_LINE_ARTIFACT = null');
-
-  // And the embedded bytes are the program itself: gunzip, hand them to the installer, run the file.
-  const artifact = /STATUS_LINE_ARTIFACT = (\{[^}]+\})/.exec(readFileSync(out, 'utf8'))?.[1];
-  expect(artifact).toBeDefined();
-  const parsed = JSON.parse((artifact ?? '{}').replace(/(\w+):/g, '"$1":')) as {
-    data: string;
-    sha256: string;
-  };
-  const app = join(dir, 'status-line.js');
-  await expect(ensureStatusLineApp(null, app)).rejects.toThrow(
-    'Required status-line artifact is missing',
+  // whose required programs could never be installed.
+  expect(readFileSync(out, 'utf8')).not.toContain('ROUTED_ARTIFACTS = null');
+  await expect(ensureRoutedPrograms(null, dir)).rejects.toThrow(
+    'Required routed program artifacts are missing',
   );
-  expect(await ensureStatusLineApp(parsed, app)).toBe('written');
-  expect(await ensureStatusLineApp(parsed, app)).toBe('current'); // convergent, not rewritten
+  await expect(ensureRoutedPrograms({}, dir)).rejects.toThrow(
+    'Required status-line.js artifact is missing',
+  );
+
+  // The installer lays the embedded bytes down beside the bundle, convergently.
   const installRoot = join(dir, 'installed');
   for (const expected of ['written', 'current']) {
     const install = Bun.spawn([process.execPath, out, 'install', '--artifacts-only'], {
@@ -91,9 +85,18 @@ test('the shipped bundle carries the status-line program, and it runs on its own
     expect(await install.exited).toBe(0);
     expect(stdout.trim()).toBe(expected);
   }
-  expect(readFileSync(join(installRoot, 'app', 'status-line.js'), 'utf8')).toBe(
-    readFileSync(app, 'utf8'),
+  const app = join(installRoot, 'app', 'status-line.js');
+  expect(existsSync(join(installRoot, 'app', 'peer-read.js'))).toBe(true);
+  // A malformed request reaches the relay's own usage line: the program runs, alone.
+  const relay = Bun.spawn(
+    [process.execPath, join(installRoot, 'app', 'peer-read.js'), '_peer-read'],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
   );
+  expect(await new Response(relay.stderr).text()).toContain('usage: ccmux _peer-read');
+  expect(await relay.exited).toBe(2);
   const proc = Bun.spawn([process.execPath, app], {
     stdin: new Response('{"model":{"display_name":"M"},"context_window":{"used_percentage":5}}'),
     stdout: 'pipe',

@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `_peer-read` runs as its own program, like `status-line`: the PATH shim routes it to
+  `peer-read.js` beside the bundle. On a server with two dozen sessions a fleet read now costs the
+  peer about 0.075 s of CPU for the relay, against 0.95 s when the CLI built the rows. The routed
+  verbs are one table (`src/boot/routedPrograms.ts`) from which the build, the installation and
+  both shim writers are derived.
+
 ## [0.72.2] — 2026-09-29
 
 Peer reads are answered by the daemon

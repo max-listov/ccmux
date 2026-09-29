@@ -58,8 +58,10 @@ test('the installed shim fails when its required program is missing, without run
     expect(err).toContain('status-line.js');
     expect(out).not.toContain('BUNDLE_EXECUTED');
     writeFileSync(join(dir, 'status-line.js'), 'console.log("STATUS_LINE_EXECUTED")');
+    writeFileSync(join(dir, 'peer-read.js'), 'console.log("PEER_READ_EXECUTED")');
     for (const [verb, expected] of [
       ['status-line', 'STATUS_LINE_EXECUTED'],
+      ['_peer-read', 'PEER_READ_EXECUTED'],
       ['version', 'BUNDLE_EXECUTED'],
     ] as const) {
       const proc = Bun.spawn(['sh', shim, verb], { stdout: 'pipe', stderr: 'pipe' });

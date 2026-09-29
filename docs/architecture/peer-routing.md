@@ -75,7 +75,12 @@ for the internal `ccmux-peer-read` contract (`src/fleet/peerReadContract.ts`), a
 the local control socket and prints the answer; the daemon serves it beside the published control
 contracts, which it is not part of (`src/fleet/peerRead.ts`). Only when the request never reached
 a daemon — none is running — does the command build the same answer itself, with the same
-functions, because a stopped supervisor is not a machine with no sessions.
+functions, because a stopped supervisor is not a machine with no sessions. A daemon that died leaves
+its socket file behind, so the fallback is decided by the refused connect, not by the file.
+
+The relay runs as its own program: the PATH shim sends `_peer-read` to `peer-read.js` beside the
+bundle, compiled from the same command (`src/boot/routedPrograms.ts`), so a fleet read does not pay
+for parsing the whole CLI.
 
 ### One session by its address: `ccmux state`
 

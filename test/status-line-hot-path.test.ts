@@ -86,7 +86,7 @@ test('the status-line program answers exactly as the bundled verb does', async (
   // has warmed it. A test that fails by running first is not a statement about the code.
   const dir = mkdtempSync(join(tmpdir(), 'ccmux-sl-equal-'));
   const build = Bun.spawn(
-    [process.execPath, join(import.meta.dir, '..', 'scripts', 'build-status-line.ts'), dir],
+    [process.execPath, join(import.meta.dir, '..', 'scripts', 'build-routed-programs.ts'), dir],
     { stdout: 'pipe', stderr: 'pipe' },
   );
   expect(await build.exited).toBe(0);

@@ -1,18 +1,20 @@
 ---
 title: The status line runs as its own program, routed by the shim
-description: Carry the compiled status-line command inside the bundle, lay it down beside it, and route that one verb past the bundle from the PATH shim.
+description: Carry the compiled status-line command — and the peer-read relay — inside the bundle, lay each down beside it, and route those verbs past the bundle from the PATH shim.
 type: decision
 status: active
 created: 2026-09-06
-updated: 2026-09-06 11:37 +0700
+updated: 2026-09-29 07:40 +0700
 ---
 
 # Decision
 
 `ccmux status-line` is compiled from the same source into a separate small program, carried inside
 the bundle, written beside it on the same convergence that writes the PATH shim, and reached by a
-route in that shim. Nothing else is routed this way. The program is required: its absence fails
-the command, never routes it through the bundle. Installation materializes the embedded program
+route in that shim. `ccmux _peer-read` — the relay another machine runs on every fleet read — is
+routed the same way. The routed verbs are one table, `src/boot/routedPrograms.ts`, from which the
+build, the installation and the shim are all derived; a verb earns a row only by the measurement
+below. The program is required: its absence fails the command, never routes it through the bundle. Installation materializes the embedded program
 before writing the shim; daemon initialization also fails if the artifact cannot be installed.
 
 # Why
@@ -33,6 +35,11 @@ A call did about 4 ms of work. The rest was Bun parsing a 4.5 MB bundle to reach
 program removes 45 ms a call (−55 %); of what remains, 25 ms is the runtime's start and is not ours
 to remove. Under load every number rises and the proportion does not (−54 % on a busy machine), so
 the ratio is the stable quantity and the absolute cost is a property of the machine.
+
+`_peer-read` measured the same way on a server with two dozen sessions (user + sys, five runs): 0.95 s
+when the CLI built the rows itself, 0.13 s once the daemon built them and the bundled command only
+relayed, 0.075 s as its own program. At four fleet reads a minute per machine that is the difference
+between the relay and the parse of a bundle it never uses.
 
 # Why this shape and not the others
 

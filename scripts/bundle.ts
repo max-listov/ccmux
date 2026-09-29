@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import type { BunPlugin } from 'bun';
-import { buildStatusLine } from './build-status-line.ts';
+import { ROUTED_PROGRAMS } from '../src/boot/routedPrograms.ts';
+import { buildRoutedProgram } from './build-routed-programs.ts';
 import { customBundlePlugin } from './bundle-custom.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,29 +30,32 @@ const SRC_CLI = join(ROOT, 'src', 'cli.ts');
 export const STUB_REACT_DEVTOOLS = 'export default { initialize() {}, connectToDevTools() {} };';
 
 /**
- * Carry the compiled status-line program inside the bundle.
+ * Carry the compiled routed programs inside the bundle.
  *
- * It could have been a second release asset, and that is one more thing to download, verify, version
- * and be missing. It travels in the bundle instead, is laid down beside it on the same convergence
- * that writes the shim, and is compiled from the SAME source as the `status-line` verb — so there is
- * one implementation, and a build cannot ship two that disagree.
+ * Each could have been a release asset, and that is one more thing to download, verify, version and
+ * be missing. They travel in the bundle instead, are laid down beside it on the same convergence
+ * that writes the shim, and are compiled from the SAME source as their verbs — so there is one
+ * implementation, and a build cannot ship two that disagree.
  */
-async function statusLinePlugin(): Promise<BunPlugin> {
-  const { bytes } = await buildStatusLine('');
-  const artifact = {
-    data: gzipSync(bytes, { level: 9 }).toString('base64'),
-    sha256: createHash('sha256').update(bytes).digest('hex'),
-  };
+async function routedProgramsPlugin(): Promise<BunPlugin> {
+  const artifacts: Record<string, { data: string; sha256: string }> = {};
+  for (const program of ROUTED_PROGRAMS) {
+    const { bytes } = await buildRoutedProgram(program, '');
+    artifacts[program.file] = {
+      data: gzipSync(bytes, { level: 9 }).toString('base64'),
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+  }
   return {
-    name: 'packaged-status-line',
+    name: 'packaged-routed-programs',
     setup(build) {
-      build.onResolve({ filter: /(^|\/)statusLineArtifact\.ts$/ }, () => ({
-        path: 'status-line-artifact',
-        namespace: 'packaged-status-line',
+      build.onResolve({ filter: /(^|\/)routedArtifacts\.ts$/ }, () => ({
+        path: 'routed-artifacts',
+        namespace: 'packaged-routed-programs',
       }));
-      build.onLoad({ filter: /.*/, namespace: 'packaged-status-line' }, () => ({
+      build.onLoad({ filter: /.*/, namespace: 'packaged-routed-programs' }, () => ({
         loader: 'ts',
-        contents: `export const STATUS_LINE_ARTIFACT = ${JSON.stringify(artifact)};`,
+        contents: `export const ROUTED_ARTIFACTS = ${JSON.stringify(artifacts)};`,
       }));
     },
   };
@@ -101,7 +105,7 @@ export async function buildBundle(outfile: string): Promise<boolean> {
     target: 'bun',
     plugins: [
       await customBundlePlugin(),
-      await statusLinePlugin(),
+      await routedProgramsPlugin(),
       await nativeBackendPlugin(),
       {
         name: 'stub-react-devtools',
