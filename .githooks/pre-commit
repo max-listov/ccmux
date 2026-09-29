@@ -1,4 +1,7 @@
 #!/bin/sh
 # Inspect additions in the reviewed index without printing protected values.
 set -e
+# Git из GUI-редактора (Cursor, VS Code) запускает хук с голым системным PATH без профиля шелла:
+# Bun там не виден. Хук добавляет его каталог сам.
+PATH="$HOME/.bun/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 exec bun --no-env-file scripts/check-publication.ts --staged
