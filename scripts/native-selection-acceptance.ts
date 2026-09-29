@@ -155,7 +155,10 @@ async function catalog(runtime: 'codex' | 'opencode') {
   const rows: ControlModel[] = [];
   let cursor: string | null = null;
   do {
-    const page = await service['model.list']({ runtime, cursor });
+    const page: { data: ControlModel[]; nextCursor: string | null } = await service['model.list']({
+      runtime,
+      cursor,
+    });
     rows.push(...page.data);
     cursor = page.nextCursor;
   } while (cursor !== null);

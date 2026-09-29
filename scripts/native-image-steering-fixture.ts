@@ -296,7 +296,9 @@ export async function modelCatalog(
   const rows: ControlModel[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 64; page++) {
-    const result = await p.service['model.list']({
+    const result: { data: ControlModel[]; nextCursor: string | null } = await p.service[
+      'model.list'
+    ]({
       runtime,
       ...(target ? { target } : {}),
       cursor,

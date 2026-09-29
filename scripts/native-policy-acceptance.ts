@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { ApiError } from 'stitchkit';
 import { loadMachineConfig } from '../src/config/machine.ts';
+import type { ControlModel } from '../src/control/schema/model.ts';
 import type { ControlNativeSnapshot } from '../src/control/schema/native.ts';
 import type { ControlCreate, ControlCreateReceipt } from '../src/control/schema/session.ts';
 import { createControlClient } from '../src/control/transport/client.ts';
@@ -253,7 +254,9 @@ try {
   let cursor: string | null = null;
   let external: { provider: string; model: string } | undefined;
   do {
-    const catalog = await service['model.list']({ runtime: 'opencode', cursor });
+    const catalog: { data: ControlModel[]; nextCursor: string | null } = await service[
+      'model.list'
+    ]({ runtime: 'opencode', cursor });
     const selected = catalog.data.find(
       (row) => row.provider === 'openrouter' && row.model === 'z-ai/glm-5.3-flash',
     );
