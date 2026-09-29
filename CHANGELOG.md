@@ -6,6 +6,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.72.2] — 2026-09-29
+
+Peer reads are answered by the daemon
 ## [0.72.1] — 2026-09-29
 
 Peer reads are answered by the daemon
