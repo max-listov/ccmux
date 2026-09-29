@@ -12,7 +12,11 @@ import { makeMachine } from './helpers.ts';
 const root = mkdtempSync('/tmp/ccmux-peer-read-');
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const config = join(root, 'machine.json');
-writeFileSync(config, JSON.stringify({ stateDir: root, rcPrefix: 'host-config' }));
+// `claudeBin` because the machine config requires one and a CI runner has no provider installed.
+writeFileSync(
+  config,
+  JSON.stringify({ stateDir: root, rcPrefix: 'host-config', claudeBin: process.execPath }),
+);
 const cli = join(import.meta.dir, '..', 'src', 'cli.ts');
 
 async function peerRead(...args: string[]) {
@@ -33,7 +37,7 @@ test('the daemon answers a peer read and the command only relays it', async () =
   const m = makeMachine({
     stateDir: root,
     rcPrefix: 'host-served',
-    tmuxBin: Bun.which('tmux') ?? 'tmux',
+    tmuxBin: Bun.which('tmux') ?? '/usr/bin/tmux',
   });
   const publisher = new ControlPublisher(m);
   const owned = createControlServer(m, publisher);
@@ -71,7 +75,10 @@ test('with no daemon the same answer is built here, and a malformed request is r
   await dead.exited;
   expect(existsSync(join(root, 'control', 'api.sock'))).toBe(true);
   const list = await peerRead('list');
-  expect(list.code).toBe(0);
+  expect({ code: list.code, stderr: list.code === 0 ? '' : list.stderr }).toEqual({
+    code: 0,
+    stderr: '',
+  });
   expect(list.answer).toMatchObject({ rcPrefix: 'host-config', sessions: { refs: [] } });
   expect((await peerRead('chat-log')).code).toBe(2);
   expect((await peerRead('list', '--known')).code).toBe(2);
