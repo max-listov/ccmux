@@ -6,8 +6,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
-- `_peer-read` falls back to building the answer itself when the daemon's socket file is left behind by a daemon that died: a refused connect is recognised through the client's wrapped cause, not only at the top level.
+## [0.72.1] — 2026-09-29
 
+Peer reads are answered by the daemon
+
+- `_peer-read` falls back to building the answer itself when the daemon's socket file is left behind by a daemon that died: a refused connect is recognised through the client's wrapped cause, not only at the top level.
 ## [0.72.0] — 2026-09-28
 
 Peer reads are answered by the daemon
