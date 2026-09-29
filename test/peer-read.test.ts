@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ControlPublisher } from '../src/control/publisher.ts';
 import { createControlServer } from '../src/control/transport/server.ts';
@@ -59,6 +59,17 @@ test('the daemon answers a peer read and the command only relays it', async () =
 });
 
 test('with no daemon the same answer is built here, and a malformed request is refused', async () => {
+  // A daemon that died leaves its socket file: listen, then die without closing it.
+  rmSync(join(root, 'control', 'api.sock'), { force: true });
+  mkdirSync(join(root, 'control'), { recursive: true, mode: 0o700 });
+  const socket = JSON.stringify(join(root, 'control', 'api.sock'));
+  const dead = Bun.spawn([
+    process.execPath,
+    '-e',
+    `Bun.listen({ unix: ${socket}, socket: { data() {} } }); process.kill(process.pid, 'SIGKILL');`,
+  ]);
+  await dead.exited;
+  expect(existsSync(join(root, 'control', 'api.sock'))).toBe(true);
   const list = await peerRead('list');
   expect(list.code).toBe(0);
   expect(list.answer).toMatchObject({ rcPrefix: 'host-config', sessions: { refs: [] } });

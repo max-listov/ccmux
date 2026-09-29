@@ -31,6 +31,19 @@ function parse(args: readonly string[]): Request | null {
 }
 
 /**
+ * The request never reached a daemon: nothing listens on the socket. A daemon that died leaves its
+ * socket file behind, so the file existing proves nothing; the client reports the refused connect
+ * wrapped in its own error, with the transport's verdict as the cause.
+ */
+function neverDispatched(error: unknown): boolean {
+  for (let cause = error, depth = 0; cause instanceof Error && depth < 8; depth++) {
+    if (cause instanceof UnixClientTransportError) return cause.delivery === 'not-dispatched';
+    cause = cause.cause;
+  }
+  return false;
+}
+
+/**
  * `ccmux _peer-read` — what a fleet reader on another machine runs here. It relays: the daemon
  * builds the answer with its caches warm (`fleet/peerRead.ts`), and this process only asks over the
  * local control socket and prints. Nothing heavier than that client is loaded.
@@ -75,8 +88,7 @@ export async function cmdPeerRead(args: string[]): Promise<number> {
           ? await client.list({ known: request.known })
           : await client['chat-log']({ limit: request.limit, known: request.known });
     } catch (error) {
-      if (!(error instanceof UnixClientTransportError && error.delivery === 'not-dispatched'))
-        throw error;
+      if (!neverDispatched(error)) throw error;
     } finally {
       await transport.close();
     }
