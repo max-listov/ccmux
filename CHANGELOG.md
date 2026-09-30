@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.75.2] — 2026-09-30
+
+Detect native commands after lost filesystem events
+
+- Native owner reconciliation checks every exact input path, including names previously absent.
+  A directory timestamp that did not change cannot hide a newly created command.
+- Watcher coalescing, idle revision checks and existing reconciliation cadences remain intact.
+
 ## [0.75.1] — 2026-09-30
 
 Preserve prepared indexes when a provider parser is unchanged

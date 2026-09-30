@@ -51,31 +51,17 @@ export class RuntimeWake {
     reconcileEveryMs?: number,
   ) {
     const stamps = new Map(paths.map((path) => [path, fileStamp(path)]));
-    const directories = new Map(
-      [...new Set(paths.map(dirname))].map((path) => [path, fileStamp(path)]),
-    );
     const reconcile = () => {
       let changed = false;
-      const checked = new Map<string, Stamp>();
       for (const [path, previous] of stamps) {
-        let current: Stamp;
-        if (previous === null) {
-          const directory = dirname(path);
-          if (!checked.has(directory)) checked.set(directory, fileStamp(directory));
-          const parent = checked.get(directory) ?? null;
-          // Only absence is reused. An existing input always checks its own inode and clocks,
-          // including in-place writes. Creating a formerly absent name changes the parent.
-          current =
-            parent !== null && sameStamp(parent, directories.get(directory) ?? null)
-              ? null
-              : fileStamp(path);
-        } else current = fileStamp(path);
+        // Directory timestamps can stay unchanged when a name is created within their clock
+        // resolution. Lost-event reconciliation must stat even a previously absent input.
+        const current = fileStamp(path);
         if (!sameStamp(current, previous)) {
           stamps.set(path, current);
           changed = true;
         }
       }
-      for (const [path, stamp] of checked) directories.set(path, stamp);
       if (changed) this.notify();
     };
     this.reconcile = reconcile;

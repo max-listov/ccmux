@@ -216,8 +216,9 @@ explicitly start the same rows to resume; never rename or regenerate their UUIDs
 RuntimeWake наблюдает только входные файлы. `fs.watch` будит owner после изменения;
 наносекундные dev/ino/size/mtime/ctime stamps подхватывают потерянные события.
 Страховка сохраняет прежние 500 мс у Codex, 1000 мс у Claude main и 200 мс у Claude context.
-Отсутствующие input names проверяются через parent revision; существующие файлы всегда
-проверяются по собственной revision, поэтому in-place запись не скрывается неизменным каталогом.
+Каждый input name проверяется по собственной revision, включая отсутствующие файлы:
+stamp каталога не доказывает отсутствие имени при ограниченной точности его timestamps.
+In-place запись и создание файла после потерянного события не скрываются неизменным каталогом.
 Registry и private mailbox JSON повторно разбираются только после изменения; каждый caller
 получает независимое значение. Owner/mode, nofollow и byte bounds сохраняются.
 

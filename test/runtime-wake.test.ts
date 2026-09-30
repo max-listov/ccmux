@@ -1,7 +1,8 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type { WatchListener } from 'node:fs';
-import { lstatSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import * as fs from 'node:fs';
+import { lstatSync, mkdtempSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RuntimeWake } from '../src/runtime/wake.ts';
 
@@ -14,6 +15,28 @@ class TestWatcher extends EventEmitter {
     return this;
   }
 }
+
+test('an unchanged directory stamp cannot hide a newly created input after a lost event', () => {
+  const root = mkdtempSync('/tmp/ccmux-wake-parent-clock-');
+  const path = join(root, 'input.json');
+  const parent = lstatSync(root, { bigint: true });
+  const original = fs.lstatSync;
+  const stat = spyOn(fs, 'lstatSync').mockImplementation(((name, options) =>
+    name === root ? parent : original(name, options)) as typeof fs.lstatSync);
+  const wake = new RuntimeWake([path], new AbortController().signal, () => new TestWatcher());
+  try {
+    expect(wake.changed()).toBe(true);
+    expect(wake.changed()).toBe(false);
+    writeFileSync(path, '{}');
+    expect(fs.lstatSync(root, { bigint: true })).toBe(parent);
+    expect(wake.changed()).toBe(true);
+    expect(wake.changed()).toBe(false);
+  } finally {
+    wake.close();
+    stat.mockRestore();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('a coalesced event naming a lock still detects the changed command', async () => {
   const root = mkdtempSync('/tmp/ccmux-wake-coalesced-');
@@ -157,6 +180,10 @@ test('unchanged parent never hides an in-place input edit alongside cached absen
     expect(wake.changed()).toBe(false);
     const parent = lstatSync(root, { bigint: true });
     writeFileSync(path, '[]');
+    // Linux can stamp two immediate same-size writes identically. This test requires a changed
+    // input revision and an unchanged parent; production mailbox writers replace atomically.
+    const nextTime = new Date(lstatSync(path).mtimeMs + 1000);
+    utimesSync(path, nextTime, nextTime);
     expect(lstatSync(root, { bigint: true }).mtimeNs).toBe(parent.mtimeNs);
     expect(wake.changed()).toBe(true);
     expect(wake.changed()).toBe(false);
