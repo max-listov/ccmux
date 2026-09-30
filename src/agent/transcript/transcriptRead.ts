@@ -103,7 +103,7 @@ export function readTranscriptFile(
   // index exists. `seq` stays the absolute line number a `--cursor` is expressed in.
   const window = index.read(start, endLine ?? total);
   const messages = provider.parse(window, start, opts.textLimit, endLine, start, { path });
-  const usage = indexedUsage(path);
+  const usage = indexedUsage(path, provider.id);
   const stats = { ...index.stats, ...(usage ? { usage } : {}) };
   let mtimeMs: number | null = null;
   try {

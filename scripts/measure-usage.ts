@@ -99,7 +99,7 @@ try {
         appendMs,
         appendBytes: appended.indexedBytes - indexed,
         replyBytes: Buffer.byteLength(JSON.stringify(appended)),
-        databaseBytes: statSync(transcriptIndexPath(path)).size,
+        databaseBytes: statSync(transcriptIndexPath(path, 'claude')).size,
         baselineRssBytes: baselineRss,
         peakSampledRssBytes: peakRss,
       },
@@ -109,5 +109,5 @@ try {
   );
 } finally {
   rmSync(root, { recursive: true, force: true });
-  rmSync(transcriptIndexPath(path), { force: true });
+  rmSync(transcriptIndexPath(path, 'claude'), { force: true });
 }

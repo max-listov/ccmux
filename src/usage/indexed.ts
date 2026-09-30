@@ -5,8 +5,8 @@ import { partialUsage } from './quality.ts';
 import { UsageQuerySchema } from './schema.ts';
 import { UsageStore } from './store.ts';
 
-export function indexedUsage(path: string) {
-  const database = transcriptIndexPath(path);
+export function indexedUsage(path: string, agent: string) {
+  const database = transcriptIndexPath(path, agent);
   if (!existsSync(database)) return null;
   const store = new UsageStore(database);
   try {

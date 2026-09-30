@@ -44,7 +44,7 @@ function snapshot(machine: MachineConfig, session: Session) {
     ...(session.agent === 'claude' ? [stamp(subagentsDir(path))] : []),
     ...databaseStamp(liveUsagePath(machine, session.uuid)),
   ];
-  const index = databaseStamp(transcriptIndexPath(path));
+  const index = databaseStamp(transcriptIndexPath(path, session.agent));
   if ([...source, ...index].some((value) => value === null)) return null;
   return { source: JSON.stringify(source), index: JSON.stringify(index) };
 }
@@ -78,7 +78,7 @@ export class UsagePreparation {
       (path) =>
         this.work(address, () => {
           const source = [JSON.stringify([machine, threadId]), stamp(path)];
-          const index = databaseStamp(transcriptIndexPath(path));
+          const index = databaseStamp(transcriptIndexPath(path, 'codex'));
           if ([...source, ...index].some((value) => value === null)) return null;
           return { source: JSON.stringify(source), index: JSON.stringify(index) };
         }),

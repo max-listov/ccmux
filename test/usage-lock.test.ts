@@ -61,7 +61,7 @@ test('usage for a transcript another process is indexing is never "accounting un
     const query = UsageQuerySchema.parse({});
     expect(readUsageFile('host-a:agent-a', path, 'claude', query, true).state).not.toBe('failed');
     appendFileSync(path, numbered(1_001, 5));
-    const release = holdWriteLock(transcriptIndexPath(path));
+    const release = holdWriteLock(transcriptIndexPath(path, 'claude'));
     try {
       const summary = readUsageFile('host-a:agent-a', path, 'claude', query, true);
       expect(summary.state).not.toBe('failed');
@@ -84,7 +84,7 @@ test('usage stays readable while another process holds the index through its com
     // A writer committing, or one whose large transaction spilled to disk, holds the file
     // exclusively. A reader that cannot even take a shared lock for that long is the same busy
     // lock as a writer queue, and must not read as "accounting unavailable" either.
-    const holder = new Database(transcriptIndexPath(path));
+    const holder = new Database(transcriptIndexPath(path, 'claude'));
     holder.exec('BEGIN EXCLUSIVE');
     try {
       const summary = readUsageFile('host-a:agent-a', path, 'claude', query, false);

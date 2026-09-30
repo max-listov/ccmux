@@ -96,7 +96,7 @@ test('a derived index from the preceding parser is rebuilt rather than keeping i
   try {
     writeFileSync(path, `${call}\n${result}\n`);
     expect(indexTranscript(path, 'codex', accumulate)?.stats.toolCalls).toBe(1);
-    const store = new UsageStore(transcriptIndexPath(path));
+    const store = new UsageStore(transcriptIndexPath(path, 'codex'));
     try {
       const index = store.read('index', StoredIndexSchema);
       if (!index) throw new Error('missing derived index');

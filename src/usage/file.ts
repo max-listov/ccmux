@@ -92,7 +92,7 @@ export function readUsageFile(
       );
       if (!indexed) return { ...result, source: 'unreadable', reason: 'source-unreadable' };
     }
-    const database = transcriptIndexPath(path);
+    const database = transcriptIndexPath(path, runtime);
     if (!existsSync(database))
       return {
         ...result,

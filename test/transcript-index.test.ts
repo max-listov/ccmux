@@ -161,7 +161,7 @@ test('a reader that loses the index lock still sees the lines appended since the
     expect(indexTranscript(path, 'claude', noStats)?.totalLines).toBe(1_000);
     appendFileSync(path, '{"n":1001}\n{"n":1002}\n{"n":1003}\n');
 
-    const holder = new Database(transcriptIndexPath(path));
+    const holder = new Database(transcriptIndexPath(path, 'claude'));
     holder.exec('BEGIN IMMEDIATE');
     try {
       const index = indexTranscript(path, 'claude', noStats);
@@ -177,5 +177,37 @@ test('a reader that loses the index lock still sees the lines appended since the
 
     // The lock is free again: an ordinary reader advances the stored index itself.
     expect(indexTranscript(path, 'claude', noStats)?.totalLines).toBe(1_003);
+  });
+});
+
+test('unchanged Claude parser reuses its version-one index without a history scan', async () => {
+  const { createHash } = await import('node:crypto');
+  const { statSync } = await import('node:fs');
+  const { CACHE_DIR } = await import('../src/config/paths.ts');
+  const { StoredIndexSchema } = await import('../src/agent/transcript/transcriptIndex.ts');
+  const { UsageStore } = await import('../src/usage/store.ts');
+  withFile(numbered(4_000), (path) => {
+    const legacy = join(
+      CACHE_DIR,
+      'transcript-index',
+      `${createHash('sha256').update(path).digest('hex')}.sqlite`,
+    );
+    expect(transcriptIndexPath(path, 'claude')).toBe(legacy);
+    const first = indexTranscript(path, 'claude', noStats);
+    expect(first?.totalLines).toBe(4_000);
+    const store = new UsageStore(legacy);
+    try {
+      expect(store.read('index', StoredIndexSchema)?.version).toBe(1);
+    } finally {
+      store.close();
+    }
+    const before = statSync(legacy).mtimeMs;
+    const cached = indexTranscript(path, 'claude', () => {
+      throw new Error('unchanged history was scanned again');
+    });
+    expect(cached?.totalLines).toBe(4_000);
+    expect(cached?.read(3_997, 4_000)).toEqual(numbered(4_000).slice(-4));
+    expect(statSync(legacy).mtimeMs).toBe(before);
+    expect(transcriptIndexPath(path, 'codex')).toBe(legacy.replace(/\.sqlite$/, '-v2.sqlite'));
   });
 });

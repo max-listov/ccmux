@@ -44,8 +44,8 @@ export async function readExternalUsage(
     }
     const unavailable = unavailableUsage(exact, 'codex', result.source, `source-${result.source}`);
     unavailable.timezone = query.timezone;
-    if (!prior || !existsSync(transcriptIndexPath(prior.path))) return unavailable;
-    const store = new UsageStore(transcriptIndexPath(prior.path));
+    if (!prior || !existsSync(transcriptIndexPath(prior.path, 'codex'))) return unavailable;
+    const store = new UsageStore(transcriptIndexPath(prior.path, 'codex'));
     try {
       return store.transaction(() => {
         const index = store.read('index', StoredIndexSchema);

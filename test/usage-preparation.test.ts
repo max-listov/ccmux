@@ -111,7 +111,7 @@ test('append, late correction, same-size replacement, rotation and deleted cache
     writeFileSync(f.path, record('two', 7));
     expect(f.inspect().needed).toBe(true);
     expect((await f.prepare()).self.values.inputTokens).toBe(7);
-    rmSync(transcriptIndexPath(f.path));
+    rmSync(transcriptIndexPath(f.path, 'claude'));
     expect(f.inspect().needed).toBe(true);
     expect((await f.prepare()).self.values.inputTokens).toBe(7);
   });
@@ -175,7 +175,7 @@ test('live ledger writes and busy SQLite rearm preparation without losing totals
       await f.prepare();
       await f.prepare();
       const work = f.inspect();
-      const lock = new Database(transcriptIndexPath(f.path));
+      const lock = new Database(transcriptIndexPath(f.path, 'claude'));
       lock.exec('BEGIN IMMEDIATE');
       try {
         appendFileSync(f.path, record('tail', 5));

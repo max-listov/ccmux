@@ -49,9 +49,12 @@ export const SCAN_CHUNK = 4 * 1024 * 1024;
  *  has a different beginning, and its old offsets would point into the middle of other records. */
 const HEAD_BYTES = 4096;
 
+/** Parser changes invalidate only the provider whose derived statistics change. */
+const parserRevision = (agent: string) => (agent === 'codex' ? 2 : 1);
+
 export const StoredIndexSchema = z
   .object({
-    version: z.literal(2),
+    version: z.union([z.literal(1), z.literal(2)]),
     /** Whose parser produced `stats`. A session that changed runtime must not inherit them. */
     agent: z.string().min(1).max(64),
     head: z.string().length(64),
@@ -72,7 +75,8 @@ export const StoredIndexSchema = z
     checkpoints: z.array(z.number().int().nonnegative()),
     stats: TranscriptStatsSchema,
   })
-  .strict();
+  .strict()
+  .refine((index) => index.version === parserRevision(index.agent), 'Parser revision mismatch');
 type StoredIndex = z.infer<typeof StoredIndexSchema>;
 
 export const EMPTY_STATS: TranscriptStats = {
@@ -85,8 +89,11 @@ export const EMPTY_STATS: TranscriptStats = {
 
 const INDEX_DIR = (): string => join(CACHE_DIR, 'transcript-index');
 
-export const transcriptIndexPath = (path: string): string =>
-  join(INDEX_DIR(), `${createHash('sha256').update(path).digest('hex')}-v2.sqlite`);
+export const transcriptIndexPath = (path: string, agent: string): string =>
+  join(
+    INDEX_DIR(),
+    `${createHash('sha256').update(path).digest('hex')}${parserRevision(agent) === 1 ? '' : '-v2'}.sqlite`,
+  );
 
 /** An index nothing has advanced for this long is removed; a transcript still read rebuilds it once. */
 export const INDEX_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -253,7 +260,7 @@ function indexTranscriptImpl(
     if (!stat.isFile()) return null;
     const size = stat.size;
     const head = headDigest(fd, size);
-    store = new UsageStore(transcriptIndexPath(path));
+    store = new UsageStore(transcriptIndexPath(path, agent));
     const owner = store;
     const identity = `${stat.dev}:${stat.ino}`;
     const index = advanceOrCommitted(
@@ -262,7 +269,7 @@ function indexTranscriptImpl(
         const stored = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
         if (!stored) owner.reset();
         const index: StoredIndex = stored ?? {
-          version: 2,
+          version: parserRevision(agent),
           agent,
           head,
           identity,

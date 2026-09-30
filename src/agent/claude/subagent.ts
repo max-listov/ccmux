@@ -96,7 +96,7 @@ function compute(path: string, lines: string[]): SubagentFacts {
       assistant && blocks.length > 0 && blocks.every((block) => str(block.type) === 'text');
   }
   indexTranscript(path, 'claude', (batch) => countStats({ id: 'claude', parse }, batch));
-  const usage = indexedUsage(path)?.values;
+  const usage = indexedUsage(path, 'claude')?.values;
   if (usage)
     facts.usage = {
       inputTokens: usage.inputTokens,

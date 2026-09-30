@@ -6,6 +6,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.75.1] — 2026-09-30
+
+Preserve prepared indexes when a provider parser is unchanged
+
+- Transcript indexes carry a provider-specific parser revision. Custom Codex tool counts use
+  revision 2; unchanged providers reuse revision 1 without rescanning complete histories.
+- Transcript and usage readers select the same provider namespace and reject mismatched
+  stored revisions. Existing Codex revision 2 backfill is retained.
+
 ## [0.75.0] — 2026-09-30
 
 Reduce repeated runtime work and expose opt-in daemon performance diagnostics

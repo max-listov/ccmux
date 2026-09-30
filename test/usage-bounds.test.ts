@@ -92,7 +92,7 @@ test('bounded query construction resumes with concurrent append/correction and w
 
 test('cold file work is byte bounded, survives UTF-8 and partial writes; warm usage does not read history', () => {
   const path = join(fixture(), 'history.jsonl');
-  indexes.push(transcriptIndexPath(path));
+  indexes.push(transcriptIndexPath(path, 'claude'));
   const record = JSON.stringify({
     type: 'assistant',
     timestamp: '2026-01-01T00:00:00Z',
@@ -130,7 +130,7 @@ test('cold file work is byte bounded, survives UTF-8 and partial writes; warm us
 
 test('persistence failure is visible and a failed scan commits neither counts nor checkpoint', () => {
   const path = join(fixture(), 'history.jsonl');
-  indexes.push(transcriptIndexPath(path));
+  indexes.push(transcriptIndexPath(path, 'claude'));
   fs.writeFileSync(
     path,
     '{"type":"assistant","message":{"id":"one","usage":{"input_tokens":10}}}\n',
@@ -140,7 +140,7 @@ test('persistence failure is visible and a failed scan commits neither counts no
       throw new Error('injected persistence boundary');
     }),
   ).toThrow('injected persistence boundary');
-  const store = new UsageStore(transcriptIndexPath(path));
+  const store = new UsageStore(transcriptIndexPath(path, 'claude'));
   try {
     expect([...store.facts()]).toHaveLength(0);
     expect(store.read('index', z.unknown())).toBeNull();
@@ -170,7 +170,7 @@ test('persistence failure is visible and a failed scan commits neither counts no
 
 test('independent processes serialize the same cold checkpoint and restart from the committed offset', async () => {
   const path = join(fixture(), 'history.jsonl');
-  indexes.push(transcriptIndexPath(path));
+  indexes.push(transcriptIndexPath(path, 'claude'));
   fs.writeFileSync(
     path,
     `${Array.from({ length: 600 }, (_, i) => JSON.stringify({ type: 'assistant', message: { id: String(i), usage: { input_tokens: 1 } } })).join('\n')}\n`,
