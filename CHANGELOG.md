@@ -6,6 +6,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.76.0] — 2026-09-30
+
+Adopt current provider SDKs and diagnostic journal recovery
+
+- Adopt current Stitchkit 0.103.0, AI SDK 7.0.123, Claude Agent SDK 0.3.285,
+  OpenCode SDK 1.18.33 and MCP SDK/server/app packages. Dependency locks include current
+  compatible transitive releases.
+- Runtime diagnostic journals inspect retained generations at startup, report corrupt rows
+  without deleting evidence, and refuse unsafe archive paths while releasing the writer lock.
+
 ## [0.75.2] — 2026-09-30
 
 Detect native commands after lost filesystem events

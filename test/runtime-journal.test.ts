@@ -1,5 +1,14 @@
 import { afterEach, expect, test } from 'bun:test';
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DiagnosticJournalFrameSchema } from 'stitchkit/application';
@@ -150,4 +159,47 @@ test('runtime journal rotation, cancellation and failed rotation remain observab
   } finally {
     await broken.close();
   }
+});
+
+test('runtime journal reports corrupt retained rows without deleting their evidence', async () => {
+  const m = await fixture();
+  const first = await createRuntimeJournal(m, { kind: 'daemon' }, () => undefined);
+  first.submit(event());
+  await first.close();
+  const path = runtimeJournalPath(m, { kind: 'daemon' });
+  const active = await readFile(path, 'utf8');
+  const damaged = 'invalid-retained-json\n';
+  await writeFile(`${path}.1`, damaged, { mode: 0o600 });
+  const recovered = await createRuntimeJournal(m, { kind: 'daemon' }, () => undefined);
+  try {
+    expect(recovered.getStatus().recovery).toMatchObject({
+      filesChecked: 2,
+      anomalies: 1,
+      firstAnomaly: { file: await realpath(`${path}.1`), reason: 'invalid-json' },
+    });
+    expect(await readFile(path, 'utf8')).toBe(active);
+    expect(await readFile(`${path}.1`, 'utf8')).toBe(damaged);
+    expect(recovered.submit(event()).outcome).toBe('accepted');
+  } finally {
+    await recovered.close();
+  }
+});
+
+test('runtime journal refuses an unsafe archive and releases its startup lock', async () => {
+  const m = await fixture();
+  const first = await createRuntimeJournal(m, { kind: 'daemon' }, () => undefined);
+  first.submit(event());
+  await first.close();
+  const path = runtimeJournalPath(m, { kind: 'daemon' });
+  const active = await readFile(path, 'utf8');
+  const outside = join(m.stateDir, 'outside.jsonl');
+  await writeFile(outside, active, { mode: 0o600 });
+  await symlink(outside, `${path}.1`);
+  await expect(createRuntimeJournal(m, { kind: 'daemon' }, () => undefined)).rejects.toThrow();
+  expect(await readFile(path, 'utf8')).toBe(active);
+  expect(await readFile(outside, 'utf8')).toBe(active);
+  await rm(`${path}.1`);
+  const repaired = await createRuntimeJournal(m, { kind: 'daemon' }, () => undefined);
+  expect(repaired.submit(event()).outcome).toBe('accepted');
+  await repaired.close();
 });

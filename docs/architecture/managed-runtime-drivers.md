@@ -212,6 +212,10 @@ private diagnostic facility. Daemon and worker identities resolve distinct fixed
 The limits are 8 KiB per event, 256 queued items/1 MiB, 2 MiB per file and four files per writer.
 Admission refusal counters, physical-write status, rotation and partial-tail evidence remain
 observable. Admission into memory is not durable delivery, fsync or native-turn completion.
+Startup inspects active and retained generations under the writer lock. Recovery status reports
+corrupt rows with their file and byte position while preserving the evidence; unreadable or
+unsafe archive paths refuse startup and release the lock. Four retained slots allow a torn
+active generation to rotate intact, without a single-file recovery deletion.
 `src/runtime/journalOwner.ts` integrates the daemon and Custom worker lifetimes. An owner lock
 serializes this machine's writers; inside it the journal opens with stitchkit's `reclaim-stale`
 policy. Every lock record carries its holder's boot and process birth, so a lock is reclaimed only
