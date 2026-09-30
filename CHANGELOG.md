@@ -6,6 +6,22 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.74.0] — 2026-09-30
+
+Prepare unchanged usage only when needed and batch daemon pane observations
+
+- Managed and external Codex history skips repeated successful usage preparation while its
+  source and index remain unchanged. Explicit requests retain their existing catch-up path;
+  external path, identity and ownership checks still run on every visit.
+- Registry, pending-session and machine-config snapshots check file metadata on every read;
+  unchanged JSON is parsed once, while another writer's edits and atomic replacements stay visible.
+- Up to eight exact agent-pane captures share one bounded tmux process, with independent capture
+  fallback on batch failure. A surviving auxiliary window no longer makes a dead agent pane
+  appear running in monitoring; healing uses the same pane inventory.
+- Linux OOM protection follows known daemon and tmux process trees through every thread's
+  children. Process start-time checks and an open procfs handle protect against PID reuse;
+  inherited tool adjustments are released while intentional adjustments are preserved.
+
 ## [0.73.0] — 2026-09-29
 
 Peer reads cost the peer a relay, not a CLI

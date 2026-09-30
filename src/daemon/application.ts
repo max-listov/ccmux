@@ -4,6 +4,8 @@ import {
   createManagedSchedule,
   defineManagedResource,
   lifecycleLedgerResource,
+  type ManagedScheduleClock,
+  type ManagedScheduleConfig,
   managedServerResource,
 } from 'stitchkit/application';
 import { pruneTranscriptIndexes } from '../agent/transcript/transcriptIndex.ts';
@@ -24,6 +26,7 @@ import { EXTERNAL_INTERVAL_MS } from '../external/residentSchema.ts';
 import { flushOutbox } from '../fleet/flush.ts';
 import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
+import { observedProcessRoots } from '../monitoring/tmux.ts';
 import { autoUpdateOnce } from '../release/update.ts';
 import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/journalOwner.ts';
 import {
@@ -44,7 +47,15 @@ import { createDaemonLifecycle } from './lifecycle.ts';
 import { watchLoopStalls } from './loopStall.ts';
 
 /** The daemon owns these resources, not the independently supervised provider writers. */
-export function createDaemonApplication(initial: MachineConfig) {
+export function createDaemonApplication(
+  initial: MachineConfig,
+  clockFor?: (id: string) => ManagedScheduleClock,
+) {
+  const schedule = (config: ManagedScheduleConfig) =>
+    createManagedSchedule({
+      ...config,
+      ...(clockFor ? { clock: clockFor(config.id) } : {}),
+    });
   let journal: OwnedRuntimeJournal | undefined;
   const chronology = defineManagedResource({
     id: 'diagnostic-journal',
@@ -91,7 +102,11 @@ export function createDaemonApplication(initial: MachineConfig) {
   const externalObserver = new ExternalStatusObserver(initial, external);
   const previous = new Map<string, Observed>();
   const machine = loadMachineConfig;
-  const usageObservation = createUsageObservation(machine, external);
+  const usageObservation = createUsageObservation(
+    machine,
+    external,
+    clockFor?.('usage-observation'),
+  );
   const projection = defineManagedResource({
     id: 'projection',
     dependsOn: [chronology, processLifecycle],
@@ -138,7 +153,7 @@ export function createDaemonApplication(initial: MachineConfig) {
     dependsOn: [controlOwner],
     server: (ctx) => ctx.use(controlOwner).server,
   });
-  const observation = createManagedSchedule({
+  const observation = schedule({
     id: 'observation',
     dependsOn: [projection.id],
     everyMs: STATUS_INTERVAL_MS,
@@ -173,7 +188,7 @@ export function createDaemonApplication(initial: MachineConfig) {
       log.warn({ msg: 'session event pass failed', err: String(error) });
     },
   });
-  const freshness = createManagedSchedule({
+  const freshness = schedule({
     id: 'freshness',
     dependsOn: [projection.id],
     everyMs: 250,
@@ -183,7 +198,7 @@ export function createDaemonApplication(initial: MachineConfig) {
       external.expire();
     },
   });
-  const externalObservation = createManagedSchedule({
+  const externalObservation = schedule({
     id: 'external-observation',
     dependsOn: [externalOwner.id],
     everyMs: EXTERNAL_INTERVAL_MS,
@@ -198,7 +213,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   // Held delivery is a condition, not an event: said when it starts, changes and ends — not every
   // three seconds while it lasts.
   let heldBy: string | null = null;
-  const delivery = createManagedSchedule({
+  const delivery = schedule({
     id: 'delivery',
     everyMs: 3000,
     startAfterMs: 0,
@@ -232,7 +247,7 @@ export function createDaemonApplication(initial: MachineConfig) {
   let nextEnsureAt = 0;
   let lastUpdateCheck = 0;
   let guardCleared = false;
-  const healing = createManagedSchedule({
+  const healing = schedule({
     id: 'healing',
     everyMs: 1000,
     startAfterMs: 0,
@@ -282,18 +297,20 @@ export function createDaemonApplication(initial: MachineConfig) {
   // nothing removed one whose transcript was gone. Once a day, and first a minute after start.
   // Every two seconds rather than with the heal pass: a build an agent starts inherits the agent's
   // lowered value, and the time until it is returned to 0 is the time it would be spared instead of
-  // the agent. Reading the table is one file per process and spawns nothing.
+  // the agent. The pass walks known tmux/daemon roots and all task children.
   let oomRefused = false;
-  const oomPriority = createManagedSchedule({
+  const oomPriority = schedule({
     id: 'oom-priority',
     everyMs: 2000,
     startAfterMs: 0,
     overlap: { mode: 'skip' },
     run: async () => {
-      const target = machine().oomScoreAdj;
+      const m = machine();
+      const target = m.oomScoreAdj;
       if (PLATFORM !== 'linux' || target === null || oomRefused) return;
       try {
-        applyOomPriority(oomPlan(readProcTable(), process.pid), target, procOomAccess());
+        const table = readProcTable([process.pid, ...(await observedProcessRoots(m))]);
+        applyOomPriority(oomPlan(table, process.pid), target, procOomAccess(table.rows));
       } catch (error) {
         if (!isPermissionRefusal(error)) throw error;
         oomRefused = true;
@@ -305,7 +322,7 @@ export function createDaemonApplication(initial: MachineConfig) {
     },
     onError: (error) => log.warn({ msg: 'oom priority pass failed', err: String(error) }),
   });
-  const cachePrune = createManagedSchedule({
+  const cachePrune = schedule({
     id: 'cache-prune',
     everyMs: 24 * 60 * 60 * 1000,
     startAfterMs: 60_000,
@@ -351,6 +368,15 @@ export function createDaemonApplication(initial: MachineConfig) {
     external,
     externalObserver,
     monitoring,
-    schedules: { observation, usageObservation, externalObservation, freshness, delivery, healing },
+    schedules: {
+      observation,
+      usageObservation,
+      externalObservation,
+      freshness,
+      delivery,
+      healing,
+      oomPriority,
+      cachePrune,
+    },
   };
 }

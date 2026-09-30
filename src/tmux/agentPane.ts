@@ -1,6 +1,7 @@
 import type { MachineConfig } from '../types.ts';
 import { run } from '../util/spawn.ts';
 import { tmuxArgv } from './argv.ts';
+import { AGENT_PANE_OPTION, PANE_INVENTORY_FORMAT, parsePaneInventory } from './paneInventory.ts';
 import { exactTarget, paneTarget, sessionOptionTarget } from './target.ts';
 
 /**
@@ -12,7 +13,6 @@ import { exactTarget, paneTarget, sessionOptionTarget } from './target.ts';
  * be typed into someone else's terminal, while `has-session` still said the session was alive and
  * nothing healed it. A pane id resolves to that pane or to nothing.
  */
-export const AGENT_PANE_OPTION = '@ccmux-agent-pane';
 
 /** Agent pane ids already resolved in this process, per tmux server and session name. A cached id
  *  goes stale when another process restarts the session; `onAgentPane` re-resolves on failure. */
@@ -93,30 +93,9 @@ export async function onAgentPane(
  * meaning "the agent runs". One fork for the whole server: every pane with its session's recorded
  * agent pane. A session that recorded none (created before this) counts as alive while it exists.
  */
-export async function listAgentLiveness(
-  m: MachineConfig,
-): Promise<{ live: Set<string>; agentGone: Set<string>; agentPanes: Map<string, string> }> {
-  const { code, stdout } = await run(
-    tmuxArgv(m, 'list-panes', '-a', '-F', `#{session_name}\t#{pane_id}\t#{${AGENT_PANE_OPTION}}`),
-  );
-  const live = new Set<string>();
-  const recorded = new Map<string, string>();
-  const seen = new Map<string, Set<string>>();
-  if (code !== 0) return { live, agentGone: new Set(), agentPanes: recorded };
-  for (const line of stdout.split('\n')) {
-    const [session, pane, agent] = line.split('\t');
-    if (!session || !pane) continue;
-    if (!seen.has(session)) seen.set(session, new Set());
-    seen.get(session)?.add(pane);
-    if (agent) recorded.set(session, agent);
-  }
-  const agentGone = new Set<string>();
-  for (const [session, panes] of seen) {
-    const agent = recorded.get(session);
-    if (agent === undefined || panes.has(agent)) live.add(session);
-    else agentGone.add(session);
-  }
-  return { live, agentGone, agentPanes: recorded };
+export async function listAgentLiveness(m: MachineConfig) {
+  const { code, stdout } = await run(tmuxArgv(m, 'list-panes', '-a', '-F', PANE_INVENTORY_FORMAT));
+  return parsePaneInventory(code === 0 ? stdout : '');
 }
 
 /**

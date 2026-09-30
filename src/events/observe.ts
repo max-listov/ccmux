@@ -1,7 +1,7 @@
 import { lastActivityMs, lastTranscriptMessage, providerFor } from '../agent/index.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { eventsEnabledFor } from '../config/events.ts';
-import { observedPane, observedSessionInventory } from '../monitoring/tmux.ts';
+import { observedPanes, observedSessionInventory } from '../monitoring/tmux.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { managedRuntimeView } from '../runtime/view.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
@@ -279,6 +279,10 @@ export async function observeOnce(
 ): Promise<number> {
   const sessions = loadSessions(m);
   const running = await observedSessionInventory(m);
+  const panes = await observedPanes(
+    m,
+    sessions.filter((s) => running.has(s.name) && !hasNativeRuntime(s)).map((s) => s.name),
+  );
   // Seeded from disk so a supervisor that just restarted is not blind about panes it watched a
   // moment ago — its own last write is the memory its predecessor kept.
   const onDisk = readPaneActivity(m);
@@ -290,8 +294,7 @@ export async function observeOnce(
     const isRunning = running.has(s.name);
     // Capture only what is running: a stopped session has no pane, and asking for one is a fork per
     // session per pass spent to be told so.
-    const pane =
-      isRunning && !hasNativeRuntime(s) ? await observedPane(m, s.name).catch(() => null) : null;
+    const pane = isRunning && !hasNativeRuntime(s) ? (panes.get(s.name) ?? null) : null;
     const prev = previous.get(s.name) ?? UNSEEN;
     const next = observe(
       m,

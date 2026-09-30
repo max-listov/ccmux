@@ -6,8 +6,8 @@ import { writeReadyRows } from './readyStore.ts';
 import { withSessionRegistryLock } from './registryLock.ts';
 
 /**
- * Load all managed sessions. Always reads fresh from disk — NEVER caches (the
- * daemon re-read fix). Every v2 row is JSON with an explicit agent; the old pipe format is not
+ * Load all managed sessions. Each file revision is checked on every call; unchanged parsing
+ * is reused, with owned rows returned to each caller. Every v2 row is JSON with an explicit agent; the old pipe format is not
  * accepted because it cannot state the provider and therefore cannot be routed safely.
  */
 export function loadSessions(m: MachineConfig): Session[] {

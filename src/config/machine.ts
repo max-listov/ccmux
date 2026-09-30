@@ -1,9 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { MachineConfig } from '../types.ts';
 import { HOME, PLATFORM } from '../util/env.ts';
+import { FileSnapshot } from '../util/fileSnapshot.ts';
 import { machineConfigPath, resolveMonitoringLocation } from './location.ts';
 import { MachineConfigSchema } from './machineSchema.ts';
 import { STATE_DIR } from './paths.ts';
+
+const MachineFileSchema = MachineConfigSchema.partial();
+const machineFile = new FileSnapshot<ReturnType<typeof MachineFileSchema.parse>>();
+export const machineFileMetrics = () => machineFile.metrics();
 
 /** Per-platform defaults; everything here is overridable by machine.json. */
 function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {
@@ -67,17 +72,19 @@ function detectTmuxBin(): string {
 /**
  * The ONE-artifact / many-configs loader. Reads machine.json (if present), layers
  * it over per-platform defaults + ordered-fallback bin detection, applies env
- * overrides, then validates through the strict schema. Re-read on every call — no
- * module-level cache (the structural fix for the bash mapfile-once staleness bug).
+ * overrides, then validates through the strict schema. Disk revision is checked on every call;
+ * only unchanged file parsing is reused. Binary detection and env overrides remain live.
  */
 export function loadMachineConfig(): MachineConfig {
   const path = machineConfigPath();
-  const fileRaw: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
-  const file = MachineConfigSchema.partial().parse(fileRaw); // validates file, all-optional
+  const file = machineFile.read(path, () => {
+    const raw: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+    return MachineFileSchema.parse(raw);
+  });
   const merged: Record<string, unknown> = {
     ...resolveDefaults(PLATFORM),
     ...file,
-    ...resolveMonitoringLocation(fileRaw),
+    ...resolveMonitoringLocation(file),
   };
   if (merged.claudeBin === undefined) merged.claudeBin = detectClaudeBin();
   if (merged.codexBin === undefined) {

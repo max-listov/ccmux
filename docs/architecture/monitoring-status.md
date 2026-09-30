@@ -4,7 +4,7 @@ description: A bounded local snapshot from the daemon observation loop, with no 
 type: architecture
 status: active
 created: 2026-08-27
-updated: 2026-08-28
+updated: 2026-09-30 08:20 +07:00
 ---
 
 # Monitoring status
@@ -146,7 +146,7 @@ Each row carries:
 | address | Full host:session selector; identity also includes provider and UUID |
 | rc | Remote-control display label, not a routing selector |
 | dir | Declared launch directory from the registry, not a measured current process cwd |
-| archived, running | Registry lifecycle intent and observed tmux presence |
+| archived, running | Registry lifecycle intent and observed agent-pane presence |
 | state | working, idle, prompt, stopped, blocked, or unknown |
 | model | Raw provider transcript model ID, or null |
 | contextPercent | Hook metrics, then pane context; unknown is null, never invented zero |
@@ -212,3 +212,24 @@ Bundle replacement and rollback share an owner-aware filesystem lock. Reinstalli
 bytes does not replace the predecessor backup; backup failure aborts installation.
 An older producer does not publish this surface; callers receive unavailable/stale rather than
 falling back to an expensive scan. There is no implicit consumer-side fallback.
+
+
+## Producer capture cost
+
+The observation pass captures every running interactive agent pane at the existing two-second
+cadence. Up to eight exact pane targets share one bounded tmux command batch; unique delimiters
+separate their text. Each pane retains its 64 KiB bound, and the whole batch has a proportional
+output bound and the producer deadline. A failed batch falls back to independent captures so a
+vanished pane does not remove evidence from surviving panes. Native sessions still use their
+runtime projection. No unchanged-pane shortcut replaces spinner, prompt or interruption evidence.
+`test/tmux-observation-batch.test.ts` exercises exact panes, two children for nine captures and
+independent results after one session dies. Counters in `monitoring/tmux.ts` cover this bounded
+producer, including its tmux root lookup for the Linux OOM pass; unrelated tmux callers are outside
+those counters.
+
+Monitoring and healing share one pane inventory parser. A recorded agent pane must exist even
+when an auxiliary window keeps the tmux session alive; such a session is stopped. Legacy sessions
+without a recorded pane retain their existing presence semantics. Session creation time comes
+from this same bounded inventory. `test/daemon-pane-freshness.test.ts` exercises working, a quiet
+real child tool, completion, prompt, interrupted-turn closure and agent-pane death through the
+full daemon Unix service reader. Retaining the auxiliary session as running makes that test fail.

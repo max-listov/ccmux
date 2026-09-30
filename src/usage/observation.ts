@@ -3,6 +3,7 @@ import type { ExternalStatusPublisher } from '../external/residentPublisher.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
+import { UsagePreparation } from './preparation.ts';
 import { pendingUsageIndexes } from './queue.ts';
 import { UsageQuerySchema } from './schema.ts';
 import { readSessionUsage } from './service.ts';
@@ -13,6 +14,7 @@ export function createUsageObservation(
   external: ExternalStatusPublisher,
   clock?: ManagedScheduleClock,
 ) {
+  const preparation = new UsagePreparation();
   let cursor = 0;
   let requestedCursor = 0;
   let tick = 0;
@@ -42,10 +44,30 @@ export function createUsageObservation(
             .map((s) => `${m.rcPrefix}:app/${s.identity.threadId}`),
         ]),
       ];
+      preparation.retain(addresses);
       if (!addresses.length) return;
       const address = addresses[cursor++ % addresses.length];
       if (!address) return;
-      const result = await readSessionUsage(m, address, UsageQuerySchema.parse({}), true, signal);
+      const session = managed.find((s) => `${m.rcPrefix}:${s.name}` === address);
+      const work = session
+        ? preparation.inspect(m, session, address)
+        : await preparation.inspectExternal(
+            m,
+            address.slice(address.indexOf(':app/') + 5),
+            address,
+            signal,
+            managed,
+          );
+      if (work && !work.needed) return;
+      const result = await readSessionUsage(
+        m,
+        address,
+        UsageQuerySchema.parse({}),
+        true,
+        signal,
+        managed,
+      );
+      work?.complete(result);
       if (result.state === 'failed') throw new Error(result.reason ?? 'Usage observation failed');
     },
     onError: (error) => log.warn({ msg: 'usage observation failed', err: String(error) }),

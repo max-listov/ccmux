@@ -2,8 +2,9 @@ import { clearStatus } from '../session/status.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { run } from '../util/spawn.ts';
-import { AGENT_PANE_OPTION, forgetAgentPane, onAgentPane, rememberAgentPane } from './agentPane.ts';
+import { forgetAgentPane, onAgentPane, rememberAgentPane } from './agentPane.ts';
 import { tmuxArgv } from './argv.ts';
+import { AGENT_PANE_OPTION } from './paneInventory.ts';
 import { exactTarget, sessionOptionTarget } from './target.ts';
 
 // Typed tmux wrappers — every call is an argv array via util/spawn. All targeting

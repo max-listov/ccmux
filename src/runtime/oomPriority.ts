@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, openSync, readdirSync, readFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseProcStat } from '../chat/auth.ts';
 
@@ -24,33 +24,58 @@ import { parseProcStat } from '../chat/auth.ts';
 interface ProcRow {
   pid: number;
   parent: number;
+  startTime?: string;
 }
 
-/** The process table as parent links, from `/proc` — one file read per process, nothing spawned. */
-export function readProcTable(procRoot = '/proc'): { rows: ProcRow[]; runners: number[] } {
+/** Follow all task children from known roots; unrelated host processes are never opened. */
+export function readProcTable(
+  roots: number[],
+  procRoot = '/proc',
+): { rows: ProcRow[]; runners: number[] } {
   const rows: ProcRow[] = [];
   const runners: number[] = [];
-  let names: string[];
-  try {
-    names = readdirSync(procRoot);
-  } catch {
-    return { rows, runners };
-  }
-  for (const name of names) {
-    if (!/^\d+$/.test(name)) continue;
-    const pid = Number(name);
-    let entry: ReturnType<typeof parseProcStat>;
+  const seen = new Set<number>();
+  const queue = [...roots];
+  while (queue.length) {
+    const pid = queue.pop();
+    if (pid === undefined || seen.has(pid)) continue;
+    seen.add(pid);
+    let raw: string;
     try {
-      entry = parseProcStat(readFileSync(join(procRoot, name, 'stat'), 'utf8'));
+      raw = readFileSync(join(procRoot, String(pid), 'stat'), 'utf8');
     } catch {
-      continue; // gone between the listing and the read
+      continue;
     }
-    if (entry === null) continue;
-    rows.push({ pid, parent: entry.parent });
-    // A pane's `_run` is an interpreter running this program; only those pay a second read.
+    const entry = parseProcStat(raw);
+    if (!entry) continue;
+    const startTime = procStartTime(raw);
+    rows.push({ pid, parent: entry.parent, ...(startTime ? { startTime } : {}) });
     if (entry.command === 'bun' && isRunner(readArgv(procRoot, pid))) runners.push(pid);
+    try {
+      for (const task of readdirSync(join(procRoot, String(pid), 'task'))) {
+        let children: string;
+        try {
+          children = readFileSync(join(procRoot, String(pid), 'task', task, 'children'), 'utf8');
+        } catch {
+          continue;
+        }
+        for (const child of children.trim().split(/\s+/)) {
+          const next = Number(child);
+          if (Number.isSafeInteger(next) && next > 1) queue.push(next);
+        }
+      }
+    } catch {
+      /* process exited */
+    }
   }
   return { rows, runners };
+}
+
+function procStartTime(raw: string): string | undefined {
+  return raw
+    .slice(raw.lastIndexOf(')') + 1)
+    .trim()
+    .split(/\s+/)[19];
 }
 
 function readArgv(procRoot: string, pid: number): string[] {
@@ -116,9 +141,20 @@ export interface OomAccess {
   write(pid: number, value: number): void;
 }
 
-export function procOomAccess(procRoot = '/proc'): OomAccess {
+export function procOomAccess(rows: ProcRow[], procRoot = '/proc'): OomAccess {
+  const epochs = new Map(rows.map((row) => [row.pid, row.startTime]));
+  const sameProcess = (pid: number): boolean => {
+    const expected = epochs.get(pid);
+    if (expected === undefined) return false;
+    try {
+      return procStartTime(readFileSync(join(procRoot, String(pid), 'stat'), 'utf8')) === expected;
+    } catch {
+      return false;
+    }
+  };
   return {
     read(pid) {
+      if (!sameProcess(pid)) return null;
       try {
         const value = Number.parseInt(
           readFileSync(join(procRoot, String(pid), 'oom_score_adj'), 'utf8'),
@@ -130,14 +166,22 @@ export function procOomAccess(procRoot = '/proc'): OomAccess {
       }
     },
     write(pid, value) {
-      writeFileSync(join(procRoot, String(pid), 'oom_score_adj'), String(value));
+      // An open procfs fd belongs to that process even when its numeric PID is subsequently reused.
+      const fd = openSync(join(procRoot, String(pid), 'oom_score_adj'), constants.O_WRONLY);
+      try {
+        if (!sameProcess(pid))
+          throw Object.assign(new Error('Process identity changed'), { code: 'ESRCH' });
+        writeSync(fd, String(value));
+      } finally {
+        closeSync(fd);
+      }
     },
   };
 }
 
 /** A write the kernel refused for lack of privilege, as opposed to a process that just exited. */
 export function isPermissionRefusal(error: unknown): boolean {
-  const code = (error as { code?: unknown } | null)?.code;
+  const code = error instanceof Error && 'code' in error ? error.code : undefined;
   return code === 'EACCES' || code === 'EPERM';
 }
 

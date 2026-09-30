@@ -4,7 +4,7 @@ description: Capability-aware native session supervision with exact continuation
 type: architecture
 status: active
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-09-30 07:58 +07:00
 ---
 
 # Managed runtime drivers
@@ -236,8 +236,15 @@ browsers and builds are the victims before the agent. A descendant that set itse
 headless browser at 200–300 — or lower on purpose keeps its value, and a spine process already
 protected further is not raised.
 
-The table is read from `/proc`, one file per process, and only interpreters pay a second read to
-be recognised as a pane runner; nothing is spawned. Lowering needs `CAP_SYS_RESOURCE`: a daemon
+The pass discovers pane/server roots with one bounded tmux inventory command and walks only
+those roots plus the daemon through `/proc/<pid>/task/*/children`. Forks from worker threads are
+included; unrelated host processes are not scanned. Process stat and interpreter argv identify
+the same supervising spine. Every adjustment is still read each pass, preserving intentional
+changes rather than trusting a remembered value. The stat start-time pins process identity;
+reads and writes reject PID reuse, and a write uses an opened procfs fd after that check.
+`test/oom-priority.test.ts` covers multiple task children, unrelated roots, PID reuse and
+permission refusal. `test/oom-linux.test.ts` uses an isolated real tmux tree to verify spine
+protection, a tool fork inheriting the target, release to zero and an intentional browser value. Lowering needs `CAP_SYS_RESOURCE`: a daemon
 refused it logs one warning and leaves the mechanism off until it restarts. macOS has no such knob
 and is untouched.
 

@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -7,6 +7,7 @@ import {
   isRunner,
   type OomAccess,
   oomPlan,
+  procOomAccess,
   readProcTable,
 } from '../src/runtime/oomPriority.ts';
 
@@ -95,6 +96,11 @@ test('the table is read from /proc: parent links, and the pane runners among int
     mkdirSync(join(root, String(pid)));
     writeFileSync(join(root, String(pid), 'stat'), `${pid} (${comm}) S ${parent} ${pid} ${pid} 0`);
     writeFileSync(join(root, String(pid), 'cmdline'), `${argv.join('\0')}\0`);
+    mkdirSync(join(root, String(pid), 'task', String(pid)), { recursive: true });
+    writeFileSync(
+      join(root, String(pid), 'task', String(pid), 'children'),
+      parent === 1 && pid === 200 ? '210' : pid === 210 ? '220' : '',
+    );
   };
   proc(200, 'tmux: server', 1, ['tmux']);
   proc(210, 'bun', 200, [
@@ -107,7 +113,7 @@ test('the table is read from /proc: parent links, and the pane runners among int
   proc(211, 'bun', 1, ['/b/bun', '/h/.local/share/ccmux/app/ccmux.js', 'daemon']);
   proc(220, 'claude', 210, ['claude', '--resume', 'x']);
   mkdirSync(join(root, 'self'));
-  const read = readProcTable(root);
+  const read = readProcTable([200, 211], root);
   read.rows.sort((x, y) => x.pid - y.pid);
   expect(read).toEqual({
     rows: [
@@ -120,4 +126,43 @@ test('the table is read from /proc: parent links, and the pane runners among int
   });
   expect(isRunner(['bun', 'src/cli.ts', '_run', 'agent-a'])).toBe(true);
   expect(isRunner(['bun', 'other.js', '_run', 'agent-a'])).toBe(false);
+});
+
+test('task children include forks from worker threads; host entries outside roots are excluded', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-scoped-proc-'));
+  try {
+    for (const [pid, parent] of [
+      [100, 1],
+      [101, 100],
+      [102, 101],
+      [103, 100],
+      [999, 1],
+    ]) {
+      mkdirSync(join(dir, String(pid), 'task', String(pid)), { recursive: true });
+      writeFileSync(
+        join(dir, String(pid), 'stat'),
+        `${pid} (worker) S ${parent} ${Array(17).fill('0').join(' ')} ${pid}`,
+      );
+      writeFileSync(join(dir, String(pid), 'task', String(pid), 'children'), '');
+    }
+    mkdirSync(join(dir, '100', 'task', '110'));
+    writeFileSync(join(dir, '100', 'task', '110', 'children'), '101');
+    mkdirSync(join(dir, '100', 'task', '120'));
+    writeFileSync(join(dir, '100', 'task', '120', 'children'), '103');
+    writeFileSync(join(dir, '101', 'task', '101', 'children'), '102');
+    const table = readProcTable([100], dir);
+    expect(table.rows.map((r) => r.pid).sort()).toEqual([100, 101, 102, 103]);
+    writeFileSync(join(dir, '101', 'oom_score_adj'), '-300');
+    const access = procOomAccess(table.rows, dir);
+    expect(access.read(101)).toBe(-300);
+    writeFileSync(
+      join(dir, '101', 'stat'),
+      `101 (replacement) S 100 ${Array(17).fill('0').join(' ')} 9999`,
+    );
+    expect(access.read(101)).toBeNull();
+    expect(() => access.write(101, 0)).toThrow('identity changed');
+    expect(readFileSync(join(dir, '101', 'oom_score_adj'), 'utf8')).toBe('-300');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

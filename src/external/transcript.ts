@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { getProvider } from '../agent/index.ts';
 import { readTranscriptFile, unavailableTranscript } from '../agent/transcript/transcriptRead.ts';
 import { loadSessions } from '../session/registry.ts';
-import type { AgentKind, MachineConfig } from '../types.ts';
+import type { AgentKind, MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { ownedClaudeConversations } from './claude.ts';
 import type { ExternalContentTarget } from './contentSchema.ts';
@@ -18,7 +18,7 @@ import {
 
 const metadataCache = new Map<
   string,
-  { identity: string; size: number; mtime: number; threadId: string; dir: string }
+  { identity: string; size: number; mtime: number; ctime: number; threadId: string; dir: string }
 >();
 
 /**
@@ -61,12 +61,13 @@ export async function withExternalTranscript<T>(
   target: Pick<ExternalContentTarget, 'provider' | 'threadId'>,
   read: (path: string) => T,
   signal?: AbortSignal,
+  inventory?: Session[],
 ): Promise<
   { source: 'readable'; value: T; dir: string } | { source: 'missing' | 'unreadable'; dir: string }
 > {
   const { provider, threadId } = target;
   if (!z.uuid().safeParse(threadId).success) throw new Error('Invalid external thread ID');
-  const managed = loadSessions(m);
+  const managed = inventory ?? loadSessions(m);
   if (
     provider === 'claude'
       ? ownedClaudeConversations(managed).has(threadId)
@@ -108,7 +109,8 @@ export async function withExternalTranscript<T>(
         cached.identity === identity &&
         cached.threadId === threadId &&
         cached.size === stat.size &&
-        cached.mtime === stat.mtimeMs
+        cached.mtime === stat.mtimeMs &&
+        cached.ctime === stat.ctimeMs
       )
         dir = cached.dir;
       else {
@@ -119,7 +121,14 @@ export async function withExternalTranscript<T>(
         dir = metadata.cwd ?? '';
         if (metadataCache.size >= 256)
           metadataCache.delete(metadataCache.keys().next().value ?? '');
-        metadataCache.set(path, { identity, size: stat.size, mtime: stat.mtimeMs, threadId, dir });
+        metadataCache.set(path, {
+          identity,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+          ctime: stat.ctimeMs,
+          threadId,
+          dir,
+        });
       }
       const value = read(path);
       await validateExternalPath(root, path);

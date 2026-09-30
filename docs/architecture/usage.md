@@ -3,7 +3,7 @@ title: Инкрементальный учёт расхода сессий
 description: Native usage, SQLite checkpoints, bounded запросы и явная полнота измерений без выгрузки переписки.
 status: active
 created: 2026-09-09 15:37 +07:00
-updated: 2026-09-26 16:00 +07:00
+updated: 2026-09-30 07:58 +07:00
 type: architecture
 ---
 
@@ -107,7 +107,29 @@ shared lock, и простой `SELECT` читателя отказывал по
 Daemon выполняет bounded порции до 4 МиБ каждые 100 мс, skip overlap,
 shutdown/cancel через application lifecycle. Три тика из четырёх отданы round-robin очереди
 явных address + normalized query; четвёртый — фоновому обходу managed/external inventory.
-Без очереди все тики доступны inventory. Читатель не запускает полный scan истории.
+Без очереди все тики доступны inventory. Один проход передаёт свой свежий registry snapshot
+в подготовку и identity projection; `usage.list` использует один snapshot на страницу.
+Читатель не запускает полный scan истории.
+
+Для managed и external history inventory хранит только fingerprint успешно подготовленного источника,
+без SQLite handles и без готовых ответов. На каждом посещении адреса проверяются source path,
+inode/size/mtime/ctime/ownership, session/config, child inventory и main/WAL/SHM metadata
+индекса и live ledger. Неизменившийся готовый источник не запускает индексирование,
+aggregate queries и сборку response. Новые и изменённые источники используют прежние bounded
+порции; незавершённый query cache продолжает catch-up. Полностью прочитанный source с partial
+record ждёт изменения файла; его readiness остаётся `building`. Ошибка не запоминается как
+готовность. Изменение source во время подготовки требует нового прохода. Удалённые адреса
+убираются из fingerprint inventory. Fingerprint живёт в экземпляре schedule; новый экземпляр
+начинает без него.
+
+Архив входит в тот же round-robin: cold source подготавливается, затем проверяется metadata
+без непрерывного открытия SQLite. Явный `usage.read`, новая временная query и requested queue
+проходят обычную подготовку независимо от fingerprint inventory. Для external source каждый
+проход выполняет canonical lookup с проверкой configured roots, permissions, ownership, symlink
+и thread identity. Fingerprint сокращает только подготовку usage; запомненный path не заменяет
+проверку доступа. Изменения другого writer видны
+при следующем посещении адреса; частота schedule и правило трёх requested тиков из четырёх
+сохраняются.
 Head-проверка при индексировании читает дополнительно до 4096 байт. Незавершённая строка
 переносится между порциями; record свыше 16 МиБ пропускается с malformed evidence.
 Transcript сохраняет полное initial indexing и прежние absolute-line cursors.
@@ -137,12 +159,44 @@ records: event timestamps не обязаны возрастать. Дальне
 и полная причина во внутреннем логе. Ошибочные provider counts не превращаются в нули.
 
 External использует configured roots, metadata UUID, ownership/permissions/symlink/identity
-проверки. Unchanged metadata cache требует той же identity/size/mtime. Caller path не принимается.
+проверки. Unchanged metadata cache требует той же identity/size/mtime/ctime. Caller path не принимается.
 В ответе нет messages, prompt, tool arguments, credentials, storage paths или исходных ошибок.
 
 # Проверка
 
 `test/usage*.test.ts`: normalization/correction, timestamps, byte pages, restart/rollback,
 invalidation, live metadata, daemon fairness/shutdown, настоящий Unix/CLI/remote-prefix путь.
+`test/usage-preparation.test.ts` проверяет fingerprint invalidation, correction, partial source,
+cold query catch-up, live ledger и SQLite contention. `test/daemon-idle-usage.test.ts` запускает
+полный изолированный daemon: подготовленные managed archive и external thread не открываются
+повторно, requested window
+достраивается и поздняя correction видна через настоящий Unix control client. Возврат
+безусловной подготовки опровергается изменением ctime соответствующего индекса.
+`test/usage-external-preparation.test.ts` проверяет append/archive, permissions, managed ownership,
+symlink и замену identity с восстановленным mtime. Ошибка создания `UsageStore` закрывает
+уже открытое SQLite соединение; счётчики store отражают opens, active и peak handles.
+`bun scripts/daemon-idle-bench.ts <seconds> <output.json>` измеряет CPU/memory полного application
+с 29 managed sessions (18 running, 11 archived), 9 внешними synthetic Codex threads,
+отдельными tmux/config/state/cache/provider roots и 15-секундным cold окном. Native provider
+заменён read-only synthetic App Server без inference. Worker находится в `daemonIdleWorker.ts`
+и входит в TypeScript gate; `--baseline=<bundle>` использует заранее собранный worker.
+`--only=<schedule-id>` — отдельный диагностический режим: после общего прогрева остаётся один
+schedule, остальные callbacks перестают выполняться; 3,5 секунды даются на их завершение.
+Режим `--only=none` измеряет остаточную стоимость application. Эти CPU/I/O числа относятся
+к изоляции schedule, а не к его точной доле в одновременно работающем полном daemon.
+Обычный полный benchmark сохраняет все schedules. Duration проверяется монотонными часами
+и не заканчивается раньше указанного steady-state интервала.
+Mac workload не измеряет Linux OOM pass; worker profiling запускается отдельно через `--profile`.
 Packed client gate включает typed usage call. `bun scripts/measure-usage.ts` измеряет синтетическую
 историю: max/P95 backfill/warm, append, reply bytes и sampled RSS, без доступа к native runtime.
+
+
+Registry и machine config проверяют disk revision при каждом обращении. Версия файла включает
+наносекундные mtime/ctime, dev/inode, size, mode и uid; configured symlink проверяется по target.
+Неизменившийся файл не разбирается повторно. Ready registry и pending journal имеют отдельные
+snapshot readers, поэтому порядок journal → ready при promotion сохраняется. Каждый reader
+держит один parsed snapshot и возвращает собственные объекты caller. Ошибка нового разбора
+не отдаёт прежний snapshot. Machine binary detection и env overrides выполняются при каждом
+вызове; результаты целиком не кешируются. `test/file-snapshot.test.ts` проверяет отдельного
+writer, mutation caller, atomic replacement, restored mtime, symlink target, malformed config
+и promoted journal. Метрики files разделяют revision checks и повторные loads.

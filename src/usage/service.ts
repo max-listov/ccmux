@@ -6,7 +6,7 @@ import { providerFor } from '../agent/index.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
 import { routeFor } from '../fleet/address.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
-import type { MachineConfig } from '../types.ts';
+import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { aggregateUsage, nextPage, pageOffset, queryKey } from './aggregate.ts';
 import { readExternalUsage } from './external.ts';
@@ -28,21 +28,23 @@ export async function readSessionUsage(
   query: UsageQuery,
   advance = false,
   signal?: AbortSignal,
+  inventory?: Session[],
 ): Promise<UsageSummary> {
   signal?.throwIfAborted();
   const route = routeFor(address, m);
   if (route.kind !== 'local')
     throw new AppError('INVALID_TARGET', 'Usage control requires an exact local address', 400);
   const exact = `${m.rcPrefix}:${route.session}`;
+  const token = route.session.split('#')[0] ?? route.session;
   try {
+    const sessions = isCodexAppToken(token) ? [] : (inventory ?? loadSessions(m));
     const result = UsageSummarySchema.parse(
-      await readLocalUsage(m, route.session, exact, query, advance, signal),
+      await readLocalUsage(m, route.session, exact, query, advance, sessions, signal),
     );
     result.timezone = query.timezone;
-    const token = route.session.split('#')[0] ?? route.session;
     if (isCodexAppToken(token)) result.identity.nativeSessionId = codexAppThreadId(token);
     else {
-      const session = findSession(loadSessions(m), token);
+      const session = findSession(sessions, token);
       if (session)
         result.identity = {
           sessionId: session.uuid,
@@ -72,6 +74,7 @@ async function readLocalUsage(
   exact: string,
   query: UsageQuery,
   advance: boolean,
+  sessions: Session[],
   signal?: AbortSignal,
 ): Promise<UsageSummary> {
   const child = token.match(/^(.+)#([0-9a-f]{1,64})$/);
@@ -88,7 +91,7 @@ async function readLocalUsage(
     );
     return result;
   }
-  const session = findSession(loadSessions(m), name);
+  const session = findSession(sessions, name);
   if (!session) return unavailableUsage(exact, 'unknown', 'missing', 'session-missing');
   if (child && session.agent !== 'claude')
     return unavailableUsage(exact, session.agent, 'unsupported', 'child-history-unsupported');
@@ -182,7 +185,7 @@ export async function listSessionUsage(
   const data: UsageSummary[] = [];
   let bytes = 4096;
   for (const address of selected) {
-    const row = await readSessionUsage(m, address, query, false, signal);
+    const row = await readSessionUsage(m, address, query, false, signal, sessions);
     const size = Buffer.byteLength(JSON.stringify(row)) + 1;
     if (bytes + size > USAGE_MAX_BYTES) break;
     data.push(row);

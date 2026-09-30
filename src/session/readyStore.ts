@@ -3,11 +3,18 @@ import { sessionsPath } from '../config/paths.ts';
 import { runtimeModeIsValid, runtimeModes } from '../runtime/modes.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { FileSnapshot } from '../util/fileSnapshot.ts';
 import { SessionSchema } from './schema.ts';
 
 const HEADER = '# managed agent sessions — ccmux owns this file (JSONL v2)';
+const readyFile = new FileSnapshot<Session[]>();
+export const readyFileMetrics = () => readyFile.metrics();
 
 export function loadReadyRows(m: MachineConfig): Session[] {
+  return readyFile.read(sessionsPath(m), () => parseReadyRows(m));
+}
+
+function parseReadyRows(m: MachineConfig): Session[] {
   if (!existsSync(sessionsPath(m))) return [];
   const out: Session[] = [];
   for (const raw of readFileSync(sessionsPath(m), 'utf8').split('\n')) {
