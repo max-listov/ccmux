@@ -109,7 +109,7 @@ esac
 # table is `src/boot/routedPrograms.ts`). Kept byte-identical to `shimContents()` in the source; the
 # test suite compares them, because two writers that disagree would rewrite each other on every
 # daemon start.
-WANT_SHIM="$(printf '#!/bin/sh\nif [ "$1" = "status-line" ]; then\n  exec "%s" "%s/status-line.js" "$@"\nfi\nif [ "$1" = "_peer-read" ]; then\n  exec "%s" "%s/peer-read.js" "$@"\nfi\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR" "$BUN" "$APP_DIR" "$BUN" "$APP_DIR")"
+WANT_SHIM="$(printf '#!/bin/sh\nif [ "$1" = "status-line" ]; then\n  exec "%s" "%s/status-line.js" "$@"\nfi\nif [ "$1" = "_peer-read" ]; then\n  exec "%s" "%s/peer-read.js" "$@"\nfi\nif [ "$1" = "control" ] && [ "$#" = "3" ] && [ "$2" = "external" ] && [ "$3" = "--json" ]; then\n  exec "%s" "%s/control-external.js" "$@"\nfi\nexec "%s" "%s/ccmux.js" "$@"\n' "$BUN" "$APP_DIR" "$BUN" "$APP_DIR" "$BUN" "$APP_DIR" "$BUN" "$APP_DIR")"
 if [ -f "$SHIM" ] && [ "$(cat "$SHIM")" = "$WANT_SHIM" ]; then
   say "shim: already correct (unchanged)"
 else

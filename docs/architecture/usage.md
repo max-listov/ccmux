@@ -3,7 +3,7 @@ title: Инкрементальный учёт расхода сессий
 description: Native usage, SQLite checkpoints, bounded запросы и явная полнота измерений без выгрузки переписки.
 status: active
 created: 2026-09-09 15:37 +07:00
-updated: 2026-09-30 07:58 +07:00
+updated: 2026-09-30 14:26 +07:00
 type: architecture
 ---
 
@@ -186,7 +186,9 @@ schedule, остальные callbacks перестают выполняться
 к изоляции schedule, а не к его точной доле в одновременно работающем полном daemon.
 Обычный полный benchmark сохраняет все schedules. Duration проверяется монотонными часами
 и не заканчивается раньше указанного steady-state интервала.
-Mac workload не измеряет Linux OOM pass; worker profiling запускается отдельно через `--profile`.
+Mac workload не измеряет Linux OOM pass. `--attribution` отдельно включает detailed CPU windows;
+обычный замер сохраняет выключенный tracing. Worker sampling profiling запускается отдельно
+через `--profile`; его расходы нельзя смешивать с результатом обычного benchmark.
 Packed client gate включает typed usage call. `bun scripts/measure-usage.ts` измеряет синтетическую
 историю: max/P95 backfill/warm, append, reply bytes и sampled RSS, без доступа к native runtime.
 

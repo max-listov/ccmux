@@ -6,6 +6,25 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.75.0] — 2026-09-30
+
+Reduce repeated runtime work and expose opt-in daemon performance diagnostics
+
+- Codex transcripts retain custom tool calls and results; derived transcript indexes use a
+  separate cache namespace.
+- Repeated external Codex lookups share a bounded root index while preserving ambiguity,
+  ownership and file identity checks.
+- Peer lists reuse fresh daemon observations and retain cold collection during observation gaps.
+  `control external --json` uses a small relay to the existing endpoint.
+- Native owners wake on input changes, retain lost-event fallback and acquire admission locks
+  only for pending input. Every confirmed provider heartbeat retains a fresh observation stamp.
+- Linux OOM discovery chooses task-child or PPID traversal by measured cost and shares tmux roots.
+  PID identity checks and intentional adjustments remain intact.
+- Daemon performance reads expose CPU windows and producer counters without changing collection;
+  a separate admitted operation enables, disables or explicitly resets tracing. Default tracing
+  remains off, with counters and stall diagnostics available.
+- Shared App Server errors identify the missing transport capability without recommending a
+  restart of a live stdio owner.
 ## [0.74.0] — 2026-09-30
 
 Prepare unchanged usage only when needed and batch daemon pane observations

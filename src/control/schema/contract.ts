@@ -20,7 +20,6 @@ import {
   ExternalContentResultSchema,
   ExternalContentSelectorSchema,
 } from '../../external/contentSchema.ts';
-import { ExternalStatusSnapshotSchema } from '../../external/residentSchema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../../runtime/capabilities.ts';
 import {
   SteeringInputSchema,
@@ -43,6 +42,7 @@ import {
 } from './context.ts';
 import { ControlRowSchema, ControlSnapshotSchema, ControlTargetSchema } from './core.ts';
 import { ControlDirectoryReadSchema, ControlDirectoryResultSchema } from './directory.ts';
+import { externalListContract } from './externalList.ts';
 import {
   ControlActionReceiptSchema,
   ControlInterruptSchema,
@@ -60,6 +60,7 @@ import {
   ControlTranscriptReadSchema,
   ControlTranscriptResultSchema,
 } from './native.ts';
+import { performanceContract } from './performance.ts';
 import {
   ControlCommandCatalogSchema,
   ControlCommandsReadSchema,
@@ -93,8 +94,13 @@ import {
 } from './terminalPrompt.ts';
 
 export const controlContract = defineContract(
-  { prefix: 'control', scope: 'local' },
   {
+    // The narrow relay and the full service share one transport identity.
+    ...externalListContract.meta,
+  },
+  {
+    ...externalListContract.endpoints,
+    ...performanceContract.endpoints,
     'terminal.prompt': {
       method: 'POST',
       path: '/terminal/prompt',
@@ -314,14 +320,6 @@ export const controlContract = defineContract(
       expose: ['HTTP', 'CLI', 'MCP'],
       output: ControlSnapshotSchema,
       tool: { name: 'sessions' },
-    },
-    'external.list': {
-      method: 'POST',
-      path: '/external',
-      desc: 'Read prepared external native thread states; does not adopt or start threads',
-      expose: ['HTTP', 'CLI', 'MCP'],
-      output: ExternalStatusSnapshotSchema,
-      tool: { name: 'external' },
     },
     'session.get': {
       method: 'POST',

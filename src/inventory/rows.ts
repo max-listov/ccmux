@@ -104,6 +104,7 @@ async function buildRow(
   shouldCapture: boolean,
   letters: ReadonlyMap<string, SessionLetters>,
   agentPane: string | null,
+  observation?: { pane: string | null },
 ): Promise<ListRow> {
   const lastMessage = lastTranscriptMessage(s, m); // works running or stopped
   const activity = lastActivityMs(s, m);
@@ -151,8 +152,10 @@ async function buildRow(
   let scan: PaneScan;
   if (native !== null) {
     scan = native.scan;
-  } else if (shouldCapture || !cached) {
-    scan = provider.scanPane(await capturePane(m, s.name, 30));
+  } else if (observation !== undefined || shouldCapture || !cached) {
+    scan = provider.scanPane(
+      observation === undefined ? await capturePane(m, s.name, 30) : (observation.pane ?? ''),
+    );
     scanCache.set(s.name, scan);
   } else {
     scan = cached;
@@ -348,12 +351,19 @@ export function toListItem(m: MachineConfig, r: ListRow): ListItem {
  *  reuse their cached scan. Omit it (CLI `list`) to capture every running session, as before. */
 export async function collectRows(
   m: MachineConfig,
-  opts?: { liveNames?: Set<string>; only?: string },
+  opts?: {
+    liveNames?: Set<string>;
+    only?: string;
+    observation?: {
+      created: ReadonlyMap<string, number>;
+      agentPanes: ReadonlyMap<string, string>;
+      panes: ReadonlyMap<string, string | null>;
+    };
+  },
 ): Promise<ListRow[]> {
-  const [created, { agentPanes }] = await Promise.all([
-    listSessionsCreated(m),
-    listAgentLiveness(m),
-  ]);
+  const [created, { agentPanes }] = opts?.observation
+    ? [opts.observation.created, { agentPanes: opts.observation.agentPanes }]
+    : await Promise.all([listSessionsCreated(m), listAgentLiveness(m)]);
   const nowSec = Date.now() / 1000;
   // One session's row is built by the same code as the whole list: a second way to decide a
   // session's state would disagree with the first the day either changed.
@@ -375,6 +385,9 @@ export async function collectRows(
         liveNames === undefined || liveNames.has(s.name),
         letters,
         agentPanes.get(s.name) ?? null,
+        opts?.observation === undefined
+          ? undefined
+          : { pane: opts.observation.panes.get(s.name) ?? null },
       ),
     ),
   );

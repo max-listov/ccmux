@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { chatAuthPath } from '../config/paths.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { PLATFORM } from '../util/env.ts';
+import { parseProcessStat } from '../util/procStat.ts';
 
 export const CHAT_CREDENTIAL_ENV = 'CCMUX_CHAT_CREDENTIAL';
 
@@ -131,16 +132,8 @@ function readCmdline(pid: number): string {
  * is taken at the LAST `)`, which is unambiguous because everything after it is numeric fields.
  */
 export function parseProcStat(raw: string): ProcEntry | null {
-  const open = raw.indexOf('(');
-  const close = raw.lastIndexOf(')');
-  if (open === -1 || close === -1 || close < open) return null;
-  const fields = raw
-    .slice(close + 1)
-    .trim()
-    .split(/\s+/);
-  const parent = Number.parseInt(fields[1] ?? '', 10);
-  if (!Number.isInteger(parent)) return null;
-  return { parent, command: raw.slice(open + 1, close), args: '' };
+  const entry = parseProcessStat(raw);
+  return entry ? { parent: entry.parent, command: entry.command, args: '' } : null;
 }
 
 /** Elsewhere (macOS): ask about ONE process per level. Measured against listing the whole table in

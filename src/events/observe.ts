@@ -1,7 +1,12 @@
 import { lastActivityMs, lastTranscriptMessage, providerFor } from '../agent/index.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { eventsEnabledFor } from '../config/events.ts';
-import { observedPanes, observedSessionInventory } from '../monitoring/tmux.ts';
+import {
+  observedAgentPanes,
+  observedPanes,
+  observedPeerPanes,
+  observedSessionInventory,
+} from '../monitoring/tmux.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { managedRuntimeView } from '../runtime/view.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
@@ -276,6 +281,11 @@ export async function observeOnce(
     pane: string | null,
     seen: Observed,
   ) => void,
+  captured?: (observation: {
+    created: ReadonlyMap<string, number>;
+    agentPanes: ReadonlyMap<string, string>;
+    panes: ReadonlyMap<string, string | null>;
+  }) => Promise<void>,
 ): Promise<number> {
   const sessions = loadSessions(m);
   const running = await observedSessionInventory(m);
@@ -328,6 +338,12 @@ export async function observeOnce(
   // Published for the readers that cannot keep this memory themselves — `ccmux wait`, a fresh
   // process on every call, and deferred chat delivery. See `paneActivity.ts`.
   await writePaneActivity(m, paneWorking);
+  if (captured)
+    await captured({
+      created: running,
+      agentPanes: observedAgentPanes(m),
+      panes: observedPeerPanes(m, panes),
+    });
   return emitted;
 }
 

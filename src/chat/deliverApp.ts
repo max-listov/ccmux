@@ -1,3 +1,5 @@
+import { CodexAppUnavailable } from '../agent/codex/socket.ts';
+import { remedyFor } from '../external/turnSchema.ts';
 import type { ChatTarget, MachineConfig } from '../types.ts';
 import { promptInvocation } from '../util/env.ts';
 import { log } from '../util/log.ts';
@@ -31,9 +33,21 @@ export function holdChanged(seen: Map<string, string>, key: string, reason: stri
   return true;
 }
 
-export function noteAppHold(key: string, to: string, reason: string, level: 'info' | 'warn'): void {
+export function appFailureDetails(error: unknown) {
+  return error instanceof CodexAppUnavailable
+    ? { cause: error.kind, remedy: remedyFor(error.kind) }
+    : {};
+}
+
+export function noteAppHold(
+  key: string,
+  to: string,
+  reason: string,
+  level: 'info' | 'warn',
+  details: ReturnType<typeof appFailureDetails> = {},
+): void {
   if (holdChanged(lastAppHold, key, reason))
-    log[level]({ msg: 'Codex App chat pickup held', to, reason });
+    log[level]({ msg: 'Codex App chat pickup held', to, reason, ...details });
 }
 
 /**
@@ -86,6 +100,7 @@ export async function deliverAppPending(
           targetLabel(recipient),
           `unavailable — barrier retained: ${error instanceof Error ? error.message : String(error)}`,
           'warn',
+          appFailureDetails(error),
         );
       }
       continue;
@@ -137,6 +152,7 @@ export async function deliverAppPending(
         msg: 'Codex App chat delivery unavailable — not acked',
         to: targetLabel(recipient),
         error: error instanceof Error ? error.message : String(error),
+        ...appFailureDetails(error),
       });
     }
   }

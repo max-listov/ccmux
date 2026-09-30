@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { observedProcessRoots } from '../src/monitoring/tmux.ts';
+import { observedProcessRoots, observedSessionInventory } from '../src/monitoring/tmux.ts';
 import {
   applyOomPriority,
   oomPlan,
@@ -21,6 +21,58 @@ const canLowerOom =
   ) &
     (1n << 24n)) !==
     0n;
+
+test.skipIf(process.platform !== 'linux' || !Bun.which('python3'))(
+  'a real worker-thread fork is found without OOM privileges; the main task alone misses it',
+  async () => {
+    const python = Bun.which('python3');
+    if (!python) throw new Error('python3');
+    const child = Bun.spawn(
+      [
+        python,
+        '-c',
+        `import threading, subprocess, time, json, os
+def worker():
+    child = subprocess.Popen(['sleep', '600'])
+    print(json.dumps({'parent': os.getpid(), 'child': child.pid}), flush=True)
+    child.wait()
+threading.Thread(target=worker).start()
+time.sleep(600)
+`,
+      ],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
+    let descendant: number | null = null;
+    try {
+      const reader = child.stdout.getReader();
+      const chunk = await Promise.race([
+        reader.read(),
+        Bun.sleep(5000).then(() => {
+          throw new Error('worker did not fork');
+        }),
+      ]);
+      reader.releaseLock();
+      const pids = z
+        .object({ parent: z.number().int(), child: z.number().int() })
+        .parse(JSON.parse(new TextDecoder().decode(chunk.value)));
+      descendant = pids.child;
+      expect(pids.parent).toBe(child.pid);
+      const main = readFileSync(`/proc/${child.pid}/task/${child.pid}/children`, 'utf8')
+        .split(/\s+/)
+        .map(Number);
+      expect(main).not.toContain(pids.child);
+      const table = readProcTable([child.pid]);
+      expect(table.rows.find((row) => row.pid === pids.child)?.parent).toBe(child.pid);
+    } finally {
+      if (descendant !== null)
+        try {
+          process.kill(descendant, 'SIGTERM');
+        } catch {}
+      child.kill('SIGTERM');
+      await child.exited;
+    }
+  },
+);
 
 test.skipIf(!canLowerOom || !Bun.which('tmux'))(
   'Linux tmux spine is protected and a newly inherited tool is released; intentional browser adjustment survives',
@@ -59,6 +111,7 @@ test.skipIf(!canLowerOom || !Bun.which('tmux'))(
       await wait(ready);
       children.push(Number(readFileSync(ready, 'utf8')));
       writeFileSync(`/proc/${children[0]}/oom_score_adj`, '0');
+      await observedSessionInventory(m);
       const first = readProcTable([process.pid, ...(await observedProcessRoots(m))]);
       const plan = oomPlan(first, process.pid);
       expect(plan.spine.length).toBe(4);
@@ -72,6 +125,7 @@ test.skipIf(!canLowerOom || !Bun.which('tmux'))(
       const created = Pids.parse(JSON.parse(readFileSync(pids, 'utf8')));
       children = [created.agent, created.build, created.browser];
       expect(readFileSync(`/proc/${created.build}/oom_score_adj`, 'utf8').trim()).toBe('-300');
+      await observedSessionInventory(m);
       const next = readProcTable([process.pid, ...(await observedProcessRoots(m))]);
       expect(
         applyOomPriority(oomPlan(next, process.pid), -300, procOomAccess(next.rows)).released,

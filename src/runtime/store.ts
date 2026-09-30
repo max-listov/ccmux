@@ -1,5 +1,28 @@
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync } from 'node:fs';
+import {
+  type BigIntStats,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+} from 'node:fs';
 import type { z } from 'zod';
+
+const snapshots = new Map<string, { stamp: string; value: unknown }>();
+const stampOf = (stat: BigIntStats) =>
+  `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}:${stat.mode}:${stat.uid}`;
+const privateFile = (stat: BigIntStats, maxBytes: number) => {
+  const uid = process.getuid?.();
+  return (
+    stat.isFile() &&
+    uid !== undefined &&
+    stat.uid === BigInt(uid) &&
+    (stat.mode & 0o077n) === 0n &&
+    stat.size <= BigInt(maxBytes)
+  );
+};
 
 /** Private bounded state, never symlinks, devices or shared-writable files. */
 export function readPrivateJson<T>(
@@ -9,21 +32,32 @@ export function readPrivateJson<T>(
 ): T | null {
   let fd: number | undefined;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    const stat = fstatSync(fd);
-    if (
-      !stat.isFile() ||
-      stat.uid !== process.getuid?.() ||
-      (stat.mode & 0o077) !== 0 ||
-      stat.size > maxBytes
-    )
+    const before = lstatSync(path, { bigint: true });
+    if (!privateFile(before, maxBytes)) {
+      snapshots.delete(path);
       return null;
-    const bytes = Buffer.alloc(maxBytes + 1);
+    }
+    const stamp = stampOf(before);
+    const cached = snapshots.get(path);
+    if (cached?.stamp === stamp)
+      return schema.safeParse(structuredClone(cached.value)).data ?? null;
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const stat = fstatSync(fd, { bigint: true });
+    if (!privateFile(stat, maxBytes)) return null;
+    const bytes = Buffer.alloc(Number(stat.size) + 1);
     const size = readSync(fd, bytes, 0, bytes.length, 0);
-    return size > maxBytes
-      ? null
-      : (schema.safeParse(JSON.parse(bytes.toString('utf8', 0, size))).data ?? null);
+    if (size > maxBytes) return null;
+    const value: unknown = JSON.parse(bytes.toString('utf8', 0, size));
+    if (
+      stampOf(fstatSync(fd, { bigint: true })) === stamp &&
+      stampOf(lstatSync(path, { bigint: true })) === stamp
+    ) {
+      if (snapshots.size >= 256 && !snapshots.has(path)) snapshots.clear();
+      snapshots.set(path, { stamp, value });
+    }
+    return schema.safeParse(structuredClone(value)).data ?? null;
   } catch {
+    snapshots.delete(path);
     return null;
   } finally {
     if (fd !== undefined) closeSync(fd);

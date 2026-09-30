@@ -23,6 +23,14 @@ import { join } from 'node:path';
  */
 // Each root ends in the tool's own directory, as it does on a real machine: code and tests may rely on it.
 const root = mkdtempSync(join(tmpdir(), 'ccmux-test-home-'));
+// Operator identity must not authenticate subprocesses against a synthetic test instance.
+for (const key of [
+  'CCMUX_SESSION',
+  'CCMUX_CHAT_CREDENTIAL',
+  'CCMUX_BOOTSTRAP_GENERATION',
+  'CCMUX_RC_PREFIX',
+])
+  delete process.env[key];
 process.env.CCMUX_STATE_DIR = join(root, 'state', 'ccmux');
 process.env.CCMUX_CACHE_DIR = join(root, 'cache', 'ccmux');
 process.env.CCMUX_DATA_DIR = join(root, 'data', 'ccmux');

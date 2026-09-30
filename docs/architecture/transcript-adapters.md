@@ -4,7 +4,7 @@ description: Как ccmux читает историю сессии разных 
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-09-23 08:31 +07:00
+updated: 2026-09-30 14:26 +07:00
 ---
 
 # Транскрипт-адаптеры
@@ -82,7 +82,7 @@ Tail и backward limit ограничены 1000 строками. `seq` и `--c
 строка появится только после newline. Первый запрос индексирует файл потоково, последующие
 индексируют append; forward cursor сохраняет существующее значение «всё после LINE».
 
-Индекс строк живёт в `<cache>/ccmux/transcript-index/<sha256(path)>.sqlite` и записывает путь своего
+Индекс строк живёт в `<cache>/ccmux/transcript-index/<sha256(path)>-v2.sqlite` и записывает путь своего
 транскрипта в метаданные (`source`). Демон раз в сутки (первый раз — через минуту после старта)
 убирает кэш (`pruneTranscriptIndexes`): индекс, чей записанный транскрипт исчез; индекс, который
 14 дней никто не продвигал; файлы прежнего JSON-формата. Индекс открывается ради `source` только
@@ -104,6 +104,21 @@ Unreadable, invalid metadata, ambiguous identity или смена файла: f
 строки. Неверный UUID и managed identity дают явный CLI refusal. Для external `session.rc`
 содержит переданный inventory key либо exact `<machine>:app/<UUID>`; managed RC labels не меняются.
 Неподдержанный provider возвращает `external transcript provider is unsupported`, exit 1.
+
+## Custom tools Codex
+
+Codex adapter сохраняет `custom_tool_call` с текстовым `input` и объединяет
+`custom_tool_call_output` по native `call_id`, как обычные function calls. Structured output
+преобразуется в текстовые блоки; нетекстовые части получают явные маркеры. Native error
+остаётся ошибкой, а вызов без результата остаётся незавершённым. При чтении разных окон
+результат связывается через общий fold, без выдуманной завершённости.
+
+`text-limit` ограничивает каждую возвращаемую текстовую запись. Полнота последовательности
+не обещает неограниченный текст, скрытое reasoning или бинарные image payloads. Derived index
+имеет schema version 2 и отдельное имя файла: reader другой версии не получает несовместимый
+cache. Невалидный или прежний индекс перестраивается из неизменённого provider transcript.
+`test/codex-custom-transcript.test.ts` проверяет calls, ошибки, результаты в разных окнах,
+malformed записи и пересборку индекса.
 
 ## Нативные рантаймы без файла транскрипта
 

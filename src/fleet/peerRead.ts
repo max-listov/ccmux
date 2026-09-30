@@ -66,8 +66,9 @@ export function localLogPayload(m: MachineConfig, limit: number) {
 export async function peerListAnswer(
   m: MachineConfig,
   known: readonly string[],
+  rows?: readonly ListRow[],
 ): Promise<Record<string, unknown>> {
-  return packListAnswer(listAnswer(m, await collectRows(m)), new Set(known)) as Record<
+  return packListAnswer(listAnswer(m, rows ?? (await collectRows(m))), new Set(known)) as Record<
     string,
     unknown
   >;

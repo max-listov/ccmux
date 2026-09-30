@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type { WatchListener } from 'node:fs';
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RuntimeWake } from '../src/runtime/wake.ts';
 
@@ -105,5 +105,65 @@ test('a second waiting owner is refused without stranding the first', async () =
     await first;
   } finally {
     wake.close();
+  }
+});
+
+test('lost events are found by exact input stamps and stable input does not request another pass', () => {
+  const root = mkdtempSync('/tmp/ccmux-wake-lost-');
+  const path = join(root, 'input.json');
+  const wake = new RuntimeWake([path], new AbortController().signal, () => new TestWatcher());
+  try {
+    expect(wake.changed()).toBe(true);
+    expect(wake.changed()).toBe(false);
+    writeFileSync(path, '{}');
+    expect(wake.changed()).toBe(true);
+    expect(wake.changed()).toBe(false);
+    writeFileSync(join(root, 'next'), '[]');
+    renameSync(join(root, 'next'), path);
+    expect(wake.changed()).toBe(true);
+  } finally {
+    wake.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('central reconciliation wakes an idle context owner when every watcher event is lost', async () => {
+  const root = mkdtempSync('/tmp/ccmux-wake-fallback-');
+  const path = join(root, 'context.json');
+  const wake = new RuntimeWake([path], new AbortController().signal, () => new TestWatcher(), 20);
+  try {
+    expect(wake.changed()).toBe(true);
+    writeFileSync(path, '{}');
+    await wake.wait(1000);
+    expect(wake.changed()).toBe(true);
+    expect(wake.changed()).toBe(false);
+  } finally {
+    wake.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('unchanged parent never hides an in-place input edit alongside cached absent files', () => {
+  const root = mkdtempSync('/tmp/ccmux-wake-in-place-');
+  const path = join(root, 'input.json');
+  writeFileSync(path, '{}');
+  const wake = new RuntimeWake(
+    [path, join(root, 'interrupt.json')],
+    new AbortController().signal,
+    () => new TestWatcher(),
+  );
+  try {
+    expect(wake.changed()).toBe(true);
+    expect(wake.changed()).toBe(false);
+    const parent = lstatSync(root, { bigint: true });
+    writeFileSync(path, '[]');
+    expect(lstatSync(root, { bigint: true }).mtimeNs).toBe(parent.mtimeNs);
+    expect(wake.changed()).toBe(true);
+    expect(wake.changed()).toBe(false);
+    writeFileSync(join(root, 'interrupt.json'), '{}');
+    expect(wake.changed()).toBe(true);
+  } finally {
+    wake.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });

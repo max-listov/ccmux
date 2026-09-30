@@ -4,7 +4,7 @@ description: Provider-neutral identity, advisory writer evidence and atomic Code
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-09-10 09:44 +07:00
+updated: 2026-09-30 10:52 +07:00
 ---
 
 # External session discovery and ownership
@@ -98,8 +98,8 @@ not recognise — and it is never `null` as a way of saying "unknown".
 
 | `reason` | What happened | `remedy` |
 |---|---|---|
-| `endpoint-absent` | The control socket does not exist under the configured Codex home | Start the app, or enable its app server |
-| `endpoint-not-listening` | The socket exists and nothing accepts on it | Its app server exited — restart the app |
+| `endpoint-absent` | The control socket does not exist under the configured Codex home | The thread owner must expose a shared Unix listener; a Desktop host using only stdio is not connectable |
+| `endpoint-not-listening` | The socket exists and nothing accepts on it | Check the owning host transport and restore its Unix listener without starting a second thread writer |
 | `upgrade-refused` | Something answered and refused the RPC upgrade | Find out which app owns that endpoint |
 | `connection-lost` | An established connection dropped mid-read | The next observation reconnects |
 | `connection-unavailable` | A failure this build cannot name | Connect by hand and read the operating system error |

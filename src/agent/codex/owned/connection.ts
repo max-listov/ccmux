@@ -82,6 +82,7 @@ export class OwnedCodexConnection {
     private m: MachineConfig,
     private initial: Session,
     private providerPid: number,
+    private notify: () => void = () => {},
   ) {
     this.writer = new OwnedCodexStatusWriter(m, initial.name);
     this.contextPump = new NativeContextPump((error) =>
@@ -123,6 +124,7 @@ export class OwnedCodexConnection {
               isCodexContextCompletion(event, this.feedSession.uuid)
             ) {
               this.contextCompletionSeen++;
+              this.notify();
             }
             if (
               event.method === 'turn/completed' &&
@@ -162,6 +164,7 @@ export class OwnedCodexConnection {
       onClose: (error) => {
         if (!this.active) return;
         this.failure = error;
+        this.notify();
         this.projection?.unavailable('disconnected');
         this.publish();
       },

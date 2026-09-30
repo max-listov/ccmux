@@ -4,7 +4,7 @@ description: A bounded local snapshot from the daemon observation loop, with no 
 type: architecture
 status: active
 created: 2026-08-27
-updated: 2026-09-30 08:20 +07:00
+updated: 2026-09-30 17:24 +07:00
 ---
 
 # Monitoring status
@@ -233,3 +233,34 @@ without a recorded pane retain their existing presence semantics. Session creati
 from this same bounded inventory. `test/daemon-pane-freshness.test.ts` exercises working, a quiet
 real child tool, completion, prompt, interrupted-turn closure and agent-pane death through the
 full daemon Unix service reader. Retaining the auxiliary session as running makes that test fail.
+
+
+## CPU и диагностика расписаний
+
+Control endpoint `daemon.performance` возвращает typed snapshot общего process CPU,
+числа/ошибок/длительности проходов, CPU по scopes и `producers`: machineFile, pendingFile,
+readyFile, usageStore и observation. Это тот же источник счётчиков, который читают стенды;
+отдельного benchmark-only канала нет. Он доступен через `control performance`
+и тот же generated client; файл monitoring protocol 1 сохраняет прежнюю схему.
+
+```sh
+ccmux control performance_configure --enabled --json
+ccmux control performance --json
+ccmux control performance_configure --no-enabled --json
+```
+
+Чтение не меняет режим и не сбрасывает окна. `daemon.performance.configure` проходит общий
+mutation admission с ключом daemon/performance. Смена режима начинает новый epoch без restart;
+повтор того же режима сохраняет его, явный `--reset` начинает новый замер.
+По умолчанию CPU tracing выключен:
+`scopes[].cpu=null` означает отсутствие измерения, а не нулевую работу. Счётчики проходов,
+длительность и stalled work доступны постоянно. Detailed tracing несёт собственный расход;
+обычный CPU benchmark выполняется с ним выключенным, profiling cost проверяется отдельно.
+
+Каждый process CPU interval учитывается один раз: в явном synchronous span либо в единственном
+active operation window. Перекрывающаяся async работа без явного span, GC/JIT и прочая работа
+остаются `unattributed`. Сумма не удваивается; window attribution не является per-thread CPU
+или sampled stack attribution. Нельзя распределять остаток по расписаниям только ради 100%.
+До 128 scopes удерживаются в текущем epoch. Stall record содержит active/recent и последний
+медленный synchronous span; следующий быстрый проход не стирает имя блокировавшей работы.
+`test/daemon-performance.test.ts` проверяет overlap, остаток, смену epoch и настоящий stalled timer.

@@ -4,7 +4,7 @@ description: Exact read-only provider storage projection without adopting an ext
 type: architecture
 status: active
 created: 2026-08-31
-updated: 2026-09-10 08:21 +07:00
+updated: 2026-09-30 14:26 +07:00
 ---
 
 ## Authority and operations
@@ -77,6 +77,22 @@ snapshot, not a per-page delta. Oversized and unfinished records cannot prevent 
 be qualified, and `stale` means the requested revision changed. Errors outside those outcomes
 include disabled access, wrong identity and malformed cursor. Internal causes stay in owner logs;
 public replies never expose storage paths or native error text.
+
+## Общий индекс путей Codex
+
+`src/external/storage.ts` разделяет один ограниченный индекс UUID → path между всеми
+тредами configured root. Одновременные запросы, включая истечение индекса, используют один
+обход. До 32 roots удерживаются в процессе; максимальный возраст индекса — 5 секунд.
+Изменение root или родителя известного файла, исчезновение пути и перенос в архив
+инвалидируют индекс. Дубликат в другом существующем subtree обнаруживается не позже
+следующего полного обхода после истечения этого срока.
+
+Повторный lookup проверяет известный путь; containment, symlink, regular-file, owner/mode
+и native identity проверяет тот же reader при каждом чтении. Индекс не является разрешением
+на файл и не заменяет проверки содержимого и pinned revision. Повторная запись того же
+inode с восстановленным mtime проверяется по ctime и native metadata. Claude сохраняет
+свой bounded lookup. `test/external-storage-cache.test.ts` проверяет отсутствие повторного
+`opendir`, конкуренцию после истечения и обнаружение ambiguous identity.
 
 ## Verification
 

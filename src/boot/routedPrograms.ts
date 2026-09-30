@@ -8,8 +8,19 @@
  * and laid down beside it (`routedInstall.ts`), and the shim sends the verb to it. One table, so the
  * shim, the installer's shim, the build and the install cannot disagree about which verbs are routed.
  */
-export const ROUTED_PROGRAMS = [
+export interface RoutedProgram {
+  verb: string;
+  args?: readonly string[];
+  file: string;
+  entry: string;
+}
+export const ROUTED_PROGRAMS: readonly RoutedProgram[] = [
   { verb: 'status-line', file: 'status-line.js', entry: 'src/commands/statusLineEntry.ts' },
   { verb: '_peer-read', file: 'peer-read.js', entry: 'src/commands/peerReadEntry.ts' },
-] as const;
-export type RoutedProgram = (typeof ROUTED_PROGRAMS)[number];
+  {
+    verb: 'control',
+    args: ['external', '--json'],
+    file: 'control-external.js',
+    entry: 'src/commands/controlExternalEntry.ts',
+  },
+];

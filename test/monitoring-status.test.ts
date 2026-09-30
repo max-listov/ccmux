@@ -72,7 +72,7 @@ test('producer inventory uses printable delimiters under a service locale', asyn
   const script = join(m.stateDir, 'inventory');
   writeFileSync(
     script,
-    "#!/bin/sh\ncase \"$5\" in\n  '#{session_name}|#{pane_id}|#{@ccmux-agent-pane}|#{session_created}') printf 'agent-a|%%1|%%1|123\\n';;\n  *) printf 'agent-a_123\\n';;\nesac\n",
+    "#!/bin/sh\ncase \"$5\" in\n  '#{session_name}|#{pane_id}|#{@ccmux-agent-pane}|#{session_created}|#{pane_pid}|#{pid}|#{pane_height}') printf 'agent-a|%%1|%%1|123|100|200|24\\n';;\n  *) printf 'agent-a_123\\n';;\nesac\n",
     { mode: 0o700 },
   );
   m.tmuxBin = script;

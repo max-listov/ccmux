@@ -15,7 +15,7 @@ const files = () => ({
 const io = () =>
   process.platform === 'linux' ? readFileSync(`/proc/${process.pid}/io`, 'utf8') : null;
 
-const only = Bun.argv[3];
+const only = Bun.argv[3] === '--attribution' ? undefined : Bun.argv[3];
 let steadyWindow = false;
 const clockFor = (id: string): ManagedScheduleClock => ({
   now: () => performance.now(),
@@ -31,6 +31,7 @@ const owned = createDaemonApplication(loadMachineConfig(), only ? clockFor : und
 const coldCpu = process.cpuUsage();
 const coldAt = performance.now();
 await owned.application.start();
+if (Bun.argv.includes('--attribution')) owned.performance.start();
 await Bun.sleep(15000);
 const cold = {
   elapsedMs: performance.now() - coldAt,
@@ -50,12 +51,15 @@ const ioBefore = io();
 const execs = observationExecCount();
 const childCpu = observationChildCpuUs();
 const cpu = process.cpuUsage();
+const attributionBefore = owned.performance.snapshot();
 const at = performance.now();
 const until = performance.now() + Number(Bun.argv[2] ?? 600) * 1000;
 while (performance.now() < until) await Bun.sleep(Math.max(1, until - performance.now()));
 const steady = {
   elapsedMs: performance.now() - at,
   cpu: process.cpuUsage(cpu),
+  attributionBefore,
+  attributionAfter: owned.performance.snapshot(),
   memory: process.memoryUsage(),
   observationExecs: observationExecCount() - execs,
   observationChildCpuUs: observationChildCpuUs() - childCpu,

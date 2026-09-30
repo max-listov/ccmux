@@ -64,25 +64,28 @@ export async function runClaudeNativeProcess(
         if (promote) await promote(owner.identity);
         writeLaunchStamp(session.name, computeStamp(owner.identity, m, promptInvocation()));
         while (!abort.signal.aborted) {
-          const current = loadSessions(m).find((row) => row.name === session.name);
-          // Compared against what the owner RESOLVED, not against what this process assumed: after a
-          // fork those differ, and comparing the assumption would declare the registration changed
-          // on the very first pass of a conversation this process had just correctly adopted.
-          const held = owner.identity;
-          if (
-            !current ||
-            current.archived ||
-            current.uuid !== held.uuid ||
-            current.registrationGeneration !== held.registrationGeneration ||
-            current.nativeSession?.id !== held.nativeSession?.id
-          )
-            throw new Error('Native Claude registration changed while its writer was alive');
+          const commandsChanged = wake.changed();
+          if (commandsChanged) {
+            const current = loadSessions(m).find((row) => row.name === session.name);
+            // Compared against what the owner RESOLVED, not against what this process assumed: after a
+            // fork those differ, and comparing the assumption would declare the registration changed
+            // on the very first pass of a conversation this process had just correctly adopted.
+            const held = owner.identity;
+            if (
+              !current ||
+              current.archived ||
+              current.uuid !== held.uuid ||
+              current.registrationGeneration !== held.registrationGeneration ||
+              current.nativeSession?.id !== held.nativeSession?.id
+            )
+              throw new Error('Native Claude registration changed while its writer was alive');
+          }
           // A runtime that ended is a failure of this process, not a state to keep publishing.
           // Without this the loop went on writing `connected: true` with a fresh lease every tick
           // over a conversation whose runtime was gone, and nothing ever restarted it.
           const failure = owner.failed;
           if (failure !== null) throw failure;
-          await owner.tick();
+          await owner.tick(commandsChanged);
           await wake.wait();
         }
       } catch (error) {

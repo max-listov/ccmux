@@ -26,6 +26,7 @@ function mapRole(role: string | null): TranscriptRole {
 
 /** function_call args is a JSON string — pull the human-meaningful field, else raw. */
 function toolText(payload: Record<string, unknown>): string {
+  if (payload.type === 'custom_tool_call') return str(payload.input) ?? str(payload.name) ?? '';
   const argsRaw = str(payload.arguments);
   if (argsRaw) {
     try {
@@ -79,6 +80,7 @@ function fromPayload(payload: Record<string, unknown>, textLimit: number): Pushe
       });
     }
     case 'function_call':
+    case 'custom_tool_call':
     case 'local_shell_call':
     case 'web_search_call': {
       const name = str(payload.name) ?? (ptype === 'web_search_call' ? 'web_search' : 'tool');
@@ -96,6 +98,7 @@ function fromPayload(payload: Record<string, unknown>, textLimit: number): Pushe
       ];
     }
     case 'function_call_output':
+    case 'custom_tool_call_output':
     case 'local_shell_call_output': {
       const out = rec(payload.output);
       const text = cut(flattenContent(out?.content ?? payload.output) ?? '');
@@ -166,13 +169,21 @@ export function parse(
     const ptype = str(payload.type) ?? '';
     const callId = str(payload.call_id) ?? str(payload.id);
     if (
-      (ptype === 'function_call' || ptype === 'local_shell_call' || ptype === 'web_search_call') &&
+      (ptype === 'function_call' ||
+        ptype === 'custom_tool_call' ||
+        ptype === 'local_shell_call' ||
+        ptype === 'web_search_call') &&
       callId
     ) {
       callName.set(callId, str(payload.name) ?? 'tool');
       callArgs.set(callId, parseArgs(payload));
     }
-    if ((ptype === 'function_call_output' || ptype === 'local_shell_call_output') && callId) {
+    if (
+      (ptype === 'function_call_output' ||
+        ptype === 'custom_tool_call_output' ||
+        ptype === 'local_shell_call_output') &&
+      callId
+    ) {
       const o = rec(payload.output);
       results.set(callId, {
         content: flattenContent(o?.content ?? payload.output) ?? '',
@@ -198,7 +209,12 @@ export function parse(
         done: false,
         result: null,
         // Full tool input for the expanded card; result output filled in by foldResults.
-        input: args ? clip(JSON.stringify(args, null, 2), textLimit) : null,
+        input:
+          p.kind === 'tool_call' && ptype === 'custom_tool_call'
+            ? clip(str(payload.input) ?? '', textLimit)
+            : args
+              ? clip(JSON.stringify(args, null, 2), textLimit)
+              : null,
         resultText: null,
         // This provider's records carry neither an image block nor per-answer usage; saying so is
         // the point — a reader must be able to tell "not reported here" from "zero".

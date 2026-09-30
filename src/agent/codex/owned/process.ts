@@ -2,9 +2,12 @@ import net from 'node:net';
 import { dirname } from 'node:path';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../../../chat/auth.ts';
 import { verifyManagedLaunchRecipe } from '../../../config/launchRecipes.ts';
+import { contextMutationPending } from '../../../context/store.ts';
 import { verifyApplicationPolicy } from '../../../policy/resolve.ts';
 import { ManagedRuntimeExit } from '../../../runtime/exit.ts';
+import { readRuntimeInput } from '../../../runtime/input.ts';
 import { privateRuntimeDirectory } from '../../../runtime/store.ts';
+import { nativeRuntimeWake } from '../../../runtime/wake.ts';
 import { loadSessions } from '../../../session/registry.ts';
 import { writeLaunchStamp } from '../../../session/status.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
@@ -98,6 +101,7 @@ async function run(
   let admitted = false;
   let stderrTail = '';
   let drain: Promise<void> = Promise.resolve();
+  let wake: ReturnType<typeof nativeRuntimeWake> | null = null;
   try {
     const child = Bun.spawn(ownedCodexArgv(initial, m), {
       cwd: initial.dir,
@@ -115,7 +119,7 @@ async function run(
     })();
     const deadline = Date.now() + m.codexCorrelationTimeoutMs;
     while (!abort.signal.aborted) {
-      const candidate = new OwnedCodexConnection(m, initial, child.pid);
+      const candidate = new OwnedCodexConnection(m, initial, child.pid, () => wake?.notify());
       try {
         await candidate.open(abort.signal);
         connection = candidate;
@@ -132,6 +136,9 @@ async function run(
     if (promote !== undefined) session = await promote(session.uuid);
     admitted = true;
     connection.activateEvents(session);
+    wake = nativeRuntimeWake(m, session, abort.signal);
+    let inputPending = true;
+    let contextPending = true;
     writeLaunchStamp(session.name, computeStamp(session, m, promptInvocation()));
     let reconnectAt = 0;
     let reconnectDelay = 500;
@@ -152,27 +159,39 @@ async function run(
         clientAt = Date.now() + 5_000;
       }
       if (Date.now() >= reconnectAt) {
-        const current = loadSessions(m).find((row) => row.name === session.name);
-        if (
-          current?.uuid !== session.uuid ||
-          current.runtime !== session.runtime ||
-          current.registrationGeneration !== session.registrationGeneration
-        ) {
-          throw new Error('Managed identity changed while the native runtime was alive');
+        const commandsChanged = wake.changed();
+        if (commandsChanged) {
+          const current = loadSessions(m).find((row) => row.name === session.name);
+          if (
+            current?.uuid !== session.uuid ||
+            current.runtime !== session.runtime ||
+            current.registrationGeneration !== session.registrationGeneration
+          ) {
+            throw new Error('Managed identity changed while the native runtime was alive');
+          }
         }
         try {
           if (connection === null) {
-            const candidate = new OwnedCodexConnection(m, session, child.pid);
+            const candidate = new OwnedCodexConnection(m, session, child.pid, () => wake?.notify());
             connection = candidate;
             await candidate.open(abort.signal);
             await candidate.admit(false, abort.signal);
             candidate.activateEvents(session);
+            inputPending = true;
+            contextPending = true;
           } else {
-            await connection.applyControlResponse();
-            await connection.applyInterrupt(session);
-            await connection.applyInput(session);
+            if (commandsChanged || inputPending) {
+              await connection.applyControlResponse();
+              await connection.applyInterrupt(session);
+              await connection.applyInput(session);
+              const input = readRuntimeInput(m, session);
+              inputPending = input !== null && input.phase !== 'accepted';
+            }
+            if (commandsChanged || contextPending) {
+              connection.applyContext(session, abort.signal);
+              contextPending = contextMutationPending(m, session);
+            }
             await connection.refresh(session);
-            connection.applyContext(session, abort.signal);
           }
           reconnectDelay = 500;
         } catch (error) {
@@ -192,7 +211,7 @@ async function run(
           reconnectDelay = Math.min(reconnectDelay * 2, 10_000);
         }
       }
-      await Bun.sleep(500);
+      await wake.wait(500);
     }
     if (!stopping) throw new ManagedRuntimeExit('Native App Server exited after admission');
   } catch (error) {
@@ -207,6 +226,7 @@ async function run(
     throw error;
   } finally {
     abort.abort();
+    wake?.close();
     await connection
       ?.close('stopped')
       .catch((error: unknown) =>

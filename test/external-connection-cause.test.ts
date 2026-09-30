@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CodexAppUnavailable, connectCodexSocket } from '../src/agent/codex/socket.ts';
 import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
-import { unknownTurnState } from '../src/external/turnSchema.ts';
+import { remedyFor, unknownTurnState } from '../src/external/turnSchema.ts';
 import { observeExternalTurns, reasonFor } from '../src/external/turnState.ts';
 import { makeMachine, UUID } from './helpers.ts';
 
@@ -44,6 +44,17 @@ async function kindOf(path: string): Promise<string> {
     return error instanceof CodexAppUnavailable ? error.kind : `other: ${String(error)}`;
   }
 }
+
+test('an unavailable endpoint does not prove the App Server exited or that restarting fixes it', () => {
+  for (const reason of ['endpoint-absent', 'endpoint-not-listening'] as const) {
+    const remedy = remedyFor(reason);
+    expect(remedy).toContain('stdio');
+    expect(remedy).toContain('listener');
+    expect(remedy).not.toContain('exited');
+    expect(remedy).not.toContain('Restart');
+    expect(unknownTurnState('codex-app-server', reason).remedy).toBe(remedy);
+  }
+});
 
 test('the runtime cannot tell the two outages apart, so the connector does not ask it to', async () => {
   const dir = root();

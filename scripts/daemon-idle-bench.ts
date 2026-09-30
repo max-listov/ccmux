@@ -152,7 +152,8 @@ try {
       : []),
     bundle,
     String(duration),
-    ...(only ? [only] : []),
+    ...(only ? [only] : ['']),
+    ...(Bun.argv.includes('--attribution') ? ['--attribution'] : []),
   ];
   const running = Bun.spawn(workerArgv, { env, stdout: 'pipe', stderr: 'pipe' });
   worker = running;
@@ -186,7 +187,15 @@ try {
 } finally {
   if (worker && worker.exitCode === null) {
     worker.kill();
-    await worker.exited;
+    const child = worker;
+    const force = setTimeout(() => {
+      if (child.exitCode === null) child.kill('SIGKILL');
+    }, 2_000);
+    try {
+      await child.exited;
+    } finally {
+      clearTimeout(force);
+    }
   }
   Bun.spawnSync([tmux, '-L', socket, 'kill-server'], { stdout: 'ignore', stderr: 'ignore' });
   provider.stop(true);

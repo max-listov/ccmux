@@ -4,7 +4,7 @@ description: Process ownership, identity, state, delivery, recovery and the resi
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-08-29
+updated: 2026-09-30 14:38 +07:00
 ---
 
 # Ownership and admission
@@ -209,3 +209,27 @@ Rollback keeps the ordinary TUI path unchanged. Before downgrading to a version 
 archive and stop the exact native sessions and retain their registry/history. Older versions do not understand
 the runtime field and must not auto-heal those rows as ordinary CLI writers. Upgrade again and
 explicitly start the same rows to resume; never rename or regenerate their UUIDs.
+
+
+## Пробуждение native owner
+
+RuntimeWake наблюдает только входные файлы. `fs.watch` будит owner после изменения;
+наносекундные dev/ino/size/mtime/ctime stamps подхватывают потерянные события.
+Страховка сохраняет прежние 500 мс у Codex, 1000 мс у Claude main и 200 мс у Claude context.
+Отсутствующие input names проверяются через parent revision; существующие файлы всегда
+проверяются по собственной revision, поэтому in-place запись не скрывается неизменным каталогом.
+Registry и private mailbox JSON повторно разбираются только после изменения; каждый caller
+получает независимое значение. Owner/mode, nofollow и byte bounds сохраняются.
+
+Пустой либо accepted input не берёт admission lock. Pending/busy работа повторяется в прежнем
+ритме; context completion и disconnect будят owner отдельно. Status/content output не будит
+своего producer. Provider reconciliation Codex сохраняет 500 мс, native events публикуют
+изменения сразу. Каждый подтверждённый provider heartbeat публикует свежий observedAt при прежнем lease 5 с;
+свежесть нужна session.wait для наблюдения после начала вызова. Writer объединяет только
+ещё не завершённые записи; одинаковое тело не отменяет публикацию нового наблюдения.
+
+`runtime-wake`, private snapshot, heartbeat и native input/context tests проверяют lost-event
+fallback, atomic/in-place запись, caller isolation, locks и shutdown. Изолированный
+`native-idle-bench.ts <seconds> <output.json> <worker.js>` использует настоящий owner и mailboxes
+с provider stand-in без inference; `nativeIdleWorker.ts` собирается заранее. Эти CPU числа
+не являются измерением установленного provider или результатом раскатки.

@@ -81,9 +81,9 @@ export type ExternalTurnState = z.infer<typeof ExternalTurnStateSchema>;
 export function remedyFor(reason: ExternalTurnState['reason']): string | null {
   switch (reason) {
     case 'endpoint-absent':
-      return 'Start the Codex app, or enable its app server, so the control endpoint exists here.';
+      return 'The configured control endpoint is absent. The thread owner must expose a shared Unix listener; a Desktop host using only stdio is not connectable here.';
     case 'endpoint-not-listening':
-      return 'The control endpoint exists but nothing accepts on it — its app server exited. Restart the Codex app.';
+      return 'The control endpoint has no listener. Check the owning host transport: stdio alone is not shared. Restore its Unix listener; do not start a second thread writer.';
     case 'upgrade-refused':
       return 'Something answers on the control endpoint but refuses the RPC upgrade — check which app owns it.';
     case 'connection-lost':

@@ -1,4 +1,5 @@
 import { statSync } from 'node:fs';
+import { measureCpu } from './cpuScope.ts';
 
 /** Follow configured symlinks; nanosecond ctime detects rewrites with restored mtime. */
 export function fileRevision(path: string): string {
@@ -22,6 +23,10 @@ export class FileSnapshot<T> {
   }
 
   read(path: string, load: () => T): T {
+    return measureCpu(() => this.readSnapshot(path, load));
+  }
+
+  private readSnapshot(path: string, load: () => T): T {
     this.checks++;
     const revision = fileRevision(path);
     if (this.cached?.path === path && this.cached.revision === revision)

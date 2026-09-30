@@ -1,11 +1,60 @@
+import { readFileSync } from 'node:fs';
 import { agentPaneTarget } from '../tmux/agentPane.ts';
 import { tmuxArgv } from '../tmux/argv.ts';
 import { PANE_INVENTORY_FORMAT, parsePaneInventory } from '../tmux/paneInventory.ts';
 import type { MachineConfig } from '../types.ts';
+import { matchingProcessRoots, parseProcessStat } from '../util/procStat.ts';
+import { producerMetrics } from '../util/producerMetrics.ts';
 
 const MAX_OUTPUT = 64 * 1024;
+const inventories = new Map<
+  string,
+  {
+    at: number;
+    roots: number[];
+    rootStarts: Map<number, string>;
+    agentPanes: Map<string, string>;
+    peerLineLimits: Map<string, number>;
+  }
+>();
+const inventoryKey = (m: MachineConfig) => JSON.stringify([m.stateDir, m.tmuxSocket, m.tmuxBin]);
+
+export function observedProcessRoots(m: MachineConfig, nowMs = Date.now()): number[] {
+  const inventory = inventories.get(inventoryKey(m));
+  if (!inventory || nowMs - inventory.at > 10_000) return [];
+  if (process.platform !== 'linux') return [...inventory.roots];
+  return matchingProcessRoots(inventory.rootStarts, rootStartTime);
+}
+
+function rootStartTime(pid: number): string | null {
+  try {
+    return parseProcessStat(readFileSync(`/proc/${pid}/stat`, 'utf8'))?.startTime ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function observedAgentPanes(m: MachineConfig): ReadonlyMap<string, string> {
+  return inventories.get(inventoryKey(m))?.agentPanes ?? new Map();
+}
+
+/** capture-pane -S -30 includes the visible pane plus up to thirty scrollback lines. */
+export function observedPeerPanes(m: MachineConfig, panes: ReadonlyMap<string, string | null>) {
+  const limits = inventories.get(inventoryKey(m))?.peerLineLimits;
+  return new Map(
+    [...panes].map(([name, text]) => {
+      if (text === null) return [name, null] satisfies [string, string | null];
+      const limit = limits?.get(name);
+      if (limit === undefined) throw new Error('agent pane height unavailable');
+      const lines = text.split('\n');
+      if (lines.at(-1) === '') lines.pop();
+      return [name, `${lines.slice(-limit).join('\n')}\n`] satisfies [string, string | null];
+    }),
+  );
+}
 let execCount = 0;
 let childCpuUs = 0;
+producerMetrics.register('observation', () => ({ execCount, childCpuUs }));
 export function observationExecCount(): number {
   return execCount;
 }
@@ -65,7 +114,15 @@ async function invoke(
 
 export async function observedSessionInventory(m: MachineConfig): Promise<Map<string, number>> {
   // Printable separator: tmux sanitizes tab to "_" under a boot service's non-UTF-8 locale.
-  const result = await invoke(tmuxArgv(m, 'list-panes', '-a', '-F', PANE_INVENTORY_FORMAT));
+  const result = await invoke(
+    tmuxArgv(
+      m,
+      'list-panes',
+      '-a',
+      '-F',
+      `${PANE_INVENTORY_FORMAT}|#{pane_pid}|#{pid}|#{pane_height}`,
+    ),
+  );
   // A missing tmux server is positive evidence of no running panes, not an IO failure.
   if (
     result.code !== 0 &&
@@ -73,7 +130,23 @@ export async function observedSessionInventory(m: MachineConfig): Promise<Map<st
   ) {
     throw new Error('tmux observation unavailable');
   }
-  return parsePaneInventory(result.stdout).startedAt;
+  const parsed = parsePaneInventory(result.stdout, true);
+  const roots = parsed.roots;
+  const rootStarts = new Map<number, string>();
+  if (process.platform === 'linux')
+    for (const pid of roots) {
+      const start = rootStartTime(pid);
+      if (start !== null) rootStarts.set(pid, start);
+    }
+  if (inventories.size >= 32) inventories.delete(inventories.keys().next().value ?? '');
+  inventories.set(inventoryKey(m), {
+    at: Date.now(),
+    roots: [...roots],
+    rootStarts,
+    agentPanes: parsed.agentPanes,
+    peerLineLimits: parsed.peerLineLimits,
+  });
+  return parsed.startedAt;
 }
 
 export async function observedPane(m: MachineConfig, name: string): Promise<string | null> {
@@ -125,22 +198,4 @@ export async function observedPanes(
     }
   }
   return panes;
-}
-
-/** Known roots for the Linux OOM pass; no host-wide process discovery. */
-export async function observedProcessRoots(m: MachineConfig): Promise<number[]> {
-  const result = await invoke(tmuxArgv(m, 'list-panes', '-a', '-F', '#{pane_pid} #{pid}'));
-  if (result.code !== 0) {
-    if (/no server running|no sessions|error connecting .*No such file/.test(result.stderr))
-      return [];
-    throw new Error('tmux process roots unavailable');
-  }
-  const roots = new Set<number>();
-  for (const token of result.stdout.trim().split(/\s+/)) {
-    if (!token) continue;
-    const pid = Number(token);
-    if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error('invalid tmux process root');
-    roots.add(pid);
-  }
-  return [...roots];
 }

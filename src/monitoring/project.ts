@@ -12,10 +12,11 @@ import { managedRuntimeView } from '../runtime/view.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
 import { readLifecycle, readMetrics, renderRate, resolveLiveState } from '../session/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { measureCpu } from '../util/cpuScope.ts';
 import type { MonitoringRow } from './schema.ts';
 
 /** Reuses the observation loop's captured pane and process-local transcript metadata caches. */
-export function projectMonitoringRow(
+function projectMonitoringRowImpl(
   m: MachineConfig,
   s: Session,
   startedAt: number | undefined,
@@ -89,4 +90,10 @@ export function projectMonitoringRow(
           : null,
     observedAt: new Date(now).toISOString(),
   };
+}
+
+export function projectMonitoringRow(
+  ...args: Parameters<typeof projectMonitoringRowImpl>
+): ReturnType<typeof projectMonitoringRowImpl> {
+  return measureCpu(() => projectMonitoringRowImpl(...args));
 }

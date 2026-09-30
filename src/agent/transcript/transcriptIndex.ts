@@ -19,6 +19,7 @@ import type { TranscriptStats } from '../../types.ts';
 import { parseUsageRecord } from '../../usage/normalize.ts';
 import type { UsageFact } from '../../usage/schema.ts';
 import { isSqliteBusy, UsageStore } from '../../usage/store.ts';
+import { measureCpu } from '../../util/cpuScope.ts';
 import { rec } from './normalize.ts';
 
 /**
@@ -50,7 +51,7 @@ const HEAD_BYTES = 4096;
 
 export const StoredIndexSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     /** Whose parser produced `stats`. A session that changed runtime must not inherit them. */
     agent: z.string().min(1).max(64),
     head: z.string().length(64),
@@ -85,7 +86,7 @@ export const EMPTY_STATS: TranscriptStats = {
 const INDEX_DIR = (): string => join(CACHE_DIR, 'transcript-index');
 
 export const transcriptIndexPath = (path: string): string =>
-  join(INDEX_DIR(), `${createHash('sha256').update(path).digest('hex')}.sqlite`);
+  join(INDEX_DIR(), `${createHash('sha256').update(path).digest('hex')}-v2.sqlite`);
 
 /** An index nothing has advanced for this long is removed; a transcript still read rebuilds it once. */
 export const INDEX_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -200,7 +201,7 @@ function loadStored(
   identity: string,
   mtime: number,
 ): StoredIndex | null {
-  const stored = store.read('index', StoredIndexSchema);
+  const stored = StoredIndexSchema.safeParse(store.read('index', z.unknown())).data;
   if (!stored) return null;
   // A file that shrank, or whose beginning changed, is not the file this index describes. Reusing
   // it would seek to offsets that now land inside other records — silently, and only for the reader
@@ -234,7 +235,7 @@ export interface TranscriptIndex {
  * recomputed because recomputing them is the same full pass this exists to avoid — and it was being
  * paid on every call, by a cache that lives in a process that handles one command and exits.
  */
-export function indexTranscript(
+function indexTranscriptImpl(
   path: string,
   agent: string,
   accumulate: (lines: string[]) => TranscriptStats,
@@ -261,7 +262,7 @@ export function indexTranscript(
         const stored = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
         if (!stored) owner.reset();
         const index: StoredIndex = stored ?? {
-          version: 1,
+          version: 2,
           agent,
           head,
           identity,
@@ -465,4 +466,10 @@ function readRange(path: string, index: StoredIndex, from: number, to: number): 
   } finally {
     closeSync(fd);
   }
+}
+
+export function indexTranscript(
+  ...args: Parameters<typeof indexTranscriptImpl>
+): ReturnType<typeof indexTranscriptImpl> {
+  return measureCpu(() => indexTranscriptImpl(...args));
 }

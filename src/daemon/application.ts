@@ -24,6 +24,8 @@ import { ExternalStatusObserver } from '../external/residentObserver.ts';
 import { ExternalStatusPublisher } from '../external/residentPublisher.ts';
 import { EXTERNAL_INTERVAL_MS } from '../external/residentSchema.ts';
 import { flushOutbox } from '../fleet/flush.ts';
+import { PeerRows } from '../inventory/peerRows.ts';
+import { DaemonPerformance } from '../monitoring/performance.ts';
 import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
 import { observedProcessRoots } from '../monitoring/tmux.ts';
@@ -51,10 +53,28 @@ export function createDaemonApplication(
   initial: MachineConfig,
   clockFor?: (id: string) => ManagedScheduleClock,
 ) {
+  const performance = new DaemonPerformance();
+  const measure = <T>(name: string, run: () => T) => performance.run(name, run);
+  const measuredClock = (id: string): ManagedScheduleClock => {
+    const clock = clockFor?.(id) ?? {
+      now: () => globalThis.performance.now(),
+      wallNow: () => new Date(),
+      schedule: (callback: () => void, delay: number) => {
+        const timer = setTimeout(callback, delay);
+        return { cancel: () => clearTimeout(timer) };
+      },
+    };
+    return {
+      ...clock,
+      schedule: (callback, delay) =>
+        clock.schedule(() => performance.callback(`schedule/${id}`, callback), delay),
+    };
+  };
   const schedule = (config: ManagedScheduleConfig) =>
     createManagedSchedule({
       ...config,
-      ...(clockFor ? { clock: clockFor(config.id) } : {}),
+      run: (ctx) => measure(`schedule/${config.id}`, () => config.run(ctx)),
+      clock: measuredClock(config.id),
     });
   let journal: OwnedRuntimeJournal | undefined;
   const chronology = defineManagedResource({
@@ -101,11 +121,13 @@ export function createDaemonApplication(
   const external = new ExternalStatusPublisher(initial.rcPrefix);
   const externalObserver = new ExternalStatusObserver(initial, external);
   const previous = new Map<string, Observed>();
+  const peerRows = new PeerRows();
   const machine = loadMachineConfig;
   const usageObservation = createUsageObservation(
     machine,
     external,
-    clockFor?.('usage-observation'),
+    measuredClock('usage-observation'),
+    measure,
   );
   const projection = defineManagedResource({
     id: 'projection',
@@ -135,6 +157,11 @@ export function createDaemonApplication(
         application.admission,
         machine,
         external,
+        {
+          measure,
+          performance,
+          peerRows: () => peerRows.read(machine()),
+        },
       );
       // Read once at start, so the first caller after a restart finds a catalog instead of a cold
       // metadata App Server; later reads happen when a caller finds the copy old.
@@ -163,10 +190,18 @@ export function createDaemonApplication(
       const m = machine();
       monitoring.begin(m);
       inventory.begin(m);
-      await observeOnce(m, previous, Date.now(), (m, s, startedAt, pane, seen) => {
-        const row = monitoring.sample(m, s, startedAt, pane, seen);
-        if (row !== null) inventory.sample(m, s, row, startedAt);
-      });
+      await observeOnce(
+        m,
+        previous,
+        Date.now(),
+        (m, s, startedAt, pane, seen) => {
+          const row = monitoring.sample(m, s, startedAt, pane, seen);
+          if (row !== null) inventory.sample(m, s, row, startedAt);
+        },
+        async (observation) => {
+          peerRows.observe(m, observation);
+        },
+      );
       signal.throwIfAborted();
       const snapshot = await monitoring.publish(m);
       await inventory.publish(m, m.sessionEvents);
@@ -286,18 +321,22 @@ export function createDaemonApplication(
   const loopStalls = defineManagedResource({
     id: 'loop-stall-watch',
     start: () => {
+      performance.start(false);
       stopLoopWatch = watchLoopStalls((stall) =>
-        log.warn({ msg: 'daemon event loop blocked', ...stall }),
+        log.warn({ msg: 'daemon event loop blocked', ...stall, work: performance.stallWork() }),
       );
       return { value: null };
     },
-    close: () => stopLoopWatch(),
+    close: () => {
+      stopLoopWatch();
+      performance.close();
+    },
   });
   // The transcript index cache otherwise only grows: every transcript ever read keeps an index, and
   // nothing removed one whose transcript was gone. Once a day, and first a minute after start.
   // Every two seconds rather than with the heal pass: a build an agent starts inherits the agent's
   // lowered value, and the time until it is returned to 0 is the time it would be spared instead of
-  // the agent. The pass walks known tmux/daemon roots and all task children.
+  // the agent. The pass chooses a complete task-child or PPID walk for known tmux/daemon roots.
   let oomRefused = false;
   const oomPriority = schedule({
     id: 'oom-priority',
@@ -309,7 +348,7 @@ export function createDaemonApplication(
       const target = m.oomScoreAdj;
       if (PLATFORM !== 'linux' || target === null || oomRefused) return;
       try {
-        const table = readProcTable([process.pid, ...(await observedProcessRoots(m))]);
+        const table = readProcTable([process.pid, ...observedProcessRoots(m)]);
         applyOomPriority(oomPlan(table, process.pid), target, procOomAccess(table.rows));
       } catch (error) {
         if (!isPermissionRefusal(error)) throw error;
@@ -368,6 +407,7 @@ export function createDaemonApplication(
     external,
     externalObserver,
     monitoring,
+    performance,
     schedules: {
       observation,
       usageObservation,

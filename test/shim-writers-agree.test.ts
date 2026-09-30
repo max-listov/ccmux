@@ -59,6 +59,7 @@ test('the installed shim fails when its required program is missing, without run
     expect(out).not.toContain('BUNDLE_EXECUTED');
     writeFileSync(join(dir, 'status-line.js'), 'console.log("STATUS_LINE_EXECUTED")');
     writeFileSync(join(dir, 'peer-read.js'), 'console.log("PEER_READ_EXECUTED")');
+    writeFileSync(join(dir, 'control-external.js'), 'console.log("EXTERNAL_EXECUTED")');
     for (const [verb, expected] of [
       ['status-line', 'STATUS_LINE_EXECUTED'],
       ['_peer-read', 'PEER_READ_EXECUTED'],
@@ -66,6 +67,18 @@ test('the installed shim fails when its required program is missing, without run
     ] as const) {
       const proc = Bun.spawn(['sh', shim, verb], { stdout: 'pipe', stderr: 'pipe' });
       expect((await new Response(proc.stdout).text()).trim()).toBe(expected);
+      expect(await proc.exited).toBe(0);
+    }
+    for (const args of [
+      ['control', 'external', '--json'],
+      ['control', 'external'],
+      ['control', 'external', '--json', '--watch'],
+      ['control', 'other', '--json'],
+    ]) {
+      const proc = Bun.spawn(['sh', shim, ...args], { stdout: 'pipe', stderr: 'pipe' });
+      expect((await new Response(proc.stdout).text()).trim()).toBe(
+        args.length === 3 && args[1] === 'external' ? 'EXTERNAL_EXECUTED' : 'BUNDLE_EXECUTED',
+      );
       expect(await proc.exited).toBe(0);
     }
   } finally {

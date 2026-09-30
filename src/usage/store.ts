@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
+import { producerMetrics } from '../util/producerMetrics.ts';
 import { updateUsageCaches } from './aggregate.ts';
 import { usageContribution } from './contribution.ts';
 import { type UsageFact, UsageFactSchema } from './schema.ts';
@@ -14,6 +15,7 @@ let opens = 0;
 let active = 0;
 let peak = 0;
 export const usageStoreMetrics = () => ({ opens, active, peak });
+producerMetrics.register('usageStore', usageStoreMetrics);
 
 const SCHEMA = `CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, body TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, body TEXT NOT NULL, seq INTEGER NOT NULL);

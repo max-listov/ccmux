@@ -25,3 +25,28 @@ test('a child started without an explicit env lands in the same private home', a
   expect((await new Response(async.stdout).text()).trim()).toBe(STATE_DIR);
   expect(Bun.spawnSync({ cmd: probe }).stdout.toString().trim()).toBe(STATE_DIR);
 });
+
+test('operator identity is absent in the test process and inherited child environments', async () => {
+  const keys = [
+    'CCMUX_SESSION',
+    'CCMUX_CHAT_CREDENTIAL',
+    'CCMUX_BOOTSTRAP_GENERATION',
+    'CCMUX_RC_PREFIX',
+  ];
+  for (const key of keys) expect(process.env[key]).toBeUndefined();
+  const probe = [
+    process.execPath,
+    '-e',
+    `console.log(JSON.stringify(${JSON.stringify(keys)}.filter(key => process.env[key] !== undefined)))`,
+  ];
+  for (const env of [undefined, { ...process.env }]) {
+    const child = Bun.spawn(probe, { ...(env ? { env } : {}), stdout: 'pipe', stderr: 'pipe' });
+    expect((await new Response(child.stdout).text()).trim()).toBe('[]');
+    expect(await child.exited).toBe(0);
+    expect(
+      Bun.spawnSync(probe, env ? { env } : {})
+        .stdout.toString()
+        .trim(),
+    ).toBe('[]');
+  }
+});

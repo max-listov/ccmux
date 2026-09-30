@@ -7,9 +7,12 @@ import { ContentProducer } from '../../../content/producer.ts';
 import { claudeContextApi } from '../../../context/claude.ts';
 import { readNativeForkIntent } from '../../../context/fork.ts';
 import { applyContextCommands, NativeContextPump } from '../../../context/pump.ts';
+import { readContextJournal } from '../../../context/store.ts';
 import { tryNativeAdmission } from '../../../runtime/admission.ts';
+import { readRuntimeInput } from '../../../runtime/input.ts';
 import { planLimitsDue } from '../../../runtime/planLimits.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../../../runtime/status.ts';
+import { nativeContextWake } from '../../../runtime/wake.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { recordClaudeSdkUsage } from '../../../usage/claudeSdk.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
@@ -70,6 +73,7 @@ export class ClaudeNativeOwner {
   /** Everything this session publishes about itself, and the only thing that changes it. */
   private projection = new NativeProjection();
   private usageEpoch = crypto.randomUUID();
+  private pendingInput = true;
 
   /** What the six requests need. Assembled rather than passed piecemeal, so adding one is one line. */
   private get mailboxes(): Mailboxes {
@@ -329,11 +333,22 @@ export class ClaudeNativeOwner {
     if (!generation) return;
     this.contextPump.start(signal, async (contextSignal) => {
       const api = claudeContextApi(this.m, this.session, (inner) => this.compactTurn(inner));
-      while (!contextSignal.aborted) {
-        await applyContextCommands(this.m, this.session, generation, api, contextSignal, () =>
-          this.publishContextBoundary(),
-        );
-        await Bun.sleep(200);
+      const wake = nativeContextWake(this.m, this.session, contextSignal);
+      let pending = false;
+      try {
+        while (!contextSignal.aborted) {
+          if (wake.changed() || pending) {
+            await applyContextCommands(this.m, this.session, generation, api, contextSignal, () =>
+              this.publishContextBoundary(),
+            );
+            pending = readContextJournal(this.m, this.session).operations.some(
+              (row) => !['completed', 'rejected'].includes(row.state),
+            );
+          }
+          await wake.wait(pending ? 200 : 60_000);
+        }
+      } finally {
+        wake.close();
       }
     });
   }
@@ -365,27 +380,37 @@ export class ClaudeNativeOwner {
     await this.projection.content?.writer.flushPending();
   }
 
-  async tick(): Promise<void> {
-    await applyInterrupt(this.mailboxes);
-    await applyMode(this.mailboxes);
-    await applyRewind(this.mailboxes);
-    await applyMcpRequest(this.mailboxes);
-    await applyResponse(this.mailboxes);
+  async tick(commandsChanged = true): Promise<void> {
+    if (commandsChanged) {
+      await applyInterrupt(this.mailboxes);
+      await applyMode(this.mailboxes);
+      await applyRewind(this.mailboxes);
+      await applyMcpRequest(this.mailboxes);
+      await applyResponse(this.mailboxes);
+      this.pendingInput = true;
+    }
     // Pickup under the same lock the writers take, so a write cannot interleave with the
     // read-then-write that moves a turn between phases. Attempted rather than awaited to the
     // timeout: this process also serves the session's context operations under that same lock, and
     // a pickup that insisted would eventually throw and take the runtime down with it. A busy tick
     // simply leaves the turn where it is.
-    await tryNativeAdmission(this.m, this.session, () =>
-      this.pickup.run({
-        m: this.m,
-        session: this.session,
-        projection: this.projection,
-        queue: this.queue,
-        query: this.query,
-        selectModel: (model, turnId) => this.selectModel(model, turnId),
-      }),
-    );
+    const input = this.pendingInput ? readRuntimeInput(this.m, this.session) : null;
+    this.pendingInput = input !== null && input.phase !== 'accepted';
+    if (
+      input !== null &&
+      input.phase !== 'accepted' &&
+      (input.phase !== 'queued' || this.projection.turn.status !== 'inProgress')
+    )
+      await tryNativeAdmission(this.m, this.session, () =>
+        this.pickup.run({
+          m: this.m,
+          session: this.session,
+          projection: this.projection,
+          queue: this.queue,
+          query: this.query,
+          selectModel: (model, turnId) => this.selectModel(model, turnId),
+        }),
+      );
     await this.publish();
   }
 

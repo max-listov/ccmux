@@ -3,11 +3,13 @@ import { pendingSessionsPath } from '../config/paths.ts';
 import type { MachineConfig, PendingSession } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { FileSnapshot } from '../util/fileSnapshot.ts';
+import { producerMetrics } from '../util/producerMetrics.ts';
 import { PendingSessionSchema } from './schema.ts';
 
 const PendingRowsSchema = PendingSessionSchema.array();
 const pendingFile = new FileSnapshot<PendingSession[]>();
 export const pendingFileMetrics = () => pendingFile.metrics();
+producerMetrics.register('pendingFile', pendingFileMetrics);
 
 export function loadPendingRows(m: MachineConfig): PendingSession[] {
   const path = pendingSessionsPath(m);

@@ -1,9 +1,13 @@
 import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createClient } from 'stitchkit';
+import { z } from 'zod';
 import { histFile } from '../src/agent/claude/resume.ts';
 import { createControlClient } from '../src/control/transport/client.ts';
+import { createControlConnection } from '../src/control/transport/connection.ts';
 import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { peerReadContract } from '../src/fleet/peerReadContract.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { tmuxArgv } from '../src/tmux/argv.ts';
 import { AGENT_PANE_OPTION } from '../src/tmux/paneInventory.ts';
@@ -91,6 +95,16 @@ test.skipIf(!Bun.which('tmux'))(
     );
     const log = new Response(daemon.stderr).text();
     const client = createControlClient({ socket: controlSocket(m), timeoutMs: 1000 });
+    const peerConnection = createControlConnection({ socket: controlSocket(m), timeoutMs: 1000 });
+    const peer = createClient(peerReadContract, peerConnection.http);
+    const peerAnswer = z.object({
+      sessions: z.object({
+        items: z.record(
+          z.string(),
+          z.object({ name: z.string(), state: z.string(), atPrompt: z.string().nullable() }),
+        ),
+      }),
+    });
     async function state(name: string, expected: string) {
       const until = Date.now() + 10000;
       let last = 'no row';
@@ -100,7 +114,17 @@ test.skipIf(!Bun.which('tmux'))(
             (row) => row.identity.session === name,
           );
           last = row?.state ?? 'missing';
-          if (last === expected) return row;
+          if (last === expected) {
+            const answer = peerAnswer.parse(await peer.list({ known: [] }));
+            const peerRow = Object.values(answer.sessions.items).find((item) => item.name === name);
+            if (
+              (expected === 'prompt' &&
+                peerRow?.atPrompt !== null &&
+                peerRow?.atPrompt !== undefined) ||
+              peerRow?.state === expected
+            )
+              return row;
+          }
         } catch {
           if (daemon.exitCode !== null) break;
         }
@@ -130,9 +154,13 @@ test.skipIf(!Bun.which('tmux'))(
     };
     try {
       await state(a.name, 'idle');
+      const workStarted = performance.now();
       lifecycle(a, 'working', 'UserPromptSubmit', Date.now() - 90000);
       writeFileSync(view, '✳ Computing…\nesc to interrupt');
       await state(a.name, 'working');
+      const peerDelayMs = performance.now() - workStarted;
+      expect(peerDelayMs).toBeLessThan(2250);
+      console.log(JSON.stringify({ peerIdleToWorkingMs: peerDelayMs, observationEveryMs: 2000 }));
       const quiet = readFileSync(histFile(root, a.uuid, m.projectsDir), 'utf8');
       await Bun.sleep(4500);
       expect((await state(a.name, 'working'))?.state).toBe('working');
@@ -180,6 +208,7 @@ test.skipIf(!Bun.which('tmux'))(
       expect(command('has-session', '-t', `=${a.name}`)).toBe('');
     } finally {
       await client.close();
+      await peerConnection.close();
       daemon.kill('SIGTERM');
       await daemon.exited;
       command('kill-server');

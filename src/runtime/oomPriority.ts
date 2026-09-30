@@ -1,6 +1,9 @@
-import { closeSync, constants, openSync, readdirSync, readFileSync, writeSync } from 'node:fs';
+import { closeSync, constants, openSync, readFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseProcStat } from '../chat/auth.ts';
+import { parseProcessStat } from '../util/procStat.ts';
+import type { ProcRow } from './procTable.ts';
+
+export { isRunner, readProcTable } from './procTable.ts';
 
 /**
  * Who the kernel kills first when a shared memory cgroup runs out.
@@ -21,77 +24,8 @@ import { parseProcStat } from '../chat/auth.ts';
  * mechanism stays off there.
  */
 
-interface ProcRow {
-  pid: number;
-  parent: number;
-  startTime?: string;
-}
-
-/** Follow all task children from known roots; unrelated host processes are never opened. */
-export function readProcTable(
-  roots: number[],
-  procRoot = '/proc',
-): { rows: ProcRow[]; runners: number[] } {
-  const rows: ProcRow[] = [];
-  const runners: number[] = [];
-  const seen = new Set<number>();
-  const queue = [...roots];
-  while (queue.length) {
-    const pid = queue.pop();
-    if (pid === undefined || seen.has(pid)) continue;
-    seen.add(pid);
-    let raw: string;
-    try {
-      raw = readFileSync(join(procRoot, String(pid), 'stat'), 'utf8');
-    } catch {
-      continue;
-    }
-    const entry = parseProcStat(raw);
-    if (!entry) continue;
-    const startTime = procStartTime(raw);
-    rows.push({ pid, parent: entry.parent, ...(startTime ? { startTime } : {}) });
-    if (entry.command === 'bun' && isRunner(readArgv(procRoot, pid))) runners.push(pid);
-    try {
-      for (const task of readdirSync(join(procRoot, String(pid), 'task'))) {
-        let children: string;
-        try {
-          children = readFileSync(join(procRoot, String(pid), 'task', task, 'children'), 'utf8');
-        } catch {
-          continue;
-        }
-        for (const child of children.trim().split(/\s+/)) {
-          const next = Number(child);
-          if (Number.isSafeInteger(next) && next > 1) queue.push(next);
-        }
-      }
-    } catch {
-      /* process exited */
-    }
-  }
-  return { rows, runners };
-}
-
 function procStartTime(raw: string): string | undefined {
-  return raw
-    .slice(raw.lastIndexOf(')') + 1)
-    .trim()
-    .split(/\s+/)[19];
-}
-
-function readArgv(procRoot: string, pid: number): string[] {
-  try {
-    return readFileSync(join(procRoot, String(pid), 'cmdline'), 'utf8')
-      .split('\0')
-      .filter((arg) => arg !== '');
-  } catch {
-    return [];
-  }
-}
-
-/** `bun … ccmux.js _run <name>` (or the source entry in a dev checkout). */
-export function isRunner(argv: readonly string[]): boolean {
-  const run = argv.indexOf('_run');
-  return run > 0 && argv.slice(0, run).some((arg) => /(?:ccmux\.js|cli\.ts)$/.test(arg));
+  return parseProcessStat(raw)?.startTime;
 }
 
 /**

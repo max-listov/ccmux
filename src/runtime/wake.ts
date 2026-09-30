@@ -1,5 +1,5 @@
-import { type FSWatcher, lstatSync, type WatchListener, watch } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { type BigIntStats, type FSWatcher, lstatSync, type WatchListener, watch } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { createRevisionSignal } from 'stitchkit/application';
 import { pendingSessionsPath, sessionsPath } from '../config/paths.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -7,13 +7,25 @@ import { nativeCommandPath } from './response.ts';
 import { managedRuntimeRoot } from './status.ts';
 import { privateRuntimeDirectory } from './store.ts';
 
-function fileStamp(path: string): string | null {
+type Stamp = Pick<BigIntStats, 'dev' | 'ino' | 'size' | 'mtimeNs' | 'ctimeNs'> | null;
+function fileStamp(path: string): Stamp {
   try {
-    const stat = lstatSync(path, { bigint: true });
-    return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+    return lstatSync(path, { bigint: true, throwIfNoEntry: false }) ?? null;
   } catch {
     return null;
   }
+}
+function sameStamp(a: Stamp, b: Stamp): boolean {
+  return (
+    a === b ||
+    (a !== null &&
+      b !== null &&
+      a.dev === b.dev &&
+      a.ino === b.ino &&
+      a.size === b.size &&
+      a.mtimeNs === b.mtimeNs &&
+      a.ctimeNs === b.ctimeNs)
+  );
 }
 
 /** Command files wake the owner immediately; the deadline repairs missed filesystem events.
@@ -24,6 +36,10 @@ export class RuntimeWake {
   private consumedRevision = 0;
   private closed = false;
   private eventTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconcile: () => void;
+  private appliedRevision = -1;
+  private inputRevision = 0;
+  private fallback: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     paths: readonly string[],
@@ -32,22 +48,44 @@ export class RuntimeWake {
       path: string,
       listener: WatchListener<string>,
     ) => Pick<FSWatcher, 'on' | 'close'> = watch,
+    reconcileEveryMs?: number,
   ) {
     const stamps = new Map(paths.map((path) => [path, fileStamp(path)]));
+    const directories = new Map(
+      [...new Set(paths.map(dirname))].map((path) => [path, fileStamp(path)]),
+    );
     const reconcile = () => {
       let changed = false;
+      const checked = new Map<string, Stamp>();
       for (const [path, previous] of stamps) {
-        const current = fileStamp(path);
-        if (current !== previous) {
+        let current: Stamp;
+        if (previous === null) {
+          const directory = dirname(path);
+          if (!checked.has(directory)) checked.set(directory, fileStamp(directory));
+          const parent = checked.get(directory) ?? null;
+          // Only absence is reused. An existing input always checks its own inode and clocks,
+          // including in-place writes. Creating a formerly absent name changes the parent.
+          current =
+            parent !== null && sameStamp(parent, directories.get(directory) ?? null)
+              ? null
+              : fileStamp(path);
+        } else current = fileStamp(path);
+        if (!sameStamp(current, previous)) {
           stamps.set(path, current);
           changed = true;
         }
       }
+      for (const [path, stamp] of checked) directories.set(path, stamp);
       if (changed) this.notify();
     };
+    this.reconcile = reconcile;
+    if (reconcileEveryMs !== undefined) this.fallback = setInterval(reconcile, reconcileEveryMs);
+    const inputs = new Set(paths.map((path) => basename(path)));
     for (const directory of new Set(paths.map(dirname))) {
       try {
-        const watcher = watchDirectory(directory, () => {
+        const watcher = watchDirectory(directory, (_event, filename) => {
+          if (filename !== null && !inputs.has(filename) && !/(?:^LOCK$|\.lock$)/i.test(filename))
+            return;
           // A coalesced macOS event can name a LOCK rather than the changed command. Inspect
           // exact input stamps after the rename turn; output-only events never wake the owner.
           this.eventTimer ??= setTimeout(() => {
@@ -69,7 +107,17 @@ export class RuntimeWake {
   }
 
   notify(): void {
+    this.inputRevision++;
     this.revisions.advance();
+  }
+
+  /** Includes commands present at startup and repairs lost watcher events at the old cadence. */
+  changed(): boolean {
+    if (this.fallback === null && this.inputRevision === this.appliedRevision) this.reconcile();
+    const revision = this.inputRevision;
+    if (revision === this.appliedRevision) return false;
+    this.appliedRevision = revision;
+    return true;
   }
 
   async wait(maxMs = 1_000): Promise<void> {
@@ -86,11 +134,24 @@ export class RuntimeWake {
     this.closed = true;
     this.signal.removeEventListener('abort', this.close);
     if (this.eventTimer !== null) clearTimeout(this.eventTimer);
+    if (this.fallback !== null) clearInterval(this.fallback);
+    this.fallback = null;
     this.eventTimer = null;
     for (const watcher of this.watchers) watcher.close();
     this.watchers = [];
     this.revisions.close();
   };
+}
+
+export function nativeContextWake(m: MachineConfig, s: Session, signal: AbortSignal): RuntimeWake {
+  const root = managedRuntimeRoot(m, s);
+  privateRuntimeDirectory(root);
+  return new RuntimeWake(
+    ['context.json', 'history-read.json'].map((file) => join(root, file)),
+    signal,
+    watch,
+    200,
+  );
 }
 
 export function nativeRuntimeWake(m: MachineConfig, s: Session, signal: AbortSignal): RuntimeWake {

@@ -4,7 +4,7 @@ description: Capability-aware native session supervision with exact continuation
 type: architecture
 status: active
 created: 2026-08-30
-updated: 2026-09-30 07:58 +07:00
+updated: 2026-09-30 17:18 +07:00
 ---
 
 # Managed runtime drivers
@@ -236,14 +236,25 @@ browsers and builds are the victims before the agent. A descendant that set itse
 headless browser at 200–300 — or lower on purpose keeps its value, and a spine process already
 protected further is not raised.
 
-The pass discovers pane/server roots with one bounded tmux inventory command and walks only
-those roots plus the daemon through `/proc/<pid>/task/*/children`. Forks from worker threads are
-included; unrelated host processes are not scanned. Process stat and interpreter argv identify
+OOM-проход берёт pane/server roots из того же bounded tmux inventory, который выполняет
+observation; отдельного tmux subprocess у OOM нет. При отсутствии свежего inventory
+защита самого daemon и его потомков остаётся доступной. Inventory старше 10 секунд не даёт
+roots для остальных деревьев: их существующий adjustment сохраняется, но новые потомки агента,
+унаследовавшие отрицательное значение, не возвращаются к 0 до восстановления наблюдения.
+Свежий inventory возобновляет освобождение потомков; эта деградация не выключает OOM-проход.
+Одна некорректная строка inventory пропускается с ограниченным предупреждением; целиком
+неразбираемый ответ даёт ошибку наблюдения. Inventory сохраняет starttime каждого Linux root; перед использованием PID сверяется с этой identity, missing/reused root исключается. `procTable.ts` выбирает способ discovery по стоимости
+предыдущего завершённого прохода: sparse дерево читает `task/*/children` по всем потокам,
+thread-heavy дерево читает один `stat` каждого host PID и строит PPID graph. Авторизуются
+только потомки заданных roots. Cache содержит стоимость, а не список процессов или разрешения;
+каждый проход заново обнаруживает descendants. Fork из worker thread включён обоими путями. Process stat and interpreter argv identify
 the same supervising spine. Every adjustment is still read each pass, preserving intentional
 changes rather than trusting a remembered value. The stat start-time pins process identity;
 reads and writes reject PID reuse, and a write uses an opened procfs fd after that check.
 `test/oom-priority.test.ts` covers multiple task children, unrelated roots, PID reuse and
-permission refusal. `test/oom-linux.test.ts` uses an isolated real tmux tree to verify spine
+permission refusal. `test/oom-linux.test.ts` отдельно проверяет реальный fork из worker
+thread без OOM privileges; main-task-only отрицательный контроль его пропускает.
+Другая проверка uses an isolated real tmux tree to verify spine
 protection, a tool fork inheriting the target, release to zero and an intentional browser value. Lowering needs `CAP_SYS_RESOURCE`: a daemon
 refused it logs one warning and leaves the mechanism off until it restarts. macOS has no such knob
 and is untouched.

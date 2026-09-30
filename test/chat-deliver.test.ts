@@ -1,12 +1,44 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { atInteractiveMenu, chatDeliverable } from '../src/agent/claude/pane.ts';
-import { holdChanged } from '../src/chat/deliverApp.ts';
+import { CodexAppUnavailable } from '../src/agent/codex/socket.ts';
+import {
+  appFailureDetails,
+  holdChanged,
+  lastAppHold,
+  noteAppHold,
+} from '../src/chat/deliverApp.ts';
 import { recentInboundCount } from '../src/chat/rateGuard.ts';
 import { isConditional, isDue } from '../src/chat/settlement.ts';
 import type { ChatMessage } from '../src/types.ts';
+import { log } from '../src/util/log.ts';
 import { makeChatMessage, makePeer } from './helpers.ts';
 
 const recipientB = makePeer({ session: 'b' });
+
+test('a held App delivery exposes the connector cause and transport remedy in its warning', () => {
+  const records: Parameters<typeof log.warn>[0][] = [];
+  const warn = spyOn(log, 'warn').mockImplementation((record) => {
+    records.push(record);
+  });
+  const key = 'app:diagnostic-test';
+  try {
+    noteAppHold(
+      key,
+      'App task',
+      'unavailable — barrier retained',
+      'warn',
+      appFailureDetails(new CodexAppUnavailable('endpoint-not-listening', 'connection refused')),
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]?.cause).toBe('endpoint-not-listening');
+    expect(records[0]?.remedy).toContain('stdio');
+    expect(records[0]?.reason).toContain('barrier retained');
+    expect(appFailureDetails(new Error('unclassified failure'))).toEqual({});
+  } finally {
+    warn.mockRestore();
+    lastAppHold.delete(key);
+  }
+});
 const recipientC = makePeer({ session: 'c' });
 const recipientNobody = makePeer({ session: 'nobody' });
 const baseMsg: ChatMessage = makeChatMessage({

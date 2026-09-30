@@ -4,6 +4,14 @@ import { writeOut } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
 
 export async function cmdControl(args: string[]): Promise<number> {
+  if (args.length === 2 && args[0] === 'external' && args[1] === '--json') {
+    try {
+      return await (await import('./controlExternal.ts')).cmdControlExternal();
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
   const controller = new AbortController();
   const abort = () => controller.abort();
   process.on('SIGINT', abort);

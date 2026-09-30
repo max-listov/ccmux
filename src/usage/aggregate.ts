@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { measureCpu } from '../util/cpuScope.ts';
 import { addUsage, finishUsage, usageBucket } from './accumulation.ts';
 import { emptyAggregate } from './empty.ts';
 import {
@@ -100,7 +101,7 @@ export function nextPage(offset: number, key: string, revision: string) {
  * answer is: without the lock this answers read-only from what is committed — the last stored cache,
  * still `building` if it was — and leaves extending it to the next read that gets the lock.
  */
-export function aggregateUsage(store: UsageStore, query: UsageQuery) {
+function aggregateUsageImpl(store: UsageStore, query: UsageQuery) {
   try {
     return store.transaction(() => aggregate(store, query, true));
   } catch (error) {
@@ -192,4 +193,10 @@ function aggregate(store: UsageStore, query: UsageQuery, writable: boolean) {
           : null,
     };
   }
+}
+
+export function aggregateUsage(
+  ...args: Parameters<typeof aggregateUsageImpl>
+): ReturnType<typeof aggregateUsageImpl> {
+  return measureCpu(() => aggregateUsageImpl(...args));
 }

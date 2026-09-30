@@ -27,6 +27,9 @@ export function controlServices(
     dependencies,
   );
   const service = implement(controlContract, {
+    'daemon.performance': operations.performance,
+    'daemon.performance.configure': ({ input, signal }) =>
+      operations.performanceConfigure(input, signal),
     'terminal.prompt': ({ input }) => operations.terminalPrompt(input.target),
     'terminal.respond': ({ input, signal }) => operations.terminalRespond(input, signal),
     'usage.read': ({ input, signal }) => operations.usage(input, signal),
@@ -90,9 +93,14 @@ export function controlServices(
   });
   // A fleet reader on another machine, relayed by `ccmux _peer-read`: answered here, where the
   // caches that make building the rows cheap are warm.
+  const measure = dependencies.measure ?? (<T>(_name: string, run: () => T) => run());
   const peerRead = implement(peerReadContract, {
-    list: ({ input }) => peerListAnswer(m, input.known),
-    'chat-log': ({ input }) => peerChatLogAnswer(m, input.limit, input.known),
+    list: ({ input }) =>
+      measure('control/peer-list', async () =>
+        peerListAnswer(m, input.known, await dependencies.peerRows?.()),
+      ),
+    'chat-log': ({ input }) =>
+      measure('control/peer-chat-log', () => peerChatLogAnswer(m, input.limit, input.known)),
   });
   return { services: [service, events, peerRead], service, mutations, waits, reads, catalog };
 }

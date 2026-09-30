@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import type { MachineConfig } from '../types.ts';
 import { HOME, PLATFORM } from '../util/env.ts';
 import { FileSnapshot } from '../util/fileSnapshot.ts';
+import { producerMetrics } from '../util/producerMetrics.ts';
 import { machineConfigPath, resolveMonitoringLocation } from './location.ts';
 import { MachineConfigSchema } from './machineSchema.ts';
 import { STATE_DIR } from './paths.ts';
@@ -9,6 +10,7 @@ import { STATE_DIR } from './paths.ts';
 const MachineFileSchema = MachineConfigSchema.partial();
 const machineFile = new FileSnapshot<ReturnType<typeof MachineFileSchema.parse>>();
 export const machineFileMetrics = () => machineFile.metrics();
+producerMetrics.register('machineFile', machineFileMetrics);
 
 /** Per-platform defaults; everything here is overridable by machine.json. */
 function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {

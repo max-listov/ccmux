@@ -10,6 +10,7 @@ import {
   procOomAccess,
   readProcTable,
 } from '../src/runtime/oomPriority.ts';
+import { matchingProcessRoots } from '../src/util/procStat.ts';
 
 // daemon 100 · tmux server 200 → pane `_run` 210 → agent 220 → build 230 → its worker 231;
 // a browser 240 under the agent that raised itself; an unrelated process 300.
@@ -27,6 +28,20 @@ const table = {
   ],
   runners: [210],
 };
+
+test('cached tmux roots require the same birth time; missing and reused PIDs fail closed', () => {
+  const roots = new Map([
+    [100, 'first'],
+    [200, 'second'],
+    [300, 'gone'],
+  ]);
+  const actual = new Map([
+    [100, 'reused'],
+    [200, 'second'],
+  ]);
+  expect(matchingProcessRoots(roots, (pid) => actual.get(pid) ?? null)).toEqual([200]);
+  expect(matchingProcessRoots(roots, (pid) => roots.get(pid) ?? null)).toEqual([100, 200, 300]);
+});
 
 function fakeAccess(
   values: Record<number, number>,
@@ -151,6 +166,8 @@ test('task children include forks from worker threads; host entries outside root
     writeFileSync(join(dir, '100', 'task', '120', 'children'), '103');
     writeFileSync(join(dir, '101', 'task', '101', 'children'), '102');
     const table = readProcTable([100], dir);
+    // The next complete pass switches to the PPID index when task fan-out costs more.
+    expect(readProcTable([100], dir)).toEqual(table);
     expect(table.rows.map((r) => r.pid).sort()).toEqual([100, 101, 102, 103]);
     writeFileSync(join(dir, '101', 'oom_score_adj'), '-300');
     const access = procOomAccess(table.rows, dir);

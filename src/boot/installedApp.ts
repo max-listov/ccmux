@@ -15,10 +15,18 @@ import { ROUTED_PROGRAMS } from './routedPrograms.ts';
 export function shimContents(): string {
   const [exec, entry] = bootArgv();
   if (entry === undefined) return `#!/bin/sh\nexec "${exec}" "$@"\n`;
-  const routes = ROUTED_PROGRAMS.map(
-    ({ verb, file }) =>
-      `if [ "$1" = "${verb}" ]; then\n  exec "${exec}" "${join(dirname(entry), file)}" "$@"\nfi\n`,
-  ).join('');
+  const routes = ROUTED_PROGRAMS.map(({ verb, file, args }) => {
+    const match = [
+      `[ "$1" = "${verb}" ]`,
+      ...(args
+        ? [
+            `[ "$#" = "${args.length + 1}" ]`,
+            ...args.map((arg, index) => `[ "$${index + 2}" = "${arg}" ]`),
+          ]
+        : []),
+    ].join(' && ');
+    return `if ${match}; then\n  exec "${exec}" "${join(dirname(entry), file)}" "$@"\nfi\n`;
+  }).join('');
   return `#!/bin/sh\n${routes}exec "${exec}" "${entry}" "$@"\n`;
 }
 

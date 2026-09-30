@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for managed sessions an
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-09-27 18:15 +07:00
+updated: 2026-09-30 17:18 +07:00
 ---
 
 # Peer routing and session identity
@@ -81,6 +81,32 @@ its socket file behind, so the fallback is decided by the refused connect, not b
 The relay runs as its own program: the PATH shim sends `_peer-read` to `peer-read.js` beside the
 bundle, compiled from the same command (`src/boot/routedPrograms.ts`), so a fleet read does not pay
 for parsing the whole CLI.
+
+### Строки из последнего наблюдения и external relay
+
+Демон сохраняет карты creation time, exact agent pane и захваченного текста из своего
+двухсекундного observation. Первый `peer list` после наблюдения лениво строит строки через
+общий `collectRows`; остальные запросы до следующего наблюдения используют тот же Promise.
+При свежем наблюдении запрос не запускает `list-panes` или `capture-pane`. Новое наблюдение
+сбрасывает строки. При отсутствии либо просрочке более 10 секунд демон строит ответ через
+обычный холодный `collectRows`; машина остаётся доступна во время старта и разрыва наблюдения.
+Неудачный Promise не сохраняется до следующего наблюдения. Inventory содержит высоту exact
+agent pane: peer scan получает видимый экран и до 30 строк истории, как `capture-pane -S -30`,
+а мониторинг сохраняет до 40 строк истории. Старые маркеры между этими границами не влияют на list.
+Local/cold CLI сохраняет собственный захват и тот же builder полей. Меню сохраняет
+прежние `state` и `atPrompt`, stopped и archived остаются отдельными признаками.
+
+Ровно `control external --json` PATH shim направляет в `control-external.js`.
+Это маленький client существующего `external.list`, собранный из общего connection module
+и leaf contract. Установленный daemon с этим endpoint не требует одновременного обновления.
+Credentials, bounds и причина отказа совпадают с обычным control client. Мёртвый socket
+даёт ту же ошибку, а не успешный пустой inventory. Другие аргументы идут в полный CLI;
+отсутствующий routed artifact приводит к ошибке запуска.
+
+`test/peer-read.test.ts` проверяет все поля при недоступном tmux и равенство external ответа,
+включая отказ мёртвого socket. `test/shim-writers-agree.test.ts` проверяет оба shim writer
+и точное совпадение аргументов. Настоящий daemon test проверяет peer freshness вместе с
+quiet tool, меню, completion и смертью exact agent pane.
 
 ### One session by its address: `ccmux state`
 

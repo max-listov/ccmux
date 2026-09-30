@@ -64,6 +64,8 @@ export async function applyOwnedCodexInput(
   snapshot: () => NativeSnapshot,
   deps = ownedInputDependencies,
 ): Promise<boolean> {
+  const pending = readRuntimeInput(m, session);
+  if (pending === null || pending.phase === 'accepted') return false;
   let started = false;
   await tryNativeAdmission(m, session, async () => {
     try {

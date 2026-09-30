@@ -4,10 +4,11 @@ import { providerFor } from '../agent/index.ts';
 import { transcriptIndexPath } from '../agent/transcript/transcriptIndex.ts';
 import { withExternalTranscript } from '../external/transcript.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { measureCpu } from '../util/cpuScope.ts';
 import { liveUsagePath } from './paths.ts';
 import type { UsageSummary } from './schema.ts';
 
-function stamp(path: string, source = true): string | null {
+function stampImpl(path: string, source = true): string | null {
   try {
     const stat = lstatSync(path);
     return JSON.stringify([
@@ -24,6 +25,10 @@ function stamp(path: string, source = true): string | null {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return 'missing';
     return null;
   }
+}
+
+function stamp(path: string, source = true): string | null {
+  return measureCpu(() => stampImpl(path, source));
 }
 
 function databaseStamp(path: string): (string | null)[] {
