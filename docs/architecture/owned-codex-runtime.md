@@ -4,7 +4,7 @@ description: Process ownership, identity, state, delivery, recovery and the resi
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-09-30 14:38 +07:00
+updated: 2026-10-02 00:13 +07:00
 ---
 
 # Ownership and admission
@@ -90,6 +90,10 @@ Menus, partial input, unknown UI, busy state, approval and input waits hold deli
 on the letter; no automatic approval or input response is sent. Spinner text is not native turn
 state. The gate is released on every path.
 
+The known model footer matches `gpt-…` without case sensitivity, including the styled
+`GPT-…` label of the current terminal client. The composer marker, empty typed content and
+complete model footer are all required; changing label case does not admit unknown or cropped UI.
+
 The input slot records `dispatching` before `turn/start` and `accepted` with the provider's turn id
 after. The request uses the ledger message id as `clientUserMessageId`. A dispatch found in flight
 on the next tick — a lost reply, or an owner that died between the two writes — is settled from the
@@ -122,6 +126,15 @@ pickup evidence, not the mere send attempt; future `--after` mail does not block
 `wait` requires native idle, a terminal/no turn, and no due unread mail or unresolved pickup.
 It distinguishes interrupted from completed work; failed turns do not return success. `wait`
 means between turns, not proof that a business task is fully complete.
+
+The native pickup receipt remains unresolved after the delivery cursor advances and after a
+person reads inbox. Both `wait` and `doctor` follow that receipt until the daemon settles it.
+An accepted queue entry is not proof of a started turn: consumers read `messageOperation` with
+the exact target, registration generation and message UUID. Only `admitted` with a non-null
+`turnId` proves provider admission; terminal states name the outcome of that same turn.
+`queued`, `uncertain`, unavailable or expired evidence never proves execution. A stale daemon
+control snapshot and a newer owner `runtime` observation have independent observation leases;
+neither reader extends the other's lease.
 
 # Resident contract
 

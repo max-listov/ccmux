@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.76.1] — 2026-10-02
+
+Restore Codex client message pickup and native queue diagnostics
+
+- Recognize the styled uppercase GPT model footer while preserving composer, draft and menu gates.
+- Wait and doctor retain unresolved native pickup evidence after delivery and inbox cursors advance.
+- Cover current client frames, stale observations and exactly-once provider admission with regression checks.
+
 ## [0.76.0] — 2026-09-30
 
 Adopt current provider SDKs and diagnostic journal recovery

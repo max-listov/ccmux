@@ -4,7 +4,7 @@ import type { ChatPaneInspection, PaneScan } from '../index.ts';
 
 const WORKING_RE = /\bWorking\b[^\n]*(?:esc to interrupt|\d+s)/i;
 const WORKED_RE = /\bWorked for\b/i;
-const FOOTER_RE = /^\s*gpt-[^\n]+\s+·\s+.+$/m;
+const FOOTER_RE = /^\s*gpt-[^\n]+\s+·\s+.+$/im;
 const DRAFT_FOOTER_RE = /^\s*tab to queue message\s+\d+% context left\s*$/m;
 const CONTEXT_RE = /[\d.]+[kKMG]\/[\d.]+[kKMG] +\d+%|\d+%\s*context/i;
 const MENU_CONFIRM_RE =
@@ -20,7 +20,7 @@ function menuTitle(plain: string): string | null {
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i] ?? '';
     if (MENU_CONFIRM_RE.test(line)) confirmAt = i;
-    if (/^\s*›/.test(line) || /^\s*gpt-[^\n]+\s+·\s+.+$/.test(line)) newerChromeAt = i;
+    if (/^\s*›/.test(line) || FOOTER_RE.test(line)) newerChromeAt = i;
   }
   if (newerChromeAt > confirmAt) return null;
   const lines = rawLines.map((line) => line.trim()).filter((line) => line !== '');
@@ -68,7 +68,7 @@ function liveWorking(plain: string): boolean {
 }
 
 /** One classifier owns every Codex pane decision. Delivery is allowed only on the complete idle
- * composer shape measured from Codex CLI 0.147.0; every new or cropped frame fails closed. */
+ * composer and model footer; every incomplete or unfamiliar frame fails closed. */
 export function inspectChatPane(styledPaneText: string): ChatPaneInspection {
   return inspectInput(styledPaneText, true);
 }

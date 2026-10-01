@@ -1,6 +1,29 @@
 import { describe, expect, test } from 'bun:test';
 import { inspectChatPane, inspectNativeCodexInput, scanPane } from '../src/agent/codex/pane.ts';
 import frames from './fixtures/codex-pane/v0.147.0.json';
+import currentFrames from './fixtures/codex-pane/v0.159.1.json';
+
+test('the current styled Codex footer admits only an empty composer', () => {
+  const idle = currentFrames.idle;
+  for (const inspect of [inspectChatPane, inspectNativeCodexInput]) {
+    expect(inspect(idle).state).toBe('deliverable');
+    expect(inspect(idle.replace('GPT-6.1-Sol', 'gpt-6.1-sol')).state).toBe('deliverable');
+    expect(
+      inspect(idle.replace('Ask Codex to do anything', 'suggestion').replace('›', '› typed')).state,
+    ).toBe('input-busy');
+    expect(inspect(idle.replace('GPT-6.1-Sol xhigh fast', 'unknown model')).state).toBe('unknown');
+    expect(
+      inspect(
+        idle
+          .split('\n')
+          .filter((line) => !line.includes('GPT-'))
+          .join('\n'),
+      ).state,
+    ).toBe('unknown');
+    expect(inspect(`${frames.menu}\n${idle}`).state).toBe('deliverable');
+    expect(inspect(`${idle}\n${frames.menu}`).state).toBe('menu');
+  }
+});
 
 describe('Codex pane state machine from real 0.147.0 frame shapes', () => {
   test('only the structural idle composer is deliverable', () => {

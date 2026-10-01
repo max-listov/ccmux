@@ -22,6 +22,7 @@ import { privateRuntimeDirectory } from '../src/runtime/store.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { readChatHold, writeChatHold } from '../src/session/status.ts';
 import frames from './fixtures/codex-pane/v0.147.0.json';
+import currentFrames from './fixtures/codex-pane/v0.159.1.json';
 import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 
 /**
@@ -157,6 +158,16 @@ function owner() {
     interrupt: () => applyOwnedCodexInterrupt(m, s, rpc, () => snapshot),
   };
 }
+
+test('the current native client frame picks up the queued letter exactly once', async () => {
+  const f = owner();
+  f.setPane(currentFrames.idle);
+  await f.queue();
+  expect(await f.run()).toBe(true);
+  expect(f.input()).toMatchObject({ phase: 'accepted', turnId: 'native-turn' });
+  expect(await f.run()).toBe(false);
+  expect(f.calls.filter((method) => method === 'turn/start')).toHaveLength(1);
+});
 
 const recipe = {
   id: 'input-policy',
@@ -386,6 +397,20 @@ test('the daemon queues an owned Codex letter under its own id, like every nativ
   });
   expect(f.cursors.pickups[f.key]?.native).toEqual({ phase: 'intent', turnId: null });
   expect(f.cursors.delivered[f.key]).toBe(1);
+});
+
+test('stale native observation cannot queue a turn or claim provider acceptance', async () => {
+  const f = await daemon();
+  const expired = Date.now() - 10_000;
+  await f.writer.write({
+    ...f.projection.snapshot(),
+    observedAt: new Date(expired).toISOString(),
+    expiresAt: new Date(expired + 5_000).toISOString(),
+  });
+  expect(await f.run()).toBe(0);
+  expect(readRuntimeInput(f.m, f.s)).toBeNull();
+  expect(f.cursors.pickups[f.key]).toBeUndefined();
+  expect(readChatHold(f.s.name)?.reason).toBe('native runtime is unavailable');
 });
 
 test('a letter settles on the turn the provider named, and a conditional one is acked only then', async () => {

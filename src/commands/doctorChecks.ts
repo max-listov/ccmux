@@ -7,14 +7,16 @@ import { inheritsUndeclaredEnv } from '../agent/launch/sessionEnv.ts';
 import { loadAckedIds } from '../chat/ackLog.ts';
 import { CursorsUnreadableError, loadCursors } from '../chat/cursors.ts';
 import { holdReason, STALLED_HOLD_MS } from '../chat/holdReason.ts';
-import { managedPeer } from '../chat/identity.ts';
+import { managedPeer, managedPeerKey } from '../chat/identity.ts';
 import { loadLedger, unreadableCount } from '../chat/ledger.ts';
+import { pendingMessageId } from '../chat/settlement.ts';
 import { unreadFor } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { APP_BUNDLE, CACHE_DIR, chatAuthPath, DATA_DIR } from '../config/paths.ts';
 import { remoteAdapterSocketPath } from '../fleet/remoteAdapter.ts';
 import { checkFleet, peersOf } from '../fleet/transport.ts';
 import { collectRows } from '../inventory/rows.ts';
+import { hasNativeRuntime } from '../runtime/modes.ts';
 import { loadSessions } from '../session/registry.ts';
 import { readChatHold, readLaunchStamp } from '../session/status.ts';
 import type { MachineConfig } from '../types.ts';
@@ -187,12 +189,17 @@ export function stalledMail(m: MachineConfig): { session: string; reason: string
     if (s.archived) continue;
     const hold = readChatHold(s.name);
     if (hold === null || hold.heldForMs < STALLED_HOLD_MS) continue;
-    const unread = unreadFor(managedPeer(m.rcPrefix, s), ledger, cursors, acked);
-    const first = unread[0];
-    if (first === undefined) continue; // held about something already delivered since
+    const recipient = managedPeer(m.rcPrefix, s);
+    // A native pickup advances the delivery cursor before the owner starts its turn. The pickup
+    // receipt remains authoritative until native acceptance, even if inbox was marked read.
+    const pending = hasNativeRuntime(s)
+      ? pendingMessageId(ledger, managedPeerKey(recipient), cursors, acked, Date.now())
+      : unreadFor(recipient, ledger, cursors, acked)[0]?.msg.id;
+    const first = ledger.find((msg) => msg?.id === pending);
+    if (first == null) continue;
     out.push({
       session: s.name,
-      reason: holdReason(first.msg, {
+      reason: holdReason(first, {
         recipient: s,
         chatEnabled: chatEnabledFor(s, m),
         running: true,
