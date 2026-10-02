@@ -88,6 +88,7 @@ export function prepareCustomHost(
     commandEnvironment,
     resources,
     serviceCredentials,
+    finiteWorkloads: m.finiteWorkloads,
   };
 }
 export type PreparedCustomHost = ReturnType<typeof prepareCustomHost>;

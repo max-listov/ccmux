@@ -18,6 +18,7 @@ import { createBunSqliteAgentRuntimeStore } from 'stitchkit/agent-runtime/sqlite
 import { mountAgent, type RuntimeToolDefinition } from 'stitchkit/tools';
 import { z } from 'zod';
 import { privateRuntimeDirectory } from '../../runtime/store.ts';
+import { finiteWorkloadSandbox } from '../../runtime/workloadSandbox.ts';
 import type { Session } from '../../types.ts';
 import { customArtifactStore } from './artifacts.ts';
 import { declaredCustomToolNames } from './config.ts';
@@ -90,6 +91,14 @@ export async function openCustomEngine(input: {
     executables: host.config.executables,
     environment: { ...host.commandEnvironment, ...input.commandIdentity },
     artifacts,
+    ...(host.finiteWorkloads
+      ? {
+          sandbox: {
+            adapter: finiteWorkloadSandbox(host.finiteWorkloads),
+            required: ['process-contained'],
+          },
+        }
+      : {}),
     limits: {
       maxArtifactBytes: 1024 * 1024,
       maxShellOutputBytes: 32 * 1024,

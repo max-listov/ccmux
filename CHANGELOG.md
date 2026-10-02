@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.77.0] — 2026-10-02
+
+Add host-owned finite workload admission
+
+- Add optional installed finite-workload admission for attachment decoding and custom commands; preserve structured refusals and await process-tree cleanup on cancellation.
+- Keep resident providers outside finite slots; activation requires a qualified node profile.
+
 ## [0.76.1] — 2026-10-02
 
 Restore Codex client message pickup and native queue diagnostics

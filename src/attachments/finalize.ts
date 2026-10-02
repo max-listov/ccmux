@@ -48,7 +48,7 @@ export async function finalizeAttachmentUpload(
         );
         if (prepared.reference !== null) return prepared.reference;
         assertAttachment(prepared.bytes !== null, 'attachment-decode-input');
-        const image = await decodeAttachment(prepared.bytes, signal);
+        const image = await decodeAttachment(prepared.bytes, signal, m.finiteWorkloads);
         return withSessionRegistryLock(m, () =>
           withAttachmentStore(
             m,

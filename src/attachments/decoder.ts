@@ -1,4 +1,7 @@
+import { tmpdir } from 'node:os';
 import { z } from 'zod';
+import { spawnFiniteWorkload } from '../runtime/finiteWorkload.ts';
+import type { FiniteWorkloads } from '../runtime/workloadContract.ts';
 import { SELF_ARGV_NO_ENV_FILE } from '../util/env.ts';
 import { AttachmentFault, assertAttachment } from './errors.ts';
 import { type DecodedImage, DecodedImageSchema } from './imageValidation.ts';
@@ -18,7 +21,7 @@ const ReplySchema = z.discriminatedUnion('ok', [
     .strict(),
 ]);
 
-async function readReply(stream: ReadableStream<Uint8Array>): Promise<string> {
+async function readReply(stream: AsyncIterable<Uint8Array>): Promise<string> {
   const chunks: Uint8Array[] = [];
   let size = 0;
   for await (const chunk of stream) {
@@ -29,8 +32,45 @@ async function readReply(stream: ReadableStream<Uint8Array>): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export async function decodeAttachment(bytes: Buffer, signal: AbortSignal): Promise<DecodedImage> {
+export async function decodeAttachment(
+  bytes: Buffer,
+  signal: AbortSignal,
+  workloads?: FiniteWorkloads,
+): Promise<DecodedImage> {
   signal.throwIfAborted();
+  if (workloads) {
+    const [executable, ...args] = [...SELF_ARGV_NO_ENV_FILE, '_attachment-validate'];
+    assertAttachment(executable !== undefined, 'decoder-executable');
+    const child = spawnFiniteWorkload(workloads, {
+      label: 'attachment decoder',
+      executable,
+      args,
+      cwd: tmpdir(),
+      environment: {},
+      timeoutMs: ATTACHMENT_LIMITS.decodeDeadlineMs,
+      maxOutputBytes: 1024,
+      maxStdinBytes: ATTACHMENT_LIMITS.imageBytes,
+      stdin: bytes,
+    });
+    const stop = () => child.kill('SIGKILL');
+    signal.addEventListener('abort', stop, { once: true });
+    if (signal.aborted) stop();
+    try {
+      const [outcome, output] = await Promise.all([child.settled, readReply(child.stdout)]);
+      signal.throwIfAborted();
+      if (outcome.status !== 'completed')
+        throw new AttachmentFault(outcome.reason, { cause: outcome.detail });
+      if (outcome.reason !== null) throw new AttachmentFault(outcome.reason);
+      const reply = ReplySchema.parse(JSON.parse(output));
+      if (!reply.ok) throw new AttachmentFault(reply.reason);
+      assertAttachment(outcome.exitCode === 0, 'decoder-refused');
+      return reply.image;
+    } finally {
+      signal.removeEventListener('abort', stop);
+      if (child.exitCode === null) stop();
+      await child.settled;
+    }
+  }
   const child = Bun.spawn([...SELF_ARGV_NO_ENV_FILE, '_attachment-validate'], {
     stdin: bytes,
     stdout: 'pipe',

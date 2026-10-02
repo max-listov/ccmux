@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { RC_PREFIX_RE, SESSION_NAME_RE } from '../chat/identitySchema.ts';
 import { MessageApplicationsSchema } from '../chat/originSchema.ts';
 import { AgentPoliciesSchema } from '../policy/schema.ts';
+import { FiniteWorkloadsSchema } from '../runtime/workloadContract.ts';
 import {
   LaunchRecipeIdSchema,
   MachineLaunchRecipeSchema,
@@ -27,6 +28,8 @@ export const TelegramConfigSchema = z.object({
  * differs between local/dev/prod lives here, never in code.
  */
 export const MachineConfigSchema = z.object({
+  // Host-owned finite workload launcher; absent means resource admission is not activated.
+  finiteWorkloads: FiniteWorkloadsSchema.optional(),
   // Absolute binaries — differ per machine (ordered-fallback-detected, overridable).
   claudeBin: z.string().startsWith('/'),
   // Codex CLI binary — optional; only required for agent="codex" sessions.

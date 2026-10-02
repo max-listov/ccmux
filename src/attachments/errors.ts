@@ -1,8 +1,11 @@
 import { AppError } from 'stitchkit';
 
 export class AttachmentFault extends Error {
-  constructor(readonly reason: string) {
-    super(reason);
+  constructor(
+    readonly reason: string,
+    options?: ErrorOptions,
+  ) {
+    super(reason, options);
   }
 }
 
