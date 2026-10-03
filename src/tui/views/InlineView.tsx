@@ -1,4 +1,4 @@
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useWindowSize } from 'ink';
 import { IS_DEV } from '../../util/env.ts';
 import { VERSION } from '../../util/version.ts';
 import { SessionCard } from '../components/SessionCard.tsx';
@@ -29,8 +29,8 @@ export function InlineView({
   rcPrefix: string;
   load: FleetLoad;
 }) {
-  const { stdout } = useStdout();
-  const lastWidth = Math.max(20, (stdout?.columns ?? 100) - 12);
+  const { columns } = useWindowSize();
+  const lastWidth = Math.max(20, columns - 12);
   const externalCount = items.length - externalStart;
   const shown = items.slice(winStart, winStart + visibleCards);
   // Position, not a scrollbar: the window is the only thing on screen, so say which slice it is.

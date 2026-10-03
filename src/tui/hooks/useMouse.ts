@@ -1,4 +1,4 @@
-import { useStdin, useStdout } from 'ink';
+import { useStdin, useStdout, useWindowSize } from 'ink';
 import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from 'react';
 import { cardIndexAtY } from '../listWindow.ts';
 import { MOTION, sgrReports, WHEEL_DOWN, WHEEL_UP } from '../mouse.ts';
@@ -42,8 +42,9 @@ export interface MouseActions {
 export function useMouse(active: boolean, geometry: MouseGeometry, actions: MouseActions) {
   const { stdout } = useStdout();
   const { stdin } = useStdin();
-  const latest = useRef({ geometry, actions });
-  latest.current = { geometry, actions };
+  const { columns } = useWindowSize();
+  const latest = useRef({ geometry, actions, columns });
+  latest.current = { geometry, actions, columns };
   const dragging = useRef(false);
   const [hoverHandle, setHoverHandle] = useState(false);
   const [hoverPane, setHoverPane] = useState<Focus | null>(null);
@@ -90,7 +91,7 @@ export function useMouse(active: boolean, geometry: MouseGeometry, actions: Mous
         }
         if ((button & MOTION) === 0) continue;
         if (dragging.current) {
-          const cols = stdout?.columns ?? 100;
+          const cols = latest.current.columns;
           a.setListWidth(Math.max(g.minListWidth, Math.min(cols - 30, x - 1)));
         } else {
           setHoverHandle(nearHandle);

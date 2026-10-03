@@ -1,4 +1,4 @@
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useWindowSize } from 'ink';
 import type { TranscriptMessage } from '../../types.ts';
 import { IS_DEV } from '../../util/env.ts';
 import { VERSION } from '../../util/version.ts';
@@ -55,9 +55,7 @@ export function FullscreenView({
   canCompose: boolean;
   load: FleetLoad;
 }) {
-  const { stdout } = useStdout();
-  const cols = stdout?.columns ?? 100;
-  const termRows = stdout?.rows ?? 28;
+  const { columns: cols, rows: termRows } = useWindowSize();
   const sel = items[cursor];
   const externalCount = items.length - externalStart;
   const bodyHeight = Math.max(3, termRows - 2);

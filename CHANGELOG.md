@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.78.0] — 2026-10-03
+
+Adopt current dependencies and reactive terminal dimensions
+
+- Adopt Stitchkit 0.103.12, Ink 8.0.0 and current provider, MCP and AI SDK releases.
+- Read terminal dimensions through Ink’s reactive window-size hook; preserve stable mouse listeners while terminal width changes.
+
 ## [0.77.0] — 2026-10-02
 
 Add host-owned finite workload admission

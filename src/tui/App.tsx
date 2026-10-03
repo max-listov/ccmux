@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { Box, useApp, useInput, useStdout } from 'ink';
+import { Box, useApp, useInput, useStdout, useWindowSize } from 'ink';
 import { useEffect, useRef, useState } from 'react';
 import type { AgentKind, MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
@@ -109,7 +109,7 @@ export function App({
   //    the terminal is one the terminal scrolls, and then every poll repaint throws the reader
   //    back to the bottom. Fullscreen divides by a fixed card stride; inline counts item heights
   //    (an external card is one row taller). winStart is the clamped listScroll either way.
-  const termRows = stdout?.rows ?? 28;
+  const { rows: termRows } = useWindowSize();
   // Modes draw their own prompt under the list; leave it room instead of pushing a card off-screen.
   const promptRows = mode === 'list' ? 0 : mode === 'adopt' ? 3 : 1;
   const inlineRows = Math.max(3, termRows - INLINE_CHROME_ROWS - promptRows);
