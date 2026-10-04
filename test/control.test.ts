@@ -345,56 +345,64 @@ test('a quiet control stream outlives its header deadline and abort releases a p
   await next.return?.();
 }, 5000);
 
-test('oversize bodies refuse early and cancelled lock waiters cannot append later', async () => {
-  const f = await fixture();
-  const response = await fetch('http://ccmux.local/control/message', {
-    unix: f.socket,
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ body: 'x'.repeat(70_000) }),
-  });
-  expect(response.status).toBe(400);
-  expect(await response.json()).toMatchObject({
-    error: { code: 'BAD_REQUEST', message: 'JSON body exceeds the 65536-byte limit' },
-  });
-  const entered = Promise.withResolvers<void>(),
-    release = Promise.withResolvers<void>();
-  const lock = withSessionRegistryLock(f.m, async () => {
-    entered.resolve();
-    await release.promise;
-  });
-  await entered.promise;
-  const stop = new AbortController();
-  try {
-    const request = f.client['message.send'].withOptions(
-      {
+test.each(['client', 'proxy'] as const)(
+  'oversize bodies refuse early and cancelled %s lock waiters cannot append later',
+  async (transport) => {
+    const f = await fixture();
+    const response = await fetch('http://ccmux.local/control/message', {
+      unix: f.socket,
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: 'x'.repeat(70_000) }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'BAD_REQUEST', message: 'JSON body exceeds the 65536-byte limit' },
+    });
+    const entered = Promise.withResolvers<void>(),
+      release = Promise.withResolvers<void>();
+    const lock = withSessionRegistryLock(f.m, async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    await entered.promise;
+    const stop = new AbortController();
+    try {
+      const input = {
         communicationAuthorization,
         target: f.target,
         messageId: crypto.randomUUID(),
         body: 'must never append',
-      },
-      { signal: stop.signal },
-    );
-    const rejected = request.catch((error: unknown) => error);
-    for (let i = 0; i < 50 && f.owned.controls.mutations.getSnapshot().active === 0; i++)
-      await Bun.sleep(10);
-    expect(f.owned.controls.mutations.getSnapshot().active).toBe(1);
-    stop.abort();
-    expect(await rejected).toMatchObject({ code: 'REQUEST_ABORTED' });
-    // Client cancellation is not server acknowledgement. Keep the registry locked until
-    // the server has observed cancellation and released the waiting mutation's admission.
+      };
+      const proxy = createControlProxy({ socket: f.socket });
+      cleanup.push(() => proxy.close());
+      const request =
+        transport === 'client'
+          ? f.client['message.send'].withOptions(input, { signal: stop.signal })
+          : createToolInvoker(proxy, { transport: 'CLI' }).invokeOrThrow('message', input, {
+              context: { signal: stop.signal },
+            });
+      const rejected = request.catch((error: unknown) => error);
+      for (let i = 0; i < 50 && f.owned.controls.mutations.getSnapshot().active === 0; i++)
+        await Bun.sleep(10);
+      expect(f.owned.controls.mutations.getSnapshot().active).toBe(1);
+      stop.abort();
+      expect(await rejected).toMatchObject({ code: 'REQUEST_ABORTED' });
+      // Client cancellation is not server acknowledgement. Keep the registry locked until
+      // the server has observed cancellation and released the waiting mutation's admission.
+      for (let i = 0; i < 100 && f.owned.controls.mutations.getSnapshot().active; i++)
+        await Bun.sleep(10);
+      expect(f.owned.controls.mutations.getSnapshot().active).toBe(0);
+    } finally {
+      release.resolve();
+      await lock;
+    }
     for (let i = 0; i < 100 && f.owned.controls.mutations.getSnapshot().active; i++)
       await Bun.sleep(10);
     expect(f.owned.controls.mutations.getSnapshot().active).toBe(0);
-  } finally {
-    release.resolve();
-    await lock;
-  }
-  for (let i = 0; i < 100 && f.owned.controls.mutations.getSnapshot().active; i++)
-    await Bun.sleep(10);
-  expect(f.owned.controls.mutations.getSnapshot().active).toBe(0);
-  expect(loadLedger(f.m)).toEqual([]);
-});
+    expect(loadLedger(f.m)).toEqual([]);
+  },
+);
 
 test('native approval/input/working states remain distinct; interruption cannot answer them', async () => {
   const f = await fixture(true);

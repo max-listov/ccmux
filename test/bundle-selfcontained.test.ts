@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { requireUniversalNativePackaging } from '../scripts/native-companion.ts';
 import { ensureRoutedPrograms } from '../src/boot/routedInstall.ts';
 
 // Build in the release process shape, outside the test runner's module resolver/cache.
@@ -130,8 +131,16 @@ test.skipIf(process.platform !== 'darwin')(
          console.log(JSON.stringify(JSON.parse(readFileSync(lock, 'utf8')).process ?? null));
        }, { label: 'probe', timeoutMs: 1000 });`,
     );
-    const built = await Bun.build({ entrypoints: [probeSource], target: 'bun' });
+    const native = requireUniversalNativePackaging('app/probe.js');
+    const built = await Bun.build({
+      entrypoints: [probeSource],
+      target: 'bun',
+      naming: { entry: 'app/probe.js' },
+      splitting: false,
+      plugins: [native.plugin],
+    });
     expect(built.success).toBe(true);
+    expect(built.outputs).toHaveLength(1);
     const probeBytes = await built.outputs[0]?.arrayBuffer();
     const recorded = async (root: string) => {
       mkdirSync(join(root, 'app'), { recursive: true });
@@ -155,14 +164,34 @@ test.skipIf(process.platform !== 'darwin')(
       stderr: 'pipe',
     });
     expect(await install.exited).toBe(0);
-    const binary = `darwin-${process.arch}.node`;
-    expect(existsSync(join(installed, 'native', binary))).toBe(true);
-    expect(readFileSync(join(installed, 'native', binary))).toEqual(
-      readFileSync(join(import.meta.dir, '..', 'node_modules', 'stitchkit', 'native', binary)),
-    );
+    const probeText = new TextDecoder().decode(probeBytes);
+    for (const asset of native.assets) {
+      expect(probeText).toContain(`../native/darwin-${asset.architecture}.node`);
+    }
     const identity = await recorded(installed);
     expect(identity?.platform).toBe('darwin');
     expect(identity?.startId).toMatch(/^\d+$/);
+
+    const selected = native.assets.find((asset) => asset.architecture === process.arch);
+    const other = native.assets.find((asset) => asset.architecture !== process.arch);
+    if (!selected || !other) throw new Error('Both native targets must be packaged');
+    // Installation materializes the host target; qualification adds the other valid addon
+    // explicitly to prove that it cannot become a fallback when the host target fails.
+    expect(readFileSync(join(installed, selected.outputPath))).toEqual(
+      readFileSync(selected.sourcePath),
+    );
+    await Bun.write(join(installed, other.outputPath), Bun.file(other.sourcePath));
+    // The other valid addon cannot rescue a missing or wrong-architecture selected addon.
+    const selectedPath = join(installed, selected.outputPath);
+    rmSync(selectedPath);
+    expect(await recorded(installed)).toBeNull();
+    await Bun.write(selectedPath, Bun.file(other.sourcePath));
+    expect(await recorded(installed)).toBeNull();
+    await Bun.write(selectedPath, 'corrupt native companion');
+    expect(await recorded(installed)).toBeNull();
+    await Bun.write(selectedPath, Bun.file(selected.sourcePath));
+    rmSync(join(installed, other.outputPath));
+    expect((await recorded(installed))?.startId).toMatch(/^\d+$/);
   },
   120_000,
 );

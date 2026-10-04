@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.78.1] — 2026-10-05
+
+Package native companions through Stitchkit 0.104.2
+
+- Use the public multi-target packaging contract for the main bundle, routed programs and Custom driver; preserve both Darwin architectures in one offline JS artifact.
+- Resolve native source paths and SHA256 through owner metadata and reject unexpected extra build artifacts.
+- Cover missing, corrupt and wrong-architecture selected companions, plus cancellation through both control transports.
+
 ## [0.78.0] — 2026-10-03
 
 Adopt current dependencies and reactive terminal dimensions

@@ -4,7 +4,7 @@ description: Capability-aware native session supervision with exact continuation
 type: architecture
 status: active
 created: 2026-08-30
-updated: 2026-09-30 17:18 +07:00
+updated: 2026-10-05 06:46 +07:00
 ---
 
 # Managed runtime drivers
@@ -227,6 +227,13 @@ birth is read through stitchkit's native backend, which the installed bundle lay
 counters are persisted with a one-second cadence and at bounded close. Request, answer, interrupt,
 gap and terminal transitions carry only allowlisted metadata. Other native engines retain their
 existing private diagnostics; no journal is used as their canonical execution state.
+
+При сборке пути native assets и их SHA256 определяет публичный `stitchkit/files/packaging`
+через `createNativePackaging`; расположение устанавливаемых файлов задаёт CCMux. Один JS bundle
+сохраняет оба Darwin targets через один публичный multi-target plugin. Main bundle, routed
+programs и Custom driver задают точный `naming.entry`, выключают splitting и используют
+`scripts/native-companion.ts`; installer материализует только addon текущей машины.
+Отсутствующий, повреждённый или чужой по архитектуре выбранный addon не подменяется другим.
 
 ## Memory pressure: who the OOM killer takes
 

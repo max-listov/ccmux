@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { ROUTED_PROGRAMS, type RoutedProgram } from '../src/boot/routedPrograms.ts';
+import { requireUniversalNativePackaging } from './native-companion.ts';
 
 /**
  * Each routed program (`src/boot/routedPrograms.ts`), compiled on its own so a verb that runs
@@ -9,10 +10,14 @@ export async function buildRoutedProgram(
   program: RoutedProgram,
   directory: string,
 ): Promise<{ bytes: Uint8Array }> {
+  const native = requireUniversalNativePackaging(`app/${program.file}`);
   const result = await Bun.build({
     entrypoints: [join(import.meta.dir, '..', program.entry)],
     target: 'bun',
     minify: true,
+    naming: { entry: `app/${program.file}` },
+    splitting: false,
+    plugins: [native.plugin],
   });
   const [artifact] = result.outputs;
   if (!result.success || !artifact)

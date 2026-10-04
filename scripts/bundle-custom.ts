@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import type { BunPlugin } from 'bun';
 import type { CustomPackage } from '../src/agent/custom/package.ts';
+import { requireNativeCompanion, requireUniversalNativePackaging } from './native-companion.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sha = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
@@ -18,16 +19,19 @@ export async function customBundlePlugin(): Promise<BunPlugin> {
     entrypoints: [join(ROOT, 'src/agent/custom/process.ts')],
     target: 'bun',
     minify: true,
+    naming: { entry: 'dist/runtime.js' },
+    splitting: false,
+    plugins: [requireUniversalNativePackaging('dist/runtime.js').plugin],
   });
   if (!result.success || result.outputs.length !== 1)
     throw new Error(`Custom bundle failed: ${result.logs.join('\n')}`);
   const module = result.outputs[0];
   if (!module) throw new Error('Custom bundle is absent');
   const arm = entry(
-    await Bun.file(join(ROOT, 'node_modules/stitchkit/native/darwin-arm64.node')).bytes(),
+    await Bun.file(requireNativeCompanion('arm64', 'dist/runtime.js').sourcePath).bytes(),
   );
   const x64 = entry(
-    await Bun.file(join(ROOT, 'node_modules/stitchkit/native/darwin-x64.node')).bytes(),
+    await Bun.file(requireNativeCompanion('x64', 'dist/runtime.js').sourcePath).bytes(),
   );
   const js = entry(new Uint8Array(await module.arrayBuffer()));
   const artifact: CustomPackage = {

@@ -7,6 +7,7 @@ import type { BunPlugin } from 'bun';
 import { ROUTED_PROGRAMS } from '../src/boot/routedPrograms.ts';
 import { buildRoutedProgram } from './build-routed-programs.ts';
 import { customBundlePlugin } from './bundle-custom.ts';
+import { requireNativeCompanion, requireUniversalNativePackaging } from './native-companion.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_CLI = join(ROOT, 'src', 'cli.ts');
@@ -67,18 +68,17 @@ async function routedProgramsPlugin(): Promise<BunPlugin> {
  * `native/` beside the bundle's directory (see `src/boot/nativeBackendInstall.ts`).
  */
 async function nativeBackendPlugin(): Promise<BunPlugin> {
-  const packaged = async (binary: string) => {
-    const bytes = await Bun.file(
-      join(ROOT, 'node_modules/stitchkit/native', `${binary}.node`),
-    ).bytes();
+  const packaged = async (architecture: 'arm64' | 'x64') => {
+    const asset = requireNativeCompanion(architecture, 'app/ccmux.js');
+    const bytes = await Bun.file(asset.sourcePath).bytes();
     return {
       data: gzipSync(bytes, { level: 9 }).toString('base64'),
-      sha256: createHash('sha256').update(bytes).digest('hex'),
+      sha256: asset.sha256,
     };
   };
   const artifact = {
-    'darwin-arm64': await packaged('darwin-arm64'),
-    'darwin-x64': await packaged('darwin-x64'),
+    'darwin-arm64': await packaged('arm64'),
+    'darwin-x64': await packaged('x64'),
   };
   return {
     name: 'packaged-native-backend',
@@ -103,7 +103,10 @@ export async function buildBundle(outfile: string): Promise<boolean> {
   const result = await Bun.build({
     entrypoints: [SRC_CLI],
     target: 'bun',
+    naming: { entry: 'app/ccmux.js' },
+    splitting: false,
     plugins: [
+      requireUniversalNativePackaging('app/ccmux.js').plugin,
       await customBundlePlugin(),
       await routedProgramsPlugin(),
       await nativeBackendPlugin(),
@@ -122,8 +125,10 @@ export async function buildBundle(outfile: string): Promise<boolean> {
       },
     ],
   });
-  if (!result.success) {
+  if (!result.success || result.outputs.length !== 1) {
     for (const l of result.logs) console.error(l);
+    if (result.outputs.length !== 1)
+      console.error(`bundle: expected one artifact, got ${result.outputs.length}`);
     return false;
   }
   const [artifact] = result.outputs;
