@@ -112,7 +112,7 @@ test('a failed read keeps the last good copy and the next caller retries', async
 test('a read that fails before any copy exists fails the caller waiting on it', async () => {
   const clock = { now: 0 };
   const hosts = cache(async () => {
-    throw new AppError('UNAVAILABLE', 'Model catalog is unavailable', 503);
+    throw new AppError('UNAVAILABLE', { message: 'Model catalog is unavailable', status: 503 });
   }, clock);
   const error = await hosts.get(input).catch((e: unknown) => e);
   expect((error as AppError).message).toBe('Model catalog is unavailable');

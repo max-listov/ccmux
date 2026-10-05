@@ -66,7 +66,7 @@ export function doctorText(r: DoctorReport): string[] {
   const stuck = r.chat.stalled ?? [];
   if (stuck.length > 0) {
     say(
-      `chat:   ${stuck.length} message(s) held longer than ${Math.round(STALLED_HOLD_MS / 60_000)} minutes and not delivered:`,
+      `chat:   ${stuck.length} message(s) not delivered — held longer than ${Math.round(STALLED_HOLD_MS / 60_000)} minutes, or behind a pane shape this version cannot read:`,
     );
     for (const s of stuck) say(`        ${s.session} — ${s.reason}`);
     say(

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
@@ -18,7 +19,7 @@ import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 
 async function fixture() {
   const m = makeMachine({
-    stateDir: mkdtempSync('/tmp/ccmux-native-durability-'),
+    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-native-durability-')),
     rcPrefix: 'host-a',
   });
   const s = makeSession({
@@ -199,7 +200,7 @@ test('text deltas retain role and causal order while private native errors stay 
 });
 
 test('native diagnostic capture is bounded and written only to a private owner file', async () => {
-  const m = makeMachine({ stateDir: mkdtempSync('/tmp/ccmux-native-diagnostic-') });
+  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'ccmux-native-diagnostic-')) });
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(Buffer.from(`${'a'.repeat(80_000)}secret-like-fixture`));
@@ -220,7 +221,7 @@ test('native diagnostic capture is bounded and written only to a private owner f
 });
 
 test('a recorded diagnostic is reachable by the session name an operator has', async () => {
-  const stateDir = mkdtempSync('/tmp/ccmux-diagnostic-read-');
+  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-diagnostic-read-'));
   const m = makeMachine({ stateDir });
 
   // Nothing recorded is its own answer, and it must not be confused with the other two below.

@@ -10,7 +10,10 @@ export function controlTarget(m: MachineConfig, target: ManagedPeer): Session {
     session.uuid !== target.threadId ||
     session.agent !== target.agent
   ) {
-    throw new AppError('IDENTITY_MISMATCH', 'The exact managed session is unavailable', 409);
+    throw new AppError('IDENTITY_MISMATCH', {
+      message: 'The exact managed session is unavailable',
+      status: 409,
+    });
   }
   return session;
 }

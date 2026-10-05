@@ -1,16 +1,20 @@
 import { readFileSync } from 'node:fs';
 import type { ManagedScheduleClock } from 'stitchkit/application';
-import { loadMachineConfig, machineFileMetrics } from '../src/config/machine.ts';
+import { loadMachineConfig } from '../src/config/machine.ts';
 import { createDaemonApplication } from '../src/daemon/application.ts';
-import { observationChildCpuUs, observationExecCount } from '../src/monitoring/tmux.ts';
-import { pendingFileMetrics } from '../src/session/pendingStore.ts';
-import { readyFileMetrics } from '../src/session/readyStore.ts';
-import { usageStoreMetrics } from '../src/usage/store.ts';
+import '../src/monitoring/tmux.ts';
+import '../src/session/pendingStore.ts';
+import '../src/session/readyStore.ts';
+import '../src/usage/store.ts';
+import { producerMetrics } from '../src/util/producerMetrics.ts';
+
+/** One producer's counters, read through the same channel the daemon serves. */
+const metric = (name: string) => producerMetrics.snapshot()[name] ?? {};
 
 const files = () => ({
-  config: machineFileMetrics(),
-  ready: readyFileMetrics(),
-  pending: pendingFileMetrics(),
+  config: metric('machineFile'),
+  ready: metric('readyFile'),
+  pending: metric('pendingFile'),
 });
 const io = () =>
   process.platform === 'linux' ? readFileSync(`/proc/${process.pid}/io`, 'utf8') : null;
@@ -38,7 +42,7 @@ const cold = {
   cpu: process.cpuUsage(coldCpu),
   memory: process.memoryUsage(),
   files: files(),
-  usageStores: usageStoreMetrics(),
+  usageStores: metric('usageStore'),
   external: {
     status: owned.external.read().status,
     threads: owned.external.read().sessions.length,
@@ -48,8 +52,8 @@ steadyWindow = true;
 // Let excluded callbacks drain before the attribution interval; the full run has no such pause.
 if (only) await Bun.sleep(3500);
 const ioBefore = io();
-const execs = observationExecCount();
-const childCpu = observationChildCpuUs();
+const execs = metric('observation').execCount ?? 0;
+const childCpu = metric('observation').childCpuUs ?? 0;
 const cpu = process.cpuUsage();
 const attributionBefore = owned.performance.snapshot();
 const at = performance.now();
@@ -61,12 +65,12 @@ const steady = {
   attributionBefore,
   attributionAfter: owned.performance.snapshot(),
   memory: process.memoryUsage(),
-  observationExecs: observationExecCount() - execs,
-  observationChildCpuUs: observationChildCpuUs() - childCpu,
+  observationExecs: (metric('observation').execCount ?? 0) - execs,
+  observationChildCpuUs: (metric('observation').childCpuUs ?? 0) - childCpu,
   files: files(),
   ioBefore,
   ioAfter: io(),
-  usageStores: usageStoreMetrics(),
+  usageStores: metric('usageStore'),
 };
 const schedules = Object.fromEntries(
   Object.entries(owned.schedules).map(([id, schedule]) => [id, schedule.status]),

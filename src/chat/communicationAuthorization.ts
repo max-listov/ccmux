@@ -48,11 +48,10 @@ export function requireCommunicationAuthorization(
   if (evidence != null) {
     CommunicationAuthorizationSchema.parse(evidence);
     if (evidence.basis === undefined)
-      throw new AppError(
-        'COMMUNICATION_AUTHORIZATION_UNVERIFIED',
-        `communicationAuthorization must name its basis. ${COMMUNICATION_AUTHORIZATION_HELP}`,
-        403,
-      );
+      throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', {
+        message: `communicationAuthorization must name its basis. ${COMMUNICATION_AUTHORIZATION_HELP}`,
+        status: 403,
+      });
     return;
   }
   // Only the application's admitted human channel can omit agent justification. A CLI or
@@ -64,11 +63,10 @@ export function requireCommunicationAuthorization(
     origin.application !== null
   )
     return;
-  throw new AppError(
-    'COMMUNICATION_AUTHORIZATION_REQUIRED',
-    `communicationAuthorization is required. ${COMMUNICATION_AUTHORIZATION_HELP}`,
-    403,
-  );
+  throw new AppError('COMMUNICATION_AUTHORIZATION_REQUIRED', {
+    message: `communicationAuthorization is required. ${COMMUNICATION_AUTHORIZATION_HELP}`,
+    status: 403,
+  });
 }
 
 /** References are resolved on the originating host, never guessed from another host's absence. */
@@ -81,18 +79,17 @@ export function requireOriginatingBasis(
 ) {
   if (evidence == null) return undefined;
   if (evidence.basis === undefined)
-    throw new AppError(
-      'COMMUNICATION_AUTHORIZATION_UNVERIFIED',
-      `communicationAuthorization must name its basis. ${COMMUNICATION_AUTHORIZATION_HELP}`,
-      403,
-    );
+    throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', {
+      message: `communicationAuthorization must name its basis. ${COMMUNICATION_AUTHORIZATION_HELP}`,
+      status: 403,
+    });
   if (lookup === null) {
     if (evidence.basis !== 'user-instruction')
-      throw new AppError(
-        'COMMUNICATION_AUTHORIZATION_UNVERIFIED',
-        'Referenced authorization must be resolved on the originating host before transport',
-        403,
-      );
+      throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', {
+        message:
+          'Referenced authorization must be resolved on the originating host before transport',
+        status: 403,
+      });
     return { authorization: evidence, sourceLetter: null };
   }
   return resolveCommunicationBasis(from, to, task, evidence, lookup);

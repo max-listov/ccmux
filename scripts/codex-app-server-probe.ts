@@ -5,38 +5,32 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-const JsonRpcMessageSchema = z
-  .object({
-    id: z.union([z.number(), z.string()]).optional(),
-    result: z.unknown().optional(),
-    error: z
-      .object({
-        code: z.number(),
-        message: z.string(),
-      })
-      .optional(),
-    method: z.string().optional(),
-    params: z.unknown().optional(),
-  })
-  .passthrough();
+const JsonRpcMessageSchema = z.looseObject({
+  id: z.union([z.number(), z.string()]).optional(),
+  result: z.unknown().optional(),
+  error: z
+    .object({
+      code: z.number(),
+      message: z.string(),
+    })
+    .optional(),
+  method: z.string().optional(),
+  params: z.unknown().optional(),
+});
 
 const ThreadResponseSchema = z.object({
-  thread: z
-    .object({
-      id: z.string(),
-      status: z.object({ type: z.string() }).passthrough().optional(),
-    })
-    .passthrough(),
+  thread: z.looseObject({
+    id: z.string(),
+    status: z.looseObject({ type: z.string() }).optional(),
+  }),
 });
 
 const ThreadListResponseSchema = z.object({
   data: z.array(
-    z
-      .object({
-        id: z.string(),
-        status: z.object({ type: z.string() }).passthrough(),
-      })
-      .passthrough(),
+    z.looseObject({
+      id: z.string(),
+      status: z.looseObject({ type: z.string() }),
+    }),
   ),
 });
 

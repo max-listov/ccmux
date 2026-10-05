@@ -71,7 +71,11 @@ export function sessionOperations(context: OperationContext) {
             session.identity.session === input.target.session &&
             session.identity.threadId === input.target.threadId,
         );
-      if (!row) throw new AppError('UNAVAILABLE', 'Session has no prepared observation', 503);
+      if (!row)
+        throw new AppError('UNAVAILABLE', {
+          message: 'Session has no prepared observation',
+          status: 503,
+        });
       return row;
     },
     create: (input: CreateInput, signal?: AbortSignal) =>
@@ -127,7 +131,10 @@ export function sessionOperations(context: OperationContext) {
               admitted.throwIfAborted();
               const session = controlTarget(m, input.target);
               if (session.archived)
-                throw new AppError('ARCHIVED', 'Archived sessions cannot be started', 409);
+                throw new AppError('ARCHIVED', {
+                  message: 'Archived sessions cannot be started',
+                  status: 409,
+                });
               clearLifecycleBlock(m, session.name);
               await startSession(m, session.name, session.dir);
               return { target: input.target, accepted: true as const };

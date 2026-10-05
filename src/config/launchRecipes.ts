@@ -44,7 +44,10 @@ function recipeDigest(recipe: MachineLaunchRecipe, beforeServices = false): stri
 
 function unavailable(id: string, reason: string): never {
   log.error({ msg: 'configured launch recipe is unavailable', recipeId: id, reason });
-  throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', 'Launch recipe is unavailable', 409);
+  throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', {
+    message: 'Launch recipe is unavailable',
+    status: 409,
+  });
 }
 
 function verifyAvailability(
@@ -125,7 +128,10 @@ export function resolveControlLaunchRecipe(
 ): ResolvedControlLaunch {
   if (reference === undefined) return { flags: [...callerFlags] };
   if (callerFlags.length > 0)
-    throw new AppError('INVALID_RECIPE_CREATE', 'Launch recipe owns native configuration', 409);
+    throw new AppError('INVALID_RECIPE_CREATE', {
+      message: 'Launch recipe owns native configuration',
+      status: 409,
+    });
   const configured = m.launchRecipes[reference.id];
   if (configured === undefined) unavailable(reference.id, 'recipe id is not configured');
   const parsed = MachineLaunchRecipeSchema.safeParse(configured);

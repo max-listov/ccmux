@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { measureCpu } from '../util/cpuScope.ts';
+import { measured } from '../util/cpuScope.ts';
 import { parseProcessStat } from '../util/procStat.ts';
 
 export interface ProcRow {
@@ -29,11 +29,9 @@ function readProcess(procRoot: string, pid: number): Process | null {
 
 /** Sparse trees use task children; thread-heavy trees use one stat per host PID. The previous
  * complete pass estimates IO cost, never authorizes a process or skips a thread in this pass. */
-export function readProcTable(roots: number[], procRoot = '/proc') {
-  return measureCpu(() => readTable(roots, procRoot));
-}
+export const readProcTable = measured(readTable);
 
-function readTable(roots: number[], procRoot: string) {
+function readTable(roots: number[], procRoot = '/proc') {
   const names = readdirSync(procRoot).filter((name) => /^\d+$/.test(name));
   const key = JSON.stringify([procRoot, [...new Set(roots)].sort((a, b) => a - b)]);
   const indexed = (estimates.get(key) ?? 0) > names.length * 1.2;
@@ -89,7 +87,7 @@ function readTable(roots: number[], procRoot: string) {
   }
   if (estimates.size >= 32 && !estimates.has(key)) estimates.clear();
   estimates.set(key, scopedCost);
-  return { rows, runners };
+  return { rows, runners, mode: indexed ? ('ppid' as const) : ('task-children' as const) };
 }
 
 function readArgv(procRoot: string, pid: number): string[] {

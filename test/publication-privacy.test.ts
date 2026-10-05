@@ -24,6 +24,13 @@ describe('public publication boundary', () => {
     const route = `Report to thread ${fixtureId}`;
     expect(scanPublicationText(route)[0]?.rule).toBe('private-return-route');
     expect(scanPublicationText(homePath)[0]?.rule).toBe('private-home-path');
+    // The executor journal of a private task, carried into a public document by its frontmatter.
+    const journal = ['participants', ':'].join('');
+    expect(scanPublicationText(`---\n${journal}\n  - role: authored\n---`)).toEqual([
+      { line: 2, rule: 'operational-coordination-field' },
+    ]);
+    // An indented key in code or a nested object is not the journal.
+    expect(scanPublicationText(`  ${journal} []`)).toEqual([]);
   });
 
   test('a fleet address is caught in the two shapes it arrives in, and nowhere else', () => {

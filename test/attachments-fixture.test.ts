@@ -1,6 +1,7 @@
 import { afterEach } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { encode } from 'jpeg-js';
 import { PNG } from 'pngjs';
@@ -41,7 +42,7 @@ export function digest(bytes: Buffer): string {
 }
 
 export async function attachmentFixture() {
-  const root = mkdtempSync('/tmp/ccmux-attachments-test-');
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-attachments-test-'));
   temporary.push(root);
   const machine = makeMachine({
     stateDir: root,

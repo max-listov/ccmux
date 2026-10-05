@@ -224,26 +224,31 @@ the runtime field and must not auto-heal those rows as ordinary CLI writers. Upg
 explicitly start the same rows to resume; never rename or regenerate their UUIDs.
 
 
-## Пробуждение native owner
+## Waking the native owner
 
-RuntimeWake наблюдает только входные файлы. `fs.watch` будит owner после изменения;
-наносекундные dev/ino/size/mtime/ctime stamps подхватывают потерянные события.
-Страховка сохраняет прежние 500 мс у Codex, 1000 мс у Claude main и 200 мс у Claude context.
-Каждый input name проверяется по собственной revision, включая отсутствующие файлы:
-stamp каталога не доказывает отсутствие имени при ограниченной точности его timestamps.
-In-place запись и создание файла после потерянного события не скрываются неизменным каталогом.
-Registry и private mailbox JSON повторно разбираются только после изменения; каждый caller
-получает независимое значение. Owner/mode, nofollow и byte bounds сохраняются.
+`RuntimeWake` watches input files only. `fs.watch` wakes the owner after a change; nanosecond
+dev/ino/size/mtime/ctime stamps catch lost events. The backstop keeps the earlier cadences: 500 ms
+for Codex, 1000 ms for the Claude main loop and 200 ms for Claude context. Every input name is
+checked against its own revision, absent files included: a directory's stamp does not prove a name
+absent within the resolution of its timestamps, so neither an in-place write nor a file created
+after a lost event is hidden by an unchanged directory. The registry and private mailbox JSON are
+parsed again only after a change; every caller receives an independent value. Owner/mode, nofollow
+and byte bounds are kept. The registry's watch is on the state root, where the daemon rewrites
+observation files several times a second; those events are dropped by name before any
+reconciliation runs.
 
-Пустой либо accepted input не берёт admission lock. Pending/busy работа повторяется в прежнем
-ритме; context completion и disconnect будят owner отдельно. Status/content output не будит
-своего producer. Provider reconciliation Codex сохраняет 500 мс, native events публикуют
-изменения сразу. Каждый подтверждённый provider heartbeat публикует свежий observedAt при прежнем lease 5 с;
-свежесть нужна session.wait для наблюдения после начала вызова. Writer объединяет только
-ещё не завершённые записи; одинаковое тело не отменяет публикацию нового наблюдения.
+An empty or accepted input takes no admission lock. Pending or busy work is retried at the earlier
+cadence; context completion and disconnect wake the owner on their own. Status and content output
+never wake their own producer. Codex provider reconciliation keeps 500 ms, and native events publish
+changes at once. Every confirmed provider heartbeat publishes a fresh `observedAt` under the same
+5 s lease, which `session.wait` needs to observe a state after its call began. The writer coalesces
+only records not yet written; an identical body does not cancel publishing a new observation. The
+status file is written atomically without fsync and synchronously (`writeEphemeralSnapshot`): a lease
+that expires in seconds gains nothing from durability, and the asynchronous durable write cost three
+times the CPU of the write itself in I/O-pool wake-ups, twice a second per native session.
 
-`runtime-wake`, private snapshot, heartbeat и native input/context tests проверяют lost-event
-fallback, atomic/in-place запись, caller isolation, locks и shutdown. Изолированный
-`native-idle-bench.ts <seconds> <output.json> <worker.js>` использует настоящий owner и mailboxes
-с provider stand-in без inference; `nativeIdleWorker.ts` собирается заранее. Эти CPU числа
-не являются измерением установленного provider или результатом раскатки.
+The `runtime-wake`, private snapshot, heartbeat and native input/context tests cover the lost-event
+fallback, atomic and in-place writes, caller isolation, locks and shutdown. The isolated
+`native-idle-bench.ts <seconds> <output.json> <worker.js>` runs the real owner and mailboxes with a
+provider stand-in and no inference; `nativeIdleWorker.ts` is built beforehand. Its CPU numbers are
+not a measurement of an installed provider or of a rollout.

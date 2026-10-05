@@ -8,8 +8,7 @@ import { PendingSessionSchema } from './schema.ts';
 
 const PendingRowsSchema = PendingSessionSchema.array();
 const pendingFile = new FileSnapshot<PendingSession[]>();
-export const pendingFileMetrics = () => pendingFile.metrics();
-producerMetrics.register('pendingFile', pendingFileMetrics);
+producerMetrics.register('pendingFile', () => pendingFile.metrics());
 
 export function loadPendingRows(m: MachineConfig): PendingSession[] {
   const path = pendingSessionsPath(m);

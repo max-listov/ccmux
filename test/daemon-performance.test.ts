@@ -119,3 +119,33 @@ test('CPU tracing can change epochs during pending work without charging the ret
   expect(result.unattributed).toEqual(result.cpu);
   profile.close();
 });
+
+test('an open wait is not charged the CPU that other code burns while it waits', async () => {
+  const profile = new DaemonPerformance();
+  profile.start();
+  let release = () => {};
+  const waiting = profile.run('control/wait', () => new Promise<void>((done) => (release = done)));
+  // Unmeasured work — a timer, transport, GC — runs while the wait is the only open operation.
+  await new Promise<void>((done) =>
+    setTimeout(() => {
+      busy(60);
+      done();
+    }, 1),
+  );
+  profile.run('schedule/x', () => busy(1));
+  release();
+  await waiting;
+  const wait = profile.snapshot().scopes.find((scope) => scope.name === 'control/wait');
+  expect((wait?.cpu?.userUs ?? 0) + (wait?.cpu?.systemUs ?? 0)).toBeLessThan(20_000);
+});
+
+test('names past the bound share one bucket instead of failing the work, enabled or not', () => {
+  for (const enabled of [false, true]) {
+    const profile = new DaemonPerformance();
+    profile.start(enabled);
+    for (let i = 0; i < 200; i++) expect(profile.run(`control/op-${i}`, () => i)).toBe(i);
+    const names = profile.snapshot().scopes.map((scope) => scope.name);
+    expect(names.length).toBeLessThanOrEqual(129);
+    expect(names).toContain('other');
+  }
+});

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { openCodeTerminal } from '../src/agent/opencode/protocol.ts';
@@ -18,7 +19,10 @@ import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts'
 import { makeMachine, makeSession } from './helpers.ts';
 
 function fixture() {
-  const m = makeMachine({ stateDir: mkdtempSync('/tmp/ccmux-runtime-test-'), rcPrefix: 'host-a' });
+  const m = makeMachine({
+    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-runtime-test-')),
+    rcPrefix: 'host-a',
+  });
   const s = makeSession({
     name: 'native-a',
     agent: 'opencode',
@@ -49,7 +53,7 @@ test('runtime selection is separate from inference selection and unavailable dri
       executable: 'sh',
     }).success,
   ).toBe(false);
-  const workspace = mkdtempSync('/tmp/ccmux-runtime-workspace-');
+  const workspace = mkdtempSync(join(tmpdir(), 'ccmux-runtime-workspace-'));
   await expect(
     createControlSession(
       m,
@@ -73,7 +77,7 @@ test('runtime selection is separate from inference selection and unavailable dri
 
 test('native create retries keep one registration and reject a changed runtime', async () => {
   const { m } = fixture();
-  const workspace = mkdtempSync('/tmp/ccmux-runtime-create-');
+  const workspace = mkdtempSync(join(tmpdir(), 'ccmux-runtime-create-'));
   let calls = 0;
   const create = async (_m: typeof m, input: CreateManagedInput) => {
     calls++;

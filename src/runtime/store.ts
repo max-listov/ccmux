@@ -9,10 +9,9 @@ import {
   readSync,
 } from 'node:fs';
 import type { z } from 'zod';
+import { settled, statStamp } from '../util/fileStamp.ts';
 
 const snapshots = new Map<string, { stamp: string; value: unknown }>();
-const stampOf = (stat: BigIntStats) =>
-  `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}:${stat.mode}:${stat.uid}`;
 const privateFile = (stat: BigIntStats, maxBytes: number) => {
   const uid = process.getuid?.();
   return (
@@ -37,7 +36,7 @@ export function readPrivateJson<T>(
       snapshots.delete(path);
       return null;
     }
-    const stamp = stampOf(before);
+    const stamp = statStamp(before);
     const cached = snapshots.get(path);
     if (cached?.stamp === stamp)
       return schema.safeParse(structuredClone(cached.value)).data ?? null;
@@ -48,9 +47,11 @@ export function readPrivateJson<T>(
     const size = readSync(fd, bytes, 0, bytes.length, 0);
     if (size > maxBytes) return null;
     const value: unknown = JSON.parse(bytes.toString('utf8', 0, size));
+    const after = lstatSync(path, { bigint: true });
     if (
-      stampOf(fstatSync(fd, { bigint: true })) === stamp &&
-      stampOf(lstatSync(path, { bigint: true })) === stamp
+      statStamp(fstatSync(fd, { bigint: true })) === stamp &&
+      statStamp(after) === stamp &&
+      settled(after)
     ) {
       if (snapshots.size >= 256 && !snapshots.has(path)) snapshots.clear();
       snapshots.set(path, { stamp, value });

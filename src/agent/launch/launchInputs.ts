@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { HOME } from '../../util/env.ts';
+import { settled, statStamp } from '../../util/fileStamp.ts';
 
 /**
  * What shapes a session at startup but is NOT in argv.
@@ -51,22 +52,24 @@ export const digestOf = (s: string): string =>
  * A missing file is `null` and is NOT cached: there is no mtime to key on, and one `stat` is cheaper
  * than any scheme that would try.
  */
-const cache = new Map<string, { mtimeMs: number; value: string }>();
+const cache = new Map<string, { stamp: string; value: string }>();
 
 function cachedDigest(
   key: string,
   path: string,
   compute: (text: string) => string | null,
 ): string | null {
-  let mtimeMs: number;
-  try {
-    mtimeMs = statSync(path).mtimeMs; // follows symlinks on purpose: a rule set is commonly a link
-  } catch {
+  // Follows symlinks on purpose: a rule set is commonly a link.
+  const stat = statSync(path, { bigint: true, throwIfNoEntry: false });
+  if (stat === undefined) {
     cache.delete(key);
     return null;
   }
+  // The full stamp, not mtime alone: an edit in the same clock tick, or one that puts the mtime
+  // back, must still move the digest. A file changed too recently to trust is not cached.
+  const stamp = statStamp(stat);
   const hit = cache.get(key);
-  if (hit !== undefined && hit.mtimeMs === mtimeMs) return hit.value;
+  if (hit !== undefined && hit.stamp === stamp) return hit.value;
   let value: string | null;
   try {
     value = compute(readFileSync(path, 'utf8'));
@@ -74,7 +77,8 @@ function cachedDigest(
     return null; // unreadable right now (a half-written config) — say nothing rather than guess
   }
   if (value === null) return null;
-  cache.set(key, { mtimeMs, value });
+  if (settled(stat)) cache.set(key, { stamp, value });
+  else cache.delete(key);
   return value;
 }
 

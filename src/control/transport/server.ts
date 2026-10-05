@@ -30,7 +30,10 @@ export function createControlServer(
         current.codexSessionsDir !== m.codexSessionsDir ||
         current.projectsDir !== m.projectsDir
       )
-        throw new AppError('CONFIG_CHANGED', 'External content requires a restart', 503);
+        throw new AppError('CONFIG_CHANGED', {
+          message: 'External content requires a restart',
+          status: 503,
+        });
       dependencies.assertExternalConfig?.();
     },
   });
@@ -65,10 +68,16 @@ export function createControlServer(
       authorize: async (ctx, endpoint) => {
         const current = currentMachine();
         if (current.stateDir !== m.stateDir || current.rcPrefix !== m.rcPrefix) {
-          throw new AppError('CONFIG_CHANGED', 'Control runtime requires a restart', 503);
+          throw new AppError('CONFIG_CHANGED', {
+            message: 'Control runtime requires a restart',
+            status: 503,
+          });
         }
         if (ctx.req?.headers.has('origin'))
-          throw new AppError('FORBIDDEN', 'Browser requests are not accepted on local IPC', 403);
+          throw new AppError('FORBIDDEN', {
+            message: 'Browser requests are not accepted on local IPC',
+            status: 403,
+          });
         await authorize(ctx, endpoint);
       },
     },

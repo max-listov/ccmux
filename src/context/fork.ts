@@ -84,7 +84,10 @@ export async function admitNativeFork<T>(
       if (intent.state === 'accepted' && intent.nativeId !== null)
         return adapter.resume(intent.nativeId, signal);
       if (intent.state !== 'reserved')
-        throw new AppError('FORK_UNCERTAIN', 'Native fork admission requires reconciliation', 409);
+        throw new AppError('FORK_UNCERTAIN', {
+          message: 'Native fork admission requires reconciliation',
+          status: 409,
+        });
       signal.throwIfAborted();
       const persist = (row: NativeForkIntent) =>
         atomicWrite(path(m, generation), JSON.stringify(IntentSchema.parse(row)), 0o600);
@@ -99,7 +102,10 @@ export async function admitNativeFork<T>(
       } catch (error) {
         await persist({ ...intent, state: 'uncertain' });
         await recordRuntimeDiagnostic(m, s.name, 'native-fork-admission', error);
-        throw new AppError('FORK_UNCERTAIN', 'Native fork admission requires reconciliation', 409);
+        throw new AppError('FORK_UNCERTAIN', {
+          message: 'Native fork admission requires reconciliation',
+          status: 409,
+        });
       }
     },
     'native fork admission',

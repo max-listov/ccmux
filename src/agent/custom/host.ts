@@ -14,7 +14,10 @@ export function prepareCustomHost(
 ) {
   const accepted = session.launchRecipe;
   if (!accepted)
-    throw new AppError('UNAVAILABLE', 'Custom runtime requires a host launch recipe', 409);
+    throw new AppError('UNAVAILABLE', {
+      message: 'Custom runtime requires a host launch recipe',
+      status: 409,
+    });
   const launch = resolveControlLaunchRecipe(
     m,
     session.dir,
@@ -28,9 +31,13 @@ export function prepareCustomHost(
     launch.envFile !== session.envFile ||
     session.flags.length !== 0
   )
-    throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', 'Launch recipe is unavailable', 409);
+    throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', {
+      message: 'Launch recipe is unavailable',
+      status: 409,
+    });
   const config = m.launchRecipes[accepted.id]?.custom;
-  if (!config) throw new AppError('UNAVAILABLE', 'Custom runtime is unavailable', 409);
+  if (!config)
+    throw new AppError('UNAVAILABLE', { message: 'Custom runtime is unavailable', status: 409 });
   const environment = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
   const credentialEnv = config.provider.credentialEnv;
   const serviceCredentialEnvs = config.services.flatMap((service) =>
@@ -105,10 +112,9 @@ export function customModel(config: CustomLaunchConfig, selection: Session['mode
       candidate.provider === selected.provider && candidate.model === selected.model,
   );
   if (!model)
-    throw new AppError(
-      'UNSUPPORTED',
-      `Model ${modelSelectionLabel(selected)} is not one this host declares`,
-      409,
-    );
+    throw new AppError('UNSUPPORTED', {
+      message: `Model ${modelSelectionLabel(selected)} is not one this host declares`,
+      status: 409,
+    });
   return model;
 }

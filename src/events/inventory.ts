@@ -4,7 +4,7 @@ import { lastTranscriptMessage } from '../agent/index.ts';
 import { inventoryPath } from '../config/paths.ts';
 import type { MonitoringRow } from '../monitoring/schema.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../types.ts';
-import { atomicWrite } from '../util/atomic.ts';
+import { writeEphemeralSnapshot } from '../util/atomic.ts';
 import { appendRecord, buildEvent } from './feed.ts';
 import { type InventoryRow, type InventorySnapshot, InventorySnapshotSchema } from './schema.ts';
 
@@ -131,7 +131,7 @@ export class InventoryPublisher {
     this.current = new Map(this.pass.map((row) => [row.name, row]));
     if (changes.length === 0 && this.written) return this.snapshot();
     const snapshot = this.snapshot();
-    await atomicWrite(inventoryPath(m), JSON.stringify(snapshot), 0o600);
+    writeEphemeralSnapshot(inventoryPath(m), JSON.stringify(snapshot));
     this.written = true;
     return snapshot;
   }

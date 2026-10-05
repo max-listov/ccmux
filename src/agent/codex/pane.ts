@@ -75,6 +75,14 @@ export function inspectChatPane(styledPaneText: string): ChatPaneInspection {
 
 /** Native turn state is already authoritative. Only menus, typed bytes and known composer chrome
  * are read from its client; a client-side background spinner is not a provider turn. */
+/**
+ * A pane drawn in a shape this version does not recognise. Unlike a menu or a typing human, waiting
+ * does not clear it: the Codex TUI changed (0.76.1 was a footer that started printing its model in
+ * capitals), and only a ccmux that knows the new shape delivers again.
+ */
+export const UNKNOWN_CODEX_PANE =
+  'the Codex pane is drawn in an unknown shape — delivery is held until a proven idle composer appears';
+
 export function inspectNativeCodexInput(styledPaneText: string): ChatPaneInspection {
   return inspectInput(styledPaneText, false);
 }
@@ -114,11 +122,7 @@ function inspectInput(styledPaneText: string, inspectActivity: boolean): ChatPan
     };
   }
   if (composer === null || !FOOTER_RE.test(plain)) {
-    return {
-      state: 'unknown',
-      reason:
-        'the Codex pane is drawn in an unknown shape — delivery is held until a proven idle composer appears',
-    };
+    return { state: 'unknown', reason: UNKNOWN_CODEX_PANE };
   }
   return { state: 'deliverable', reason: 'ready' };
 }

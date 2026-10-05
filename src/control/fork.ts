@@ -40,7 +40,10 @@ export async function forkControlSession(
         accepted.name !== input.name ||
         stableJson(accepted.forkSource.target) !== stableJson(sourceTarget))
     )
-      throw new AppError('IDEMPOTENCY_CONFLICT', 'Native fork source changed', 409);
+      throw new AppError('IDEMPOTENCY_CONFLICT', {
+        message: 'Native fork source changed',
+        status: 409,
+      });
     if (accepted === undefined) assertNoContextMutation(m, current);
     const status = readManagedRuntimeStatus(m, current);
     if (
@@ -48,7 +51,10 @@ export async function forkControlSession(
       (current.registrationGeneration !== input.registrationGeneration ||
         status.snapshot?.generation !== input.generation)
     )
-      throw new AppError('IDENTITY_MISMATCH', 'Native fork source generation changed', 409);
+      throw new AppError('IDENTITY_MISMATCH', {
+        message: 'Native fork source generation changed',
+        status: 409,
+      });
     if (
       accepted === undefined &&
       (!current.registrationGeneration ||
@@ -59,19 +65,28 @@ export async function forkControlSession(
         status.snapshot.turn?.status === 'inProgress' ||
         status.snapshot.pendingRequests.length !== 0)
     )
-      throw new AppError('FORK_BUSY', 'Native source must be idle before fork', 409);
+      throw new AppError('FORK_BUSY', {
+        message: 'Native source must be idle before fork',
+        status: 409,
+      });
     const pendingInput = readRuntimeInput(m, current);
     if (
       accepted === undefined &&
       (blockingInbound(m, current, Date.now()).length !== 0 ||
         (pendingInput !== null && pendingInput.phase !== 'accepted'))
     )
-      throw new AppError('FORK_BUSY', 'Native source has accepted input pending', 409);
+      throw new AppError('FORK_BUSY', {
+        message: 'Native source has accepted input pending',
+        status: 409,
+      });
     // Asked of the declared capability, not of a list of runtime names: the capability is what the
     // control plane answers `runtime.list` with, and a name list beside it is a second answer that
     // goes stale the moment a runtime gains the operation.
     if (!runtimeCapabilities(current).fork)
-      throw new AppError('UNSUPPORTED', 'Native fork is unavailable for this runtime', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: 'Native fork is unavailable for this runtime',
+        status: 409,
+      });
     const sourceIdentity =
       accepted?.forkSource ??
       NativeForkSourceSchema.parse({
@@ -86,7 +101,10 @@ export async function forkControlSession(
         selection: readSelection(m, current)?.options ?? status.snapshot?.nativeSelection?.options,
       });
     if (sourceIdentity.selection === undefined)
-      throw new AppError('FORK_UNAVAILABLE', 'Native source selection is unavailable', 409);
+      throw new AppError('FORK_UNAVAILABLE', {
+        message: 'Native source selection is unavailable',
+        status: 409,
+      });
     const sourceLaunch = accepted ?? current;
     const modelFlags = modelSelectionFlags(sourceLaunch.modelSelection);
     const flags =

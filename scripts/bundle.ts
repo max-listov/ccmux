@@ -7,7 +7,11 @@ import type { BunPlugin } from 'bun';
 import { ROUTED_PROGRAMS } from '../src/boot/routedPrograms.ts';
 import { buildRoutedProgram } from './build-routed-programs.ts';
 import { customBundlePlugin } from './bundle-custom.ts';
-import { requireNativeCompanion, requireUniversalNativePackaging } from './native-companion.ts';
+import {
+  nativeCompanion,
+  requireUniversalNativePackaging,
+  type UniversalNativePackaging,
+} from './native-companion.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_CLI = join(ROOT, 'src', 'cli.ts');
@@ -67,18 +71,15 @@ async function routedProgramsPlugin(): Promise<BunPlugin> {
  * code, and an installed bundle has no `node_modules`, so the daemon lays the backend down at
  * `native/` beside the bundle's directory (see `src/boot/nativeBackendInstall.ts`).
  */
-async function nativeBackendPlugin(): Promise<BunPlugin> {
-  const packaged = async (architecture: 'arm64' | 'x64') => {
-    const asset = requireNativeCompanion(architecture, 'app/ccmux.js');
-    const bytes = await Bun.file(asset.sourcePath).bytes();
-    return {
-      data: gzipSync(bytes, { level: 9 }).toString('base64'),
-      sha256: asset.sha256,
-    };
+function nativeBackendPlugin(packaging: UniversalNativePackaging): BunPlugin {
+  // The digest the daemon checks on install is the one Stitchkit published for these bytes.
+  const packaged = (architecture: 'arm64' | 'x64') => {
+    const { bytes, sha256 } = nativeCompanion(packaging, architecture);
+    return { data: gzipSync(bytes, { level: 9 }).toString('base64'), sha256 };
   };
   const artifact = {
-    'darwin-arm64': await packaged('arm64'),
-    'darwin-x64': await packaged('x64'),
+    'darwin-arm64': packaged('arm64'),
+    'darwin-x64': packaged('x64'),
   };
   return {
     name: 'packaged-native-backend',
@@ -100,16 +101,17 @@ async function nativeBackendPlugin(): Promise<BunPlugin> {
  *  ships. Returns false (and logs) on failure. */
 export async function buildBundle(outfile: string): Promise<boolean> {
   mkdirSync(dirname(outfile), { recursive: true });
+  const native = requireUniversalNativePackaging('app/ccmux.js');
   const result = await Bun.build({
     entrypoints: [SRC_CLI],
     target: 'bun',
     naming: { entry: 'app/ccmux.js' },
     splitting: false,
     plugins: [
-      requireUniversalNativePackaging('app/ccmux.js').plugin,
+      native.plugin,
       await customBundlePlugin(),
       await routedProgramsPlugin(),
-      await nativeBackendPlugin(),
+      nativeBackendPlugin(native),
       {
         name: 'stub-react-devtools',
         setup(build) {

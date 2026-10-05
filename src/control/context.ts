@@ -25,9 +25,15 @@ function exactTarget(
 ) {
   const session = controlTarget(m, input.target);
   if (session.registrationGeneration !== input.registrationGeneration)
-    throw new AppError('IDENTITY_MISMATCH', 'The exact managed registration is unavailable', 409);
+    throw new AppError('IDENTITY_MISMATCH', {
+      message: 'The exact managed registration is unavailable',
+      status: 409,
+    });
   if (session.archived || !hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'Native context controls are unavailable', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'Native context controls are unavailable',
+      status: 409,
+    });
   return session;
 }
 export async function readControlHistory(
@@ -37,7 +43,7 @@ export async function readControlHistory(
 ) {
   const session = exactTarget(m, input);
   if (!runtimeCapabilities(session).history)
-    throw new AppError('UNSUPPORTED', 'Native history is unavailable', 409);
+    throw new AppError('UNSUPPORTED', { message: 'Native history is unavailable', status: 409 });
   const page = await readNativeHistory(
     m,
     session,
@@ -54,7 +60,7 @@ export async function compactControlContext(
 ) {
   const session = exactTarget(m, input);
   if (!runtimeCapabilities(session).compaction)
-    throw new AppError('UNSUPPORTED', 'Native compaction is unavailable', 409);
+    throw new AppError('UNSUPPORTED', { message: 'Native compaction is unavailable', status: 409 });
   const operation = await compactNativeContext(
     m,
     session,

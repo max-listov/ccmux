@@ -1,4 +1,4 @@
-import { measureCpu } from '../util/cpuScope.ts';
+import { measured } from '../util/cpuScope.ts';
 import { log } from '../util/log.ts';
 /** The session option records the immutable agent pane id, independently of other windows. */
 export const AGENT_PANE_OPTION = '@ccmux-agent-pane';
@@ -11,6 +11,10 @@ function parsePaneInventoryImpl(stdout: string, withProcessRoots = false) {
   const startedAt = new Map<string, number>();
   const roots = new Set<number>();
   const peerLineLimits = new Map<string, number>();
+  // Sessions with a row this parser could not read. What such a session's agent is doing is
+  // unknown, and unknown is not "gone": a rejected agent-pane row beside an accepted auxiliary one
+  // would otherwise read as a dead agent, and healing takes a dead agent's session down.
+  const uncertain = new Set<string>();
   let rejected = 0;
   for (const line of stdout.trim().split('\n')) {
     if (!line) continue;
@@ -38,6 +42,7 @@ function parsePaneInventoryImpl(stdout: string, withProcessRoots = false) {
           panePid <= 1))
     ) {
       rejected++;
+      if (name) uncertain.add(name);
       continue;
     }
     const panes = seen.get(name) ?? new Set<string>();
@@ -51,29 +56,32 @@ function parsePaneInventoryImpl(stdout: string, withProcessRoots = false) {
       if (!agent || pane === agent) peerLineLimits.set(name, height + 30);
     }
   }
-  if (rejected > 0 && !invalidReported) {
-    invalidReported = true;
-    log.warn({ msg: 'invalid tmux inventory rows skipped', reason: 'invalid-fields', rejected });
-  } else if (rejected === 0) invalidReported = false;
+  const reader = withProcessRoots ? 'observation' : 'liveness';
+  if (rejected > 0 && !invalidReported.has(reader)) {
+    invalidReported.add(reader);
+    log.warn({
+      msg: 'invalid tmux inventory rows skipped',
+      reason: 'invalid-fields',
+      reader,
+      rejected,
+    });
+  } else if (rejected === 0) invalidReported.delete(reader);
   if (rejected > 0 && seen.size === 0) throw new Error('invalid tmux observation: no valid rows');
   const live = new Set<string>(),
     agentGone = new Set<string>();
   for (const [name, panes] of seen) {
     const agent = agentPanes.get(name);
-    if (agent === undefined || panes.has(agent)) live.add(name);
+    if (agent === undefined || panes.has(agent) || uncertain.has(name)) live.add(name);
     else {
       agentGone.add(name);
       startedAt.delete(name);
     }
   }
-  return { live, agentGone, agentPanes, startedAt, roots, peerLineLimits };
+  return { live, agentGone, uncertain, agentPanes, startedAt, roots, peerLineLimits };
 }
 
-// One warning per continuous invalid episode, without publishing raw pane/session data.
-let invalidReported = false;
+// One warning per continuous invalid episode and reader, without publishing raw pane/session data.
+// Per reader: the two formats differ, so a row one reader rejects the other may accept.
+const invalidReported = new Set<'observation' | 'liveness'>();
 
-export function parsePaneInventory(
-  ...args: Parameters<typeof parsePaneInventoryImpl>
-): ReturnType<typeof parsePaneInventoryImpl> {
-  return measureCpu(() => parsePaneInventoryImpl(...args));
-}
+export const parsePaneInventory = measured(parsePaneInventoryImpl);

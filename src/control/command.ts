@@ -36,13 +36,19 @@ export async function runControlCommand(
 ) {
   const session = controlTarget(m, input.target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'This runtime does not accept commands', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not accept commands',
+      status: 409,
+    });
   const commands = readClaudeCommands(m, session);
   const command = resolveCommand(commands, input.command);
   if (command === undefined)
     // Refused against what the runtime published, exactly as a model or an effort is: a command it
     // never named would be delivered as ordinary text and answered as if someone had asked about it.
-    throw new AppError('UNSUPPORTED', 'This runtime does not offer that command', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not offer that command',
+      status: 409,
+    });
   const text = commandText(command, input.args);
   return withNativeAdmission(m, session, async () => {
     signal.throwIfAborted();
@@ -58,7 +64,10 @@ export async function runControlCommand(
     requireNativeIdle(m, session);
     const read = readManagedRuntimeStatus(m, session);
     if (read.status !== 'live' || !read.snapshot)
-      throw new AppError('UNAVAILABLE', 'The native runtime is unavailable', 503);
+      throw new AppError('UNAVAILABLE', {
+        message: 'The native runtime is unavailable',
+        status: 503,
+      });
     const nativeId = runtimeInputId(session, input.operationId, Date.now());
     await writeRuntimeInput(m, session, {
       messageId: input.operationId,
@@ -78,7 +87,10 @@ export async function setControlPermissionMode(
 ) {
   const session = controlTarget(m, input.target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'This runtime does not expose its permission mode', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not expose its permission mode',
+      status: 409,
+    });
   const mode = await requestRuntimeMode(m, session, input, signal);
   return { target: input.target, mode };
 }
@@ -90,7 +102,7 @@ export async function rewindControlFiles(
 ) {
   const session = controlTarget(m, input.target);
   if (!runtimeCapabilities(session).fileCheckpoints)
-    throw new AppError('UNSUPPORTED', 'This runtime cannot rewind files', 409);
+    throw new AppError('UNSUPPORTED', { message: 'This runtime cannot rewind files', status: 409 });
   const result = await requestRuntimeRewind(m, session, input, signal);
   return { target: input.target, dryRun: input.dryRun, result };
 }
@@ -99,12 +111,18 @@ export function readControlMcpServers(m: MachineConfig, target: ManagedPeer) {
   const session = controlTarget(m, target);
   const read = readManagedRuntimeStatus(m, session);
   if (read.status !== 'live' || !read.snapshot)
-    throw new AppError('UNAVAILABLE', 'The native runtime is unavailable', 503);
+    throw new AppError('UNAVAILABLE', {
+      message: 'The native runtime is unavailable',
+      status: 503,
+    });
   const servers = read.snapshot.mcpServers;
   if (servers === undefined)
     // Not the same as a session with no servers: one is a runtime that does not report them, and
     // an empty list would state a fact nobody established.
-    throw new AppError('UNSUPPORTED', 'This runtime does not report its MCP servers', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not report its MCP servers',
+      status: 409,
+    });
   return { target, data: servers };
 }
 
@@ -120,7 +138,10 @@ export async function controlMcpServer(
 ) {
   const session = controlTarget(m, input.target);
   if (!runtimeCapabilities(session).mcpControl)
-    throw new AppError('UNSUPPORTED', 'This runtime does not expose its MCP servers', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not expose its MCP servers',
+      status: 409,
+    });
   const result = await requestRuntimeMcp(m, session, input, signal);
   return { target: input.target, ...result };
 }

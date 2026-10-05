@@ -273,7 +273,10 @@ export async function createManagedSession(
     fields.runtime !== undefined &&
     runtimeAvailability(m, fields.agent, fields.runtime).reason === 'runtime-not-enabled'
   )
-    throw new AppError('UNAVAILABLE', 'The native Claude runtime is not enabled on this host', 409);
+    throw new AppError('UNAVAILABLE', {
+      message: 'The native Claude runtime is not enabled on this host',
+      status: 409,
+    });
   if (fields.runtime === undefined && runtimeModes[fields.agent].interactive === null)
     throw new Error('This provider requires a native runtime');
   nativeDriver(fields)?.preflight(m, input.flags);

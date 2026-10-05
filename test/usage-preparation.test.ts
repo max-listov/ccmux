@@ -17,8 +17,8 @@ import { liveUsagePath } from '../src/usage/paths.ts';
 import { UsagePreparation } from '../src/usage/preparation.ts';
 import { UsageQuerySchema } from '../src/usage/schema.ts';
 import { readSessionUsage } from '../src/usage/service.ts';
-import { UsageStore, usageStoreMetrics } from '../src/usage/store.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { UsageStore } from '../src/usage/store.ts';
+import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
 const record = (id: string, input: number) =>
   `${JSON.stringify({
@@ -203,9 +203,9 @@ test('a failed UsageStore constructor closes its SQLite connection', () => {
   const writer = new Database(path, { create: true });
   try {
     writer.exec('CREATE TABLE held (id INTEGER); BEGIN EXCLUSIVE; INSERT INTO held VALUES (1)');
-    const before = usageStoreMetrics().active;
+    const before = producerMetric('usageStore').active;
     expect(() => new UsageStore(path)).toThrow();
-    expect(usageStoreMetrics().active).toBe(before);
+    expect(producerMetric('usageStore').active).toBe(before);
   } finally {
     writer.exec('ROLLBACK');
     writer.close();

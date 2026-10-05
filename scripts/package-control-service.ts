@@ -12,11 +12,9 @@ import {
 import { VERSION } from '../src/util/version.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
-const PackageSchema = z
-  .object({
-    dependencies: z.object({ stitchkit: z.string().min(1), zod: z.string().min(1) }),
-  })
-  .passthrough();
+const PackageSchema = z.looseObject({
+  dependencies: z.object({ stitchkit: z.string().min(1), zod: z.string().min(1) }),
+});
 
 function sha256(bytes: Uint8Array): string {
   return new Bun.CryptoHasher('sha256').update(bytes).digest('hex');

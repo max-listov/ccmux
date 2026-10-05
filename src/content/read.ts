@@ -58,7 +58,7 @@ export function readContent(
     snapshot.registrationGeneration !== (session.registrationGeneration ?? null) ||
     snapshot.nativeId !== (session.nativeSession?.id ?? session.uuid)
   )
-    throw new AppError('UNAVAILABLE', 'Native content is unavailable', 503);
+    throw new AppError('UNAVAILABLE', { message: 'Native content is unavailable', status: 503 });
   const runtime = readManagedRuntimeStatus(m, session);
   const live = runtime.status === 'live' && runtime.snapshot?.generation === snapshot.generation;
   const frame = contentFrame(snapshot, cursor);
@@ -82,7 +82,7 @@ export async function* subscribeContent(
 ): AsyncIterable<ContentRead> {
   signal.throwIfAborted();
   if (readers >= CONTENT_MAX_READERS)
-    throw new AppError('BUSY', 'Native content subscriber limit reached', 429);
+    throw new AppError('BUSY', { message: 'Native content subscriber limit reached', status: 429 });
   const path = contentPath(m, session);
   let group = groups.get(path);
   if (group === undefined) {
@@ -116,7 +116,10 @@ export async function* subscribeContent(
       }
     } catch {
       for (const watcher of watchers) watcher.close();
-      throw new AppError('UNAVAILABLE', 'Native content notifications unavailable', 503);
+      throw new AppError('UNAVAILABLE', {
+        message: 'Native content notifications unavailable',
+        status: 503,
+      });
     }
     group = { watchers, readers: peers, expiry: setInterval(notify, 1_000) };
     groups.set(path, group);

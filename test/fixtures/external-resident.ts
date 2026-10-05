@@ -1,5 +1,6 @@
 import { afterEach, expect } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { ControlPublisher } from '../../src/control/publisher.ts';
@@ -32,7 +33,7 @@ export const row = (id = UUID, type = 'active') => ({
 });
 
 export async function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-external-resident-');
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-external-resident-'));
   const dir = join(root, 'app-server-control');
   mkdirSync(dir);
   const machine = makeMachine({ stateDir: root, codexHome: root, rcPrefix: 'host-a' });

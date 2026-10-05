@@ -20,13 +20,9 @@ import {
   STATUS_MAX_BYTES,
   STATUS_MAX_ITEMS,
 } from '../src/monitoring/schema.ts';
-import {
-  observationExecCount,
-  observedPane,
-  observedSessionInventory,
-} from '../src/monitoring/tmux.ts';
+import { observedPane, observedSessionInventory } from '../src/monitoring/tmux.ts';
 import { MtimeCache } from '../src/util/mtimeCache.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
 test('lifecycle blocks are identity-pinned and never leak their error into the monitoring DTO', () => {
   const m = fixture();
@@ -191,14 +187,14 @@ test('100 readers reuse a single observation without any observation subprocess'
   p.begin(m);
   p.sample(m, makeSession(), undefined, null, UNSEEN);
   const published = await p.publish(m);
-  const execs = observationExecCount();
+  const execs = producerMetric('observation').execCount ?? 0;
   for (let i = 0; i < 100; i++) {
     const read = MonitoringReadSchema.parse(readMonitoringStatus(m));
     expect(read.status).toBe('live');
     expect(read.snapshot).toEqual(published);
     expect(JSON.stringify(read)).not.toContain('lastMessage');
   }
-  expect(observationExecCount()).toBe(execs);
+  expect(producerMetric('observation').execCount ?? 0).toBe(execs);
 });
 
 test('unavailable/stale snapshots never masquerade as empty live inventory', async () => {

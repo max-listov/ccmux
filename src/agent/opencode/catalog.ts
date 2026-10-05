@@ -113,7 +113,10 @@ function runtimeGate(runtime: { status: string; reason: string | null }): string
   return `runtime ${runtime.status}${runtime.reason === null ? '' : ` (${runtime.reason})`}`;
 }
 function catalogUnavailable(gate: string): never {
-  throw new AppError('UNAVAILABLE', `Native runtime catalog is unavailable: ${gate}`, 503);
+  throw new AppError('UNAVAILABLE', {
+    message: `Native runtime catalog is unavailable: ${gate}`,
+    status: 503,
+  });
 }
 async function hostCatalog(
   m: MachineConfig,
@@ -125,7 +128,10 @@ async function hostCatalog(
     return await nativeOpenCodeModels(server.client, signal);
   } catch (error) {
     await recordRuntimeDiagnostic(m, null, 'model-catalog', error, server.stderr());
-    throw new AppError('UNAVAILABLE', 'Native model catalog is unavailable', 503);
+    throw new AppError('UNAVAILABLE', {
+      message: 'Native model catalog is unavailable',
+      status: 503,
+    });
   } finally {
     await server.close();
   }
@@ -143,11 +149,10 @@ export async function validateOpenCodeSelection(
         model.provider === selection.provider && model.id === selection.model && !model.hidden,
     )
   )
-    throw new AppError(
-      'MODEL_UNAVAILABLE',
-      `Model ${modelSelectionLabel(selection)} is unavailable for this runtime`,
-      409,
-    );
+    throw new AppError('MODEL_UNAVAILABLE', {
+      message: `Model ${modelSelectionLabel(selection)} is unavailable for this runtime`,
+      status: 409,
+    });
 }
 export async function readOpenCodeModels(
   m: MachineConfig,
@@ -156,7 +161,10 @@ export async function readOpenCodeModels(
   signal: AbortSignal,
 ): Promise<ControlModelCatalog> {
   if (input.launchRecipe !== undefined)
-    throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not accept a Codex launch recipe',
+      status: 409,
+    });
   if (session !== undefined) {
     const runtime = readManagedRuntimeStatus(m, session);
     if (runtime.status !== 'live') catalogUnavailable(runtimeGate(runtime));

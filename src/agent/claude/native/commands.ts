@@ -63,14 +63,20 @@ export async function writeClaudeCommands(
 
 export function readClaudeCommands(m: MachineConfig, session: Session): ControlCommand[] {
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'This runtime does not expose a command catalog', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not expose a command catalog',
+      status: 409,
+    });
   const prepared = readPrivateJson(path(m, session), PreparedSchema, MAX_BYTES);
   if (
     prepared === null ||
     prepared.registrationGeneration !== session.registrationGeneration ||
     readManagedRuntimeStatus(m, session).status !== 'live'
   )
-    throw new AppError('UNAVAILABLE', 'Native runtime command catalog is unavailable', 503);
+    throw new AppError('UNAVAILABLE', {
+      message: 'Native runtime command catalog is unavailable',
+      status: 503,
+    });
   return prepared.commands;
 }
 

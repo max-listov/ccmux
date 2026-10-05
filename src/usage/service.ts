@@ -33,7 +33,10 @@ export async function readSessionUsage(
   signal?.throwIfAborted();
   const route = routeFor(address, m);
   if (route.kind !== 'local')
-    throw new AppError('INVALID_TARGET', 'Usage control requires an exact local address', 400);
+    throw new AppError('INVALID_TARGET', {
+      message: 'Usage control requires an exact local address',
+      status: 400,
+    });
   const exact = `${m.rcPrefix}:${route.session}`;
   const token = route.session.split('#')[0] ?? route.session;
   try {

@@ -98,7 +98,10 @@ async function history(
       ),
     );
     if (page.revision !== revision || readContextJournal(m, s).revision !== revision)
-      throw new AppError('HISTORY_CURSOR', 'Native context changed during history read', 409);
+      throw new AppError('HISTORY_CURSOR', {
+        message: 'Native context changed during history read',
+        status: 409,
+      });
     if (readHistoryMailbox(m, s)?.id === request.id)
       await writeHistoryMailbox(m, s, { ...request, state: 'complete', page });
   } catch (error) {

@@ -3,6 +3,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -10,8 +11,9 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { DiagnosticJournalFrameSchema } from 'stitchkit/application';
+import { createDiagnosticJournal } from 'stitchkit/application/diagnostic-journal';
 import {
   createRuntimeJournal,
   RUNTIME_JOURNAL_LIMITS,
@@ -185,7 +187,7 @@ test('runtime journal reports corrupt retained rows without deleting their evide
   }
 });
 
-test('runtime journal refuses an unsafe archive and releases its startup lock', async () => {
+test('runtime journal sets an unsafe archive aside and starts, keeping every byte', async () => {
   const m = await fixture();
   const first = await createRuntimeJournal(m, { kind: 'daemon' }, () => undefined);
   first.submit(event());
@@ -195,11 +197,30 @@ test('runtime journal refuses an unsafe archive and releases its startup lock', 
   const outside = join(m.stateDir, 'outside.jsonl');
   await writeFile(outside, active, { mode: 0o600 });
   await symlink(outside, `${path}.1`);
-  await expect(createRuntimeJournal(m, { kind: 'daemon' }, () => undefined)).rejects.toThrow();
-  expect(await readFile(path, 'utf8')).toBe(active);
+  // Negative control: the same archive does refuse when a journal declares it must not start over
+  // damage, so the start below is the policy at work and not an archive that was never unsafe.
+  await expect(
+    createDiagnosticJournal({
+      path,
+      eventSchema: RuntimeJournalEventSchema,
+      limits: RUNTIME_JOURNAL_LIMITS,
+      mode: 0o600,
+      lock: 'reclaim-stale',
+      onStartupRefusal: 'fail',
+    }),
+  ).rejects.toThrow();
+  const started = await createRuntimeJournal(m, { kind: 'daemon' }, () => undefined);
+  try {
+    const { quarantined } = started.getStatus().recovery ?? {};
+    expect(quarantined).toHaveLength(1);
+    expect(basename(quarantined?.[0]?.quarantinedAs ?? '')).toStartWith(
+      `${basename(path)}.1.quarantined-`,
+    );
+    expect(quarantined?.[0]?.reason).toBe('not-a-regular-file');
+    expect(started.submit(event()).outcome).toBe('accepted');
+  } finally {
+    await started.close();
+  }
   expect(await readFile(outside, 'utf8')).toBe(active);
-  await rm(`${path}.1`);
-  const repaired = await createRuntimeJournal(m, { kind: 'daemon' }, () => undefined);
-  expect(repaired.submit(event()).outcome).toBe('accepted');
-  await repaired.close();
+  expect((await readdir(dirname(path))).some((name) => name.includes('.quarantined-'))).toBe(true);
 });

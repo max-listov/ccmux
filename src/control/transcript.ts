@@ -30,6 +30,9 @@ export async function readControlTranscript(
   // A runtime that keeps no transcript on disk is not an error to retry: it is an answer, and it
   // says which runtime it is. Refusing here instead would send a caller looking for a fault.
   if (!answer.source.available && answer.source.error === null)
-    throw new AppError('UNSUPPORTED', 'This runtime keeps no transcript file', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime keeps no transcript file',
+      status: 409,
+    });
   return { ...answer, target: input.target };
 }

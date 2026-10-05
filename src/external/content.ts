@@ -35,15 +35,20 @@ const CursorSchema = z
 
 function authorize(m: MachineConfig, target: ExternalContentTarget) {
   if (target.machine !== m.rcPrefix)
-    throw new AppError('IDENTITY_MISMATCH', 'External identity does not belong to this host', 409);
+    throw new AppError('IDENTITY_MISMATCH', {
+      message: 'External identity does not belong to this host',
+      status: 409,
+    });
   if (!m.externalInventory)
-    throw new AppError('PERMISSION_DENIED', 'External content access is disabled', 403);
+    throw new AppError('PERMISSION_DENIED', {
+      message: 'External content access is disabled',
+      status: 403,
+    });
   if (loadSessions(m).some((s) => s.agent === target.provider && s.uuid === target.threadId))
-    throw new AppError(
-      'IDENTITY_MISMATCH',
-      'Use the managed history contract for this identity',
-      409,
-    );
+    throw new AppError('IDENTITY_MISMATCH', {
+      message: 'Use the managed history contract for this identity',
+      status: 409,
+    });
 }
 
 /** Read an immutable authored-text snapshot; never contact or start a provider writer. */
@@ -72,10 +77,16 @@ export async function readExternalContent(
         JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')),
       );
     } catch {
-      throw new AppError('INVALID_CURSOR', 'External history cursor is invalid', 400);
+      throw new AppError('INVALID_CURSOR', {
+        message: 'External history cursor is invalid',
+        status: 400,
+      });
     }
     if (cursor.identity !== identity)
-      throw new AppError('IDENTITY_MISMATCH', 'External cursor identity differs', 409);
+      throw new AppError('IDENTITY_MISMATCH', {
+        message: 'External cursor identity differs',
+        status: 409,
+      });
   }
   try {
     const configuredRoot = input.target.provider === 'codex' ? m.codexSessionsDir : m.projectsDir;
@@ -88,7 +99,10 @@ export async function readExternalContent(
     try {
       const stat = await file.stat();
       if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o022) !== 0)
-        throw new AppError('PERMISSION_DENIED', 'External storage is not accessible', 403);
+        throw new AppError('PERMISSION_DENIED', {
+          message: 'External storage is not accessible',
+          status: 403,
+        });
       if (fileIdentity(await lstat(path), path) !== fileIdentity(stat, path))
         return { ...result, outcome: 'stale' };
       if (input.target.provider === 'codex')
@@ -136,11 +150,10 @@ export async function readExternalContent(
         omittedRecords: snapshot.omitted,
       });
       if (Buffer.byteLength(JSON.stringify(page)) > limits.responseBytes)
-        throw new AppError(
-          'RESOURCE_EXHAUSTED',
-          'External history response exceeds its byte budget',
-          413,
-        );
+        throw new AppError('RESOURCE_EXHAUSTED', {
+          message: 'External history response exceeds its byte budget',
+          status: 413,
+        });
       if (!cursor) publishContentSnapshot(snapshot);
       return page;
     } finally {

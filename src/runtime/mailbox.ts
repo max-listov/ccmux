@@ -93,7 +93,10 @@ export function defineMailbox<Receipt extends MailboxReceipt, Result>(
     async request(m, s, operationId, compose, signal) {
       const live = readManagedRuntimeStatus(m, s);
       if (live.status !== 'live' || !live.snapshot)
-        throw new AppError('UNAVAILABLE', 'The native runtime is unavailable', 503);
+        throw new AppError('UNAVAILABLE', {
+          message: 'The native runtime is unavailable',
+          status: 503,
+        });
       definition.precondition?.(live.snapshot);
       const generation = live.snapshot.generation;
       // Fetched only when a `settle` asks for it. Two of the four never look at it, and the
@@ -129,7 +132,10 @@ export function defineMailbox<Receipt extends MailboxReceipt, Result>(
         if (settled !== undefined) return settled;
         await Bun.sleep(definition.pollMs);
       }
-      throw new AppError('UNAVAILABLE', 'The runtime did not answer the request', 503);
+      throw new AppError('UNAVAILABLE', {
+        message: 'The runtime did not answer the request',
+        status: 503,
+      });
     },
   };
 }

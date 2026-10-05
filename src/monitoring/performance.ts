@@ -3,16 +3,20 @@ import { cpuWorkScope } from '../util/cpuScope.ts';
 import { producerMetrics } from '../util/producerMetrics.ts';
 import type { DaemonPerformanceSchema, PerformanceScope } from './performanceSchema.ts';
 
-/** Process CPU intervals are charged once: to an explicit synchronous span, or to the
- * only active operation window. Overlapping async work stays unattributed unless a span
- * identifies it. These are process CPU windows, not sampled JS stacks or per-thread CPU. */
+/** Process CPU intervals are charged once, and only to an explicit synchronous span: the code that
+ * was running is then known. CPU between spans stays unattributed even when one operation is the
+ * only one open — an open operation is usually a wait (`session.wait` stays open for minutes), and
+ * charging it the timers, transport and GC that ran meanwhile made a waiter look like the hottest
+ * code in the daemon. These are process CPU windows, not sampled JS stacks or per-thread CPU. */
+const MAX_SCOPES = 128;
+const OVERFLOW_SCOPE = 'other';
+
 export class DaemonPerformance {
   private enabled = false;
   private scopes = new Map<string, PerformanceScope>();
   private initial = process.cpuUsage();
   private previous = this.initial;
   private current: PerformanceScope | undefined;
-  private active = new Set<PerformanceScope>();
   private started = Date.now();
   private recentSync: { name: string; endedAt: number; durationMs: number } | null = null;
   private recent: { name: string; endedAt: number; durationMs: number } | null = null;
@@ -21,7 +25,6 @@ export class DaemonPerformance {
     if (this.enabled === enabled && !reset) return;
     this.enabled = enabled;
     this.scopes.clear();
-    this.active.clear();
     this.current = undefined;
     this.recent = null;
     this.recentSync = null;
@@ -32,8 +35,7 @@ export class DaemonPerformance {
   private checkpoint(): void {
     if (!this.enabled) return;
     const now = process.cpuUsage();
-    const scope =
-      this.current ?? (this.active.size === 1 ? this.active.values().next().value : undefined);
+    const scope = this.current;
     if (scope?.cpu) {
       scope.cpu.userUs += Math.max(0, now.user - this.previous.user);
       scope.cpu.systemUs += Math.max(0, now.system - this.previous.system);
@@ -44,7 +46,9 @@ export class DaemonPerformance {
   private scope(name: string): PerformanceScope {
     let scope = this.scopes.get(name);
     if (!scope) {
-      if (this.scopes.size >= 128) throw new Error('Too many daemon performance scopes');
+      // Diagnostics never fail the work they observe: names past the bound share one bucket.
+      if (this.scopes.size >= MAX_SCOPES && name !== OVERFLOW_SCOPE)
+        return this.scope(OVERFLOW_SCOPE);
       scope = {
         name,
         runs: 0,
@@ -73,13 +77,11 @@ export class DaemonPerformance {
     this.checkpoint();
     entry.runs++;
     entry.active++;
-    this.active.add(entry);
     const start = performance.now();
     const finish = (failed: boolean) => {
       if (this.scopes.get(name) !== entry) return;
       this.checkpoint();
       entry.active--;
-      if (entry.active === 0) this.active.delete(entry);
       if (failed) entry.failures++;
       const durationMs = performance.now() - start;
       entry.durationMs += durationMs;

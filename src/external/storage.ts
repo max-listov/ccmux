@@ -1,6 +1,7 @@
 import { type FileHandle, lstat, opendir, realpath } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { z } from 'zod';
+import { fileStamp } from '../util/fileStamp.ts';
 import { type ExternalContentTarget, EXTERNAL_CONTENT_LIMITS as limits } from './contentSchema.ts';
 
 const CodexMetaSchema = z.object({
@@ -9,32 +10,60 @@ const CodexMetaSchema = z.object({
 });
 
 export const STORAGE_LOOKUP_MAX_AGE_MS = 5_000;
+/**
+ * A thread the index does not know is looked for again once the index is this old. A new rollout
+ * lands in an existing day directory, which changes neither the root's revision nor any parent the
+ * index already follows — without this, a thread started a moment ago read as "no history" for up
+ * to the full index age.
+ */
+export const STORAGE_MISS_RESCAN_MS = 250;
+/** The shared walk belongs to no single caller, so it carries its own bound. */
+const STORAGE_SCAN_DEADLINE_MS = 10_000;
 type StorageIndex = {
   paths: Map<string, string | null>;
   directories: Map<string, string>;
+  scannedAt: number;
   expiresAt: number;
 };
 const indexes = new Map<string, Promise<StorageIndex>>();
+
+/** Wait for shared work on behalf of one caller: its abort ends its own wait, not the work. */
+function awaitFor<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      },
+    );
+  });
+}
 
 /** A root-wide index shares a bounded ambiguity check across all threads in the same pass. */
 async function codexStorageIndex(root: string, signal: AbortSignal): Promise<StorageIndex> {
   const cached = indexes.get(root);
   if (cached) {
-    const index = await cached;
-    signal.throwIfAborted();
+    const index = await awaitFor(cached, signal);
     if (index.expiresAt > Date.now()) return index;
     // A concurrent visitor may already have replaced the expired promise while we awaited it.
     if (indexes.get(root) !== cached) return codexStorageIndex(root, signal);
   }
   if (indexes.size >= 32) indexes.delete(indexes.keys().next().value ?? '');
-  const pending = scanStorage(root, signal);
+  // Started under its own deadline: one caller abandoning the lookup must not fail every other
+  // caller waiting on the same walk.
+  const pending = scanStorage(root, AbortSignal.timeout(STORAGE_SCAN_DEADLINE_MS));
   indexes.set(root, pending);
-  try {
-    return await pending;
-  } catch (error) {
+  void pending.catch(() => {
     if (indexes.get(root) === pending) indexes.delete(root);
-    throw error;
-  }
+  });
+  return awaitFor(pending, signal);
 }
 
 async function scanStorage(root: string, signal: AbortSignal): Promise<StorageIndex> {
@@ -51,7 +80,8 @@ async function scanStorage(root: string, signal: AbortSignal): Promise<StorageIn
     },
     directories,
   );
-  return { paths, directories, expiresAt: Date.now() + STORAGE_LOOKUP_MAX_AGE_MS };
+  const scannedAt = Date.now();
+  return { paths, directories, scannedAt, expiresAt: scannedAt + STORAGE_LOOKUP_MAX_AGE_MS };
 }
 
 /** Fixed configured roots and UUID filenames only. Never follow a caller path or a symlink. */
@@ -65,11 +95,16 @@ export async function locateExternalStorage(
     let path = index.paths.get(target.threadId);
     const parents = new Set([root, ...(typeof path === 'string' ? [dirname(path)] : [])]);
     for (const directory of parents) {
-      if (index.directories.get(directory) === (await directoryRevision(directory))) continue;
+      if (index.directories.get(directory) === directoryRevision(directory)) continue;
       indexes.delete(root);
       index = await codexStorageIndex(root, signal);
       path = index.paths.get(target.threadId);
       break;
+    }
+    if (path === undefined && Date.now() - index.scannedAt > STORAGE_MISS_RESCAN_MS) {
+      indexes.delete(root);
+      index = await codexStorageIndex(root, signal);
+      path = index.paths.get(target.threadId);
     }
     if (path === null) throw new Error('Ambiguous external storage identity');
     if (path === undefined) return null;
@@ -100,7 +135,7 @@ async function walkStorage(
     if (!item) break;
     signal.throwIfAborted();
     if (!(await lstat(item.path)).isDirectory()) throw new Error('Storage directory changed');
-    directories?.set(item.path, await directoryRevision(item.path));
+    directories?.set(item.path, directoryRevision(item.path));
     for await (const entry of await opendir(item.path)) {
       signal.throwIfAborted();
       if (++seen > limits.lookupEntries) throw new Error('External lookup budget exceeded');
@@ -114,15 +149,8 @@ async function walkStorage(
   }
 }
 
-async function directoryRevision(path: string): Promise<string> {
-  try {
-    const stat = await lstat(path, { bigint: true });
-    return `${stat.dev}:${stat.ino}:${stat.mtimeNs}:${stat.ctimeNs}`;
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return 'missing';
-    throw error;
-  }
-}
+/** A directory's own revision: its inode and the clocks a create, delete or rename moves. */
+const directoryRevision = (path: string) => fileStamp(path, { follow: false });
 
 export async function validateExternalPath(root: string, path: string) {
   const local = relative(root, path);

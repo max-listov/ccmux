@@ -101,7 +101,8 @@ async function ask(m: MachineConfig, path: string, signal: AbortSignal): Promise
  */
 export async function probeClaudeModels(m: MachineConfig, signal: AbortSignal): Promise<Probed> {
   const resolved = resolveAgentSdk(m);
-  if ('unavailable' in resolved) throw new AppError('UNSUPPORTED', resolved.detail, 409);
+  if ('unavailable' in resolved)
+    throw new AppError('UNSUPPORTED', { message: resolved.detail, status: 409 });
   const key = resolved.path;
   const hit = cached.get(key);
   if (hit && hit.expires > Date.now()) return hit.probed;

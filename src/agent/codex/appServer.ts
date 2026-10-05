@@ -18,43 +18,35 @@ export const ThreadStatusSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('active'), activeFlags: z.array(z.string()) }),
 ]);
 
-const ThreadItemSchema = z
-  .object({
-    type: z.string(),
-    clientId: z.string().nullable().optional(),
-  })
-  .passthrough();
+const ThreadItemSchema = z.looseObject({
+  type: z.string(),
+  clientId: z.string().nullable().optional(),
+});
 
-export const ThreadSchema = z
-  .object({
-    id: z.uuid(),
-    name: z.string().nullable(),
-    source: z.unknown(),
-    status: ThreadStatusSchema,
-    canAcceptDirectInput: z.boolean().nullable(),
-    turns: z.array(z.object({ items: z.array(ThreadItemSchema) }).passthrough()).default([]),
-  })
-  .passthrough();
+export const ThreadSchema = z.looseObject({
+  id: z.uuid(),
+  name: z.string().nullable(),
+  source: z.unknown(),
+  status: ThreadStatusSchema,
+  canAcceptDirectInput: z.boolean().nullable(),
+  turns: z.array(z.looseObject({ items: z.array(ThreadItemSchema) })).default([]),
+});
 
 export type CodexAppThread = z.infer<typeof ThreadSchema>;
-export const CodexAppThreadContextSchema = z
-  .object({
-    thread: ThreadSchema,
-    model: z.string().min(1).optional(),
-    modelProvider: z.string().min(1).optional(),
-    reasoningEffort: z.string().nullable().optional(),
-  })
-  .passthrough();
+export const CodexAppThreadContextSchema = z.looseObject({
+  thread: ThreadSchema,
+  model: z.string().min(1).optional(),
+  modelProvider: z.string().min(1).optional(),
+  reasoningEffort: z.string().nullable().optional(),
+});
 export type CodexAppThreadContext = z.infer<typeof CodexAppThreadContextSchema>;
 
-const CollaborationModePresetSchema = z
-  .object({
-    name: z.string(),
-    mode: z.enum(['default', 'plan']).nullable(),
-    model: z.string().min(1).nullable(),
-    reasoning_effort: z.string().nullable().optional(),
-  })
-  .passthrough();
+const CollaborationModePresetSchema = z.looseObject({
+  name: z.string(),
+  mode: z.enum(['default', 'plan']).nullable(),
+  model: z.string().min(1).nullable(),
+  reasoning_effort: z.string().nullable().optional(),
+});
 
 export type CodexAppTurnPolicy = {
   model: string;
@@ -74,11 +66,10 @@ function collaborationUnavailable(session: Session, reason: string): never {
     mode: session.launchRecipe?.collaborationMode ?? null,
     reason,
   });
-  throw new AppError(
-    'COLLABORATION_MODE_UNAVAILABLE',
-    'Managed collaboration policy is unavailable',
-    409,
-  );
+  throw new AppError('COLLABORATION_MODE_UNAVAILABLE', {
+    message: 'Managed collaboration policy is unavailable',
+    status: 409,
+  });
 }
 
 /** Native model/mode options never change the host sandbox, credentials or permission policy. */
@@ -227,7 +218,7 @@ export async function startCodexAppTurn(
   policy?: CodexAppTurnPolicy,
 ): Promise<string> {
   const { skillInputs, ...nativePolicy } = policy ?? {};
-  const response = z.object({ turn: z.object({ id: z.string().min(1) }).passthrough() }).parse(
+  const response = z.object({ turn: z.looseObject({ id: z.string().min(1) }) }).parse(
     await rpc.request('turn/start', {
       threadId,
       clientUserMessageId: messageId,

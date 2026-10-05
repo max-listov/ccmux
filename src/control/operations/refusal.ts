@@ -5,18 +5,16 @@ import { BoundedAdmissionRefusalError, BoundedOperationWaitError } from 'stitchk
 export function controlRefusal(error: unknown): never {
   if (error instanceof BoundedAdmissionRefusalError) {
     const draining = error.reason === 'not-accepting' || error.reason === 'upstream';
-    throw new AppError(
-      draining ? 'UNAVAILABLE' : 'BUSY',
-      draining ? 'Control is draining' : 'Control capacity reached',
-      draining ? 503 : 429,
-    );
+    throw new AppError(draining ? 'UNAVAILABLE' : 'BUSY', {
+      message: draining ? 'Control is draining' : 'Control capacity reached',
+      status: draining ? 503 : 429,
+    });
   }
   if (error instanceof BoundedOperationWaitError) {
-    throw new AppError(
-      error.reason === 'timed-out' ? 'TIMEOUT' : 'CANCELLED',
-      'Control call did not finish within its caller budget',
-      504,
-    );
+    throw new AppError(error.reason === 'timed-out' ? 'TIMEOUT' : 'CANCELLED', {
+      message: 'Control call did not finish within its caller budget',
+      status: 504,
+    });
   }
   throw error;
 }

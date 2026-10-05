@@ -1,5 +1,7 @@
 import { createNativePackaging } from 'stitchkit/files/packaging';
 
+export type UniversalNativePackaging = ReturnType<typeof requireUniversalNativePackaging>;
+
 /** One JS graph carries both Darwin targets; Linux keeps its lazy portable backend. */
 export function requireUniversalNativePackaging(entryPath: string) {
   const packaging = createNativePackaging({
@@ -13,11 +15,16 @@ export function requireUniversalNativePackaging(entryPath: string) {
   return packaging;
 }
 
-/** Application-owned destinations; source paths and integrity belong to Stitchkit. */
-export function requireNativeCompanion(architecture: 'arm64' | 'x64', entryPath: string) {
-  const asset = requireUniversalNativePackaging(entryPath).assets.find(
-    (candidate) => candidate.architecture === architecture,
-  );
+/**
+ * Application-owned destinations. Stitchkit compares each addon with the digest it published and
+ * hands back the verified `bytes`, so a packer embeds those bytes and their published `sha256`.
+ * Packaging is read once per build: pass its result here instead of requiring it again.
+ */
+export function nativeCompanion(
+  packaging: UniversalNativePackaging,
+  architecture: 'arm64' | 'x64',
+) {
+  const asset = packaging.assets.find((candidate) => candidate.architecture === architecture);
   if (!asset) throw new Error(`Native companion ${architecture}: asset is absent`);
   return asset;
 }

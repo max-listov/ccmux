@@ -21,7 +21,10 @@ export async function interruptControlTurn(
     signal.throwIfAborted();
     const session = controlTarget(m, target);
     if (!hasNativeRuntime(session))
-      throw new AppError('UNSUPPORTED', 'Native interruption is unavailable for this runtime', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: 'Native interruption is unavailable for this runtime',
+        status: 409,
+      });
     await requestRuntimeInterrupt(m, session, generation, turnId, signal);
     return { target, accepted: true } satisfies { target: ManagedPeer; accepted: true };
   });
@@ -36,7 +39,10 @@ export async function waitControlSession(
 ) {
   const session = controlTarget(m, target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'Resident wait requires a native runtime', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'Resident wait requires a native runtime',
+      status: 409,
+    });
   const timeout = AbortSignal.timeout(timeoutMs);
   const startedAt = Date.now();
   const combined = AbortSignal.any([signal, timeout]);

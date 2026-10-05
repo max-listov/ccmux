@@ -1,3 +1,4 @@
+import { INVENTORY_FRESH_MS } from '../monitoring/tmux.ts';
 import type { MachineConfig } from '../types.ts';
 import { collectRows, type ListRow } from './rows.ts';
 
@@ -15,7 +16,8 @@ export class PeerRows {
 
   read(machine: MachineConfig): Promise<ListRow[]> {
     const observation = this.observation;
-    if (observation === null || Date.now() - observation.at > 10_000) return collectRows(machine);
+    if (observation === null || Date.now() - observation.at > INVENTORY_FRESH_MS)
+      return collectRows(machine);
     if (!this.rows) {
       const pending = collectRows(observation.machine, { observation: observation.value });
       this.rows = pending;

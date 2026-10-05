@@ -70,7 +70,12 @@ export function scanPublicationText(text: string): PublicationFinding[] {
     const homePaths = line.matchAll(/(?:\/Users\/|\/home\/|~\/home\/)([A-Za-z0-9._-]+)\//g);
     if ([...homePaths].some((match) => match[1] !== 'u'))
       findings.push({ line: index + 1, rule: 'private-home-path' });
-    if (/^\s*(responsible|target-repo|return-to|return-thread|source-thread-id)\s*:/i.test(line))
+    // `participants` is the private backlog's executor journal (harness, model, session); a public
+    // document reached it once by being written with a task's frontmatter.
+    if (
+      /^\s*(responsible|target-repo|return-to|return-thread|source-thread-id)\s*:/i.test(line) ||
+      /^participants\s*:/i.test(line)
+    )
       findings.push({ line: index + 1, rule: 'operational-coordination-field' });
     if (/\b[A-Z][A-Z0-9]{1,15}-(?:DEV|PROD|MBP(?:-[A-Z0-9]+)?|LAPTOP|DESKTOP)\b/.test(line))
       findings.push({ line: index + 1, rule: 'deployment-machine-label' });

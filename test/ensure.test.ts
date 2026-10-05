@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { ensureOnce } from '../src/session/heal.ts';
+import { parsePaneInventory } from '../src/tmux/paneInventory.ts';
 import type { Session } from '../src/types.ts';
 import { makeSession } from './helpers.ts';
 
@@ -105,4 +106,36 @@ test('a session whose agent pane died while another window kept it alive is take
   // Taken down before it is started (starting a session tmux still has would fail); an archived one
   // is not healed, so it is not touched either.
   expect(events).toEqual(['retire cc-a', 'start cc-a']);
+});
+
+test('a session whose rows tmux reported unreadably is neither taken down nor started', async () => {
+  // agent-a: the agent pane's row is unreadable (bad created stamp), the auxiliary pane's row is
+  // fine. Read alone, the accepted row says "the agent's pane is gone" — and healing kills that.
+  // agent-b: its only row is unreadable, so it is in no set at all and would be "started" each pass.
+  const inventory = parsePaneInventory(
+    [
+      'agent-a|%1|%1|bad',
+      'agent-a|%2|%1|1700000000',
+      'agent-b|%3|%3|bad',
+      'agent-c|%4|%4|1700000000',
+    ].join('\n'),
+  );
+  expect(inventory.agentGone.has('agent-a')).toBe(false);
+  const retired: string[] = [];
+  const started: string[] = [];
+  await ensureOnce({
+    sessions: () => ['agent-a', 'agent-b', 'agent-c'].map((name) => makeSession({ name })),
+    observe: () => Promise.resolve(inventory),
+    retire: (name: string) => {
+      retired.push(name);
+      return Promise.resolve();
+    },
+    followFork: keepPin,
+    start: (name: string) => {
+      started.push(name);
+      return Promise.resolve();
+    },
+  });
+  expect(retired).toEqual([]);
+  expect(started).toEqual([]);
 });

@@ -13,11 +13,10 @@ export const POLICY_UNAVAILABLE_MESSAGE = 'Application policy is unavailable';
 
 export function policyUnavailable(id: string, reason: string): never {
   log.error({ msg: 'application policy unavailable', policyId: id, reason });
-  throw new AppError(
-    'APPLICATION_POLICY_UNAVAILABLE',
-    `${POLICY_UNAVAILABLE_MESSAGE}: ${reason}`,
-    409,
-  );
+  throw new AppError('APPLICATION_POLICY_UNAVAILABLE', {
+    message: `${POLICY_UNAVAILABLE_MESSAGE}: ${reason}`,
+    status: 409,
+  });
 }
 
 /**

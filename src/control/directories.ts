@@ -25,9 +25,15 @@ async function directoryStat(path: string) {
     current = join(current, part);
     const stat = await lstat(current);
     if (stat.isSymbolicLink())
-      throw new AppError('SYMLINK_REFUSED', 'Directory symlinks are not followed', 409);
+      throw new AppError('SYMLINK_REFUSED', {
+        message: 'Directory symlinks are not followed',
+        status: 409,
+      });
     if (!stat.isDirectory())
-      throw new AppError('NOT_A_DIRECTORY', 'Requested entry is not a directory', 400);
+      throw new AppError('NOT_A_DIRECTORY', {
+        message: 'Requested entry is not a directory',
+        status: 400,
+      });
   }
   return lstat(path);
 }
@@ -49,10 +55,16 @@ export async function readControlDirectory(
           JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')),
         );
       } catch {
-        throw new AppError('INVALID_CURSOR', 'Directory cursor is invalid', 400);
+        throw new AppError('INVALID_CURSOR', {
+          message: 'Directory cursor is invalid',
+          status: 400,
+        });
       }
       if (cursor.path !== path || cursor.hidden !== input.includeHidden || cursor.version !== stamp)
-        throw new AppError('STALE_CURSOR', 'Directory changed; restart listing', 409);
+        throw new AppError('STALE_CURSOR', {
+          message: 'Directory changed; restart listing',
+          status: 409,
+        });
       after = cursor.after;
     }
     const entries: ControlDirectoryResult['entries'] = [];
@@ -61,7 +73,10 @@ export async function readControlDirectory(
     for await (const item of directory) {
       signal.throwIfAborted();
       if (++scanned > 20_000)
-        throw new AppError('DIRECTORY_TOO_LARGE', 'Directory exceeds listing budget', 413);
+        throw new AppError('DIRECTORY_TOO_LARGE', {
+          message: 'Directory exceeds listing budget',
+          status: 413,
+        });
       if ((!input.includeHidden && item.name.startsWith('.')) || item.name <= after) continue;
       entries.push({
         name: item.name,
@@ -76,7 +91,10 @@ export async function readControlDirectory(
       });
     }
     if (version(await directoryStat(path)) !== stamp)
-      throw new AppError('STALE_CURSOR', 'Directory changed; restart listing', 409);
+      throw new AppError('STALE_CURSOR', {
+        message: 'Directory changed; restart listing',
+        status: 409,
+      });
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const page: ControlDirectoryResult['entries'] = [];
     let bytes = 0;
@@ -106,11 +124,18 @@ export async function readControlDirectory(
     if (error instanceof AppError || signal.aborted) throw error;
     log.error({ msg: 'directory listing failed', path, reason: String(error) });
     const code = error instanceof Error && 'code' in error ? error.code : null;
-    if (code === 'ENOENT') throw new AppError('NOT_FOUND', 'Directory was not found', 404);
+    if (code === 'ENOENT')
+      throw new AppError('NOT_FOUND', { message: 'Directory was not found', status: 404 });
     if (code === 'ENOTDIR')
-      throw new AppError('NOT_A_DIRECTORY', 'Requested entry is not a directory', 400);
+      throw new AppError('NOT_A_DIRECTORY', {
+        message: 'Requested entry is not a directory',
+        status: 400,
+      });
     if (code === 'EACCES' || code === 'EPERM')
-      throw new AppError('PERMISSION_DENIED', 'Directory is not accessible', 403);
-    throw new AppError('UNAVAILABLE', 'Directory listing is unavailable', 503);
+      throw new AppError('PERMISSION_DENIED', {
+        message: 'Directory is not accessible',
+        status: 403,
+      });
+    throw new AppError('UNAVAILABLE', { message: 'Directory listing is unavailable', status: 503 });
   }
 }

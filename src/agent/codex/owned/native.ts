@@ -5,16 +5,14 @@ import type { CodexRpcEvent, CodexRpcRequest } from '../rpc.ts';
 const ItemEvent = z.object({
   threadId: z.string(),
   turnId: z.string(),
-  item: z
-    .object({
-      id: z.string(),
-      type: z.string(),
-      status: z.string().optional(),
-      text: z.string().optional(),
-      summary: z.array(z.string()).optional(),
-      content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional(),
-    })
-    .passthrough(),
+  item: z.looseObject({
+    id: z.string(),
+    type: z.string(),
+    status: z.string().optional(),
+    text: z.string().optional(),
+    summary: z.array(z.string()).optional(),
+    content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional(),
+  }),
 });
 const UsageEvent = z.object({
   threadId: z.string(),

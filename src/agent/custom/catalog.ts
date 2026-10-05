@@ -19,17 +19,16 @@ export function readCustomModels(
   target?: Session,
 ) {
   if (!target && !input.launchRecipe)
-    throw new AppError('UNSUPPORTED', 'Choose a host launch recipe', 409);
+    throw new AppError('UNSUPPORTED', { message: 'Choose a host launch recipe', status: 409 });
   const launch = target ?? {
     ...resolveControlLaunchRecipe(m, m.stateDir, input.launchRecipe, [], 'custom'),
     dir: m.stateDir,
   };
   if (!target && launch.envFile !== undefined && !isAbsolute(launch.envFile))
-    throw new AppError(
-      'UNAVAILABLE',
-      'Host catalog requires a host-scoped environment source',
-      409,
-    );
+    throw new AppError('UNAVAILABLE', {
+      message: 'Host catalog requires a host-scoped environment source',
+      status: 409,
+    });
   const host = prepareCustomHost(m, launch);
   const digest = launch.launchRecipe?.digest;
   if (!digest) throw new Error('Custom catalog recipe is missing');
@@ -39,7 +38,10 @@ export function readCustomModels(
       JSON.parse(Buffer.from(input.cursor, 'base64url').toString()),
     );
     if (!parsed.success || parsed.data.digest !== digest)
-      throw new AppError('CURSOR_MISMATCH', 'Model catalog identity changed', 409);
+      throw new AppError('CURSOR_MISMATCH', {
+        message: 'Model catalog identity changed',
+        status: 409,
+      });
     offset = parsed.data.offset;
   }
   const rows = host.config.models.slice(offset, offset + input.limit);

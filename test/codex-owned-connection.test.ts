@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ServerWebSocket } from 'bun';
 import { z } from 'zod';
@@ -25,9 +26,9 @@ function fixture(
   collaboration = false,
   threadStartDelayMs = 0,
 ) {
-  const codexSessionsDir = mkdtempSync('/tmp/ccmux-native-rollouts-');
+  const codexSessionsDir = mkdtempSync(join(tmpdir(), 'ccmux-native-rollouts-'));
   const m = makeMachine({
-    stateDir: mkdtempSync('/tmp/ccmux-native-connection-'),
+    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-native-connection-')),
     codexSessionsDir,
     codexCorrelationTimeoutMs: 150,
     sessionEvents: true,

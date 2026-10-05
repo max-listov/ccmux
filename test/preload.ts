@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { afterAll } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -36,7 +37,17 @@ process.env.CCMUX_CACHE_DIR = join(root, 'cache', 'ccmux');
 process.env.CCMUX_DATA_DIR = join(root, 'data', 'ccmux');
 process.env.CCMUX_CONFIG = join(root, 'config', 'ccmux', 'machine.json');
 process.env.CCMUX_TEST_HOME = root;
-process.on('exit', () => rmSync(root, { recursive: true, force: true }));
+// Temporary directories the tests make through `tmpdir()` land inside this root and go with it.
+// On Linux `tmpdir()` is `/tmp`, and three full runs left more than a thousand directories there.
+mkdirSync(join(root, 'tmp'));
+process.env.TMPDIR = join(root, 'tmp');
+// Ink sizes a test terminal from these when the fake stdout reports no rows; without them the
+// geometry came from whatever terminal ran the suite.
+process.env.LINES = '40';
+process.env.COLUMNS = '100';
+// `afterAll` in a preload runs once, after every file. `process.on('exit')` never runs under
+// `bun test` (measured): the cleanup that used to sit there left every run's home behind.
+afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 /** The call's arguments with `env: process.env` as the default, in either of the two call shapes. */
 function withEnv(first: unknown, second?: unknown): unknown[] {

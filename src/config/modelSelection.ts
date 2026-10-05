@@ -47,10 +47,9 @@ export async function validateModelSelection(
     log.error({ msg: 'managed model selection refused', selection, reason: String(error) });
     // The key is the caller's own input and the catalog publishes it, so naming it discloses
     // nothing; the reason stays owner-side because it can name host launch configuration.
-    throw new AppError(
-      'MODEL_UNAVAILABLE',
-      `Model ${modelSelectionLabel(selection)} is unavailable`,
-      409,
-    );
+    throw new AppError('MODEL_UNAVAILABLE', {
+      message: `Model ${modelSelectionLabel(selection)} is unavailable`,
+      status: 409,
+    });
   }
 }

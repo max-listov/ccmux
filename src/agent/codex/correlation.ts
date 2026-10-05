@@ -13,20 +13,14 @@ const SessionMetaEnvelopeSchema = z.object({
   }),
 });
 
-const UserMessageEnvelopeSchema = z
-  .object({
-    type: z.literal('response_item'),
-    payload: z
-      .object({
-        type: z.literal('message'),
-        role: z.literal('user'),
-        content: z.array(
-          z.object({ type: z.literal('input_text'), text: z.string() }).passthrough(),
-        ),
-      })
-      .passthrough(),
-  })
-  .passthrough();
+const UserMessageEnvelopeSchema = z.looseObject({
+  type: z.literal('response_item'),
+  payload: z.looseObject({
+    type: z.literal('message'),
+    role: z.literal('user'),
+    content: z.array(z.looseObject({ type: z.literal('input_text'), text: z.string() })),
+  }),
+});
 
 function hasExactForkMarker(path: string, marker: string): boolean {
   const expected = `ccmux launch correlation: ${marker}`;

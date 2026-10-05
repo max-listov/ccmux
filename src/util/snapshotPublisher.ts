@@ -38,9 +38,15 @@ class SnapshotReaders<T> {
   subscribe(signal: AbortSignal, sequence: number): AsyncIterable<T> {
     signal.throwIfAborted();
     if (this.stopped)
-      throw new AppError('UNAVAILABLE', `${this.options.label} publisher is stopped`, 503);
+      throw new AppError('UNAVAILABLE', {
+        message: `${this.options.label} publisher is stopped`,
+        status: 503,
+      });
     if (this.readers.size >= this.options.limit)
-      throw new AppError('BUSY', `${this.options.label} subscriber limit reached`, 429);
+      throw new AppError('BUSY', {
+        message: `${this.options.label} subscriber limit reached`,
+        status: 429,
+      });
     const channel = createBoundedChannel<number>({
       policy: 'latest',
       maxItems: 1,

@@ -1,16 +1,6 @@
 import { statSync } from 'node:fs';
 import { measureCpu } from './cpuScope.ts';
-
-/** Follow configured symlinks; nanosecond ctime detects rewrites with restored mtime. */
-export function fileRevision(path: string): string {
-  try {
-    const s = statSync(path, { bigint: true });
-    return [s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs, s.mode, s.uid].join(':');
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return 'missing';
-    throw error;
-  }
-}
+import { fileStamp, settled, statStamp } from './fileStamp.ts';
 
 /** One bounded parsed snapshot. Every read checks disk; callers own their returned objects. */
 export class FileSnapshot<T> {
@@ -28,13 +18,14 @@ export class FileSnapshot<T> {
 
   private readSnapshot(path: string, load: () => T): T {
     this.checks++;
-    const revision = fileRevision(path);
+    const revision = fileStamp(path);
     if (this.cached?.path === path && this.cached.revision === revision)
       return structuredClone(this.cached.value);
     this.cached = undefined;
     this.loads++;
     const value = load();
-    if (fileRevision(path) === revision)
+    const after = statSync(path, { bigint: true, throwIfNoEntry: false });
+    if (after !== undefined && statStamp(after) === revision && settled(after))
       this.cached = { path, revision, value: structuredClone(value) };
     return value;
   }

@@ -1,9 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { agentPaneTarget } from '../tmux/agentPane.ts';
+import { agentPaneTarget, rememberAgentPane } from '../tmux/agentPane.ts';
 import { tmuxArgv } from '../tmux/argv.ts';
 import { PANE_INVENTORY_FORMAT, parsePaneInventory } from '../tmux/paneInventory.ts';
 import type { MachineConfig } from '../types.ts';
-import { matchingProcessRoots, parseProcessStat } from '../util/procStat.ts';
+import { matchingProcessRoots, readProcessStart } from '../util/procStat.ts';
 import { producerMetrics } from '../util/producerMetrics.ts';
 
 const MAX_OUTPUT = 64 * 1024;
@@ -17,21 +16,28 @@ const inventories = new Map<
     peerLineLimits: Map<string, number>;
   }
 >();
+/** How long an observation inventory stands in for a fresh one, for its readers outside the pass. */
+export const INVENTORY_FRESH_MS = 10_000;
 const inventoryKey = (m: MachineConfig) => JSON.stringify([m.stateDir, m.tmuxSocket, m.tmuxBin]);
 
-export function observedProcessRoots(m: MachineConfig, nowMs = Date.now()): number[] {
+/** Process roots from the last inventory, or `null` when there is none fresh enough to trust. */
+export function observedProcessRoots(m: MachineConfig, nowMs = Date.now()): number[] | null {
   const inventory = inventories.get(inventoryKey(m));
-  if (!inventory || nowMs - inventory.at > 10_000) return [];
+  if (!inventory || nowMs - inventory.at > INVENTORY_FRESH_MS) return null;
   if (process.platform !== 'linux') return [...inventory.roots];
-  return matchingProcessRoots(inventory.rootStarts, rootStartTime);
+  return matchingProcessRoots(inventory.rootStarts, readProcessStart);
 }
 
-function rootStartTime(pid: number): string | null {
-  try {
-    return parseProcessStat(readFileSync(`/proc/${pid}/stat`, 'utf8'))?.startTime ?? null;
-  } catch {
-    return null;
-  }
+/**
+ * Roots for a pass that must not run on a guess: the observation's when fresh, else a new inventory.
+ * The OOM pass reads these every two seconds, and observation lags exactly when the host is loaded —
+ * the moment the OOM pass exists for. Falling back to "no roots" protected only the daemon, silently.
+ */
+export async function processRoots(m: MachineConfig, nowMs = Date.now()): Promise<number[]> {
+  const roots = observedProcessRoots(m, nowMs);
+  if (roots !== null) return roots;
+  await observedSessionInventory(m);
+  return observedProcessRoots(m) ?? [];
 }
 
 export function observedAgentPanes(m: MachineConfig): ReadonlyMap<string, string> {
@@ -55,12 +61,6 @@ export function observedPeerPanes(m: MachineConfig, panes: ReadonlyMap<string, s
 let execCount = 0;
 let childCpuUs = 0;
 producerMetrics.register('observation', () => ({ execCount, childCpuUs }));
-export function observationExecCount(): number {
-  return execCount;
-}
-export function observationChildCpuUs(): number {
-  return childCpuUs;
-}
 
 /**
  * Bounded producer IO: one child at a time, 64 KiB per stream, one-second deadline.
@@ -76,10 +76,15 @@ const deadlineMs = (): number => Number(process.env.CCMUX_OBSERVE_DEADLINE_MS ??
 async function invoke(
   argv: string[],
   maxOutput = MAX_OUTPUT,
-): Promise<{ code: number; stdout: string; stderr: string }> {
+  deadline = deadlineMs(),
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean }> {
   execCount++;
   const proc = Bun.spawn(argv, { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
-  const timeout = setTimeout(() => proc.kill('SIGKILL'), deadlineMs());
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    proc.kill('SIGKILL');
+  }, deadline);
   async function read(stream: ReadableStream<Uint8Array>): Promise<string> {
     const reader = stream.getReader();
     const chunks: Uint8Array[] = [];
@@ -103,7 +108,7 @@ async function invoke(
   }
   try {
     const [stdout, stderr] = await Promise.all([read(proc.stdout), read(proc.stderr)]);
-    return { code: await proc.exited, stdout, stderr };
+    return { code: await proc.exited, stdout, stderr, timedOut };
   } finally {
     clearTimeout(timeout);
     proc.kill('SIGKILL');
@@ -131,11 +136,15 @@ export async function observedSessionInventory(m: MachineConfig): Promise<Map<st
     throw new Error('tmux observation unavailable');
   }
   const parsed = parsePaneInventory(result.stdout, true);
+  // The pane each session records is the truth; this process's cache is only a memory of it. A
+  // session restarted by another process (`ccmux restart --all` from a shell) gets a new pane, and a
+  // cache left on the old id would aim every capture at a pane that no longer exists.
+  for (const [name, pane] of parsed.agentPanes) rememberAgentPane(m, name, pane);
   const roots = parsed.roots;
   const rootStarts = new Map<number, string>();
   if (process.platform === 'linux')
     for (const pid of roots) {
-      const start = rootStartTime(pid);
+      const start = readProcessStart(pid);
       if (start !== null) rootStarts.set(pid, start);
     }
   if (inventories.size >= 32) inventories.delete(inventories.keys().next().value ?? '');
@@ -181,21 +190,29 @@ export async function observedPanes(
         '-40',
       );
     }
-    try {
-      const result = await invoke(tmuxArgv(m, ...argv), chunk.length * (MAX_OUTPUT + 128));
-      const parts = result.stdout.split(new RegExp(`^${nonce}:\\d+\\n`, 'm'));
-      if (result.code !== 0 || parts.length !== chunk.length + 1)
-        throw new Error('batch capture unavailable');
-      for (const [index, name] of chunk.entries()) {
-        const text = parts[index + 1];
-        if (text === undefined || Buffer.byteLength(text) > MAX_OUTPUT)
-          throw new Error('observation output limit');
-        panes.set(name, text);
-      }
-    } catch {
-      // A pane may disappear mid-batch. Retain independent evidence from surviving panes.
-      for (const name of chunk) panes.set(name, await observedPane(m, name).catch(() => null));
+    // One deadline per capture the child performs: the batch does the work of the whole chunk.
+    const result = await invoke(
+      tmuxArgv(m, ...argv),
+      chunk.length * (MAX_OUTPUT + 128),
+      deadlineMs() * chunk.length,
+    ).catch(() => null);
+    const parts = result?.stdout.split(new RegExp(`^${nonce}:\\d+\\n`, 'm'));
+    const texts =
+      result !== null && result.code === 0 && parts?.length === chunk.length + 1
+        ? parts.slice(1)
+        : null;
+    if (texts?.every((text) => Buffer.byteLength(text) <= MAX_OUTPUT)) {
+      for (const [index, name] of chunk.entries()) panes.set(name, texts[index] ?? null);
+      continue;
     }
+    // A slow or oversized batch says the same thing about every pane in it: retrying them one by one
+    // would multiply the load that made it slow. Only a pane that vanished mid-batch (tmux refused a
+    // target) leaves the others' evidence worth fetching on their own.
+    if (result === null || result.timedOut || texts !== null) {
+      for (const name of chunk) panes.set(name, null);
+      continue;
+    }
+    for (const name of chunk) panes.set(name, await observedPane(m, name).catch(() => null));
   }
   return panes;
 }

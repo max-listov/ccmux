@@ -15,7 +15,10 @@ import {
 } from './messageOperationSchema.ts';
 
 export function messageOperationFailure(): never {
-  throw new AppError('MESSAGE_EVIDENCE_UNAVAILABLE', 'Message evidence is unavailable', 503);
+  throw new AppError('MESSAGE_EVIDENCE_UNAVAILABLE', {
+    message: 'Message evidence is unavailable',
+    status: 503,
+  });
 }
 export function messagePrincipal(principal: ChatPrincipal): string {
   return createHash('sha256').update(chatPrincipalKey(principal)).digest('hex');
@@ -71,7 +74,8 @@ export function prepareMessageOperation(
   );
   if (journal.records.length >= MESSAGE_OPERATION_LIMITS.records) {
     const index = journal.records.findIndex((record) => record.expiresAt !== null);
-    if (index < 0) throw new AppError('CAPACITY', 'Message evidence capacity reached', 429);
+    if (index < 0)
+      throw new AppError('CAPACITY', { message: 'Message evidence capacity reached', status: 429 });
     journal.records.splice(index, 1);
   }
   journal.records.push({

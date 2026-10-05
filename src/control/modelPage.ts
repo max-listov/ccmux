@@ -22,7 +22,10 @@ export function pageModelCatalog(
   if (input.cursor) {
     const [revision, start] = input.cursor.split(':');
     if (revision !== digest || !start || !/^\d+$/.test(start) || Number(start) > visible.length)
-      throw new AppError('INVALID_CURSOR', 'Native catalog cursor requires a fresh baseline', 409);
+      throw new AppError('INVALID_CURSOR', {
+        message: 'Native catalog cursor requires a fresh baseline',
+        status: 409,
+      });
     offset = Number(start);
   }
   const limit = input.limit ?? 64;

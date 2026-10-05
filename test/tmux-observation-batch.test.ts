@@ -1,13 +1,17 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import {
-  observationExecCount,
   observedPanes,
   observedPeerPanes,
   observedProcessRoots,
   observedSessionInventory,
+  processRoots,
 } from '../src/monitoring/tmux.ts';
 import { applyOomPriority, oomPlan } from '../src/runtime/oomPriority.ts';
+import { producerMetrics } from '../src/util/producerMetrics.ts';
+
+const observationExecCount = () => producerMetrics.snapshot().observation?.execCount ?? 0;
+
 import { rememberAgentPane } from '../src/tmux/agentPane.ts';
 import { tmuxArgv } from '../src/tmux/argv.ts';
 import { capturePane } from '../src/tmux/tmux.ts';
@@ -57,12 +61,12 @@ test.skipIf(!Bun.which('tmux'))(
       const before = observationExecCount();
       await observedPanes(m, names);
       expect(observationExecCount() - before).toBe(2);
-      expect(observedProcessRoots(m)).toEqual([]);
+      expect(observedProcessRoots(m)).toBeNull();
       const inventoryBefore = observationExecCount();
       await observedSessionInventory(m);
       expect(observationExecCount() - inventoryBefore).toBe(1);
-      const freshRoots = observedProcessRoots(m);
-      expect(observedProcessRoots(m, Date.now() + 10_001)).toEqual([]);
+      const freshRoots = observedProcessRoots(m) ?? [];
+      expect(observedProcessRoots(m, Date.now() + 10_001)).toBeNull();
       const serverPid = Number(command('display-message', '-p', '#{pid}'));
       const runnerPid = freshRoots.find((pid) => pid !== serverPid);
       if (runnerPid === undefined) throw new Error('missing pane root');
@@ -91,8 +95,8 @@ test.skipIf(!Bun.which('tmux'))(
           values.set(pid, value);
         },
       };
-      const stale = observedProcessRoots(m, Date.now() + 10_001);
-      expect(stale).toEqual([]);
+      const stale = observedProcessRoots(m, Date.now() + 10_001) ?? [];
+      expect(observedProcessRoots(m, Date.now() + 10_001)).toBeNull();
       applyOomPriority(
         oomPlan(
           { rows: full.rows.filter((row) => row.pid === process.pid), runners: stale },
@@ -107,8 +111,12 @@ test.skipIf(!Bun.which('tmux'))(
       expect(observedProcessRoots(m)).toEqual(freshRoots);
       applyOomPriority(oomPlan(full, process.pid), -300, access);
       expect(values.get(toolPid)).toBe(0);
-      expect(observedProcessRoots(m).length).toBe(10);
+      expect(observedProcessRoots(m)?.length).toBe(10);
       expect(observationExecCount() - inventoryBefore).toBe(2);
+      // A late inventory is replaced for the OOM pass, not read as "no roots".
+      const refreshBefore = observationExecCount();
+      expect(await processRoots(m, Date.now() + 10_001)).toEqual(freshRoots);
+      expect(observationExecCount() - refreshBefore).toBe(1);
       command('kill-session', '-t', names[0] ?? '');
       const after = await observedPanes(m, names);
       expect(after.get(names[0] ?? '')).toBeNull();
@@ -133,10 +141,10 @@ test.skipIf(!Bun.which('tmux'))(
     try {
       for (const height of [10, 24, 80]) {
         const name = `agent-${height}`;
-        const content =
-          Array.from({ length: 160 }, (_, i) =>
-            i === 160 - height - 35 ? 'esc to interrupt' : `history ${i}`,
-          ).join('\n') + '\n───\n❯ \n? for shortcuts\n';
+        const history = Array.from({ length: 160 }, (_, i) =>
+          i === 160 - height - 35 ? 'esc to interrupt' : `history ${i}`,
+        ).join('\n');
+        const content = `${history}\n───\n❯ \n? for shortcuts\n`;
         const r = Bun.spawnSync(
           tmuxArgv(
             m,
@@ -174,6 +182,103 @@ test.skipIf(!Bun.which('tmux'))(
         expect(warm).not.toContain('esc to interrupt');
       }
     } finally {
+      Bun.spawnSync(tmuxArgv(m, 'kill-server'));
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(!Bun.which('tmux'))(
+  'a session restarted by another process is captured on the next pass, with one child per chunk',
+  async () => {
+    const root = mkdtempSync('/tmp/ccmux-restart-');
+    const m = makeMachine({
+      stateDir: root,
+      tmuxBin: Bun.which('tmux') ?? '/usr/bin/tmux',
+      tmuxSocket: `ccmux-restart-${crypto.randomUUID()}`,
+    });
+    const command = (...args: string[]) => {
+      const r = Bun.spawnSync(tmuxArgv(m, ...args));
+      if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+      return r.stdout.toString().trim();
+    };
+    // What `newSession` does: create the session and record its agent pane on the session.
+    const start = (name: string, marker: string) => {
+      const pane = command(
+        'new-session',
+        '-d',
+        '-s',
+        name,
+        '-P',
+        '-F',
+        '#{pane_id}',
+        'sh',
+        '-c',
+        `printf '${marker}\\n'; exec sleep 600`,
+      );
+      command('set-option', '-t', name, '@ccmux-agent-pane', pane);
+      return pane;
+    };
+    const until = async (name: string, marker: string) => {
+      const deadline = Date.now() + 5000;
+      let text: string | null | undefined;
+      while (Date.now() < deadline) {
+        await observedSessionInventory(m);
+        text = (await observedPanes(m, [name])).get(name);
+        if (text?.includes(marker)) return text;
+        await Bun.sleep(20);
+      }
+      return text;
+    };
+    try {
+      // A live server outlives one session's restart, so the new pane gets a new id, as it does on a host.
+      start('anchor', 'anchor');
+      const old = start('agent-a', 'first-life');
+      rememberAgentPane(m, 'agent-a', old);
+      expect(await until('agent-a', 'first-life')).toContain('first-life');
+      // Another process restarts the session: the daemon's cached pane id now names a dead pane.
+      command('kill-session', '-t', 'agent-a');
+      const fresh = start('agent-a', 'second-life');
+      expect(fresh).not.toBe(old);
+      expect(await until('agent-a', 'second-life')).toContain('second-life');
+      await observedSessionInventory(m);
+      const before = observationExecCount();
+      const panes = await observedPanes(m, ['agent-a']);
+      expect(panes.get('agent-a')).toContain('second-life');
+      expect(observationExecCount() - before).toBe(1);
+    } finally {
+      Bun.spawnSync(tmuxArgv(m, 'kill-server'));
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(!Bun.which('tmux'))(
+  'a batch that misses its deadline is one child, not a serial retry of every pane',
+  async () => {
+    const root = mkdtempSync('/tmp/ccmux-deadline-');
+    const m = makeMachine({
+      stateDir: root,
+      tmuxBin: Bun.which('tmux') ?? '/usr/bin/tmux',
+      tmuxSocket: `ccmux-deadline-${crypto.randomUUID()}`,
+    });
+    const names = Array.from({ length: 3 }, (_, i) => `agent-${i}`);
+    const previous = process.env.CCMUX_OBSERVE_DEADLINE_MS;
+    try {
+      for (const name of names) {
+        const r = Bun.spawnSync(
+          tmuxArgv(m, 'new-session', '-d', '-s', name, '-P', '-F', '#{pane_id}', 'sleep', '600'),
+        );
+        rememberAgentPane(m, name, r.stdout.toString().trim());
+      }
+      process.env.CCMUX_OBSERVE_DEADLINE_MS = '0';
+      const before = observationExecCount();
+      const panes = await observedPanes(m, names);
+      expect(observationExecCount() - before).toBe(1);
+      for (const name of names) expect(panes.get(name)).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.CCMUX_OBSERVE_DEADLINE_MS;
+      else process.env.CCMUX_OBSERVE_DEADLINE_MS = previous;
       Bun.spawnSync(tmuxArgv(m, 'kill-server'));
       rmSync(root, { recursive: true, force: true });
     }

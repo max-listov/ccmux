@@ -1,5 +1,8 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import { DiagnosticJournalStatusSchema } from 'stitchkit/application';
 import { escalationRefusal } from '../agent/claude/launch.ts';
+import { UNKNOWN_CODEX_PANE } from '../agent/codex/pane.ts';
 import { providerFor } from '../agent/index.ts';
 import { envFilePath, envInput, inheritedEnvInput } from '../agent/launch/launchInputs.ts';
 import { launchInputsFor } from '../agent/launch/launchStamp.ts';
@@ -9,13 +12,14 @@ import { CursorsUnreadableError, loadCursors } from '../chat/cursors.ts';
 import { holdReason, STALLED_HOLD_MS } from '../chat/holdReason.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
 import { loadLedger, unreadableCount } from '../chat/ledger.ts';
-import { pendingMessageId } from '../chat/settlement.ts';
+import { pendingMessage } from '../chat/settlement.ts';
 import { unreadFor } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { APP_BUNDLE, CACHE_DIR, chatAuthPath, DATA_DIR } from '../config/paths.ts';
 import { remoteAdapterSocketPath } from '../fleet/remoteAdapter.ts';
 import { checkFleet, peersOf } from '../fleet/transport.ts';
 import { collectRows } from '../inventory/rows.ts';
+import { runtimeJournalPath } from '../runtime/journal.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { loadSessions } from '../session/registry.ts';
 import { readChatHold, readLaunchStamp } from '../session/status.ts';
@@ -127,6 +131,8 @@ export async function buildDoctorReport(m: MachineConfig): Promise<DoctorReport>
       e instanceof CursorsUnreadableError ? e.message : `stalled mail unknown: ${String(e)}`,
     );
   }
+  const journal = journalRecoveryProblem(m);
+  if (journal !== null) problems.push(journal);
   let unreadableRecords: number | null = null;
   try {
     unreadableRecords = unreadableCount(loadLedger(m));
@@ -188,25 +194,29 @@ export function stalledMail(m: MachineConfig): { session: string; reason: string
   for (const s of loadSessions(m)) {
     if (s.archived) continue;
     const hold = readChatHold(s.name);
-    if (hold === null || hold.heldForMs < STALLED_HOLD_MS) continue;
+    // A shape this version cannot read never clears by waiting, so it is reported at once.
+    if (hold === null) continue;
+    if (hold.heldForMs < STALLED_HOLD_MS && hold.reason !== UNKNOWN_CODEX_PANE) continue;
     const recipient = managedPeer(m.rcPrefix, s);
     // A native pickup advances the delivery cursor before the owner starts its turn. The pickup
     // receipt remains authoritative until native acceptance, even if inbox was marked read.
-    const pending = hasNativeRuntime(s)
-      ? pendingMessageId(ledger, managedPeerKey(recipient), cursors, acked, Date.now())
-      : unreadFor(recipient, ledger, cursors, acked)[0]?.msg.id;
-    const first = ledger.find((msg) => msg?.id === pending);
-    if (first == null) continue;
+    const first = hasNativeRuntime(s)
+      ? pendingMessage(ledger, managedPeerKey(recipient), cursors, acked, Date.now())
+      : (unreadFor(recipient, ledger, cursors, acked)[0]?.msg ?? null);
+    if (first === null) continue;
+    const shape = hold.reason === UNKNOWN_CODEX_PANE ? ` (installed ${installedCodex(m)})` : '';
     out.push({
       session: s.name,
-      reason: holdReason(first, {
-        recipient: s,
-        chatEnabled: chatEnabledFor(s, m),
-        running: true,
-        nowMs: Date.now(),
-        chatDeliverable: providerFor(s).inspectChatPane !== undefined,
-        daemonHold: hold,
-      }).text,
+      reason: `${
+        holdReason(first, {
+          recipient: s,
+          chatEnabled: chatEnabledFor(s, m),
+          running: true,
+          nowMs: Date.now(),
+          chatDeliverable: providerFor(s).inspectChatPane !== undefined,
+          daemonHold: hold,
+        }).text
+      }${shape}`,
     });
   }
   return out;
@@ -365,4 +375,53 @@ const NAME_SAMPLE = 8;
 export function sampleNames(keys: readonly string[]): string {
   const shown = keys.slice(0, NAME_SAMPLE).join(', ');
   return keys.length > NAME_SAMPLE ? `${shown} (+${keys.length - NAME_SAMPLE} more)` : shown;
+}
+
+/**
+ * What the daemon's diagnostic journal skipped when it opened. The journal writes its recovery
+ * status beside itself and nothing else read it, so corrupt or torn records were invisible.
+ * A missing or unreadable status file says nothing about the journal and reports nothing.
+ */
+export function journalRecoveryProblem(m: MachineConfig): string | null {
+  const path = `${runtimeJournalPath(m, { kind: 'daemon' })}.status.json`;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+  const status = DiagnosticJournalStatusSchema.safeParse(raw);
+  const recovery = status.success ? status.data.recovery : undefined;
+  if (recovery === undefined) return null;
+  const { anomalies, firstAnomaly, quarantined = [], quarantinedUnlisted = 0 } = recovery;
+  const found: string[] = [];
+  if (anomalies > 0) {
+    const first =
+      firstAnomaly === undefined
+        ? ''
+        : ` — first: ${firstAnomaly.reason} at ${basename(firstAnomaly.file)} line ${firstAnomaly.line} (${firstAnomaly.position})`;
+    found.push(
+      `the diagnostic journal skipped ${anomalies} unreadable record(s) when it opened${first}`,
+    );
+  }
+  const moved = quarantined.length + quarantinedUnlisted;
+  if (moved > 0) {
+    const names = quarantined.map((file) => basename(file.quarantinedAs)).join(', ');
+    found.push(
+      `the diagnostic journal set ${moved} file(s) aside beside itself and started without them (${names}); remove them once read`,
+    );
+  }
+  return found.length === 0 ? null : found.join('; ');
+}
+
+/** The installed Codex CLI's own version line, for a hold that a newer Codex TUI caused. */
+function installedCodex(m: MachineConfig): string {
+  if (!m.codexBin) return 'Codex: not configured';
+  const result = Bun.spawnSync([m.codexBin, '--version'], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+    timeout: 3000,
+  });
+  const line = result.stdout.toString().trim().split('\n')[0];
+  return result.exitCode === 0 && line ? line : 'Codex version unavailable';
 }

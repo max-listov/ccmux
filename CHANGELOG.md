@@ -6,6 +6,38 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.79.0] — 2026-10-05
+
+Restore monitoring after restarts and adopt Stitchkit 0.105.0
+
+- Monitoring no longer goes blind after `ccmux restart` from another process: pane captures follow
+  the agent pane each session records, and a slow capture batch is one tmux child instead of a
+  serial retry of every pane. Before, the published snapshot showed most sessions as `unknown`
+  until the daemon restarted, while it started about ten tmux processes a second.
+- Healing never takes down or restarts a session whose tmux rows it could not read; one unreadable
+  agent-pane row used to look like a dead agent.
+- `ccmux doctor` reports at once a Codex pane drawn in a shape this version cannot read, and names
+  the records the diagnostic journal skipped when it opened.
+- Finite workloads: a launcher that ignores cancellation is killed after a 5 s grace and reported as
+  `workload-cancel-timeout`; `probe()` answers `unavailable` instead of throwing; the payload's
+  scratch directory is separate from the request; abandoned request directories are swept.
+- External Codex threads: one caller abandoning a lookup no longer fails the others sharing the
+  walk, and a thread created a moment ago is found instead of reported as having no history.
+  Custom-tool failures in Codex history are recognised from the status line the tool host writes.
+- File-backed caches no longer serve stale content after a same-size rewrite within one clock tick
+  on Linux; a file changed in the last 50 ms is re-read instead of cached.
+- The OOM pass takes a fresh tmux inventory when observation is late instead of protecting only
+  the daemon.
+- Daemon CPU attribution charges CPU only to explicit spans, so an open `wait` is no longer
+  credited with other work, and more than 128 measured names share an `other` bucket instead of
+  failing the operation.
+- Status leases and per-pass snapshots are written without fsync and off the I/O thread pool.
+- Tests refuse to run without their isolated home instead of using the real one.
+- Adopt Stitchkit 0.105.0 and current MCP and Claude Agent SDK releases. A diagnostic journal that
+  cannot keep a damaged or unsafe file in place sets it aside as `<file>.quarantined-<epoch>` and
+  the daemon starts; `ccmux doctor` names each file set aside until it is removed. Native companion
+  digests come from Stitchkit's published manifest, and a substituted addon fails the build.
+
 ## [0.78.1] — 2026-10-05
 
 Package native companions through Stitchkit 0.104.2
@@ -82,6 +114,7 @@ Reduce repeated runtime work and expose opt-in daemon performance diagnostics
   remains off, with counters and stall diagnostics available.
 - Shared App Server errors identify the missing transport capability without recommending a
   restart of a live stdio owner.
+
 ## [0.74.0] — 2026-09-30
 
 Prepare unchanged usage only when needed and batch daemon pane observations
@@ -107,14 +140,17 @@ Peer reads cost the peer a relay, not a CLI
   peer about 0.075 s of CPU for the relay, against 0.95 s when the CLI built the rows. The routed
   verbs are one table (`src/boot/routedPrograms.ts`) from which the build, the installation and
   both shim writers are derived.
+
 ## [0.72.2] — 2026-09-29
 
 Peer reads are answered by the daemon
+
 ## [0.72.1] — 2026-09-29
 
 Peer reads are answered by the daemon
 
 - `_peer-read` falls back to building the answer itself when the daemon's socket file is left behind by a daemon that died: a refused connect is recognised through the client's wrapped cause, not only at the top level.
+
 ## [0.72.0] — 2026-09-28
 
 Peer reads are answered by the daemon
@@ -124,6 +160,7 @@ Peer reads are answered by the daemon
   its control socket; the daemon builds the rows with its caches warm, about a tenth of the CPU a
   cold `list --json` spends. With no daemon running the command builds the same answer itself.
   `list` and `chat log` no longer take `--delta`/`--known`.
+
 ## [0.71.0] — 2026-09-28
 
 External status streams as a snapshot and renewals
@@ -134,6 +171,7 @@ External status streams as a snapshot and renewals
   lines with `ExternalStatusFrameSchema` and fold them with `applyExternalStatusFrame`
   (`ccmux/control-client`); a renewal that does not follow the held snapshot returns null and the
   reader reopens.
+
 ## [0.70.0] — 2026-09-28
 
 Closed readers end commands; sessions outrank their children under OOM
@@ -147,6 +185,7 @@ Closed readers end commands; sessions outrank their children under OOM
   daemon returns descendants that merely inherited it to 0, so a shared cgroup's OOM killer takes an
   agent's browser or build before the agent. Without the privilege to lower it the daemon logs once
   and leaves it off.
+
 ## [0.69.0] — 2026-09-28
 
 Fleet reads carry only what changed
@@ -159,6 +198,7 @@ Fleet reads carry only what changed
   `~/.cache/ccmux/peer-reads/`.
 - A peer answer that references a row this reader never held fails that machine's row as
   unreadable; it is never filled in.
+
 ## [0.68.1] — 2026-09-28
 
 Transcript tail no longer answers from a stale index
@@ -166,6 +206,7 @@ Transcript tail no longer answers from a stale index
 - A transcript read that loses the index lock to another reader no longer ends the file at the
   last commit. It catches up the rest of the file in memory, so `tail` at the end of a turn includes
   the turn's final lines.
+
 ## [0.68.0] — 2026-09-28
 
 The daemon comes back by itself after a crash reboot
@@ -180,6 +221,7 @@ The daemon comes back by itself after a crash reboot
 - The systemd unit no longer has a start limit: its budget was spent by units that `Requires=` the
   daemon, and a tripped limit left the daemon down for good.
 - Removed the migration from the directory lock of ccmux releases before 0.66.0.
+
 ## [0.67.1] — 2026-09-27
 
 - Codex sender environments with an invalid or missing thread identity fail closed instead of
@@ -205,6 +247,7 @@ events --follow no longer drops events after multibyte text
   lines by cutting the decoded file at a byte position, so each read started late by one character
   per earlier multibyte character and lost its first line — usually a `turn-end`. The follower now
   reads, counts and holds partial lines in bytes, including a character split by a write boundary.
+
 ## [0.66.2] — 2026-09-23
 
 Publishes 0.66.0: signed self-update on stitchkit, owned Codex mail through its owner, state files and locks on stitchkit
@@ -212,12 +255,14 @@ Publishes 0.66.0: signed self-update on stitchkit, owned Codex mail through its 
 - Carries 0.66.0 and 0.66.1, which were tagged but not published: tests bound on the build
   machine — tmux assumed absent, a native history read held to one second — failed on the CI
   runner.
+
 ## [0.66.1] — 2026-09-23
 
 Publishes 0.66.0: signed self-update on stitchkit, owned Codex mail through its owner, state files and locks on stitchkit
 
 - Carries 0.66.0, which was tagged but not published: a test assumed tmux was absent from the
   build machine, and the CI runner has it.
+
 ## [0.66.0] — 2026-09-23
 
 Signed self-update on stitchkit, owned Codex mail through its owner, and state files and locks on stitchkit primitives
@@ -371,6 +416,7 @@ Signed self-update on stitchkit, owned Codex mail through its owner, and state f
   bytes with a collection between them: a 774 MB Codex rollout is searched whole in 0.9 s at 571 MB
   peak, a 94 MB Claude transcript in 0.4 s. Managed sessions are told about it in their prompt,
   with the reminder that it finds a place, not a result.
+
 ## [0.65.0] — 2026-09-22
 
 The supervisor survives an OOM kill inside its cgroup, a forced shutdown records its own stop, and the ssh fallback is logged once per change instead of once per call
@@ -393,6 +439,7 @@ The supervisor survives an OOM kill inside its cgroup, a forced shutdown records
   identical lines in a week on one machine, which teaches its reader that the message means nothing.
   The standing state was already published by `ccmux fleet`, `ccmux doctor` and the `fallback` field
   on every answer (`src/fleet/routeState.ts`, `src/fleet/transport.ts`).
+
 ## [0.64.1] — 2026-09-22
 
 The undeliverable sweep stops at two stat calls when nothing changed, and the codex ambiguity test no longer reddens by luck
@@ -409,9 +456,11 @@ The undeliverable sweep stops at two stat calls when nothing changed, and the co
   over 200 runs a reader's first non-empty observation saw a single marker 199 times, and the test
   passed only because the 50 ms poll usually missed that window — under load it did not, and the
   gate reddened by luck (`test/codex-bootstrap-failures.test.ts`).
+
 ## [0.64.0] — 2026-09-22
 
 Letters nobody can receive are settled instead of waiting for ever, a continuation cannot be built on a letter that never arrived, and msg sent offers a reference only for a letter that did
+
 ## [0.63.0] — 2026-09-22
 
 A successful msg names the letter it created, so a thread-continuation can reference it, and msg sent lists those letters again
@@ -449,6 +498,7 @@ A successful msg names the letter it created, so a thread-continuation can refer
   for a conditional letter, the recipient's delivery cursor for an immediate one, which no ack has
   ever moved. `message.cancel` reports such a letter as `undeliverable` instead of `delivered`
   (`src/chat/undeliverable.ts`, `src/chat/store.ts`, `src/control/messageCancel.ts`).
+
 ## [0.62.0] — 2026-09-21
 
 The fleet views render only the cards that fit the terminal, open on the managed fleet, and show a one-cell vendor mark beside every model
@@ -473,6 +523,7 @@ The fleet views render only the cards that fit the terminal, open on the managed
 - `list --json` rows carry `modelId`, the model id as the runtime reported it, beside the display
   label `model`. The label has had its vendor prefix removed, so it cannot answer who made an
   unfamiliar family; a peer that predates the field simply has no mark rather than a guessed one.
+
 ## [0.61.10] — 2026-09-19
 
 Dependencies are current and the repository declaration uses the canonical passport filename
@@ -485,26 +536,31 @@ Dependencies are current and the repository declaration uses the canonical passp
 The release ceremony has --commit and --tag halves, so a conductor can run the check between them and report each step as it goes
 
 - The release ceremony has two halves a conductor can run separately: `bun scripts/release.ts --commit X.Y.Z "notes"` makes the local release commit (version bump and CHANGELOG section), and `--tag X.Y.Z` tags a HEAD that declares that version and pushes it. `bun run release X.Y.Z "notes"` is their composition around the check, as before.
+
 ## [0.61.8] — 2026-09-15
 
 The user-instruction reference is shown as prose naming where and when the person said it, and the help says it is not checked, so nobody searches a transcript for a message id
 
 - The `user-instruction` example in the communication-authorization help, the managed-session prompt and the docs shows the reference as prose — `<your address> · user message <date time>` — and says it is not checked, so nobody searches a transcript for a message id that is not there.
+
 ## [0.61.7] — 2026-09-15
 
 A pane-injected letter pickup is proved from the transcript line it was injected at, not by parsing the whole history every delivery pass, which stopped the daemon loop for 48 s on a gigabyte transcript
 
 - A pane-injected letter's pickup is proved from the transcript line it was injected at, not by parsing the session's whole history on every delivery pass while its turn runs. On a transcript of a gigabyte that parse cost seconds of CPU and gigabytes of memory per pass on the daemon's event loop, and stopped the loop for 48 s. A transcript shorter than the recorded line is searched from the start.
+
 ## [0.61.6] — 2026-09-15
 
 A daemon loop stall names why the process did not run: majorFaults (paged out) and preemptions (CPU taken away), counted over the stall itself
 
 - A `daemon event loop blocked` report names why a process that was not running did not run: `majorFaults` (memory paged out and read back from disk) and `preemptions` (the scheduler took the CPU away), both counted over the stall's own window beside `cpuMs`.
+
 ## [0.61.5] — 2026-09-15
 
 A peer on the remote transport falls back to its ssh alias only for a call the remote route never dispatched; the fallback is logged and named on the fleet row
 
 - A peer on the remote transport falls back to its ssh alias when the remote route never dispatched the call — and only then: a call that may already have been delivered is not repeated. The fallback is logged with its reason, and `fleet` names it on the machine's row (`fallback` in `--json`).
+
 ## [0.61.4] — 2026-09-15
 
 Usage stays readable while another process commits to the same index: the usage store runs in WAL, so a reader never reports "accounting unavailable" behind a committing writer
@@ -512,18 +568,23 @@ Usage stays readable while another process commits to the same index: the usage 
 - Usage stays readable while another process commits to the same index: the usage store runs in WAL, where a reader never waits for a writer. Under the rollback journal a reader could not take even a shared lock while a writer committed or had spilled its transaction, and reported "accounting unavailable" after the busy timeout.
 
 - An OpenCode session whose native catalog cannot be served answers 503 naming the gate that closed — no prepared catalog, a catalog prepared for another registration, or the runtime's lease status and reason — instead of one message for all three.
+
 ## [0.61.3] — 2026-09-15
 
 A resumed event or chat feed reads its cursor from the variable the stream profile names with --cursor-env (0.61.2 was tagged but not published: its new test needed an installed agent binary)
+
 ## [0.61.2] — 2026-09-15
 
 A resumed event or chat feed reads its cursor from the variable the stream profile names with --cursor-env, so reconnects no longer lose what happened in the gap
+
 ## [0.61.1] — 2026-09-15
 
 Usage reads no longer fail as locked while another process indexes the same transcript: they answer from the committed cache
+
 ## [0.61.0] — 2026-09-15
 
 Session inventory changes travel in the event feed with a revision; list and fleet carry the matching inventory snapshot; fleet builds local rows while peers answer
+
 ## [0.60.2] — 2026-09-14
 
 A daemon loop stall says whether the daemon was busy or not running
@@ -532,6 +593,7 @@ A daemon loop stall says whether the daemon was busy or not running
   during the stall, beside `blockedMs`. Near `blockedMs` means the daemon was busy with synchronous
   work of its own; near zero means it was not running — waiting in a blocking system call or not
   scheduled by a loaded host. The length alone could not tell the two apart.
+
 ## [0.60.1] — 2026-09-14
 
 Usage accounting no longer reports itself unavailable while another process is indexing the same transcript
@@ -541,6 +603,7 @@ Usage accounting no longer reports itself unavailable while another process is i
   reader no longer queues for the write lock and gives up as "database is locked" — and a process
   that loses the race to advance a transcript index answers from the last committed index instead
   of failing.
+
 ## [0.60.0] — 2026-09-14
 
 Fleet listing survives a caller without runtimes on PATH, the host model catalog answers from the daemon's last read, the daemon no longer freezes on a stalled rename, and cold Codex creates fit their budget
@@ -576,6 +639,7 @@ Fleet listing survives a caller without runtimes on PATH, the host model catalog
   its OpenAI-compatible provider 3.0.48, the OpenCode SDK 1.18.30, MCP ext-apps 2.0.0, React 19.3.0,
   clack prompts 1.8.1, and on the development side the Claude agent SDK 0.3.270, Biome 2.5.13 and
   the Bun and React type packages.
+
 ## [0.59.4] — 2026-09-12
 
 Preserve native transcript cursors and every paginated history part
@@ -584,6 +648,7 @@ Preserve native transcript cursors and every paginated history part
   message. Native transcript cursors use a complete, verified history chain instead of a sliding
   suffix; incomplete, inconsistent or over-budget reads report unavailable rather than losing
   appended messages. Cancellation also interrupts waiting for the native history reader lock.
+
 ## [0.59.3] — 2026-09-12
 
 Native runtimes answer transcript from their own history feed
@@ -592,15 +657,19 @@ Native runtimes answer transcript from their own history feed
   runtime's structured history instead of reporting `transcript file not found`; Claude's native mode
   reads its own jsonl. Absolute `seq`, `--cursor`, `--before` and `--tail` keep the file reader's
   meaning, and `source.kind` names the native source.
+
 ## [0.59.2] — 2026-09-10
 
 A letter whose recipient was removed is no longer counted as waiting
+
 ## [0.59.1] — 2026-09-10
 
 Endpoint causes are classified by which step failed, not by an errno that varies with the runtime
+
 ## [0.59.0] — 2026-09-10
 
 External endpoint failures name their cause and cure; a letter belongs to its session
+
 ## [0.58.2] — 2026-09-10
 
 Read external Codex and Claude transcripts by inventory key
@@ -608,6 +677,7 @@ Read external Codex and Claude transcripts by inventory key
 - Read external Codex and Claude transcripts by their exact inventory key, preserving native
   records, authorship roles, timestamps and bounded line cursors across local and remote routing.
   Refuse unsupported providers, inaccessible storage and managed identities without adoption.
+
 ## [0.58.1] — 2026-09-10
 
 Stable authored history pagination across appends
@@ -616,6 +686,7 @@ Stable authored history pagination across appends
   chains. Preserve cursors across append, verify changed source prefixes, and explicitly reject
   replaced/truncated/rewritten sources or expired snapshots. Bound retained projections, concurrent
   scans and serialized response bytes, including escaped text.
+
 ## [0.58.0] — 2026-09-09
 
 Incremental usage accounting and thread-bound communication receipts
@@ -629,6 +700,7 @@ Incremental usage accounting and thread-bound communication receipts
   the same exact pair and task. Reject mismatched peers, threads, tasks and quotes; show all three
   accepted forms in admission errors. Historical ledger records remain readable without invented
   permission, and chat receipts do not authorize file transfers.
+
 ## [0.57.3] — 2026-09-09
 
 Native turn start survives observation and reconnect
@@ -639,6 +711,7 @@ Native turn start survives observation and reconnect
   external reader contract: deploy the matching reader and producer together.
 - The cancellation regression waits for server acknowledgement before releasing its held lock,
   removing an assertion that depended on client/server event-loop ordering.
+
 ## [0.57.2] — 2026-09-09
 
 The pin is required where there is something to pin
@@ -650,6 +723,7 @@ The pin is required where there is something to pin
   with no route at all: refused for the missing pin with attribution, and for the missing
   justification without it. The pin is now required by the handler, which knows the target, and only
   where the target has one.
+
 ## [0.57.1] — 2026-09-09
 
 An archived thread is still the same conversation at the same address
@@ -659,6 +733,7 @@ An archived thread is still the same conversation at the same address
   knew only the live directory answered "transcript file not found" about a conversation sitting one
   directory over — 215 archived against 61 live on one machine, 14 against 0 on another. A live file
   still wins over an archived one with the same identity.
+
 ## [0.57.0] — 2026-09-09
 
 A message to a session carries its justification
@@ -675,6 +750,7 @@ A message to a session carries its justification
   sits below the composer, so a pane whose bottom rows were taken by a queued-feedback-drafts box
   carried none of them: the session held its mail, timed out every `wait`, and was reported working
   for eleven hours while it sat idle at its prompt.
+
 ## [0.56.0] — 2026-09-08
 
 Spawned agents live on the Agent call, and a folded result says when it ended
@@ -690,6 +766,7 @@ Spawned agents live on the Agent call, and a folded result says when it ended
 - Every folded tool call (Claude and Codex) carries `doneAt`, the time its result was written.
 - `ccmux transcript <session> --agent <id>` and `transcript.read { agent }` read a spawned agent's
   transcript; `--text-limit CHARS` (control: up to 65 536) widens the per-message text budget.
+
 ## [0.55.13] — 2026-09-06
 
 A native turn boundary is announced once, and none is skipped
@@ -699,21 +776,27 @@ A native turn boundary is announced once, and none is skipped
   and one overtaken by the next event was never announced at all: 2236 `turn-start` against 16
   `turn-end` over a day on one machine, beside 193/193 for hook-driven sessions. Activation still
   announces nothing about the past.
+
 ## [0.55.12] — 2026-09-06
 
 Read external Codex transcripts by exact app address with shared line cursors
+
 ## [0.55.11] — 2026-09-06
 
 Verify self-update shutdown only after the current daemon completes startup
+
 ## [0.55.10] — 2026-09-06
 
 Adopt Stitchkit 0.81 with durable daemon lifecycle, bounded logging and revision-based wakeups
+
 ## [0.55.9] — 2026-09-06
 
 Authenticate native Claude child commands with the session launch environment
+
 ## [0.55.8] — 2026-09-06
 
 Remove completed compatibility paths and require the packaged status line
+
 ## [0.55.7] — 2026-09-06
 
 Run the status line as its own program
@@ -723,6 +806,7 @@ Run the status line as its own program
   was parsing the bundle. Compiled on its own it costs 36 ms, of which 25 is the runtime's own start.
   The program travels inside the bundle, is written beside it, and is reached by a guard in the PATH
   shim; without it the bundle answers the same verb.
+
 ## [0.55.6] — 2026-09-06
 
 The refusal comes from the resume, not the call I assumed
@@ -730,6 +814,7 @@ The refusal comes from the resume, not the call I assumed
 - Classify a provider refusal as a held delivery wherever it comes from. A thread another App client
   is working in reports `notLoaded`, so the refusal arrives from the resume rather than from
   `turn/start`, and only the latter was being read as an answer.
+
 ## [0.55.5] — 2026-09-06
 
 A provider's refusal is a hold, and an unchanged hold is not news
@@ -739,6 +824,7 @@ A provider's refusal is a hold, and an unchanged hold is not news
   request — and it was logged as a warning on every pass for as long as that client kept working.
 - Log a held App pickup when its answer changes, not once per delivery pass. An unchanged condition
   was restating itself every three seconds: 6,049 identical lines in five hours.
+
 ## [0.55.4] — 2026-09-05
 
 Bound the native thread read, and stop four diagnostics from lying
@@ -764,15 +850,18 @@ Bound the native thread read, and stop four diagnostics from lying
   `[reasoning]`, and a published summary is surfaced as its own text. The marker made consumers
   recognize a placeholder by matching its text — and it replaced real summaries the provider had
   published.
+
 ## [0.55.3] — 2026-09-05
 
 The hottest command evaluates a leaf, not the product
+
 ## [0.55.2] — 2026-09-04
 
 Preserve realtime delivery through coalesced filesystem events
 
 - Detect command changes even when macOS coalesces their filesystem notification under a
   neighbouring lock filename. Realtime mailbox delivery no longer waits for reconciliation.
+
 ## [0.55.1] — 2026-09-04
 
 Reduce idle native supervisor work and preserve recipe continuations
@@ -783,174 +872,231 @@ Reduce idle native supervisor work and preserve recipe continuations
 - Resume pre-service Custom recipes when their only representation difference is an empty service
   list. Actual capability changes still fail closed. Restart checks the pinned recipe before
   stopping a running session.
+
 ## [0.55.0] — 2026-09-04
 
 Injected remote transport boundary
+
 ## [0.54.1] — 2026-09-04
 
 Generic injected remote transport contract
+
 ## [0.54.0] — 2026-09-04
 
 Canonical transport-native control contract
+
 ## [0.53.6] — 2026-09-04
 
 Current public dependencies with Stitchkit 0.80 support
+
 ## [0.53.5] — 2026-09-04
 
 A generation belongs to a connection, not to an attempt
+
 ## [0.53.4] — 2026-09-04
 
 A machine that is down no longer costs the others their answer
+
 ## [0.53.3] — 2026-09-04
 
 A name this machine does not have is never success
+
 ## [0.53.2] — 2026-09-03
 
 A removal's exit code answers whether the session was removed
+
 ## [0.53.1] — 2026-09-03
 
 The policy code survives a worker that died on its policy
+
 ## [0.53.0] — 2026-09-03
 
 An unavailable policy says which condition failed
+
 ## [0.52.1] — 2026-09-03
 
 A command a person can type is a command help names
+
 ## [0.52.0] — 2026-09-03
 
 A host publishes its first native catalog without a session
+
 ## [0.51.1] — 2026-09-03
 
 A declared service operation is a declared tool name everywhere
+
 ## [0.51.0] — 2026-09-03
 
 Spend reaches the surface consumers read, and a permission mode can be changed
+
 ## [0.50.0] — 2026-09-03
 
 A Custom session performs its owner's operations
+
 ## [0.49.16] — 2026-09-03
 
 A recipe declares the tool names the session actually gets
+
 ## [0.49.15] — 2026-09-03
 
 A create is refused for a model the host never published
+
 ## [0.49.14] — 2026-09-03
 
 A refusal names the model it refused
+
 ## [0.49.13] — 2026-09-03
 
 A model key is judged by the catalog, not by a character shape
+
 ## [0.49.12] — 2026-09-02
 
 A full batch cuts an agent's letter, not a person's
+
 ## [0.49.11] — 2026-09-02
 
 The Stop hook delivers a bounded batch through a writer that drains
+
 ## [0.49.10] — 2026-09-02
 
 A letter that has not been delivered can be withdrawn
+
 ## [0.49.9] — 2026-09-02
 
 A transcript window can be read over the control service
+
 ## [0.49.8] — 2026-09-02
 
 A session says how many letters it has exchanged
+
 ## [0.49.7] — 2026-09-02
 
 A transcript read costs its window, not the whole file
+
 ## [0.49.6] — 2026-09-02
 
 A plan window ends on the clock, and an ended one is not served as current
+
 ## [0.49.5] — 2026-09-02
 
 Every command loads at its case, and the status line's own cost is counted
+
 ## [0.49.4] — 2026-09-02
 
 A pending request too large for the remote transport sheds instead of killing the stream
+
 ## [0.49.3] — 2026-09-02
 
 A rejected service result says which fields it could not read
+
 ## [0.49.2] — 2026-09-02
 
 A run from a checkout writes its own record, not the machine's history
+
 ## [0.49.1] — 2026-09-02
 
 The native stream frame budget comes from the remote transport, not from this project's constant
+
 ## [0.49.0] — 2026-09-02
 
 A held message publishes why, as a value and not only as a sentence
+
 ## [0.48.1] — 2026-09-02
 
 The native stream frame budget is measured on the line a consumer reads
+
 ## [0.48.0] — 2026-09-02
 
 A supervisor that gives up on itself is not self-healing
+
 ## [0.47.9] — 2026-09-02
 
 A machine that stopped checking says so, and a zombie counts as exited
+
 ## [0.47.8] — 2026-09-02
 
 A recorded diagnostic is reachable by the name an operator has
+
 ## [0.47.7] — 2026-09-02
 
 A schema that cannot answer is treated as having nothing to say, and a child that crashed is named as crashed
+
 ## [0.47.6] — 2026-09-02
 
 Check a request against the contract the client speaks
+
 ## [0.47.5] — 2026-09-02
 
 Answer a retried create from its receipt instead of calling it busy
+
 ## [0.47.4] — 2026-09-02
 
 Stop waiting for a lock nobody is waiting for
+
 ## [0.47.3] — 2026-09-02
 
 Tell every letter behind a gate what the gate is
+
 ## [0.47.2] — 2026-09-02
 
 Name the fields a refused request got wrong
+
 ## [0.47.1] — 2026-09-02
 
 Say what a live session leaves behind when its directory moves
+
 ## [0.47.0] — 2026-09-02
 
 Carry the conversation with the directory; stop calling a whole answer a fragment
+
 ## [0.46.0] — 2026-09-02
 
 Mail waits for the recipient's turn boundary, and several letters arrive as one
+
 ## [0.45.0] — 2026-09-02
 
 Move a session's registered directory without recreating it
+
 ## [0.44.0] — 2026-09-02
 
 One session row for list and fleet, so a field cannot arrive on one path and vanish on the other
+
 ## [0.43.8] — 2026-09-01
 
 Keep a large JSON answer whole when the reader is slower than the writer
+
 ## [0.43.7] — 2026-09-01
 
 Keep a large JSON answer whole when the reader is slower than the writer
+
 ## [0.43.6] — 2026-09-01
 
 Bound the test suite at twenty seconds so a busy machine is not a failing gate
+
 ## [0.43.5] — 2026-09-01
 
 Read the account when a limit moves, instead of publishing the pushed figure
+
 ## [0.43.4] — 2026-09-01
 
 Identify a plan window by its limit and length, so a pushed update cannot overwrite another window
+
 ## [0.43.3] — 2026-09-01
 
 Keep every plan window a pushed update is silent about
+
 ## [0.43.2] — 2026-09-01
 
 Group a plan by provider and account, so two runtimes on one address are two budgets
+
 ## [0.43.1] — 2026-09-01
 
 Keep the per-model plan windows, and name a window by its model
+
 ## [0.43.0] — 2026-09-01
 
 Publish how much of the plan each account has left, and seed native Claude admission selection
+
 ## [0.42.0] — 2026-09-01
 
 Answer the model catalog without a session, and carry which window a context fill was measured against
@@ -970,6 +1116,7 @@ Two things a fleet consumer could not do, both asked for by a consumer that hit 
   projection kept only the percentage — so a reader watching the fleet saw a number it could not
   attribute, and the next step is inferring the ceiling from the model's NAME. A source that cannot
   know, such as a fill scraped from a status line, reports absence rather than `model-limit`.
+
 ## [0.41.0] — 2026-09-01
 
 One mechanism where there were four, one table where there were twelve, and the task queue moves out
@@ -1025,6 +1172,7 @@ compatibility population, so these replace rather than extend:
   project's own public names, including the from-source launcher, stay valid.
 - `quality.config.json` declares this repository's identity, role and content classification in
   typed form, for a reader that checks the boundary from outside.
+
 ## [0.40.0] — 2026-09-01
 
 An optional native Claude runtime, and the control every session was missing
@@ -1093,6 +1241,7 @@ An optional native Claude runtime, and the control every session was missing
   a fork was being refused.
 - Stop two tests from asserting the machine's speed. Both passed alone and failed inside the full
   suite on a busy box, which makes a green suite a coin flip rather than a signal.
+
 ## [0.39.42] — 2026-08-31
 
 Answer a startup menu once, never twice into the same pane
@@ -1105,6 +1254,7 @@ Answer a startup menu once, never twice into the same pane
   to the session, or, with the confirming Enter, is submitted as a turn nobody wrote. Both were
   observed. Two menus in a row are still both answered, because a pane seen with no menu on it is
   what proves the second is a different menu.
+
 ## [0.39.41] — 2026-08-31
 
 Read parked sessions honestly, verify declared registries, name the local server
@@ -1126,6 +1276,7 @@ Read parked sessions honestly, verify declared registries, name the local server
   catalog page and the applied profile. `local` says the address was checked and cannot say which
   engine answered; the label carries that half without entering `selection.provider`, which is
   matched against the host adapter.
+
 ## [0.39.40] — 2026-08-31
 
 Compose a host-owned local model provider for the Custom runtime
@@ -1142,6 +1293,7 @@ Compose a host-owned local model provider for the Custom runtime
 - Batch thread-lock inspection by argument bytes instead of a fixed count and group each `lsof`
   answer once instead of re-scanning it per path, since `lsof` walks every process before it
   examines any path. Discovery over two thousand threads: 7171 ms to 4021 ms on a busy host.
+
 ## [0.39.39] — 2026-08-31
 
 Qualify remote image control and close native harness acceptance
@@ -1155,6 +1307,7 @@ Qualify remote image control and close native harness acceptance
   test timeouts or changing production monitoring behavior.
 - Renew synthetic native-producer evidence between independent stream connections and explicitly
   verify expired evidence still refuses; preserve production freshness and replay contracts.
+
 ## [0.39.38] — 2026-08-31
 
 Drain resident native streams during managed shutdown
@@ -1163,6 +1316,7 @@ Drain resident native streams during managed shutdown
   closing the control resource, without a second lifecycle or caller-side cancellation workaround.
 - Qualify clean daemon replacement with a subscribed native reader, retained image input and
   exact message correlation; preserve supervised provider writers and session identities.
+
 ## [0.39.37] — 2026-08-31
 
 Preserve message origin, typed feeds and explicit notifications
@@ -1172,6 +1326,7 @@ Preserve message origin, typed feeds and explicit notifications
 - Include the origin/audience cutover and capacity-fixture qualification from the unpublished
   candidates: conversation traffic is quiet, explicit notices remain available, and accepted images
   plus retry identity survive daemon restart.
+
 ## [0.39.36] — 2026-08-31
 
 Preserve message origin without notification echo
@@ -1183,6 +1338,7 @@ Preserve message origin without notification echo
 - Qualify full-capacity admission with a schema-checked persisted fixture instead of hundreds of
   setup rewrites. Keep the original test deadline and assert that refusal leaves the journal intact.
 - Supersede the unpublished 0.39.35 candidate, whose tag gate caught the fixture timeout.
+
 ## [0.39.35] — 2026-08-31
 
 Preserve message origin and explicit notification audience
@@ -1195,6 +1351,7 @@ Preserve message origin and explicit notification audience
   Suppression advances the cursor, while uncertain sends retain the existing retry semantics.
 - Preserve machine-scoped attachment uploads, accepted image pins and operation receipts across
   the ingress cutover. Snapshot/feed retain message IDs, structured endpoints and accepted origin.
+
 ## [0.39.34] — 2026-08-30
 
 Custom harness, exact runtime identity and bounded external history
@@ -1208,6 +1365,7 @@ Custom harness, exact runtime identity and bounded external history
   required transport fields while retaining owner idempotent chat retry after unknown delivery.
 - Add bounded read-only external authored-text history and explicit control eligibility. Exact
   provider/host/thread cursors refuse changed storage; reads never create or take over a writer.
+
 ## [0.39.33] — 2026-08-30
 
 qualify native approval acceptance
@@ -1215,6 +1373,7 @@ qualify native approval acceptance
 - Qualify native approval acceptance with a narrow host-owner fixture mandate and fail immediately
   if the native turn settles without requesting permission. Verify cancellation against the published
   runtime/client and record completed tool-outcome and suspended-request acceptance.
+
 ## [0.39.32] — 2026-08-30
 
 preserve native tool outcomes and suspended cancellation
@@ -1229,12 +1388,14 @@ preserve native tool outcomes and suspended cancellation
 - Require native generation on exact turn interruption; allow cancellation while awaiting approval
   or input. Retire pending requests on native terminal evidence without accepting permission or
   archiving the conversation, and refuse stale turns/generations without a second abort.
+
 ## [0.39.31] — 2026-08-30
 
 complete native process-group cleanup
 
 - Keep owned native process-group cleanup active when a zero-signal probe reports permission
   denial. Only an absent group completes the liveness check; real termination errors still fail.
+
 ## [0.39.30] — 2026-08-30
 
 retain exact native message correlation
@@ -1245,6 +1406,7 @@ retain exact native message correlation
   unavailable evidence stay explicit; reads never resubmit or infer bindings from text/order.
 - Bound receipt storage and expose its retention limits. Preserve pending operations and reject
   capacity exhaustion before queue admission. Cover both native runtimes and packed Bun/Node clients.
+
 ## [0.39.29] — 2026-08-30
 
 verify late approvals through native terminal pickup
@@ -1253,6 +1415,7 @@ verify late approvals through native terminal pickup
 
 - Keep native acceptance approvals serviced until both cross-runtime message pickups complete;
   distinguish a durable reply from terminal processing and cover late approval and failed outcomes.
+
 ## [0.39.28] — 2026-08-30
 
 publish native content before runtime readiness
@@ -1262,6 +1425,7 @@ publish native content before runtime readiness
 - Commit the initial native content baseline before Codex/OpenCode readiness becomes visible.
   Immediate reads after managed create no longer race the first coalesced content write; write
   failures refuse admission, and native events remain buffered during initial publication.
+
 ## [0.39.27] — 2026-08-30
 
 use unversioned control API and enforce Biome checks
@@ -1276,6 +1440,7 @@ use unversioned control API and enforce Biome checks
   Align source, tests and tooling on two-space indentation, single quotes and a 100-column width.
 - Keep cleanup failures explicit without throwing from `finally`, and replace unchecked probe
   assertions and ambiguous return expressions with typed guards and direct control flow.
+
 ## [0.39.26] — 2026-08-30
 
 exclude native internal context from public history
@@ -1285,6 +1450,7 @@ exclude native internal context from public history
 - Keep native synthetic context and compaction-summary text out of public OpenCode history/content.
   These runtime-generated parts can contain internal tool inputs and attachment-store paths. Preserve
   explicit history omission counts and ordinary authored conversation text without heuristic rewriting.
+
 ## [0.39.25] — 2026-08-30
 
 add native images, replay, selection and context controls
@@ -1317,6 +1483,7 @@ add native images, replay, selection and context controls
   provider diagnostics outside public metadata. Retain exact failure causes in private owner evidence.
 - Verify real image, selection, policy, history, steering and streaming flows on both native runtimes;
   operation-specific unsupported capabilities remain explicit rather than advertised as full IDE parity.
+
 ## [0.39.24] — 2026-08-30
 
 add managed OpenCode and capability-aware runtime control
@@ -1338,6 +1505,7 @@ add managed OpenCode and capability-aware runtime control
   tool payloads out of the public feed; retain bounded private diagnostics for the execution host.
 - Preserve existing Claude/Codex behavior. The optional custom harness remains explicitly unavailable
   pending its published dependency and real acceptance; no substitute agent loop is shipped.
+
 ## [0.39.23] — 2026-08-30
 
 discover models before first chat and preserve native selection
@@ -1357,6 +1525,7 @@ discover models before first chat and preserve native selection
 - Preserve the loaded thread model when applying Plan and other native collaboration presets.
 - Do not request historical turn pagination for a freshly created thread; observe its bootstrap
   on the existing native subscription instead of racing thread-store materialization.
+
 ## [0.39.22] — 2026-08-29
 
 expose the provider-owned Codex model catalog as a bounded control read
@@ -1375,6 +1544,7 @@ expose the provider-owned Codex model catalog as a bounded control read
 - Fail the model-catalog read closed on provider errors, deadline, malformed or oversized pages
   instead of reporting a partial or substituted catalog; unknown identities are refused before any
   provider contact, and no credentials, paths, argv or machine configuration cross the response.
+
 ## [0.39.21] — 2026-08-29
 
 add managed collaboration policy
@@ -1390,6 +1560,7 @@ add managed collaboration policy
 - Probe the installed provider's collaboration-mode catalog before persisting a turn pickup or
   starting a turn. Unsupported policies fail closed without a false pending request, while
   recipe-less/default sessions keep their existing behavior.
+
 ## [0.39.20] — 2026-08-29
 
 add server-owned launch recipes
@@ -1406,6 +1577,7 @@ add server-owned launch recipes
 - Refuse unknown, removed, changed or unavailable launch recipes before registry mutation or
   provider spawn. Recipe creates cannot mix caller flags, leak secret values into argv/projections,
   or turn a late retry into a second writer.
+
 ## [0.39.19] — 2026-08-29
 
 bound managed creation and installed transports
@@ -1421,6 +1593,7 @@ bound managed creation and installed transports
 - Bound local Unix RPC request, header and response bytes with one deadline through body completion
   and owned transport cleanup. Preserve version, refusal, command and no-fallback semantics using
   the public Stitchkit transport already shipped by CCMux.
+
 ## [0.39.18] — 2026-08-29
 
 make control service effects policy-compatible
@@ -1430,6 +1603,7 @@ make control service effects policy-compatible
 - Make revision-1 control-service effects valid declared-service authorization identifiers and
   keep descriptor, typed-client metadata and packaged JSON on one exact dot-delimited mapping.
   Packed Bun/Node consumers now verify the transport policy shape and descriptor-file parity.
+
 ## [0.39.17] — 2026-08-29
 
 publish declared service ingress and native stream adapter
@@ -1442,6 +1616,7 @@ publish declared service ingress and native stream adapter
 - Add a fixed stable-cursor NDJSON native stream producer with target-bound resume cursors,
   explicit generation/gap resets, heartbeats and cancellation. Release the Bun/Node client
   package with descriptor/profile metadata, declarations and SHA-256 integrity.
+
 ## [0.39.16] — 2026-08-29
 
 add workspace-scoped Codex control surface
@@ -1458,12 +1633,14 @@ add workspace-scoped Codex control surface
 - Reconcile concurrent or ambiguous create retries to one registration generation and provider
   writer. Distinguish response submission from provider resolution and require explicit resync
   after writer generation changes.
+
 ## [0.39.15] — 2026-08-28
 
 drain automatic updates before daemon restart
 
 - Fix automatic update shutdown: install and verify first, settle the healing run, then request
   normal daemon shutdown. The daemon no longer waits on the service manager restarting itself.
+
 ## [0.39.14] — 2026-08-28
 
 publish resident external native session status
@@ -1476,6 +1653,7 @@ publish resident external native session status
 - Adopt Stitchkit 0.68.5 and use its configured HTTP adapter for resident control streams.
   Verify post-header cancellation, quiet pending reads and reusable Unix connection capacity
   without adding a consumer cancellation shim or changing session ownership.
+
 ## [0.39.13] — 2026-08-28
 
 add typed resident control and managed daemon lifecycle
@@ -1487,6 +1665,7 @@ add typed resident control and managed daemon lifecycle
 - Keep exact identity, durable message deduplication and native approval/input/partial-composer
   admission. Native waits follow delivery rather than inbox-read cursors; resident waits require
   a fresh observation after their call begins.
+
 ## [0.39.12] — 2026-08-28
 
 own native Codex App Server sessions
@@ -1508,6 +1687,7 @@ own native Codex App Server sessions
   supported native prerelease versions retain bounded turn-state observation.
 
 Existing TUI sessions and official Desktop-owned conversations are not migrated by this opt-in mode.
+
 ## [0.39.11] — 2026-08-27
 
 separate external turn state from writer ownership
@@ -1519,6 +1699,7 @@ separate external turn state from writer ownership
   unavailable and stale outcomes with timestamps and provenance.
 - Bounded read-only App Server status observation without thread mutation or transcript scans;
   unsupported runtimes fail closed. Existing ownership and adoption semantics are unchanged.
+
 ## [0.39.10] — 2026-08-27
 
 read monitoring status natively without CLI processes
@@ -1530,6 +1711,7 @@ read monitoring status natively without CLI processes
 - A self-contained `monitoring-reader.js` release asset with SHA-256, shared configuration
   resolution and protocol validation, independent deadlines/cancellation, bounded concurrency
   and no completed-snapshot cache. Root changes and unsafe/stale/unavailable data fail closed.
+
 ## [0.39.9] — 2026-08-27
 
 preserve rollback during concurrent updates
@@ -1538,6 +1720,7 @@ preserve rollback during concurrent updates
 
 - Concurrent manual and automatic updates serialize bundle swaps. Installing identical bytes
   preserves the previous rollback bundle; a failed backup aborts the swap.
+
 ## [0.39.8] — 2026-08-27
 
 publish bounded resident monitoring status
@@ -1553,18 +1736,23 @@ publish bounded resident monitoring status
 
 - Bound observation subprocess duration/output and transcript metadata cache memory; invalidate
   metadata on file replacement and rotation. Monitoring also works in boot-service locales.
+
 ## [0.39.7] — 2026-08-27
 
 flush large JSON output before exit
+
 ## [0.39.6] — 2026-08-27
 
 expose the external thread inventory
+
 ## [0.39.5] — 2026-08-26
 
 connect Codex App threads to shared chat
+
 ## [0.39.4] — 2026-08-26
 
 release interrupted Codex chat pickups
+
 ## [0.39.3] — 2026-08-26
 
 enable managed Codex chat
@@ -1586,6 +1774,7 @@ enable managed Codex chat
 - **`wait` follows the injected Codex turn, not an older answer.** An immutable message ID, durable
   pickup barrier, pane submission receipt, and transcript boundary prevent premature completion and
   duplicate delivery across daemon or session restart.
+
 ## [0.39.2] — 2026-08-26
 
 retain anonymous turns across spinner frames
@@ -1597,6 +1786,7 @@ retain anonymous turns across spinner frames
   idle on every blank spinner frame. `indeterminate` now consumes bounded turn evidence in that
   branch too, while a real Stop and structural idle remain immediate and expired evidence returns
   to idle instead of creating permanent work.
+
 ## [0.39.1] — 2026-08-26
 
 keep active turns stable across spinner frames
@@ -1608,6 +1798,7 @@ keep active turns stable across spinner frames
   negative frames with the same lifecycle-scoped, bounded turn evidence used by `wait`, deferred
   delivery and daemon observation. Stop still closes voluntarily finished turns immediately;
   interrupted turns still close after bounded silence instead of staying `working` forever.
+
 ## [0.39.0] — 2026-08-26
 
 a held message no longer looks the same as a quiet peer
@@ -1632,6 +1823,7 @@ a held message no longer looks the same as a quiet peer
 - **`ccmux doctor` reports mail held past that point.** A stall is invisible from the sending side by
   construction — the send succeeded and everything after happens on the receiving machine — so it
   has to be findable there, or it is findable nowhere.
+
 ## [0.38.0] — 2026-08-26
 
 carry each session's declared directory through the fleet fan-out
@@ -1649,6 +1841,7 @@ carry each session's declared directory through the fleet fan-out
   directory MEANS belongs to whoever keeps the catalogue.
 - `null` from a peer whose `list --json` predates the field, and that peer's other sessions still
   arrive — one missing field must never cost a machine.
+
 ## [0.37.0] — 2026-08-26
 
 the chat log as a resumable feed, with a cursor that is a position
@@ -1684,6 +1877,7 @@ the chat log as a resumable feed, with a cursor that is a position
   the same parse failure and are nothing alike: one is fixed by asking for fewer rows, the other by
   upgrading a machine. This snapshot serialises whole message bodies, so being cut is the failure
   that actually happens, and "older ccmux?" sent the reader to the wrong machine entirely.
+
 ## [0.36.2] — 2026-08-25
 
 a dead lock holder no longer outlasts every waiter
@@ -1707,6 +1901,7 @@ a dead lock holder no longer outlasts every waiter
 - The timeout now says what was in the way — the pid of a live holder, or that no owner was
   recorded. A bare "timed out" sends a reader looking for contention that may not exist; this
   happened, and the message was the reason it could not be diagnosed.
+
 ## [0.36.1] — 2026-08-25
 
 below 1.0.0 the minor bump IS the breaking one
@@ -1720,6 +1915,7 @@ below 1.0.0 the minor bump IS the breaking one
   and it is where this project and its neighbours live. A compatible bump stays `patch`, because
   overstating it in the other direction is no better. Caught in review by the consumer that draws
   this field: a dashboard colours by the word, and the reader acts on the colour.
+
 ## [0.36.0] — 2026-08-25
 
 a machine says how far behind the current release it is
@@ -1745,6 +1941,7 @@ a machine says how far behind the current release it is
 - Three states stay distinguishable: behind, current, and **nobody has been able to check**. The last
   must never be drawn as current, which is what it would look like if "unknown" and "up to date" were
   the same value.
+
 ## [0.35.0] — 2026-08-25
 
 an owner outside the fleet has an address, and the hop through a person is written down
@@ -1771,6 +1968,7 @@ an owner outside the fleet has an address, and the hop through a person is writt
   of* that owner, never as that party speaking, since ccmux cannot authenticate them — delivered to
   whoever wrote, and the letter stops waiting. Answers are counted per letter and per task, so two
   errands want two answers and one reply cannot close both.
+
 ## [0.34.0] — 2026-08-25
 
 the ledger survives a record it cannot read, without moving the others
@@ -1793,6 +1991,7 @@ the ledger survives a record it cannot read, without moving the others
   record from an *older* generation, which needs a person to migrate it.
 - `ccmux doctor` and `ccmux inbox` report how many records this build cannot read. An append-only
   history that quietly looks shorter than it is has stopped being one.
+
 ## [0.33.0] — 2026-08-25
 
 address a session by what it does, not by what it is called
@@ -1818,6 +2017,7 @@ address a session by what it does, not by what it is called
 - Shown on the address line in `ccmux fleet` (the line people copy from) and in `list --json` /
   `fleet --json`, including for remote machines. A remote role resolves against the same `list --json`
   answer the peer identity comes from, so a session cannot be selected by a role it held one call ago.
+
 ## [0.32.0] — 2026-08-25
 
 a pane is a written fact, not a glance
@@ -1845,6 +2045,7 @@ a pane is a written fact, not a glance
   pane are not a feature anybody subscribed to — `list`, the TUI, `wait` and chat delivery read them
   regardless — so gating them on a publication toggle let switching off a feed quietly weaken
   delivery.
+
 ## [0.31.1] — 2026-08-25
 
 a spinner is activity, so a long tool call is not a dead turn
@@ -1862,6 +2063,7 @@ a spinner is activity, so a long tool call is not a dead turn
 - The first look at a session now acts on nothing: it has no baseline to be a diff against, so it
   cannot tell a turn that died an hour ago from one whose pane it sampled at the wrong instant. The
   pass two seconds later is where an inherited orphan gets closed.
+
 ## [0.31.0] — 2026-08-25
 
 the snapshot says when the current turn began
@@ -1899,6 +2101,7 @@ the snapshot says when the current turn began
   event as news. The stamp is repaired either way.
 - A late `Stop` on a turn the supervisor already closed says nothing, instead of announcing the same
   ending a second time without a duration.
+
 ## [0.30.3] — 2026-08-25
 
 a turn begins with a transition, not with a message
@@ -1913,6 +2116,7 @@ a turn begins with a transition, not with a message
   the time since the last message instead of the length of the work — a lie about the one number this
   feed exists to publish, and a convincing one: plausible on its face, and under-reporting more the
   busier a session is. The start instant is now kept for the turn it belongs to.
+
 ## [0.30.2] — 2026-08-25
 
 an abandoned turn is announced once, not once per observation pass
@@ -1926,6 +2130,7 @@ an abandoned turn is announced once, not once per observation pass
   silence — deduping on "was it true last pass" therefore re-announced the same turn. It now dedupes
   on the identity of the turn, which does not flicker. For a consumer that speaks an event out loud,
   this was three announcements of one thing.
+
 ## [0.30.1] — 2026-08-25
 
 a reopened event stream resumes where the reader left off
@@ -1939,6 +2144,7 @@ a reopened event stream resumes where the reader left off
   stream opened, frames flowed, and the gap simply did not exist for the consumer. No error, once
   every fifteen minutes. An explicit `--since` still wins over the variable, and an unparseable
   cursor fails loudly rather than degrading back into that silence.
+
 ## [0.30.0] — 2026-08-25
 
 sessions publish what happened, and the remote transport's answer is read in full
@@ -1980,6 +2186,7 @@ sessions publish what happened, and the remote transport's answer is read in ful
   meaningless once the feed rotates — so every event carries an `id` for consumers to dedupe on.
   Records parse leniently: a field added by a newer build cannot make the feed unreadable on an older
   machine. `sessionEvents` (machine) and `eventsEnabled` (session) switch it off; both default on.
+
 ## [0.29.0] — 2026-08-25
 
 the launch stamp sees the rules, MCP and environment that argv never showed
@@ -2033,6 +2240,7 @@ the launch stamp sees the rules, MCP and environment that argv never showed
   no transport configured, local injected remote transport agent down — instead of a bare verdict with nothing to
   check. The local agent socket is checked by existence only, never probed, so a healthy-but-busy
   agent can never be reported as unreachable.
+
 ## [0.28.0] — 2026-08-21
 
 anonymous remote messages now expose their missing return route
@@ -2044,6 +2252,7 @@ anonymous remote messages now expose their missing return route
   route back to the originating agent. Local human CLI sends and authenticated managed senders stay
   quiet; the distinction comes from verified process ancestry rather than environment or address
   guesses.
+
 ## [0.27.0] — 2026-08-19
 
 a dead agent socket no longer travels into a session that outlives its login
@@ -2069,6 +2278,7 @@ including why the obvious check lies. `IdentityAgent` in `ssh_config` overrides 
 multiplexing reuses somebody else's authenticated connection, so a route check needs
 `-o IdentityAgent=none -o ControlPath=none -o BatchMode=yes`. Unsetting the environment variable is
 not a substitute; it answers according to whether the configured socket is alive that minute.
+
 ## [0.26.0] — 2026-08-19
 
 a failed hop is reported as a queued message, not as a lost one
@@ -2091,6 +2301,7 @@ that stays silent, because the guess gets believed and acted on.
 
 Also documented in `peer-routing.md` as a rule, not a note: never name a cause the transport did not
 report, and never describe a queued message as a lost one.
+
 ## [0.25.0] — 2026-08-19
 
 the Telegram mirror reads like a message, not like an address
@@ -2111,6 +2322,7 @@ exactly what fleet addressing guarantees. The machine stays: the same session na
 two boxes, so dropping the uuid is safe and dropping the machine would not be. Mail to the owner
 collapses to `📩 [machine:session → you]`. The exact address keeps its place in the pane tag, where an
 agent really does copy it to answer.
+
 ## [0.24.0] — 2026-08-19
 
 a removed command names its replacement instead of a usage line
@@ -2135,6 +2347,7 @@ dispatcher, before any command parses its arguments — so a new command cannot 
 removal is one row. The notice states the version that removed it, the command to run instead, why it
 went, and that a rule still teaching it is what is out of date. Matching is verb-scoped and
 whole-token, so a chat body discussing the flag passes straight through.
+
 ## [0.23.0] — 2026-08-18
 
 injected remote transport transport: the fleet map is no longer one-directional
@@ -2166,6 +2379,7 @@ public IP, while no node listens on a port and no node holds a credential to ano
 - Admission stays hard: chat receive requires descending from an authenticated remote transport —
   sshd, or the injected remote transport agent (proved by process-tree walk; `injected remote transport call` deliberately does
   NOT confer admission, so a local process cannot launder itself into delivery through the CLI).
+
 ## [0.22.0] — 2026-08-17
 
 a session waiting on a human is no longer reported as idle
@@ -2197,6 +2411,7 @@ are a decision nobody has made, and granting those unread is not the supervisor'
 Whatever the policy answers, an unanswered menu is now visible rather than silent: `list` shows
 `prompt` instead of `idle`, the TUI names the question, and `doctor` lists every session stranded on
 one. A menu we do not recognise reports as an unrecognised choice — still not idle.
+
 ## [0.21.0] — 2026-08-17
 
 a lost conversation now has a way out that is not demolition
@@ -2222,6 +2437,7 @@ cases need opposite actions and the reader already knows which one they are in.
 Also: `rm` clears the block belonging to the name it unregisters. A verdict describes a session, and
 once the session is gone it describes nobody — a later session of the same name inheriting it was
 prevented only by generation and uuid failing to match, which is luck rather than design.
+
 ## [0.20.0] — 2026-08-17
 
 the tool no longer lives in a directory that invites its own deletion
@@ -2261,6 +2477,7 @@ wants. `ccmux install` enforces this itself, so the guarantee does not depend on
 used. Every step converges — bundle fetched only when the bytes differ, shim and unit written only
 when they say the wrong thing, nothing restarted unless something changed — and a healthy machine
 comes out reporting *nothing to do* with no files written.
+
 ## [0.19.0] — 2026-08-12
 
 the transcript window is bounded in bytes, and the fleet view stops guessing
@@ -2287,6 +2504,7 @@ What the view knows about its own data is now distinct from what the data says: 
 `loading sessions…` until something answers, the header says `external off` when the section is
 absent by choice and `external scanning…` while a pass runs, and discovery starts only after the
 managed fleet has painted.
+
 ## [0.18.0] — 2026-08-11
 
 inter-agent chat gains a machine default
@@ -2314,6 +2532,7 @@ the `RESTART` column — chat framing and the Stop hook are launch-time and woul
 configured but not live. Existing registry rows carry an explicit value and therefore read as
 overrides: they keep it until cleared, because "explicitly off" and "not set" are different things
 and guessing between them is not ours to do.
+
 ## [0.17.0] — 2026-08-10
 
 escalated modes under root take both locks, or neither
@@ -2339,6 +2558,7 @@ names anything already configured that way, and the launcher still downgrades.
 
 Turning it on changes the launch environment, so the stamp reports `env` and `list` asks for the
 restart that applies it — the two mechanisms meet with no special-casing.
+
 ## [0.16.0] — 2026-08-10
 
 a setting you cannot honour is refused where it is made
@@ -2367,6 +2587,7 @@ working, half not, with nothing said. So the refusal now happens where the decis
   strictly worse than one running guarded and reported.
 
 Escalated modes on a server require a daemon running as a **non-root user**. That is the only path.
+
 ## [0.15.0] — 2026-08-10
 
 escalated permission modes under root are the owner's declaration
@@ -2387,6 +2608,7 @@ asked for. Deleting the guard instead would have been shorter and wrong: every o
 a fleet would inherit the escalation the moment one of them wanted it. The permission-flag route is
 gated by the same declaration, since it is the same escalation by another name, and the decision
 became a pure function so it is tested instead of depending on the running process's uid.
+
 ## [0.14.0] — 2026-08-10
 
 two ways the supervisor knew something and said nothing
@@ -2422,6 +2644,7 @@ lifecycle block that names where the history is and what to do. It reuses the ex
 mechanism, which `list` and the TUI already surface and an explicit start clears. It does **not**
 move the file: those are someone's data, and a uuid match in another directory can be picked wrong.
 Blocking costs a stopped session; the alternative cost an unrecoverable overwrite.
+
 ## [0.13.0] — 2026-08-10
 
 the record carries its generation; the receive path stops shelling out per ancestor
@@ -2448,6 +2671,7 @@ directly on Linux brings it to **0.099ms**; macOS keeps the targeted per-level q
 The measurement killed both of the obvious fixes before they were written: caching per process buys
 nothing (the receiver is a fresh process per message), and reading the whole process table in one
 call was **five times worse** on macOS (hundreds of rows to walk two). Depth was never the cost.
+
 ## [0.12.0] — 2026-08-10
 
 first-class managed Codex lifecycle and external ownership
@@ -2468,6 +2692,7 @@ Codex is now a first-class managed session provider instead of a transcript-only
   left untouched as a read-only archive rather than guessed into the new identity model.
 - Codex pane chat delivery remains intentionally unavailable until its composer, approval and turn
   frames are calibrated. Desktop-native Codex tasks continue to use the host's native task tools.
+
 ## [0.11.0] — 2026-08-06
 
 one state root instead of scattered dotfiles
@@ -2501,6 +2726,7 @@ path itself:
   means "nothing to supervise", so running sessions keep running untouched.
 - `doctor` prints all three roots. The layout drifting unnoticed is what produced this in the first
   place.
+
 ## [0.10.2] — 2026-08-05
 
 the RESTART column stops crying wolf across the fleet
@@ -2516,6 +2742,7 @@ hashed argv — the prompt, `--settings` (inline JSON, not a path), the mode, th
 resolve the binary when they run, so a live session picks up new supervisor code without restarting.
 A column that cries wolf across the whole fleet is worse than none: a real `chat`/`mode`/`config`
 drowns in it. The stamp keeps `version` as diagnostics.
+
 ## [0.10.1] — 2026-08-05
 
 a background shell made a session invisible to its own mail
@@ -2560,6 +2787,7 @@ and, until now, no explanation. A live agent completed its task, could not hand 
 spent five tool calls rediscovering the topology. The fact is known when the message is framed, so
 it is now stated there, along with the one channel that does work. Callers that know nothing about
 routing (the Telegram mirror) still print nothing — an absence of knowledge is not a fact.
+
 ## [0.10.0] — 2026-08-05
 
 three ways a session looked busy while nothing was happening
@@ -2594,6 +2822,7 @@ for a restart instead of reporting it gone, ignores mail that is scheduled for l
 delivered, and names the real cause on timeout instead of guessing "still working". Hold reasons are
 one sentence per cause, and the injected prompt — the only surface an agent actually reads — now says
 plainly that exit 0 is not always "the work is done".
+
 ## [0.9.4] — 2026-08-05
 
 send stops echoing your own text, and stops looking like a way to write to an agent
@@ -2612,12 +2841,15 @@ fix: `send` stops echoing what you just wrote, and stops pretending to be a way 
 - A long non-slash message aimed at a chat-capable session gets a one-line nudge toward `msg`. Not a
   refusal — pasting long text on purpose is legitimate — and ccmux's own internal use (a restart's
   `--then` note) is exempt, since the advice would be for nobody.
+
 ## [0.9.3] — 2026-08-05
 
 the fleet no longer lags a release behind a CDN cache
+
 ## [0.9.2] — 2026-08-05
 
 Telegram mirror: bracketed route header with air under it
+
 ## [0.9.1] — 2026-08-05
 
 turning the Telegram mirror on starts a live feed, not a history replay
@@ -2642,6 +2874,7 @@ Configuring a bot on two servers dumped 25 old messages into the chat. The curso
 until the mirror first runs on that machine, and the first run adopts the present as its starting
 point and sends nothing — a mirror is a feed of what happens next, not an archive replay. Existing
 cursor files hold a number and are unaffected.
+
 ## [0.9.0] — 2026-08-05
 
 prompt speaks in addresses; the Telegram mirror can cover the whole fleet
@@ -2665,6 +2898,7 @@ fix: the two places where ccmux itself pushed agents back to the old way
   the same session name commonly exists on two boxes — the very ambiguity addressing exists to
   remove. Enabling it on each machine is config only: cursors are per-machine, so nothing is
   coordinated and nothing double-sends.
+
 ## [0.8.0] — 2026-08-05
 
 list tells you which sessions a restart would actually change
@@ -2683,6 +2917,7 @@ feat: `ccmux list` now tells you which sessions a restart would actually change
   version at all yet certainly requires a restart.
 - A forked conversation is not a config change (the re-pinned uuid is normalised out), and a session
   with no record yet shows nothing — unknown is never displayed as stale.
+
 ## [0.7.0] — 2026-08-05
 
 cross-machine mail that couldn't leave is re-sent when transit returns
@@ -2705,6 +2940,7 @@ feat: cross-machine mail that couldn't leave is now re-sent when transit returns
   retries for fleets that can restore transit locally — generic, off by default.
 - **The key model is untouched.** Nothing gains access to anything; the fix is to survive the link
   being down, not to keep it up.
+
 ## [0.6.1] — 2026-08-05
 
 a session could go permanently deaf to chat — ccmux was typing into it
@@ -2725,6 +2961,7 @@ fix: a session could go permanently deaf to chat — because ccmux was typing in
 - **`chat on|off`, `router on|off` and `inbox` accept a fleet address** like every other verb that
   operates on an existing session. Without it both a human and an agent fell back to raw `ssh`,
   which is what addressing exists to remove.
+
 ## [0.6.0] — 2026-08-05
 
 fleet addressing — <machine>:<session> as a first-class agent address, with the return address and the whole exchange visible
@@ -2759,6 +2996,7 @@ reconstruct because each machine's log knew only half of it.
 - Fixes along the way: a delivered `--defer` message no longer shows as pending forever; `inbox` no
   longer advances another session's read cursor; `restart <name>` on an unknown session exits 1
   instead of claiming success; unreachable machines are reported and never fatal.
+
 ## [0.5.1] — 2026-08-03
 
 chat delivers while you watch a session — hold only while a human is typing
@@ -2776,6 +3014,7 @@ fix: watching a session no longer blocks its chat — delivery holds only while 
 - The selection-menu hold is untouched: injecting there would pick an option the agent never chose.
 - Hold reasons are now named in the log ("human is typing" / "typed a moment ago") instead of the
   blanket "human attached".
+
 ## [0.5.0] — 2026-08-03
 
 restart --all (TUI R), ccmux wait, transcript --last-message, self-explaining chat on
@@ -2800,6 +3039,7 @@ feat: `restart --all` (+ TUI `R`), `ccmux wait`, `transcript --last-message`, an
   and framing are wired at launch — was invisible.
 - README gains a **Coordinating agents** recipe (enable → restart → hand off → `wait` → take the
   report), including the explicit "chat is machine-local, keep orchestrator and workers on one host".
+
 ## [0.4.0] — 2026-07-30
 
 Claude session status from structured sources (statusLine JSON + hooks), not pane-scraping
@@ -2819,6 +3059,7 @@ feat: Claude session status from structured sources (statusLine JSON + hooks), n
 - Both inject via `--settings` and coexist with the chat Stop hook; status files live under
   `~/.ccmux/status/` and are cleared on stop/rm/restart. Fully fail-open — a status/statusline hiccup
   can never wedge a turn or corrupt the rendered bar.
+
 ## [0.3.0] — 2026-07-30
 
 Codex launch/resume (close the launch gap) + shell completions
@@ -2837,6 +3078,7 @@ feat: Codex launch/resume (close the launch gap) + shell completions
   `COMMANDS` registry `ccmux help` uses, so a new/renamed verb can never drift from what completes.
 - Test coverage filled in for the transcript adapters (Claude tool-call folding + Codex response items),
   the `list` context-label parse, and the TUI width/wrap primitives.
+
 ## [0.2.1] — 2026-07-29
 
 model from transcript (source of truth), not the statusline whitelist — a new Claude family (Fable/Mythos) is never shown as a blank model again
@@ -2870,6 +3112,7 @@ fix: shipped bundle is truly self-contained — stub react-devtools-core at buil
   stage / CI / release), the misleading "never reached in prod" comment and the obsolete "build only
   outside the project tree" caveat are gone, and a guard test builds via that same path and asserts
   the bundle starts under a wiped cache + dead registry — so this can never silently regress.
+
 ## [0.1.19] — 2026-07-25
 
 session-reader library seam — expose the tested block-parser as 'ccmux/session-reader' for external consumers (readSession/parseSession/detect + types), lean (no ink/react), inert for the fleet bundle
@@ -2884,6 +3127,7 @@ session-reader library seam — expose the tested block-parser as 'ccmux/session
   the shipped bundle is built from `cli.ts`, and `exports` only affects external `import "ccmux/…"`
   resolution. The format sniff moved to `src/agent/detect.ts` (normalize-only deps) and is re-exported
   from `agent/index.ts` under its existing name.
+
 ## [0.1.18] — 2026-07-24
 
 fix: 'ccmux update --check' is now read-only and a stale/older staged bundle can't silently downgrade a machine
@@ -2896,6 +3140,7 @@ fix: 'ccmux update --check' is now read-only and a stale/older staged bundle can
   unreadable one counts as not-newer) — a stale/older staged build is refused as a downgrade unless
   `--force`, with a message pointing at the forgotten file. The legit "test a newer build locally"
   path is unchanged.
+
 ## [0.1.17] — 2026-07-24
 
 chat-layer follow-ups from acceptance testing: cancellable watchdogs (msg cancel + --task dedup), honest single-source usage, stdin body, --after+--defer trap warning
@@ -2923,6 +3168,7 @@ chat-layer follow-ups from acceptance testing: cancellable watchdogs (msg cancel
 - Diagnostic: the daemon now logs when it HOLDS a pending message solely because a human is attached
   to the recipient's pane (delivery resumes on detach) — so "the message never arrived" is traceable
   to that transient cause instead of looking like a broken chat.
+
 ## [0.1.16] — 2026-07-24
 
 inter-agent deferred chat + autonomous router sessions + time-delayed watchdog delivery
@@ -2954,6 +3200,7 @@ inter-agent deferred chat + autonomous router sessions + time-delayed watchdog d
   (or the cli) may relay, never a plain peer.
 - Owner-language: sessions reply to `owner` in the owner's own language by default; an optional
   `ownerLang` in machine.json forces a fixed language.
+
 ## [0.1.15] — 2026-07-19
 
 inter-agent chat (menu-safe pane delivery + one-way Telegram mirror) + isolated dev instance
@@ -2986,6 +3233,7 @@ inter-agent chat (menu-safe pane delivery + one-way Telegram mirror) + isolated 
   bounces; loop/rate guards cap a runaway A→B→A. An append-only ledger (`~/.ccmux-chat.jsonl`) is
   the source of truth; multi-line bodies deliver via bracketed paste. Optional one-way Telegram
   mirror (`telegram` in machine.json → group/DM/topic; fail-soft, outbound only).
+
 ## [0.1.14] — 2026-07-19
 
 auto-answer Claude's resume-from-summary picker so daemon-healed reboots don't strand large sessions at the menu
@@ -2998,6 +3246,7 @@ auto-answer Claude's resume-from-summary picker so daemon-healed reboots don't s
   (`full` = keep all context [default] · `summary` = compact · `off` = leave for a human). It reads
   the option NUMBER from the pane (robust to reordering) and confirms with Enter only if the number
   key didn't. Claude-only; other agents have no such picker.
+
 ## [0.1.13] — 2026-07-17
 
 injected prompt teaches bare ccmux shim, not the absolute bun path
@@ -3006,6 +3255,7 @@ injected prompt teaches bare ccmux shim, not the absolute bun path
   command (the PATH shim) instead of an absolute `bun …/ccmux.js` path, so fleet agents
   call it cleanly. Falls back to the absolute invocation only when the shim isn't
   installed. The machine re-execs (supervisor, boot unit, restart-worker) stay absolute.
+
 ## [0.1.12] — 2026-07-17
 
 per-session permission-mode override
@@ -3019,6 +3269,7 @@ per-session permission-mode override
 - The root-guard is unchanged and still applies to the resolved mode: under a root daemon,
   escalated modes (`bypassPermissions`/`dontAsk`) still downgrade to `auto`, whether they came
   from the machine or the session.
+
 ## [0.1.11] — 2026-07-16
 
 transcript whole-session composition stats
@@ -3027,6 +3278,7 @@ transcript whole-session composition stats
   `--json` response, counted over the ENTIRE JSONL (not just the loaded window) and cached by
   mtime — idle sessions cost nothing, active ones recompute only when they move. Lets a viewer
   show true session composition that doesn't drift as you paginate.
+
 ## [0.1.10] — 2026-07-16
 
 transcript backward pagination — infinite-scroll-up
@@ -3036,6 +3288,7 @@ transcript backward pagination — infinite-scroll-up
   lines that carry no message — blank / folded tool_result), and every response now carries
   `window { firstLine, lastLine, reachedStart }` so a consumer can page older until line 1.
   `parse` gained an optional `endLine` upper bound (claude + codex parsers).
+
 ## [0.1.9] — 2026-07-16
 
 transcript: full tool input + result output for the expanded card
@@ -3045,6 +3298,7 @@ transcript: full tool input + result output for the expanded card
   display text limit. Consumers can now render a real request→response body per tool call
   instead of only the one-line summary. Claude + Codex parsers emit both; null for non-tool
   messages and still-running calls.
+
 ## [0.1.8] — 2026-07-14
 
 release pipeline v2 — CI-only publishing
@@ -3053,6 +3307,7 @@ release pipeline v2 — CI-only publishing
   bundle smoke); local `--publish` removed; `bun run release X.Y.Z "notes"` is the one
   ceremony (clean-tree guard → check → bump + changelog → commit → tag → push).
 - Pre-push git hook runs `bun run check` (wired via `core.hooksPath`).
+
 ## [0.1.7] — 2026-07-14
 
 - Follow the fork: the registry re-pins a session to the new session id when Claude Code

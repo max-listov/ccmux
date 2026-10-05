@@ -107,7 +107,10 @@ export function customContextApi(
       );
     },
     async compact() {
-      throw new AppError('UNSUPPORTED', 'Native compaction is unavailable', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: 'Native compaction is unavailable',
+        status: 409,
+      });
     },
     async compactionMarker() {
       return null;

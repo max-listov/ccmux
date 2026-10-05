@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { monitoringStatusPath } from '../src/config/paths.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
-import { observationExecCount } from '../src/monitoring/tmux.ts';
+import '../src/monitoring/tmux.ts';
 import {
   MONITORING_MAX_READERS,
   readMonitoringStatus,
   STATUS_MAX_BYTES,
 } from '../src/monitoring-reader.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
 let root: string;
 let previousConfig: string | undefined;
@@ -45,7 +45,7 @@ async function fixture() {
 
 test('public native API: 100 sequential and 100 concurrent reads reuse one published observation', async () => {
   const { snapshot } = await fixture();
-  const before = observationExecCount();
+  const before = producerMetric('observation').execCount ?? 0;
   // Assert on status and reason together with the snapshot, never on the snapshot alone. Five
   // different outcomes hand back `null` here — missing, invalid, oversized, expired, producer
   // stopped — and a bare `toEqual(snapshot)` prints all five as the same thirty-eight-line diff
@@ -75,7 +75,7 @@ test('public native API: 100 sequential and 100 concurrent reads reuse one publi
     ).map(again),
   );
   for (const read of reads) expect(live(read)).toEqual(expected);
-  expect(observationExecCount()).toBe(before);
+  expect(producerMetric('observation').execCount ?? 0).toBe(before);
   // Callers cannot corrupt the shared result delivered to other callers.
   if (reads[0]?.snapshot) reads[0].snapshot.sessions.length = 0;
   expect(reads[1]?.snapshot?.sessions.length).toBe(1);

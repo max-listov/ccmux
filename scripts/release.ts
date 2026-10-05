@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 // DEV release tooling — runs ONLY from the source checkout (package.json scripts). This is
 // NOT part of the `ccmux` tool that ships to the fleet: clients have a bundle, no repo, no
 // package.json, so they can never build or publish a release.
@@ -39,6 +40,7 @@ import { buildCodexRuntimeReader } from './build-codex-runtime-reader.ts';
 import { buildControlClient } from './build-control-client.ts';
 import { buildMonitoringReader } from './build-monitoring-reader.ts';
 import { buildBundle } from './bundle.ts';
+import { rollChangelogText } from './changelog.ts';
 import { packageControlServiceClient } from './package-control-service.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -160,20 +162,8 @@ function changelogSection(version: string): string | null {
   return found ? out.join('\n').trim() : null;
 }
 
-/** Move `[Unreleased]` content into a dated `[X.Y.Z]` section (notes line prepended). */
 function rollChangelog(version: string, notes: string, today: string): string | null {
-  const src = readFileSync(CHANGELOG, 'utf8');
-  const marker = '## [Unreleased]';
-  const at = src.indexOf(marker);
-  if (at === -1) return null;
-  const afterHeader = at + marker.length;
-  const nextSection = src.indexOf('\n## [', afterHeader);
-  const bodyEnd = nextSection === -1 ? src.length : nextSection;
-  const unreleased = src.slice(afterHeader, bodyEnd).trim();
-  const merged = [notes, unreleased].filter((s) => s !== '').join('\n\n');
-  if (merged === '') return null; // nothing to release — keep the discipline loud
-  const section = `${marker}\n\n## [${version}] — ${today}\n\n${merged}\n`;
-  return `${src.slice(0, at)}${section}${src.slice(bodyEnd === src.length ? bodyEnd : bodyEnd + 1)}`;
+  return rollChangelogText(readFileSync(CHANGELOG, 'utf8'), version, notes, today);
 }
 
 /** A release is cut from a clean main whose tag does not exist yet; null when it may proceed. */

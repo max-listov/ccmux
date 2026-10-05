@@ -30,7 +30,10 @@ export function historyCursor(m: MachineConfig, s: Session, cursor?: string): st
   try {
     parsed = CursorSchema.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')));
   } catch {
-    throw new AppError('HISTORY_CURSOR', 'Native history cursor is invalid', 409);
+    throw new AppError('HISTORY_CURSOR', {
+      message: 'Native history cursor is invalid',
+      status: 409,
+    });
   }
   if (
     parsed.registration !== s.registrationGeneration ||
@@ -38,11 +41,10 @@ export function historyCursor(m: MachineConfig, s: Session, cursor?: string): st
     parsed.revision !== readContextJournal(m, s).revision ||
     parsed.generation !== (readManagedRuntimeStatus(m, s).snapshot?.generation ?? null)
   )
-    throw new AppError(
-      'HISTORY_CURSOR',
-      'Native history cursor no longer belongs to this context',
-      409,
-    );
+    throw new AppError('HISTORY_CURSOR', {
+      message: 'Native history cursor no longer belongs to this context',
+      status: 409,
+    });
   return parsed.cursor;
 }
 export function encodeHistoryCursor(

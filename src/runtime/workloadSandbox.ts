@@ -1,36 +1,32 @@
 import type { AgentProcessSandbox } from 'stitchkit/agent-runtime';
-import { z } from 'zod';
 import { spawnFiniteWorkload } from './finiteWorkload.ts';
-import type { FiniteWorkloads } from './workloadContract.ts';
+import { type FiniteWorkloads, WorkloadProtocolSchema } from './workloadContract.ts';
 
 export function finiteWorkloadSandbox(config: FiniteWorkloads): AgentProcessSandbox {
   return {
-    probe: () => {
+    // Any failure to describe the launcher is "unavailable", never an exception: Stitchkit calls
+    // probe() before it is inside a promise, so a throw here escapes as a raw error with a path in it.
+    probe: async () => {
       if (process.platform !== 'linux')
         return { grade: 'unavailable', reason: 'run-workload-platform-unsupported' };
-      const result = Bun.spawnSync([config.launcherBin, '--describe'], {
-        stdin: 'ignore',
-        stdout: 'pipe',
-        stderr: 'pipe',
-        timeout: 5000,
-      });
-      const protocol = z.looseObject({
-        schema: z.literal('node-workload-protocol/v1'),
-        command: z.literal('node-workload-run'),
-        platform: z.literal('linux'),
-        mode: z.literal('disposable'),
-        supervisor: z.literal('direct-parent-process-instance'),
-      });
-      if (
-        result.exitCode !== 0 ||
-        !protocol.safeParse(JSON.parse(result.stdout.toString())).success
-      )
-        return { grade: 'unavailable', reason: 'workload-launcher-protocol-unavailable' };
-      return {
-        grade: 'partial',
-        restrictions: ['process-contained'],
-        gaps: ['network-denied', 'secrets-hidden', 'write-contained'],
-      };
+      try {
+        const child = Bun.spawn([config.launcherBin, '--describe'], {
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'ignore',
+          timeout: 5000,
+        });
+        const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+        if (code === 0 && WorkloadProtocolSchema.safeParse(JSON.parse(output)).success)
+          return {
+            grade: 'partial',
+            restrictions: ['process-contained'],
+            gaps: ['network-denied', 'secrets-hidden', 'write-contained'],
+          };
+      } catch {
+        /* missing launcher, unreadable or non-JSON description: unavailable below */
+      }
+      return { grade: 'unavailable', reason: 'workload-launcher-protocol-unavailable' };
     },
     prepare: (input) => ({
       executable: input.executable,

@@ -1,35 +1,23 @@
-import { lstatSync } from 'node:fs';
 import { subagentsDir } from '../agent/claude/subagent.ts';
 import { providerFor } from '../agent/index.ts';
 import { transcriptIndexPath } from '../agent/transcript/transcriptIndex.ts';
 import { withExternalTranscript } from '../external/transcript.ts';
 import type { MachineConfig, Session } from '../types.ts';
-import { measureCpu } from '../util/cpuScope.ts';
+import { measured } from '../util/cpuScope.ts';
+import { fileStamp } from '../util/fileStamp.ts';
 import { liveUsagePath } from './paths.ts';
 import type { UsageSummary } from './schema.ts';
 
+/** `null` when the path cannot be read: an unreadable source is "needs preparation", not unchanged. */
 function stampImpl(path: string, source = true): string | null {
   try {
-    const stat = lstatSync(path);
-    return JSON.stringify([
-      path,
-      stat.dev,
-      stat.ino,
-      stat.size,
-      stat.mtimeMs,
-      ...(source ? [stat.ctimeMs] : []),
-      stat.mode,
-      stat.uid,
-    ]);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return 'missing';
+    return `${path}\0${fileStamp(path, { follow: false, ctime: source })}`;
+  } catch {
     return null;
   }
 }
 
-function stamp(path: string, source = true): string | null {
-  return measureCpu(() => stampImpl(path, source));
-}
+const stamp = measured(stampImpl);
 
 function databaseStamp(path: string): (string | null)[] {
   return [stamp(path, false), stamp(`${path}-wal`, false), stamp(`${path}-shm`, false)];

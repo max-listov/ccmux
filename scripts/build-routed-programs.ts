@@ -22,6 +22,9 @@ export async function buildRoutedProgram(
   const [artifact] = result.outputs;
   if (!result.success || !artifact)
     throw new Error(`${program.file} build failed: ${result.logs.join('\n')}`);
+  // One program, one file: a second output would be silently left out of the installation.
+  if (result.outputs.length !== 1)
+    throw new Error(`${program.file}: expected one artifact, got ${result.outputs.length}`);
   const bytes = new Uint8Array(await artifact.arrayBuffer());
   if (directory !== '') await Bun.write(join(directory, program.file), bytes);
   return { bytes };

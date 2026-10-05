@@ -9,8 +9,7 @@ import { STATE_DIR } from './paths.ts';
 
 const MachineFileSchema = MachineConfigSchema.partial();
 const machineFile = new FileSnapshot<ReturnType<typeof MachineFileSchema.parse>>();
-export const machineFileMetrics = () => machineFile.metrics();
-producerMetrics.register('machineFile', machineFileMetrics);
+producerMetrics.register('machineFile', () => machineFile.metrics());
 
 /** Per-platform defaults; everything here is overridable by machine.json. */
 function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {

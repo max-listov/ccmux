@@ -30,7 +30,10 @@ function observed(
 ) {
   const session = controlTarget(m, target);
   if (!runtimeCapabilities(session).permissionModes)
-    throw new AppError('UNSUPPORTED', 'This runtime does not expose a permission mode', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not expose a permission mode',
+      status: 409,
+    });
   const read = readManagedRuntimeStatus(m, session);
   const mode = read.snapshot?.permissionMode;
   return {
@@ -65,13 +68,16 @@ export async function updateControlPermission(
   signal: AbortSignal,
 ): Promise<z.output<typeof ControlPermissionResultSchema>> {
   const { native } = observed(m, input.target);
-  if (native === null) throw new AppError('UNAVAILABLE', 'The native runtime is unavailable', 503);
+  if (native === null)
+    throw new AppError('UNAVAILABLE', {
+      message: 'The native runtime is unavailable',
+      status: 503,
+    });
   if (native.mode !== input.expectedMode)
-    throw new AppError(
-      'STALE_REQUEST',
-      `Session permission mode is ${native.mode}, not ${input.expectedMode}`,
-      409,
-    );
+    throw new AppError('STALE_REQUEST', {
+      message: `Session permission mode is ${native.mode}, not ${input.expectedMode}`,
+      status: 409,
+    });
   await setControlPermissionMode(
     m,
     { target: input.target, mode: input.mode, operationId: input.operationId },

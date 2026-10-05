@@ -20,7 +20,10 @@ async function contextRequest(
 ): Promise<unknown> {
   signal.throwIfAborted();
   if (pendingRequests.has(rpc))
-    throw new AppError('CONTEXT_RPC_PENDING', 'A native context request is still pending', 409);
+    throw new AppError('CONTEXT_RPC_PENDING', {
+      message: 'A native context request is still pending',
+      status: 409,
+    });
   const reply = rpc.request(method, params);
   pendingRequests.set(rpc, reply);
   void reply.then(

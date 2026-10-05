@@ -1,9 +1,7 @@
 import { closeSync, constants, openSync, readFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseProcessStat } from '../util/procStat.ts';
+import { readProcessStart } from '../util/procStat.ts';
 import type { ProcRow } from './procTable.ts';
-
-export { isRunner, readProcTable } from './procTable.ts';
 
 /**
  * Who the kernel kills first when a shared memory cgroup runs out.
@@ -23,10 +21,6 @@ export { isRunner, readProcTable } from './procTable.ts';
  * Linux only. Lowering the value needs CAP_SYS_RESOURCE; a machine without it is told once and the
  * mechanism stays off there.
  */
-
-function procStartTime(raw: string): string | undefined {
-  return parseProcessStat(raw)?.startTime;
-}
 
 /**
  * Which processes the pass lowers, and which it may return to 0.
@@ -80,11 +74,7 @@ export function procOomAccess(rows: ProcRow[], procRoot = '/proc'): OomAccess {
   const sameProcess = (pid: number): boolean => {
     const expected = epochs.get(pid);
     if (expected === undefined) return false;
-    try {
-      return procStartTime(readFileSync(join(procRoot, String(pid), 'stat'), 'utf8')) === expected;
-    } catch {
-      return false;
-    }
+    return readProcessStart(pid, procRoot) === expected;
   };
   return {
     read(pid) {

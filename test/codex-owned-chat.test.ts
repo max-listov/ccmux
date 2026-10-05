@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   applyOwnedCodexInput,
   applyOwnedCodexInterrupt,
@@ -33,7 +35,10 @@ import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
  */
 
 function owner() {
-  const m = makeMachine({ rcPrefix: 'host-a', stateDir: mkdtempSync('/tmp/ccmux-owned-input-') });
+  const m = makeMachine({
+    rcPrefix: 'host-a',
+    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-owned-input-')),
+  });
   const s = makeSession({
     agent: 'codex',
     runtime: 'app-server',
@@ -365,7 +370,10 @@ test('an interrupt stops the named running turn through the owner, and refuses a
 });
 
 async function daemon() {
-  const m = makeMachine({ rcPrefix: 'host-a', stateDir: mkdtempSync('/tmp/ccmux-owned-daemon-') });
+  const m = makeMachine({
+    rcPrefix: 'host-a',
+    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-owned-daemon-')),
+  });
   const s = makeSession({
     name: 'owned',
     agent: 'codex',

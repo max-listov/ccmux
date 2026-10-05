@@ -7,7 +7,7 @@ import { ContentProducer } from '../../../content/producer.ts';
 import { claudeContextApi } from '../../../context/claude.ts';
 import { readNativeForkIntent } from '../../../context/fork.ts';
 import { applyContextCommands, NativeContextPump } from '../../../context/pump.ts';
-import { readContextJournal } from '../../../context/store.ts';
+import { contextMutationPending } from '../../../context/store.ts';
 import { tryNativeAdmission } from '../../../runtime/admission.ts';
 import { readRuntimeInput } from '../../../runtime/input.ts';
 import { planLimitsDue } from '../../../runtime/planLimits.ts';
@@ -341,9 +341,7 @@ export class ClaudeNativeOwner {
             await applyContextCommands(this.m, this.session, generation, api, contextSignal, () =>
               this.publishContextBoundary(),
             );
-            pending = readContextJournal(this.m, this.session).operations.some(
-              (row) => !['completed', 'rejected'].includes(row.state),
-            );
+            pending = contextMutationPending(this.m, this.session);
           }
           await wake.wait(pending ? 200 : 60_000);
         }

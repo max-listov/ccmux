@@ -19,6 +19,8 @@ import { TerminalPrompts } from './terminalPrompt.ts';
  * One domain operation surface shared by local IPC and declared-service ingress.
  * Admission is created once here, so adding a transport cannot add capacity or a writer.
  */
+const UNMEASURED = new Set(['performance', 'performanceConfigure']);
+
 export function createControlOperations(
   m: MachineConfig,
   publisher: ControlPublisher,
@@ -55,7 +57,10 @@ export function createControlOperations(
     performance: () => {
       const profile = dependencies.performance;
       if (!profile)
-        throw new AppError('UNAVAILABLE', 'Daemon performance collection is unavailable', 503);
+        throw new AppError('UNAVAILABLE', {
+          message: 'Daemon performance collection is unavailable',
+          status: 503,
+        });
       return profile.snapshot();
     },
     performanceConfigure: (
@@ -68,11 +73,10 @@ export function createControlOperations(
           () => {
             const profile = dependencies.performance;
             if (!profile)
-              throw new AppError(
-                'UNAVAILABLE',
-                'Daemon performance collection is unavailable',
-                503,
-              );
+              throw new AppError('UNAVAILABLE', {
+                message: 'Daemon performance collection is unavailable',
+                status: 503,
+              });
             profile.start(input.enabled, input.reset);
             return profile.snapshot();
           },
@@ -91,21 +95,21 @@ export function createControlOperations(
     ...attachmentOperations(context),
     ...sessionOperations(context),
   };
+  // Wrapped once, here, rather than on every property read. The two performance operations read and
+  // configure the measurement itself and stay outside it.
   const measure = dependencies.measure;
   const measured = measure
-    ? new Proxy(operations, {
-        get(target, key, receiver) {
-          const value: unknown = Reflect.get(target, key, receiver);
-          if (
-            typeof value !== 'function' ||
-            key === 'performance' ||
-            key === 'performanceConfigure'
-          )
-            return value;
-          return (...args: unknown[]) =>
-            measure(`control/${String(key)}`, () => Reflect.apply(value, target, args));
-        },
-      })
+    ? (Object.fromEntries(
+        Object.entries(operations).map(([key, operation]) => [
+          key,
+          typeof operation !== 'function' || UNMEASURED.has(key)
+            ? operation
+            : (...args: unknown[]) =>
+                measure(`control/${key}`, () =>
+                  (operation as (...input: unknown[]) => unknown)(...args),
+                ),
+        ]),
+      ) as typeof operations)
     : operations;
   return { operations: measured, mutations, waits, reads, catalog };
 }

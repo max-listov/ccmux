@@ -163,7 +163,7 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
             const response = await rpc.request(method, params);
             if (method !== 'collaborationMode/list') return response;
             const presets = z
-              .object({ data: z.array(z.object({ mode: z.string().nullable() }).passthrough()) })
+              .object({ data: z.array(z.looseObject({ mode: z.string().nullable() })) })
               .parse(response);
             return { data: presets.data.map((preset) => ({ ...preset, model: differentPreset })) };
           },

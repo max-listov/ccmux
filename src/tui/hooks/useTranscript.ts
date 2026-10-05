@@ -1,7 +1,8 @@
 import { existsSync, type FSWatcher, watch } from 'node:fs';
 import { useEffect, useState } from 'react';
-import { lastActivityMs, tailTranscript, transcriptPath } from '../../agent/index.ts';
+import { tailTranscript, transcriptPath } from '../../agent/index.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../../types.ts';
+import { fileStamp } from '../../util/fileStamp.ts';
 
 /** Slower than the old poll on purpose: the watch carries the latency, this only carries the misses. */
 const BACKSTOP_MS = 4_000;
@@ -29,11 +30,19 @@ export function useTranscript(
       return;
     }
     let alive = true;
-    let lastMtime = -1;
+    let lastRevision = '';
     const load = (): void => {
-      const mtime = lastActivityMs(session, m) ?? 0;
-      if (mtime === lastMtime) return; // file unchanged → nothing to re-parse or re-render
-      lastMtime = mtime;
+      // The file's full stamp, not its mtime alone: two appends inside one clock tick leave the
+      // mtime equal but always move the size, and a gate on mtime kept the second one off screen.
+      const path = transcriptPath(session, m);
+      let revision: string;
+      try {
+        revision = path === null ? 'none' : fileStamp(path);
+      } catch {
+        revision = 'unreadable';
+      }
+      if (revision === lastRevision) return; // file unchanged → nothing to re-parse or re-render
+      lastRevision = revision;
       const msgs = tailTranscript(session, m, 300);
       if (alive) setMessages(msgs);
     };

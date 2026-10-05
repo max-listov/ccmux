@@ -28,11 +28,17 @@ const mailbox = defineMailbox<RuntimeMcpRequest, { server: string; status: strin
   deadlineMs: 30_000,
   precondition: (snapshot) => {
     if (snapshot.mcpServers === undefined)
-      throw new AppError('UNSUPPORTED', 'This runtime does not report its MCP servers', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: 'This runtime does not report its MCP servers',
+        status: 409,
+      });
   },
   settle: (receipt, snapshot) => {
     if (receipt.phase === 'failed')
-      throw new AppError('UNAVAILABLE', receipt.reason ?? 'The runtime refused', 503);
+      throw new AppError('UNAVAILABLE', {
+        message: receipt.reason ?? 'The runtime refused',
+        status: 503,
+      });
     if (receipt.phase !== 'complete') return undefined;
     // The status the session publishes afterwards, not the fact that a request completed: a
     // reconnect that the runtime accepted and that then failed is not a working server.
@@ -43,7 +49,8 @@ const mailbox = defineMailbox<RuntimeMcpRequest, { server: string; status: strin
         'unknown',
     };
   },
-  mismatch: () => new AppError('IDENTITY_MISMATCH', 'The MCP request was replaced', 409),
+  mismatch: () =>
+    new AppError('IDENTITY_MISMATCH', { message: 'The MCP request was replaced', status: 409 }),
 });
 
 export const readRuntimeMcpRequest = (m: MachineConfig, s: Session) => mailbox.read(m, s);
@@ -64,7 +71,10 @@ export async function requestRuntimeMcp(
       // Refused against what the session actually has: naming a server it never loaded would ask
       // the runtime about something that does not exist and report the silence as success.
       if (!snapshot.mcpServers?.some((server) => server.name === input.server))
-        throw new AppError('UNSUPPORTED', 'This session has no such MCP server', 409);
+        throw new AppError('UNSUPPORTED', {
+          message: 'This session has no such MCP server',
+          status: 409,
+        });
       return {
         operationId: input.operationId,
         generation,

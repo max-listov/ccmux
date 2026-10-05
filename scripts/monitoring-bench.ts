@@ -5,8 +5,9 @@ import { loadMachineConfig } from '../src/config/machine.ts';
 import { type Observed, observeOnce } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { MonitoringReadSchema } from '../src/monitoring/schema.ts';
-import { observationChildCpuUs, observationExecCount } from '../src/monitoring/tmux.ts';
+import '../src/monitoring/tmux.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
+import { producerMetrics } from '../src/util/producerMetrics.ts';
 
 // Read-only live pane workload. Its archived registry copy prevents lifecycle repair/events;
 // no ensure, chat delivery, supervisor or managed process is started by this harness.
@@ -88,9 +89,9 @@ const result = {
   passes,
   rows,
   producerCpuMs: (cpu.user + cpu.system) / 1000,
-  producerChildCpuMs: observationChildCpuUs() / 1000,
+  producerChildCpuMs: (producerMetrics.snapshot().observation?.childCpuUs ?? 0) / 1000,
   readerCpuIncludingChildrenMs: readerCpuUs / 1000,
-  observationExecs: observationExecCount(),
+  observationExecs: producerMetrics.snapshot().observation?.execCount ?? 0,
   readerExecs: reads,
   latencyP50Ms: percentile(latencies, 0.5),
   latencyP95Ms: percentile(latencies, 0.95),

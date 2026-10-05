@@ -19,7 +19,7 @@ export type LocalMessageRecord = { message: ChatMessage; reachedRecipient: boole
 export type LocalMessageLookup = (id: string) => LocalMessageRecord | null;
 
 function refuse(message: string): never {
-  throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', message, 403);
+  throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', { message, status: 403 });
 }
 
 function threadOf(party: ChatPrincipal | ChatTarget): string | null {

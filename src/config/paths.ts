@@ -23,6 +23,18 @@ import { HOME, IS_DEV, SELF_ARGV } from '../util/env.ts';
  * derived, so a fresh machine lands correctly without anyone deciding anything.
  */
 
+/**
+ * A test run resolves these roots like any other process — and some tests delete what they find
+ * there. `test/preload.ts` points every root at a private temporary home, but only when `bunfig.toml`
+ * loads it, and a `bun test` started from another directory does not. That run once deleted the
+ * operator's installed app. `bun test` sets `NODE_ENV=test`; the preload sets `CCMUX_TEST_HOME`.
+ * One without the other is a test run aimed at the real directories: refuse before any path exists.
+ */
+if (process.env.NODE_ENV === 'test' && process.env.CCMUX_TEST_HOME === undefined)
+  throw new Error(
+    'ccmux paths were loaded by a test run without test/preload.ts — run `bun test` from the repository root',
+  );
+
 /** An XDG root, or the platform default when the variable is unset or not absolute. */
 function xdgRoot(envValue: string | undefined, fallback: string): string {
   return envValue?.startsWith('/') ? envValue : fallback;

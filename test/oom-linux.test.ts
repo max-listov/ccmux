@@ -3,12 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { z } from 'zod';
 import { observedProcessRoots, observedSessionInventory } from '../src/monitoring/tmux.ts';
-import {
-  applyOomPriority,
-  oomPlan,
-  procOomAccess,
-  readProcTable,
-} from '../src/runtime/oomPriority.ts';
+import { applyOomPriority, oomPlan, procOomAccess } from '../src/runtime/oomPriority.ts';
+import { readProcTable } from '../src/runtime/procTable.ts';
 import { tmuxArgv } from '../src/tmux/argv.ts';
 import { makeMachine } from './helpers.ts';
 
@@ -112,7 +108,7 @@ test.skipIf(!canLowerOom || !Bun.which('tmux'))(
       children.push(Number(readFileSync(ready, 'utf8')));
       writeFileSync(`/proc/${children[0]}/oom_score_adj`, '0');
       await observedSessionInventory(m);
-      const first = readProcTable([process.pid, ...(await observedProcessRoots(m))]);
+      const first = readProcTable([process.pid, ...(observedProcessRoots(m) ?? [])]);
       const plan = oomPlan(first, process.pid);
       expect(plan.spine.length).toBe(4);
       applyOomPriority(plan, -300, procOomAccess(first.rows));
@@ -126,7 +122,7 @@ test.skipIf(!canLowerOom || !Bun.which('tmux'))(
       children = [created.agent, created.build, created.browser];
       expect(readFileSync(`/proc/${created.build}/oom_score_adj`, 'utf8').trim()).toBe('-300');
       await observedSessionInventory(m);
-      const next = readProcTable([process.pid, ...(await observedProcessRoots(m))]);
+      const next = readProcTable([process.pid, ...(observedProcessRoots(m) ?? [])]);
       expect(
         applyOomPriority(oomPlan(next, process.pid), -300, procOomAccess(next.rows)).released,
       ).toBeGreaterThanOrEqual(1);

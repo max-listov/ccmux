@@ -194,11 +194,10 @@ export function admitOnce(m: MachineConfig, msg: ChatMessage): boolean {
       (requestedOptions !== undefined &&
         stableJson(acceptedOptions) !== stableJson(requestedOptions))
     )
-      throw new AppError(
-        'IDEMPOTENCY_CONFLICT',
-        'Message ID already belongs to a different request',
-        409,
-      );
+      throw new AppError('IDEMPOTENCY_CONFLICT', {
+        message: 'Message ID already belongs to a different request',
+        status: 409,
+      });
     return false;
   }
   appendMessage(m, msg);

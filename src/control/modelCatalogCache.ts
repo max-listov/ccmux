@@ -87,11 +87,10 @@ export class HostCatalogCache {
     }
     const first = await Promise.race([this.refresh(input), this.waiting(signal)]);
     if (first === 'waiting')
-      throw new AppError(
-        'UNAVAILABLE',
-        'The model catalog is still being read on this host; ask again shortly',
-        503,
-      );
+      throw new AppError('UNAVAILABLE', {
+        message: 'The model catalog is still being read on this host; ask again shortly',
+        status: 503,
+      });
     return this.present(first);
   }
 

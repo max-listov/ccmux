@@ -2,28 +2,18 @@ import { createControlClient, createControlProxy } from '../control/transport/cl
 import { createExternalStatusEncoder } from '../external/residentFrames.ts';
 import { writeOut } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
+import { controlIdentity, runControlExternal } from './controlExternal.ts';
 
 export async function cmdControl(args: string[]): Promise<number> {
-  if (args.length === 2 && args[0] === 'external' && args[1] === '--json') {
-    try {
-      return await (await import('./controlExternal.ts')).cmdControlExternal();
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      return 1;
-    }
-  }
+  if (args.length === 2 && args[0] === 'external' && args[1] === '--json')
+    return runControlExternal();
   const controller = new AbortController();
   const abort = () => controller.abort();
   process.on('SIGINT', abort);
   process.on('SIGTERM', abort);
   process.stdout.on('error', abort);
   try {
-    const options = {
-      ...(process.env.CCMUX_SESSION ? { session: process.env.CCMUX_SESSION } : {}),
-      ...(process.env.CCMUX_CHAT_CREDENTIAL
-        ? { credential: process.env.CCMUX_CHAT_CREDENTIAL }
-        : {}),
-    };
+    const options = controlIdentity();
     if (args[0] === 'watch' && args.length === 1) {
       const client = createControlClient(options);
       try {

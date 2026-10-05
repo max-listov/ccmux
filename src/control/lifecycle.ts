@@ -55,13 +55,15 @@ export async function createControlSession(
   // ask about the session that will exist rather than about the agent family in general.
   const mode = resolveRuntimeMode(runtime, input.mode);
   if (runtime !== 'codex' && runtime !== 'custom' && input.launchRecipe !== undefined)
-    throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not accept a Codex launch recipe',
+      status: 409,
+    });
   if (runtime !== 'codex' && (input.flags?.length ?? 0) > 0)
-    throw new AppError(
-      'INVALID_INPUT',
-      'This runtime requires typed configuration without caller flags',
-      400,
-    );
+    throw new AppError('INVALID_INPUT', {
+      message: 'This runtime requires typed configuration without caller flags',
+      status: 400,
+    });
   // Refused by capability, not by runtime name: the interactive mode's model is the provider's to
   // choose, and the native mode's is a turn option this project serves. Named for the agent, this
   // refused a fork of a native session — which must carry its source's model.
@@ -69,9 +71,15 @@ export async function createControlSession(
     input.modelSelection !== undefined &&
     !runtimeCapabilities({ agent: runtime, runtime: mode }).modelSelection
   )
-    throw new AppError('UNSUPPORTED', 'Model selection is provider-owned for this runtime', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'Model selection is provider-owned for this runtime',
+      status: 409,
+    });
   if (input.modelSelection !== undefined && (input.flags?.length ?? 0) > 0)
-    throw new AppError('INVALID_INPUT', 'Typed model selection cannot carry caller flags', 400);
+    throw new AppError('INVALID_INPUT', {
+      message: 'Typed model selection cannot carry caller flags',
+      status: 400,
+    });
   const resolved =
     fork?.launch ??
     resolveControlLaunchRecipe(
@@ -84,13 +92,19 @@ export async function createControlSession(
   let modelSelection = input.modelSelection;
   if (runtime === 'custom') {
     if (input.applicationPolicy !== undefined)
-      throw new AppError('UNSUPPORTED', 'Custom composition is owned by its launch recipe', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: 'Custom composition is owned by its launch recipe',
+        status: 409,
+      });
     try {
       const host = prepareCustomHost(m, { dir: workspace, ...resolved });
       modelSelection = customModel(host.config, input.modelSelection).selection;
     } catch (error) {
       await recordRuntimeDiagnostic(m, null, 'custom-create-preflight', error);
-      throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', 'Launch recipe is unavailable', 409);
+      throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', {
+        message: 'Launch recipe is unavailable',
+        status: 409,
+      });
     }
   }
   const applicationPolicy =
@@ -118,7 +132,10 @@ export async function createControlSession(
   const digest = fingerprint(canonical);
   const accepted = loadCreateReceipts(m).find((row) => row.requestId === input.requestId);
   if (accepted !== undefined && accepted.fingerprint !== digest)
-    throw new AppError('IDEMPOTENCY_CONFLICT', 'Create request payload changed', 409);
+    throw new AppError('IDEMPOTENCY_CONFLICT', {
+      message: 'Create request payload changed',
+      status: 409,
+    });
   if (accepted === undefined && input.modelSelection !== undefined) {
     if (runtime === 'opencode')
       await validateOpenCodeSelection(m, workspace, input.modelSelection, signal);
@@ -139,7 +156,10 @@ export async function createControlSession(
           const found = rows.find((item) => item.requestId === input.requestId);
           if (found) {
             if (found.fingerprint !== digest)
-              throw new AppError('IDEMPOTENCY_CONFLICT', 'Create request payload changed', 409);
+              throw new AppError('IDEMPOTENCY_CONFLICT', {
+                message: 'Create request payload changed',
+                status: 409,
+              });
             row = found;
             duplicate = true;
             return;
@@ -157,21 +177,26 @@ export async function createControlSession(
             updatedAt: now,
           });
           if (rows.length >= 256)
-            throw new AppError('CREATE_CAPACITY', 'Managed create receipt capacity reached', 409);
+            throw new AppError('CREATE_CAPACITY', {
+              message: 'Managed create receipt capacity reached',
+              status: 409,
+            });
           await saveCreateReceipts(m, [...rows, row]);
         },
         'control create receipt',
       );
       signal.throwIfAborted();
       if (row.status === 'failed')
-        throw new AppError('CREATE_FAILED', 'Managed session create failed', 409);
+        throw new AppError('CREATE_FAILED', {
+          message: 'Managed session create failed',
+          status: 409,
+        });
       let session = matchingSession(m, row);
       if (row.status === 'complete' && session === null)
-        throw new AppError(
-          'IDENTITY_MISMATCH',
-          'The accepted managed registration no longer exists',
-          409,
-        );
+        throw new AppError('IDENTITY_MISMATCH', {
+          message: 'The accepted managed registration no longer exists',
+          status: 409,
+        });
       if (session === null) {
         const pending = loadPendingSessions(m).some((item) => item.generation === row.generation);
         if (!pending) {
@@ -207,11 +232,10 @@ export async function createControlSession(
                   requestId: row.requestId,
                   error: message,
                 });
-                throw new AppError(
-                  'FORK_PENDING',
-                  'Native fork is unresolved; retry the same request',
-                  503,
-                );
+                throw new AppError('FORK_PENDING', {
+                  message: 'Native fork is unresolved; retry the same request',
+                  status: 503,
+                });
               }
               await withLock(
                 storeLockPath(m),
@@ -237,7 +261,10 @@ export async function createControlSession(
                 recipeId: row.launchRecipe?.id ?? null,
                 error: message,
               });
-              throw new AppError('CREATE_FAILED', 'Managed session create failed', 409);
+              throw new AppError('CREATE_FAILED', {
+                message: 'Managed session create failed',
+                status: 409,
+              });
             }
           }
         }
@@ -249,11 +276,10 @@ export async function createControlSession(
         session = matchingSession(m, row);
       }
       if (session === null)
-        throw new AppError(
-          'CREATE_PENDING',
-          'Create is still reconciling; retry the same request',
-          503,
-        );
+        throw new AppError('CREATE_PENDING', {
+          message: 'Create is still reconciling; retry the same request',
+          status: 503,
+        });
       if (
         session.agent !== (row.runtime ?? 'codex') ||
         session.dir !== row.workspace ||
@@ -264,16 +290,18 @@ export async function createControlSession(
         stableJson(session.modelSelection ?? null) !== stableJson(row.modelSelection ?? null) ||
         stableJson(session.applicationPolicy ?? null) !== stableJson(row.applicationPolicy ?? null)
       )
-        throw new AppError(
-          'CORRUPT_STATE',
-          'Managed create identity does not match its receipt',
-          503,
-        );
+        throw new AppError('CORRUPT_STATE', {
+          message: 'Managed create identity does not match its receipt',
+          status: 503,
+        });
       const ready = session;
       if (row.forkSource !== undefined) {
         const source = controlTarget(m, row.forkSource.target);
         if (source.registrationGeneration !== row.forkSource.registration)
-          throw new AppError('IDENTITY_MISMATCH', 'Native fork source registration changed', 409);
+          throw new AppError('IDENTITY_MISMATCH', {
+            message: 'Native fork source registration changed',
+            status: 409,
+          });
         await inheritAttachmentPins(m, source, ready, signal);
       }
       await withLock(
@@ -319,7 +347,10 @@ export async function archiveControlSession(
 ) {
   const result = await archiveSessionExact(m, target.session, target.threadId);
   if (result === 'missing')
-    throw new AppError('IDENTITY_MISMATCH', 'Managed identity changed or disappeared', 409);
+    throw new AppError('IDENTITY_MISMATCH', {
+      message: 'Managed identity changed or disappeared',
+      status: 409,
+    });
   const { killed: stopped } = await killSession(m, target.session);
   return { target, archived: true as const, duplicate: result === 'duplicate', stopped };
 }

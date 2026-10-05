@@ -14,7 +14,7 @@ import {
 } from './schema.ts';
 
 export function steeringFailure(code: string, status = 409): never {
-  throw new AppError(code, 'The native steering operation is unavailable', status);
+  throw new AppError(code, { message: 'The native steering operation is unavailable', status });
 }
 
 /** Caller holds native admission. No body or provider message is retained in this journal. */

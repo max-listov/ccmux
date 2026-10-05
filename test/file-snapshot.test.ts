@@ -10,15 +10,18 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { loadMachineConfig, machineFileMetrics } from '../src/config/machine.ts';
+import { loadMachineConfig } from '../src/config/machine.ts';
 import { writePendingRows } from '../src/session/pendingStore.ts';
 import { writeReadyRows } from '../src/session/readyStore.ts';
 import { loadSessions } from '../src/session/registry.ts';
 import { FileSnapshot } from '../src/util/fileSnapshot.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { RACY_WINDOW_MS } from '../src/util/fileStamp.ts';
+import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
-test('unchanged file parses once; rewrite, atomic replacement, deletion, symlink target and errors invalidate', () => {
+test('unchanged file parses once; rewrite, atomic replacement, deletion, symlink target and errors invalidate', async () => {
   const root = mkdtempSync('/tmp/ccmux-file-snapshot-');
+  // A file is cached only once its last change is older than any clock tick (RACY_WINDOW_MS).
+  const settle = () => Bun.sleep(RACY_WINDOW_MS + 20);
   try {
     const path = join(root, 'data');
     let parses = 0;
@@ -28,6 +31,7 @@ test('unchanged file parses once; rewrite, atomic replacement, deletion, symlink
       return { value: readFileSync(path, 'utf8') };
     };
     writeFileSync(path, 'one');
+    await settle();
     reader.read(path, load).value = 'caller mutation';
     expect(reader.read(path, load).value).toBe('one');
     expect(parses).toBe(1);
@@ -41,6 +45,8 @@ test('unchanged file parses once; rewrite, atomic replacement, deletion, symlink
     renameSync(path, join(root, 'target'));
     symlinkSync(join(root, 'target'), path);
     reader.read(path, load);
+    // Same inode, same size, very likely the same clock tick on Linux: no stamp field changes. It
+    // is still seen, because a file changed this recently is never served from the cache.
     writeFileSync(join(root, 'target'), 'new');
     expect(reader.read(path, load).value).toBe('new');
     rmSync(path);
@@ -48,6 +54,25 @@ test('unchanged file parses once; rewrite, atomic replacement, deletion, symlink
     writeFileSync(path, 'four');
     expect(reader.read(path, load).value).toBe('four');
     expect(parses).toBe(7);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a write in the same clock tick as the cached one is never hidden', () => {
+  const root = mkdtempSync('/tmp/ccmux-file-racy-');
+  try {
+    const path = join(root, 'data');
+    const reader = new FileSnapshot<string>();
+    const load = () => readFileSync(path, 'utf8');
+    // Equal size, equal inode, and — with the times put back — equal clocks: the stamp alone cannot
+    // tell these two writes apart, on any platform.
+    writeFileSync(path, 'aaa');
+    const first = statSync(path);
+    expect(reader.read(path, load)).toBe('aaa');
+    writeFileSync(path, 'bbb');
+    utimesSync(path, first.atime, first.mtime);
+    expect(reader.read(path, load)).toBe('bbb');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -112,10 +137,12 @@ test('config parsing is quiet, another writer is immediately visible, env remain
     });
     writeFileSync(path, JSON.stringify(config));
     expect(loadMachineConfig().rcPrefix).toBe('host-a');
-    const before = machineFileMetrics().loads;
+    await Bun.sleep(RACY_WINDOW_MS + 20);
+    expect(loadMachineConfig().rcPrefix).toBe('host-a');
+    const before = producerMetric('machineFile').loads;
     loadMachineConfig().extraFlags.push('caller');
     expect(loadMachineConfig().extraFlags).toEqual(config.extraFlags);
-    expect(machineFileMetrics().loads).toBe(before);
+    expect(producerMetric('machineFile').loads).toBe(before);
     const writer = Bun.spawn(
       [
         process.execPath,

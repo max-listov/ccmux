@@ -128,6 +128,19 @@ export function pendingMessageId(
     .pick?.msg.id;
 }
 
+/** The letter `pendingMessageId` names, read from the ledger — or null when there is none. */
+export function pendingMessage(
+  ledger: readonly LedgerSlot[],
+  recipientKey: string,
+  cursors: ChatCursors,
+  acked: ReadonlySet<string>,
+  now: number,
+): ChatMessage | null {
+  const id = pendingMessageId(ledger, recipientKey, cursors, acked, now);
+  if (id === undefined) return null;
+  return ledger.find((msg) => msg?.id === id) ?? null;
+}
+
 /**
  * One sentence for a delivery pass that threw, in the recipient's hold.
  *

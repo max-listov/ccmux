@@ -2,7 +2,7 @@ import { rmSync } from 'node:fs';
 import { monitoringStatusPath } from '../config/paths.ts';
 import type { Observed } from '../events/observe.ts';
 import type { MachineConfig, Session } from '../types.ts';
-import { atomicWrite } from '../util/atomic.ts';
+import { writeEphemeralSnapshot } from '../util/atomic.ts';
 import { VERSION } from '../util/version.ts';
 import { projectMonitoringRow } from './project.ts';
 import { readMonitoringStatus } from './read.ts';
@@ -83,7 +83,7 @@ export class MonitoringPublisher {
     const text = JSON.stringify(snapshot);
     if (Buffer.byteLength(text) > STATUS_MAX_BYTES)
       throw new Error('monitoring snapshot exceeds byte limit');
-    await atomicWrite(monitoringStatusPath(m), text, 0o600);
+    writeEphemeralSnapshot(monitoringStatusPath(m), text);
     return snapshot;
   }
 

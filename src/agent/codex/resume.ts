@@ -4,12 +4,10 @@ import { z } from 'zod';
 import type { MachineConfig, Session } from '../../types.ts';
 import { readFirstLine } from '../../util/readLines.ts';
 
-const RolloutSessionMetaSchema = z
-  .object({
-    type: z.literal('session_meta'),
-    payload: z.object({ id: z.uuid() }).passthrough(),
-  })
-  .passthrough();
+const RolloutSessionMetaSchema = z.looseObject({
+  type: z.literal('session_meta'),
+  payload: z.looseObject({ id: z.uuid() }),
+});
 
 export type RolloutReadiness =
   | { status: 'missing'; path: null; detail: 'rollout-missing' }

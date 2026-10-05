@@ -36,18 +36,20 @@ function readStore(m: MachineConfig, s: Session) {
   const row = readPrivateJson(path, SelectionStoreSchema, 256 * 1024);
   if (row === null) {
     if (existsSync(path))
-      throw new AppError('SELECTION_UNAVAILABLE', 'Session selection is unavailable', 409);
+      throw new AppError('SELECTION_UNAVAILABLE', {
+        message: 'Session selection is unavailable',
+        status: 409,
+      });
     return null;
   }
   if (
     row.registrationGeneration !== s.registrationGeneration ||
     row.current.options.runtime !== s.agent
   )
-    throw new AppError(
-      'IDENTITY_MISMATCH',
-      'Session selection belongs to another registration',
-      409,
-    );
+    throw new AppError('IDENTITY_MISMATCH', {
+      message: 'Session selection belongs to another registration',
+      status: 409,
+    });
   return row;
 }
 
@@ -64,11 +66,14 @@ export function selectionReceipt(
   const prior = store?.receipts.find((row) => row.operationId === operationId);
   if (prior !== undefined) {
     if (fingerprint !== prior.fingerprint)
-      throw new AppError('IDEMPOTENCY_CONFLICT', 'Selection request changed', 409);
+      throw new AppError('IDEMPOTENCY_CONFLICT', {
+        message: 'Selection request changed',
+        status: 409,
+      });
     return prior.result;
   }
   if ((store?.receipts.length ?? 0) >= 256)
-    throw new AppError('CAPACITY', 'Selection journal capacity reached', 409);
+    throw new AppError('CAPACITY', { message: 'Selection journal capacity reached', status: 409 });
   return null;
 }
 
@@ -81,7 +86,7 @@ export async function writeSelection(
   fingerprint: string,
 ): Promise<void> {
   if (s.registrationGeneration === undefined)
-    throw new AppError('UNSUPPORTED', 'Managed registration is required', 409);
+    throw new AppError('UNSUPPORTED', { message: 'Managed registration is required', status: 409 });
   const prior = readStore(m, s);
   const row = SelectionStoreSchema.parse({
     current: value,

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import type { BunPlugin } from 'bun';
 import type { CustomPackage } from '../src/agent/custom/package.ts';
-import { requireNativeCompanion, requireUniversalNativePackaging } from './native-companion.ts';
+import { nativeCompanion, requireUniversalNativePackaging } from './native-companion.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sha = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
@@ -15,24 +15,21 @@ function entry(bytes: Uint8Array) {
 /** Compile the owned driver once, preserving the upstream native package layout inside it.
  * The outer release remains one checksum-verified artifact, including rollback and offline use. */
 export async function customBundlePlugin(): Promise<BunPlugin> {
+  const native = requireUniversalNativePackaging('dist/runtime.js');
   const result = await Bun.build({
     entrypoints: [join(ROOT, 'src/agent/custom/process.ts')],
     target: 'bun',
     minify: true,
     naming: { entry: 'dist/runtime.js' },
     splitting: false,
-    plugins: [requireUniversalNativePackaging('dist/runtime.js').plugin],
+    plugins: [native.plugin],
   });
   if (!result.success || result.outputs.length !== 1)
     throw new Error(`Custom bundle failed: ${result.logs.join('\n')}`);
   const module = result.outputs[0];
   if (!module) throw new Error('Custom bundle is absent');
-  const arm = entry(
-    await Bun.file(requireNativeCompanion('arm64', 'dist/runtime.js').sourcePath).bytes(),
-  );
-  const x64 = entry(
-    await Bun.file(requireNativeCompanion('x64', 'dist/runtime.js').sourcePath).bytes(),
-  );
+  const arm = entry(nativeCompanion(native, 'arm64').bytes);
+  const x64 = entry(nativeCompanion(native, 'x64').bytes);
   const js = entry(new Uint8Array(await module.arrayBuffer()));
   const artifact: CustomPackage = {
     digest: sha(JSON.stringify([js.sha256, arm.sha256, x64.sha256])),

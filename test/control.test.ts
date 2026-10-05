@@ -23,14 +23,14 @@ import { createControlServer } from '../src/control/transport/server.ts';
 import { controlSocket, prepareControlDirectory } from '../src/control/transport/socketPath.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
-import { observationExecCount } from '../src/monitoring/tmux.ts';
+import '../src/monitoring/tmux.ts';
 import { readNativeCommand, writeNativeReceipt } from '../src/runtime/response.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { withSessionRegistryLock } from '../src/session/registryLock.ts';
 import { communicationAuthorization } from './communication-fixture.ts';
 import { nativeCatalogFixture } from './fixtures/native-catalog.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -254,7 +254,7 @@ test('message acceptance is durable, identity-authenticated and idempotent witho
 
 test('100 reads and resident subscribers reuse the producer; baseline, cancel and reconnect are real socket operations', async () => {
   const f = await fixture();
-  const before = observationExecCount();
+  const before = producerMetric('observation').execCount ?? 0;
   const controllers = [new AbortController(), new AbortController()];
   const streams = await Promise.all(
     controllers.map((c) => f.client.watch.withOptions({ signal: c.signal })),
@@ -262,7 +262,7 @@ test('100 reads and resident subscribers reuse the producer; baseline, cancel an
   for (const stream of streams) expect((await stream.next()).value).toEqual(f.p.read());
   const reads = await Promise.all(Array.from({ length: 100 }, () => f.client['session.list']()));
   expect(reads.every((s) => s.sequence === f.p.read().sequence)).toBe(true);
-  expect(observationExecCount()).toBe(before);
+  expect(producerMetric('observation').execCount ?? 0).toBe(before);
   const pending = streams.map((stream) => stream.next());
   await f.publish();
   for (const next of pending) expect((await next).value.sequence).toBe(f.p.read().sequence);

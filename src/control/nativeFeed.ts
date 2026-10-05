@@ -29,7 +29,10 @@ export function readControlNative(
 ): ControlNativeSnapshot {
   const session = controlTarget(m, target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'Native feed requires an owned structured runtime', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'Native feed requires an owned structured runtime',
+      status: 409,
+    });
   return nativeFrame(m, target, readContent(m, session, cursor));
 }
 
@@ -41,10 +44,13 @@ function nativeFrame(
   const session = controlTarget(m, target);
   const read = readManagedRuntimeStatus(m, session);
   if (read.status !== 'live' || read.snapshot === null)
-    throw new AppError('UNAVAILABLE', `Native projection is ${read.reason ?? read.status}`, 503);
+    throw new AppError('UNAVAILABLE', {
+      message: `Native projection is ${read.reason ?? read.status}`,
+      status: 503,
+    });
   const snapshot = read.snapshot;
   if (content.generation !== snapshot.generation)
-    throw new AppError('UNAVAILABLE', 'Native generation changed', 503);
+    throw new AppError('UNAVAILABLE', { message: 'Native generation changed', status: 503 });
   return {
     ...content,
     observedAt: snapshot.observedAt,
@@ -71,7 +77,10 @@ export async function* subscribeControlNative(
 ): AsyncIterable<ControlNativeSnapshot> {
   const session = controlTarget(m, target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'Native feed requires an owned structured runtime', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'Native feed requires an owned structured runtime',
+      status: 409,
+    });
   let last = '';
   for await (const content of subscribeContent(m, session, cursor, signal)) {
     const frame = nativeFrame(m, target, content);
@@ -107,14 +116,20 @@ export async function respondControlNative(
 ) {
   const session = controlTarget(m, input.target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', 'Native responses require an owned structured runtime', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'Native responses require an owned structured runtime',
+      status: 409,
+    });
   const fingerprint = nativeResponseFingerprint(input);
   const canonical = readMessageJournal(m, session)
     ?.records.flatMap((record) => record.continuations)
     .find((continuation) => continuation.responseOperationId === input.operationId);
   if (canonical) {
     if (canonical.responseFingerprint !== fingerprint || canonical.requestId !== input.requestId)
-      throw new AppError('IDEMPOTENCY_CONFLICT', 'Native response payload changed', 409);
+      throw new AppError('IDEMPOTENCY_CONFLICT', {
+        message: 'Native response payload changed',
+        status: 409,
+      });
     return {
       operationId: input.operationId,
       requestId: input.requestId,
@@ -128,22 +143,31 @@ export async function respondControlNative(
   const prior = readNativeReceipt(m, input.target.session);
   if (prior?.operationId === input.operationId) {
     if (prior.fingerprint !== fingerprint)
-      throw new AppError('IDEMPOTENCY_CONFLICT', 'Native response payload changed', 409);
+      throw new AppError('IDEMPOTENCY_CONFLICT', {
+        message: 'Native response payload changed',
+        status: 409,
+      });
     if (prior.outcome !== 'rejected')
       return { operationId: input.operationId, requestId: input.requestId, outcome: prior.outcome };
-    throw new AppError('STALE_REQUEST', prior.reason ?? 'Native response was rejected', 409);
+    throw new AppError('STALE_REQUEST', {
+      message: prior.reason ?? 'Native response was rejected',
+      status: 409,
+    });
   }
   const snapshot = readControlNative(m, input.target, null);
   if (snapshot.generation !== input.generation)
-    throw new AppError('STALE_REQUEST', 'Projection generation changed', 409);
+    throw new AppError('STALE_REQUEST', { message: 'Projection generation changed', status: 409 });
   const pending = snapshot.pending.find((item) => item.requestId === input.requestId);
   if (!pending || pending.kind !== input.kind)
-    throw new AppError('STALE_REQUEST', 'Native request is not pending', 409);
+    throw new AppError('STALE_REQUEST', { message: 'Native request is not pending', status: 409 });
   const active = readNativeCommand(m, input.target.session);
   if (active !== null && active.operationId !== input.operationId)
-    throw new AppError('BUSY', 'Another native response is pending', 429);
+    throw new AppError('BUSY', { message: 'Another native response is pending', status: 429 });
   if (active !== null && active.fingerprint !== fingerprint)
-    throw new AppError('IDEMPOTENCY_CONFLICT', 'Native response payload changed', 409);
+    throw new AppError('IDEMPOTENCY_CONFLICT', {
+      message: 'Native response payload changed',
+      status: 409,
+    });
   if (active === null)
     await writeNativeCommand(m, input.target.session, {
       operationId: input.operationId,
@@ -165,7 +189,10 @@ export async function respondControlNative(
           requestId: input.requestId,
           outcome: receipt.outcome,
         };
-      throw new AppError('STALE_REQUEST', receipt.reason ?? 'Native response was rejected', 409);
+      throw new AppError('STALE_REQUEST', {
+        message: receipt.reason ?? 'Native response was rejected',
+        status: 409,
+      });
     }
     await Bun.sleep(25);
   }

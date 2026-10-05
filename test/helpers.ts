@@ -11,6 +11,7 @@ import type {
   ManagedPeer,
   Session,
 } from '../src/types.ts';
+import { producerMetrics } from '../src/util/producerMetrics.ts';
 import { communicationAuthorization } from './communication-fixture.ts';
 
 export const UUID = '11111111-1111-4111-8111-111111111111';
@@ -88,4 +89,9 @@ export function makeChatMessage(over: Partial<ChatMessage> = {}): ChatMessage {
     notBefore: null,
     ...over,
   };
+}
+
+/** One producer's counters, read through the channel the daemon serves (`producerMetrics`). */
+export function producerMetric(name: string): Record<string, number> {
+  return producerMetrics.snapshot()[name] ?? {};
 }

@@ -82,7 +82,10 @@ export function loadCreateReceipts(m: MachineConfig): CreateRow[] {
     }
     return StoreSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
   } catch {
-    throw new AppError('CORRUPT_STATE', 'Create receipt store is unavailable', 503);
+    throw new AppError('CORRUPT_STATE', {
+      message: 'Create receipt store is unavailable',
+      status: 503,
+    });
   }
 }
 
@@ -104,11 +107,14 @@ export function normalizeWorkspace(path: string): string {
   try {
     resolved = realpathSync(path);
   } catch {
-    throw new AppError('INVALID_WORKSPACE', 'Workspace does not exist', 400);
+    throw new AppError('INVALID_WORKSPACE', { message: 'Workspace does not exist', status: 400 });
   }
   const stat = lstatSync(resolved);
   if (!stat.isDirectory())
-    throw new AppError('INVALID_WORKSPACE', 'Workspace is not a directory', 400);
+    throw new AppError('INVALID_WORKSPACE', {
+      message: 'Workspace is not a directory',
+      status: 400,
+    });
   return resolved;
 }
 

@@ -16,14 +16,24 @@ export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrinci
   const transportCaller = headers.get(CCMUX_CONTROL_CALLER_HEADER);
   if (transportCaller !== null) {
     if (sessionName !== null || credential !== null)
-      throw new AppError('UNAUTHORIZED', 'Conflicting local caller credentials', 401);
+      throw new AppError('UNAUTHORIZED', {
+        message: 'Conflicting local caller credentials',
+        status: 401,
+      });
     const parsed = ControlTransportCallerSchema.safeParse(transportCaller);
-    if (!parsed.success) throw new AppError('UNAUTHORIZED', 'Invalid local transport caller', 401);
+    if (!parsed.success)
+      throw new AppError('UNAUTHORIZED', {
+        message: 'Invalid local transport caller',
+        status: 401,
+      });
     return servicePrincipal(parsed.data, 'declared-service');
   }
   if (sessionName === null && credential === null) return servicePrincipal(m.rcPrefix, 'local');
   if (sessionName === null || credential === null || !credential.startsWith('Bearer ')) {
-    throw new AppError('UNAUTHORIZED', 'Invalid managed caller credentials', 401);
+    throw new AppError('UNAUTHORIZED', {
+      message: 'Invalid managed caller credentials',
+      status: 401,
+    });
   }
   const session = findSession(loadSessions(m), sessionName);
   if (
@@ -31,7 +41,10 @@ export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrinci
     !chatEnabledFor(session, m) ||
     !hasChatCredential(m, session, credential.slice(7))
   ) {
-    throw new AppError('UNAUTHORIZED', 'Invalid managed caller credentials', 401);
+    throw new AppError('UNAUTHORIZED', {
+      message: 'Invalid managed caller credentials',
+      status: 401,
+    });
   }
   return managedPeer(m.rcPrefix, session);
 }
@@ -39,7 +52,8 @@ export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrinci
 export function controlAuth(m: MachineConfig) {
   return createAuthHook<ChatPrincipal>({
     resolve: async (ctx) => {
-      if (!ctx.req) throw new AppError('UNAUTHORIZED', 'Local request required', 401);
+      if (!ctx.req)
+        throw new AppError('UNAUTHORIZED', { message: 'Local request required', status: 401 });
       return controlPrincipal(m, ctx.req.headers);
     },
     resolveFromContext: async (ctx) => ChatPrincipalSchema.parse(ctx.principal),

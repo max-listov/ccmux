@@ -18,6 +18,35 @@ import { resultSummary } from '../transcript/toolSummary.ts';
 //   summary — the summary is the only readable part, and it is often absent).
 // Token usage lives in a SEPARATE event_msg of type "token_count".
 
+const CALL_TYPES = new Set([
+  'function_call',
+  'custom_tool_call',
+  'local_shell_call',
+  'web_search_call',
+]);
+const OUTPUT_TYPES = new Set([
+  'function_call_output',
+  'custom_tool_call_output',
+  'local_shell_call_output',
+]);
+
+/**
+ * Whether a tool result records a failure. A structured output may say so (`success: false`); the
+ * code-mode host that runs custom tools does not — it writes a plain status line first, and that
+ * line is the only failure signal in the rollout: `Script failed`, `aborted by user after …`,
+ * `failed to spawn …` (measured over 35k real custom outputs; none carried `success`). Anything
+ * else is not called an error, because nothing in the record says it is one.
+ */
+function toolOutputFailed(output: unknown): boolean {
+  const structured = rec(output);
+  if (structured?.success === false) return true;
+  const first = Array.isArray(output) ? rec(output[0])?.text : output;
+  return (
+    typeof first === 'string' &&
+    /^(Script failed\b|aborted by user after |failed to spawn )/.test(first)
+  );
+}
+
 function mapRole(role: string | null): TranscriptRole {
   if (role === 'user' || role === 'assistant' || role === 'system') return role;
   if (role === 'developer') return 'system'; // Codex's system-prompt channel
@@ -110,7 +139,7 @@ function fromPayload(payload: Record<string, unknown>, textLimit: number): Pushe
           title: 'tool result',
           toolName: null,
           toolCallId: str(payload.call_id),
-          status: out?.success === false ? 'error' : null,
+          status: toolOutputFailed(payload.output) ? 'error' : null,
           rawType: ptype,
         },
       ];
@@ -168,26 +197,15 @@ export function parse(
     // Stash raw call args + outputs by call-id so the fold can summarize each result.
     const ptype = str(payload.type) ?? '';
     const callId = str(payload.call_id) ?? str(payload.id);
-    if (
-      (ptype === 'function_call' ||
-        ptype === 'custom_tool_call' ||
-        ptype === 'local_shell_call' ||
-        ptype === 'web_search_call') &&
-      callId
-    ) {
+    if (CALL_TYPES.has(ptype) && callId) {
       callName.set(callId, str(payload.name) ?? 'tool');
       callArgs.set(callId, parseArgs(payload));
     }
-    if (
-      (ptype === 'function_call_output' ||
-        ptype === 'custom_tool_call_output' ||
-        ptype === 'local_shell_call_output') &&
-      callId
-    ) {
+    if (OUTPUT_TYPES.has(ptype) && callId) {
       const o = rec(payload.output);
       results.set(callId, {
         content: flattenContent(o?.content ?? payload.output) ?? '',
-        isError: o?.success === false,
+        isError: toolOutputFailed(payload.output),
         at: createdAt,
       });
     }

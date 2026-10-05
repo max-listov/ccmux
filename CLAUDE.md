@@ -90,6 +90,18 @@ This documentation obligation is independent of the checkout rule below: fixing 
 location must not remove task completion or architecture-documentation requirements. Routine
 Git synchronization does not need a new backlog task.
 
+### Rollout is canary first
+A release reaches one machine first — the maintainer's own — and stays there for an observation
+window of at least ten minutes before any other host gets it. In that window read what the system
+says about itself: the daemon's start report, the monitoring snapshot (no running session reported
+`unknown`), the daemon's own and child CPU against the previous release, and the journal. 0.75.0
+went to every host at once, production included, and two regressions — a global transcript-index
+rebuild that doubled daemon CPU, and a lost first command after a missed file event — were found
+there and fixed in 0.75.1 and 0.75.2 within eighty minutes. A canary would have shown both.
+
+CHANGELOG lines describe what changed for a user; "X remains intact" and "Y is retained" describe
+what did not, and do not belong there.
+
 ## One canonical working checkout
 Implementation, commits and the local release ceremony run from the maintainer's normal working
 checkout. Never create a temporary release clone, secondary worktree or alternate-index commit
@@ -209,6 +221,16 @@ same budget taken from this project's own constant while the wire under it allow
 a helper whose two probes ran in the order that made the common case expensive. None was found by
 re-reading. Each was found by someone measuring the same thing with a different instrument — which
 is the argument for asking, not for being careful.
+
+**An optimisation is accepted only after its optimised branch has been made to fail.** A cache, a
+skipped read or a batched call is a new way to be wrong; before its acceptance box is ticked, revert
+the optimised branch alone and watch the test that guards it turn red. 0.75.0 ticked "a lost file
+event is recovered" with a directory-stamp shortcut that did exactly the opposite. In the same way,
+a green full gate proves nothing about code it does not execute: name the test that runs the new
+path, or the gate is evidence about something else (0.77.0 cited "1633 pass" for a feature with no
+test at all). Platform-only tests count only where they run: Linux-only tests run in the Ubuntu CI
+job, the Darwin-only native test in the `darwin-native` job, and a local macOS gate that skipped them
+is not evidence for them.
 
 `bun run lint` checks without editing; `bun run format` formats; `bun run lint:fix` applies safe
 Biome fixes. The shared style is two spaces, 100 columns, single quotes and semicolons. Use the

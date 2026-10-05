@@ -30,12 +30,21 @@ export function readContextJournal(m: MachineConfig, s: Session): ContextJournal
   const path = contextPath(m, s, 'context.json');
   const value = readPrivateJson(path, JournalSchema);
   if (value === null && existsSync(path))
-    throw new AppError('CONTEXT_UNAVAILABLE', 'Native context state is unavailable', 503);
+    throw new AppError('CONTEXT_UNAVAILABLE', {
+      message: 'Native context state is unavailable',
+      status: 503,
+    });
   if (!s.registrationGeneration || !nativeId(s))
-    throw new AppError('CONTEXT_UNAVAILABLE', 'Native context identity is unavailable', 503);
+    throw new AppError('CONTEXT_UNAVAILABLE', {
+      message: 'Native context identity is unavailable',
+      status: 503,
+    });
   if (value !== null) {
     if (value.registration !== s.registrationGeneration || value.nativeId !== nativeId(s))
-      throw new AppError('CONTEXT_UNAVAILABLE', 'Native context identity changed', 409);
+      throw new AppError('CONTEXT_UNAVAILABLE', {
+        message: 'Native context identity changed',
+        status: 409,
+      });
     return value;
   }
   return JournalSchema.parse({
@@ -69,7 +78,10 @@ export async function withContextJournal<T>(
 }
 export function assertNoContextMutation(m: MachineConfig, s: Session): void {
   if (contextMutationPending(m, s))
-    throw new AppError('CONTEXT_BUSY', 'A native context operation is unresolved', 409);
+    throw new AppError('CONTEXT_BUSY', {
+      message: 'A native context operation is unresolved',
+      status: 409,
+    });
 }
 export function contextMutationPending(m: MachineConfig, s: Session): boolean {
   return readContextJournal(m, s).operations.some(

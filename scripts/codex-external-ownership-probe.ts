@@ -17,22 +17,18 @@ const EXIT_TIMEOUT_MS = 5_000;
 
 const SessionMetaSchema = z.object({
   type: z.literal('session_meta'),
-  payload: z
-    .object({
-      id: z.uuid(),
-      source: z.unknown(),
-      forked_from_id: z.uuid().nullable().optional(),
-    })
-    .passthrough(),
+  payload: z.looseObject({
+    id: z.uuid(),
+    source: z.unknown(),
+    forked_from_id: z.uuid().nullable().optional(),
+  }),
 });
 
-const RpcMessageSchema = z
-  .object({
-    id: z.number().optional(),
-    result: z.unknown().optional(),
-    error: z.object({ code: z.number(), message: z.string() }).optional(),
-  })
-  .passthrough();
+const RpcMessageSchema = z.looseObject({
+  id: z.number().optional(),
+  result: z.unknown().optional(),
+  error: z.object({ code: z.number(), message: z.string() }).optional(),
+});
 
 type CommandResult = { code: number; stdout: string; stderr: string };
 type Rollout = { path: string; id: string; source: unknown; forkedFrom: string | null };

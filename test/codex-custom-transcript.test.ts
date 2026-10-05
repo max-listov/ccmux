@@ -50,17 +50,18 @@ test('custom errors, text limits and ordinary function calls keep independent id
       call,
       record({ type: 'function_call', call_id: 'call-B', name: 'read', arguments: '{"path":"x"}' }),
       record({ type: 'function_call_output', call_id: 'call-B', output: 'ordinary output' }),
+      // The form the code-mode host really writes (from a live rollout): a status line, no `success`.
       record({
         type: 'custom_tool_call_output',
         call_id: 'call-A',
-        output: { success: false, content: [{ type: 'text', text: 'refused action' }] },
+        output: [{ type: 'input_text', text: 'Script failed\nWall time 0.7 seconds\nOutput:\n' }],
       }),
     ],
     1,
     8,
   );
   expect(messages).toHaveLength(2);
-  expect(messages[0]).toMatchObject({ done: true, status: 'error', resultText: 'refused …' });
+  expect(messages[0]).toMatchObject({ done: true, status: 'error', resultText: 'Script f…' });
   expect(messages[0]?.input).toBe('await to…');
   expect(messages[1]).toMatchObject({ done: true, status: null, resultText: 'ordinary…' });
 });
@@ -108,4 +109,19 @@ test('a derived index from the preceding parser is rebuilt rather than keeping i
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('the code-mode host status line decides a custom result, and only a failure line is an error', () => {
+  const status = (output: unknown) =>
+    parse([call, record({ type: 'custom_tool_call_output', call_id: 'call-A', output })], 1)[0]
+      ?.status ?? null;
+  expect(
+    status([{ type: 'input_text', text: 'Script completed\nWall time 0.1 seconds\n' }]),
+  ).toBeNull();
+  expect(status('aborted by user after 30.9s')).toBe('error');
+  expect(status('failed to spawn code-mode host /x/codex-code-mode-host: No such file')).toBe(
+    'error',
+  );
+  expect(status('Script running with cell ID 8\nWall time 0.0 seconds\n')).toBeNull();
+  expect(status('a tool that printed the words Script failed later on')).toBeNull();
 });

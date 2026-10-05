@@ -177,19 +177,19 @@ test.skipIf(process.platform !== 'darwin')(
     if (!selected || !other) throw new Error('Both native targets must be packaged');
     // Installation materializes the host target; qualification adds the other valid addon
     // explicitly to prove that it cannot become a fallback when the host target fails.
-    expect(readFileSync(join(installed, selected.outputPath))).toEqual(
-      readFileSync(selected.sourcePath),
+    expect(Buffer.compare(readFileSync(join(installed, selected.outputPath)), selected.bytes)).toBe(
+      0,
     );
-    await Bun.write(join(installed, other.outputPath), Bun.file(other.sourcePath));
+    await Bun.write(join(installed, other.outputPath), other.bytes);
     // The other valid addon cannot rescue a missing or wrong-architecture selected addon.
     const selectedPath = join(installed, selected.outputPath);
     rmSync(selectedPath);
     expect(await recorded(installed)).toBeNull();
-    await Bun.write(selectedPath, Bun.file(other.sourcePath));
+    await Bun.write(selectedPath, other.bytes);
     expect(await recorded(installed)).toBeNull();
     await Bun.write(selectedPath, 'corrupt native companion');
     expect(await recorded(installed)).toBeNull();
-    await Bun.write(selectedPath, Bun.file(selected.sourcePath));
+    await Bun.write(selectedPath, selected.bytes);
     rmSync(join(installed, other.outputPath));
     expect((await recorded(installed))?.startId).toMatch(/^\d+$/);
   },

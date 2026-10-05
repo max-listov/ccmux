@@ -39,20 +39,23 @@ export class TerminalPrompts {
   private async pane(target: ManagedPeer) {
     const session = controlTarget(this.m, target);
     if (session.agent !== 'claude' || (session.runtime && session.runtime !== 'tui'))
-      throw new AppError(
-        'UNSUPPORTED',
-        'Terminal menus require an interactive Claude session',
-        409,
-      );
+      throw new AppError('UNSUPPORTED', {
+        message: 'Terminal menus require an interactive Claude session',
+        status: 409,
+      });
     const state = await listAgentLiveness(this.m);
     const pane = state.agentPanes.get(session.name);
     if (!pane || !state.live.has(session.name))
-      throw new AppError('UNAVAILABLE', 'The recorded agent pane is unavailable', 409);
+      throw new AppError('UNAVAILABLE', {
+        message: 'The recorded agent pane is unavailable',
+        status: 409,
+      });
     return pane;
   }
   private async command(_pane: string, ...args: string[]) {
     const result = await run(tmuxArgv(this.m, ...args));
-    if (result.code !== 0) throw new AppError('UNAVAILABLE', 'The terminal operation failed', 409);
+    if (result.code !== 0)
+      throw new AppError('UNAVAILABLE', { message: 'The terminal operation failed', status: 409 });
     return result.stdout;
   }
   private capture(pane: string) {
@@ -73,7 +76,10 @@ export class TerminalPrompts {
     const generation = await this.generation(pane);
     const text = await this.capture(pane);
     if (generation !== (await this.generation(pane)))
-      throw new AppError('STALE_PROMPT', 'The terminal changed during observation', 409);
+      throw new AppError('STALE_PROMPT', {
+        message: 'The terminal changed during observation',
+        status: 409,
+      });
     const menu = terminalMenu(text);
     const now = Date.now();
     for (const [key, value] of this.observations)
@@ -95,7 +101,10 @@ export class TerminalPrompts {
     this.observations.delete(target.threadId);
     if (!menu?.options.length) return { target, menu, observationId: null, expiresAt: null };
     if (this.observations.size >= 256)
-      throw new AppError('CAPACITY', 'Terminal observation capacity reached', 429);
+      throw new AppError('CAPACITY', {
+        message: 'Terminal observation capacity reached',
+        status: 429,
+      });
     const observation = {
       id: randomUUID(),
       pane,
@@ -117,7 +126,10 @@ export class TerminalPrompts {
       const { target } = input;
       const observation = this.observations.get(target.threadId);
       const stale = () =>
-        new AppError('STALE_PROMPT', 'Read the current terminal menu before responding', 409);
+        new AppError('STALE_PROMPT', {
+          message: 'Read the current terminal menu before responding',
+          status: 409,
+        });
       if (
         !observation ||
         observation.consumed ||
@@ -141,7 +153,10 @@ export class TerminalPrompts {
             throw stale();
           const desired = menu.options.findIndex((o) => o.id === input.optionId);
           if (desired < 0)
-            throw new AppError('INVALID_OPTION', 'The menu does not offer that option', 400);
+            throw new AppError('INVALID_OPTION', {
+              message: 'The menu does not offer that option',
+              status: 400,
+            });
           observation.consumed = true;
           const key = desired === menu.selected ? 'Enter' : desired > menu.selected ? 'Down' : 'Up';
           await this.command(
@@ -178,9 +193,15 @@ export class TerminalPrompts {
             }
           }
           if (!moved)
-            throw new AppError('PROMPT_UNCONFIRMED', 'Terminal selection did not advance', 409);
+            throw new AppError('PROMPT_UNCONFIRMED', {
+              message: 'Terminal selection did not advance',
+              status: 409,
+            });
         }
-        throw new AppError('PROMPT_UNCONFIRMED', 'Terminal navigation budget exhausted', 409);
+        throw new AppError('PROMPT_UNCONFIRMED', {
+          message: 'Terminal navigation budget exhausted',
+          status: 409,
+        });
       } finally {
         await this.command(pane, 'select-pane', '-e', '-t', pane);
       }

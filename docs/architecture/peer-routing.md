@@ -82,31 +82,31 @@ The relay runs as its own program: the PATH shim sends `_peer-read` to `peer-rea
 bundle, compiled from the same command (`src/boot/routedPrograms.ts`), so a fleet read does not pay
 for parsing the whole CLI.
 
-### Строки из последнего наблюдения и external relay
+### Rows from the last observation, and the external relay
 
-Демон сохраняет карты creation time, exact agent pane и захваченного текста из своего
-двухсекундного observation. Первый `peer list` после наблюдения лениво строит строки через
-общий `collectRows`; остальные запросы до следующего наблюдения используют тот же Promise.
-При свежем наблюдении запрос не запускает `list-panes` или `capture-pane`. Новое наблюдение
-сбрасывает строки. При отсутствии либо просрочке более 10 секунд демон строит ответ через
-обычный холодный `collectRows`; машина остаётся доступна во время старта и разрыва наблюдения.
-Неудачный Promise не сохраняется до следующего наблюдения. Inventory содержит высоту exact
-agent pane: peer scan получает видимый экран и до 30 строк истории, как `capture-pane -S -30`,
-а мониторинг сохраняет до 40 строк истории. Старые маркеры между этими границами не влияют на list.
-Local/cold CLI сохраняет собственный захват и тот же builder полей. Меню сохраняет
-прежние `state` и `atPrompt`, stopped и archived остаются отдельными признаками.
+The daemon keeps the creation times, exact agent panes and captured text from its two-second
+observation pass. The first `peer list` after a pass builds the rows lazily through the shared
+`collectRows`; later requests until the next pass share the same promise. With a fresh observation a
+request starts neither `list-panes` nor `capture-pane`. A new pass discards the rows. With no
+observation, or one older than `INVENTORY_FRESH_MS` (10 s), the daemon builds the answer through the
+ordinary cold `collectRows`, so the machine stays reachable during start-up and observation gaps. A
+failed promise is not kept until the next pass. The inventory carries the exact agent pane's height:
+the peer scan sees the visible screen plus up to 30 lines of history, like `capture-pane -S -30`,
+while monitoring keeps up to 40 lines, so older markers between those bounds do not affect the list.
+The local and cold CLI keep their own capture and the same row builder. A menu keeps the earlier
+`state` and `atPrompt`; stopped and archived stay separate signals.
 
-Ровно `control external --json` PATH shim направляет в `control-external.js`.
-Это маленький client существующего `external.list`, собранный из общего connection module
-и leaf contract. Установленный daemon с этим endpoint не требует одновременного обновления.
-Credentials, bounds и причина отказа совпадают с обычным control client. Мёртвый socket
-даёт ту же ошибку, а не успешный пустой inventory. Другие аргументы идут в полный CLI;
-отсутствующий routed artifact приводит к ошибке запуска.
+The PATH shim routes exactly `control external --json` to `control-external.js`, a small client of
+the existing `external.list` built from the shared connection module and a leaf contract. An
+installed daemon with that endpoint needs no simultaneous update. Credentials, bounds and the
+refusal reason match the ordinary control client; a dead socket gives the same error, not a
+successful empty inventory. Any other arguments go to the full CLI; a missing routed artifact is a
+launch error.
 
-`test/peer-read.test.ts` проверяет все поля при недоступном tmux и равенство external ответа,
-включая отказ мёртвого socket. `test/shim-writers-agree.test.ts` проверяет оба shim writer
-и точное совпадение аргументов. Настоящий daemon test проверяет peer freshness вместе с
-quiet tool, меню, completion и смертью exact agent pane.
+`test/peer-read.test.ts` checks every field with tmux unavailable and the equality of the external
+answer, including the dead-socket refusal. `test/shim-writers-agree.test.ts` checks both shim
+writers and the exact argument match. A real daemon test checks peer freshness together with a
+quiet tool, a menu, completion and the death of the exact agent pane.
 
 ### One session by its address: `ccmux state`
 

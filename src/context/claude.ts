@@ -84,7 +84,10 @@ const offsetOf = (cursor: string | undefined): number => {
   if (cursor === undefined) return 0;
   const value = Number.parseInt(cursor, 10);
   if (!Number.isInteger(value) || value < 0)
-    throw new AppError('HISTORY_CURSOR', 'Native history cursor is invalid', 409);
+    throw new AppError('HISTORY_CURSOR', {
+      message: 'Native history cursor is invalid',
+      status: 409,
+    });
   return value;
 };
 
@@ -99,7 +102,10 @@ export function claudeContextApi(
     if (!existsSync(path))
       // Said rather than answered with an empty page: a conversation whose transcript is not where
       // this build expects it is unknown, not empty, and the two call for different actions.
-      throw new AppError('HISTORY_UNAVAILABLE', 'Native transcript is unavailable', 503);
+      throw new AppError('HISTORY_UNAVAILABLE', {
+        message: 'Native transcript is unavailable',
+        status: 503,
+      });
     return readFileSync(path, 'utf8').split('\n');
   };
   return {

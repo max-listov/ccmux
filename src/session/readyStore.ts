@@ -9,8 +9,7 @@ import { SessionSchema } from './schema.ts';
 
 const HEADER = '# managed agent sessions — ccmux owns this file (JSONL v2)';
 const readyFile = new FileSnapshot<Session[]>();
-export const readyFileMetrics = () => readyFile.metrics();
-producerMetrics.register('readyFile', readyFileMetrics);
+producerMetrics.register('readyFile', () => readyFile.metrics());
 
 export function loadReadyRows(m: MachineConfig): Session[] {
   return readyFile.read(sessionsPath(m), () => parseReadyRows(m));

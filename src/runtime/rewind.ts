@@ -36,18 +36,25 @@ const mailbox = defineMailbox<RuntimeRewindRequest, RewindResult>({
   deadlineMs: 60_000,
   precondition: (snapshot) => {
     if (snapshot.fileCheckpoints !== true)
-      throw new AppError('UNSUPPORTED', 'This session does not keep file checkpoints', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: 'This session does not keep file checkpoints',
+        status: 409,
+      });
   },
   // Answered from the receipt, unlike the mailboxes that re-read the snapshot: what a rewind did
   // exists nowhere else. There is nothing in a published snapshot to check it against.
   settle: (receipt) => {
     if (receipt.phase === 'failed')
-      throw new AppError('UNAVAILABLE', receipt.reason ?? 'The rewind failed', 503);
+      throw new AppError('UNAVAILABLE', {
+        message: receipt.reason ?? 'The rewind failed',
+        status: 503,
+      });
     // Both halves, not just the result: a result present under any other phase would be a
     // half-written record, and answering from it would report a rewind that had not finished.
     return receipt.phase === 'complete' ? (receipt.result ?? undefined) : undefined;
   },
-  mismatch: () => new AppError('IDENTITY_MISMATCH', 'The rewind request was replaced', 409),
+  mismatch: () =>
+    new AppError('IDENTITY_MISMATCH', { message: 'The rewind request was replaced', status: 409 }),
 });
 
 export const readRuntimeRewind = (m: MachineConfig, s: Session) => mailbox.read(m, s);

@@ -28,16 +28,17 @@ import { PeerRows } from '../inventory/peerRows.ts';
 import { DaemonPerformance } from '../monitoring/performance.ts';
 import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
-import { observedProcessRoots } from '../monitoring/tmux.ts';
+import { processRoots } from '../monitoring/tmux.ts';
 import { autoUpdateOnce } from '../release/update.ts';
+import { sweepFiniteWorkloadDirectories } from '../runtime/finiteWorkload.ts';
 import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/journalOwner.ts';
 import {
   applyOomPriority,
   isPermissionRefusal,
   oomPlan,
   procOomAccess,
-  readProcTable,
 } from '../runtime/oomPriority.ts';
+import { readProcTable } from '../runtime/procTable.ts';
 import { healOnce } from '../session/heal.ts';
 import type { MachineConfig } from '../types.ts';
 import { createUsageObservation } from '../usage/observation.ts';
@@ -348,7 +349,7 @@ export function createDaemonApplication(
       const target = m.oomScoreAdj;
       if (PLATFORM !== 'linux' || target === null || oomRefused) return;
       try {
-        const table = readProcTable([process.pid, ...observedProcessRoots(m)]);
+        const table = readProcTable([process.pid, ...(await processRoots(m))]);
         applyOomPriority(oomPlan(table, process.pid), target, procOomAccess(table.rows));
       } catch (error) {
         if (!isPermissionRefusal(error)) throw error;
@@ -367,6 +368,12 @@ export function createDaemonApplication(
     startAfterMs: 60_000,
     overlap: { mode: 'skip' },
     run: async () => {
+      // Request directories of finite workloads whose owner died hold the declared environment,
+      // chat credential included. Ten minutes is past every workload deadline plus its grace.
+      if (machine().finiteWorkloads) {
+        const swept = sweepFiniteWorkloadDirectories(10 * 60 * 1000);
+        if (swept > 0) log.info({ msg: 'abandoned finite workload requests removed', swept });
+      }
       const { removed, bytes } = await pruneTranscriptIndexes();
       if (removed > 0)
         log.info({

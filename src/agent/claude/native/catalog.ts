@@ -217,11 +217,10 @@ export function validateClaudeSelection(m: MachineConfig, selection: NativeModel
   const best = hostCatalog(m);
   if (best === null) return;
   if (!best.models.some((row) => (row.model ?? row.id) === selection.model))
-    throw new AppError(
-      'MODEL_UNAVAILABLE',
-      `Model ${modelSelectionLabel(selection)} is absent from this host's catalog`,
-      409,
-    );
+    throw new AppError('MODEL_UNAVAILABLE', {
+      message: `Model ${modelSelectionLabel(selection)} is absent from this host's catalog`,
+      status: 409,
+    });
 }
 
 /**
@@ -241,9 +240,15 @@ async function readClaudeHostModels(
   signal: AbortSignal,
 ): Promise<ControlModelCatalog> {
   if (input.launchRecipe !== undefined)
-    throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not accept a Codex launch recipe',
+      status: 409,
+    });
   if (!('path' in resolveAgentSdk(m)))
-    throw new AppError('UNSUPPORTED', 'This host does not publish a catalog for this runtime', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This host does not publish a catalog for this runtime',
+      status: 409,
+    });
   const best = hostCatalog(m);
   if (best !== null)
     return pageModelCatalog(best.models, input, {
@@ -263,11 +268,10 @@ async function readClaudeHostModels(
     // The state AND the action, because the caller is the one who has to do something about it: a
     // sentence reporting only that nothing has been observed here is what sent people to the
     // machine to type a command they were never told.
-    throw new AppError(
-      'UNAVAILABLE',
-      `No session on this host has published its catalog and the runtime could not be asked directly (${error instanceof Error ? error.message : String(error)}); start one session on this host to publish it: ccmux new <name> <dir> --agent claude --runtime native`,
-      503,
-    );
+    throw new AppError('UNAVAILABLE', {
+      message: `No session on this host has published its catalog and the runtime could not be asked directly (${error instanceof Error ? error.message : String(error)}); start one session on this host to publish it: ccmux new <name> <dir> --agent claude --runtime native`,
+      status: 503,
+    });
   }
   return pageModelCatalog(probed.models, input, {
     kind: 'host',
@@ -292,16 +296,25 @@ export async function readClaudeModels(
     // The interactive mode has no catalog to read, and answering with the native mode's
     // unavailability would describe a runtime this session is not running. Dispatch keys on the
     // agent alone, so this is where the two modes part.
-    throw new AppError('UNSUPPORTED', 'This runtime does not expose a model catalog', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not expose a model catalog',
+      status: 409,
+    });
   if (input.launchRecipe !== undefined)
-    throw new AppError('UNSUPPORTED', 'This runtime does not accept a Codex launch recipe', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'This runtime does not accept a Codex launch recipe',
+      status: 409,
+    });
   const prepared = readPrivateJson(path(m, session), PreparedSchema, MAX_BYTES);
   if (
     prepared === null ||
     prepared.registrationGeneration !== session.registrationGeneration ||
     readManagedRuntimeStatus(m, session).status !== 'live'
   )
-    throw new AppError('UNAVAILABLE', 'Native runtime catalog is unavailable', 503);
+    throw new AppError('UNAVAILABLE', {
+      message: 'Native runtime catalog is unavailable',
+      status: 503,
+    });
   return pageModelCatalog(
     prepared.models,
     input,

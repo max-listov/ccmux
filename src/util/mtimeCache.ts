@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { fileStamp } from './fileStamp.ts';
 
 /** A per-path cache keyed by the file's mtime. The hot read paths (list rows, transcript pane,
  *  external discovery) re-derive the same value from an UNCHANGED jsonl every poll tick — that
@@ -27,9 +27,11 @@ export class MtimeCache<T> {
   get(path: string, compute: () => T): T | null {
     let signature: string;
     try {
-      const stat = statSync(path);
-      signature = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
+      signature = fileStamp(path);
     } catch {
+      signature = 'missing';
+    }
+    if (signature === 'missing') {
       this.drop(path);
       return null;
     }

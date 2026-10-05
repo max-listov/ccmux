@@ -8,7 +8,7 @@ import { loadCursors } from './cursors.ts';
 import { holdReason } from './holdReason.ts';
 import { managedPeer, managedPeerKey } from './identity.ts';
 import { loadLedger } from './ledger.ts';
-import { isDue, pendingMessageId } from './settlement.ts';
+import { isDue, pendingMessage } from './settlement.ts';
 import { unreadFor } from './store.ts';
 
 /**
@@ -70,10 +70,8 @@ export function blockingInbound(m: MachineConfig, s: Session, nowMs: number): Ch
       const key = managedPeerKey(managedPeer(m.rcPrefix, s));
       // Reading inbox does not cancel daemon delivery. The delivery cursor, not the
       // human/read cursor, decides whether another native turn is still due.
-      const ledger = loadLedger(m);
-      const id = pendingMessageId(ledger, key, loadCursors(m), loadAckedIds(m), nowMs);
-      const pending = ledger.find((msg) => msg?.id === id);
-      return pending == null ? [] : [pending];
+      const pending = pendingMessage(loadLedger(m), key, loadCursors(m), loadAckedIds(m), nowMs);
+      return pending === null ? [] : [pending];
     }
     return mailBlocksSettle(
       unreadFor(managedPeer(m.rcPrefix, s), loadLedger(m), loadCursors(m), loadAckedIds(m)).map(

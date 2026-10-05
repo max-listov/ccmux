@@ -7,7 +7,10 @@ import type { MessageAttribution, MessageOrigin, NotificationAudience } from './
 
 function refuseOrigin(reason: string): never {
   log.warn({ msg: 'message origin admission refused', reason });
-  throw new AppError('ORIGIN_REFUSED', 'Message origin or audience is not authorized', 403);
+  throw new AppError('ORIGIN_REFUSED', {
+    message: 'Message origin or audience is not authorized',
+    status: 403,
+  });
 }
 
 export function principalOrigin(principal: ChatPrincipal): MessageOrigin {

@@ -38,19 +38,28 @@ const mailbox = defineMailbox<RuntimeModeRequest, PermissionMode>({
   deadlineMs: 10_000,
   settle: (receipt, snapshot) => {
     if (receipt.phase === 'failed')
-      throw new AppError('UNSUPPORTED', receipt.reason ?? 'The runtime refused this mode', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: receipt.reason ?? 'The runtime refused this mode',
+        status: 409,
+      });
     if (receipt.phase !== 'complete') return undefined;
     // The runtime's own published mode, not the request: only that proves it took.
     return snapshot()?.permissionMode === receipt.mode ? receipt.mode : undefined;
   },
   mismatch: () =>
-    new AppError('IDENTITY_MISMATCH', 'The conversation changed while setting its mode', 409),
+    new AppError('IDENTITY_MISMATCH', {
+      message: 'The conversation changed while setting its mode',
+      status: 409,
+    }),
 });
 
 export function readRuntimeMode(m: MachineConfig, s: Session): RuntimeModeRequest | null {
   const receipt = mailbox.read(m, s);
   if (receipt === null && existsSync(join(managedRuntimeRoot(m, s), 'permission-mode.json')))
-    throw new AppError('PERMISSION_MODE_UNAVAILABLE', 'Saved permission mode is invalid', 409);
+    throw new AppError('PERMISSION_MODE_UNAVAILABLE', {
+      message: 'Saved permission mode is invalid',
+      status: 409,
+    });
   return receipt;
 }
 export const writeRuntimeMode = (m: MachineConfig, s: Session, value: RuntimeModeRequest) =>

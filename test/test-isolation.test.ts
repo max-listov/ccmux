@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
-import { homedir } from 'node:os';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { machineConfigPath } from '../src/config/location.ts';
 import { CACHE_DIR, DATA_DIR, STATE_DIR } from '../src/config/paths.ts';
 
@@ -48,5 +50,30 @@ test('operator identity is absent in the test process and inherited child enviro
         .stdout.toString()
         .trim(),
     ).toBe('[]');
+  }
+});
+
+test('a test run without the preload refuses to load ccmux paths instead of using the real ones', async () => {
+  // `bun test` started outside the repository root never reads bunfig.toml, so the preload never
+  // runs. Such a run once deleted the operator's installed app; the paths module now refuses it.
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-unpreloaded-'));
+  try {
+    const paths = join(import.meta.dir, '..', 'src', 'config', 'paths.ts');
+    writeFileSync(
+      join(dir, 'probe.test.ts'),
+      `import { test } from 'bun:test';\ntest('probe', async () => { await import(${JSON.stringify(paths)}); });\n`,
+    );
+    const env: Record<string, string> = { PATH: process.env.PATH ?? '', HOME: dir };
+    const run = Bun.spawnSync({
+      cmd: [process.execPath, 'test', 'probe.test.ts'],
+      cwd: dir,
+      env,
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+    expect(run.exitCode).not.toBe(0);
+    expect(`${run.stdout}${run.stderr}`).toContain('without test/preload.ts');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

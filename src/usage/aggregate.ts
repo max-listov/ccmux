@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { measureCpu } from '../util/cpuScope.ts';
+import { measured } from '../util/cpuScope.ts';
 import { addUsage, finishUsage, usageBucket } from './accumulation.ts';
 import { emptyAggregate } from './empty.ts';
 import {
@@ -195,8 +195,4 @@ function aggregate(store: UsageStore, query: UsageQuery, writable: boolean) {
   }
 }
 
-export function aggregateUsage(
-  ...args: Parameters<typeof aggregateUsageImpl>
-): ReturnType<typeof aggregateUsageImpl> {
-  return measureCpu(() => aggregateUsageImpl(...args));
-}
+export const aggregateUsage = measured(aggregateUsageImpl);

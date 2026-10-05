@@ -39,9 +39,15 @@ export function exactNativeTarget(
 ): Session {
   const session = controlTarget(m, input.target);
   if (!hasNativeRuntime(session) || session.archived)
-    throw new AppError('UNSUPPORTED', 'An active managed native registration is required', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'An active managed native registration is required',
+      status: 409,
+    });
   if (session.registrationGeneration !== input.registrationGeneration)
-    throw new AppError('IDENTITY_MISMATCH', 'Managed registration changed', 409);
+    throw new AppError('IDENTITY_MISMATCH', {
+      message: 'Managed registration changed',
+      status: 409,
+    });
   return session;
 }
 
@@ -59,7 +65,10 @@ async function catalog(m: MachineConfig, s: Session, signal: AbortSignal): Promi
     if (result.nextCursor === cursor) break;
     cursor = result.nextCursor;
   }
-  throw new AppError('UNAVAILABLE', 'Model catalog exceeds the bounded selection window', 409);
+  throw new AppError('UNAVAILABLE', {
+    message: 'Model catalog exceeds the bounded selection window',
+    status: 409,
+  });
 }
 
 export async function currentSelection(
@@ -72,7 +81,10 @@ export async function currentSelection(
   if (retained !== null) return retained;
   const model = s.modelSelection;
   if (model === undefined)
-    throw new AppError('UNAVAILABLE', 'Initial native selection has not been observed', 409);
+    throw new AppError('UNAVAILABLE', {
+      message: 'Initial native selection has not been observed',
+      status: 409,
+    });
   return { revision: 0, options: initialTurnOptions(s, model) };
 }
 
@@ -99,7 +111,10 @@ export async function validateTurnOptions(
   images = false,
 ): Promise<void> {
   if (options.runtime !== s.agent)
-    throw new AppError('UNSUPPORTED', 'Selection runtime differs from its session', 409);
+    throw new AppError('UNSUPPORTED', {
+      message: 'Selection runtime differs from its session',
+      status: 409,
+    });
   if (options.runtime === 'opencode' && s.applicationPolicy !== undefined) {
     const policy = verifyApplicationPolicy(m, 'opencode', s.applicationPolicy);
     if (policy.runtime !== 'opencode')
@@ -118,18 +133,30 @@ export async function validateTurnOptions(
   // the request was fine and the model was simply the wrong one.
   const label = modelSelectionLabel(options.model);
   if (row === undefined)
-    throw new AppError('UNSUPPORTED', `Model ${label} is absent from this runtime's catalog`, 409);
+    throw new AppError('UNSUPPORTED', {
+      message: `Model ${label} is absent from this runtime's catalog`,
+      status: 409,
+    });
   if (images && !row.inputModalities.includes('image'))
-    throw new AppError('UNSUPPORTED', `Model ${label} does not accept image input`, 409);
+    throw new AppError('UNSUPPORTED', {
+      message: `Model ${label} does not accept image input`,
+      status: 409,
+    });
   if (!effortAccepted(row, 'effort' in options ? options.effort : undefined))
-    throw new AppError('UNSUPPORTED', `Model ${label} does not offer the requested effort`, 409);
+    throw new AppError('UNSUPPORTED', {
+      message: `Model ${label} does not offer the requested effort`,
+      status: 409,
+    });
   if (options.runtime === 'opencode') {
     const choices = preparedOpenCodeChoices(m, s);
     if (
       (options.agent !== undefined && !choices.agents.includes(options.agent)) ||
       (options.variant !== undefined && !row.variants?.includes(options.variant))
     )
-      throw new AppError('UNSUPPORTED', 'Requested native agent or variant is unavailable', 409);
+      throw new AppError('UNSUPPORTED', {
+        message: 'Requested native agent or variant is unavailable',
+        status: 409,
+      });
   }
 }
 
@@ -143,7 +170,7 @@ export function requireNativeIdle(m: MachineConfig, s: Session): void {
     read.snapshot.pendingRequests.length > 0 ||
     blockingInbound(m, s, Date.now()).length > 0
   )
-    throw new AppError('BUSY', 'Native session is not between turns', 409);
+    throw new AppError('BUSY', { message: 'Native session is not between turns', status: 409 });
 }
 
 export async function readControlSelection(
@@ -180,7 +207,10 @@ export async function updateControlSelection(
     requireNativeIdle(m, session);
     const current = await currentSelection(m, session, signal);
     if (current.revision !== input.expectedRevision)
-      throw new AppError('REVISION_CONFLICT', 'Session selection changed', 409);
+      throw new AppError('REVISION_CONFLICT', {
+        message: 'Session selection changed',
+        status: 409,
+      });
     await validateTurnOptions(m, session, input.options, signal);
     const result = SelectionResultSchema.parse({
       protocol: 1,

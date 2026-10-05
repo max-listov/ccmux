@@ -11,7 +11,7 @@ import { startSession } from './start.ts';
 type EnsureDeps = {
   sessions: () => Session[];
   /** Sessions whose agent runs, and sessions that exist while their agent's pane is gone. */
-  observe: () => Promise<{ live: Set<string>; agentGone: Set<string> }>;
+  observe: () => Promise<{ live: Set<string>; agentGone: Set<string>; uncertain?: Set<string> }>;
   /** Take down a session whose agent is gone, so it can be started again. */
   retire: (name: string) => Promise<void>;
   // Follow-the-fork: if the agent moved the conversation to a new uuid, re-pin the
@@ -25,11 +25,13 @@ type EnsureDeps = {
  *  starts only down + non-archived sessions. Dependency-injected so it's unit-testable
  *  without tmux or a real registry. */
 export async function ensureOnce(deps: EnsureDeps): Promise<void> {
-  const { live, agentGone } = await deps.observe();
+  const { live, agentGone, uncertain } = await deps.observe();
   for (const s of deps.sessions()) {
     if (s.archived) continue;
     const cur = await deps.followFork(s);
-    if (live.has(cur.name)) continue;
+    // A session tmux reported in a form we could not read is neither up nor down: acting on it —
+    // taking it down, or starting it again every second — would act on a guess.
+    if (live.has(cur.name) || uncertain?.has(cur.name)) continue;
     // A session kept alive by another window after its agent died is down, not up: it is taken down
     // whole — its other windows live and die with it — and started like any other down session.
     if (agentGone.has(cur.name)) await deps.retire(cur.name);

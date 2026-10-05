@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { paneActivityPath } from '../config/paths.ts';
 import type { MachineConfig } from '../types.ts';
-import { atomicWrite } from '../util/atomic.ts';
+import { writeEphemeralSnapshot } from '../util/atomic.ts';
 
 /**
  * When each session's pane was last seen doing work — the machine's shared answer to "is this
@@ -60,7 +60,7 @@ export async function writePaneActivity(
   seen: Map<string, number>,
 ): Promise<void> {
   try {
-    await atomicWrite(paneActivityPath(m), JSON.stringify(Object.fromEntries(seen)));
+    writeEphemeralSnapshot(paneActivityPath(m), JSON.stringify(Object.fromEntries(seen)));
   } catch {
     // best-effort bookkeeping — never cost a pass its remaining sessions
   }

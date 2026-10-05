@@ -212,10 +212,15 @@ private diagnostic facility. Daemon and worker identities resolve distinct fixed
 The limits are 8 KiB per event, 256 queued items/1 MiB, 2 MiB per file and four files per writer.
 Admission refusal counters, physical-write status, rotation and partial-tail evidence remain
 observable. Admission into memory is not durable delivery, fsync or native-turn completion.
-Startup inspects active and retained generations under the writer lock. Recovery status reports
-corrupt rows with their file and byte position while preserving the evidence; unreadable or
-unsafe archive paths refuse startup and release the lock. Four retained slots allow a torn
-active generation to rotate intact, without a single-file recovery deletion.
+Startup inspects the last line of every retained generation under the writer lock. Recovery status
+reports corrupt rows with their file and byte position while preserving the evidence. A file the
+journal cannot keep in place — an unreadable generation, a name that is not a regular file, a torn
+active file with no retention slot — is renamed to `<file>.quarantined-<epoch>` beside the journal
+and never deleted, and the journal starts (Stitchkit's default `onStartupRefusal: 'quarantine'`):
+the daemon's control server depends on the journal, so a diagnostic facility must not stop it.
+Four retained slots allow a torn active generation to rotate intact. The status the journal writes
+beside itself (`<journal>.status.json`) is read by `ccmux doctor`, which names how many records were
+skipped on open, where the first one was, and every quarantined file until the operator removes it.
 `src/runtime/journalOwner.ts` integrates the daemon and Custom worker lifetimes. An owner lock
 serializes this machine's writers; inside it the journal opens with stitchkit's `reclaim-stale`
 policy. Every lock record carries its holder's boot and process birth, so a lock is reclaimed only
@@ -228,12 +233,18 @@ counters are persisted with a one-second cadence and at bounded close. Request, 
 gap and terminal transitions carry only allowlisted metadata. Other native engines retain their
 existing private diagnostics; no journal is used as their canonical execution state.
 
-При сборке пути native assets и их SHA256 определяет публичный `stitchkit/files/packaging`
-через `createNativePackaging`; расположение устанавливаемых файлов задаёт CCMux. Один JS bundle
-сохраняет оба Darwin targets через один публичный multi-target plugin. Main bundle, routed
-programs и Custom driver задают точный `naming.entry`, выключают splitting и используют
-`scripts/native-companion.ts`; installer материализует только addon текущей машины.
-Отсутствующий, повреждённый или чужой по архитектуре выбранный addon не подменяется другим.
+At build time the public `stitchkit/files/packaging` (`createNativePackaging`) resolves where the
+native assets come from; ccmux decides where the installed files go. One JS bundle carries both
+Darwin targets through one multi-target plugin. The main bundle, the routed programs and the Custom
+driver set an exact `naming.entry`, disable splitting, refuse a build that produces more than one
+artifact, and go through `scripts/native-companion.ts`. Stitchkit compares each addon with the digest
+it published at its own build and hands back the verified bytes; the bundle embeds those bytes and
+that digest, and the installer checks the same digest. A substituted addon fails the build with
+Stitchkit's `NATIVE_ASSET_DIGEST_MISMATCH` (`test/native-companion.test.ts` holds the embedded
+digests equal to the published manifest). Packaging is read once per build and reused.
+The main installer materialises only the current machine's addon; the Custom package lays down both,
+and its loader picks by `process.arch`. A missing, corrupt or foreign-architecture addon is never
+replaced by another one.
 
 ## Memory pressure: who the OOM killer takes
 
@@ -247,25 +258,25 @@ browsers and builds are the victims before the agent. A descendant that set itse
 headless browser at 200–300 — or lower on purpose keeps its value, and a spine process already
 protected further is not raised.
 
-OOM-проход берёт pane/server roots из того же bounded tmux inventory, который выполняет
-observation; отдельного tmux subprocess у OOM нет. При отсутствии свежего inventory
-защита самого daemon и его потомков остаётся доступной. Inventory старше 10 секунд не даёт
-roots для остальных деревьев: их существующий adjustment сохраняется, но новые потомки агента,
-унаследовавшие отрицательное значение, не возвращаются к 0 до восстановления наблюдения.
-Свежий inventory возобновляет освобождение потомков; эта деградация не выключает OOM-проход.
-Одна некорректная строка inventory пропускается с ограниченным предупреждением; целиком
-неразбираемый ответ даёт ошибку наблюдения. Inventory сохраняет starttime каждого Linux root; перед использованием PID сверяется с этой identity, missing/reused root исключается. `procTable.ts` выбирает способ discovery по стоимости
-предыдущего завершённого прохода: sparse дерево читает `task/*/children` по всем потокам,
-thread-heavy дерево читает один `stat` каждого host PID и строит PPID graph. Авторизуются
-только потомки заданных roots. Cache содержит стоимость, а не список процессов или разрешения;
-каждый проход заново обнаруживает descendants. Fork из worker thread включён обоими путями. Process stat and interpreter argv identify
-the same supervising spine. Every adjustment is still read each pass, preserving intentional
-changes rather than trusting a remembered value. The stat start-time pins process identity;
-reads and writes reject PID reuse, and a write uses an opened procfs fd after that check.
-`test/oom-priority.test.ts` covers multiple task children, unrelated roots, PID reuse and
-permission refusal. `test/oom-linux.test.ts` отдельно проверяет реальный fork из worker
-thread без OOM privileges; main-task-only отрицательный контроль его пропускает.
-Другая проверка uses an isolated real tmux tree to verify spine
+The OOM pass takes its pane and server roots from the same bounded tmux inventory the observation
+pass already reads; it starts no tmux process of its own. When that inventory is older than
+`INVENTORY_FRESH_MS` (10 s) — observation lags on a loaded host, which is exactly when this pass
+matters — the pass takes a fresh inventory itself (`processRoots` in `src/monitoring/tmux.ts`)
+rather than protecting only the daemon. One unreadable inventory row is skipped with a bounded
+warning, and its session counts as uncertain: healing neither takes it down nor starts it. A wholly
+unreadable answer is an observation error. The inventory keeps each Linux root's start time; a root
+whose PID no longer matches that identity is dropped. `procTable.ts` chooses discovery by the cost
+of the previous complete pass: a sparse tree reads `task/*/children` across all threads, a
+thread-heavy tree reads one `stat` per host PID and builds the PPID graph. Only descendants of the
+given roots are authorised. The cache holds a cost, never a process list or a permission; every
+pass discovers descendants anew, and a fork from a worker thread is found by both paths. Process
+stat and interpreter argv identify the same supervising spine. Every adjustment is still read each
+pass, preserving intentional changes rather than trusting a remembered value. The stat start time
+pins process identity; reads and writes reject PID reuse, and a write uses an opened procfs fd after
+that check. `test/oom-priority.test.ts` covers multiple task children, the mode switch in both
+directions, unrelated roots, PID reuse and permission refusal. `test/oom-linux.test.ts` checks a
+real fork from a worker thread without OOM privileges, which a main-task-only negative control
+misses. Another check uses an isolated real tmux tree to verify spine
 protection, a tool fork inheriting the target, release to zero and an intentional browser value. Lowering needs `CAP_SYS_RESOURCE`: a daemon
 refused it logs one warning and leaves the mechanism off until it restarts. macOS has no such knob
 and is untouched.

@@ -76,7 +76,10 @@ async function scan(
   consume?: (chunk: Buffer, offset: number) => void,
 ) {
   if (scanning >= limits.concurrentBuilds)
-    throw new AppError('RESOURCE_EXHAUSTED', 'External history reader capacity is busy', 429);
+    throw new AppError('RESOURCE_EXHAUSTED', {
+      message: 'External history reader capacity is busy',
+      status: 429,
+    });
   scanning++;
   try {
     const hash = createHash('sha256');
@@ -112,13 +115,15 @@ export async function buildContentSnapshot(
   signal: AbortSignal,
 ) {
   if (stat.size > limits.sourceBytes)
-    throw new AppError(
-      'RESOURCE_EXHAUSTED',
-      'External history source exceeds the snapshot budget',
-      413,
-    );
+    throw new AppError('RESOURCE_EXHAUSTED', {
+      message: 'External history source exceeds the snapshot budget',
+      status: 413,
+    });
   if (building >= limits.concurrentBuilds)
-    throw new AppError('RESOURCE_EXHAUSTED', 'External history snapshot capacity is busy', 429);
+    throw new AppError('RESOURCE_EXHAUSTED', {
+      message: 'External history snapshot capacity is busy',
+      status: 429,
+    });
   building++;
   try {
     const entries: ExternalContentEntry[] = [];
@@ -142,11 +147,10 @@ export async function buildContentSnapshot(
         if (entry) {
           memory += entry.text.length * 2 + 256;
           if (memory > limits.snapshotBytes)
-            throw new AppError(
-              'RESOURCE_EXHAUSTED',
-              'External history projection exceeds the snapshot budget',
-              413,
-            );
+            throw new AppError('RESOURCE_EXHAUSTED', {
+              message: 'External history projection exceeds the snapshot budget',
+              status: 413,
+            });
           entries.push(entry);
         } else omitted++;
         pending = Buffer.alloc(0);

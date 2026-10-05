@@ -1,31 +1,20 @@
-import { type BigIntStats, type FSWatcher, lstatSync, type WatchListener, watch } from 'node:fs';
+import { type FSWatcher, type WatchListener, watch } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { createRevisionSignal } from 'stitchkit/application';
 import { pendingSessionsPath, sessionsPath } from '../config/paths.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { fileStamp } from '../util/fileStamp.ts';
 import { nativeCommandPath } from './response.ts';
 import { managedRuntimeRoot } from './status.ts';
 import { privateRuntimeDirectory } from './store.ts';
 
-type Stamp = Pick<BigIntStats, 'dev' | 'ino' | 'size' | 'mtimeNs' | 'ctimeNs'> | null;
-function fileStamp(path: string): Stamp {
+/** An input's stamp; an unreadable one compares as its own value until it can be read again. */
+function inputStamp(path: string): string {
   try {
-    return lstatSync(path, { bigint: true, throwIfNoEntry: false }) ?? null;
+    return fileStamp(path, { follow: false });
   } catch {
-    return null;
+    return 'unreadable';
   }
-}
-function sameStamp(a: Stamp, b: Stamp): boolean {
-  return (
-    a === b ||
-    (a !== null &&
-      b !== null &&
-      a.dev === b.dev &&
-      a.ino === b.ino &&
-      a.size === b.size &&
-      a.mtimeNs === b.mtimeNs &&
-      a.ctimeNs === b.ctimeNs)
-  );
 }
 
 /** Command files wake the owner immediately; the deadline repairs missed filesystem events.
@@ -50,14 +39,14 @@ export class RuntimeWake {
     ) => Pick<FSWatcher, 'on' | 'close'> = watch,
     reconcileEveryMs?: number,
   ) {
-    const stamps = new Map(paths.map((path) => [path, fileStamp(path)]));
+    const stamps = new Map(paths.map((path) => [path, inputStamp(path)]));
     const reconcile = () => {
       let changed = false;
       for (const [path, previous] of stamps) {
         // Directory timestamps can stay unchanged when a name is created within their clock
         // resolution. Lost-event reconciliation must stat even a previously absent input.
-        const current = fileStamp(path);
-        if (!sameStamp(current, previous)) {
+        const current = inputStamp(path);
+        if (current !== previous) {
           stamps.set(path, current);
           changed = true;
         }

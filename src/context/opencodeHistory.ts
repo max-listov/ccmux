@@ -36,7 +36,10 @@ const CursorSchema = z
 type Message = z.infer<typeof MessageSchema>;
 
 function invalidCursor(): never {
-  throw new AppError('HISTORY_CURSOR', 'Native history cursor is no longer current', 409);
+  throw new AppError('HISTORY_CURSOR', {
+    message: 'Native history cursor is no longer current',
+    status: 409,
+  });
 }
 
 function parseCursor(value: string): z.infer<typeof CursorSchema> {

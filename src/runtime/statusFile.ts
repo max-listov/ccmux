@@ -1,6 +1,6 @@
 import { dirname } from 'node:path';
 import type { z } from 'zod';
-import { atomicWrite } from '../util/atomic.ts';
+import { writeEphemeralSnapshot } from '../util/atomic.ts';
 import { type RuntimeLease, readRuntimeLease } from './lease.ts';
 import { NATIVE_RUNTIME_MAX_BYTES, NATIVE_RUNTIME_TTL_MS } from './projectionSchema.ts';
 import type { ManagedRuntimeRead, ManagedRuntimeSnapshot } from './schema.ts';
@@ -37,7 +37,7 @@ export function validateRuntimeLiveness<Snapshot extends ManagedRuntimeSnapshot>
  * One coalesced writer of a runtime's status file: the latest snapshot wins, one write at a time,
  * bounded independently of how often the runtime reports.
  */
-export class RuntimeStatusWriter<Snapshot extends RuntimeLease & { sequence: number }> {
+export class RuntimeStatusWriter<Snapshot extends RuntimeLease> {
   private next: Snapshot | null = null;
   private writing: Promise<void> | null = null;
 
@@ -64,7 +64,8 @@ export class RuntimeStatusWriter<Snapshot extends RuntimeLease & { sequence: num
         const bytes = JSON.stringify(parsed);
         if (Buffer.byteLength(bytes) > NATIVE_RUNTIME_MAX_BYTES)
           throw new Error('Native projection exceeds its byte limit');
-        await atomicWrite(this.path, bytes, 0o600);
+        // A lease that expires in seconds: no fsync, no I/O pool (see `writeEphemeralSnapshot`).
+        writeEphemeralSnapshot(this.path, bytes);
       }
     } finally {
       this.writing = null;

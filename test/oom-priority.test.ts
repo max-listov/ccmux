@@ -4,12 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   applyOomPriority,
-  isRunner,
   type OomAccess,
   oomPlan,
   procOomAccess,
-  readProcTable,
 } from '../src/runtime/oomPriority.ts';
+import { isRunner, readProcTable } from '../src/runtime/procTable.ts';
 import { matchingProcessRoots } from '../src/util/procStat.ts';
 
 // daemon 100 · tmux server 200 → pane `_run` 210 → agent 220 → build 230 → its worker 231;
@@ -138,6 +137,7 @@ test('the table is read from /proc: parent links, and the pane runners among int
       { pid: 220, parent: 210 },
     ],
     runners: [210],
+    mode: 'task-children',
   });
   expect(isRunner(['bun', 'src/cli.ts', '_run', 'agent-a'])).toBe(true);
   expect(isRunner(['bun', 'other.js', '_run', 'agent-a'])).toBe(false);
@@ -165,10 +165,29 @@ test('task children include forks from worker threads; host entries outside root
     mkdirSync(join(dir, '100', 'task', '120'));
     writeFileSync(join(dir, '100', 'task', '120', 'children'), '103');
     writeFileSync(join(dir, '101', 'task', '101', 'children'), '102');
+    // Process 100 has three threads (`num_threads`, stat field 20): reading its task children costs
+    // more than its share of a host-wide stat pass.
+    writeFileSync(
+      join(dir, '100', 'stat'),
+      `100 (worker) S 1 ${Array(15).fill('0').join(' ')} 3 0 100`,
+    );
     const table = readProcTable([100], dir);
-    // The next complete pass switches to the PPID index when task fan-out costs more.
-    expect(readProcTable([100], dir)).toEqual(table);
+    expect(table.mode).toBe('task-children');
     expect(table.rows.map((r) => r.pid).sort()).toEqual([100, 101, 102, 103]);
+    // That pass cost more than the host has PIDs, so the next one reads the PPID graph instead —
+    // and finds the same tree, worker-thread forks included.
+    const indexed = readProcTable([100], dir);
+    expect(indexed.mode).toBe('ppid');
+    expect(indexed.rows.map((r) => r.pid).sort()).toEqual([100, 101, 102, 103]);
+    // A host that grew many unrelated processes makes the scoped walk the cheaper one again.
+    for (let pid = 2000; pid < 2030; pid++) {
+      mkdirSync(join(dir, String(pid)));
+      writeFileSync(
+        join(dir, String(pid), 'stat'),
+        `${pid} (other) S 1 ${Array(17).fill('0').join(' ')} ${pid}`,
+      );
+    }
+    expect(readProcTable([100], dir).mode).toBe('task-children');
     writeFileSync(join(dir, '101', 'oom_score_adj'), '-300');
     const access = procOomAccess(table.rows, dir);
     expect(access.read(101)).toBe(-300);

@@ -19,7 +19,7 @@ import type { TranscriptStats } from '../../types.ts';
 import { parseUsageRecord } from '../../usage/normalize.ts';
 import type { UsageFact } from '../../usage/schema.ts';
 import { isSqliteBusy, UsageStore } from '../../usage/store.ts';
-import { measureCpu } from '../../util/cpuScope.ts';
+import { measured } from '../../util/cpuScope.ts';
 import { rec } from './normalize.ts';
 
 /**
@@ -50,11 +50,21 @@ export const SCAN_CHUNK = 4 * 1024 * 1024;
 const HEAD_BYTES = 4096;
 
 /** Parser changes invalidate only the provider whose derived statistics change. */
-const parserRevision = (agent: string) => (agent === 'codex' ? 2 : 1);
+/**
+ * The parser revision each provider's index was built with. Raising one provider's revision rebuilds
+ * only that provider's indexes: a global bump once re-scanned every Claude history on the fleet.
+ * Revision 1 has no file suffix and revision n > 1 is `-v<n>`, which keeps every existing file name.
+ */
+const PARSER_REVISIONS: Readonly<Record<string, number>> = { codex: 2 };
+const parserRevision = (agent: string) => PARSER_REVISIONS[agent] ?? 1;
+const revisionSuffix = (agent: string) => {
+  const revision = parserRevision(agent);
+  return revision === 1 ? '' : `-v${revision}`;
+};
 
 export const StoredIndexSchema = z
   .object({
-    version: z.union([z.literal(1), z.literal(2)]),
+    version: z.int().positive(),
     /** Whose parser produced `stats`. A session that changed runtime must not inherit them. */
     agent: z.string().min(1).max(64),
     head: z.string().length(64),
@@ -92,7 +102,7 @@ const INDEX_DIR = (): string => join(CACHE_DIR, 'transcript-index');
 export const transcriptIndexPath = (path: string, agent: string): string =>
   join(
     INDEX_DIR(),
-    `${createHash('sha256').update(path).digest('hex')}${parserRevision(agent) === 1 ? '' : '-v2'}.sqlite`,
+    `${createHash('sha256').update(path).digest('hex')}${revisionSuffix(agent)}.sqlite`,
   );
 
 /** An index nothing has advanced for this long is removed; a transcript still read rebuilds it once. */
@@ -475,8 +485,4 @@ function readRange(path: string, index: StoredIndex, from: number, to: number): 
   }
 }
 
-export function indexTranscript(
-  ...args: Parameters<typeof indexTranscriptImpl>
-): ReturnType<typeof indexTranscriptImpl> {
-  return measureCpu(() => indexTranscriptImpl(...args));
-}
+export const indexTranscript = measured(indexTranscriptImpl);

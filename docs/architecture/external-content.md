@@ -78,21 +78,24 @@ be qualified, and `stale` means the requested revision changed. Errors outside t
 include disabled access, wrong identity and malformed cursor. Internal causes stay in owner logs;
 public replies never expose storage paths or native error text.
 
-## Общий индекс путей Codex
+## Shared Codex path index
 
-`src/external/storage.ts` разделяет один ограниченный индекс UUID → path между всеми
-тредами configured root. Одновременные запросы, включая истечение индекса, используют один
-обход. До 32 roots удерживаются в процессе; максимальный возраст индекса — 5 секунд.
-Изменение root или родителя известного файла, исчезновение пути и перенос в архив
-инвалидируют индекс. Дубликат в другом существующем subtree обнаруживается не позже
-следующего полного обхода после истечения этого срока.
+`src/external/storage.ts` shares one bounded UUID → path index among all threads of a configured
+root. Concurrent lookups, including those that find the index expired, share one walk; the walk
+runs under its own deadline, so a caller that abandons its lookup ends only its own wait. Up to 32
+roots are held in the process; the index's maximum age is 5 seconds. A change of the root or of a
+known file's parent, a vanished path and a move to the archive invalidate it. A thread the index
+does not know is looked for again once the index is older than `STORAGE_MISS_RESCAN_MS` (250 ms):
+a new rollout lands in an existing day directory, which changes no revision the index follows. A
+duplicate in another existing subtree is detected no later than the next full walk after expiry.
 
-Повторный lookup проверяет известный путь; containment, symlink, regular-file, owner/mode
-и native identity проверяет тот же reader при каждом чтении. Индекс не является разрешением
-на файл и не заменяет проверки содержимого и pinned revision. Повторная запись того же
-inode с восстановленным mtime проверяется по ctime и native metadata. Claude сохраняет
-свой bounded lookup. `test/external-storage-cache.test.ts` проверяет отсутствие повторного
-`opendir`, конкуренцию после истечения и обнаружение ambiguous identity.
+A repeated lookup checks the known path; containment, symlink, regular-file, owner/mode and native
+identity are checked by the same reader on every read. The index is not a permission to read a file
+and replaces neither content checks nor the pinned revision. A rewrite of the same inode with a
+restored mtime is caught by ctime and native metadata. Claude keeps its own bounded lookup.
+`test/external-storage-cache.test.ts` covers the absence of repeated `opendir`, concurrency after
+expiry, ambiguous identity, an abandoned shared walk and a thread created in an existing day
+directory.
 
 ## Verification
 

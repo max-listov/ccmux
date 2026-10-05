@@ -11,7 +11,10 @@ updated: 2026-09-30 17:24 +07:00
 
 The daemon's existing session observation loop owns this projection. It captures each running
 ordinary managed pane once per pass, maintains lifecycle evidence, and atomically publishes a compact
-snapshot. It is not another supervisor or mutable session registry.
+snapshot. It is not another supervisor or mutable session registry. The snapshot, like the inventory
+and pane-activity files beside it, is written atomically but without fsync (`writeEphemeralSnapshot`):
+it is rewritten every pass and belongs to one daemon generation, so a write lost to a crash is
+replaced by the next daemon's first pass, and skipping fsync keeps the write off the I/O thread pool.
 
 Opt-in [owned Codex App Server sessions](owned-codex-runtime.md) instead supply a prepared native
 snapshot from their existing session supervisor. The daemon does not capture their pane for turn
@@ -235,13 +238,13 @@ real child tool, completion, prompt, interrupted-turn closure and agent-pane dea
 full daemon Unix service reader. Retaining the auxiliary session as running makes that test fail.
 
 
-## CPU и диагностика расписаний
+## CPU and schedule diagnostics
 
-Control endpoint `daemon.performance` возвращает typed snapshot общего process CPU,
-числа/ошибок/длительности проходов, CPU по scopes и `producers`: machineFile, pendingFile,
-readyFile, usageStore и observation. Это тот же источник счётчиков, который читают стенды;
-отдельного benchmark-only канала нет. Он доступен через `control performance`
-и тот же generated client; файл monitoring protocol 1 сохраняет прежнюю схему.
+The control endpoint `daemon.performance` returns a typed snapshot: total process CPU, the count,
+failures and duration of passes, CPU by scope, and `producers` — machineFile, pendingFile,
+readyFile, usageStore and observation. It is the same counter source the benches read; there is no
+benchmark-only channel. It is reachable through `control performance` and the same generated
+client; the monitoring file (protocol 1) keeps its schema.
 
 ```sh
 ccmux control performance_configure --enabled --json
@@ -249,18 +252,21 @@ ccmux control performance --json
 ccmux control performance_configure --no-enabled --json
 ```
 
-Чтение не меняет режим и не сбрасывает окна. `daemon.performance.configure` проходит общий
-mutation admission с ключом daemon/performance. Смена режима начинает новый epoch без restart;
-повтор того же режима сохраняет его, явный `--reset` начинает новый замер.
-По умолчанию CPU tracing выключен:
-`scopes[].cpu=null` означает отсутствие измерения, а не нулевую работу. Счётчики проходов,
-длительность и stalled work доступны постоянно. Detailed tracing несёт собственный расход;
-обычный CPU benchmark выполняется с ним выключенным, profiling cost проверяется отдельно.
+Reading changes neither the mode nor the windows. `daemon.performance.configure` goes through the
+shared mutation admission under the key daemon/performance. Changing the mode starts a new epoch
+without a restart; repeating the current mode keeps it, and an explicit `--reset` starts a new
+measurement. CPU tracing is off by default: `scopes[].cpu = null` means "not measured", not "no
+work". Pass counts, duration and stalled work are always available. Detailed tracing has a cost of
+its own; ordinary CPU benches run with it off, and profiling cost is measured separately.
 
-Каждый process CPU interval учитывается один раз: в явном synchronous span либо в единственном
-active operation window. Перекрывающаяся async работа без явного span, GC/JIT и прочая работа
-остаются `unattributed`. Сумма не удваивается; window attribution не является per-thread CPU
-или sampled stack attribution. Нельзя распределять остаток по расписаниям только ради 100%.
-До 128 scopes удерживаются в текущем epoch. Stall record содержит active/recent и последний
-медленный synchronous span; следующий быстрый проход не стирает имя блокировавшей работы.
-`test/daemon-performance.test.ts` проверяет overlap, остаток, смену epoch и настоящий stalled timer.
+Every process CPU interval is charged once, and only to an explicit synchronous span — a schedule
+or operation's synchronous run, or a `measured`/`measureCpu` span inside it. CPU between spans stays
+`unattributed` even when a single operation is open: an open operation is usually a wait, and
+charging it the timers, transport and GC that ran meanwhile made a waiter look like the hottest code
+in the daemon. The sum is never doubled, and window attribution is neither per-thread CPU nor
+sampled stacks; the remainder is never spread over schedules to reach 100%. Up to 128 scope names
+are kept per epoch; further names share the `other` bucket rather than failing the work they
+measure. A stall record names the active and recent work and the last slow synchronous span, so a
+following fast pass does not erase what blocked the loop. `test/daemon-performance.test.ts` covers
+overlap, the remainder, a wait that must not absorb foreign CPU, the name bound, epoch changes and a
+real stalled timer.
