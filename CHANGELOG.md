@@ -6,6 +6,12 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.80.2] — 2026-10-07
+
+Stitchkit 0.108.0 release with a host-independent gate
+
+- The release gate no longer depends on host speed: tests that spun for a wall-clock duration or used a zero deadline now spin on wall and CPU time together and use a tmux that answers late, so they hold on the Linux CI runner as well as on a loaded Mac. Release 0.80.1 was tagged but never published because that gate failed on CI; 0.80.2 carries its contents.
+
 ## [0.80.1] — 2026-10-07
 
 Adopt Stitchkit 0.108.0 and gate the native packaging of the bundle

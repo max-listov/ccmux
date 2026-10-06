@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   observedPanes,
   observedPeerPanes,
@@ -264,16 +265,25 @@ test.skipIf(!Bun.which('tmux'))(
     });
     const names = Array.from({ length: 3 }, (_, i) => `agent-${i}`);
     const previous = process.env.CCMUX_OBSERVE_DEADLINE_MS;
+    const panesById = new Map<string, string>();
     try {
       for (const name of names) {
         const r = Bun.spawnSync(
           tmuxArgv(m, 'new-session', '-d', '-s', name, '-P', '-F', '#{pane_id}', 'sleep', '600'),
         );
+        panesById.set(name, r.stdout.toString().trim());
         rememberAgentPane(m, name, r.stdout.toString().trim());
       }
-      process.env.CCMUX_OBSERVE_DEADLINE_MS = '0';
+      // A tmux that answers after the deadline, whatever the host's speed: a zero deadline only
+      // races the child's exit against a timer, and a fast host wins that race.
+      const slowTmux = join(root, 'slow-tmux');
+      writeFileSync(slowTmux, `#!/bin/sh\nsleep 5 >/dev/null 2>&1\nexec ${m.tmuxBin} "$@"\n`);
+      chmodSync(slowTmux, 0o755);
+      const slow = { ...m, tmuxBin: slowTmux };
+      for (const name of names) rememberAgentPane(slow, name, panesById.get(name) ?? '');
+      process.env.CCMUX_OBSERVE_DEADLINE_MS = '50';
       const before = observationExecCount();
-      const panes = await observedPanes(m, names);
+      const panes = await observedPanes(slow, names);
       expect(observationExecCount() - before).toBe(1);
       for (const name of names) expect(panes.get(name)).toBeNull();
     } finally {

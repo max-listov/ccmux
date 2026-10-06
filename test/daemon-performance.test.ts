@@ -3,14 +3,15 @@ import { watchLoopStalls } from '../src/daemon/loopStall.ts';
 import { DaemonPerformance } from '../src/monitoring/performance.ts';
 import { measureCpu } from '../src/util/cpuScope.ts';
 
-// Spins until the process has been charged `ms` of CPU, not until `ms` of wall time has passed:
-// on a loaded host a wall-clock spin is preempted and is charged less than the CPU the assertions
-// below expect.
+// Spins until `ms` of wall time has passed AND the process has been charged `ms` of CPU: the
+// assertions below need a block that is both that long and that expensive, and on a loaded or
+// slow-clocked host either one alone falls short of the other.
 function busy(ms: number) {
-  const start = process.cpuUsage();
+  const startCpu = process.cpuUsage();
+  const end = performance.now() + ms;
   for (;;) {
-    const used = process.cpuUsage(start);
-    if (used.user + used.system >= ms * 1000) return;
+    const used = process.cpuUsage(startCpu);
+    if (performance.now() >= end && used.user + used.system >= ms * 1000) return;
     Math.sqrt(Math.random());
   }
 }
