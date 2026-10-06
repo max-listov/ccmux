@@ -27,6 +27,7 @@ const root = mkdtempSync(join(tmpdir(), 'ccmux-fake-launcher-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const launcherBin = join(root, 'node-workload-run');
 const seen = join(root, 'seen.json');
+const ready = join(root, 'ignore-term.ready');
 writeFileSync(
   launcherBin,
   `#!${process.execPath}
@@ -49,7 +50,7 @@ switch (request.label) {
   case 'mismatch': done(completed(0, null), 3);
   case 'payload-signalled': done(completed(null, 'SIGKILL'), 1);
   case 'payload-signalled-wrong-exit': done(completed(null, 'SIGKILL'), 137);
-  case 'ignore-term': process.on('SIGTERM', () => {}); await Bun.sleep(60_000);
+  case 'ignore-term': process.on('SIGTERM', () => {}); writeFileSync(${JSON.stringify(ready)}, 'ready'); await Bun.sleep(60_000);
 }
 `,
 );
@@ -100,8 +101,11 @@ test('the payload scratch is apart from the private request, and both are remove
 test(
   'a launcher that ignores cancellation is killed after the grace, and says so',
   async () => {
+    rmSync(ready, { force: true });
     const child = run('ignore-term');
-    await Bun.sleep(200);
+    // The launcher must be ignoring SIGTERM before the kill, or the grace is not what ends it.
+    for (let waited = 0; !existsSync(ready) && waited < 15_000; waited += 25) await Bun.sleep(25);
+    expect(existsSync(ready)).toBe(true);
     const started = performance.now();
     child.kill('SIGKILL');
     const outcome = await child.settled;

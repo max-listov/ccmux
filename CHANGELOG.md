@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.80.1] — 2026-10-07
+
+Adopt Stitchkit 0.108.0 and gate the native packaging of the bundle
+
+- Stitchkit 0.108.0, with `hono` 4.13.13, `express-rate-limit` 8.7.1 and the MCP client 2.3.1; the packed control-service client still declares Stitchkit as a peer (`>=0.106.1 <1`), which admits 0.108.x.
+- The release gate now classifies the built `ccmux.js` with Stitchkit's `inspectNativeArtifact` and fails unless it carries the packaged native loader, so a bundle that would refuse the macOS addon (no exclusive lock, no process identity) cannot ship.
+
 ## [0.80.0] — 2026-10-06
 
 Stitchkit becomes a peer dependency; all dependencies at latest

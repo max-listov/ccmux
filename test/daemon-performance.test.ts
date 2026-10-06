@@ -3,9 +3,16 @@ import { watchLoopStalls } from '../src/daemon/loopStall.ts';
 import { DaemonPerformance } from '../src/monitoring/performance.ts';
 import { measureCpu } from '../src/util/cpuScope.ts';
 
+// Spins until the process has been charged `ms` of CPU, not until `ms` of wall time has passed:
+// on a loaded host a wall-clock spin is preempted and is charged less than the CPU the assertions
+// below expect.
 function busy(ms: number) {
-  const end = performance.now() + ms;
-  while (performance.now() < end) Math.sqrt(Math.random());
+  const start = process.cpuUsage();
+  for (;;) {
+    const used = process.cpuUsage(start);
+    if (used.user + used.system >= ms * 1000) return;
+    Math.sqrt(Math.random());
+  }
 }
 
 test('callback CPU is counted once across overlapping async scopes and synchronous nested work', async () => {

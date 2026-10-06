@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { inspectNativeArtifact } from 'stitchkit/files/packaging';
 import { requireUniversalNativePackaging } from '../scripts/native-companion.ts';
 import { ensureRoutedPrograms } from '../src/boot/routedInstall.ts';
 
@@ -32,6 +33,15 @@ test('the shipped bundle carries no react-devtools-core import (the specific reg
   const out = join(mkdtempSync(join(tmpdir(), 'ccmux-bundle-')), 'ccmux.js');
   expect(await buildBundle(out)).toBe(true);
   expect(readFileSync(out, 'utf8')).not.toContain('from "react-devtools-core"');
+}, 60_000);
+
+// Stitchkit refuses the Darwin addon inside a bundle built without its packaging plugin, and then
+// the daemon has no exclusive lock and no process identity on macOS. The classification reads the
+// marker the plugin's loader carries, so it answers without running the bundle.
+test('the shipped bundle carries the packaged native loader, not the refusing default', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'ccmux-bundle-native-')), 'ccmux.js');
+  expect(await buildBundle(out)).toBe(true);
+  expect(inspectNativeArtifact(readFileSync(out))).toBe('packaged');
 }, 60_000);
 
 test('the shipped bundle starts with an EMPTY bun cache and NO network (the real invariant)', async () => {
