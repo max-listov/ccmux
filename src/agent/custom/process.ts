@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { dependencies } from '../../../package.json';
+import { devDependencies } from '../../../package.json';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { seedNativeSelection } from '../../runtime/selection.ts';
 import { managedRuntimeRoot } from '../../runtime/status.ts';
@@ -15,7 +15,7 @@ import { computeStamp } from '../launch/launchStamp.ts';
 import { customModel, prepareCustomHost } from './host.ts';
 import { CustomOwner } from './owner.ts';
 
-export const CUSTOM_ENGINE_VERSION = `stitchkit-${dependencies.stitchkit}`;
+export const CUSTOM_ENGINE_VERSION = `stitchkit-${devDependencies.stitchkit}`;
 
 export async function runCustomProcess(
   m: MachineConfig,

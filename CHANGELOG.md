@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.80.0] — 2026-10-06
+
+Stitchkit becomes a peer dependency; all dependencies at latest
+
+- `stitchkit` is a peer dependency (`>=0.106.1 <1`) of the package and of the packed control-service client, so a consumer installs one physical copy of its own Stitchkit instead of overriding ours. The packed-client gate installs the client next to a consumer-owned Stitchkit and fails unless exactly one copy exists.
+- Updated to the latest releases: Stitchkit 0.106.1, `ai` 7.0.128, `@ai-sdk/openai-compatible` 3.0.63, Claude Agent SDK 0.3.291.
+
 ## [0.79.0] — 2026-10-05
 
 Restore monitoring after restarts and adopt Stitchkit 0.105.0

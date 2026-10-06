@@ -13,7 +13,8 @@ import { VERSION } from '../src/util/version.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const PackageSchema = z.looseObject({
-  dependencies: z.object({ stitchkit: z.string().min(1), zod: z.string().min(1) }),
+  dependencies: z.object({ zod: z.string().min(1) }),
+  peerDependencies: z.object({ stitchkit: z.string().min(1) }),
 });
 
 function sha256(bytes: Uint8Array): string {
@@ -95,6 +96,7 @@ export async function packageControlServiceClient(directory: string): Promise<{
           './native-stream.json': './native-stream.json',
         },
         dependencies: sourcePackage.dependencies,
+        peerDependencies: sourcePackage.peerDependencies,
       },
       null,
       2,

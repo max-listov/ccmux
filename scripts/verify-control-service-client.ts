@@ -6,6 +6,10 @@ import { packageControlServiceClient } from './package-control-service.ts';
 const directory = mkdtempSync('/tmp/ccmux-packed-service-');
 const packageDir = join(directory, 'package');
 const consumer = join(directory, 'consumer');
+// The consumer owns its Stitchkit; the client must reuse it instead of installing a second copy.
+const consumerStitchkit: string = (
+  await Bun.file(resolve(import.meta.dir, '../package.json')).json()
+).devDependencies.stitchkit;
 
 function run(command: string, args: string[]): boolean {
   const result = Bun.spawnSync([command, ...args], {
@@ -30,7 +34,10 @@ try {
       name: 'ccmux-packed-client-gate',
       private: true,
       type: 'module',
-      dependencies: { '@ccmux/control-service-client': `file:${resolve(packed.artifact)}` },
+      dependencies: {
+        '@ccmux/control-service-client': `file:${resolve(packed.artifact)}`,
+        stitchkit: consumerStitchkit,
+      },
       devDependencies: { typescript: '7.0.2' },
     })}\n`,
   );
@@ -80,6 +87,11 @@ if (usage.self.values.inputTokens !== 10 || usage.self.values.outputTokens !== 5
   )
     throw new Error('consumer typecheck failed');
   if (!run('bun', ['check.ts'])) throw new Error('consumer runtime failed');
+  const copies = [...new Bun.Glob('**/node_modules/stitchkit/package.json').scanSync(consumer)];
+  if (copies.length !== 1)
+    throw new Error(
+      `consumer holds ${copies.length} physical stitchkit copies: ${copies.join(', ')}`,
+    );
   console.log(JSON.stringify({ artifact: packed.artifact, status: 'ok' }));
 } finally {
   rmSync(directory, { recursive: true, force: true });
