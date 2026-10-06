@@ -226,6 +226,14 @@ async function doCommit(version: string, notes: string): Promise<number> {
 /** Tag the release commit at HEAD and push both. HEAD must already declare the version and carry
  *  its CHANGELOG section — the same facts CI checks before it publishes. */
 async function doTag(version: string): Promise<number> {
+  // A tag publishes. The conductor that records every release in the maintainer's publication
+  // journal sets this; a bare `--tag` or ceremony would publish a release nobody recorded, which
+  // is how three releases once left no trace. Setting it by hand is a deliberate unrecorded release.
+  if (process.env.CCMUX_RELEASE_RECORDED !== '1')
+    return fail(
+      `refusing to tag v${version}: a release is tagged by the conductor that records it. ` +
+        'Export CCMUX_RELEASE_RECORDED=1 only to release without a record.',
+    );
   const refused = await releasableTree(version);
   if (refused !== null) return fail(refused);
   // Read from disk: the imported VERSION predates a `--commit` made in this same process.

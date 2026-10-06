@@ -63,7 +63,7 @@ list aggregation. It is produced by the existing daemon observation loop.
   коммит `X.Y.Z: notes` → тег `vX.Y.Z` → push. Та же церемония разрезана на две половины для
   проводника, который гоняет check между ними и сообщает каждый шаг: `--commit X.Y.Z "notes"`
   (бамп + CHANGELOG → локальный коммит) и `--tag X.Y.Z` (HEAD объявляет версию и несёт её
-  секцию CHANGELOG → тег → push). Одноразовая команда — их композиция вокруг check.
+  секцию CHANGELOG → тег → push). Одноразовая команда — их композиция вокруг check. `--tag` (а значит и церемония) отказывает без `CCMUX_RELEASE_RECORDED=1`: эту переменную ставит только проводник, записывающий каждый выпуск в журнал публикаций; тег, отправленный вручную, выпустил бы релиз без записи.
 - **Публикация** — `.github/workflows/ci.yml`: job `ci` (Biome + typecheck + тесты + packed clients) гоняется на
   КАЖДЫЙ push/PR; job `smoke` собирает бандл и ЗАПУСКАЕТ его (`version` == package.json,
   `list --json` на чистой машине) — CI-двойник fleet-preflight, кривой бандл умирает до

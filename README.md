@@ -799,7 +799,9 @@ bun scripts/release.ts --tag X.Y.Z              # its second half: tag the relea
 ```
 
 The two halves exist for a conductor that runs the check between them and reports each step;
-`--tag` refuses a HEAD whose `package.json` or CHANGELOG does not name the version.
+`--tag` refuses a HEAD whose `package.json` or CHANGELOG does not name the version. It also
+refuses unless `CCMUX_RELEASE_RECORDED=1` is set, which only a conductor that records the release
+sets: a tag pushed by hand would publish a release nobody recorded.
 
 Publishing happens only in CI (`.github/workflows/ci.yml`), off the tag: gate (typecheck +
 tests + a smoke run of the built bundle) → tag==version guard → assets → atomic GitHub
