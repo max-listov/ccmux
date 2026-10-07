@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.80.3] — 2026-10-07
+
+All dependencies at latest and a journaled release path
+
+- Updated to the latest releases: Stitchkit 0.108.1, Claude Agent SDK 0.3.292, `ai` 7.0.130, `@ai-sdk/openai-compatible` 3.0.65 and the OpenCode SDK 1.18.35.
+- The release conductor records every release in the publication journal: a tag can no longer be pushed outside it.
+
 ## [0.80.2] — 2026-10-07
 
 Stitchkit 0.108.0 release with a host-independent gate

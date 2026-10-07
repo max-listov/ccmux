@@ -1,6 +1,6 @@
 {
   "name": "ccmux",
-  "version": "0.80.2",
+  "version": "0.80.3",
   "description": "Persistent, self-healing Claude and Codex tmux sessions with deterministic resume across a fleet of machines.",
   "type": "module",
   "license": "MIT",
@@ -31,23 +31,23 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.291",
+    "@anthropic-ai/claude-agent-sdk": "0.3.292",
     "@biomejs/biome": "2.5.15",
     "@types/bun": "^1.4.2",
     "@types/pngjs": "6.0.5",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
-    "stitchkit": "0.108.0",
+    "stitchkit": "0.108.1",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "3.0.63",
+    "@ai-sdk/openai-compatible": "3.0.65",
     "@modelcontextprotocol/ext-apps": "2.0.3",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.3.1",
-    "@opencode-ai/sdk": "1.18.34",
+    "@opencode-ai/sdk": "1.18.35",
     "@openrouter/ai-sdk-provider": "3.1.0",
-    "ai": "7.0.128",
+    "ai": "7.0.130",
     "ink": "^8.0.0",
     "jpeg-js": "0.4.4",
     "pngjs": "7.0.0",

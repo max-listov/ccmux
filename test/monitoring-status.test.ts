@@ -164,7 +164,16 @@ test('producer rejects oversized output and counts invalid identities without tr
   const script = join(m.stateDir, 'oversized');
   writeFileSync(script, '#!/bin/sh\nexec head -c 70000 /dev/zero\n', { mode: 0o700 });
   m.tmuxBin = script;
-  await expect(observedPane(m, 'agent-a')).rejects.toThrow('output limit');
+  // The limit is what must end this read, not the one-second deadline: a loaded host can spend that
+  // second starting the shell, and a timeout resolves the read instead of rejecting it.
+  const previous = process.env.CCMUX_OBSERVE_DEADLINE_MS;
+  process.env.CCMUX_OBSERVE_DEADLINE_MS = '30000';
+  try {
+    await expect(observedPane(m, 'agent-a')).rejects.toThrow('output limit');
+  } finally {
+    if (previous === undefined) delete process.env.CCMUX_OBSERVE_DEADLINE_MS;
+    else process.env.CCMUX_OBSERVE_DEADLINE_MS = previous;
+  }
   const p = new MonitoringPublisher();
   p.begin(m);
   p.sample(m, makeSession({ name: 'x'.repeat(257) }), undefined, null, UNSEEN);
