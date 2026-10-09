@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-09-26 16:00 +07:00
+updated: 2026-10-09 17:00 +07:00
 ---
 
 # Terminal-меню
@@ -233,7 +233,10 @@ target or registry row. An optional `launchRecipe: { id, revision }` selects hos
 a host-catalog env source must be absolute or home-relative, not workspace-relative. CCMux starts
 one short-lived metadata App Server with the existing native flags/session-environment mechanism,
 initializes it, reads `config/read` and `model/list`, then closes the socket and reaps its entire
-process group. It never calls `thread/start` or `thread/resume`. Failure retains only the last
+process group while its owner is alive. A hard-killed owner cannot run this disposal: the detached
+metadata group has no independent caller-death guard. Process-group cancellation or the read's
+JavaScript deadline does not guarantee cleanup after owner loss. It never calls `thread/start`
+or `thread/resume`. Failure retains only the last
 bounded diagnostic in owner-only `control/catalog-diagnostic.json` (0600), never in the response.
 
 That read outlives the call that asked for it. A metadata App Server's cold start was measured at

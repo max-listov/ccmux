@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { CodexAppUnavailable } from '../agent/codex/socket.ts';
 import { lastTranscriptMessage } from '../agent/index.ts';
+import {
+  AppResolveOutcomeSchema,
+  appResolveDiagnostic,
+  appResolveFailureText,
+  resolveAppOutcome,
+} from '../chat/appResolve.ts';
 import { CHAT_CREDENTIAL_ENV, hasChatCredential, type RemoteTransport } from '../chat/auth.ts';
 import { currentCodexAppThreadId, resolveCodexAppPeer } from '../chat/codexApp.ts';
 import { cliPrincipal, codexAppThreadId, managedPeer, principalLabel } from '../chat/identity.ts';
@@ -97,51 +103,47 @@ export async function resolveRemoteCodexAppPeer(
   alias: string | null,
   machine: string,
   token: string,
+  execute: typeof runPeer = runPeer,
 ): Promise<CodexAppPeer | { error: string }> {
   const parsed = z.uuid().safeParse(codexAppThreadId(token));
   if (!parsed.success) return { error: `msg ${machine}:${token}: app address needs a thread UUID` };
-  const result = await runPeer(cfg, machine, alias, ['ccmux', '_codex-app-resolve', parsed.data], {
+  const result = await execute(cfg, machine, alias, ['ccmux', '_codex-app-resolve', parsed.data], {
     timeoutMs: 20_000,
   });
   if (result.transportFailed)
     return {
-      error: `msg ${machine}:${token}: transport failed while resolving exact App thread${result.failureDetail === undefined ? '' : ` (${result.failureDetail})`}`,
+      error: `msg ${machine}:${token}: transport failed while resolving exact App thread${result.failureDetail === undefined ? '' : ` (${appResolveDiagnostic(result.failureDetail)})`}`,
     };
-  if (result.code !== 0)
-    return { error: `msg ${machine}:${token}: App thread resolution failed (exit ${result.code})` };
   try {
-    const peer = z
-      .object({
-        kind: z.literal('codex-app'),
-        source: z.literal('codex-app'),
-        machine: z.literal(machine),
-        agent: z.literal('codex'),
-        threadId: z.literal(parsed.data),
-        name: z.string().nullable(),
-      })
-      .strict()
-      .parse(JSON.parse(result.stdout));
-    return peer;
-  } catch {
+    const outcome = AppResolveOutcomeSchema.parse(JSON.parse(result.stdout));
+    if (outcome.ok) {
+      if (result.code !== 0)
+        return {
+          error: `msg ${machine}:${token}: successful App identity with failing exit ${result.code}`,
+        };
+      if (outcome.peer.machine !== machine || outcome.peer.threadId !== parsed.data)
+        return { error: `msg ${machine}:${token}: remote App identity mismatch` };
+      return outcome.peer;
+    }
+    if (result.code === 0)
+      return { error: `msg ${machine}:${token}: App refusal with successful exit code` };
     return {
-      error: `msg ${machine}:${token}: remote App identity is missing or version-incompatible`,
+      error: `msg ${machine}:${token}: App thread resolution failed (exit ${result.code}): ${appResolveFailureText(outcome.failure)}`,
+    };
+  } catch {
+    const detail = result.stderr.trim();
+    return {
+      error: `msg ${machine}:${token}: invalid App resolution response (exit ${result.code})${detail === '' ? '' : `: ${appResolveDiagnostic(detail)}`}`,
     };
   }
 }
 
 export async function cmdResolveCodexApp(args: string[]): Promise<number> {
-  const parsed = z.uuid().safeParse(args[0]);
-  if (!parsed.success) {
-    console.error('codex app resolve: thread UUID required');
-    return 1;
-  }
-  try {
-    await printLine(JSON.stringify(await resolveCodexAppPeer(loadMachineConfig(), parsed.data)));
-    return 0;
-  } catch (error) {
-    console.error(`codex app resolve: ${error instanceof Error ? error.message : String(error)}`);
-    return 1;
-  }
+  const outcome = await resolveAppOutcome(loadMachineConfig(), args[0] ?? '');
+  await printLine(JSON.stringify(outcome));
+  if (outcome.ok) return 0;
+  console.error(`codex app resolve: ${appResolveFailureText(outcome.failure)}`);
+  return 1;
 }
 
 export async function resolveRemotePeer(

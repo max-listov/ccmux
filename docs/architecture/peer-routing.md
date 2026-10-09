@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for managed sessions an
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-09-30 17:18 +07:00
+updated: 2026-10-09 16:58 +07:00
 ---
 
 # Peer routing and session identity
@@ -660,6 +660,18 @@ Desktop tools may still work, but their success does not prove CCMux chat delive
 CCMux message receipt. CCMux never starts a second App Server or reads a stored transcript as a
 replacement for live sender verification. Testing a consumer's CCMux ledger path requires an
 already verified managed sender or an App host that exposes the required endpoint.
+
+Exact remote resolution uses one discriminated result from `_codex-app-resolve`: success carries
+`{ ok: true, peer }`; refusal carries `{ ok: false, failure: { phase, kind, message, providerCode? } }`
+and a nonzero exit. The receiver preserves the provider's diagnostic sentence, masks secrets with
+the shared observability sanitizer and bounds it to 16 KiB. The original RPC code is retained;
+missing-thread and capability refusals are reported with the provider's words, never classified
+by guessing from their text. Endpoint, malformed response and identity failures have distinct kinds.
+Transport failure remains a separate verdict. A successful result must pin the requested machine
+and UUID and agree with exit zero; a refusal must agree with a failing exit. Unreadable or
+inconsistent results refuse before message admission. No refusal creates a ledger entry, outbox
+retry or fallback recipient. Both peers must implement this result contract; an older raw peer
+response is refused explicitly with any sanitized owner diagnostic that accompanied it.
 
 ## Capability-driven routing
 

@@ -1,3 +1,14 @@
+/** A refusal received from the provider, with its original RPC code. */
+export class CodexAppRpcRefusal extends Error {
+  constructor(
+    readonly code: number | undefined,
+    message: string,
+  ) {
+    super(`App Server RPC failed: ${message}`);
+    this.name = 'CodexAppRpcRefusal';
+  }
+}
+
 export interface CodexAppRpc {
   userAgent?: string | undefined;
   /** `timeoutMs` overrides the one deadline every other request shares, for the few that need it. */

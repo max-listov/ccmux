@@ -6,6 +6,13 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.80.4] — 2026-10-09
+
+Explain exact remote Codex App thread resolution failures
+
+- Remote App thread resolution now reports the failure phase, kind, provider reason and RPC code, with secrets masked.
+- Both peers validate one typed result and the exact machine/thread identity before message admission; malformed or inconsistent responses fail without creating a message.
+
 ## [0.80.3] — 2026-10-07
 
 All dependencies at latest and a journaled release path

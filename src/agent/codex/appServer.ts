@@ -155,6 +155,13 @@ export function connectCodexAppServer(
   );
 }
 
+export class CodexAppIdentityMismatch extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CodexAppIdentityMismatch';
+  }
+}
+
 export async function readCodexAppThread(
   rpc: CodexAppRpc,
   threadId: string,
@@ -164,7 +171,7 @@ export async function readCodexAppThread(
     .object({ thread: ThreadSchema })
     .parse(await rpc.request('thread/read', { threadId, includeTurns }));
   if (response.thread.id !== threadId)
-    throw new Error('Codex App Server returned a different thread identity');
+    throw new CodexAppIdentityMismatch('Codex App Server returned a different thread identity');
   return response.thread;
 }
 
@@ -206,7 +213,7 @@ export async function resumeCodexAppThreadContext(
     await rpc.request('thread/resume', { threadId, excludeTurns: true }),
   );
   if (response.thread.id !== threadId)
-    throw new Error('Codex App Server resumed a different thread identity');
+    throw new CodexAppIdentityMismatch('Codex App Server resumed a different thread identity');
   return response;
 }
 

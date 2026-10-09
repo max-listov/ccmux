@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import net from 'node:net';
 import { z } from 'zod';
 import type { CodexAppRpc, CodexRpcOptions } from './rpc.ts';
+import { CodexAppRpcRefusal } from './rpc.ts';
 
 const RpcMessageSchema = z.object({
   id: z.union([z.number(), z.string()]).optional(),
@@ -120,8 +121,9 @@ export async function connectCodexSocket(
     clearTimeout(waiter.timer);
     if (msg.error)
       waiter.reject(
-        new Error(
-          `App Server RPC failed: ${msg.error.message ?? `code ${msg.error.code ?? 'unknown'}`}`,
+        new CodexAppRpcRefusal(
+          msg.error.code,
+          msg.error.message ?? `code ${msg.error.code ?? 'unknown'}`,
         ),
       );
     else waiter.resolve(msg.result);
