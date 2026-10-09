@@ -1,6 +1,6 @@
 {
   "name": "ccmux",
-  "version": "0.80.4",
+  "version": "0.80.5",
   "description": "Persistent, self-healing Claude and Codex tmux sessions with deterministic resume across a fleet of machines.",
   "type": "module",
   "license": "MIT",
@@ -37,7 +37,7 @@
     "@types/pngjs": "6.0.5",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
-    "stitchkit": "0.108.1",
+    "stitchkit": "0.108.3",
     "typescript": "^7.0.2"
   },
   "dependencies": {
@@ -55,7 +55,7 @@
     "zod": "^4.6.5"
   },
   "peerDependencies": {
-    "stitchkit": ">=0.106.1 <1"
+    "stitchkit": ">=0.108.3 <1"
   },
   "packageManager": "bun@1.4.2"
 }

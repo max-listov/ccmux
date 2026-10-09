@@ -25,11 +25,11 @@
         "@types/pngjs": "6.0.5",
         "@types/react": "^19.3.0",
         "ink-testing-library": "^4.0.0",
-        "stitchkit": "0.108.1",
+        "stitchkit": "0.108.3",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "stitchkit": ">=0.106.1 <1",
+        "stitchkit": ">=0.108.3 <1",
       },
     },
   },
@@ -398,7 +398,7 @@
 
     "statuses": ["statuses@2.0.2", "", {}, "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw=="],
 
-    "stitchkit": ["stitchkit@0.108.1", "", { "dependencies": { "ky": "^2.1.0" }, "peerDependencies": { "@modelcontextprotocol/ext-apps": "^1.7.2 || ^2.0.0", "@modelcontextprotocol/server": "^2.0.0", "@openrouter/ai-sdk-provider": "^3.1.0", "@opentelemetry/api": "^1.9.0", "@socket.io/bun-engine": "^0.1.2", "@socket.io/component-emitter": "^3.1.2", "@tanstack/react-query": ">=5", "@types/bun": "^1.4.2", "ai": "^7.0.107", "google-auth-library": "^11.1.0", "grammy": "^1.46.0", "maxmind": "^5.0.7", "react": ">=18", "react-query-kit": "^3.3.3", "socket.io": "^4.8.3", "socket.io-client": "^4.8.3", "srvx": "^0.12.5 || ^1.0.5", "zod": "^4.6.5" }, "optionalPeers": ["@modelcontextprotocol/ext-apps", "@modelcontextprotocol/server", "@openrouter/ai-sdk-provider", "@opentelemetry/api", "@socket.io/bun-engine", "@socket.io/component-emitter", "@tanstack/react-query", "@types/bun", "ai", "google-auth-library", "grammy", "maxmind", "react", "react-query-kit", "socket.io", "socket.io-client", "srvx"], "bin": { "stitchkit": "dist/entrypoints/bin/upgrade-cli.js" } }, "sha512-zSCo8A331vk043MZ/PiaG5EasA3rtA6mM9ZP4Ff0tMvKgUOqkBN/vBsXjG8ls0FxLo9rFqyKlmWaEW3tDvABZQ=="],
+    "stitchkit": ["stitchkit@0.108.3", "", { "dependencies": { "ky": "^2.1.0" }, "peerDependencies": { "@modelcontextprotocol/ext-apps": "^1.7.2 || ^2.0.0", "@modelcontextprotocol/server": "^2.0.0", "@openrouter/ai-sdk-provider": "^3.1.0", "@opentelemetry/api": "^1.9.0", "@socket.io/bun-engine": "^0.1.2", "@socket.io/component-emitter": "^3.1.2", "@tanstack/react-query": ">=5", "@types/bun": "^1.4.2", "ai": "^7.0.107", "google-auth-library": "^11.1.0", "grammy": "^1.46.0", "maxmind": "^5.0.7", "react": ">=18", "react-query-kit": "^3.3.3", "socket.io": "^4.8.3", "socket.io-client": "^4.8.3", "srvx": "^0.12.5 || ^1.0.5", "zod": "^4.6.5" }, "optionalPeers": ["@modelcontextprotocol/ext-apps", "@modelcontextprotocol/server", "@openrouter/ai-sdk-provider", "@opentelemetry/api", "@socket.io/bun-engine", "@socket.io/component-emitter", "@tanstack/react-query", "@types/bun", "ai", "google-auth-library", "grammy", "maxmind", "react", "react-query-kit", "socket.io", "socket.io-client", "srvx"], "bin": { "stitchkit": "dist/entrypoints/bin/upgrade-cli.js" } }, "sha512-EFOKVj/TbqoRNetSGUM5uM7sPs2dYcXILAH6YOD3O+vLBjfk9Jj0P7CpDfaIEBN2Nj+zn3eQWDqCRMaIY+FUzw=="],
 
     "string-width": ["string-width@8.3.0", "", { "dependencies": { "get-east-asian-width": "^1.5.0", "strip-ansi": "^7.1.2" } }, "sha512-ZbmZM0JCihQN91dWnxoipT2KOEyHqEyfRXUyjuRhW8b/xnqPDoq4gWEVApTVa9db2wN8mmoikgFBbjh71+cGeQ=="],
 

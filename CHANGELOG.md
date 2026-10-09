@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.80.5] — 2026-10-09
+
+- Metadata catalog processes and their group descendants terminate after abrupt owner death, including SIGKILL, through Stitchkit's native owner-loss guard.
+
 ## [0.80.4] — 2026-10-09
 
 Explain exact remote Codex App thread resolution failures

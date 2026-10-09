@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { bootstrapNativeCommandOwnerLoss } from 'stitchkit/process/owner-loss';
 import { COMMANDS, cmdHelp } from './commands/help.ts';
 import { retiredNotice } from './commands/retired.ts';
 import { VERSION } from './util/version.ts';
@@ -232,7 +233,8 @@ try {
   // Let Bun drain stdout/stderr before exiting. `process.exit()` can discard a large JSON response
   // while a pipeline is still reading it; assigning the code preserves command failures without
   // terminating the event loop ahead of its pending writes.
-  process.exitCode = await dispatch(Bun.argv[2], Bun.argv.slice(3));
+  if (!bootstrapNativeCommandOwnerLoss())
+    process.exitCode = await dispatch(Bun.argv[2], Bun.argv.slice(3));
 } catch (error) {
   // Loaded here and not at the top: this file evaluates nothing eagerly, because the two Claude
   // hooks and the status-line tee run it on every turn. A failure has already cost more than an

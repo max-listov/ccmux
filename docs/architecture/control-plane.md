@@ -233,9 +233,13 @@ target or registry row. An optional `launchRecipe: { id, revision }` selects hos
 a host-catalog env source must be absolute or home-relative, not workspace-relative. CCMux starts
 one short-lived metadata App Server with the existing native flags/session-environment mechanism,
 initializes it, reads `config/read` and `model/list`, then closes the socket and reaps its entire
-process group while its owner is alive. A hard-killed owner cannot run this disposal: the detached
-metadata group has no independent caller-death guard. Process-group cancellation or the read's
-JavaScript deadline does not guarantee cleanup after owner loss. It never calls `thread/start`
+process group through `stitchkit/process` with `ownerLoss: 'terminate'`. A native guard owns the
+group and kills it when its inherited kernel channel closes after owner death, including SIGKILL;
+JavaScript disposal is used for normal completion and cancellation. The guard adds one process
+per metadata read. The narrow `stitchkit/process/owner-loss` bootstrap runs before CLI dispatch
+and claims only the guard invocation, so the full process runner stays behind a lazy import.
+An unavailable guard refuses the catalog before provider startup. Release-bundle tests cover
+catalog reads and owner loss without installed dependencies beside the bundle. It never calls `thread/start`
 or `thread/resume`. Failure retains only the last
 bounded diagnostic in owner-only `control/catalog-diagnostic.json` (0600), never in the response.
 

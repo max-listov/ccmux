@@ -1,12 +1,12 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { runNativeCommand } from 'stitchkit/process';
 import { z } from 'zod';
 import type { ResolvedControlLaunch } from '../../config/launchRecipes.ts';
 import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import type { MachineConfig } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
 import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
-import { stopOwnedChildGroup } from './owned/child.ts';
 import { ownedCodexFlags } from './owned/launch.ts';
 import type { CodexAppRpc } from './rpc.ts';
 import { connectCodexSocket } from './socket.ts';
@@ -49,35 +49,42 @@ export async function withCodexCatalogRuntime<T>(
   const root = mkdtempSync('/tmp/ccmux-catalog-');
   const socket = join(root, 'rpc.sock');
   let rpc: CodexAppRpc | undefined;
-  let child: ReturnType<typeof Bun.spawn> | undefined;
-  let drain: Promise<void> | undefined;
+  const disposal = new AbortController();
+  const stopReason = new Error('Catalog read completed');
+  const lifetime = AbortSignal.any([signal, disposal.signal]);
+  let command: Promise<never> | undefined;
   let diagnostic = Buffer.alloc(0);
   try {
-    const spawned = Bun.spawn(
-      [m.codexBin, 'app-server', '--listen', `unix://${socket}`, ...flags],
-      {
-        cwd,
-        env: { ...recipe.env, CODEX_HOME: m.codexHome },
-        detached: true,
-        stdin: 'ignore',
-        stdout: 'ignore',
-        stderr: 'pipe',
+    command = runNativeCommand({
+      executable: m.codexBin,
+      args: ['app-server', '--listen', `unix://${socket}`, ...flags],
+      cwd,
+      env: { ...recipe.env, CODEX_HOME: m.codexHome },
+      signal: lifetime,
+      ownerLoss: 'terminate',
+      stop: { target: 'group', graceMs: 2_000 },
+      onOutput(bytes, channel) {
+        // Only a bounded private tail survives; provider output never reaches public responses.
+        if (channel === 'stderr') diagnostic = Buffer.concat([diagnostic, bytes]).subarray(-16_384);
       },
-    );
-    child = spawned;
-    // Keep only a bounded private tail. Provider output never enters public responses or stderr logs.
-    drain = (async () => {
-      for await (const bytes of spawned.stderr)
-        diagnostic = Buffer.concat([diagnostic, bytes]).subarray(-16_384);
-    })();
-    while (!existsSync(socket)) {
-      signal.throwIfAborted();
-      if (spawned.exitCode !== null)
-        throw new Error(`Catalog runtime exited (${spawned.exitCode})`);
-      await Bun.sleep(20);
-    }
-    rpc = await connectCodexSocket(socket, { signal, maxMessageBytes: 2 * 1024 * 1024 });
-    return await read(rpc);
+    }).then((result) => {
+      throw new Error(`Catalog runtime exited (${result.exitCode}, ${result.signal})`);
+    });
+    return await Promise.race([
+      command,
+      (async () => {
+        while (!existsSync(socket)) {
+          lifetime.throwIfAborted();
+          await Bun.sleep(20);
+        }
+        lifetime.throwIfAborted();
+        rpc = await connectCodexSocket(socket, {
+          signal: lifetime,
+          maxMessageBytes: 2 * 1024 * 1024,
+        });
+        return await read(rpc);
+      })(),
+    ]);
   } catch (error) {
     const directory = join(m.stateDir, 'control');
     privateRuntimeDirectory(directory);
@@ -93,8 +100,13 @@ export async function withCodexCatalogRuntime<T>(
     throw error;
   } finally {
     rpc?.close();
-    if (child !== undefined) await stopOwnedChildGroup(child);
-    await drain;
-    rmSync(root, { recursive: true, force: true });
+    disposal.abort(stopReason);
+    try {
+      await command?.catch((error: unknown) => {
+        if (error !== stopReason && error !== signal.reason) throw error;
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }
 }

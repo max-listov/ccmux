@@ -21,7 +21,10 @@ const ENTRY = readFileSync(resolve('src/cli.ts'), 'utf8');
 
 // Help and the retired-token notice are the exceptions ON PURPOSE: both run BEFORE the switch, for
 // every invocation, so deferring them would buy nothing and cost a branch. Both are leaf modules.
+// The narrow owner-loss bootstrap must run before dispatch in bundled guard invocations;
+// the full stitchkit/process command runner remains behind the lazy command graph.
 const EAGER_BY_DESIGN = new Set([
+  'stitchkit/process/owner-loss',
   './commands/help.ts',
   './commands/retired.ts',
   './util/version.ts',
