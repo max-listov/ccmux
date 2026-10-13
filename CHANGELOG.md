@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.80.6] — 2026-10-13
+
+- Claude tool results expose image descriptors in transcript JSON; `transcript --image` retrieves their bytes by exact nested address, including results shown without their call in a paginated window.
+
 ## [0.80.5] — 2026-10-09
 
 - Metadata catalog processes and their group descendants terminate after abrupt owner death, including SIGKILL, through Stitchkit's native owner-loss guard.

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../../types.ts';
 import { transcriptEntries } from '../transcript/lines.ts';
 import type {
@@ -15,19 +14,13 @@ import {
   str,
 } from '../transcript/normalize.ts';
 import { resultSummary } from '../transcript/toolSummary.ts';
+import { contentItems } from './content.ts';
+import { imageDescriptor, resultImages } from './images.ts';
 import { readSubagentFacts, subagentFile } from './subagent.ts';
 
 // Claude Code transcript parser. Entry shape (one per JSONL line):
 //   { type:"assistant"|"user"|…, message:{ role, content:[…], usage }, uuid, timestamp, … }
 // content items are inline: { type:"text"|"thinking"|"tool_use" } and tool_result (user side).
-
-/** content is an array of items, a bare string (→ single text item), or absent. */
-function contentItems(entry: Record<string, unknown>): unknown[] {
-  const content = rec(entry.message)?.content;
-  if (Array.isArray(content)) return content;
-  if (typeof content === 'string') return [{ type: 'text', text: content }];
-  return [];
-}
 
 function kindFor(item: Record<string, unknown>): TranscriptKind {
   switch (str(item.type) ?? '') {
@@ -89,75 +82,6 @@ function textFor(item: Record<string, unknown>): string {
   }
 }
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-
-/**
- * Describe an image block without carrying it.
- *
- * The address is the entry's uuid and the block's position, which is stable for as long as the line
- * that holds it — the transcript is append-only, so a line never moves. An image that cannot be
- * fetched says which way it failed, because "unreadable" and "there was no image" call for
- * different reactions from whoever is reading.
- */
-export function imageDescriptor(
-  item: Record<string, unknown>,
-  entryUuid: string,
-  index: number,
-): TranscriptImage {
-  const address = `${entryUuid}#${index}`;
-  const source = rec(item.source);
-  const mediaType = str(source?.media_type) ?? null;
-  if (str(source?.type) !== 'base64')
-    // A URL source is somebody else's to fetch, and pretending otherwise would hand a reader an
-    // address this project cannot answer.
-    return { address, mediaType, bytes: null, digest: null, unavailable: 'unsupported-source' };
-  const data = str(source?.data);
-  if (!data) return { address, mediaType, bytes: null, digest: null, unavailable: 'malformed' };
-  const bytes = Math.floor((data.length * 3) / 4);
-  if (bytes > MAX_IMAGE_BYTES)
-    return { address, mediaType, bytes, digest: null, unavailable: 'too-large' };
-  return {
-    address,
-    mediaType,
-    bytes,
-    digest: createHash('sha256').update(data).digest('hex'),
-    unavailable: null,
-  };
-}
-
-/**
- * The bytes behind an address, read from the same lines the message came from.
- *
- * Kept out of the message so a listing stays cheap: `lastMessage` in `list --json` is read
- * constantly, and nobody asked it for pictures.
- */
-export function readImage(
-  lines: string[],
-  address: string,
-): { mediaType: string | null; data: string } | { unavailable: TranscriptImage['unavailable'] } {
-  const [uuid, position] = address.split('#');
-  const index = Number.parseInt(position ?? '', 10);
-  if (!uuid || !Number.isInteger(index) || index < 0) return { unavailable: 'malformed' };
-  for (const raw of lines) {
-    if (!raw?.includes(uuid)) continue;
-    let entry: Record<string, unknown> | null;
-    try {
-      entry = rec(JSON.parse(raw));
-    } catch {
-      continue;
-    }
-    if (!entry || str(entry.uuid) !== uuid) continue;
-    const item = rec(contentItems(entry)[index]);
-    const source = rec(item?.source);
-    if (str(item?.type) !== 'image') return { unavailable: 'malformed' };
-    if (str(source?.type) !== 'base64') return { unavailable: 'unsupported-source' };
-    const data = str(source?.data);
-    if (!data) return { unavailable: 'malformed' };
-    return { mediaType: str(source?.media_type) ?? null, data };
-  }
-  return { unavailable: 'malformed' };
-}
-
 /** What the source said this answer cost. Absent fields stay null: unknown is not zero. */
 export function usageOf(entry: Record<string, unknown>): TranscriptUsage | null {
   const usage = rec(rec(entry.message)?.usage);
@@ -175,6 +99,7 @@ export function usageOf(entry: Record<string, unknown>): TranscriptUsage | null 
 // Raw bits a tool_result carries, kept aside by call-id so the fold can summarize it against
 // its originating tool_call's input (full content, before any display clip).
 interface RawResult {
+  images: TranscriptImage[];
   content: string;
   isError: boolean;
   /** When the result line was written: the call's end. */
@@ -260,12 +185,14 @@ export function parse(
       const text = text0 === '' ? null : clip(text0, textLimit);
       let callId = str(item.id) ?? str(item.tool_use_id);
       const rawInput = rec(item.input);
+      const images = kind === 'tool_result' ? resultImages(item, entryUuid, key) : [];
       if (kind === 'tool_call' && callId) {
         callInput.set(callId, rawInput);
         callName.set(callId, str(item.name) ?? 'tool');
       }
       if (kind === 'tool_result' && callId) {
         results.set(callId, {
+          images,
           content: flattenContent(item.content) ?? '',
           isError: item.is_error === true,
           at: createdAt,
@@ -312,6 +239,7 @@ export function parse(
             ? clip(JSON.stringify(rawInput, null, 2), textLimit)
             : null,
         resultText: null,
+        ...(images.length > 0 ? { resultImages: images } : {}),
         image: kind === 'image' ? imageDescriptor(item, entryUuid, key) : null,
         // Carried on the message rather than only counted for the context window: the numbers were
         // read and thrown away in the same breath, so nobody could say what a turn cost.
@@ -382,6 +310,7 @@ function foldResults(
     if (m.kind !== 'tool_call' || !m.toolCallId) continue;
     const r = results.get(m.toolCallId);
     if (!r) continue; // still running → stays pending (done:false)
+    if (r.images.length > 0) m.resultImages = r.images;
     const input = callInput.get(m.toolCallId) ?? null;
     folded.add(m.toolCallId);
     const spawn = agents.spawns.get(m.toolCallId);

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { imageDescriptor, parse, readImage, usageOf } from '../src/agent/claude/transcript.ts';
+import { imageDescriptor, readImage } from '../src/agent/claude/images.ts';
+import { parse, usageOf } from '../src/agent/claude/transcript.ts';
 
 /**
  * What a transcript says about a picture and about what a turn cost.

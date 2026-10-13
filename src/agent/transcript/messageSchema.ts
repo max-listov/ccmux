@@ -26,7 +26,7 @@ export const TranscriptKindSchema = z.enum([
  * for content almost nobody asked to see. `address` is what a reader hands back to fetch them.
  */
 export const TranscriptImageSchema = z.object({
-  /** `<entry-uuid>#<block-index>` — stable for the life of the line that holds it. */
+  /** `<entry-uuid>#<block-index>[/<result-part-index>]`, indexing the original source. */
   address: z.string().min(1).max(256),
   mediaType: z.string().min(1).max(128).nullable(),
   bytes: z.number().int().nonnegative().nullable(),
@@ -95,6 +95,8 @@ export const TranscriptMessageSchema = z.object({
   input: z.string().nullable(),
   /** The image this message carries, addressed. Null on every other kind of message. */
   image: TranscriptImageSchema.nullable().default(null),
+  /** Images carried by a tool result, folded into its call when that call is in the window. */
+  resultImages: z.array(TranscriptImageSchema).optional(),
   /**
    * What this answer cost, when the source said. Null is "the source did not say" — a line written
    * before this existed reports unknown, and unknown is not zero tokens.

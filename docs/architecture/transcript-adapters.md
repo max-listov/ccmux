@@ -4,7 +4,7 @@ description: Как ccmux читает историю сессии разных 
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-09-30 18:23 +07:00
+updated: 2026-10-13 23:42 +07:00
 ---
 
 # Транскрипт-адаптеры
@@ -24,6 +24,32 @@ ccmux агент-агностичен: сессию может бэкать ра
 - `kind`: message · tool_call · tool_result · thinking · event · unknown
 
 Это же сообщение переиспользуется как `lastMessage` в `list --json` («где остановилось»).
+
+### Картинки в Claude JSONL
+
+Поле `image` описывает самостоятельную картинку; optional `resultImages` описывает картинки
+результата инструмента на той же `TranscriptImageSchema` (`address`, `mediaType`, `bytes`,
+`digest`, `unavailable`). Без таких картинок ключ отсутствует. Байты в сообщения не включаются;
+`resultText` сохраняет текстовые маркеры `[image]`.
+
+Адаптер собирает дескрипторы из исходного `tool_result.content` до clipping текста и связывает
+их с `tool_call` по `tool_use_id`. Если вызов за границей окна, дескрипторы остаются на
+самостоятельном `tool_result`. Картинки не добавляют пользовательских сообщений и не меняют
+счётчики usage/stats. Control transcript и CLI JSON используют тот же контракт.
+
+`ccmux transcript <target> --image <address>` выдаёт одну картинку как data URL. Адрес обычной
+картинки — `<entry-uuid>#<outer>`; адрес картинки результата — `<entry-uuid>#<outer>/<inner>`.
+Оба индекса — позиции исходных блоков, включая текст: `outer` в `message.content`, `inner`
+в `tool_result.content`. Адрес не зависит от пагинации или лимита текста; потребитель передаёт
+его обратно целиком. Путь к локальному файлу или внешний URL в адресе не допускается.
+
+`src/agent/claude/images.ts` владеет адресацией, описанием и чтением. Источник base64 ограничен
+8 MiB декодированных байт; размер учитывает padding, digest — SHA-256 encoded content.
+Неизвестный источник — `unsupported-source`, повреждённые данные/адрес или отсутствующая
+запись — `malformed`, превышение лимита — `too-large`. URL-source не скачивается.
+Descriptor и reader применяют одинаковые проверки. Выдача CLI ждёт завершения записи в stdout,
+чтобы pipe получил целый data URL. Offset/stats index не хранит сообщения; добавление
+дескрипторов не требует смены parser revision или массовой перестройки индексов.
 
 ## Интерфейс provider (`src/agent/index.ts`)
 

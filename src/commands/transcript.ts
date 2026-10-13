@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { readImage } from '../agent/claude/transcript.ts';
+import { readImage } from '../agent/claude/images.ts';
 import { providerFor } from '../agent/index.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
 import { transcriptJson, transcriptReadJson } from '../context/transcriptJson.ts';
@@ -192,7 +192,7 @@ export async function cmdTranscript(args: string[]): Promise<number> {
       console.error(`${name}: image unavailable (${found.unavailable})`);
       return 1;
     }
-    console.log(`data:${found.mediaType ?? 'application/octet-stream'};base64,${found.data}`);
+    await printLine(`data:${found.mediaType ?? 'application/octet-stream'};base64,${found.data}`);
     return 0;
   }
 
