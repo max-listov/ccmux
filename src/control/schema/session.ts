@@ -6,6 +6,7 @@ import {
   ModelSelectionSchema,
   NativeSessionSchema,
 } from '../../config/launchSchema.ts';
+import { DelegationEvidenceSchema, DelegationRequestSchema } from '../../delegation/schema.ts';
 import {
   ApplicationPolicyEvidenceSchema,
   ApplicationPolicyReferenceSchema,
@@ -30,6 +31,7 @@ export const ControlCreateSchema = z
     launchRecipe: LaunchRecipeReferenceSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     applicationPolicy: ApplicationPolicyReferenceSchema.optional(),
+    delegation: DelegationRequestSchema.optional(),
   })
   .strict();
 export type ControlCreate = z.input<typeof ControlCreateSchema>;
@@ -43,6 +45,7 @@ export const ControlCreateReceiptSchema = z
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
+    delegation: DelegationEvidenceSchema.optional(),
     nativeSession: NativeSessionSchema.optional(),
     driverCapabilities: RuntimeCapabilitiesSchema.optional(),
   })

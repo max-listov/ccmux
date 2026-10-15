@@ -28,6 +28,11 @@ export async function forkControlSession(
   const input = NativeForkRequestSchema.parse(raw),
     sourceTarget = input.target;
   const source = controlTarget(m, sourceTarget);
+  if (source.delegation !== undefined)
+    throw new AppError('DELEGATION_REFUSED', {
+      message: 'Delegated children must use narrowed create',
+      status: 409,
+    });
   return withNativeAdmission(m, source, async () => {
     const current = controlTarget(m, sourceTarget);
     const accepted = loadCreateReceipts(m).find((row) => row.requestId === input.requestId);

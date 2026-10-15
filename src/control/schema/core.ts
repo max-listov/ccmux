@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ManagedPeerSchema } from '../../chat/identitySchema.ts';
 import { LaunchRecipeMetadataSchema, NativeSessionSchema } from '../../config/launchSchema.ts';
+import { DelegationEvidenceSchema } from '../../delegation/schema.ts';
 import { ApplicationPolicyEvidenceSchema } from '../../policy/reference.ts';
 import { RuntimeAppliedProfileSchema } from '../../policy/runtimeProfile.ts';
 import { RuntimeCapabilitiesSchema } from '../../runtime/capabilities.ts';
@@ -19,6 +20,14 @@ export const ControlRowSchema = z
     runtime: z.enum(['cli', 'app-server', 'native']),
     nativeSession: NativeSessionSchema.optional(),
     driverCapabilities: RuntimeCapabilitiesSchema.optional(),
+    sleep: z
+      .object({
+        phase: z.enum(['requested', 'sleeping', 'waking', 'awake']),
+        operationId: z.uuid(),
+        updatedAt: z.iso.datetime(),
+      })
+      .strict()
+      .optional(),
     state: z.enum([
       'working',
       'idle',
@@ -39,6 +48,7 @@ export const ControlRowSchema = z
     selection: AcceptedTurnOptionsSchema.nullable(),
     nativeSelection: NativeSelectionEvidenceSchema.nullable(),
     applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),
+    delegation: DelegationEvidenceSchema.optional(),
     nativeProfile: RuntimeAppliedProfileSchema.optional(),
     capabilities: z
       .object({

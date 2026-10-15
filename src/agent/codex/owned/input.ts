@@ -10,6 +10,7 @@ import {
 } from '../../../runtime/interrupt.ts';
 import type { NativeSnapshot } from '../../../runtime/projectionSchema.ts';
 import { loadSessions } from '../../../session/registry.ts';
+import { sleepBlocksStart } from '../../../session/sleep/store.ts';
 import { clearChatHold, writeChatHold } from '../../../session/status.ts';
 import {
   capturePaneStyled,
@@ -68,6 +69,7 @@ export async function applyOwnedCodexInput(
   if (pending === null || pending.phase === 'accepted') return false;
   let started = false;
   await tryNativeAdmission(m, session, async () => {
+    if (sleepBlocksStart(m, session)) return;
     try {
       started = await applyLocked(m, session, rpc, snapshot, deps);
     } catch (error) {
@@ -106,21 +108,23 @@ async function applyLocked(
   if (contextMutationPending(m, session)) return false;
   if (!observed.connected || observed.state !== 'idle' || observed.turn?.status === 'inProgress')
     return false;
-  if (await deps.typing(m, session.name, 3)) {
+  if (session.delegation === undefined && (await deps.typing(m, session.name, 3))) {
     await hold('a human typed in that pane a moment ago');
     return false;
   }
   let gated = false;
   try {
-    gated = await deps.gate(m, session.name, false);
-    if (!gated) {
-      await hold('native client input could not be gated');
-      return false;
-    }
-    const inspection = inspectNativeCodexInput(await deps.capture(m, session.name, 40));
-    if (inspection.state !== 'deliverable') {
-      await hold(inspection.reason);
-      return false;
+    if (session.delegation === undefined) {
+      gated = await deps.gate(m, session.name, false);
+      if (!gated) {
+        await hold('native client input could not be gated');
+        return false;
+      }
+      const inspection = inspectNativeCodexInput(await deps.capture(m, session.name, 40));
+      if (inspection.state !== 'deliverable') {
+        await hold(inspection.reason);
+        return false;
+      }
     }
     const context =
       session.launchRecipe?.collaborationMode === undefined && input.turnOptions === undefined

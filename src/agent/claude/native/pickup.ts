@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import type { EffortLevel, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { nativeTranscriptPath } from '../../../context/claude.ts';
+import { delegationStopped } from '../../../delegation/cancel.ts';
 import {
   type RuntimeInput,
   readRuntimeInput,
@@ -153,6 +154,7 @@ export class TurnPickup {
             effortLevel: options.effort as EffortLevel,
           });
       }
+      if (delegationStopped(t.m, t.session)) throw new Error('Delegated work has ended');
       t.queue.push({
         type: 'user',
         session_id: t.session.nativeSession?.id ?? '',

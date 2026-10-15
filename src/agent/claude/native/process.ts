@@ -1,9 +1,11 @@
 import { join } from 'node:path';
+import { delegationStopped } from '../../../delegation/cancel.ts';
 import { recordRuntimeDiagnostic } from '../../../runtime/diagnostics.ts';
 import { managedRuntimeRoot } from '../../../runtime/status.ts';
 import { privateRuntimeDirectory } from '../../../runtime/store.ts';
 import { nativeRuntimeWake } from '../../../runtime/wake.ts';
 import { loadSessions } from '../../../session/registry.ts';
+import { ownerShouldSleep } from '../../../session/sleep/store.ts';
 import { writeLaunchStamp } from '../../../session/status.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { promptInvocation } from '../../../util/env.ts';
@@ -27,6 +29,7 @@ export async function runClaudeNativeProcess(
   initial: Session,
   promote?: (session: Session) => Promise<Session>,
 ): Promise<void> {
+  if (delegationStopped(m, initial)) throw new Error('Delegated work has ended');
   const resolved = resolveAgentSdk(m);
   if ('unavailable' in resolved) throw new Error(resolved.detail);
   const root = managedRuntimeRoot(m, initial);
@@ -64,6 +67,7 @@ export async function runClaudeNativeProcess(
         if (promote) await promote(owner.identity);
         writeLaunchStamp(session.name, computeStamp(owner.identity, m, promptInvocation()));
         while (!abort.signal.aborted) {
+          if (ownerShouldSleep(m, owner.identity) || delegationStopped(m, owner.identity)) break;
           const commandsChanged = wake.changed();
           if (commandsChanged) {
             const current = loadSessions(m).find((row) => row.name === session.name);

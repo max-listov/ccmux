@@ -4,6 +4,7 @@ import {
   readClaudeCommands,
   resolveCommand,
 } from '../agent/claude/native/commands.ts';
+import { delegationRefused } from '../delegation/resolve.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { readRuntimeInput, runtimeInputId, writeRuntimeInput } from '../runtime/input.ts';
@@ -35,6 +36,8 @@ export async function runControlCommand(
   signal: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
+  if (session.delegation !== undefined)
+    delegationRefused('Delegated execution policy is immutable');
   if (!hasNativeRuntime(session))
     throw new AppError('UNSUPPORTED', {
       message: 'This runtime does not accept commands',
@@ -86,6 +89,8 @@ export async function setControlPermissionMode(
   signal: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
+  if (session.delegation !== undefined)
+    delegationRefused('Delegated execution policy is immutable');
   if (!hasNativeRuntime(session))
     throw new AppError('UNSUPPORTED', {
       message: 'This runtime does not expose its permission mode',
@@ -101,6 +106,8 @@ export async function rewindControlFiles(
   signal: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
+  if (session.delegation !== undefined)
+    delegationRefused('Delegated execution policy is immutable');
   if (!runtimeCapabilities(session).fileCheckpoints)
     throw new AppError('UNSUPPORTED', { message: 'This runtime cannot rewind files', status: 409 });
   const result = await requestRuntimeRewind(m, session, input, signal);
@@ -137,6 +144,8 @@ export async function controlMcpServer(
   signal: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
+  if (session.delegation !== undefined)
+    delegationRefused('Delegated execution policy is immutable');
   if (!runtimeCapabilities(session).mcpControl)
     throw new AppError('UNSUPPORTED', {
       message: 'This runtime does not expose its MCP servers',

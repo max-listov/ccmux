@@ -1,6 +1,9 @@
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { delegationStopped } from '../../delegation/cancel.ts';
+import { delegatedCodexPolicy } from '../../delegation/codex.ts';
+import { delegationRefused } from '../../delegation/resolve.ts';
 import type { PolicySkillInput } from '../../policy/codex.ts';
 import { policySkillInputs } from '../../policy/codex.ts';
 import { verifyApplicationPolicy } from '../../policy/resolve.ts';
@@ -52,6 +55,9 @@ export type CodexAppTurnPolicy = {
   model: string;
   effort?: string;
   skillInputs?: PolicySkillInput[];
+  beforeStart?: () => void;
+  approvalPolicy?: string;
+  sandboxPolicy?: ReturnType<typeof delegatedCodexPolicy>['sandboxPolicy'];
   collaborationMode?: {
     mode: CodexCollaborationMode;
     settings: { model: string; reasoning_effort: string | null; developer_instructions: null };
@@ -80,6 +86,14 @@ export async function prepareManagedCodexTurn(
   context: CodexAppThreadContext,
   options?: NativeTurnOptions,
 ): Promise<CodexAppTurnPolicy | undefined> {
+  const beforeStart = () => {
+    if (delegationStopped(m, session)) delegationRefused('Delegated work has ended');
+  };
+  beforeStart();
+  const execution = {
+    ...delegatedCodexPolicy(session),
+    ...(session.delegation === undefined ? {} : { beforeStart }),
+  };
   const application =
     session.applicationPolicy === undefined
       ? undefined
@@ -110,10 +124,18 @@ export async function prepareManagedCodexTurn(
   if (model === undefined) {
     if (application !== undefined)
       collaborationUnavailable(session, 'Native model context is unavailable for policy admission');
+    if (session.delegation !== undefined)
+      collaborationUnavailable(session, 'Model context required for delegated policy');
     return undefined;
   }
   const effort = options?.runtime === 'codex' ? options.effort : undefined;
-  if (mode === undefined) return { model, ...skills, ...(effort === undefined ? {} : { effort }) };
+  if (mode === undefined)
+    return {
+      ...execution,
+      model,
+      ...skills,
+      ...(effort === undefined ? {} : { effort }),
+    };
   let presets: z.infer<typeof CollaborationModePresetSchema>[];
   try {
     const response = z
@@ -127,6 +149,7 @@ export async function prepareManagedCodexTurn(
   if (preset === undefined)
     collaborationUnavailable(session, `installed provider does not advertise ${mode}`);
   return {
+    ...execution,
     model,
     ...skills,
     ...(effort === undefined ? {} : { effort }),
@@ -224,7 +247,8 @@ export async function startCodexAppTurn(
   input: CodexTurnInput[],
   policy?: CodexAppTurnPolicy,
 ): Promise<string> {
-  const { skillInputs, ...nativePolicy } = policy ?? {};
+  const { skillInputs, beforeStart, ...nativePolicy } = policy ?? {};
+  beforeStart?.();
   const response = z.object({ turn: z.looseObject({ id: z.string().min(1) }) }).parse(
     await rpc.request('turn/start', {
       threadId,

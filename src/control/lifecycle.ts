@@ -12,6 +12,9 @@ import { resolveControlLaunchRecipe } from '../config/launchRecipes.ts';
 import { validateModelSelection } from '../config/modelSelection.ts';
 import { modelSelectionFlags } from '../config/modelSelectionFlags.ts';
 import { prepareNativeFork } from '../context/fork.ts';
+import { stopDelegationRequest } from '../delegation/cancel.ts';
+import { readDelegationEvidence } from '../delegation/evidence.ts';
+import { resolveDelegation } from '../delegation/resolve.ts';
 import { sessionApplicationPolicy } from '../policy/projection.ts';
 import { resolveApplicationPolicy } from '../policy/resolve.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
@@ -90,6 +93,10 @@ export async function createControlSession(
       runtime === 'custom' ? 'custom' : 'codex',
     );
   let modelSelection = input.modelSelection;
+  // Pin the provider's published default alias for a new delegated Claude conversation.
+  // An unspecified native choice cannot supply the typed selection needed by its first input.
+  if (runtime === 'claude' && input.delegation !== undefined && modelSelection === undefined)
+    modelSelection = { provider: 'claude', model: 'default' };
   if (runtime === 'custom') {
     if (input.applicationPolicy !== undefined)
       throw new AppError('UNSUPPORTED', {
@@ -112,7 +119,24 @@ export async function createControlSession(
     (input.applicationPolicy === undefined
       ? undefined
       : resolveApplicationPolicy(m, runtime, input.applicationPolicy).metadata);
+  const priorCreate = loadCreateReceipts(m).find((row) => row.requestId === input.requestId);
+  const delegation =
+    input.delegation === undefined
+      ? undefined
+      : (priorCreate?.delegation ??
+        resolveDelegation(m, runtime, mode, workspace, input.requestId, input.delegation));
+  if (
+    delegation !== undefined &&
+    (input.launchRecipe !== undefined ||
+      input.flags?.length ||
+      input.applicationPolicy !== undefined)
+  )
+    throw new AppError('DELEGATION_REFUSED', {
+      message: 'Delegated create requires typed execution policy without launch overrides',
+      status: 409,
+    });
   const canonical = {
+    ...(delegation === undefined ? {} : { delegation, delegationRequest: input.delegation }),
     name: input.name,
     workspace,
     flags: [
@@ -136,12 +160,12 @@ export async function createControlSession(
       message: 'Create request payload changed',
       status: 409,
     });
-  if (accepted === undefined && input.modelSelection !== undefined) {
+  if (accepted === undefined && modelSelection !== undefined) {
     if (runtime === 'opencode')
-      await validateOpenCodeSelection(m, workspace, input.modelSelection, signal);
+      await validateOpenCodeSelection(m, workspace, modelSelection, signal);
     else if (runtime === 'codex')
-      await validateSelection(m, resolved, workspace, input.modelSelection, signal);
-    else if (runtime === 'claude') validateClaudeSelection(m, input.modelSelection);
+      await validateSelection(m, resolved, workspace, modelSelection, signal);
+    else if (runtime === 'claude') validateClaudeSelection(m, modelSelection);
   }
   privateRuntimeDirectory(dirname(storeLockPath(m)));
   return withLock(
@@ -204,24 +228,35 @@ export async function createControlSession(
             const agent = row.runtime ?? 'codex';
             if (row.forkSource !== undefined)
               await prepareNativeFork(m, row.generation, row.forkSource);
-            session = await create(m, {
-              name: row.name,
-              dir: row.workspace,
-              agent,
-              flags: row.flags,
-              router: false,
-              // Claude is the only agent with a choice here; everything else has one mode, and an
-              // omitted request keeps the mode each agent has always been created with.
-              runtime: resolveRuntimeMode(agent, row.mode),
-              registrationGeneration: row.generation,
-              chatEnabled: true,
-              ...(row.envFile === undefined ? {} : { envFile: row.envFile }),
-              ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
-              ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }),
-              ...(row.applicationPolicy === undefined
-                ? {}
-                : { applicationPolicy: row.applicationPolicy }),
-            });
+            const abortDelegatedCreate = () => {
+              if (row.delegation !== undefined)
+                stopDelegationRequest(m, row.requestId, row.requestId, 'create-aborted');
+            };
+            signal.addEventListener('abort', abortDelegatedCreate, { once: true });
+            try {
+              if (signal.aborted) abortDelegatedCreate();
+              session = await create(m, {
+                name: row.name,
+                dir: row.workspace,
+                agent,
+                flags: row.flags,
+                ...(row.delegation === undefined ? {} : { delegation: row.delegation }),
+                router: false,
+                // Claude is the only agent with a choice here; everything else has one mode, and an
+                // omitted request keeps the mode each agent has always been created with.
+                runtime: resolveRuntimeMode(agent, row.mode),
+                registrationGeneration: row.generation,
+                chatEnabled: true,
+                ...(row.envFile === undefined ? {} : { envFile: row.envFile }),
+                ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
+                ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }),
+                ...(row.applicationPolicy === undefined
+                  ? {}
+                  : { applicationPolicy: row.applicationPolicy }),
+              });
+            } finally {
+              signal.removeEventListener('abort', abortDelegatedCreate);
+            }
           } catch (error) {
             session = matchingSession(m, row);
             if (session === null) {
@@ -285,6 +320,7 @@ export async function createControlSession(
         session.dir !== row.workspace ||
         (row.threadId !== null && session.uuid !== row.threadId) ||
         stableJson(session.flags) !== stableJson(row.flags) ||
+        stableJson(session.delegation ?? null) !== stableJson(row.delegation ?? null) ||
         session.envFile !== row.envFile ||
         stableJson(session.launchRecipe ?? null) !== stableJson(row.launchRecipe ?? null) ||
         stableJson(session.modelSelection ?? null) !== stableJson(row.modelSelection ?? null) ||
@@ -294,6 +330,7 @@ export async function createControlSession(
           message: 'Managed create identity does not match its receipt',
           status: 503,
         });
+      signal.throwIfAborted();
       const ready = session;
       if (row.forkSource !== undefined) {
         const source = controlTarget(m, row.forkSource.target);
@@ -325,6 +362,7 @@ export async function createControlSession(
       const native =
         row.applicationPolicy === undefined ? null : readManagedRuntimeStatus(m, ready);
       return {
+        ...(row.delegation === undefined ? {} : { delegation: readDelegationEvidence(m, session) }),
         requestId: row.requestId,
         target: managedPeer(m.rcPrefix, session),
         workspace: row.workspace,

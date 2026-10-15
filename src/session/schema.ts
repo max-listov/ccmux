@@ -6,6 +6,7 @@ import {
   NativeSessionSchema,
   PermissionModeSchema,
 } from '../config/launchSchema.ts';
+import { DelegationSchema } from '../delegation/schema.ts';
 import { ApplicationPolicyMetadataSchema } from '../policy/schema.ts';
 
 /*
@@ -94,6 +95,7 @@ export const SessionSchema = z.object({
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
   applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
+  delegation: DelegationSchema.optional(),
   /** Per-session opt-out from the event feed. Undefined → follow the machine. Same two-level shape
    *  as `chatEnabled`, for the session nobody wants announced. */
   eventsEnabled: z.boolean().optional(),

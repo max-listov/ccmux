@@ -4,6 +4,7 @@ import { computeStamp } from '../agent/launch/launchStamp.ts';
 import { droppedDeadAgentKeys, withoutDeadAgentEnv } from '../agent/launch/sshEnv.ts';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../chat/auth.ts';
 import { loadMachineConfig } from '../config/machine.ts';
+import { delegationStopped } from '../delegation/cancel.ts';
 import { nativeDriver } from '../runtime/driver.ts';
 import { ManagedRuntimeExit } from '../runtime/exit.ts';
 import {
@@ -12,6 +13,7 @@ import {
   writeLifecycleBlock,
 } from '../session/lifecycleBlocks.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
+import { sleepBlocksStart } from '../session/sleep/store.ts';
 import { readLaunchStamp, writeLaunchStamp } from '../session/status.ts';
 import { capturePane, sendKeysNamed } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -194,6 +196,7 @@ export async function superviseReady(
   for (;;) {
     const s = findSession(loadSessions(m), name);
     if (!s) return 1;
+    if (delegationStopped(m, s) || sleepBlocksStart(m, s)) return 0;
     if (s.agent !== expectedAgent) {
       await writeLifecycleBlock(
         m,

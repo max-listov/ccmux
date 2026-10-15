@@ -199,4 +199,6 @@ jobs:
             "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-client.sha256" \
             "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux-control-service-client-${GITHUB_REF_NAME#v}.tgz" \
             "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-service-client.sha256"
+          gh release upload "$GITHUB_REF_NAME" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux-${GITHUB_REF_NAME#v}.tgz"
           gh release edit "$GITHUB_REF_NAME" --draft=false

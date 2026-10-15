@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-10-09 17:00 +07:00
+updated: 2026-10-15 08:00 +07:00
 ---
 
 # Terminal-меню
@@ -658,3 +658,11 @@ provider/daemon restart. Tool acceptance requires a completed native `commandExe
 the terminal response, not merely any tool item. Its differing-preset test explicitly substitutes just that capability field
 before sending the resulting policy into a real native turn; the installed preset itself may report
 `model: null`. The probe records this distinction rather than claiming a provider-advertised mismatch.
+
+
+# Делегированные executors и sleep
+
+`session.create.delegation`, `delegation.cancel`, `session.idle`, `session.sleep` и
+`session.wake` используют exact registration, native evidence и общий admission lock.
+Authority, границы поддержки, receipts и durable state machine описаны в
+[Права executors и обратимый сон](./delegation-and-sleep.md).

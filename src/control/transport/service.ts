@@ -1,6 +1,8 @@
 import type { ApplicationAdmission } from 'stitchkit/application';
 import { implement } from 'stitchkit/server';
+import { sameTarget } from '../../chat/identity.ts';
 import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
+import { delegationRefused } from '../../delegation/resolve.ts';
 import type { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
 import { peerChatLogAnswer, peerListAnswer } from '../../fleet/peerRead.ts';
 import { peerReadContract } from '../../fleet/peerReadContract.ts';
@@ -66,10 +68,27 @@ export function controlServices(
     'session.list': operations.list,
     'external.list': operations.external,
     'session.get': ({ input }) => operations.get(input),
-    'session.create': ({ input, signal }) => operations.create(input, signal),
+    'session.create': ({ input, signal, principal }) => {
+      const caller = ChatPrincipalSchema.parse(principal);
+      if (
+        caller.kind === 'managed' &&
+        (input.delegation === undefined || !sameTarget(caller, input.delegation.parent.target))
+      )
+        delegationRefused('Managed caller must delegate its own authority');
+      return operations.create(input, signal);
+    },
     'session.archive': ({ input, signal }) => operations.archive(input, signal),
     'message.send': ({ input, signal, principal }) =>
       operations.message(input, ChatPrincipalSchema.parse(principal), signal),
+    'delegation.cancel': ({ input, signal, principal }) => {
+      const caller = ChatPrincipalSchema.parse(principal);
+      if (caller.kind === 'managed' && !sameTarget(caller, input.parent.target))
+        delegationRefused('Caller is not the delegated parent');
+      return operations.cancelDelegation(input, signal);
+    },
+    'session.idle': ({ input }) => operations.idle(input),
+    'session.sleep': ({ input, signal }) => operations.sleep(input, signal),
+    'session.wake': ({ input, signal }) => operations.wake(input, signal),
     'session.start': ({ input, signal }) => operations.start(input, signal),
     'turn.interrupt': ({ input, signal }) => operations.interrupt(input, signal),
     'native.read': ({ input }) => operations.native(input),

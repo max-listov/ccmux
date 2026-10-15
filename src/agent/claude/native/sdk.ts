@@ -4,6 +4,7 @@ import type {
   Query,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
+import { delegatedClaudeOptions } from '../../../delegation/claude.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { declaresDialogs, SUPPORTED_DIALOG_KINDS } from './permission.ts';
 import { resolveAgentSdk } from './resolve.ts';
@@ -55,6 +56,7 @@ export function sdkOptions(input: {
     // `claude` and only the model within it changes.
     ...(session.modelSelection === undefined ? {} : { model: session.modelSelection.model }),
     canUseTool: input.canUseTool,
+    ...delegatedClaudeOptions(session),
     ...(declaresDialogs() ? { supportedDialogKinds: [...SUPPORTED_DIALOG_KINDS] } : {}),
     // The id is pinned rather than discovered, so the managed identity and the runtime's own are
     // the same value. `sessionId` names a NEW conversation and cannot combine with `resume`.

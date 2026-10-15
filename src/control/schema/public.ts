@@ -99,6 +99,12 @@ export {
   NativeHistoryQuerySchema,
 } from '../../context/schema.ts';
 export {
+  DelegatedPolicySchema,
+  DelegationEvidenceSchema,
+  DelegationRequestSchema,
+  DelegationSchema,
+} from '../../delegation/schema.ts';
+export {
   ApplicationPolicyEvidenceSchema,
   ApplicationPolicyMetadataSchema,
   ApplicationPolicyReferenceSchema,
@@ -121,6 +127,13 @@ export {
   type NativeTurnOptions,
   NativeTurnOptionsSchema,
 } from '../../runtime/selectionSchema.ts';
+export {
+  IdleProofSchema,
+  SleepReceiptSchema,
+  SleepRequestSchema,
+  SleepTargetSchema,
+  WakeRequestSchema,
+} from '../../session/sleep/schema.ts';
 export {
   type SteeringInput,
   SteeringInputSchema,

@@ -8,6 +8,7 @@ import {
   openSync,
   readSync,
 } from 'node:fs';
+import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { settled, statStamp } from '../util/fileStamp.ts';
 
@@ -24,28 +25,27 @@ const privateFile = (stat: BigIntStats, maxBytes: number) => {
 };
 
 /** Private bounded state, never symlinks, devices or shared-writable files. */
-export function readPrivateJson<T>(
+function readPrivateJsonState<T>(
   path: string,
   schema: z.ZodType<T>,
   maxBytes = 128 * 1024,
-): T | null {
+): { status: 'value'; value: T } | { status: 'missing' | 'invalid' } {
   let fd: number | undefined;
   try {
     const before = lstatSync(path, { bigint: true });
     if (!privateFile(before, maxBytes)) {
       snapshots.delete(path);
-      return null;
+      return { status: 'invalid' };
     }
     const stamp = statStamp(before);
     const cached = snapshots.get(path);
-    if (cached?.stamp === stamp)
-      return schema.safeParse(structuredClone(cached.value)).data ?? null;
+    if (cached?.stamp === stamp) return parsedState(schema, cached.value);
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const stat = fstatSync(fd, { bigint: true });
-    if (!privateFile(stat, maxBytes)) return null;
+    if (!privateFile(stat, maxBytes)) return { status: 'invalid' };
     const bytes = Buffer.alloc(Number(stat.size) + 1);
     const size = readSync(fd, bytes, 0, bytes.length, 0);
-    if (size > maxBytes) return null;
+    if (size > maxBytes) return { status: 'invalid' };
     const value: unknown = JSON.parse(bytes.toString('utf8', 0, size));
     const after = lstatSync(path, { bigint: true });
     if (
@@ -56,13 +56,45 @@ export function readPrivateJson<T>(
       if (snapshots.size >= 256 && !snapshots.has(path)) snapshots.clear();
       snapshots.set(path, { stamp, value });
     }
-    return schema.safeParse(structuredClone(value)).data ?? null;
-  } catch {
+    return parsedState(schema, value);
+  } catch (error) {
     snapshots.delete(path);
-    return null;
+    return {
+      status:
+        error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT'
+          ? 'missing'
+          : 'invalid',
+    };
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
+}
+
+function parsedState<T>(
+  schema: z.ZodType<T>,
+  value: unknown,
+): { status: 'value'; value: T } | { status: 'invalid' } {
+  const parsed = schema.safeParse(structuredClone(value));
+  return parsed.success ? { status: 'value', value: parsed.data } : { status: 'invalid' };
+}
+export function readPrivateJson<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  maxBytes = 128 * 1024,
+): T | null {
+  const result = readPrivateJsonState(path, schema, maxBytes);
+  return result.status === 'value' ? result.value : null;
+}
+/** Missing and invalid are distinguished by the same read, without an exists-after-read race. */
+export function readPrivateJournal<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  maxBytes = 128 * 1024,
+): T | null {
+  const result = readPrivateJsonState(path, schema, maxBytes);
+  if (result.status === 'invalid')
+    throw new AppError('CORRUPT_STATE', { message: 'Private journal is unreadable', status: 503 });
+  return result.status === 'value' ? result.value : null;
 }
 
 /** Create (or accept) a runtime state directory only if it is private: a real directory, owned by the

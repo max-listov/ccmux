@@ -68,6 +68,22 @@ export function ownedCodexArgv(s: Session, m: MachineConfig, cli = promptInvocat
     `unix://${ownedCodexSocket(m, s.name)}`,
     ...ownedCodexFlags([...s.flags, ...m.extraFlags]).server,
     ...modelSelectionFlags(s.modelSelection),
+    ...(s.delegation === undefined
+      ? []
+      : [
+          '--enable',
+          'code_mode_prewarm',
+          '--disable',
+          'multi_agent',
+          '--disable',
+          'apps',
+          '--disable',
+          'remote_plugin',
+          '--disable',
+          'tool_suggest',
+          '-c',
+          'web_search="disabled"',
+        ]),
     '-c',
     `developer_instructions=${JSON.stringify(
       buildPrompt(
@@ -107,6 +123,23 @@ export function ownedCodexThreadParams(s: Session, m: MachineConfig): Record<str
       : {
           model: selected.model,
           modelProvider: selected.provider,
+        }),
+    ...(s.delegation === undefined
+      ? {}
+      : {
+          approvalPolicy: 'never',
+          sandbox: s.delegation.policy.access,
+          config: {
+            mcp_servers: {},
+            'sandbox_workspace_write.writable_roots': [s.dir],
+            'sandbox_workspace_write.exclude_tmpdir_env_var': true,
+            'sandbox_workspace_write.exclude_slash_tmp': true,
+            'sandbox_workspace_write.network_access': false,
+            'features.multi_agent': false,
+            'features.connectors': false,
+            'features.apps': false,
+            'features.remote_plugin': false,
+          },
         }),
     developerInstructions: ownedCodexDeveloperInstructions(s, m),
   };

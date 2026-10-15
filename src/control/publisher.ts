@@ -1,5 +1,7 @@
 import { managedPeer } from '../chat/identity.ts';
 import { chatEnabledFor } from '../config/chat.ts';
+import { delegationStopped } from '../delegation/cancel.ts';
+import { readDelegationEvidence } from '../delegation/evidence.ts';
 import type { MonitoringSnapshot } from '../monitoring/schema.ts';
 import { sessionApplicationPolicy } from '../policy/projection.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
@@ -7,6 +9,7 @@ import { hasNativeRuntime, runtimeModes } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { loadSessions } from '../session/registry.ts';
+import { readSleep } from '../session/sleep/store.ts';
 import type { MachineConfig } from '../types.ts';
 import { SnapshotPublisher } from '../util/snapshotPublisher.ts';
 import { VERSION } from '../util/version.ts';
@@ -56,21 +59,38 @@ export class ControlPublisher extends SnapshotPublisher<ControlSnapshot> {
         continue;
       }
       const owned = hasNativeRuntime(session);
+      const sleep = readSleep(m, session);
+      const stopped = delegationStopped(m, session);
+      const sleeping = sleep !== null && ['requested', 'sleeping'].includes(sleep.phase);
       const native = owned ? readManagedRuntimeStatus(m, session) : null;
       const expiry = new Date(Date.parse(item.observedAt) + source.maxAgeMs).toISOString();
       const row: ControlRow = {
+        ...(session.delegation === undefined
+          ? {}
+          : { delegation: readDelegationEvidence(m, session) }),
         identity: managedPeer(m.rcPrefix, session),
         // The mode the session runs in, from the one table that knows them; `cli` is what the
         // control row calls an interactive mode.
         runtime: owned ? runtimeModes[session.agent].native : 'cli',
         state:
-          native === null
-            ? item.state
-            : native.status === 'live' && native.snapshot
-              ? native.snapshot.state
-              : 'unknown',
+          sleeping || stopped
+            ? 'stopped'
+            : native === null
+              ? item.state
+              : native.status === 'live' && native.snapshot
+                ? native.snapshot.state
+                : 'unknown',
         availability: native?.status ?? 'live',
-        reason: native?.reason ?? null,
+        reason: sleeping ? 'sleeping' : stopped ? 'delegation-ended' : (native?.reason ?? null),
+        ...(sleep === null
+          ? {}
+          : {
+              sleep: {
+                phase: sleep.phase,
+                operationId: sleep.operationId,
+                updatedAt: sleep.updatedAt,
+              },
+            }),
         observedAt: native?.snapshot?.observedAt ?? item.observedAt,
         expiresAt: native?.snapshot?.expiresAt ?? expiry,
         turn: native?.snapshot?.turn ?? null,

@@ -1,9 +1,18 @@
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
+import { cancelDelegation } from '../../delegation/cancel.ts';
+import type { DelegationCancelSchema } from '../../delegation/schema.ts';
 import { readRuntimeCatalog } from '../../runtime/catalog.ts';
 import { clearLifecycleBlock } from '../../session/lifecycleBlocks.ts';
 import { withSessionRegistryLock } from '../../session/registryLock.ts';
+import { assertSleepTarget, sleepSession, wakeSession } from '../../session/sleep/operations.ts';
+import { idleProof } from '../../session/sleep/proof.ts';
+import type {
+  SleepRequestSchema,
+  SleepTargetSchema,
+  WakeRequestSchema,
+} from '../../session/sleep/schema.ts';
 import { startSession } from '../../session/start.ts';
 import type { ChatPrincipal } from '../../types.ts';
 import {
@@ -59,6 +68,13 @@ export const CONTROL_MODELS_CALL_BUDGET_MS = 5_000;
 export function sessionOperations(context: OperationContext) {
   const { m, publisher, external, mutations, waits, reads, catalog, dependencies } = context;
   return {
+    cancelDelegation: (input: z.output<typeof DelegationCancelSchema>, signal?: AbortSignal) =>
+      cancelDelegation(m, input, signal ?? new AbortController().signal),
+    idle: (input: z.output<typeof SleepTargetSchema>) => idleProof(m, assertSleepTarget(m, input)),
+    sleep: (input: z.output<typeof SleepRequestSchema>, signal?: AbortSignal) =>
+      sleepSession(m, input, signal ?? new AbortController().signal),
+    wake: (input: z.output<typeof WakeRequestSchema>, signal?: AbortSignal) =>
+      wakeSession(m, input, signal ?? new AbortController().signal),
     runtimes: () => readRuntimeCatalog(m),
     list: () => publisher.read(),
     external: () => external.read(),

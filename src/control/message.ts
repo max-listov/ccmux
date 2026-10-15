@@ -16,10 +16,14 @@ import { admitMessageOrigin } from '../chat/origin.ts';
 import { unknownMessageOrigin } from '../chat/originSchema.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { assertNoContextMutation } from '../context/store.ts';
+import { delegationStopped } from '../delegation/cancel.ts';
+import { delegationRefused } from '../delegation/resolve.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { withSessionRegistryLock } from '../session/registryLock.ts';
+import { wakeSleepingSession } from '../session/sleep/operations.ts';
+import { readSleep } from '../session/sleep/store.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { type ControlMessage, ControlMessageSchema } from './schema/message.ts';
 import { currentSelection, validateTurnOptions } from './selection.ts';
@@ -119,6 +123,12 @@ export async function acceptControlMessage(
             turnOptions: prior.turnOptions ?? null,
           };
         }
+        const sleeping = readSleep(m, session);
+        if (sleeping !== null && sleeping.phase !== 'awake')
+          throw new AppError('SESSION_SLEEPING', {
+            message: 'Session must wake before input admission',
+            status: 409,
+          });
         if (!hasNativeRuntime(session) && (input.images.length > 0 || input.options !== undefined))
           throw new AppError('UNSUPPORTED', {
             message: 'This runtime cannot accept structured turn input',
@@ -132,6 +142,7 @@ export async function acceptControlMessage(
             message: 'This runtime cannot accept image input',
             status: 409,
           });
+        if (delegationStopped(m, session)) delegationRefused('Delegated work has ended');
         if (hasNativeRuntime(session)) assertNoContextMutation(m, session);
         const selection = hasNativeRuntime(session)
           ? await currentSelection(m, session, signal)
@@ -211,5 +222,14 @@ export async function acceptControlMessage(
       },
       signal,
     );
-  return hasNativeRuntime(target) ? withNativeAdmission(m, target, accept) : accept();
+  if (!hasNativeRuntime(target)) return accept();
+  for (;;) {
+    signal.throwIfAborted();
+    try {
+      return await withNativeAdmission(m, target, accept);
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'SESSION_SLEEPING') throw error;
+      await wakeSleepingSession(m, target, signal);
+    }
+  }
 }

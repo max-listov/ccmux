@@ -1,6 +1,8 @@
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { PermissionResult, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../../../chat/auth.ts';
 import { ContentProducer } from '../../../content/producer.ts';
@@ -8,11 +10,14 @@ import { claudeContextApi } from '../../../context/claude.ts';
 import { readNativeForkIntent } from '../../../context/fork.ts';
 import { applyContextCommands, NativeContextPump } from '../../../context/pump.ts';
 import { contextMutationPending } from '../../../context/store.ts';
+import { recordDelegationApplied } from '../../../delegation/evidence.ts';
 import { tryNativeAdmission } from '../../../runtime/admission.ts';
 import { readRuntimeInput } from '../../../runtime/input.ts';
+import { registerRuntimeOwnership } from '../../../runtime/ownership.ts';
 import { planLimitsDue } from '../../../runtime/planLimits.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../../../runtime/status.ts';
 import { nativeContextWake } from '../../../runtime/wake.ts';
+import { sleepBlocksStart } from '../../../session/sleep/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { recordClaudeSdkUsage } from '../../../usage/claudeSdk.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
@@ -72,6 +77,8 @@ export class ClaudeNativeOwner {
   private pending = new Map<string, PendingApproval>();
   /** Everything this session publishes about itself, and the only thing that changes it. */
   private projection = new NativeProjection();
+  private providerPid = process.pid;
+  private providerDiagnostic = '';
   private usageEpoch = crypto.randomUUID();
   private pendingInput = true;
 
@@ -152,8 +159,30 @@ export class ClaudeNativeOwner {
       started: this.started,
       canUseTool: (toolName, input) => this.decide(toolName, input),
     });
+    options.spawnClaudeCodeProcess = (input) => {
+      const child = spawn(input.command, input.args, {
+        cwd: input.cwd,
+        env: input.env,
+        signal: input.signal,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      if (child.pid === undefined) throw new Error('Native Claude process was not created');
+      this.providerPid = child.pid;
+      child.stderr.on('data', (bytes: Buffer) => {
+        this.providerDiagnostic = (this.providerDiagnostic + bytes.toString()).slice(-8192);
+      });
+      return child;
+    };
     this.usageEpoch = crypto.randomUUID();
     this.query = sdk.query({ prompt: this.queue.iterable(), options });
+    if (this.session.delegation !== undefined) {
+      const initialized = await this.query.initializationResult();
+      if (initialized.hooks_applied !== true)
+        throw new Error('Native Claude did not acknowledge immutable delegation hooks');
+      const servers = await this.query.mcpServerStatus();
+      if (servers.length)
+        throw new Error('Native Claude exposed MCP servers under delegated policy');
+    }
     this.projection.connected = true;
     void this.drain();
     await restoreMode(this.mailboxes);
@@ -164,6 +193,9 @@ export class ClaudeNativeOwner {
     await refreshMcpServers(this.discovery);
     this.serveContext(this.contextAbort.signal);
     this.serveLimits(this.contextAbort.signal);
+    if (this.session.delegation !== undefined)
+      await registerRuntimeOwnership(this.m, this.session, this.providerPid);
+    await recordDelegationApplied(this.m, this.session);
     await this.publish();
   }
 
@@ -182,7 +214,12 @@ export class ClaudeNativeOwner {
   private serveLimits(signal: AbortSignal): void {
     void (async () => {
       while (!signal.aborted) {
-        await Bun.sleep(PLAN_LIMITS_TICK_MS);
+        try {
+          await delay(PLAN_LIMITS_TICK_MS, undefined, { signal });
+        } catch (error) {
+          if (signal.aborted) return;
+          throw error;
+        }
         if (signal.aborted) break;
         if (!planLimitsDue(this.projection.planLimits, Date.now())) continue;
         await refreshPlanLimits(this.discovery);
@@ -240,7 +277,9 @@ export class ClaudeNativeOwner {
       }
       this.failure ??= new Error('Native Claude stream ended while the session was alive');
     } catch (error) {
-      this.failure = error;
+      this.failure = new Error('Native Claude stream failed', {
+        cause: { error, stderr: this.providerDiagnostic },
+      });
       this.projection.turn = advanceTurn(this.projection.turn, {
         step: 'failed',
         error: String(error),
@@ -399,16 +438,17 @@ export class ClaudeNativeOwner {
       input.phase !== 'accepted' &&
       (input.phase !== 'queued' || this.projection.turn.status !== 'inProgress')
     )
-      await tryNativeAdmission(this.m, this.session, () =>
-        this.pickup.run({
+      await tryNativeAdmission(this.m, this.session, async () => {
+        if (sleepBlocksStart(this.m, this.session)) return;
+        await this.pickup.run({
           m: this.m,
           session: this.session,
           projection: this.projection,
           queue: this.queue,
           query: this.query,
           selectModel: (model, turnId) => this.selectModel(model, turnId),
-        }),
-      );
+        });
+      });
     await this.publish();
   }
 
@@ -424,7 +464,7 @@ export class ClaudeNativeOwner {
           threadId,
           generation,
           pid: process.pid,
-          providerPid: process.pid,
+          providerPid: this.providerPid,
           version: this.session.nativeSession?.version ?? 'unknown',
         },
         [...this.pending.values()].map((entry) => entry.request),
@@ -440,6 +480,7 @@ export class ClaudeNativeOwner {
     await this.contextPump.close();
     this.settleAll('decline');
     this.queue.close();
+    this.query?.close();
     this.projection.connected = false;
     try {
       // Bounded: shutdown must not hang inside the owner lock waiting on a runtime that is gone.

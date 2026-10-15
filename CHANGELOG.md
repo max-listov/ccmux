@@ -6,6 +6,14 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.81.0] — 2026-10-15
+
+Create-time delegation and reversible native sleep.
+
+- Managed native Codex and Claude children accept immutable create-time delegation with exact lineage, narrower rights and cancellation before their first prompt.
+- Bounded delegated executors expose idle proofs, CAS sleep receipts and wake on new input while continuing the same native conversation.
+- Releases include a deterministic source archive alongside the typed control-service client.
+
 ## [0.80.6] — 2026-10-13
 
 - Claude tool results expose image descriptors in transcript JSON; `transcript --image` retrieves their bytes by exact nested address, including results shown without their call in a paginated window.

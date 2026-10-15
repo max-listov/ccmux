@@ -1,4 +1,7 @@
+import { z } from 'zod';
 import { admitNativeFork, type NativeForkIntent } from '../../../context/fork.ts';
+import { assertDelegatedCodexAcknowledgement } from '../../../delegation/codex.ts';
+import { delegationRefused } from '../../../delegation/resolve.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { codexAppMessagePersisted } from '../appPickup.ts';
 import {
@@ -30,14 +33,78 @@ export async function openOwnedThread(
   fork: NativeForkIntent | null,
   signal: AbortSignal,
 ): Promise<CodexAppThreadContext> {
-  const request = async (method: string, params: Record<string, unknown>) =>
-    CodexAppThreadContextSchema.parse(
-      await rpc.request(
-        method,
-        { ...ownedCodexThreadParams(initial, m), ...params },
-        { timeoutMs: CODEX_THREAD_BOOTSTRAP_TIMEOUT_MS },
-      ),
+  const nativeConfig =
+    initial.delegation === undefined
+      ? null
+      : z
+          .object({
+            config: z.object({
+              mcp_servers: z.record(z.string(), z.unknown()).optional(),
+              plugins: z.record(z.string(), z.unknown()).optional(),
+            }),
+          })
+          .parse(await rpc.request('config/read', { includeLayers: false, cwd: initial.dir }));
+  const disabledServers = Object.fromEntries(
+    Object.keys(nativeConfig?.config.mcp_servers ?? {}).map((name) => [name, { enabled: false }]),
+  );
+  const request = async (method: string, params: Record<string, unknown>) => {
+    const raw = await rpc.request(
+      method,
+      {
+        ...ownedCodexThreadParams(initial, m),
+        ...params,
+        ...(nativeConfig === null
+          ? {}
+          : {
+              config: {
+                ...(ownedCodexThreadParams(initial, m).config ?? {}),
+                mcp_servers: disabledServers,
+                plugins: Object.fromEntries(
+                  Object.keys(nativeConfig.config.plugins ?? {}).map((name) => [
+                    name,
+                    { enabled: false },
+                  ]),
+                ),
+                web_search: 'disabled',
+                'features.tool_suggest': false,
+              },
+            }),
+      },
+      { timeoutMs: CODEX_THREAD_BOOTSTRAP_TIMEOUT_MS },
     );
+    assertDelegatedCodexAcknowledgement(initial, raw);
+    if (initial.delegation !== undefined) {
+      const servers = z
+        .object({
+          data: z.array(
+            z.object({
+              runtimeStatus: z.literal('disabled'),
+              tools: z.record(z.string(), z.unknown()),
+              resources: z.array(z.unknown()),
+              resourceTemplates: z.array(z.unknown()),
+            }),
+          ),
+          nextCursor: z.string().nullable(),
+        })
+        .parse(
+          await rpc.request('mcpServerStatus/list', {
+            limit: 100,
+            threadId: CodexAppThreadContextSchema.parse(raw).thread.id,
+          }),
+        );
+      if (
+        servers.nextCursor !== null ||
+        servers.data.some(
+          (server) =>
+            Object.keys(server.tools).length ||
+            server.resources.length ||
+            server.resourceTemplates.length,
+        )
+      )
+        delegationRefused('Delegated runtime cannot expose host MCP tools');
+    }
+    return CodexAppThreadContextSchema.parse(raw);
+  };
   if (fork === null)
     return fresh
       ? request('thread/start', {})

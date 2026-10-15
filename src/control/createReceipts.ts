@@ -8,6 +8,7 @@ import { AgentKindSchema } from '../chat/identitySchema.ts';
 import type { ResolvedControlLaunch } from '../config/launchRecipes.ts';
 import { LaunchRecipeMetadataSchema, ModelSelectionSchema } from '../config/launchSchema.ts';
 import { type NativeForkSource, NativeForkSourceSchema } from '../context/fork.ts';
+import { DelegationRequestSchema, DelegationSchema } from '../delegation/schema.ts';
 import {
   type ApplicationPolicyMetadata,
   ApplicationPolicyMetadataSchema,
@@ -33,6 +34,8 @@ export const CreateRowSchema = z
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
+    delegation: DelegationSchema.optional(),
+    delegationRequest: DelegationRequestSchema.optional(),
     /** The execution mode the caller asked for, where the agent offers a choice. */
     mode: z.enum(['tui', 'native']).optional(),
     forkSource: NativeForkSourceSchema.optional(),

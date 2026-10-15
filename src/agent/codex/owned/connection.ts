@@ -6,10 +6,12 @@ import {
   NativeContextPump,
   observeContextCompletion,
 } from '../../../context/pump.ts';
+import { recordDelegationApplied } from '../../../delegation/evidence.ts';
 import { nativePolicySkillsAcknowledged, policySkillInputs } from '../../../policy/codex.ts';
 import { applicationPolicyEvidence, verifyApplicationPolicy } from '../../../policy/resolve.ts';
 import type { MaterializedPolicy } from '../../../policy/schema.ts';
 import { emitRuntimeBoundaries } from '../../../runtime/events.ts';
+import { registerRuntimeOwnership } from '../../../runtime/ownership.ts';
 import {
   codexPlanLimits,
   planLimitsDue,
@@ -196,6 +198,9 @@ export class OwnedCodexConnection {
     )
       throw new Error('Native admission changed the selected provider or model');
     const session = SessionSchema.parse({ ...this.initial, uuid: response.thread.id });
+    if (session.delegation !== undefined)
+      await registerRuntimeOwnership(this.m, session, this.providerPid);
+    await recordDelegationApplied(this.m, session);
     const projection = new OwnedCodexProjection(this.m, session, this.providerPid);
     if (response.model !== undefined && response.modelProvider !== undefined)
       projection.selectionEvidence({

@@ -1,11 +1,13 @@
 import { forkedUuid } from '../agent/index.ts';
 import { loadMachineConfig } from '../config/machine.ts';
+import { delegationStopped } from '../delegation/cancel.ts';
 import { listAgentLiveness } from '../tmux/agentPane.ts';
 import { killSession } from '../tmux/tmux.ts';
 import type { Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { readLifecycleBlockForSession } from './lifecycleBlocks.ts';
 import { findSession, loadSessions, updateSessionUuid } from './registry.ts';
+import { sleepBlocksStart } from './sleep/store.ts';
 import { startSession } from './start.ts';
 
 type EnsureDeps = {
@@ -64,7 +66,13 @@ export async function healOnce(): Promise<void> {
     },
     start: (name, dir) => {
       const session = findSession(loadSessions(m), name);
-      if (!session || readLifecycleBlockForSession(m, session)) return Promise.resolve();
+      if (
+        !session ||
+        delegationStopped(m, session) ||
+        sleepBlocksStart(m, session) ||
+        readLifecycleBlockForSession(m, session)
+      )
+        return Promise.resolve();
       log.info({ msg: 'heal: session down — restarting', name });
       return startSession(m, name, dir);
     },

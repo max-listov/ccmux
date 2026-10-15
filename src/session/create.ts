@@ -5,6 +5,8 @@ import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { getProvider } from '../agent/index.ts';
 import type { ModelSelection } from '../config/modelSelectionFlags.ts';
 import { readNativeForkIntent } from '../context/fork.ts';
+import { verifyDelegatedSession } from '../delegation/resolve.ts';
+import type { Delegation } from '../delegation/schema.ts';
 import { policyUnavailable } from '../policy/errors.ts';
 import { verifyApplicationPolicy } from '../policy/resolve.ts';
 import type { ApplicationPolicyMetadata } from '../policy/schema.ts';
@@ -52,6 +54,7 @@ export type CreateManagedInput = {
   launchRecipe?: LaunchRecipeMetadata;
   modelSelection?: ModelSelection;
   applicationPolicy?: ApplicationPolicyMetadata;
+  delegation?: Delegation;
   /** Whether the runtime keeps a copy of every file this session modifies. Off unless asked. */
   fileCheckpoints?: boolean;
 };
@@ -82,6 +85,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, 'uuid'> {
     agent: input.agent,
     flags: input.flags,
     runtime: storedRuntime(input),
+    ...(input.delegation === undefined ? {} : { delegation: input.delegation }),
     ...(input.router ? { promptModules: ['router'], chatEnabled: true } : {}),
     ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
@@ -147,6 +151,12 @@ export async function createNativeBootstrap(
   operation: NativeBootstrapOperation,
 ): Promise<Session> {
   verifyCreatePolicy(m, input);
+  verifyDelegatedSession(
+    SessionSchema.parse({
+      ...sessionFields(input),
+      uuid: input.registrationGeneration ?? randomUUID(),
+    }),
+  );
   nativeDriver(sessionFields(input))?.preflight(m, input.flags);
   getProvider(input.agent).preflight(m);
   if (
@@ -264,6 +274,12 @@ export async function createManagedSession(
   input: CreateManagedInput,
 ): Promise<Session> {
   verifyCreatePolicy(m, input);
+  verifyDelegatedSession(
+    SessionSchema.parse({
+      ...sessionFields(input),
+      uuid: input.registrationGeneration ?? randomUUID(),
+    }),
+  );
   const fields = sessionFields(input);
   if (fields.runtime !== undefined && !runtimeModeIsValid(fields.agent, fields.runtime))
     throw new Error(`${fields.agent} has no ${fields.runtime} runtime`);

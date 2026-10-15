@@ -7,6 +7,8 @@ export const RuntimeCapabilitiesSchema = z
   .object({
     runtime: AgentKindSchema,
     structured: z.boolean(),
+    delegation: z.boolean().optional(),
+    sleep: z.boolean().optional(),
     modelCatalog: z.boolean(),
     modelSelection: z.boolean(),
     approval: z.boolean(),
@@ -157,7 +159,7 @@ const capabilities = {
 } satisfies Record<Session['agent'], RuntimeCapabilities>;
 
 export function runtimeCapabilities(
-  session: Pick<Session, 'agent' | 'runtime'>,
+  session: Pick<Session, 'agent' | 'runtime'> & Partial<Pick<Session, 'delegation'>>,
 ): RuntimeCapabilities {
   const declared = capabilities[session.agent];
   if (!hasNativeRuntime(session))
@@ -172,5 +174,9 @@ export function runtimeCapabilities(
       interrupt: false,
       ...unsupportedNativeOperations,
     };
-  return { ...declared };
+  return {
+    ...declared,
+    delegation: ['codex', 'claude'].includes(session.agent),
+    sleep: ['codex', 'claude'].includes(session.agent) && session.delegation !== undefined,
+  };
 }

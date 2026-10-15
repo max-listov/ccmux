@@ -14,6 +14,7 @@ import {
   MessageOperationResultSchema,
 } from '../../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../../context/schema.ts';
+import { DelegationCancelReceiptSchema, DelegationCancelSchema } from '../../delegation/schema.ts';
 import {
   ExternalContentCapabilitiesSchema,
   ExternalContentReadSchema,
@@ -21,6 +22,13 @@ import {
   ExternalContentSelectorSchema,
 } from '../../external/contentSchema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../../runtime/capabilities.ts';
+import {
+  IdleProofSchema,
+  SleepReceiptSchema,
+  SleepRequestSchema,
+  SleepTargetSchema,
+  WakeRequestSchema,
+} from '../../session/sleep/schema.ts';
 import {
   SteeringInputSchema,
   SteeringReadResultSchema,
@@ -210,6 +218,45 @@ export const controlContract = defineContract(
       input: ControlContextOperationReadSchema,
       output: ControlContextOperationResultSchema,
       idempotent: true,
+    },
+    'delegation.cancel': {
+      method: 'POST',
+      path: '/delegation/cancel',
+      input: DelegationCancelSchema,
+      output: DelegationCancelReceiptSchema,
+      idempotent: true,
+      timeout: 15000,
+      desc: 'Cancel exact parent-owned delegated work',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'session.idle': {
+      method: 'POST',
+      path: '/session/idle',
+      input: SleepTargetSchema,
+      output: IdleProofSchema,
+      idempotent: true,
+      desc: 'Measure an exact owned session idle proof',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'session.sleep': {
+      method: 'POST',
+      path: '/session/sleep',
+      input: SleepRequestSchema,
+      output: SleepReceiptSchema,
+      idempotent: true,
+      timeout: 15000,
+      desc: 'Release one idle owned executor using revision CAS',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'session.wake': {
+      method: 'POST',
+      path: '/session/wake',
+      input: WakeRequestSchema,
+      output: SleepReceiptSchema,
+      idempotent: true,
+      timeout: 60000,
+      desc: 'Resume a sleeping native identity',
+      expose: ['HTTP', 'CLI', 'MCP'],
     },
     'session.fork': {
       method: 'POST',

@@ -3,12 +3,14 @@ import { dirname } from 'node:path';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../../../chat/auth.ts';
 import { verifyManagedLaunchRecipe } from '../../../config/launchRecipes.ts';
 import { contextMutationPending } from '../../../context/store.ts';
+import { delegationStopped } from '../../../delegation/cancel.ts';
 import { verifyApplicationPolicy } from '../../../policy/resolve.ts';
 import { ManagedRuntimeExit } from '../../../runtime/exit.ts';
 import { readRuntimeInput } from '../../../runtime/input.ts';
 import { privateRuntimeDirectory } from '../../../runtime/store.ts';
 import { nativeRuntimeWake } from '../../../runtime/wake.ts';
 import { loadSessions } from '../../../session/registry.ts';
+import { ownerShouldSleep } from '../../../session/sleep/store.ts';
 import { writeLaunchStamp } from '../../../session/status.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { promptInvocation } from '../../../util/env.ts';
@@ -59,6 +61,7 @@ export async function runOwnedCodexProcess(
   initial: Session,
   promote?: (uuid: string) => Promise<Session>,
 ): Promise<void> {
+  if (delegationStopped(m, initial)) throw new Error('Delegated work has ended');
   verifyManagedLaunchRecipe(m, initial);
   if (initial.applicationPolicy !== undefined)
     verifyApplicationPolicy(m, 'codex', initial.applicationPolicy);
@@ -144,11 +147,19 @@ async function run(
     let reconnectDelay = 500;
     let clientAt = 0;
     while (!abort.signal.aborted) {
+      if (ownerShouldSleep(m, session) || delegationStopped(m, session)) {
+        stopping = true;
+        break;
+      }
       // Some launchers leave a native grandchild holding stderr after their own death, so the
       // process exit promise alone is not a sufficient crash detector.
       if (!ownedChildAlive(child.pid))
         throw new ManagedRuntimeExit('Native provider launcher exited');
-      if ((client === null || client.exitCode !== null) && Date.now() >= clientAt) {
+      if (
+        session.delegation === undefined &&
+        (client === null || client.exitCode !== null) &&
+        Date.now() >= clientAt
+      ) {
         client = Bun.spawn(ownedCodexClientArgv(session, m), {
           cwd: session.dir,
           env,
