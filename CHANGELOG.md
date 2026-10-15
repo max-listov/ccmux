@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.81.2] — 2026-10-15
+
+- Codex delegation pins native runtime workspace roots before its first prompt and on every turn; workspace writes stay inside the granted directory.
+
 ## [0.81.1] — 2026-10-15
 
 - Wake returns a durable pending result within the control transport budget, including cold starts and prior process release.

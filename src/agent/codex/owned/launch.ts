@@ -129,6 +129,7 @@ export function ownedCodexThreadParams(s: Session, m: MachineConfig): Record<str
       : {
           approvalPolicy: 'never',
           sandbox: s.delegation.policy.access,
+          runtimeWorkspaceRoots: [s.dir],
           config: {
             mcp_servers: {},
             'sandbox_workspace_write.writable_roots': [s.dir],

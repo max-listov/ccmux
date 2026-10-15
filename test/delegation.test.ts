@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { prepareManagedCodexTurn } from '../src/agent/codex/appServer.ts';
+import { ownedCodexThreadParams } from '../src/agent/codex/owned/launch.ts';
 import { stableJson } from '../src/agent/launch/launchInputs.ts';
 import { managedPeer } from '../src/chat/identity.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
@@ -118,11 +119,15 @@ test('native acknowledgement must match the actual sandbox, not the requested la
   const s = makeSession({ agent: 'codex', runtime: 'app-server', dir: f.root, delegation });
   expect(delegatedCodexPolicy(s)).toEqual({
     approvalPolicy: 'never',
+    cwd: f.root,
+    runtimeWorkspaceRoots: [f.root],
     sandboxPolicy: { type: 'readOnly', networkAccess: false },
   });
   expect(() =>
     assertDelegatedCodexAcknowledgement(s, {
       approvalPolicy: 'never',
+      cwd: f.root,
+      runtimeWorkspaceRoots: [f.root],
       sandbox: { type: 'readOnly', networkAccess: false },
     }),
   ).not.toThrow();
@@ -131,7 +136,13 @@ test('native acknowledgement must match the actual sandbox, not the requested la
     { approvalPolicy: 'never', sandbox: { type: 'readOnly', networkAccess: true } },
     { approvalPolicy: 'onRequest', sandbox: { type: 'readOnly' } },
   ])
-    expect(() => assertDelegatedCodexAcknowledgement(s, raw)).toThrow('Provider');
+    expect(() =>
+      assertDelegatedCodexAcknowledgement(s, {
+        ...raw,
+        cwd: f.root,
+        runtimeWorkspaceRoots: [f.root],
+      }),
+    ).toThrow('Provider');
 });
 test('Claude removes inherited side effects and its pre-tool hook refuses writes even in bypass mode', async () => {
   const f = fixture();
@@ -261,4 +272,44 @@ test('expired host authority and inherited deadlines refuse admission before any
     ),
   ).rejects.toMatchObject({ code: 'DELEGATION_REFUSED' });
   expect(calls).toBe(0);
+});
+
+test('workspace-write pins the runtime workspace independently of legacy additional roots', () => {
+  const f = fixture();
+  const policy = { ...f.policy, access: 'workspace-write' as const };
+  const delegation = DelegationSchema.parse({
+    parent: f.reference,
+    policy,
+    requestId: crypto.randomUUID(),
+    policyDigest: createHash('sha256').update(stableJson(policy)).digest('hex'),
+  });
+  const s = makeSession({ agent: 'codex', runtime: 'app-server', dir: f.root, delegation });
+  const acknowledgement = {
+    approvalPolicy: 'never',
+    cwd: f.root,
+    runtimeWorkspaceRoots: [f.root],
+    sandbox: {
+      type: 'workspaceWrite',
+      writableRoots: [],
+      networkAccess: false,
+      excludeTmpdirEnvVar: true,
+      excludeSlashTmp: true,
+    },
+  };
+  expect(() => assertDelegatedCodexAcknowledgement(s, acknowledgement)).not.toThrow();
+  expect(delegatedCodexPolicy(s)).toMatchObject({ cwd: f.root, runtimeWorkspaceRoots: [f.root] });
+  expect(ownedCodexThreadParams(s, f.m)).toMatchObject({
+    cwd: f.root,
+    runtimeWorkspaceRoots: [f.root],
+  });
+  for (const changed of [
+    { ...acknowledgement, cwd: '/' },
+    { ...acknowledgement, runtimeWorkspaceRoots: [] },
+    { ...acknowledgement, runtimeWorkspaceRoots: [f.root, '/'] },
+    { ...acknowledgement, sandbox: { ...acknowledgement.sandbox, writableRoots: ['/'] } },
+    { ...acknowledgement, sandbox: { ...acknowledgement.sandbox, networkAccess: true } },
+    { ...acknowledgement, sandbox: { ...acknowledgement.sandbox, excludeSlashTmp: false } },
+    { ...acknowledgement, sandbox: { ...acknowledgement.sandbox, excludeTmpdirEnvVar: false } },
+  ])
+    expect(() => assertDelegatedCodexAcknowledgement(s, changed)).toThrow('Provider');
 });

@@ -4,7 +4,7 @@ description: Create-time authority, native policy evidence, idle CAS и прод
 type: architecture
 status: active
 created: 2026-10-15 08:00 +07:00
-updated: 2026-10-15 08:37 +07:00
+updated: 2026-10-15 09:05 +07:00
 ---
 
 ## Authority до первого prompt
@@ -25,7 +25,10 @@ Owner ждёт native acknowledgement hooks и отсутствие MCP до app
 
 Codex задаёт native sandbox и approvalPolicy never, отключает MCP servers/plugins,
 apps, web search и multi-agent. Owner проверяет фактический native sandbox ответа и
-повторяет sandboxPolicy при каждом turn/start. Делегированный Codex работает headless.
+повторяет sandboxPolicy, cwd и runtimeWorkspaceRoots при каждом turn/start.
+Native runtimeWorkspaceRoots задаются явно; cwd один их не материализует. Acknowledgement
+проверяет exact cwd и runtime roots, запрет сети/tmp и отсутствие внешних legacy writableRoots.
+Legacy additional roots могут быть пустыми: это отдельное поле native API, а не runtime roots. Делегированный Codex работает headless.
 Code-mode helper предварительно запускается native prewarm до baseline ownership;
 появление нового процесса после baseline блокирует sleep, а не попадает в whitelist.
 

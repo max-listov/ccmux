@@ -58,6 +58,8 @@ export type CodexAppTurnPolicy = {
   beforeStart?: () => void;
   approvalPolicy?: string;
   sandboxPolicy?: ReturnType<typeof delegatedCodexPolicy>['sandboxPolicy'];
+  cwd?: string;
+  runtimeWorkspaceRoots?: string[];
   collaborationMode?: {
     mode: CodexCollaborationMode;
     settings: { model: string; reasoning_effort: string | null; developer_instructions: null };
