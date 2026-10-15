@@ -4,6 +4,10 @@ All notable changes to ccmux. The `[Unreleased]` section accumulates as work lan
 `bun run release X.Y.Z "notes"` rolls it into a dated version section, and CI publishes
 the GitHub Release with that section as the notes.
 
+## [0.82.1] — 2026-10-15
+
+- Declare create-time inference capabilities and refuse explicit no-inference creation before provider startup when the runtime cannot guarantee it.
+
 ## [Unreleased]
 
 ## [0.82.0] — 2026-10-15

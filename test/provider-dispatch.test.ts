@@ -107,6 +107,11 @@ test('declaring the Claude row for the native mode leaves the interactive row un
   expect(tui).toEqual({
     runtime: 'claude',
     structured: false,
+    creation: {
+      noInference: false,
+      inference: 'not-guaranteed',
+      reason: 'provider-initialization-not-certified',
+    },
     modelCatalog: false,
     modelSelection: false,
     approval: false,

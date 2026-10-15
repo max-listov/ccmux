@@ -24,6 +24,8 @@ export const ControlCreateSchema = z
      * way to run: without this, the native mode is unreachable through the control plane entirely.
      */
     mode: z.enum(['tui', 'native']).optional(),
+    /** A no-inference request must be refused before provider startup when unsupported. */
+    initialization: z.enum(['allow-inference', 'no-inference']).optional(),
     requestId: z.uuid(),
     name: z.string().min(1).max(256).regex(SESSION_NAME_RE),
     workspace: z.string().startsWith('/').max(4_096),

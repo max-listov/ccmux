@@ -7,6 +7,16 @@ export const RuntimeCapabilitiesSchema = z
   .object({
     runtime: AgentKindSchema,
     structured: z.boolean(),
+    creation: z
+      .object({
+        noInference: z.boolean(),
+        inference: z.enum(['required', 'not-guaranteed']),
+        reason: z.enum([
+          'native-rollout-requires-bootstrap',
+          'provider-initialization-not-certified',
+        ]),
+      })
+      .strict(),
     delegation: z.boolean().optional(),
     sleep: z.boolean().optional(),
     modelCatalog: z.boolean(),
@@ -58,7 +68,13 @@ export const RuntimeCatalogSchema = z
   })
   .strict();
 
+const uncertifiedCreation = {
+  noInference: false,
+  inference: 'not-guaranteed',
+  reason: 'provider-initialization-not-certified',
+} as const;
 const unsupportedNativeOperations = {
+  creation: uncertifiedCreation,
   commandCatalog: false,
   permissionModes: false,
   fileCheckpoints: false,
@@ -127,6 +143,11 @@ const capabilities = {
     resume: true,
     ...nativeOperations,
     turnSteering: true,
+    creation: {
+      noInference: false,
+      inference: 'required',
+      reason: 'native-rollout-requires-bootstrap',
+    },
   },
   opencode: {
     runtime: 'opencode',

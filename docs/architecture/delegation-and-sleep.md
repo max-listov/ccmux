@@ -129,3 +129,27 @@ Wake использует один deadline от начала вызова, вк
 Release содержит typed control-service-client и `ccmux-X.Y.Z.tgz` — детерминированный
 `git archive` точного release commit с native source. CI загружает оба до публикации draft.
 Source archive позволяет проверить включение реализации вместе с public contract.
+
+## Creation and inference
+
+`session.create` accepts `initialization: "allow-inference" | "no-inference"`.
+Omission permits the established initialization behavior. `runtime.list` publishes each mode's
+`capabilities.creation`: `noInference`, `inference`, and a stable `reason`.
+A caller requiring zero model requests must explicitly request `no-inference`; a false capability
+produces HTTP409 `NO_INFERENCE_CREATE_UNSUPPORTED` before workspace/config/model discovery,
+receipt reservation or provider startup. Retrying an older completed request with this requirement
+also refuses; an earlier model effect is never relabelled as inference-free. This refusal creates
+no executor, native identity, pending registration or resumable context.
+
+No mode currently certifies no-inference create. Codex app-server reports `inference: "required"`,
+reason `native-rollout-requires-bootstrap`: admission uses a readiness turn to persist rollout
+metadata for identity correlation and resume. Claude native consumes an input queue without an
+owner readiness prompt, but SDK initialization, hooks and provider side effects are not certified
+as zero model requests; it reports `not-guaranteed`/`provider-initialization-not-certified`, as do
+interactive and other native modes. These modes refuse the explicit no-inference request before
+starting their provider. A successful ordinary create is not proof of zero inference.
+
+Explicit input, steering, compaction, native commands and automatic tool continuations can invoke
+a model; read and lifecycle control must not be interpreted as an inference budget permission.
+Delegation and application leases still guard ordinary create and input. No-inference refusal does
+not authorize input, bypass policy, create a fake parent or change provider/account settings.

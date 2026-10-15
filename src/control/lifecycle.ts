@@ -54,11 +54,19 @@ export async function createControlSession(
   fork?: ForkAdmission,
   principal?: ChatPrincipal,
 ) {
-  const workspace = normalizeWorkspace(input.workspace);
   const runtime = input.runtime ?? 'codex';
   // The execution mode this create will actually use, resolved once so the capability checks below
   // ask about the session that will exist rather than about the agent family in general.
   const mode = resolveRuntimeMode(runtime, input.mode);
+  // Check before workspace/config/model discovery, durable receipts or provider startup. Even a
+  // completed legacy request cannot be replayed as a no-inference request after its paid effect.
+  const creation = runtimeCapabilities({ agent: runtime, runtime: mode }).creation;
+  if (input.initialization === 'no-inference' && !creation.noInference)
+    throw new AppError('NO_INFERENCE_CREATE_UNSUPPORTED', {
+      message: `No-inference create is unsupported: ${creation.reason}`,
+      status: 409,
+    });
+  const workspace = normalizeWorkspace(input.workspace);
   if (runtime !== 'codex' && runtime !== 'custom' && input.launchRecipe !== undefined)
     throw new AppError('UNSUPPORTED', {
       message: 'This runtime does not accept a Codex launch recipe',
