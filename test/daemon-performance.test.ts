@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { watchLoopStalls } from '../src/daemon/loopStall.ts';
 import { DaemonPerformance } from '../src/monitoring/performance.ts';
 import { measureCpu } from '../src/util/cpuScope.ts';
@@ -117,7 +117,8 @@ test('CPU tracing can change epochs during pending work without charging the ret
   await pending;
   expect(profile.snapshot().scopes).toEqual([]);
   profile.run('control/current', () => busy(10));
-  expect(profile.snapshot().scopes[0]?.cpu?.userUs).toBeGreaterThan(1000);
+  const current = profile.snapshot().scopes.find((scope) => scope.name === 'control/current');
+  expect((current?.cpu?.userUs ?? 0) + (current?.cpu?.systemUs ?? 0)).toBeGreaterThan(1000);
   profile.start(false);
   profile.run('schedule/default', () => busy(1));
   const result = profile.snapshot();
@@ -155,5 +156,28 @@ test('names past the bound share one bucket instead of failing the work, enabled
     const names = profile.snapshot().scopes.map((scope) => scope.name);
     expect(names.length).toBeLessThanOrEqual(129);
     expect(names).toContain('other');
+  }
+});
+
+// CPUUsage exposes two independently charged channels. The epoch contract is total CPU,
+// including hosts where the scheduler charges almost all of the interval to system work.
+test('a system-dominated CPU interval is charged to the current tracing epoch', () => {
+  let user = 0,
+    system = 0;
+  const usage = spyOn(process, 'cpuUsage').mockImplementation((previous) => {
+    user += 10;
+    system += 2000;
+    return { user: user - (previous?.user ?? 0), system: system - (previous?.system ?? 0) };
+  });
+  const profile = new DaemonPerformance();
+  try {
+    profile.start(true);
+    profile.run('control/current', () => 1);
+    const current = profile.snapshot().scopes.find((scope) => scope.name === 'control/current');
+    expect(current?.cpu?.userUs).toBeLessThan(1000);
+    expect((current?.cpu?.userUs ?? 0) + (current?.cpu?.systemUs ?? 0)).toBeGreaterThan(1000);
+  } finally {
+    profile.close();
+    usage.mockRestore();
   }
 });

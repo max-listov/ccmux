@@ -4,7 +4,9 @@ All notable changes to ccmux. The `[Unreleased]` section accumulates as work lan
 `bun run release X.Y.Z "notes"` rolls it into a dated version section, and CI publishes
 the GitHub Release with that section as the notes.
 
-## [0.82.1] — 2026-10-15
+## [0.82.2] — 2026-10-15
+
+- Check total user and system CPU when validating tracing epochs on Linux.
 
 - Declare create-time inference capabilities and refuse explicit no-inference creation before provider startup when the runtime cannot guarantee it.
 
