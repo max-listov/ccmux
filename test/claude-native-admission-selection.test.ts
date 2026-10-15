@@ -26,12 +26,13 @@ const supported = [
   { value: 'sonnet', displayName: 'Sonnet', description: '' },
 ];
 
-async function discover(requested?: string): Promise<Discovery> {
+async function discover(requested?: string, initialization?: 'no-inference'): Promise<Discovery> {
   const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-admission-selection-'));
   roots.push(stateDir);
   const m = makeMachine({ stateDir, claudeNativeRuntime: true });
   const session = makeSession({
     name: 'agent-a',
+    initialization,
     // A native Claude session cannot open without one; the owner refuses first.
     registrationGeneration: '33333333-3333-4333-8333-333333333333',
     ...(requested === undefined
@@ -72,4 +73,20 @@ test('a session that chose nothing has no delivery to confirm', async () => {
   // Seeding a default nobody asked for would invent a choice and then attest to it.
   const d = await discover();
   expect(readSelection(d.m, d.session)).toBeNull();
+});
+
+test('inference-free admission fails closed when the runtime cannot verify the requested model', async () => {
+  await expect(discover('unknown-model', 'no-inference')).rejects.toThrow(
+    'verify the explicit model',
+  );
+  const selected = await discover('haiku');
+  selected.session.initialization = 'no-inference';
+  selected.session.modelSelection = { provider: 'claude', model: 'sonnet' };
+  selected.query = { supportedModels: async () => undefined } as never;
+  await expect(loadCatalog(selected)).rejects.toThrow('requires the runtime model catalog');
+  const valid = await discover('sonnet', 'no-inference');
+  expect(readSelection(valid.m, valid.session)?.options.model).toEqual({
+    provider: 'claude',
+    model: 'sonnet',
+  });
 });

@@ -12,6 +12,7 @@ import { applyContextCommands, NativeContextPump } from '../../../context/pump.t
 import { contextMutationPending } from '../../../context/store.ts';
 import { recordDelegationApplied } from '../../../delegation/evidence.ts';
 import { tryNativeAdmission } from '../../../runtime/admission.ts';
+import { assertInferenceFreeCreate } from '../../../runtime/creation.ts';
 import { readRuntimeInput } from '../../../runtime/input.ts';
 import { registerRuntimeOwnership } from '../../../runtime/ownership.ts';
 import { planLimitsDue } from '../../../runtime/planLimits.ts';
@@ -137,6 +138,7 @@ export class ClaudeNativeOwner {
   }
 
   async open(): Promise<void> {
+    assertInferenceFreeCreate(this.session);
     const generation = this.session.registrationGeneration;
     if (!generation || !this.session.nativeSession)
       throw new Error('Native Claude requires a managed registration');

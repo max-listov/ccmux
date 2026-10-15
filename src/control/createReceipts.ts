@@ -33,6 +33,7 @@ export const CreateRowSchema = z
     envFile: z.string().min(1).optional(),
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
+    initialization: z.literal('no-inference').optional(),
     applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
     delegation: DelegationSchema.optional(),
     delegationRequest: DelegationRequestSchema.optional(),

@@ -41,9 +41,15 @@ export interface Discovery {
 export async function loadCatalog(d: Discovery): Promise<void> {
   try {
     const supported = (await d.query?.supportedModels?.()) as SupportedModel[] | undefined;
-    if (!supported) return;
+    if (!supported) {
+      if (d.session.initialization === 'no-inference')
+        throw new Error('No-inference admission requires the runtime model catalog');
+      return;
+    }
     const chosen = d.session.modelSelection?.model ?? null;
     const models = claudeModels(supported, chosen);
+    if (d.session.initialization === 'no-inference' && !models.some((model) => model.id === chosen))
+      throw new Error('No-inference admission could not verify the explicit model');
     await writeClaudeCatalog(d.m, d.session, models);
     const current = models.find((model) => model.isDefault) ?? models[0];
     if (current)
@@ -66,7 +72,8 @@ export async function loadCatalog(d: Discovery): Promise<void> {
         model: { provider: 'claude', model: requested.model },
       });
   } catch (error) {
-    // A catalog is enrichment, not a precondition: a session that cannot list models still runs.
+    if (d.session.initialization === 'no-inference') throw error;
+    // A catalog is enrichment for ordinary sessions; inference-free admission must verify selection.
     await d.report(error);
   }
 }

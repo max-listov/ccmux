@@ -10,10 +10,15 @@ export const RuntimeCapabilitiesSchema = z
     creation: z
       .object({
         noInference: z.boolean(),
-        inference: z.enum(['required', 'not-guaranteed']),
+        inference: z.enum(['required', 'not-guaranteed', 'deferred']),
+        requirements: z
+          .array(z.enum(['delegation', 'explicit-model']))
+          .max(2)
+          .optional(),
         reason: z.enum([
           'native-rollout-requires-bootstrap',
           'provider-initialization-not-certified',
+          'delegated-input-only',
         ]),
       })
       .strict(),
@@ -120,6 +125,12 @@ const capabilities = {
     interrupt: true,
     resume: true,
     ...unsupportedNativeOperations,
+    creation: {
+      noInference: true,
+      inference: 'deferred',
+      reason: 'delegated-input-only',
+      requirements: ['delegation', 'explicit-model'],
+    },
     selectionDefaults: true,
     turnOptions: true,
     imageInput: true,

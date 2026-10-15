@@ -28,6 +28,15 @@ test('catalog names the inference boundary of every creatable runtime and mode',
   const rows = readRuntimeCatalog(m).runtimes;
   expect(rows).toHaveLength(5);
   for (const row of rows) {
+    if (row.runtime === 'claude' && row.mode === 'native') {
+      expect(row.capabilities.creation).toEqual({
+        noInference: true,
+        inference: 'deferred',
+        reason: 'delegated-input-only',
+        requirements: ['delegation', 'explicit-model'],
+      });
+      continue;
+    }
     expect(row.capabilities.creation.noInference).toBe(false);
     expect(row.capabilities.creation).toEqual(
       row.runtime === 'codex'
@@ -45,7 +54,7 @@ test('catalog names the inference boundary of every creatable runtime and mode',
   }
 });
 
-test('typed no-inference create refuses every adapter before provider effects or receipt reservation', async () => {
+test('typed no-inference create refuses unsupported modes and missing requirements before effects', async () => {
   const { root, m } = fixture();
   let providerRequests = 0,
     createCalls = 0,
@@ -89,7 +98,10 @@ test('typed no-inference create refuses every adapter before provider effects or
     });
     for (let retry = 0; retry < 2; retry++)
       await expect(client['session.create'](input)).rejects.toMatchObject({
-        code: 'NO_INFERENCE_CREATE_UNSUPPORTED',
+        code:
+          row.runtime === 'claude' && row.mode === 'native'
+            ? 'NO_INFERENCE_CREATE_REQUIREMENTS'
+            : 'NO_INFERENCE_CREATE_UNSUPPORTED',
       });
   }
   await expect(

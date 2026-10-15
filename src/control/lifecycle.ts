@@ -19,6 +19,7 @@ import { resolveDelegation } from '../delegation/resolve.ts';
 import { sessionApplicationPolicy } from '../policy/projection.ts';
 import { resolveApplicationPolicy } from '../policy/resolve.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { assertInferenceFreeCreate } from '../runtime/creation.ts';
 import { recordRuntimeDiagnostic } from '../runtime/diagnostics.ts';
 import { resolveRuntimeMode } from '../runtime/modes.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
@@ -58,14 +59,13 @@ export async function createControlSession(
   // The execution mode this create will actually use, resolved once so the capability checks below
   // ask about the session that will exist rather than about the agent family in general.
   const mode = resolveRuntimeMode(runtime, input.mode);
-  // Check before workspace/config/model discovery, durable receipts or provider startup. Even a
-  // completed legacy request cannot be replayed as a no-inference request after its paid effect.
-  const creation = runtimeCapabilities({ agent: runtime, runtime: mode }).creation;
-  if (input.initialization === 'no-inference' && !creation.noInference)
-    throw new AppError('NO_INFERENCE_CREATE_UNSUPPORTED', {
-      message: `No-inference create is unsupported: ${creation.reason}`,
-      status: 409,
-    });
+  assertInferenceFreeCreate({
+    agent: runtime,
+    runtime: mode,
+    initialization: input.initialization,
+    delegation: input.delegation,
+    modelSelection: input.modelSelection,
+  });
   const workspace = normalizeWorkspace(input.workspace);
   if (runtime !== 'codex' && runtime !== 'custom' && input.launchRecipe !== undefined)
     throw new AppError('UNSUPPORTED', {
@@ -162,6 +162,7 @@ export async function createControlSession(
     });
   const canonical = {
     ...(delegation === undefined ? {} : { delegation, delegationRequest: input.delegation }),
+    ...(input.initialization === 'no-inference' ? { initialization: input.initialization } : {}),
     name: input.name,
     workspace,
     flags: [
@@ -267,6 +268,7 @@ export async function createControlSession(
                 flags: row.flags,
                 ...(row.delegation === undefined ? {} : { delegation: row.delegation }),
                 router: false,
+                ...(row.initialization === undefined ? {} : { initialization: row.initialization }),
                 // Claude is the only agent with a choice here; everything else has one mode, and an
                 // omitted request keeps the mode each agent has always been created with.
                 runtime: resolveRuntimeMode(agent, row.mode),
@@ -341,6 +343,7 @@ export async function createControlSession(
           status: 503,
         });
       if (
+        session.initialization !== row.initialization ||
         session.agent !== (row.runtime ?? 'codex') ||
         session.dir !== row.workspace ||
         (row.threadId !== null && session.uuid !== row.threadId) ||

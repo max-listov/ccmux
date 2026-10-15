@@ -94,6 +94,7 @@ export const SessionSchema = z.object({
    * definition is deliberately not stored here: the existing session fields remain launch truth. */
   launchRecipe: LaunchRecipeMetadataSchema.optional(),
   modelSelection: ModelSelectionSchema.optional(),
+  initialization: z.literal('no-inference').optional(),
   applicationPolicy: ApplicationPolicyMetadataSchema.optional(),
   delegation: DelegationSchema.optional(),
   /** Per-session opt-out from the event feed. Undefined → follow the machine. Same two-level shape

@@ -141,15 +141,30 @@ receipt reservation or provider startup. Retrying an older completed request wit
 also refuses; an earlier model effect is never relabelled as inference-free. This refusal creates
 no executor, native identity, pending registration or resumable context.
 
-No mode currently certifies no-inference create. Codex app-server reports `inference: "required"`,
-reason `native-rollout-requires-bootstrap`: admission uses a readiness turn to persist rollout
-metadata for identity correlation and resume. Claude native consumes an input queue without an
-owner readiness prompt, but SDK initialization, hooks and provider side effects are not certified
-as zero model requests; it reports `not-guaranteed`/`provider-initialization-not-certified`, as do
-interactive and other native modes. These modes refuse the explicit no-inference request before
-starting their provider. A successful ordinary create is not proof of zero inference.
+Claude native offers `noInference: true`, `inference: "deferred"`, reason
+`delegated-input-only`, and requirements `delegation` / `explicit-model`. Its immutable read-only
+delegation disables inherited hooks, plugins, MCP servers and agent creation. The provider starts
+with an empty streaming input queue; no readiness prompt is submitted. The caller must supply
+`modelSelection` with provider `claude` and a catalog key other than `default`. The actual runtime
+catalog must verify that key before admission succeeds. Missing requirements return HTTP 409
+`NO_INFERENCE_CREATE_REQUIREMENTS` before workspace or provider discovery.
 
-Explicit input, steering, compaction, native commands and automatic tool continuations can invoke
-a model; read and lifecycle control must not be interpreted as an inference budget permission.
+The initialization requirement is persisted in the canonical receipt and session, including cold
+restart. Ordinary create (omitted or `allow-inference`) has a different fingerprint from
+`no-inference`: replaying one as the other returns `IDEMPOTENCY_CONFLICT`. A retry with the original
+request keeps the exact registration, native conversation, delegation and model. An empty Claude
+conversation can sleep before its first input and wake with the same pinned session ID; once input
+persists native history, subsequent wakes resume that history. Input remains separately authorized
+and can perform inference on the selected model. This guarantee concerns model requests, not all
+provider metadata or account traffic.
+
+Codex app-server reports `inference: "required"`, reason `native-rollout-requires-bootstrap`:
+its current durable admission waits for rollout metadata produced by a readiness turn. Interactive
+Claude, OpenCode and custom runtimes report `inference: "not-guaranteed"`, reason
+`provider-initialization-not-certified`. These unsupported modes return HTTP 409
+`NO_INFERENCE_CREATE_UNSUPPORTED` before workspace/config/model discovery, receipt reservation,
+registration or provider startup. Capabilities describe the execution mode; host availability is
+reported separately.
+
 Delegation and application leases still guard ordinary create and input. No-inference refusal does
 not authorize input, bypass policy, create a fake parent or change provider/account settings.

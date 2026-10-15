@@ -12,6 +12,7 @@ import { verifyApplicationPolicy } from '../policy/resolve.ts';
 import type { ApplicationPolicyMetadata } from '../policy/schema.ts';
 import { runtimeAvailability } from '../runtime/availability.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { assertInferenceFreeCreate } from '../runtime/creation.ts';
 import { nativeDriver } from '../runtime/driver.ts';
 import {
   hasNativeRuntime,
@@ -53,6 +54,7 @@ export type CreateManagedInput = {
   envFile?: string;
   launchRecipe?: LaunchRecipeMetadata;
   modelSelection?: ModelSelection;
+  initialization?: 'no-inference';
   applicationPolicy?: ApplicationPolicyMetadata;
   delegation?: Delegation;
   /** Whether the runtime keeps a copy of every file this session modifies. Off unless asked. */
@@ -86,6 +88,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, 'uuid'> {
     flags: input.flags,
     runtime: storedRuntime(input),
     ...(input.delegation === undefined ? {} : { delegation: input.delegation }),
+    ...(input.initialization === undefined ? {} : { initialization: input.initialization }),
     ...(input.router ? { promptModules: ['router'], chatEnabled: true } : {}),
     ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
@@ -150,6 +153,7 @@ export async function createNativeBootstrap(
   input: CreateManagedInput,
   operation: NativeBootstrapOperation,
 ): Promise<Session> {
+  assertInferenceFreeCreate({ ...input, runtime: storedRuntime(input) });
   verifyCreatePolicy(m, input);
   verifyDelegatedSession(
     SessionSchema.parse({
@@ -273,6 +277,7 @@ export async function createManagedSession(
   m: MachineConfig,
   input: CreateManagedInput,
 ): Promise<Session> {
+  assertInferenceFreeCreate({ ...input, runtime: storedRuntime(input) });
   verifyCreatePolicy(m, input);
   verifyDelegatedSession(
     SessionSchema.parse({
