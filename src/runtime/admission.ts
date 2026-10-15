@@ -51,8 +51,18 @@ export function withNativeAdmission<T>(
   m: MachineConfig,
   s: Session,
   run: () => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
   const root = managedRuntimeRoot(m, s);
   privateRuntimeDirectory(root);
-  return withLock(join(root, 'admission.lock'), run, 'native admission');
+  return withLock(
+    join(root, 'admission.lock'),
+    async () => {
+      signal?.throwIfAborted();
+      return run();
+    },
+    'native admission',
+    undefined,
+    signal,
+  );
 }

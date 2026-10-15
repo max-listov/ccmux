@@ -10,8 +10,12 @@ import { exactTarget, sessionOptionTarget } from './target.ts';
 // Typed tmux wrappers — every call is an argv array via util/spawn. All targeting
 // goes through target.ts; no bare `-t name` anywhere.
 
-export async function hasSession(m: MachineConfig, name: string): Promise<boolean> {
-  const { code } = await run(tmuxArgv(m, 'has-session', '-t', exactTarget(name)));
+export async function hasSession(
+  m: MachineConfig,
+  name: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const { code } = await run(tmuxArgv(m, 'has-session', '-t', exactTarget(name)), { signal });
   return code === 0;
 }
 
@@ -66,6 +70,7 @@ export async function newSession(
   dir: string,
   cmd: string[],
   extraEnv: Record<string, string> = {},
+  signal?: AbortSignal,
 ): Promise<void> {
   // `-s NAME` (plain, for creation), `-e` pins the instance env into the pane (see above), `--` so
   // tmux treats the rest as command tokens.
@@ -88,6 +93,7 @@ export async function newSession(
       '--',
       ...cmd,
     ),
+    { signal },
   );
   if (result.code !== 0)
     throw new Error(
@@ -95,7 +101,10 @@ export async function newSession(
     );
   const pane = result.stdout.trim();
   const recorded = pane.startsWith('%')
-    ? await run(tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), AGENT_PANE_OPTION, pane))
+    ? await run(
+        tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), AGENT_PANE_OPTION, pane),
+        { signal },
+      )
     : null;
   if (recorded?.code === 0) rememberAgentPane(m, name, pane);
   // Without the id the session is still addressed the old way; said, because that way is the one a
@@ -188,8 +197,9 @@ export async function setOption(
   name: string,
   key: string,
   value: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await run(tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), key, value)); // best-effort
+  await run(tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), key, value), { signal }); // best-effort
 }
 
 /** Pane-scoped option on the session's single pane (e.g. allow-passthrough) — kept
@@ -199,8 +209,9 @@ export async function setPaneOption(
   name: string,
   key: string,
   value: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await onAgentPane(m, name, (target) => ['set-option', '-p', '-t', target, key, value]); // best-effort
+  await onAgentPane(m, name, (target) => ['set-option', '-p', '-t', target, key, value], signal); // best-effort
 }
 
 /** Literal text (`-l`) — for sending user/prompt text. */

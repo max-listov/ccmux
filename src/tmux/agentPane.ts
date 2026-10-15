@@ -25,7 +25,11 @@ const paneKey = (m: MachineConfig, name: string): string => `${m.tmuxSocket ?? '
  * the id was recorded — the index it was always addressed by. Such a session is given the id here
  * when it has a single pane, which is the only case where the index cannot be wrong.
  */
-export async function agentPaneTarget(m: MachineConfig, name: string): Promise<string> {
+export async function agentPaneTarget(
+  m: MachineConfig,
+  name: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const key = paneKey(m, name);
   const cached = agentPanes.get(key);
   if (cached !== undefined) return cached;
@@ -39,6 +43,7 @@ export async function agentPaneTarget(m: MachineConfig, name: string): Promise<s
       '-F',
       `#{pane_id} #{${AGENT_PANE_OPTION}}`,
     ),
+    { signal },
   );
   if (code !== 0) return paneTarget(name);
   const panes = stdout
@@ -53,7 +58,9 @@ export async function agentPaneTarget(m: MachineConfig, name: string): Promise<s
   }
   const only = panes.length === 1 ? panes[0]?.[0] : undefined;
   if (only === undefined) return paneTarget(name);
-  await run(tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), AGENT_PANE_OPTION, only));
+  await run(tmuxArgv(m, 'set-option', '-t', sessionOptionTarget(name), AGENT_PANE_OPTION, only), {
+    signal,
+  });
   agentPanes.set(key, only);
   return only;
 }
@@ -76,14 +83,15 @@ export async function onAgentPane(
   m: MachineConfig,
   name: string,
   argv: (target: string) => string[],
+  signal?: AbortSignal,
 ): Promise<Awaited<ReturnType<typeof run>>> {
   const wasCached = agentPanes.has(paneKey(m, name));
-  const target = await agentPaneTarget(m, name);
-  const first = await run(tmuxArgv(m, ...argv(target)));
+  const target = await agentPaneTarget(m, name, signal);
+  const first = await run(tmuxArgv(m, ...argv(target)), { signal });
   if (first.code === 0 || !wasCached) return first;
   forgetAgentPane(m, name);
-  const fresh = await agentPaneTarget(m, name);
-  return fresh === target ? first : run(tmuxArgv(m, ...argv(fresh)));
+  const fresh = await agentPaneTarget(m, name, signal);
+  return fresh === target ? first : run(tmuxArgv(m, ...argv(fresh)), { signal });
 }
 
 /**

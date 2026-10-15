@@ -28,8 +28,9 @@ function armTimeout(
  */
 export async function run(
   argv: string[],
-  opts?: { cwd?: string; timeoutMs?: number; input?: string },
+  opts?: { cwd?: string; timeoutMs?: number; input?: string; signal?: AbortSignal | undefined },
 ): Promise<RunResult> {
+  opts?.signal?.throwIfAborted();
   const cwd = opts?.cwd;
   const proc = Bun.spawn(argv, {
     ...(cwd !== undefined ? { cwd } : {}),
@@ -37,6 +38,9 @@ export async function run(
     stdout: 'pipe',
     stderr: 'pipe',
   });
+  const abort = () => proc.kill('SIGKILL');
+  opts?.signal?.addEventListener('abort', abort, { once: true });
+  if (opts?.signal?.aborted) abort();
   let timedOut = false;
   const disarm = armTimeout(proc, opts?.timeoutMs, () => {
     timedOut = true;
@@ -47,6 +51,8 @@ export async function run(
   ]);
   const code = await proc.exited; // always awaited → no leaked fds
   disarm();
+  opts?.signal?.removeEventListener('abort', abort);
+  opts?.signal?.throwIfAborted();
   return timedOut ? { code, stdout, stderr, timedOut } : { code, stdout, stderr };
 }
 

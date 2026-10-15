@@ -254,7 +254,7 @@ export const controlContract = defineContract(
       input: WakeRequestSchema,
       output: SleepReceiptSchema,
       idempotent: true,
-      timeout: 60000,
+      timeout: 30000,
       desc: 'Resume a sleeping native identity',
       expose: ['HTTP', 'CLI', 'MCP'],
     },

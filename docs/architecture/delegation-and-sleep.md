@@ -4,7 +4,7 @@ description: Create-time authority, native policy evidence, idle CAS и прод
 type: architecture
 status: active
 created: 2026-10-15 08:00 +07:00
-updated: 2026-10-15 08:00 +07:00
+updated: 2026-10-15 08:37 +07:00
 ---
 
 ## Authority до первого prompt
@@ -76,7 +76,9 @@ sleep operation и registration; проверки identity повторяютс�
 admission повторяется. Проверка sleep находится внутри lock после duplicate lookup:
 повтор уже принятого сообщения не будит последующий sleep и не исполняет работу заново.
 Регистрация, native history, request/message IDs и settled operation records сохраняются.
-Cancel/deadline отказывает последующему wake. Контракт доступен через HTTP, CLI и MCP,
+Wake использует один deadline от начала вызова, включая ожидание release: до 25 секунд
+внутри endpoint с transport timeout 30 секунд. Медленный cold start возвращает WAKE_PENDING;
+повтор продолжает тот же durable wake operation. Cancel/deadline отказывает последующему wake. Контракт доступен через HTTP, CLI и MCP,
 схемы и typed service client строятся из одного control contract.
 
 ## Публикуемые bytes

@@ -8,8 +8,10 @@ import { stableJson } from '../src/agent/launch/launchInputs.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
 import { cliPrincipal, managedPeer } from '../src/chat/identity.ts';
 import { appendMessageOnce } from '../src/chat/ledger.ts';
+import { controlContract } from '../src/control/schema/contract.ts';
 import { cancelDelegation, delegationStopped } from '../src/delegation/cancel.ts';
 import { type DelegatedPolicy, DelegationSchema } from '../src/delegation/schema.ts';
+import { withNativeAdmission } from '../src/runtime/admission.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import {
@@ -369,4 +371,46 @@ test('an inherited deadline releases the actually owned provider without a cance
   const f = await fixture(2500);
   expect(await f.child.exited).toBe(0);
   expect(delegationStopped(f.m, f.s)).toBe(true);
+});
+
+test('an acknowledged cold start returns pending within its bounded wait and keeps its durable wake identity', async () => {
+  const f = await fixture();
+  const proof = idleProof(f.m, f.s);
+  await sleepSession(
+    f.m,
+    {
+      target: managedPeer('host-a', f.s),
+      registrationGeneration: f.s.registrationGeneration ?? '',
+      operationId: crypto.randomUUID(),
+      revision: proof.revision,
+    },
+    new AbortController().signal,
+  );
+  const row = readSleep(f.m, f.s);
+  if (row === null) throw Error('missing sleep');
+  await writeSleep(f.m, f.s, { ...row, phase: 'waking' });
+  const input = {
+    target: row.target,
+    registrationGeneration: row.registrationGeneration,
+    operationId: crypto.randomUUID(),
+  };
+  const m = { ...f.m, codexCorrelationTimeoutMs: 100 };
+  const hold = withNativeAdmission(m, f.s, async () => {
+    await Bun.sleep(1600);
+  });
+  await Bun.sleep(50);
+  const began = performance.now();
+  await expect(wakeSession(m, input, new AbortController().signal)).rejects.toMatchObject({
+    code: 'WAKE_PENDING',
+  });
+  expect(performance.now() - began).toBeLessThan(1400);
+  await hold;
+  expect(readSleep(m, f.s)?.operationId).toBe(row.operationId);
+  expect(readSleep(m, f.s)?.phase).toBe('waking');
+});
+
+test('all public control operation waits fit the service transport budget', () => {
+  for (const endpoint of Object.values(controlContract.endpoints)) {
+    expect('timeout' in endpoint ? endpoint.timeout : 30000).toBeLessThanOrEqual(30000);
+  }
 });

@@ -126,29 +126,36 @@ export async function sleepSession(
   return receipt(s, row, 'sleeping', duplicate);
 }
 /** Wake waits outside admission: native resume seeds selection under that same lock. */
-export async function wakeSleepingSession(
+async function wakeSleepingSessionWithinBudget(
   m: MachineConfig,
   s: Session,
   signal: AbortSignal,
   expectedSleepOperationId?: string,
 ) {
+  // Wake is durable: bound the synchronous wait and let the same operation retry a cold start.
+
   if (delegationStopped(m, s)) refuse('DELEGATION_REFUSED', 'Delegated work has ended');
   const row = readSleep(m, s);
   if (expectedSleepOperationId !== undefined && row?.operationId !== expectedSleepOperationId)
     refuse('SLEEP_SUPERSEDED', 'The sleep addressed by this wake has been superseded');
   if (row === null || row.phase === 'awake') return false;
   await awaitRelease(row, signal);
-  await withNativeAdmission(m, s, async () => {
-    const current = readSleep(m, s);
-    if (current?.operationId !== row.operationId)
-      refuse('SLEEP_SUPERSEDED', 'Sleep changed before executor start');
-    if (current === null || current.phase === 'awake') return;
-    if (current.phase === 'waking') return;
-    await writeSleep(m, s, { ...current, phase: 'waking', updatedAt: new Date().toISOString() });
-    await startSession(m, s.name, s.dir);
-  });
-  const deadline = Date.now() + m.codexCorrelationTimeoutMs + 1000;
-  while (Date.now() < deadline) {
+  await withNativeAdmission(
+    m,
+    s,
+    async () => {
+      signal.throwIfAborted();
+      if (delegationStopped(m, s)) refuse('DELEGATION_REFUSED', 'Delegated work has ended');
+      const current = readSleep(m, s);
+      if (current?.operationId !== row.operationId)
+        refuse('SLEEP_SUPERSEDED', 'Sleep changed before executor start');
+      if (current === null || current.phase === 'awake') return;
+      await writeSleep(m, s, { ...current, phase: 'waking', updatedAt: new Date().toISOString() });
+      await startSession(m, s.name, s.dir, signal);
+    },
+    signal,
+  );
+  while (true) {
     signal.throwIfAborted();
     const read = readManagedRuntimeStatus(m, s);
     if (
@@ -156,62 +163,119 @@ export async function wakeSleepingSession(
       read.snapshot !== null &&
       !row.proof.processes.some((held) => held.pid === read.snapshot?.pid)
     ) {
-      await withNativeAdmission(m, s, async () => {
-        const current = readSleep(m, s);
-        if (current?.operationId !== row.operationId)
-          refuse('SLEEP_SUPERSEDED', 'Sleep changed before wake acknowledgement');
-        if (current?.phase === 'waking')
-          await writeSleep(m, s, {
-            ...current,
-            phase: 'awake',
-            updatedAt: new Date().toISOString(),
-          });
-      });
+      await withNativeAdmission(
+        m,
+        s,
+        async () => {
+          const current = readSleep(m, s);
+          if (current?.operationId !== row.operationId)
+            refuse('SLEEP_SUPERSEDED', 'Sleep changed before wake acknowledgement');
+          if (current?.phase === 'waking')
+            await writeSleep(m, s, {
+              ...current,
+              phase: 'awake',
+              updatedAt: new Date().toISOString(),
+            });
+        },
+        signal,
+      );
       return true;
     }
     await Bun.sleep(50);
   }
-  refuse('WAKE_PENDING', 'Native continuation has not acknowledged wake; retry');
 }
-export async function wakeSession(
+async function wakeSessionWithinBudget(
   m: MachineConfig,
   input: z.infer<typeof WakeRequestSchema>,
   signal: AbortSignal,
 ) {
   const s = assertSleepTarget(m, input);
-  const admitted = await withNativeAdmission(m, s, async () => {
-    const row = readSleep(m, s);
-    if (row === null) refuse('NOT_SLEEPING', 'Session has no sleep receipt');
-    const journal = readWakeOperations(m, s);
-    const prior = journal.find((record) => record.operationId === input.operationId);
-    if (prior !== undefined) {
-      if (prior.result !== null) return { row, result: prior.result };
-      if (prior.sleepOperationId !== row.operationId)
-        refuse('SLEEP_SUPERSEDED', 'The sleep addressed by this wake has been superseded');
-    } else {
-      if (journal.length >= 256) refuse('WAKE_CAPACITY', 'Wake receipt capacity reached');
-      writeWakeOperations(m, s, [
-        ...journal,
-        { operationId: input.operationId, sleepOperationId: row.operationId, result: null },
-      ]);
-    }
-    return { row, result: null };
-  });
+  const admitted = await withNativeAdmission(
+    m,
+    s,
+    async () => {
+      const row = readSleep(m, s);
+      if (row === null) refuse('NOT_SLEEPING', 'Session has no sleep receipt');
+      const journal = readWakeOperations(m, s);
+      const prior = journal.find((record) => record.operationId === input.operationId);
+      if (prior !== undefined) {
+        if (prior.result !== null) return { row, result: prior.result };
+        if (prior.sleepOperationId !== row.operationId)
+          refuse('SLEEP_SUPERSEDED', 'The sleep addressed by this wake has been superseded');
+      } else {
+        if (journal.length >= 256) refuse('WAKE_CAPACITY', 'Wake receipt capacity reached');
+        writeWakeOperations(m, s, [
+          ...journal,
+          { operationId: input.operationId, sleepOperationId: row.operationId, result: null },
+        ]);
+      }
+      return { row, result: null };
+    },
+    signal,
+  );
   if (admitted.result !== null) return { ...admitted.result, duplicate: true };
-  await wakeSleepingSession(m, s, signal, admitted.row.operationId);
-  return withNativeAdmission(m, s, async () => {
-    const current = readSleep(m, s);
-    if (current?.operationId !== admitted.row.operationId)
-      refuse('SLEEP_SUPERSEDED', 'Wake sleep identity changed');
-    const result = { ...receipt(s, admitted.row, 'awake', false), operationId: input.operationId };
-    const journal = readWakeOperations(m, s);
-    writeWakeOperations(
-      m,
-      s,
-      journal.map((record) =>
-        record.operationId === input.operationId ? { ...record, result } : record,
-      ),
-    );
-    return result;
+  await wakeSleepingSessionWithinBudget(m, s, signal, admitted.row.operationId);
+  return withNativeAdmission(
+    m,
+    s,
+    async () => {
+      const current = readSleep(m, s);
+      if (current?.operationId !== admitted.row.operationId)
+        refuse('SLEEP_SUPERSEDED', 'Wake sleep identity changed');
+      const result = {
+        ...receipt(s, admitted.row, 'awake', false),
+        operationId: input.operationId,
+      };
+      const journal = readWakeOperations(m, s);
+      writeWakeOperations(
+        m,
+        s,
+        journal.map((record) =>
+          record.operationId === input.operationId ? { ...record, result } : record,
+        ),
+      );
+      return result;
+    },
+    signal,
+  );
+}
+
+/** One abortable budget covers admission, process release, tmux launch and acknowledgement. */
+async function withinWakeBudget<T>(
+  m: MachineConfig,
+  caller: AbortSignal,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const pending = new AppError('WAKE_PENDING', {
+    message: 'Native continuation has not acknowledged wake; retry',
+    status: 409,
   });
+  const timer = setTimeout(
+    () => controller.abort(pending),
+    Math.min(m.codexCorrelationTimeoutMs + 1000, 25000),
+  );
+  const signal = AbortSignal.any([caller, controller.signal]);
+  try {
+    return await work(signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+export function wakeSleepingSession(
+  m: MachineConfig,
+  s: Session,
+  signal: AbortSignal,
+  expectedSleepOperationId?: string,
+) {
+  return withinWakeBudget(m, signal, (bounded) =>
+    wakeSleepingSessionWithinBudget(m, s, bounded, expectedSleepOperationId),
+  );
+}
+export function wakeSession(
+  m: MachineConfig,
+  input: z.infer<typeof WakeRequestSchema>,
+  signal: AbortSignal,
+) {
+  return withinWakeBudget(m, signal, (bounded) => wakeSessionWithinBudget(m, input, bounded));
 }

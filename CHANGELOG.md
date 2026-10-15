@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.81.1] — 2026-10-15
+
+- Wake returns a durable pending result within the control transport budget, including cold starts and prior process release.
+
 ## [0.81.0] — 2026-10-15
 
 Create-time delegation and reversible native sleep.
