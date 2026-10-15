@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { z } from 'zod';
+import { stableJson } from '../agent/launch/launchInputs.ts';
 import { writePrivateJson } from '../attachments/files.ts';
-import { sameTarget } from '../chat/identity.ts';
 import { controlTarget } from '../control/target.ts';
 import { isDescendantProcess, processSnapshot } from '../external/processes.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
@@ -9,6 +9,7 @@ import { readRuntimeOwnership } from '../runtime/ownership.ts';
 import { privateRuntimeDirectory, readPrivateJournal } from '../runtime/store.ts';
 import { readSleep } from '../session/sleep/store.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { applicationAuthorityEnded } from './application.ts';
 import { delegationRefused } from './resolve.ts';
 import { DelegationCancelReceiptSchema, type DelegationCancelSchema } from './schema.ts';
 
@@ -33,6 +34,8 @@ function readStop(m: MachineConfig, requestId: string) {
 export function delegationStopped(m: MachineConfig, s: Session): boolean {
   if (s.delegation === undefined) return false;
   return (
+    (s.delegation.applicationAuthority !== undefined &&
+      applicationAuthorityEnded(m, s.delegation.applicationAuthority)) ||
     (s.delegation.deadlineAt !== undefined && Date.now() >= Date.parse(s.delegation.deadlineAt)) ||
     readStop(m, s.delegation.requestId) !== null
   );
@@ -80,7 +83,7 @@ export async function cancelDelegation(
   if (
     s.registrationGeneration !== input.registrationGeneration ||
     s.delegation === undefined ||
-    !sameTarget(s.delegation.parent.target, input.parent.target) ||
+    stableJson(s.delegation.parent.target) !== stableJson(input.parent.target) ||
     s.delegation.parent.registrationGeneration !== input.parent.registrationGeneration
   )
     delegationRefused('Exact parent and child registrations required');

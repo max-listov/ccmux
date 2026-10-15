@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { ManagedPeerSchema } from '../chat/identitySchema.ts';
+import {
+  ApplicationAuthoritySelectorSchema,
+  ApplicationParentSchema,
+} from './applicationSchema.ts';
 
 /** Read access covers the host; write access is limited to the canonical workspace. */
 export const DelegatedPolicySchema = z
@@ -13,7 +17,7 @@ export const DelegatedPolicySchema = z
 export type DelegatedPolicy = z.infer<typeof DelegatedPolicySchema>;
 export const DelegationParentSchema = z
   .object({
-    target: ManagedPeerSchema,
+    target: z.union([ManagedPeerSchema, ApplicationParentSchema]),
     registrationGeneration: z.uuid(),
   })
   .strict();
@@ -29,6 +33,7 @@ export type DelegationRequest = z.infer<typeof DelegationRequestSchema>;
 export const DelegationAuthoritySchema = DelegationRequestSchema;
 export const DelegationSchema = DelegationRequestSchema.extend({
   requestId: z.uuid(),
+  applicationAuthority: ApplicationAuthoritySelectorSchema.shape.parent.optional(),
   policyDigest: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 export type Delegation = z.infer<typeof DelegationSchema>;

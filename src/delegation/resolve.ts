@@ -6,7 +6,8 @@ import { stableJson } from '../agent/launch/launchInputs.ts';
 import { sameTarget } from '../chat/identity.ts';
 import { controlTarget } from '../control/target.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-import type { MachineConfig, Session } from '../types.ts';
+import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
+import { applicationAuthorityEnded, requireApplicationAuthority } from './application.ts';
 import { type DelegatedPolicy, type DelegationRequest, DelegationSchema } from './schema.ts';
 
 export function delegationRefused(message: string): never {
@@ -31,22 +32,47 @@ export function resolveDelegation(
   workspace: string,
   requestId: string,
   input: DelegationRequest,
+  principal?: ChatPrincipal,
 ) {
   if (!['codex', 'claude'].includes(runtime) || !['app-server', 'native'].includes(mode))
     delegationRefused('Delegation requires an owned native runtime');
   if (input.deadlineAt !== undefined && Date.parse(input.deadlineAt) <= Date.now())
     delegationRefused('Delegation deadline has expired');
-  const parent = controlTarget(m, input.parent.target);
-  if (parent.archived || parent.registrationGeneration !== input.parent.registrationGeneration)
-    delegationRefused('Parent registration is unavailable');
-  if (!hasNativeRuntime(parent)) delegationRefused('Parent has no owned native runtime');
-  const inherited =
-    parent.delegation ??
-    m.delegationAuthorities?.find(
-      (grant) =>
-        sameTarget(grant.parent.target, input.parent.target) &&
-        grant.parent.registrationGeneration === input.parent.registrationGeneration,
-    );
+  let inherited:
+    | {
+        policy: DelegatedPolicy;
+        deadlineAt?: string | undefined;
+        applicationAuthority?:
+          | import('zod').z.infer<
+              typeof import('./applicationSchema.ts').ApplicationAuthoritySelectorSchema
+            >['parent']
+          | undefined;
+      }
+    | undefined;
+  if (input.parent.target.kind === 'application') {
+    const parent = { ...input.parent, target: input.parent.target };
+    const row = requireApplicationAuthority(m, principal, parent);
+    inherited = { policy: row.policy, deadlineAt: row.deadlineAt, applicationAuthority: parent };
+  } else {
+    const target = input.parent.target;
+    const parent = controlTarget(m, input.parent.target);
+    if (parent.archived || parent.registrationGeneration !== input.parent.registrationGeneration)
+      delegationRefused('Parent registration is unavailable');
+    if (!hasNativeRuntime(parent)) delegationRefused('Parent has no owned native runtime');
+    inherited =
+      parent.delegation ??
+      m.delegationAuthorities?.find(
+        (grant) =>
+          grant.parent.target.kind === 'managed' &&
+          sameTarget(grant.parent.target, target) &&
+          grant.parent.registrationGeneration === input.parent.registrationGeneration,
+      );
+    const root = parent.delegation?.applicationAuthority;
+    if (root !== undefined && (principal?.kind !== 'managed' || !sameTarget(principal, target)))
+      requireApplicationAuthority(m, principal, root);
+    if (root !== undefined && applicationAuthorityEnded(m, root))
+      delegationRefused('Parent application authority has ended');
+  }
   const authority = inherited?.policy;
   if (authority === undefined) delegationRefused('Parent authority is not declared by this host');
   const canonicalRoot = realpathSync(authority.workspace);
@@ -70,6 +96,9 @@ export function resolveDelegation(
   return DelegationSchema.parse({
     ...input,
     policy,
+    ...(inherited?.applicationAuthority === undefined
+      ? {}
+      : { applicationAuthority: inherited.applicationAuthority }),
     ...(deadlineAt === undefined ? {} : { deadlineAt }),
     requestId,
     policyDigest: createHash('sha256').update(stableJson(policy)).digest('hex'),

@@ -4,7 +4,7 @@ description: Create-time authority, native policy evidence, idle CAS и прод
 type: architecture
 status: active
 created: 2026-10-15 08:00 +07:00
-updated: 2026-10-15 09:05 +07:00
+updated: 2026-10-15 09:59 +07:00
 ---
 
 ## Authority до первого prompt
@@ -44,6 +44,46 @@ receipt публикуется только после native acknowledgement; s
 Owner проверяет stop/deadline до первого prompt, turn/start/queue push и в resident loop.
 Отмена ждёт исчезновения собственных PID со startTime, не сигналит процессы по имени.
 PID reuse не расширяет множество потомков. Неизвестная ownership даёт pending/refusal.
+
+## Parent вне managed registry
+
+`delegation.application.capabilities` показывает только bindings, доступные текущему
+service caller. `machine.json.applicationDelegationAuthorities` задаёт exact application
+binding (`applicationId/channelId/actor: agent/revision`), максимальную policy, leaseMs
+(до 60 секунд) и lifetimeMs (до суток). Binding должен также пройти обычный
+`messageApplications` caller/channel/actor admission. Отдельный applicationId для агента
+позволяет сохранить human/composer binding узким. Настройка host применяется при рестарте.
+
+Trusted backend приложения вызывает `delegation.application.open` после проверки active
+аутентифицированного run и реальной цитаты human input в своём журнале. Эти поля не
+должны приходить из model tool arguments. Запрос несёт conversationId, runId,
+sourceMessageRef, authorizationQuote и operationId. CCMux хранит их с явным assurance
+`application-attested`: он доверяет объявленному service backend, не утверждает, что
+сам проверил чужой журнал или владеет процессом native parent. Same-user IPC и
+аутентифицированный caller узла — граница доверия; поля application не отдельные credentials.
+
+Ответ содержит parent.target.kind `application`, authorityId и generation. Это lease
+полномочий, а не Session: parent не появляется в managed registry и не получает executor.
+Такой parent передаётся в обычный `session.create.delegation`. Policy и immutable deadline
+child ограничены host grant. Вложенный managed child наследует ту же root authority;
+service create/retry/cancel и остальные lifecycle mutations требуют исходного issuer
+и при managed direct parent. Managed mutation требует exact direct parent registration.
+
+`delegation.application.renew` требует expectedExpiresAt и уникальный operationId;
+приложение продлевает lease только пока исходный authenticated run активен.
+`delegation.application.close` отзывает run при завершении/отмене. Renew не может
+воскресить closed/expired authority или превысить hard deadline. Private bounded journal
+хранит fingerprint и исходный receipt каждого update: изменённый повтор отказывает,
+точный повтор не продлевает lease. Зарезервировано место для close после лимита renew.
+
+Close, expiry или утрата binding прекращают новые input/wake/launch и resident execution
+всех descendants через существующий owned lifecycle. Новая authority другого run не
+оживляет прежний child; native history сохраняется. Application input принимается через
+`message.send` с точным binding и исходными sourceMessageRef/authorizationQuote.
+Managed input требует exact direct parent registration и ту же active root authority.
+Steering и native answers для application children явно недоступны: их DTO не несут
+нужную provenance; capabilities это отражают. Applied policy остаётся отдельным native
+acknowledgement: lease/open/create receipt сам по себе не доказывает успешный model turn.
 
 ## Idle proof и sleep
 

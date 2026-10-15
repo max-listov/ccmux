@@ -65,6 +65,11 @@ export async function steerNativeTurn(
     return steeringFailure('CAPACITY');
   const signal = AbortSignal.any([callerSignal, AbortSignal.timeout(STEERING_LIMITS.deadlineMs)]);
   const session = steeringTarget(m, input, false);
+  if (session.delegation?.applicationAuthority !== undefined)
+    throw new AppError('DELEGATION_REFUSED', {
+      message: 'Application child input requires its attested message route',
+      status: 409,
+    });
   return safeSteering(() =>
     withNativeAdmission(m, session, () =>
       withSessionRegistryLock(m, async () => {

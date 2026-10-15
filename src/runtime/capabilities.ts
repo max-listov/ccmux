@@ -177,6 +177,9 @@ export function runtimeCapabilities(
   return {
     ...declared,
     delegation: ['codex', 'claude'].includes(session.agent),
+    ...(session.delegation?.applicationAuthority === undefined
+      ? {}
+      : { turnSteering: false, approval: false, input: false }),
     sleep: ['codex', 'claude'].includes(session.agent) && session.delegation !== undefined,
   };
 }

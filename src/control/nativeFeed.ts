@@ -115,6 +115,11 @@ export async function respondControlNative(
   signal: AbortSignal,
 ) {
   const session = controlTarget(m, input.target);
+  if (session.delegation?.applicationAuthority !== undefined)
+    throw new AppError('DELEGATION_REFUSED', {
+      message: 'Application child input requires its attested message route',
+      status: 409,
+    });
   if (!hasNativeRuntime(session))
     throw new AppError('UNSUPPORTED', {
       message: 'Native responses require an owned structured runtime',

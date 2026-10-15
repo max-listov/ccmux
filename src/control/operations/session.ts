@@ -94,18 +94,29 @@ export function sessionOperations(context: OperationContext) {
         });
       return row;
     },
-    create: (input: CreateInput, signal?: AbortSignal) =>
+    create: (input: CreateInput, signal?: AbortSignal, principal?: ChatPrincipal) =>
       // A retry of a create that already completed is answered from its receipt, outside the
       // admission: it performs no work, and refusing it for concurrency told the caller "busy"
       // about a session that already exists.
       settledCreateRequest(m, input.requestId)
         ? (dependencies.createManagedSession === undefined
-            ? createControlSession(m, input, signal ?? new AbortController().signal)
+            ? createControlSession(
+                m,
+                input,
+                signal ?? new AbortController().signal,
+                undefined,
+                undefined,
+                undefined,
+                principal,
+              )
             : createControlSession(
                 m,
                 input,
                 signal ?? new AbortController().signal,
                 dependencies.createManagedSession,
+                undefined,
+                undefined,
+                principal,
               )
           ).catch(controlRefusal)
         : mutations
@@ -113,8 +124,24 @@ export function sessionOperations(context: OperationContext) {
               `create:${input.requestId}`,
               ({ signal: admitted }) =>
                 dependencies.createManagedSession === undefined
-                  ? createControlSession(m, input, admitted)
-                  : createControlSession(m, input, admitted, dependencies.createManagedSession),
+                  ? createControlSession(
+                      m,
+                      input,
+                      admitted,
+                      undefined,
+                      undefined,
+                      undefined,
+                      principal,
+                    )
+                  : createControlSession(
+                      m,
+                      input,
+                      admitted,
+                      dependencies.createManagedSession,
+                      undefined,
+                      undefined,
+                      principal,
+                    ),
               { ...(signal ? { signal } : {}), timeoutMs: 60_000 },
             )
             .catch(controlRefusal),

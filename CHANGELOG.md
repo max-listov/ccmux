@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.82.0] — 2026-10-15
+
+- Native application runs can delegate bounded Codex and Claude children through host-authorized leases, with exact application provenance and automatic release when a run ends.
+
 ## [0.81.2] — 2026-10-15
 
 - Codex delegation pins native runtime workspace roots before its first prompt and on every turn; workspace writes stay inside the granted directory.

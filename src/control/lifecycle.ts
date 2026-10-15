@@ -12,6 +12,7 @@ import { resolveControlLaunchRecipe } from '../config/launchRecipes.ts';
 import { validateModelSelection } from '../config/modelSelection.ts';
 import { modelSelectionFlags } from '../config/modelSelectionFlags.ts';
 import { prepareNativeFork } from '../context/fork.ts';
+import { requireApplicationAuthority } from '../delegation/application.ts';
 import { stopDelegationRequest } from '../delegation/cancel.ts';
 import { readDelegationEvidence } from '../delegation/evidence.ts';
 import { resolveDelegation } from '../delegation/resolve.ts';
@@ -26,7 +27,7 @@ import { createManagedSession } from '../session/create.ts';
 import { loadPendingSessions } from '../session/pending.ts';
 import { archiveSessionExact } from '../session/registry.ts';
 import { killSession } from '../tmux/tmux.ts';
-import type { MachineConfig } from '../types.ts';
+import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { withLock } from '../util/lock.ts';
 import { log } from '../util/log.ts';
 import {
@@ -51,6 +52,7 @@ export async function createControlSession(
   create: typeof createManagedSession = createManagedSession,
   validateSelection: typeof validateModelSelection = validateModelSelection,
   fork?: ForkAdmission,
+  principal?: ChatPrincipal,
 ) {
   const workspace = normalizeWorkspace(input.workspace);
   const runtime = input.runtime ?? 'codex';
@@ -119,12 +121,27 @@ export async function createControlSession(
     (input.applicationPolicy === undefined
       ? undefined
       : resolveApplicationPolicy(m, runtime, input.applicationPolicy).metadata);
+  if (input.delegation?.parent.target.kind === 'application')
+    requireApplicationAuthority(m, principal, {
+      ...input.delegation.parent,
+      target: input.delegation.parent.target,
+    });
   const priorCreate = loadCreateReceipts(m).find((row) => row.requestId === input.requestId);
   const delegation =
     input.delegation === undefined
       ? undefined
       : (priorCreate?.delegation ??
-        resolveDelegation(m, runtime, mode, workspace, input.requestId, input.delegation));
+        resolveDelegation(
+          m,
+          runtime,
+          mode,
+          workspace,
+          input.requestId,
+          input.delegation,
+          principal,
+        ));
+  if (delegation?.applicationAuthority !== undefined && principal?.kind !== 'managed')
+    requireApplicationAuthority(m, principal, delegation.applicationAuthority);
   if (
     delegation !== undefined &&
     (input.launchRecipe !== undefined ||

@@ -2,6 +2,13 @@ import type { ApplicationAdmission } from 'stitchkit/application';
 import { implement } from 'stitchkit/server';
 import { sameTarget } from '../../chat/identity.ts';
 import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
+import {
+  applicationAuthorityCapabilities,
+  authorizeApplicationMutation,
+  openApplicationAuthority,
+  requireApplicationAuthority,
+  updateApplicationAuthority,
+} from '../../delegation/application.ts';
 import { delegationRefused } from '../../delegation/resolve.ts';
 import type { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
 import { peerChatLogAnswer, peerListAnswer } from '../../fleet/peerRead.ts';
@@ -13,6 +20,7 @@ import { createControlOperations } from '../operations.ts';
 import type { ControlPublisher } from '../publisher.ts';
 import { controlContract } from '../schema/contract.ts';
 import { controlEventsContract } from '../schema/eventsContract.ts';
+import { controlTarget } from '../target.ts';
 
 export function controlServices(
   m: MachineConfig,
@@ -28,6 +36,15 @@ export function controlServices(
     upstream,
     dependencies,
   );
+  const mutate = <T>(
+    principal: unknown,
+    target: Parameters<typeof authorizeApplicationMutation>[2],
+    run: () => T,
+    allowEnded = false,
+  ): T => {
+    authorizeApplicationMutation(m, ChatPrincipalSchema.parse(principal), target, allowEnded);
+    return run();
+  };
   const service = implement(controlContract, {
     'daemon.performance': operations.performance,
     'daemon.performance.configure': ({ input, signal }) =>
@@ -44,15 +61,18 @@ export function controlServices(
       operations.messageOperation(input, ChatPrincipalSchema.parse(principal)),
     'transcript.read': ({ input, signal }) => operations.transcript(input, signal),
     'history.read': ({ input, signal }) => operations.history(input, signal),
-    'context.compact': ({ input, signal }) => operations.compact(input, signal),
+    'context.compact': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.compact(input, signal)),
     'context.operation': ({ input }) => operations.contextOperation(input),
-    'session.fork': ({ input, signal }) => operations.fork(input, signal),
+    'session.fork': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.fork(input, signal)),
     'turn.steer': ({ input, signal, principal }) =>
       operations.steer(input, ChatPrincipalSchema.parse(principal), signal),
     'turn.steering-operation': ({ input, signal, principal }) =>
       operations.steeringOperation(input, ChatPrincipalSchema.parse(principal), signal),
     'selection.read': ({ input, signal }) => operations.selection(input, signal),
-    'selection.update': ({ input, signal }) => operations.select(input, signal),
+    'selection.update': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.select(input, signal)),
     'attachment.begin': ({ input, signal, principal }) =>
       operations.attachmentBegin(input, ChatPrincipalSchema.parse(principal), signal),
     'attachment.chunk': ({ input, signal, principal }) =>
@@ -72,36 +92,73 @@ export function controlServices(
       const caller = ChatPrincipalSchema.parse(principal);
       if (
         caller.kind === 'managed' &&
-        (input.delegation === undefined || !sameTarget(caller, input.delegation.parent.target))
+        (input.delegation === undefined ||
+          input.delegation.parent.target.kind !== 'managed' ||
+          !sameTarget(caller, input.delegation.parent.target))
       )
         delegationRefused('Managed caller must delegate its own authority');
-      return operations.create(input, signal);
+      return operations.create(input, signal, caller);
     },
-    'session.archive': ({ input, signal }) => operations.archive(input, signal),
+    'session.archive': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.archive(input, signal), true),
     'message.send': ({ input, signal, principal }) =>
       operations.message(input, ChatPrincipalSchema.parse(principal), signal),
+    'delegation.application.capabilities': ({ principal }) =>
+      applicationAuthorityCapabilities(m, ChatPrincipalSchema.parse(principal)),
+    'delegation.application.open': ({ input, principal }) =>
+      openApplicationAuthority(m, ChatPrincipalSchema.parse(principal), input),
+    'delegation.application.renew': ({ input, principal }) =>
+      updateApplicationAuthority(m, ChatPrincipalSchema.parse(principal), input, false),
+    'delegation.application.close': ({ input, principal }) =>
+      updateApplicationAuthority(m, ChatPrincipalSchema.parse(principal), input, true),
     'delegation.cancel': ({ input, signal, principal }) => {
       const caller = ChatPrincipalSchema.parse(principal);
-      if (caller.kind === 'managed' && !sameTarget(caller, input.parent.target))
+      if (
+        caller.kind === 'managed' &&
+        (input.parent.target.kind !== 'managed' ||
+          !sameTarget(caller, input.parent.target) ||
+          controlTarget(m, caller).registrationGeneration !== input.parent.registrationGeneration)
+      )
         delegationRefused('Caller is not the delegated parent');
+      authorizeApplicationMutation(m, caller, input.target, true);
+      const rootAuthority = controlTarget(m, input.target).delegation?.applicationAuthority;
+      if (rootAuthority !== undefined && caller.kind !== 'managed')
+        requireApplicationAuthority(m, caller, rootAuthority, true);
+      if (input.parent.target.kind === 'application')
+        requireApplicationAuthority(
+          m,
+          caller,
+          { ...input.parent, target: input.parent.target },
+          true,
+        );
       return operations.cancelDelegation(input, signal);
     },
     'session.idle': ({ input }) => operations.idle(input),
-    'session.sleep': ({ input, signal }) => operations.sleep(input, signal),
-    'session.wake': ({ input, signal }) => operations.wake(input, signal),
-    'session.start': ({ input, signal }) => operations.start(input, signal),
-    'turn.interrupt': ({ input, signal }) => operations.interrupt(input, signal),
+    'session.sleep': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.sleep(input, signal)),
+    'session.wake': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.wake(input, signal)),
+    'session.start': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.start(input, signal)),
+    'turn.interrupt': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.interrupt(input, signal)),
     'native.read': ({ input }) => operations.native(input),
     'command.list': ({ input }) => operations.commands(input),
     'mcp.list': ({ input }) => operations.mcpServers(input),
-    'mcp.control': ({ input, signal }) => operations.mcpControl(input, signal),
-    'session.rewind': ({ input, signal }) => operations.rewind(input, signal),
-    'command.run': ({ input, signal }) => operations.command(input, signal),
+    'mcp.control': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.mcpControl(input, signal)),
+    'session.rewind': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.rewind(input, signal)),
+    'command.run': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.command(input, signal)),
     'permission.read': ({ input }) => operations.permissionRead(input),
-    'permission.update': ({ input, signal }) => operations.permissionUpdate(input, signal),
-    'permission.mode': ({ input, signal }) => operations.permissionMode(input, signal),
+    'permission.update': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.permissionUpdate(input, signal)),
+    'permission.mode': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.permissionMode(input, signal)),
     'model.list': ({ input, signal }) => operations.models(input, signal),
-    'native.respond': ({ input, signal }) => operations.respond(input, signal),
+    'native.respond': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.respond(input, signal)),
     'session.wait': ({ input, signal }) => operations.wait(input, signal),
   });
   const events = implement(controlEventsContract, {

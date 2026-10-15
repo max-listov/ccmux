@@ -64,6 +64,7 @@ export function idleProof(m: MachineConfig, s: Session) {
       !child.archived &&
       !delegationStopped(m, child) &&
       child.delegation !== undefined &&
+      child.delegation.parent.target.kind === 'managed' &&
       sameTarget(child.delegation.parent.target, target) &&
       child.delegation.parent.registrationGeneration === s.registrationGeneration,
   );

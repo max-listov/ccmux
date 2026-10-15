@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { RC_PREFIX_RE, SESSION_NAME_RE } from '../chat/identitySchema.ts';
 import { MessageApplicationsSchema } from '../chat/originSchema.ts';
+import { ApplicationDelegationGrantSchema } from '../delegation/applicationSchema.ts';
 import { DelegationAuthoritySchema } from '../delegation/schema.ts';
 import { AgentPoliciesSchema } from '../policy/schema.ts';
 import { FiniteWorkloadsSchema } from '../runtime/workloadContract.ts';
@@ -79,6 +80,7 @@ export const MachineConfigSchema = z.object({
    * cannot supply any definition field or secret value themselves. */
   launchRecipes: z.record(LaunchRecipeIdSchema, MachineLaunchRecipeSchema).default({}),
   agentPolicies: AgentPoliciesSchema,
+  applicationDelegationAuthorities: z.array(ApplicationDelegationGrantSchema).max(64).optional(),
   delegationAuthorities: z.array(DelegationAuthoritySchema).max(64).optional(),
   messageApplications: MessageApplicationsSchema,
   // RC display-name prefix so the phone/Telegram client knows which box a session is on. A

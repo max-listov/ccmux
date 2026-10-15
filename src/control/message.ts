@@ -16,6 +16,7 @@ import { admitMessageOrigin } from '../chat/origin.ts';
 import { unknownMessageOrigin } from '../chat/originSchema.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { assertNoContextMutation } from '../context/store.ts';
+import { requireApplicationInput } from '../delegation/application.ts';
 import { delegationStopped } from '../delegation/cancel.ts';
 import { delegationRefused } from '../delegation/resolve.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
@@ -122,6 +123,30 @@ export async function acceptControlMessage(
             duplicate: true,
             turnOptions: prior.turnOptions ?? null,
           };
+        }
+        if (session.delegation?.applicationAuthority !== undefined) {
+          if (from.kind === 'managed') {
+            const parent = controlTarget(m, from);
+            if (
+              session.delegation.parent.target.kind !== 'managed' ||
+              !sameTarget(from, session.delegation.parent.target) ||
+              parent.registrationGeneration !== session.delegation.parent.registrationGeneration ||
+              stableJson(parent.delegation?.applicationAuthority) !==
+                stableJson(session.delegation.applicationAuthority) ||
+              delegationStopped(m, parent)
+            )
+              delegationRefused(
+                'Managed input requires the exact active application descendant parent',
+              );
+          } else {
+            requireApplicationInput(
+              m,
+              from,
+              session.delegation.applicationAuthority,
+              input.origin,
+              input.communicationAuthorization,
+            );
+          }
         }
         const sleeping = readSleep(m, session);
         if (sleeping !== null && sleeping.phase !== 'awake')

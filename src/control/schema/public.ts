@@ -99,6 +99,16 @@ export {
   NativeHistoryQuerySchema,
 } from '../../context/schema.ts';
 export {
+  ApplicationAuthorityCapabilitiesSchema,
+  ApplicationAuthorityOpenSchema,
+  ApplicationAuthoritySchema,
+  ApplicationAuthoritySelectorSchema,
+  ApplicationAuthorityUpdateSchema,
+  ApplicationBindingSchema,
+  ApplicationDelegationGrantSchema,
+  ApplicationParentSchema,
+} from '../../delegation/applicationSchema.ts';
+export {
   DelegatedPolicySchema,
   DelegationEvidenceSchema,
   DelegationRequestSchema,

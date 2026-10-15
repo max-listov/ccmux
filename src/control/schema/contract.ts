@@ -1,4 +1,5 @@
 import { defineContract } from 'stitchkit';
+import { z } from 'zod';
 import { AttachmentReferenceSchema } from '../../attachments/reference.ts';
 import {
   AttachmentBeginSchema,
@@ -14,6 +15,12 @@ import {
   MessageOperationResultSchema,
 } from '../../chat/messageOperationSchema.ts';
 import { NativeForkRequestSchema } from '../../context/schema.ts';
+import {
+  ApplicationAuthorityCapabilitiesSchema,
+  ApplicationAuthorityOpenSchema,
+  ApplicationAuthoritySchema,
+  ApplicationAuthorityUpdateSchema,
+} from '../../delegation/applicationSchema.ts';
 import { DelegationCancelReceiptSchema, DelegationCancelSchema } from '../../delegation/schema.ts';
 import {
   ExternalContentCapabilitiesSchema,
@@ -218,6 +225,46 @@ export const controlContract = defineContract(
       input: ControlContextOperationReadSchema,
       output: ControlContextOperationResultSchema,
       idempotent: true,
+    },
+    'delegation.application.capabilities': {
+      method: 'POST',
+      path: '/delegation/application/capabilities',
+      input: z.object({}).strict(),
+      output: ApplicationAuthorityCapabilitiesSchema,
+      idempotent: true,
+      timeout: 7000,
+      desc: 'Application-attested parent authority: capabilities',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'delegation.application.open': {
+      method: 'POST',
+      path: '/delegation/application/open',
+      input: ApplicationAuthorityOpenSchema,
+      output: ApplicationAuthoritySchema,
+      idempotent: true,
+      timeout: 7000,
+      desc: 'Application-attested parent authority: open',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'delegation.application.renew': {
+      method: 'POST',
+      path: '/delegation/application/renew',
+      input: ApplicationAuthorityUpdateSchema,
+      output: ApplicationAuthoritySchema,
+      idempotent: true,
+      timeout: 7000,
+      desc: 'Application-attested parent authority: renew',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'delegation.application.close': {
+      method: 'POST',
+      path: '/delegation/application/close',
+      input: ApplicationAuthorityUpdateSchema,
+      output: ApplicationAuthoritySchema,
+      idempotent: true,
+      timeout: 7000,
+      desc: 'Application-attested parent authority: close',
+      expose: ['HTTP', 'CLI', 'MCP'],
     },
     'delegation.cancel': {
       method: 'POST',
