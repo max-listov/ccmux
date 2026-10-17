@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.84.1] — 2026-10-17
+
+A supervisor that outlived an update hands the session to the daemon instead of blocking it; blocks record the writing version and an older one is retried once.
+
 - A session no longer ends up blocked because its supervisor outlived an update: after the agent exits, a supervisor whose ccmux bundle was replaced hands the session to the daemon, which starts it under the installed version on its next heal pass (up to 30 s; the session's extra windows close). A block records the version that wrote it, and the daemon retries a block written by an older version once (after an update, every session blocked by earlier code starts once more).
 - The startup-menu watcher stops when its agent exits instead of pressing keys at the next launch.
 
