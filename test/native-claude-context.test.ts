@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test';
-import { compactBoundary, historyEntry, runtimeProjectsDir } from '../src/context/claude.ts';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { claudeProfile } from '../src/agent/claude/profileRoot.ts';
+import { compactBoundary, historyEntry } from '../src/context/claude.ts';
 import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
 
 /**
@@ -7,14 +11,16 @@ import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
  * transcript is. Nothing here drives a runtime.
  */
 
-test('the transcript root is the runtime own, not the machine interactive one', () => {
+test('the transcript root is the session own profile, not the machine interactive one', () => {
   // The interactive CLI and this mode are different processes with different configuration.
   // Reading the machine's value would look in a neighbouring directory and report an empty
   // conversation as a complete one.
-  expect(runtimeProjectsDir({ CLAUDE_CONFIG_DIR: '/Users/u/.elsewhere' })).toBe(
-    '/Users/u/.elsewhere/projects',
-  );
-  expect(runtimeProjectsDir({})).toMatch(/\/\.claude\/projects$/);
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-profile-'));
+  const envFile = join(dir, 'profile.env');
+  writeFileSync(envFile, 'CLAUDE_CONFIG_DIR=/Users/u/.elsewhere\n');
+  const m = { projectsDir: '/Users/u/.claude/projects' };
+  expect(claudeProfile({ dir, envFile }, m).projectsDir).toBe('/Users/u/.elsewhere/projects');
+  expect(claudeProfile({ dir }, m).projectsDir).toBe('/Users/u/.claude/projects');
 });
 
 test('a compaction boundary is recognised by the record the runtime writes', () => {

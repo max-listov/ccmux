@@ -20,7 +20,9 @@ import {
 } from '../inventory/listSchema.ts';
 import { collectRows, rowStateLabel, stateCell, toListItem } from '../inventory/rows.ts';
 import { vendorGlyph } from '../inventory/vendor.ts';
+import { machineProfiles } from '../quota/view.ts';
 import { type BehindBy, behindBy, bestKnownRelease, releaseStanding } from '../release/check.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig, ReleaseStanding } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
 import { alignedLines } from '../util/table.ts';
@@ -429,7 +431,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
         // reader recomputing it from sessions would eventually disagree about the same fleet.
         // `now` is the response's own clock: whether a window has ended and whether a sample is
         // stale are true at READ time, so they are computed here and never stored.
-        accounts: fleetAccounts(view.machines, Date.now()),
+        accounts: fleetAccounts(view.machines, Date.now(), machineProfiles(m, loadSessions(m))),
       }),
     );
     return 0;
@@ -470,7 +472,8 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
     }
     if (parked > 0) console.log(`  … ${parked} archived (ccmux fleet --all)`);
   }
-  for (const line of accountLines(view.machines)) console.log(line);
+  for (const line of accountLines(view.machines, Date.now(), machineProfiles(m, loadSessions(m))))
+    console.log(line);
   return 0; // unreachable machines are routine, never a failure exit
 }
 

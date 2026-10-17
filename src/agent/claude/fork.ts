@@ -2,6 +2,7 @@ import { readdirSync, statSync } from 'node:fs';
 import type { MachineConfig, Session } from '../../types.ts';
 import { readHeadLines, readTailLines } from '../../util/readLines.ts';
 import { rec, str } from '../transcript/normalize.ts';
+import { claudeProfile } from './profileRoot.ts';
 import { encodeDir, histFile } from './resume.ts';
 
 // ── follow the fork ─────────────────────────────────────────────────────────────
@@ -84,15 +85,15 @@ export function detectFork(
   rcTitle: string,
   takenUuids: ReadonlySet<string>,
 ): string | null {
-  const projDir = `${m.projectsDir}/${encodeDir(s.dir)}`;
+  const projectsDir = claudeProfile(s, m).projectsDir;
+  const projDir = `${projectsDir}/${encodeDir(s.dir)}`;
   let files: string[];
   try {
     files = readdirSync(projDir);
   } catch {
     return null;
   }
-  const pinnedMs =
-    lastMessageMs(histFile(s.dir, s.uuid, m.projectsDir)) ?? Number.NEGATIVE_INFINITY;
+  const pinnedMs = lastMessageMs(histFile(s.dir, s.uuid, projectsDir)) ?? Number.NEGATIVE_INFINITY;
   let best: { uuid: string; ms: number } | null = null;
   for (const fn of files) {
     if (!UUID_JSONL_RE.test(fn)) continue;

@@ -26,29 +26,76 @@ function armTimeout(
  * stdin — for `tmux load-buffer -`, where a payload via stdin avoids argv length limits and any
  * escaping; otherwise stdin is closed.
  */
+/** How long the pipes of a child that was killed on purpose may keep us waiting. */
+const KILLED_PIPES_GRACE_MS = 1_000;
+
+/** The whole text of a pipe, readable to the end or released early with whatever arrived. */
+function collect(stream: ReadableStream<Uint8Array>): {
+  text: Promise<string>;
+  cancel: () => void;
+} {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  const text = (async () => {
+    try {
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        chunks.push(next.value);
+      }
+    } catch {
+      // released early: what arrived is what there is
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  })();
+  return { text, cancel: () => void reader.cancel().catch(() => {}) };
+}
+
 export async function run(
   argv: string[],
-  opts?: { cwd?: string; timeoutMs?: number; input?: string; signal?: AbortSignal | undefined },
+  opts?: {
+    cwd?: string;
+    timeoutMs?: number;
+    input?: string;
+    /** The child's whole environment. Omitted = inherit this process's. */
+    env?: Record<string, string>;
+    signal?: AbortSignal | undefined;
+  },
 ): Promise<RunResult> {
   opts?.signal?.throwIfAborted();
   const cwd = opts?.cwd;
   const proc = Bun.spawn(argv, {
     ...(cwd !== undefined ? { cwd } : {}),
+    ...(opts?.env !== undefined ? { env: opts.env } : {}),
     stdin: opts?.input === undefined ? 'ignore' : new TextEncoder().encode(opts.input),
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  const abort = () => proc.kill('SIGKILL');
+  const out = collect(proc.stdout);
+  const err = collect(proc.stderr);
+  // Killing the child does not close its pipes when a grandchild inherited them (a shell's `sleep`,
+  // a program's helper): reading to the end would then wait for the grandchild. A child that was
+  // killed on purpose is given a moment to flush, then its pipes are let go.
+  let released: ReturnType<typeof setTimeout> | undefined;
+  const release = () => {
+    released = setTimeout(() => {
+      out.cancel();
+      err.cancel();
+    }, KILLED_PIPES_GRACE_MS);
+  };
+  const abort = () => {
+    proc.kill('SIGKILL');
+    release();
+  };
   opts?.signal?.addEventListener('abort', abort, { once: true });
   if (opts?.signal?.aborted) abort();
   let timedOut = false;
   const disarm = armTimeout(proc, opts?.timeoutMs, () => {
     timedOut = true;
+    release();
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
+  const [stdout, stderr] = await Promise.all([out.text, err.text]);
+  clearTimeout(released);
   const code = await proc.exited; // always awaited → no leaked fds
   disarm();
   opts?.signal?.removeEventListener('abort', abort);

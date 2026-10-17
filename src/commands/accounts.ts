@@ -1,8 +1,9 @@
+import { freshestLimits, type ProfileView } from '../quota/view.ts';
 import {
   formatPlanLimits,
-  PLAN_LIMITS_MAX_AGE_MS,
   type PlanLimits,
   type PlanWindow,
+  planLimitsStaleAfterMs,
   planWindowExpired,
 } from '../runtime/planLimits.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
@@ -25,7 +26,7 @@ function projectLimits(limits: PlanLimits | null, now: number): ProjectedPlanLim
   if (limits === null) return null;
   return {
     ...limits,
-    stale: now - Date.parse(limits.observedAt) >= PLAN_LIMITS_MAX_AGE_MS,
+    stale: now - Date.parse(limits.observedAt) >= planLimitsStaleAfterMs(limits.source),
     windows: limits.windows.map((window) => ({
       ...window,
       expired: planWindowExpired(window, now),
@@ -47,6 +48,25 @@ export interface AccountMachine {
   sessions: readonly AccountSession[];
 }
 
+/** A profile of one machine, as the quota layer knows it — including a profile nobody has a session
+ *  for, which no session row could ever carry. */
+export interface AccountProfileInput {
+  machine: string;
+  view: ProfileView;
+}
+
+/** Where one account is signed in, and how the last attempt to ask the vendor about it went. */
+export interface AccountProfile {
+  machine: string;
+  /** `default`, or the profile's directory. */
+  profile: string;
+  /** How many of that machine's sessions run under it. */
+  sessions: number;
+  /** Why the newest probe failed; null when it did not. */
+  error: string | null;
+  attemptedAt: string | null;
+}
+
 /**
  * Who is spending on what, across every machine, with how much of each plan is left.
  *
@@ -57,20 +77,29 @@ export interface AccountMachine {
  * would eventually disagree about the same fleet.
  */
 export interface FleetAccount {
+  /** `<provider>:<label>`: the identity the grouping used, stable across reads. */
+  id: string;
   label: string;
-  /** The runtime family the account belongs to, when a session named one. */
+  /** How the account is served (`firstParty`, `chatgpt`), when a session or a probe named it. */
   provider: string | null;
+  /** The vendor's own word for the plan (`max`, `pro`), from the freshest measurement. Null when no
+   *  source names one — it is never filled in from a guess or from a price list. */
   plan: string | null;
+  /** The display name of the plan when a source gives one (`Claude Max`); a different fact from
+   *  `plan`, so neither is derived from the other. */
+  subscription: string | null;
   /** Total across the sessions that reported one. Null = nobody measured, which is not zero. */
   costUsd: number | null;
   /** Full addresses, so a reader copies one into `ccmux msg` without reconstructing it. */
   sessions: string[];
+  /** Every profile the account is signed in under, with the state of its newest probe. */
+  profiles: AccountProfile[];
   /**
-   * The newest limit observation any of those sessions carries.
+   * The freshest measurement any source carries for the account.
    *
-   * Newest rather than merged: two sessions on one account describe the SAME windows, so a merge
+   * Freshest rather than merged: two sources on one account describe the SAME windows, so a merge
    * would combine two readings of one fact and could show a window that has since reset beside one
-   * that has not. Null means no session on this account has ever been asked.
+   * that has not. Null means nothing has measured this account yet.
    */
   limits: ProjectedPlanLimits | null;
 }
@@ -78,45 +107,87 @@ export interface FleetAccount {
 export function fleetAccounts(
   machines: readonly AccountMachine[],
   now = Date.now(),
+  profiles: readonly AccountProfileInput[] = [],
 ): FleetAccount[] {
-  const groups = new Map<string, FleetAccount & { costed: boolean }>();
-  for (const fm of machines)
-    for (const session of fm.sessions) {
-      const label = session.account?.label;
-      if (!label) continue;
-      // The provider is part of the identity, not decoration. One person signs into Claude and into
-      // Codex with the same address, and grouping on the address alone merged two different plans
-      // into one row — which then showed whichever was measured last as "the" limit. Two budgets,
-      // two windows, two rows.
-      const provider = session.account?.provider ?? null;
-      const key = `${provider ?? 'unknown'}\u0000${label}`;
-      const group = groups.get(key) ?? {
+  type Group = Omit<FleetAccount, 'limits' | 'costUsd'> & {
+    costUsd: number | null;
+    costed: boolean;
+    candidates: (PlanLimits | null)[];
+  };
+  const groups = new Map<string, Group>();
+  const groupOf = (account: NativeAccount): Group | null => {
+    const label = account.label;
+    if (!label) return null;
+    // The provider is part of the identity, not decoration. One person signs into Claude and into
+    // Codex with the same address, and grouping on the address alone merged two different plans
+    // into one row — which then showed whichever was measured last as "the" limit. Two budgets,
+    // two windows, two rows.
+    const provider = account.provider ?? null;
+    const key = `${provider ?? 'unknown'}\u0000${label}`;
+    let group = groups.get(key);
+    if (group === undefined) {
+      group = {
+        id: `${provider ?? 'unknown'}:${label}`,
         label,
         provider,
-        plan: session.account?.subscription ?? null,
+        plan: null,
+        subscription: null,
         costUsd: null,
-        sessions: [],
-        limits: null,
         costed: false,
+        sessions: [],
+        profiles: [],
+        candidates: [],
       };
+      groups.set(key, group);
+    }
+    return group;
+  };
+  for (const fm of machines)
+    for (const session of fm.sessions) {
+      if (!session.account) continue;
+      const group = groupOf(session.account);
+      if (group === null) continue;
       group.sessions.push(`${fm.machine}:${session.name}`);
       if (session.costUsd !== null) {
         group.costUsd = (group.costUsd ?? 0) + session.costUsd;
         group.costed = true;
       }
-      const limits = session.planLimits ?? null;
-      if (limits !== null && (group.limits === null || limits.observedAt > group.limits.observedAt))
-        group.limits = projectLimits(limits, now);
-      group.plan ??= limits?.plan ?? null;
-      groups.set(key, group);
+      group.candidates.push(session.planLimits ?? null);
+      group.subscription ??= session.account.subscription ?? null;
     }
+  for (const { machine, view } of profiles) {
+    if (view.account === null) continue;
+    const group = groupOf(view.account);
+    if (group === null) continue;
+    group.candidates.push(view.limits);
+    group.subscription ??= view.account.subscription ?? null;
+    group.profiles.push({
+      machine,
+      profile: view.home ?? 'default',
+      sessions: view.sessions.length,
+      error: view.error,
+      attemptedAt: view.attemptedAt,
+    });
+  }
   return [...groups.values()]
-    .sort((a, b) => `${a.label}${a.provider}`.localeCompare(`${b.label}${b.provider}`))
-    .map(({ costed, ...account }) => ({ ...account, costUsd: costed ? account.costUsd : null }));
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(({ candidates, costed, ...group }) => {
+      const limits = freshestLimits(...candidates);
+      return {
+        ...group,
+        plan: limits?.plan ?? null,
+        costUsd: costed ? group.costUsd : null,
+        limits: projectLimits(limits, now),
+      };
+    });
 }
 
-export function accountLines(machines: readonly AccountMachine[], now = Date.now()): string[] {
-  const accounts = fleetAccounts(machines, now);
+export function accountLines(
+  machines: readonly AccountMachine[],
+  now = Date.now(),
+  profiles: readonly AccountProfileInput[] = [],
+): string[] {
+  const accounts = fleetAccounts(machines, now, profiles);
   if (accounts.length === 0) return [];
   return [
     'accounts',
@@ -128,10 +199,14 @@ export function accountLines(machines: readonly AccountMachine[], now = Date.now
       // rows would otherwise be one address twice, with no way to tell which plan is which.
       const who =
         account.provider === null ? account.label : `${account.label} (${account.provider})`;
-      const plan = account.plan === null ? '' : ` [${account.plan}]`;
+      const named = account.subscription ?? account.plan;
+      const plan = named === null ? '' : ` [${named}]`;
+      const sessions = account.sessions.length === 0 ? 'no sessions' : account.sessions.join(' ');
+      const failed = account.profiles.find((profile) => profile.error !== null);
       return [
-        `  ${who}${plan}  ${cost}  ${account.sessions.join(' ')}`,
+        `  ${who}${plan}  ${cost}  ${sessions}`,
         `    plan ${formatPlanLimits(account.limits, now)}`,
+        ...(failed === undefined ? [] : [`    probe failed: ${failed.error}`]),
       ];
     }),
   ];

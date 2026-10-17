@@ -42,13 +42,14 @@ function textsOf(entry: unknown): string[] {
  * record written before that field existed still knows when it was written.
  */
 export function nativeInputDelivered(
+  m: MachineConfig,
   session: Session,
   input: RuntimeInput,
   dispatchedAt: string,
 ): boolean {
   let path: string;
   try {
-    path = nativeTranscriptPath(session);
+    path = nativeTranscriptPath(session, m);
   } catch {
     return false;
   }
@@ -104,7 +105,7 @@ export class TurnPickup {
     // and sent a second time, which is the harm the reconciliation is meant to avoid.
     const dispatchedAt =
       input.dispatchedAt ?? statSync(runtimeInputPath(t.m, t.session)).mtime.toISOString();
-    if (nativeInputDelivered(t.session, input, dispatchedAt)) {
+    if (nativeInputDelivered(t.m, t.session, input, dispatchedAt)) {
       this.dispatched = input.nativeId;
       await writeRuntimeInput(t.m, t.session, { ...input, phase: 'accepted' });
       return;

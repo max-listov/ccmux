@@ -73,6 +73,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       const agent = own.str('agent');
       const envFile = own.str('env-file');
       const runtime = own.str('runtime');
+      const timeoutSec = own.int('timeout');
       return (await import('./commands/new.ts')).cmdNew(
         own.positionals[0],
         own.positionals[1],
@@ -82,6 +83,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
           ...(agent === undefined ? {} : { agent }),
           ...(envFile === undefined ? {} : { envFile }),
           ...(runtime === undefined ? {} : { runtime }),
+          ...(timeoutSec === undefined ? {} : { timeoutSec }),
         },
       );
     }
@@ -163,6 +165,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return (await import('./commands/doctor.ts')).cmdDoctor(rest);
     case 'fleet':
       return (await import('./commands/fleetList.ts')).cmdFleet(rest);
+    case 'accounts':
+      return (await import('./commands/accountsCommand.ts')).cmdAccounts(rest);
     case 'external':
       return (await import('./commands/external.ts')).cmdExternal(rest);
     case 'completions':

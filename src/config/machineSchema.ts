@@ -243,6 +243,27 @@ export const MachineConfigSchema = z.object({
    * `doctor` all show a session waiting at a prompt as waiting, never as idle.
    */
   trustPrompt: z.enum(['off', 'folder', 'declared']).default('folder'),
+  /**
+   * How an account's plan quota is kept current when no running session has told us lately.
+   *
+   * A terminal session's status line reports the account's windows only while that session is
+   * working, so an account whose sessions are quiet — or that has none — would age out of view. A
+   * probe asks the vendor's own program (`claude -p "/usage"`, `codex app-server`) about each known
+   * profile instead, never reading a token. It costs a few CPU seconds per account (the Claude
+   * program scans its local sessions to answer), so it runs only for an account whose newest
+   * measurement is older than `refreshMinutes`, and backs off after a failure.
+   */
+  quota: z
+    .object({
+      probe: z.enum(['auto', 'off']).default('auto'),
+      refreshMinutes: z
+        .number()
+        .int()
+        .min(5)
+        .max(24 * 60)
+        .default(15),
+    })
+    .default({ probe: 'auto', refreshMinutes: 15 }),
   // Optional Telegram mirror of the inter-agent chat (see TelegramConfigSchema). Absent → off.
   telegram: TelegramConfigSchema.optional(),
   // Optional owner language OVERRIDE for messages a session sends to `owner`. Unset (default) →

@@ -16,6 +16,16 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Startup menus are answered by the text of the option, one key at a time, whether or not the menu is numbered: a session created with `ccmux new` no longer waits at "trust this folder", and the cursor starting on "No, exit" is no longer a refusal. `ccmux new` returns when an interactive Claude session is ready for messages (`--timeout`, default 60 s; exit 2 with the reason otherwise, the session stays registered).
+- `ccmux send` refuses to type text and Enter into a menu, except a lone number at a numbered one.
+- A session's Claude profile (`CLAUDE_CONFIG_DIR` in its env file) now decides where its conversation, sign-in and user settings are looked for. Restarting a session that runs under a profile resumes its conversation instead of ending blocked.
+- A session is blocked for a missing conversation only if that conversation was seen; one that never started begins fresh. The supervisor also looks for a missing conversation under every known profile.
+- A session under a profile shows its own status line (from the profile's `settings.json`) instead of the default one.
+- **Breaking:** `fleet --json` and `list --json` accounts are rebuilt. `accounts[]` entries gain `id` (`<provider>:<label>`), `profiles[]` (where the account is signed in, with the state of its last probe) and `subscription`; `plan` is now the vendor's own word from the freshest measurement (`max`, `pro`) and is `null` when no source names one — the display name (`Claude Max`) moved to `subscription`. `planLimits` gains `source` (`native`, `statusline` or `probe`). An account can have no sessions.
+- New `ccmux accounts [--json] [--refresh] [--local]`: every signed-in Claude and Codex account in one answer, including GPT (Codex) accounts and profiles that no session runs under, with plan windows, the source of each number and its age.
+- Account quota no longer depends on a session having spoken lately: the daemon asks the vendor's own program (`claude auth status`, `claude -p "/usage"`, `codex app-server`) for a profile whose newest measurement is older than `quota.refreshMinutes` (default 15), never reading a token, one profile at a time, with back-off after a failure. `quota.probe: "off"` in the machine config stops it.
+- A session's account and plan windows are the freshest of its profile's sources, so a terminal session shows the window another session of the same account measured. Terminal and native sessions of one account group together.
+
 ## [0.82.0] — 2026-10-15
 
 - Native application runs can delegate bounded Codex and Claude children through host-authorized leases, with exact application provenance and automatic release when a run ends.

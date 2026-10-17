@@ -45,12 +45,12 @@ Requires macOS (launchd) or Linux (systemd) and `tmux`.
 ccmux                      # interactive fleet TUI (add -f for fullscreen; new: Tab switches provider)
 ccmux list                 # managed sessions + live status/uptime
 ccmux status --json        # bounded daemon snapshot; no per-reader transcript/tmux scan
-ccmux new cc-api ~/code/api   # create + start a session (returns after authoritative thread bind)
+ccmux new cc-api ~/code/api   # create + start a session (an interactive Claude session is returned when it is ready for messages)
 ccmux new cc-review ~/code/api --agent codex   # provider is explicit
 ccmux new cc-native ~/code/api --agent codex --runtime app-server  # owned native runtime
 ccmux new cc-open ~/code/api --agent opencode  # authenticated native server, not a TUI scraper
 ccmux runtime cc-native --json   # exact native turn state, without a pane/history scan
-ccmux send cc-api '/compact'  # PRESS KEYS in a session (slash commands) — see msg for writing to an agent
+ccmux send cc-api '/compact'  # TYPE TEXT + Enter in a session (slash commands) — see msg for writing to an agent
 ccmux restart cc-api       # bounce it (survives killing the caller)
 ccmux restart --all        # bounce EVERY session, one at a time (TUI: R) — picks up new rules/MCP/release
 ccmux mode cc-api auto     # per-session permission-mode override (see Permissions)
@@ -254,10 +254,25 @@ leave half the sessions unable to act while the list reads healthy. The TUI name
 | `folder` *(default)* | the plain "do you trust this folder" question |
 | `declared` | also folders that pre-approve tool permissions in their own `.claude/settings.local.json` |
 
+The supervisor answers by the text of the option, one key at a time: it reads the visible screen,
+moves the cursor toward "Yes, I trust this folder" and presses Enter only on a screen that shows the
+cursor there — the cursor may start on either option, and the menu may or may not be numbered.
+`ccmux send` refuses to type text and Enter into a menu (a lone number at a numbered one is allowed), because the Enter would
+pick the highlighted option; the control operations `terminal.prompt` (read the menu) and `terminal.respond` (choose an option) answer the menus they recognise — folder trust, declared permissions, external imports.
+
 The split is deliberate. Registering a session that points at a directory *is* your declaration that
 you trust it, so asking again — of nobody — only strands it. Permissions that a **file inside the
 repo** declares are a different question that nobody has answered yet, and granting them silently
 would hand any checked-in settings file whatever it asks for. That one stays opt-in.
+
+### Account quota
+
+`ccmux accounts` lists every signed-in Claude and Codex account with its plan windows, the source of each
+number (`native`, `statusline`, `probe`) and its age. A terminal session's status line only reports while it
+works, so the daemon asks the vendor's own program for a profile that has gone quiet. The `quota` key in
+`machine.json` controls it: `{"probe": "auto", "refreshMinutes": 15}` (default), or `{"probe": "off"}`.
+The probe reads no token; `ccmux accounts --refresh` asks right now. See
+[monitoring-status](docs/architecture/monitoring-status.md).
 
 ### Which sessions still need a restart
 
@@ -419,6 +434,7 @@ away; it is written down instead.
 ```bash
 ccmux fleet          # latest release, then each machine with how far behind it is
 ccmux fleet --json   # latest / latestAt at the top; per machine: release{} and behind
+ccmux accounts --json   # every signed-in Claude and Codex account: plan windows, source and age of each number
 ```
 
 Each machine reports **facts about itself**: what is installed, the newest release it managed to

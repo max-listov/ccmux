@@ -21,7 +21,7 @@ test('an interactive Claude session keeps the pane-and-transcript provider', () 
   // The four capabilities that only exist because a pane and a JSONL file exist.
   expect(provider.historyFile).toBeDefined();
   expect(provider.scanPane).toBeDefined();
-  expect(provider.promptAnswer).toBeDefined();
+  expect(provider.settleMenu).toBeDefined();
   expect(provider.detectFork).toBeDefined();
   expect(provider.inspectChatPane).toBeDefined();
 });
@@ -46,7 +46,7 @@ test('native runtimes carry no pane or transcript parser, which is what makes th
   for (const agent of ['opencode', 'custom'] as const) {
     const provider = providerFor(makeSession({ agent, runtime: 'native' }));
     expect(provider.detectFork).toBeUndefined();
-    expect(provider.promptAnswer).toBeUndefined();
+    expect(provider.settleMenu).toBeUndefined();
     expect(provider.inspectChatPane).toBeUndefined();
     expect(provider.historyFile(makeSession({ agent }), makeMachine())).toBeNull();
   }
@@ -70,7 +70,7 @@ test('a native Claude row gets a provider with no pane, no transcript and no for
   const provider = providerFor(s);
   expect(provider.id).toBe('claude');
   expect(provider.detectFork).toBeUndefined();
-  expect(provider.promptAnswer).toBeUndefined();
+  expect(provider.settleMenu).toBeUndefined();
   expect(provider.inspectChatPane).toBeUndefined();
   expect(provider.historyFile(s, makeMachine())).toBeNull();
   expect(provider.scanPane('anything').state).toBe('indeterminate');

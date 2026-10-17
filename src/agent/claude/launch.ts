@@ -4,7 +4,7 @@ import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import { chatEnabledFor } from '../../config/chat.ts';
 import { rcName } from '../../config/machine.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { HOME, UID } from '../../util/env.ts';
+import { UID } from '../../util/env.ts';
 import {
   digestOf,
   fileDigest,
@@ -15,6 +15,7 @@ import {
 } from '../launch/launchInputs.ts';
 import { providerLaunchEnv } from '../launch/sessionEnv.ts';
 import { buildPrompt } from '../prompt/managePrompt.ts';
+import { claudeProfile } from './profileRoot.ts';
 
 export function preflight(m: MachineConfig): void {
   accessSync(m.claudeBin, constants.X_OK);
@@ -165,7 +166,11 @@ export function launchEnv(m: MachineConfig, session: Session): Record<string, st
   const env = providerLaunchEnv(session, [dirname(m.claudeBin), dirname(m.tmuxBin)]);
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
-  if (hasOauthAccount()) delete env.ANTHROPIC_API_KEY;
+  const profile = claudeProfile(session, m);
+  // The profile is what the session DECLARED. An inherited value would put the agent's conversation,
+  // sign-in and settings in a place `claudeProfile` — and so every reader — does not look.
+  if (profile.configDir === null) delete env.CLAUDE_CONFIG_DIR;
+  if (hasOauthAccount(profile.globalConfigFile)) delete env.ANTHROPIC_API_KEY;
   // so a ccmux run from inside this session can recognize "self" (block rm/stop self)
   env.CCMUX_SESSION = session.name;
   // The declared machines, and only those: this is what the agent's root check reads.
@@ -173,9 +178,9 @@ export function launchEnv(m: MachineConfig, session: Session): Record<string, st
   return env;
 }
 
-function hasOauthAccount(): boolean {
+function hasOauthAccount(globalConfigFile: string): boolean {
   try {
-    const obj: unknown = JSON.parse(readFileSync(`${HOME}/.claude.json`, 'utf8'));
+    const obj: unknown = JSON.parse(readFileSync(globalConfigFile, 'utf8'));
     return typeof obj === 'object' && obj !== null && 'oauthAccount' in obj;
   } catch {
     return false;
@@ -199,9 +204,10 @@ function hasOauthAccount(): boolean {
  * inside a running session (`/permissions` writes it), which would make a session mark ITSELF stale
  * mid-turn for a change that is already in effect.
  */
-export function launchInputs(s: Session, _m: MachineConfig): LaunchInput[] {
-  const rules = ruleSetFiles(`${HOME}/.claude/CLAUDE.md`);
-  const userConfig = `${HOME}/.claude.json`;
+export function launchInputs(s: Session, m: MachineConfig): LaunchInput[] {
+  const profile = claudeProfile(s, m);
+  const rules = ruleSetFiles(`${profile.userDir}/CLAUDE.md`);
+  const userConfig = profile.globalConfigFile;
   const projectMcp = `${s.dir}/.mcp.json`;
   const mcpParts = [
     [`${userConfig}#mcpServers`, jsonFieldDigest(userConfig, 'mcpServers')] as const,

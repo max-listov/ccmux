@@ -30,6 +30,7 @@ test("extractMetrics reads Claude's OWN context fields (no regex over rendered t
     costUsd: 1.24,
     renders: 1,
     rendersSince: 7,
+    rateLimits: null,
   });
 });
 
@@ -46,6 +47,7 @@ test('extractMetrics tolerates trivial/missing usage — null pct, never invente
     costUsd: null,
     renders: 1,
     rendersSince: 7,
+    rateLimits: null,
   });
   expect(extractMetrics('garbage', 7)).toBeNull();
 });
@@ -109,6 +111,7 @@ test('minimalStatusline: a useful default (model + context%) when the user has n
       costUsd: 0,
       renders: 1,
       rendersSince: 7,
+      rateLimits: null,
     }),
   ).toBe('✳ Opus 5 · 120k/1.0M 12%'); // the vendor mark travels with the model
   expect(
@@ -120,6 +123,7 @@ test('minimalStatusline: a useful default (model + context%) when the user has n
       costUsd: null,
       renders: 1,
       rendersSince: 7,
+      rateLimits: null,
     }),
   ).toBe('✳ Opus 5');
   expect(
@@ -131,6 +135,7 @@ test('minimalStatusline: a useful default (model + context%) when the user has n
       costUsd: null,
       renders: 1,
       rendersSince: 1,
+      rateLimits: null,
     }),
   ).toBe('');
 });
@@ -143,6 +148,7 @@ const metrics = (ts: number, renders = 1, rendersSince = ts) => ({
   costUsd: null,
   renders,
   rendersSince,
+  rateLimits: null,
 });
 
 test('the render count carries forward and keeps the window it counts', () => {

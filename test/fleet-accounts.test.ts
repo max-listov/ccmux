@@ -63,6 +63,7 @@ const NOW = Date.parse('2026-09-01T10:00:00.000Z');
 const limits = (percent: number, observedAt: string): PlanLimits => ({
   answer: 'known',
   plan: 'max',
+  source: 'native',
   windows: [
     {
       key: 'five_hour',

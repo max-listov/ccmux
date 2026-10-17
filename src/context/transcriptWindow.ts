@@ -57,7 +57,7 @@ export async function readTranscriptWindow(
   // Claude's native SDK writes its own jsonl, just not at the registry uuid the interactive provider
   // points at. Its own file is the source of truth and carries absolute lines, so it answers here.
   if (session.agent === 'claude' && hasNativeRuntime(session))
-    return readClaudeNative(session, window);
+    return readClaudeNative(m, session, window);
   if (window.agent !== undefined)
     return unavailableTranscript(
       session.agent,
@@ -68,11 +68,15 @@ export async function readTranscriptWindow(
   return readNativeTranscript(m, session, window, signal);
 }
 
-function readClaudeNative(session: Session, window: TranscriptWindowOptions): TranscriptRead {
+function readClaudeNative(
+  m: MachineConfig,
+  session: Session,
+  window: TranscriptWindowOptions,
+): TranscriptRead {
   const id = session.nativeSession?.id;
   if (id === undefined)
     return unavailableTranscript('claude', '', 'native transcript identity is absent', 'native');
-  const path = nativeTranscriptPath(session);
+  const path = nativeTranscriptPath(session, m);
   if (window.agent === undefined) return readTranscriptFile(path, claudeProvider, window);
   const agentPath = subagentFile(path, window.agent);
   return agentPath === null

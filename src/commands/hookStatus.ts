@@ -3,6 +3,7 @@ import { eventsEnabledFor } from '../config/events.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import type { EmitInput } from '../events/feed.ts';
 import { appendEvent } from '../events/feed.ts';
+import { markConversationSeen } from '../session/conversationSeen.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import {
   type LifecycleStatus,
@@ -35,7 +36,22 @@ const PayloadSchema = z.object({
   permission_mode: z.string().optional(),
   effort: z.string().optional(),
   transcript_path: z.string().optional(),
+  session_id: z.string().min(1).optional(),
 });
+
+/**
+ * The conversation a turn just ended in, when the payload names one. A `Stop` is the first moment
+ * the conversation's file is certain to exist, so it is the evidence `conversationSeen` keeps; the
+ * first prompt alone is not (the file is written around it).
+ */
+export function endedConversation(raw: string): string | null {
+  try {
+    const p = PayloadSchema.safeParse(JSON.parse(raw)).data;
+    return p?.hook_event_name === 'Stop' ? (p.session_id ?? null) : null;
+  } catch {
+    return null;
+  }
+}
 
 const EVENT_STATE: Record<string, LifecycleStatus['state']> = {
   UserPromptSubmit: 'working',
@@ -127,6 +143,13 @@ export async function cmdHookStatus(): Promise<number> {
     if (self === undefined || self === '') return 0;
     const status = parseLifecycle(raw, Date.now());
     if (status === null) return 0;
+    // Only the conversation the registry pins: after /clear or a fork the hook names another uuid,
+    // and recording that one would overwrite the evidence for the pinned conversation.
+    const conversation = endedConversation(raw);
+    if (conversation !== null) {
+      const pinned = findSession(loadSessions(loadMachineConfig()), self);
+      if (pinned?.uuid === conversation) markConversationSeen(self, conversation);
+    }
     // Read BEFORE the write: the previous status is what carries the turn's start instant, and this
     // write is about to replace it.
     const previous = readLifecycle(self);

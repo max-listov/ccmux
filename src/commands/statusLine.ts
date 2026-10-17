@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { vendorGlyph } from '../inventory/vendor.ts';
+import type { RateLimitsReport, RateLimitWindow } from '../runtime/rateLimitsReport.ts';
 import { type MetricsStatus, readMetricsFile, writeMetricsFile } from '../session/metricsFile.ts';
 
 /**
@@ -30,6 +31,22 @@ const asNumber = (value: unknown): number | null =>
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
 
+const asWindow = (value: unknown): RateLimitWindow | null => {
+  const window = asObject(value);
+  const pct = asNumber(window?.used_percentage);
+  return pct === null ? null : { pct, resetsAt: asNumber(window?.resets_at) };
+};
+
+/** The plan windows of this render, or null when it carries none (every render before the first
+ *  model response, and every session that is not on a subscription plan). */
+function readRateLimits(value: unknown, now: number): RateLimitsReport | null {
+  const limits = asObject(value);
+  if (limits === undefined) return null;
+  const fiveHour = asWindow(limits.five_hour);
+  const sevenDay = asWindow(limits.seven_day);
+  return fiveHour === null && sevenDay === null ? null : { at: now, fiveHour, sevenDay };
+}
+
 /** Pure: statusLine stdin JSON → the metrics to persist, or null on bad JSON. Separated for tests. */
 export function extractMetrics(raw: string, now: number): MetricsStatus | null {
   let parsed: unknown;
@@ -51,7 +68,14 @@ export function extractMetrics(raw: string, now: number): MetricsStatus | null {
     costUsd: asNumber(cost?.total_cost_usd),
     renders: 1,
     rendersSince: now,
+    rateLimits: readRateLimits(j.rate_limits, now),
   };
+}
+
+/** A render that reports no plan windows keeps the ones an earlier render reported, with their own
+ *  time: absent is not "no limit", and a refreshed time would pass old windows off as fresh. */
+function carryLimits(previous: MetricsStatus | null, next: MetricsStatus): MetricsStatus {
+  return { ...next, rateLimits: next.rateLimits ?? previous?.rateLimits ?? null };
 }
 
 /** How long a render count describes. Rolled forward at this age so the rate answers "how often is
@@ -71,18 +95,23 @@ export function countRender(previous: MetricsStatus | null, next: MetricsStatus)
     previous.renders < 1 ||
     next.ts - previous.rendersSince > RENDER_WINDOW_MS
   )
-    return { ...next, renders: 1, rendersSince: previous?.ts ?? next.ts };
-  return { ...next, renders: previous.renders + 1, rendersSince: previous.rendersSince };
+    return { ...carryLimits(previous, next), renders: 1, rendersSince: previous?.ts ?? next.ts };
+  return {
+    ...carryLimits(previous, next),
+    renders: previous.renders + 1,
+    rendersSince: previous.rendersSince,
+  };
 }
 
 /** The user's real statusLine command, resolved with Claude's file precedence (project → local →
  *  user). Skips our own injected command so the wrapper can never recurse into itself. */
-export function originalCommand(cwd: string, home: string): string | null {
-  // Claude's real precedence: project local overrides project, which overrides user.
+export function originalCommand(cwd: string, home: string, configDir?: string): string | null {
+  // Claude's real precedence: project local overrides project, which overrides user. The user file
+  // lives in the profile's directory when the session runs under one, and only there.
   const files = [
     `${cwd}/.claude/settings.local.json`,
     `${cwd}/.claude/settings.json`,
-    `${home}/.claude/settings.json`,
+    `${configDir !== undefined && configDir !== '' ? configDir : `${home}/.claude`}/settings.json`,
   ];
   for (const f of files) {
     try {
@@ -140,7 +169,7 @@ export async function cmdStatusLine(): Promise<number> {
 
     // Render the user's ORIGINAL statusline (visual unchanged); if they have none, render a minimal
     // default from the metrics rather than a blank bar.
-    const cmd = originalCommand(cwd, process.env.HOME ?? '');
+    const cmd = originalCommand(cwd, process.env.HOME ?? '', process.env.CLAUDE_CONFIG_DIR);
     if (cmd !== null) {
       const proc = Bun.spawn(['sh', '-c', cmd], {
         cwd,

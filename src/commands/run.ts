@@ -2,11 +2,17 @@ import { existsSync } from 'node:fs';
 import { type AgentProvider, providerFor } from '../agent/index.ts';
 import { computeStamp } from '../agent/launch/launchStamp.ts';
 import { droppedDeadAgentKeys, withoutDeadAgentEnv } from '../agent/launch/sshEnv.ts';
+import {
+  initialMenuSettle,
+  type MenuSettleState,
+  type MenuSettleStep,
+} from '../agent/menuSettle.ts';
 import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../chat/auth.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { delegationStopped } from '../delegation/cancel.ts';
 import { nativeDriver } from '../runtime/driver.ts';
 import { ManagedRuntimeExit } from '../runtime/exit.ts';
+import { conversationSeen, markConversationSeen } from '../session/conversationSeen.ts';
 import {
   readLifecycleBlockForSession,
   sessionBlock,
@@ -14,8 +20,8 @@ import {
 } from '../session/lifecycleBlocks.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import { sleepBlocksStart } from '../session/sleep/store.ts';
-import { readLaunchStamp, writeLaunchStamp } from '../session/status.ts';
-import { capturePane, sendKeysNamed } from '../tmux/tmux.ts';
+import { writeLaunchStamp } from '../session/status.ts';
+import { capturePane, capturePaneScreen, sendKeysNamed } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { promptInvocation } from '../util/env.ts';
 import { log, setStderrLogging } from '../util/log.ts';
@@ -29,88 +35,111 @@ const PICKER_WATCH_MS = 45_000; // give up watching for blocking startup menus a
 const PICKER_POLL_MS = 1_000;
 
 /**
- * What to do with what the pane currently shows — the whole rule, with no tmux in it.
- *
- * `armed` means "a menu seen right now has not been answered yet". It is spent by answering and
- * restored only by observing the pane with no menu on it, so the answer to "may I press a key into
- * this pane" is never derived from a second look at the same unchanged screen.
+ * Whether a missing conversation file stops the launch. Only a conversation that was SEEN (or one
+ * found under another root) is worth protecting; one that never existed starts fresh. Pure so the
+ * rule is tested without a supervisor.
  */
-export type SettleDecision =
-  | { step: 'wait'; armed: true }
-  | { step: 'stop'; armed: false }
-  | { step: 'answer'; armed: false; key: string };
-
-export function settleStep(key: string | null, armed: boolean): SettleDecision {
-  // No menu: whatever we pressed before has cleared, so a menu appearing later is a different one.
-  if (key === null) return { step: 'wait', armed: true };
-  // A menu we have already answered is still up. Pressing again is the failure this rule exists to
-  // prevent — by now the pane may be a live composer, and the supervisor cannot tell from here.
-  if (!armed) return { step: 'stop', armed: false };
-  // The key travels with the decision, so the caller cannot press one the rule did not authorise.
-  return { step: 'answer', armed: false, key };
+export function conversationVerdict(f: {
+  present: boolean;
+  found: string | null;
+  seen: boolean;
+}): 'start' | 'block' {
+  if (f.present) return 'start';
+  return f.found !== null || f.seen ? 'block' : 'start';
 }
 
 /**
- * Dismiss a BLOCKING startup menu on an unattended resume, so a daemon-healed reboot doesn't strand
- * a big session at a picker (typed input would land on the MENU, not the conversation).
+ * The reason a launch must not go ahead, when this session's conversation file is missing and the
+ * conversation is known to have existed — or null when the launch may proceed. Records the evidence
+ * when the file is there. Everything the verdict reads is an argument or the filesystem.
+ */
+export function missingConversation(
+  m: MachineConfig,
+  s: Session,
+  provider: AgentProvider,
+  present: boolean,
+  expected: string | null,
+): string | null {
+  if (present) {
+    markConversationSeen(s.name, s.uuid);
+    return null;
+  }
+  const found = provider.findHistoryElsewhere?.(s, m) ?? null;
+  const seen = conversationSeen(s.name, s.uuid);
+  if (conversationVerdict({ present, found, seen }) === 'start') return null;
+  const where =
+    found === null
+      ? 'and it is nowhere else under the projects roots this machine uses'
+      : `— it is at ${found}`;
+  return (
+    `${s.name} has a conversation ${s.uuid}, but it is missing at ${expected ?? 'its expected path'} ${where}. ` +
+    'Refusing to start a NEW conversation on top of it. ' +
+    // Both exits, because the two cases need opposite actions and the reader knows which one
+    // they are in — naming only the recoverable one leaves the other guessing.
+    `If it can be recovered (the project directory or the session's profile moved?), put it where this session now points, then: ccmux start ${s.name}   ·   ` +
+    `If it is gone for good: ccmux renew ${s.name}   — a fresh conversation for this session, keeping its dir, mode, chat and prompt modules`
+  );
+}
+
+/**
+ * Dismiss the BLOCKING startup menus on an unattended launch, so a daemon-healed reboot or a freshly
+ * created session is not stranded at a question nobody is there to answer (typed input would land on
+ * the MENU, not the conversation).
  *
- * ## Once per menu, and only while we can still see the menu
+ * The rules for when a key may be pressed are `settleMenu` (agent/claude/menuStep.ts): a target
+ * chosen by its text, one key at a time with the cursor checked to have moved one option nearer,
+ * `Enter` only on a snapshot that shows the cursor on the target, and a menu answered with `Enter`
+ * never answered again until the pane has been seen with no menu on it. This loop only captures the
+ * visible screen, presses what the rule authorised and waits for it to render.
  *
- * The dangerous direction here is not missing a menu — a stranded session is visible, `doctor`
- * reports it, and a person can answer it. The dangerous direction is pressing a key into a pane that
- * is no longer a menu, because there is no such thing as a harmless keystroke sent to a live
- * conversation. Without the Enter it leaves a character in the composer, and an occupied composer
- * holds every message addressed to that session, silently, until somebody clears it. With the Enter
- * it submits a turn nobody wrote.
+ * ## Why the dangerous direction is the one guarded
  *
- * Both happened. The previous loop re-answered on every poll for its whole 45-second window with no
- * memory of what it had already pressed: the daemon's log recorded 86 presses, all the same key,
- * across ten sessions, up to eight into one of them about 1.5 seconds apart. Five composers were
- * later found holding that character, and two sessions received it as a user turn.
+ * Missing a menu is visible: a stranded session shows in `list` and `doctor`, and a person can
+ * answer it. Pressing a key into a pane that is no longer a menu is not, because there is no such
+ * thing as a harmless keystroke sent to a live conversation. Without the Enter it leaves a character
+ * in the composer, and an occupied composer holds every message addressed to that session, silently,
+ * until somebody clears it. With the Enter it submits a turn nobody wrote. An earlier loop re-answered
+ * every poll for its whole window and recorded 86 presses, all the same key, up to eight into one
+ * session about 1.5 seconds apart; five composers were later found holding that character. A later
+ * one pressed a final Enter whenever "a menu" was still up after its key, which on a menu with the
+ * cursor on "No, exit" is a refusal.
  *
- * So an answer is spent once and only re-armed by evidence: a further menu may be answered only
- * after the pane has been observed with NO menu on it. That keeps the case this loop exists for —
- * startup raising folder trust and then the resume picker — while making a second press into the
- * same unchanged pane unreachable. An answer that does not clear its menu ends the watch instead of
- * repeating: at that point the supervisor has done what it can say is right, and guessing again is
- * how the keystroke escapes into the conversation.
+ * A step the rule stops on ends the watch rather than guessing again: the supervisor has done what it
+ * can say is right.
  *
- * Provider-agnostic: a no-op when the provider has no picker or the policy is "off". Not awaited by
- * the supervisor — it self-terminates while the loop blocks on the agent's exit.
+ * Provider-agnostic: a no-op when the provider has no such menu or the policy is "off". Not awaited
+ * by the supervisor — it self-terminates while the loop blocks on the agent's exit.
  */
 async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvider): Promise<void> {
-  const answer = provider.promptAnswer;
-  if (!answer) return;
+  const settle = provider.settleMenu;
+  if (!settle) return;
   const deadline = Date.now() + PICKER_WATCH_MS;
-  // False until the pane has been seen with no menu on it. A menu detected before we have ever seen
-  // the pane clear is still answered — that is the ordinary startup case — but only once.
-  let armed = true;
+  let state: MenuSettleState = initialMenuSettle;
   while (Date.now() < deadline) {
     await Bun.sleep(PICKER_POLL_MS);
-    let key: string | null = null;
+    let step: MenuSettleStep;
     try {
-      key = answer(await capturePane(m, s.name, 40), m);
+      step = settle(state, await capturePaneScreen(m, s.name), m);
     } catch {
       continue; // pane not capturable yet (still spawning) — retry
     }
-    const decision = settleStep(key, armed);
-    armed = decision.armed;
-    if (decision.step === 'wait') continue;
-    if (decision.step === 'stop') return;
-    await sendKeysNamed(m, s.name, decision.key);
-    await Bun.sleep(500); // let the menu register the selection
-    let stillUp = false;
-    try {
-      stillUp = answer(await capturePane(m, s.name, 40), m) !== null;
-    } catch {
-      stillUp = false;
+    state = step.state;
+    if (step.action.act === 'wait') continue;
+    if (step.action.act === 'stop') {
+      log.warn({
+        msg: 'stopped answering a blocking prompt',
+        name: s.name,
+        agent: provider.id,
+        reason: step.action.reason,
+      });
+      return;
     }
-    if (stillUp) await sendKeysNamed(m, s.name, 'Enter'); // number only moved the cursor → confirm
+    await sendKeysNamed(m, s.name, step.action.key);
     log.info({
       msg: 'answered a blocking prompt',
       name: s.name,
       agent: provider.id,
-      key: decision.key,
+      key: step.action.key,
     });
   }
 }
@@ -240,27 +269,20 @@ export async function superviseReady(
       return refuse(m, s, error);
     }
     // "No history here" means one of two very different things, and treating them alike is how a
-    // month-old conversation gets a blank one written on top of it with the same uuid. A session that
-    // has launched before HAS a stamp; if its history is gone anyway, something moved it — most often
-    // the project directory was renamed, which changes where the agent keeps the conversation while
-    // the registry still points at the old path. Measured on a live fleet: 140 MB of history sitting
-    // under the previous encoding while a fresh, empty file was being written at the new one.
-    // Blocking is the honest response: it is terminal, an explicit start/restart clears it, and it
-    // costs a stopped session instead of an unrecoverable overwrite. Starting fresh is only correct
-    // when the session has genuinely never run.
-    if (!present && readLaunchStamp(name) !== null) {
-      const found = provider.findHistoryElsewhere?.(s, m) ?? null;
-      const where =
-        found === null ? 'and it is nowhere else under the projects root' : `— it is at ${found}`;
-      const error =
-        `${name} has launched before, but its conversation ${s.uuid} is missing at ${hf ?? 'its expected path'} ${where}. ` +
-        'Refusing to start a NEW conversation on top of it. ' +
-        // Both exits, because the two cases need opposite actions and the reader knows which one
-        // they are in — naming only the recoverable one leaves the other guessing.
-        `If it can be recovered (the project directory moved?), put it where this session now points, then: ccmux start ${name}   ·   ` +
-        `If it is gone for good: ccmux renew ${name}   — a fresh conversation for this session, keeping its dir, mode, chat and prompt modules`;
-      return refuse(m, s, error);
-    }
+    // month-old conversation gets a blank one written on top of it with the same uuid. A
+    // conversation this supervisor has SEEN is real: if its file is gone anyway, something moved or
+    // removed it — most often the project directory was renamed, or the session's profile changed,
+    // which changes where the agent keeps the conversation while the registry still points at the
+    // old place. Measured on a live fleet: 140 MB of history sitting under the previous encoding
+    // while a fresh, empty file was being written at the new one. Blocking is the honest response:
+    // it is terminal, an explicit start/restart clears it, and it costs a stopped session instead of
+    // an unrecoverable overwrite.
+    // A session that merely LAUNCHED is not evidence of a conversation — the agent creates the file
+    // with the first message, and one closed on its folder-trust question never had one. So the
+    // guard asks what was seen, and the launch stamp (written before the agent starts, erased by
+    // every stop) is not consulted. A conversation found under another root is evidence by itself.
+    const refusal = missingConversation(m, s, provider, present, hf);
+    if (refusal !== null) return refuse(m, s, refusal);
     let env = provider.launchEnv(m, s);
     // A session outlives the login that created it; that login's agent socket does not. A DEAD
     // socket left in the environment makes ssh wait on it instead of trying what the config points

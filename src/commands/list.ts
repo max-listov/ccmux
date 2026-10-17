@@ -8,6 +8,8 @@ import {
   stateCell,
 } from '../inventory/rows.ts';
 import { vendorGlyph } from '../inventory/vendor.ts';
+import { machineProfiles } from '../quota/view.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { printLine } from '../util/stdout.ts';
 import { tableLines } from '../util/table.ts';
@@ -69,6 +71,7 @@ export async function cmdList(args: string[] = []): Promise<number> {
   for (const line of accountLines(
     [{ machine: m.rcPrefix, sessions: shown.map(fleetRowSlice) } as never],
     Date.now(),
+    machineProfiles(m, loadSessions(m)),
   ))
     console.log(line);
   return 0;

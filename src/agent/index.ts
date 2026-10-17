@@ -16,6 +16,7 @@ import { claudeProvider } from './claude/index.ts';
 import { subagentFile } from './claude/subagent.ts';
 import { codexProvider } from './codex/index.ts';
 import type { LaunchInput } from './launch/launchInputs.ts';
+import type { MenuSettleState, MenuSettleStep } from './menuSettle.ts';
 import {
   readTranscriptFile,
   type TranscriptRead,
@@ -125,13 +126,12 @@ export interface AgentProvider {
   lastModel(lines: string[]): string | null;
   // live pane status
   scanPane(paneText: string): PaneScan;
-  // Claude 2.1.x shows a BLOCKING "Resume from summary?" picker on `--resume` of a large session;
-  // an unattended resume strands there. Given the current pane text, return the keystroke that
-  // dismisses it per the machine's resumePicker policy — the option NUMBER read from the pane, so
-  // a reordered menu still gets the right key — or null when no picker is showing. Pure: text +
-  // config → key. The supervisor polls this right after launch and sends the key (+Enter only if
-  // the number key didn't already confirm). Optional: agents without such a picker omit it.
-  promptAnswer?(paneText: string, m: MachineConfig): string | null;
+  // Claude shows BLOCKING menus at startup (folder trust, and on `--resume` of a large session the
+  // "Resume from summary?" picker); an unattended launch strands there. Given the state of the
+  // answer so far and the current visible screen, say what the supervisor may do next: wait, press
+  // ONE key, or stop. Pure: state + text + config → step. The caller captures, presses and waits for
+  // the key to render. Optional: agents without such menus omit it.
+  settleMenu?(state: MenuSettleState, paneText: string, m: MachineConfig): MenuSettleStep;
   // Inter-agent chat is a structured provider-owned pane verdict. A bool cannot distinguish a
   // blocking menu from a running turn, an occupied composer or a half-painted/unknown frame; those
   // states have different wait semantics and different hold explanations. Styled capture is kept so

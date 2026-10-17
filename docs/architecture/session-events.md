@@ -60,11 +60,15 @@ moment it connected.
 puts the agent straight back to work **without a new user turn**, so nothing else would ever follow.
 A reader tracking state would leave that session flagged "waiting for you" for hours.
 
-The supervisor answers a *startup* menu on an unattended resume, and it answers each one **once**.
-The arming is spent by pressing and restored only by observing the pane with no menu on it, so two
-menus in a row — folder trust, then the resume picker — are both answered while a second press into
-the same unchanged screen is unreachable. An answer that does not clear its menu ends the watch and
-leaves the session visibly waiting, which `doctor` reports and a person can act on.
+The supervisor answers a *startup* menu — on an unattended resume and on a session just created —
+and it answers each one **once**, one key at a time (`agent/claude/menuStep.ts`). It reads the
+visible screen, chooses the option by its text, moves the cursor one option and checks that it moved
+exactly one before the next key, and presses `Enter` only on a screen that shows the cursor on the
+chosen option. The arming is spent by `Enter` and restored by observing the pane with no menu on it
+or a menu of a different kind, so two menus in a row — folder trust, then the resume picker — are
+both answered while a second press into the same unchanged screen is unreachable. An answer that
+does not clear its menu, or a navigation key after which the menu is not where it should be, ends
+the watch and leaves the session visibly waiting, which `doctor` reports and a person can act on.
 
 The asymmetry is deliberate and is the whole design. Missing a menu strands a session in a state
 every other signal already reports; pressing a key into a pane that is no longer a menu is

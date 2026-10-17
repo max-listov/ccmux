@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { loadSessions } from '../../session/registry.ts';
 import type { MachineConfig, Session } from '../../types.ts';
+import { claudeProfile, knownProjectsDirs } from './profileRoot.ts';
 
 /**
  * Path to a session's conversation transcript.
@@ -33,9 +35,10 @@ function safeRealpath(dir: string): string {
   }
 }
 
-/** Provider hook: the expected transcript path for this session (Claude always has one). */
+/** Provider hook: the expected transcript path for this session (Claude always has one). It lives
+ *  under the session's own profile — see `claudeProfile` — not under the machine's default root. */
 export function historyFile(s: Session, m: MachineConfig): string {
-  return histFile(s.dir, s.uuid, m.projectsDir);
+  return histFile(s.dir, s.uuid, claudeProfile(s, m).projectsDir);
 }
 
 /**
@@ -62,20 +65,25 @@ export function resumeArgs(uuid: string, dir: string, projectsDir: string): stri
 export function findHistoryElsewhere(s: Session, m: MachineConfig): string | null {
   const expected = historyFile(s, m);
   let best: { path: string; size: number } | null = null;
-  let dirs: string[];
-  try {
-    dirs = readdirSync(m.projectsDir);
-  } catch {
-    return null; // no projects root → nothing to search, and nothing to claim
-  }
-  for (const dir of dirs) {
-    const candidate = join(m.projectsDir, dir, `${s.uuid}.jsonl`);
-    if (candidate === expected) continue;
+  // Every root a session on this machine writes to: a conversation that is missing at its own
+  // profile's path may sit under the machine's default root or under another profile's, which is
+  // what a changed `envFile` leaves behind.
+  for (const root of knownProjectsDirs(loadSessions(m), m)) {
+    let dirs: string[];
     try {
-      const size = statSync(candidate).size;
-      if (best === null || size > best.size) best = { path: candidate, size };
+      dirs = readdirSync(root);
     } catch {
-      // not a directory, or no such conversation in it
+      continue; // no such root → nothing to search there, and nothing to claim
+    }
+    for (const dir of dirs) {
+      const candidate = join(root, dir, `${s.uuid}.jsonl`);
+      if (candidate === expected) continue;
+      try {
+        const size = statSync(candidate).size;
+        if (best === null || size > best.size) best = { path: candidate, size };
+      } catch {
+        // not a directory, or no such conversation in it
+      }
     }
   }
   return best?.path ?? null;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { RateLimitsReport } from './rateLimitsReport.ts';
 
 /**
  * How much of a subscription plan a runtime says has been used, in one vocabulary.
@@ -44,6 +45,14 @@ export const PlanLimitsSchema = z
     windows: z.array(PlanWindowSchema).max(32),
     observedAt: z.iso.datetime(),
     /**
+     * Where the numbers came from, because the same account is measured three ways and they do not
+     * age alike. `native` is the runtime's own session answering for its account; `statusline` is
+     * the status line of a terminal session (only sent after the session's first model response);
+     * `probe` is a one-shot call of the vendor's own CLI for an account that has no fresher answer.
+     * Defaulted, because records written before this field existed were all `native`.
+     */
+    source: z.enum(['native', 'statusline', 'probe']).default('native'),
+    /**
      * Why the last attempt to refresh this sample did not replace it.
      *
      * A failed read leaves the previous measurement standing, which is right — a zero would be a
@@ -59,6 +68,18 @@ export type PlanLimits = z.infer<typeof PlanLimitsSchema>;
 
 /** How long a sample may stand before it is asked again, whichever runtime produced it. */
 export const PLAN_LIMITS_MAX_AGE_MS = 5 * 60_000;
+
+/**
+ * How old a measurement may be before it is called stale.
+ *
+ * A native runtime is asked again every few minutes, so five minutes without an answer is a fault. A
+ * status line only speaks while its session works, and a probe runs on a schedule of tens of
+ * minutes, so for those the same age is simply the interval between measurements and calling it
+ * stale would mark nearly every reading. Thirty minutes is past the longest scheduled gap.
+ */
+export function planLimitsStaleAfterMs(source: PlanLimits['source']): number {
+  return source === 'native' ? PLAN_LIMITS_MAX_AGE_MS : 30 * 60_000;
+}
 
 /**
  * A window stops describing the present when its own interval ends — a clock event, not a spend.
@@ -133,7 +154,9 @@ const readWindow = (
 ): PlanWindow | null => {
   if (raw === null || typeof raw !== 'object') return null;
   const source = raw as Record<string, unknown>;
-  const filled = percent(source.utilization ?? source.usedPercent ?? source.used_percent);
+  const filled = percent(
+    source.utilization ?? source.usedPercent ?? source.used_percent ?? source.used_percentage,
+  );
   if (filled === null) return null;
   const minutes = source.windowDurationMins ?? source.window_minutes ?? source.windowMinutes;
   return {
@@ -149,13 +172,47 @@ const readWindow = (
   };
 };
 
+/**
+ * The plan windows a terminal Claude session's status line reported, in the shared vocabulary.
+ *
+ * Only what was reported is a window: a render that carried no `rate_limits` is not a statement
+ * that the plan has none, so there is no `no-plan-limit` answer here — the caller passes null and
+ * gets null, which the projection carries as "not measured". `observedAt` is the time of the render
+ * that carried the windows, not of the latest render.
+ */
+export function statusLinePlanLimits(report: RateLimitsReport | null): PlanLimits | null {
+  if (report === null) return null;
+  const windows: PlanWindow[] = [];
+  for (const [key, window] of [
+    ['five_hour', report.fiveHour],
+    ['seven_day', report.sevenDay],
+  ] as const) {
+    if (window === null) continue;
+    const read = readWindow(key, { used_percentage: window.pct, resets_at: window.resetsAt });
+    if (read !== null) windows.push(read);
+  }
+  if (windows.length === 0) return null;
+  return {
+    answer: 'known',
+    plan: null,
+    windows,
+    observedAt: new Date(report.at).toISOString(),
+    source: 'statusline',
+    error: null,
+  };
+}
+
 /** The runtime does not report plan limits at all — distinct from reporting that there are none. */
-export function unpublishedPlanLimits(now: number): PlanLimits {
+export function unpublishedPlanLimits(
+  now: number,
+  source: PlanLimits['source'] = 'native',
+): PlanLimits {
   return {
     answer: 'unpublished',
     plan: null,
     windows: [],
     observedAt: new Date(now).toISOString(),
+    source,
     error: null,
   };
 }
@@ -167,15 +224,19 @@ export function unpublishedPlanLimits(now: number): PlanLimits {
  * an API-key session reports no windows AND no limit, and a subscription session that has used
  * nothing reports windows at zero. Those are opposite facts with the same window count.
  */
-export function claudePlanLimits(reported: unknown, now: number): PlanLimits {
+export function claudePlanLimits(
+  reported: unknown,
+  now: number,
+  origin: PlanLimits['source'] = 'native',
+): PlanLimits {
   const observedAt = new Date(now).toISOString();
-  if (reported === null || typeof reported !== 'object') return unpublishedPlanLimits(now);
+  if (reported === null || typeof reported !== 'object') return unpublishedPlanLimits(now, origin);
   const source = reported as Record<string, unknown>;
   const plan = label(source.subscription_type, 64);
   if (source.rate_limits_available === false)
-    return { answer: 'no-plan-limit', plan, windows: [], observedAt, error: null };
+    return { answer: 'no-plan-limit', plan, windows: [], observedAt, source: origin, error: null };
   const limits = source.rate_limits;
-  if (limits === null || typeof limits !== 'object') return unpublishedPlanLimits(now);
+  if (limits === null || typeof limits !== 'object') return unpublishedPlanLimits(now, origin);
   const windows: PlanWindow[] = [];
   for (const [key, raw] of Object.entries(limits as Record<string, unknown>)) {
     if (key === 'model_scoped') {
@@ -194,7 +255,14 @@ export function claudePlanLimits(reported: unknown, now: number): PlanLimits {
     const window = readWindow(key, raw);
     if (window) windows.push(window);
   }
-  return { answer: 'known', plan, windows: windows.slice(0, 32), observedAt, error: null };
+  return {
+    answer: 'known',
+    plan,
+    windows: windows.slice(0, 32),
+    observedAt,
+    source: origin,
+    error: null,
+  };
 }
 
 /**
@@ -218,6 +286,7 @@ export function mergeRateLimitEvent(
     plan: base.plan,
     windows: [...base.windows.filter((w) => w.key !== window.key), window].slice(0, 32),
     observedAt: new Date(now).toISOString(),
+    source: 'native',
     error: null,
   };
 }
@@ -229,9 +298,13 @@ export function mergeRateLimitEvent(
  * same fact in snake_case after a turn. One reader for both, because a second one would drift.
  * `rateLimitsByLimitId` carries the per-model buckets, keyed by the id the server named them with.
  */
-export function codexPlanLimits(reported: unknown, now: number): PlanLimits {
+export function codexPlanLimits(
+  reported: unknown,
+  now: number,
+  origin: PlanLimits['source'] = 'native',
+): PlanLimits {
   const observedAt = new Date(now).toISOString();
-  if (reported === null || typeof reported !== 'object') return unpublishedPlanLimits(now);
+  if (reported === null || typeof reported !== 'object') return unpublishedPlanLimits(now, origin);
   const outer = reported as Record<string, unknown>;
   // The account read answers with an envelope — the main bucket beside a map of the per-model ones
   // — while the rollout writes the bucket alone. Unwrapping here rather than at each caller is what
@@ -274,8 +347,15 @@ export function codexPlanLimits(reported: unknown, now: number): PlanLimits {
       if (id === primaryId || bucket === null || typeof bucket !== 'object') continue;
       push(id, bucket as Record<string, unknown>);
     }
-  if (windows.length === 0) return unpublishedPlanLimits(now);
-  return { answer: 'known', plan, windows: windows.slice(0, 32), observedAt, error: null };
+  if (windows.length === 0) return unpublishedPlanLimits(now, origin);
+  return {
+    answer: 'known',
+    plan,
+    windows: windows.slice(0, 32),
+    observedAt,
+    source: origin,
+    error: null,
+  };
 }
 
 /** Known window names, for the providers that name a window instead of stating its length. */
@@ -337,7 +417,8 @@ export function formatPlanLimits(limits: PlanLimits | null, now: number): string
   // percentage carries no date on it, and a bar drawn from a ninety-minute-old sample looks exactly
   // like one drawn a second ago.
   const age = now - Date.parse(limits.observedAt);
-  const stale = age >= PLAN_LIMITS_MAX_AGE_MS ? `${ago(age, 'measured')} · ` : '';
+  const stale = age >= planLimitsStaleAfterMs(limits.source) ? `${ago(age, 'measured')} · ` : '';
+  const via = limits.source === 'native' ? '' : ` (via ${limits.source})`;
   return (
     stale +
     [...limits.windows]
@@ -353,6 +434,7 @@ export function formatPlanLimits(limits: PlanLimits | null, now: number): string
         return `${planWindowLabel(window)} ${Math.round(window.percent)}%${resets}`;
       })
       .join(' · ') +
+    via +
     failed
   );
 }

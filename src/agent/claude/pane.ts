@@ -91,10 +91,10 @@ export function scanPane(paneText: string): PaneScan {
   };
 }
 
-// Blocking selection menus — WHICH one is up, and the keystroke that answers it — now live in a
-// table (./prompts.ts) rather than as one hard-coded case here. Re-exported so the provider contract
+// Blocking selection menus — WHICH one is up (./prompts.ts) and the key that answers it
+// (./menuStep.ts) — rather than one hard-coded case here. Re-exported so the provider contract
 // and the chat-delivery guard keep their existing names.
-export { atInteractiveMenu, detectPrompt, promptAnswer } from './prompts.ts';
+export { atInteractiveMenu, detectPrompt } from './prompts.ts';
 
 /** Safe to inject an inter-agent chat message into this pane right now? The only unsafe state is
  *  a selection menu (would pick an option). WORKING is safe — Claude QUEUES typed input and runs

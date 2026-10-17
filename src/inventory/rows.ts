@@ -18,6 +18,7 @@ import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
 import { loadOutboxAcked } from '../fleet/flush.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
+import { freshestLimits, type ProfileView, profileViews, viewsBySession } from '../quota/view.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import type { PlanLimits } from '../runtime/planLimits.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
@@ -104,6 +105,7 @@ async function buildRow(
   shouldCapture: boolean,
   letters: ReadonlyMap<string, SessionLetters>,
   agentPane: string | null,
+  profile: ProfileView | undefined,
   observation?: { pane: string | null },
 ): Promise<ListRow> {
   const lastMessage = lastTranscriptMessage(s, m); // works running or stopped
@@ -230,8 +232,12 @@ async function buildRow(
     modelId,
     // The live answer first, then the one kept from before it stopped: a blocked session still ran
     // on an account, and dropping the row made a consumer's plan bar read as "no plan".
-    account: native?.read.snapshot?.account ?? native?.read.retained?.account ?? null,
-    planLimits: native?.read.snapshot?.planLimits ?? null,
+    // What the runtime says about itself first, then what the session's PROFILE says: the same
+    // account is signed in under every session of a profile, and its window is one window, so a
+    // session with nothing to report of its own shows the profile's newest measurement.
+    account:
+      native?.read.snapshot?.account ?? native?.read.retained?.account ?? profile?.account ?? null,
+    planLimits: freshestLimits(native?.read.snapshot?.planLimits, profile?.limits),
     costUsd: native?.read.snapshot?.spend?.totalCostUsd ?? null,
     contextLabel,
     context,
@@ -367,7 +373,11 @@ export async function collectRows(
   const nowSec = Date.now() / 1000;
   // One session's row is built by the same code as the whole list: a second way to decide a
   // session's state would disagree with the first the day either changed.
-  const sessions = loadSessions(m).filter((s) => opts?.only === undefined || s.name === opts.only);
+  const registered = loadSessions(m);
+  const sessions = registered.filter((s) => opts?.only === undefined || s.name === opts.only);
+  // The profile each session runs under, built from EVERY registered session: a profile's window is
+  // measured by whichever of its sessions spoke last, not by the one asked about.
+  const profiles = viewsBySession(profileViews(m, registered), registered, m);
   const liveNames = opts?.liveNames;
   // One pass for the whole machine, from the same two sources `chat log` prints: the ledger for what
   // arrived and the outbox for what was sent. Per row it would be one pass per session.
@@ -385,6 +395,7 @@ export async function collectRows(
         liveNames === undefined || liveNames.has(s.name),
         letters,
         agentPanes.get(s.name) ?? null,
+        profiles.get(s.name),
         opts?.observation === undefined
           ? undefined
           : { pane: opts.observation.panes.get(s.name) ?? null },

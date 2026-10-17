@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
+import { claudeProfile } from '../agent/claude/profileRoot.ts';
 import { encodeDir } from '../agent/claude/resume.ts';
 import { parse } from '../agent/claude/transcript.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../types.ts';
@@ -19,25 +19,15 @@ import type { NativeHistoryEntry } from './schema.ts';
  */
 
 /**
- * Where the runtime keeps its transcripts.
- *
- * The machine's `projectsDir` describes where the INTERACTIVE CLI writes, and this mode is a
- * different process with its own configuration — pointing at the machine's value would read a
- * neighbouring directory and report an empty conversation as a complete one. Resolved the way the
- * runtime resolves it, and the file's existence is then checked rather than assumed.
+ * Where the runtime keeps this session's transcript: under the session's own profile, the same root
+ * the interactive provider reads (`claudeProfile`). This mode is a different process from the
+ * daemon, but the profile it runs under is what its session declared, not what the process asking
+ * happens to carry in its environment — and the file's existence is checked rather than assumed.
  */
-export function runtimeProjectsDir(env: NodeJS.ProcessEnv = process.env): string {
-  const configured = env.CLAUDE_CONFIG_DIR;
-  return join(
-    configured && configured.length > 0 ? configured : join(homedir(), '.claude'),
-    'projects',
-  );
-}
-
-export function nativeTranscriptPath(s: Session, env?: NodeJS.ProcessEnv): string {
+export function nativeTranscriptPath(s: Session, m: Pick<MachineConfig, 'projectsDir'>): string {
   const id = s.nativeSession?.id;
   if (!id) throw new Error('Native context identity is absent');
-  return join(runtimeProjectsDir(env), encodeDir(s.dir), `${id}.jsonl`);
+  return join(claudeProfile(s, m).projectsDir, encodeDir(s.dir), `${id}.jsonl`);
 }
 
 /** One transcript message as a history entry. Kinds are mapped, never invented. */
@@ -95,9 +85,8 @@ export function claudeContextApi(
   m: MachineConfig,
   s: Session,
   compactTurn: (signal: AbortSignal) => Promise<void>,
-  env?: NodeJS.ProcessEnv,
 ): NativeContextApi {
-  const path = nativeTranscriptPath(s, env);
+  const path = nativeTranscriptPath(s, m);
   const lines = (): string[] => {
     if (!existsSync(path))
       // Said rather than answered with an empty page: a conversation whose transcript is not where

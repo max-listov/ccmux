@@ -27,8 +27,9 @@ export type PanePrompt = {
   title: string;
 };
 
-const PICKER_SUMMARY = 'Resume from summary';
-const PICKER_FULL = 'Resume full session as-is';
+export const PICKER_SUMMARY = 'Resume from summary';
+export const PICKER_FULL = 'Resume full session as-is';
+export const TRUST_YES = 'Yes, I trust this folder';
 const TRUST_LINE = 'trust this folder';
 const DECLARED_LINE = 'pre-approves';
 
@@ -49,6 +50,31 @@ const MENU_CURSOR_RE = /❯\s*\d+\.\s/;
  * nowhere else, so it identifies the state without guessing at option shapes.
  */
 const MENU_FOOTER_RE = /Enter to confirm\s*·\s*Esc to cancel/;
+
+/**
+ * The menu the pane is showing NOW, as its own text, or null when the footer on screen belongs to a
+ * frame that has since been drawn over.
+ *
+ * A menu that was refused leaves its last frame in the pane when the agent exits, and the relaunched
+ * agent draws its menu again beneath it: the visible screen then holds the question twice. Counting
+ * options across both frames made the menu unreadable (so the supervisor never answered it) and
+ * reading the older one would answer a question that is no longer asked. The live frame is the one
+ * that ends the screen: the text after the LAST footer must be blank, and the frame starts after the
+ * footer before it. A screen with no footer is returned unchanged (the numbered picker has none).
+ */
+export function liveFrame(paneText: string): string | null {
+  const lines = paneText.trimEnd().split('\n');
+  const footers: number[] = [];
+  lines.forEach((line, i) => {
+    if (MENU_FOOTER_RE.test(line)) footers.push(i);
+  });
+  const last = footers.at(-1);
+  if (last === undefined) return paneText;
+  // Something was drawn below the footer: the frame it ends is not the one on screen.
+  if (last !== lines.length - 1) return null;
+  const before = footers.at(-2);
+  return lines.slice(before === undefined ? 0 : before + 1).join('\n');
+}
 
 export function paneTail(paneText: string, lines = 20): string {
   return paneText.trimEnd().split('\n').slice(-lines).join('\n');
@@ -87,7 +113,7 @@ export function terminalMenu(paneText: string) {
       : prompt.kind === 'external-imports'
         ? ['No, disable external imports', 'Yes, allow']
         : prompt.kind === 'folder-trust' || prompt.kind === 'declared-permissions'
-          ? ['No, exit', 'Yes, I trust this folder']
+          ? ['No, exit', TRUST_YES]
           : [];
   const options: { id: string; label: string }[] = [];
   let selected: number | null = null;
@@ -113,24 +139,4 @@ export function policyAnswers(kind: PromptKind, m: MachineConfig): boolean {
   if (kind === 'folder-trust') return m.trustPrompt !== 'off';
   if (kind === 'declared-permissions') return m.trustPrompt === 'declared';
   return false; // never guess at a menu we cannot read
-}
-
-/** The option NUMBER to press, read FROM THE PANE so a reordered menu still yields the right key. */
-function optionNumber(tail: string, label: string): string | null {
-  return tail.match(new RegExp(String.raw`(\d+)\.\s*${label}`))?.[1] ?? null;
-}
-
-/**
- * The keystroke that answers the menu currently up, per this machine's policy — or null when there
- * is no menu, or the policy declines it. Pure: the caller does the capturing and the sending.
- */
-export function promptAnswer(paneText: string, m: MachineConfig): string | null {
-  const prompt = detectPrompt(paneText);
-  if (prompt === null || !policyAnswers(prompt.kind, m)) return null;
-  const tail = paneTail(paneText, 40);
-  if (prompt.kind === 'resume-picker') {
-    return optionNumber(tail, m.resumePicker === 'summary' ? PICKER_SUMMARY : PICKER_FULL);
-  }
-  // Both trust variants offer the same affirmative option; read its number rather than assume "1".
-  return optionNumber(tail, 'Yes, I trust this folder');
 }

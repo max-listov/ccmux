@@ -63,9 +63,10 @@ export const COMMANDS: HelpEntry[] = [
       { name: 'runtime', kind: 'string' },
       { name: 'env-file', kind: 'string' },
       { name: 'router', kind: 'boolean' },
+      { name: 'timeout', kind: 'int', min: 1 },
     ],
-    args: '<name> <dir> [--agent claude|codex|opencode] [--runtime tui|app-server|native] [--env-file PATH] [--router] [-- flags]',
-    desc: 'create a managed session; OpenCode uses authenticated native control, Codex optionally uses App Server',
+    args: '<name> <dir> [--agent claude|codex|opencode] [--runtime tui|app-server|native] [--env-file PATH] [--router] [--timeout N] [-- flags]',
+    desc: 'create a managed session; OpenCode uses authenticated native control, Codex optionally uses App Server. An interactive Claude session is returned when it is ready for messages (--timeout N seconds, default 60; exit 2 and the reason if it is not, the session stays registered)',
     example: 'ccmux new agent-a ~/code/demo --agent opencode',
   },
   {
@@ -164,7 +165,7 @@ export const COMMANDS: HelpEntry[] = [
   {
     verb: 'send',
     args: '<name|machine:name> <keys...>',
-    desc: 'PRESS KEYS in a session (slash commands, short answers) — not a way to write to an agent: nothing is recorded, the reader cannot tell it from the human typing, there is no reply address, and it types even into a menu. Use msg for that',
+    desc: 'TYPE TEXT and press Enter in a session (slash commands, a menu\u2019s number) — not keys, and not a way to write to an agent: nothing is recorded, the reader cannot tell it from the human typing, there is no reply address. Refused while the session waits at a menu, except a lone number at a numbered one, because Enter would pick the highlighted option; the supervisor answers trust/resume menus itself, and the control operations terminal.prompt and terminal.respond answer the menus they recognise. Use msg to write to an agent',
     example: "ccmux send cc-api '/compact'",
   },
   {
@@ -306,6 +307,17 @@ export const COMMANDS: HelpEntry[] = [
     args: '[--json] [--all]',
     desc: 'every managed session on every fleet machine, with explicit provider and full address; never infer a target from cwd/project; an older peer with no provider reports unknown, not Claude',
     example: 'ccmux fleet',
+  },
+  {
+    verb: 'accounts',
+    flags: [
+      { name: 'json', kind: 'boolean' },
+      { name: 'refresh', kind: 'boolean' },
+      { name: 'local', kind: 'boolean' },
+    ],
+    args: '[--json] [--refresh] [--local]',
+    desc: 'every signed-in Claude and Codex account — those with sessions on any fleet machine and the profiles on this one that nobody runs a session under — with plan windows, where each number came from (native, statusline, probe) and how old it is; --refresh asks the vendors now instead of trusting the last measurement; --local skips the peers',
+    example: 'ccmux accounts --json',
   },
   {
     verb: 'external',

@@ -36,7 +36,11 @@ test('the status-line command imports no schema library and no agent graph', () 
   // measurement — which is how `vendor.ts` got here: it imports nothing at all, and evaluating it
   // measured 0.46–0.51 ms against the 5.1–6.0 ms of `metricsFile.ts`, which this list already
   // allows. A module that grows an import stops being that, and this test is where it is caught.
-  const leaves = ['../session/metricsFile.ts', '../inventory/vendor.ts'];
+  const leaves = [
+    '../session/metricsFile.ts',
+    '../inventory/vendor.ts',
+    '../runtime/rateLimitsReport.ts',
+  ];
   for (const specifier of specifiers)
     expect(specifier.startsWith('node:') || leaves.includes(specifier)).toBe(true);
 });
@@ -48,8 +52,19 @@ test('the metrics leaf stays a leaf', () => {
     expect(
       specifier.startsWith('node:') ||
         specifier === '../config/paths.ts' ||
-        specifier === '../util/atomic.ts',
+        specifier === '../util/atomic.ts' ||
+        specifier === '../runtime/rateLimitsReport.ts',
     ).toBe(true);
+});
+
+test('the plan-window types stay an import-free leaf', () => {
+  // Shared by the metrics file (node:fs) and the plan-limits projection (zod, and the packaged
+  // control client's declarations); a type that imported either would drag it into the other.
+  const types = readFileSync(
+    join(import.meta.dir, '..', 'src', 'runtime', 'rateLimitsReport.ts'),
+    'utf8',
+  );
+  expect(imports(types)).toEqual([]);
 });
 
 test('the vendor-mark leaf stays a leaf', () => {

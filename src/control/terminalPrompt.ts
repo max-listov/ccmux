@@ -1,7 +1,15 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
-import { paneTail, terminalMenu } from '../agent/claude/prompts.ts';
+import { expectedSelection, menuFingerprint, navigationKey } from '../agent/claude/menuStep.ts';
+import { liveFrame, terminalMenu } from '../agent/claude/prompts.ts';
+
+/** The menu on screen now; a screen whose footer belongs to a frame drawn over is not one. */
+const menuOf = (text: string) => {
+  const frame = liveFrame(text);
+  return frame === null ? null : terminalMenu(frame);
+};
+
 import { withSessionRegistryLock } from '../session/registryLock.ts';
 import { listAgentLiveness } from '../tmux/agentPane.ts';
 import { tmuxArgv } from '../tmux/argv.ts';
@@ -21,16 +29,7 @@ type Observation = {
   expires: number;
   consumed: boolean;
 };
-const fingerprint = (text: string) =>
-  createHash('sha256')
-    .update(
-      paneTail(text, 40)
-        .replaceAll('❯', ' ')
-        .split('\n')
-        .map((l) => l.trim())
-        .join('\n'),
-    )
-    .digest('hex');
+const fingerprint = menuFingerprint;
 
 /** One short-lived, single-use observation per exact session. Terminal input is not a provider CAS. */
 export class TerminalPrompts {
@@ -80,7 +79,7 @@ export class TerminalPrompts {
         message: 'The terminal changed during observation',
         status: 409,
       });
-    const menu = terminalMenu(text);
+    const menu = menuOf(text);
     const now = Date.now();
     for (const [key, value] of this.observations)
       if (!value.consumed && value.expires <= now) this.observations.delete(key);
@@ -148,7 +147,7 @@ export class TerminalPrompts {
           controlTarget(this.m, target);
           if ((await this.generation(pane)) !== observation.generation) throw stale();
           const text = await this.capture(pane);
-          const menu = terminalMenu(text);
+          const menu = menuOf(text);
           if (fingerprint(text) !== observation.fingerprint || !menu || menu.selected === null)
             throw stale();
           const desired = menu.options.findIndex((o) => o.id === input.optionId);
@@ -158,7 +157,7 @@ export class TerminalPrompts {
               status: 400,
             });
           observation.consumed = true;
-          const key = desired === menu.selected ? 'Enter' : desired > menu.selected ? 'Down' : 'Up';
+          const key = navigationKey(menu.selected, desired);
           await this.command(
             pane,
             'select-pane',
@@ -185,12 +184,15 @@ export class TerminalPrompts {
             signal.throwIfAborted();
             await Bun.sleep(20);
             const next = await this.capture(pane);
-            const nextMenu = terminalMenu(next);
+            const nextMenu = menuOf(next);
             if (fingerprint(next) !== observation.fingerprint || !nextMenu) throw stale();
-            if (nextMenu.selected !== menu.selected) {
+            // Exactly one option nearer: a jump, a wrap past the end or an unrelated change is not
+            // the key's doing, and pressing again from there would be navigating a menu we lost.
+            if (nextMenu.selected === expectedSelection(menu.selected, key)) {
               moved = true;
               break;
             }
+            if (nextMenu.selected !== menu.selected) throw stale();
           }
           if (!moved)
             throw new AppError('PROMPT_UNCONFIRMED', {

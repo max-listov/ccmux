@@ -29,6 +29,7 @@ import { DaemonPerformance } from '../monitoring/performance.ts';
 import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
 import { processRoots } from '../monitoring/tmux.ts';
+import { refreshQuota } from '../quota/refresh.ts';
 import { autoUpdateOnce } from '../release/update.ts';
 import { sweepFiniteWorkloadDirectories } from '../runtime/finiteWorkload.ts';
 import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../runtime/journalOwner.ts';
@@ -40,6 +41,7 @@ import {
 } from '../runtime/oomPriority.ts';
 import { readProcTable } from '../runtime/procTable.ts';
 import { healOnce } from '../session/heal.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { createUsageObservation } from '../usage/observation.ts';
 import { proveBootBundle } from '../util/bootGuard.ts';
@@ -384,6 +386,22 @@ export function createDaemonApplication(
     },
     onError: (error) => log.warn({ msg: 'transcript index prune failed', err: String(error) }),
   });
+  // The account quota behind `list`, `fleet` and `accounts`. A terminal session's status line only
+  // reports while the session works, so an account whose sessions are quiet is re-read from the
+  // vendor's own program — rarely, one profile at a time, and only for one whose newest measurement
+  // is older than the configured age (`quota` in the machine config).
+  const quotaRefresh = schedule({
+    id: 'quota-refresh',
+    everyMs: 60_000,
+    startAfterMs: 30_000,
+    overlap: { mode: 'skip' },
+    run: async ({ signal }) => {
+      const m = machine();
+      if (m.quota.probe === 'off') return;
+      await refreshQuota(m, loadSessions(m), { signal });
+    },
+    onError: (error) => log.warn({ msg: 'quota refresh failed', err: String(error) }),
+  });
   const application: ApplicationHandle = createApplication({
     id: 'ccmux-daemon',
     resources: [
@@ -402,6 +420,7 @@ export function createDaemonApplication(
       healing,
       oomPriority,
       cachePrune,
+      quotaRefresh,
     ],
     shutdown: { gracePeriodMs: 5000, forceTimeoutMs: 2000 },
     onResourceFailure: ({ resourceId, phase, error }) =>
@@ -424,6 +443,7 @@ export function createDaemonApplication(
       healing,
       oomPriority,
       cachePrune,
+      quotaRefresh,
     },
   };
 }

@@ -155,3 +155,45 @@ declarations, and when the list is empty the migration is provably over. The dis
 from the stamp: a stamp with no `inputs` map was written by a build that inherited, so its session is
 still carrying those variables; a stamp whose `inputs.env` is null was written under the recipe, so a
 file beside it is inert and reporting it would be crying wolf.
+
+## The profile layer: where a Claude session keeps its state
+
+A Claude **profile** is a `CLAUDE_CONFIG_DIR`. The agent writes a session's conversation to
+`<profile>/projects/…` and its sign-in and per-folder trust flags to `<profile>/.claude.json`; with
+no profile the same files are `~/.claude/projects` and `~/.claude.json` — which is a different file
+from `~/.claude/.claude.json`, so "not set" and "set to the default directory" are different
+answers. `claudeProfile(session, machine)` (`src/agent/claude/profileRoot.ts`) is the one place that
+answers, and everything that looks for a session's conversation, its sign-in or its user settings
+asks it: the history file and resume branch, follow-the-fork, the native transcript, the `rules` and
+`mcp` digests of the RESTART column, the `ANTHROPIC_API_KEY` decision at launch, the account shown
+in `list`. (The status-line process runs inside the agent and reads the profile from its own
+`CLAUDE_CONFIG_DIR`, which the launch sets from this same answer.)
+
+The profile comes from the **session's declared env file** (`CLAUDE_CONFIG_DIR` in it) and from the
+machine's `projectsDir`, never from the environment of the process that asks. The daemon, a
+`ccmux list` typed inside another profile's session and the supervisor loop have different
+environments; a session whose profile depended on who looked would be a different session to each.
+The launch applies the same declared file, and a `CLAUDE_CONFIG_DIR` the launching environment
+carries is removed from sessions that declare none, so the computed profile is what the agent got:
+a session without a declaration runs under the machine's default profile.
+
+The declared file is read through a cache keyed by its modification time and size, because history
+lookups run in the daemon's hot loops. Its other values are reduced to one yes/no — whether the
+session brings its own credentials (an API key, an auth or OAuth token, a cloud provider or a
+gateway) — and are never kept.
+
+### A conversation that was seen
+
+The supervisor refuses to start a NEW conversation over one whose file has gone missing. Evidence
+that a conversation existed is `seen/<name>` in the state root, holding the uuid whose file was
+observed: `_run` writes it when it finds the history file at a launch, and `hook-status` writes it
+when a turn ends (`Stop` names the conversation). It is keyed by uuid, so a renewed session inherits
+nothing, and it is not part of `clearStatus`, so a restart does not erase it. A conversation found
+under another known root (the machine's, or any registered session's profile) is evidence by itself.
+Having launched is not evidence: the launch stamp is written before the agent starts and the agent
+creates the file with the first message, so a session closed on its folder-trust question never had
+a conversation and starts fresh. Claude removes old transcripts on its own schedule; a long-quiet
+session whose file was removed that way is blocked at restart and says where it looked.
+
+`ccmux env-file` warns when a profile change moves the place the conversation is looked for.
+

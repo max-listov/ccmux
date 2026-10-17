@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { MachineConfig, Session } from '../../../types.ts';
+import { claudeProfile } from '../profileRoot.ts';
 import { histFile } from '../resume.ts';
 
 /**
@@ -18,10 +19,13 @@ import { histFile } from '../resume.ts';
  */
 export function resumesConversation(
   m: Pick<MachineConfig, 'projectsDir'>,
-  session: Pick<Session, 'dir' | 'nativeSession'>,
+  session: Pick<Session, 'dir' | 'envFile' | 'nativeSession'>,
   startedFile: string,
 ): boolean {
   const id = session.nativeSession?.id;
   if (id === undefined) return false;
-  return existsSync(startedFile) && existsSync(histFile(session.dir, id, m.projectsDir));
+  return (
+    existsSync(startedFile) &&
+    existsSync(histFile(session.dir, id, claudeProfile(session, m).projectsDir))
+  );
 }

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { STATUS_DIR } from '../config/paths.ts';
+import type { RateLimitsReport, RateLimitWindow } from '../runtime/rateLimitsReport.ts';
 import { atomicWrite } from '../util/atomic.ts';
 
 /**
@@ -31,6 +32,14 @@ export interface MetricsStatus {
   renders: number;
   /** Start of the window `renders` covers, rolled forward so the rate describes recent behaviour. */
   rendersSince: number;
+  /**
+   * The plan windows Claude last reported, with the time of the render that carried them.
+   *
+   * Claude puts `rate_limits` in the status-line JSON only after the first model response of a
+   * session, so a render without them says nothing about the plan — it must not erase what an
+   * earlier one reported, and it must not refresh its time either. Null = never reported.
+   */
+  rateLimits: RateLimitsReport | null;
 }
 
 const safe = (name: string): string => name.replace(/[^\w.-]/g, '_');
@@ -38,6 +47,23 @@ export const metricsPath = (name: string): string => `${STATUS_DIR}/${safe(name)
 
 const numberOrNull = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+function readWindow(value: unknown): RateLimitWindow | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const row = value as Record<string, unknown>;
+  const pct = numberOrNull(row.pct);
+  return pct === null ? null : { pct, resetsAt: numberOrNull(row.resetsAt) };
+}
+
+function readRateLimits(value: unknown): RateLimitsReport | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const row = value as Record<string, unknown>;
+  const at = numberOrNull(row.at);
+  if (at === null) return null;
+  const fiveHour = readWindow(row.fiveHour);
+  const sevenDay = readWindow(row.sevenDay);
+  return fiveHour === null && sevenDay === null ? null : { at, fiveHour, sevenDay };
+}
 
 /**
  * Read the record, or null when there is not one this reader can trust.
@@ -61,6 +87,7 @@ export function readMetricsFile(name: string): MetricsStatus | null {
       costUsd: numberOrNull(row.costUsd),
       renders: numberOrNull(row.renders) ?? 0,
       rendersSince: numberOrNull(row.rendersSince) ?? 0,
+      rateLimits: readRateLimits(row.rateLimits),
     };
   } catch {
     return null;

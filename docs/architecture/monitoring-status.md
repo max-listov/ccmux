@@ -217,6 +217,75 @@ An older producer does not publish this surface; callers receive unavailable/sta
 falling back to an expensive scan. There is no implicit consumer-side fallback.
 
 
+## Account quota: every signed-in account, from every source
+
+`ccmux accounts [--json] [--refresh] [--local]` is the one request that answers "which accounts do we
+have and how full are they": every Claude and Codex account — those with sessions on any fleet
+machine, and the profiles on this machine that no session runs under — with the plan windows, where
+each number came from and how old it is. `fleet --json` carries the same `accounts[]`, and every
+session row (`list --json`, the fleet slice) carries its account's `account` and `planLimits`.
+
+**Profiles.** A profile is a directory the vendor's program keeps a login in: a Claude config
+directory or a Codex home (see [the profile layer](launch-recipe.md)). They are found from the
+registered sessions (their declared env files), from the default profile, and from sibling
+directories in the home folder (`.claude-*`, `.codex-*`) that hold a login — so an account signed in
+by hand, with no session, is found too. The per-row view uses only what sessions name; the home-folder
+scan runs for `accounts`, `fleet` and the refresh, with the large login file cached by modification
+time.
+
+**Three sources, newest wins.** On a tie in time the runtime's own answer is preferred, then the status line, then the probe. The same account is measured by (1) a native runtime's own session
+(`source: native`), (2) the status line of any terminal session under the profile (`statusline`), and
+(3) a probe of the vendor's program (`probe`). The newest measurement that actually reads the windows
+is the account's answer; a newer answer that is only an absence (a runtime that does not publish, a
+failed attempt) never hides an older real one. Every `planLimits` says its `source`; the line `list`
+prints ends `(via <source>)`. A status line speaks only while its session works (and only after its
+first model response), so it is stale after thirty minutes rather than five; a native runtime is asked
+every few minutes and is stale after five.
+
+**The probe asks the vendor's own program and reads no token.**
+- Claude: `claude auth status --json` names who is signed in (`email`, `subscriptionType`,
+  `apiProvider`, `authMethod`) — about 0.15 s of CPU. A profile that is not a claude.ai login or not
+  served first-party (an API key, a cloud provider, a gateway) is `no-plan-limit`, decided from that
+  answer and never from how `/usage` is worded, and `/usage` is not asked. Otherwise
+  `claude -p "/usage" --no-session-persistence --model haiku --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+  --settings '{"disableAllHooks":true}'` runs in a scratch directory under the state root: without the
+  profile's tool chain it costs a quarter less, and if a build ever stopped handling `/usage` itself the
+  text would go to a small model, not a large one. No conversation file is left behind. The environment
+  is the profile's, not the caller's: tokens, keys, cloud switches, gateways and `CCMUX_*` are removed
+  from what the daemon or a shell carries, then the profile's declared env file is applied — and only a
+  session that is signed in on the profile's own login lends its env file. Its text
+  is read strictly into `five_hour`, `seven_day` and `model_scoped:<model>` windows: the reset time has
+  no year and is named in a zone the line carries, so both come from the line and the clock; a line it
+  does not know spoils the whole report (an error naming the line) instead of being skipped. Measured
+  cost: 4 to 12 s of CPU per call, which is why it runs rarely.
+- A stopped daemon stops the program a probe is waiting on, and a killed program's pipes are released
+  after a second even if a grandchild still holds them. A pass and a `ccmux accounts --refresh` that
+  ask the same profile together make one call (a lock per profile; the second reads the first's answer).
+- Codex: a short `codex app-server` with `CODEX_HOME` answers `account/read` (`email`, `planType`, `type`)
+  and `account/rateLimits/read`, mapped by the same reader the native Codex runtime uses.
+
+**Plan is the vendor's word or nothing.** `plan` is what the freshest measurement names (`max`, `pro`);
+`subscription` is a display name when a source gives one (`Claude Max` from a native session). Neither
+is derived from the other, from a price list, or from the organisation tier in a profile file — that
+field is not a plan and is not read.
+
+**Schedule.** The daemon's `quota-refresh` pass (once a minute) probes a profile only when its newest
+measurement, from any source, is older than `quota.refreshMinutes` (machine config, default 15) or
+describes a window that has since reset (an answer with no windows — billed by the token — goes by age
+only); a failed profile backs off 5 minutes, doubling to an hour, and keeps its last good answer with the
+reason shown (`probe failed: …`). A profile that is now signed in as a different account than its record
+was taken for is asked at once, and the old record is not used meanwhile. `refreshMinutes` is capped at 25,
+below the thirty minutes after which a status-line or probe reading is called stale. Profiles are asked one at a
+time. `quota.probe: "off"` stops the pass; `ccmux accounts --refresh` asks now regardless.
+
+**Store.** One file per profile in `<state>/quota/` (atomic writes): who was signed in, the plan, the
+last good windows, the newest error and the failure count. Keyed by the profile, not the account in it,
+so a changed login does not inherit the previous account's windows.
+
+**What is not covered.** Peers that run an older build report accounts only through their session
+rows, so an account with no session on a peer is not in the fleet answer until that peer is updated;
+costs of terminal sessions stay unreported (`cost unknown`).
+
 ## Producer capture cost
 
 The observation pass captures every running interactive agent pane at the existing two-second

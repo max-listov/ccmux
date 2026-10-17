@@ -1,11 +1,8 @@
 import { expect, test } from 'bun:test';
+import { settleMenu } from '../src/agent/claude/menuStep.ts';
 import { scanPane } from '../src/agent/claude/pane.ts';
-import {
-  atInteractiveMenu,
-  detectPrompt,
-  policyAnswers,
-  promptAnswer,
-} from '../src/agent/claude/prompts.ts';
+import { atInteractiveMenu, detectPrompt, policyAnswers } from '../src/agent/claude/prompts.ts';
+import { initialMenuSettle } from '../src/agent/menuSettle.ts';
 import { deriveStatus } from '../src/tui/status.ts';
 import { makeMachine } from './helpers.ts';
 
@@ -79,18 +76,45 @@ test('the escalated level accepts declared permissions, and off answers neither'
   expect(policyAnswers('folder-trust', makeMachine({ trustPrompt: 'off' }))).toBe(false);
 });
 
-test('the keystroke is read from the pane, so a reordered menu still gets the right option', () => {
-  expect(promptAnswer(TRUST, makeMachine())).toBe('1');
+test('the first key is read from the pane, so a reordered menu still gets the right option', () => {
+  const m = makeMachine();
+  // Cursor already on "Yes": confirm. The fixture is the numbered rendering of the menu.
+  expect(settleMenu(initialMenuSettle, TRUST, m).action).toEqual({ act: 'press', key: 'Enter' });
   const reordered = TRUST.replace(
     '❯ 1. Yes, I trust this folder\n   2. No, exit',
     '❯ 1. No, exit\n   2. Yes, I trust this folder',
   );
-  expect(promptAnswer(reordered, makeMachine())).toBe('2');
+  // Cursor on "No": move toward "Yes", which is now below it.
+  expect(settleMenu(initialMenuSettle, reordered, m).action).toEqual({ act: 'press', key: 'Down' });
 });
 
-test('a declined prompt yields no keystroke — the session waits rather than being answered for', () => {
-  expect(promptAnswer(DECLARED, makeMachine())).toBeNull();
-  expect(promptAnswer(DECLARED, makeMachine({ trustPrompt: 'declared' }))).toBe('1');
+test('the menu without numbers is answered too — the form the current client draws', () => {
+  // Measured on a real client: no digits, cursor on either option. The number-based reader found no
+  // answer in this form, and the session waited at the question indefinitely.
+  const unnumbered = (cursorOnYes: boolean) => `
+ Accessing workspace:
+ /home/u/proj
+ Security guide
+ ${cursorOnYes ? ' ' : '❯'} No, exit
+ ${cursorOnYes ? '❯' : ' '} Yes, I trust this folder
+ Enter to confirm · Esc to cancel
+`;
+  const m = makeMachine();
+  expect(settleMenu(initialMenuSettle, unnumbered(false), m).action).toEqual({
+    act: 'press',
+    key: 'Down',
+  });
+  expect(settleMenu(initialMenuSettle, unnumbered(true), m).action).toEqual({
+    act: 'press',
+    key: 'Enter',
+  });
+});
+
+test('a declined prompt yields no key — the session waits rather than being answered for', () => {
+  expect(settleMenu(initialMenuSettle, DECLARED, makeMachine()).action).toEqual({ act: 'wait' });
+  expect(
+    settleMenu(initialMenuSettle, DECLARED, makeMachine({ trustPrompt: 'declared' })).action,
+  ).toEqual({ act: 'press', key: 'Enter' });
 });
 
 test('the pane scan carries the question, so the fleet can stop calling it idle', () => {

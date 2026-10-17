@@ -1,5 +1,6 @@
 import { sessionsPath } from '../config/paths.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { clearConversationSeen } from '../session/conversationSeen.ts';
 import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
 import { removeSession } from '../session/registry.ts';
 import { killSession, lingeringNotice } from '../tmux/tmux.ts';
@@ -26,6 +27,7 @@ export async function cmdRm(name: string | undefined, force = false): Promise<nu
   // means a later session of the same name inherits a verdict passed on someone else — harmless
   // today only because neither its generation nor its uuid could match.
   clearLifecycleBlock(m, name);
+  clearConversationSeen(name);
   log.info({ msg: 'session removed', name });
   console.log(`stopped ${name}`);
   console.log(`removed ${name} from ${sessionsPath(m)} (jsonl history kept on disk)`);

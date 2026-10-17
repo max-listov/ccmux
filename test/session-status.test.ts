@@ -29,6 +29,7 @@ test('metrics roundtrip', async () => {
     costUsd: 1.2,
     renders: 1,
     rendersSince: 7,
+    rateLimits: null,
   });
   expect(readMetrics(NAME)?.pct).toBe(12);
 });
@@ -115,6 +116,7 @@ test('clearStatus drops BOTH files (stopped session shows no stale state)', asyn
     costUsd: null,
     renders: 1,
     rendersSince: 7,
+    rateLimits: null,
   });
   clearStatus(NAME);
   expect(readLifecycle(NAME)).toBeNull();

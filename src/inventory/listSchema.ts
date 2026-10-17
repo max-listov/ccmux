@@ -115,7 +115,9 @@ export const ListItemSchema = z.object({
    * independent bars. Null means this build never asked; a runtime that HAS been asked and does not
    * publish the fact says so inside, because "unpublished" and "nothing used" are opposite facts.
    */
-  planLimits: PlanLimitsSchema.nullable().default(null),
+  // Read loosely: a peer on a newer build may add keys to the plan windows, and a strict reader
+  // would then call that whole machine unreadable instead of ignoring what it does not know.
+  planLimits: PlanLimitsSchema.loose().nullable().default(null),
   costUsd: z.number().nullable().default(null),
   /** The env file this session declares (absolute), and whether it exists right now. A declared file
    *  that is missing does not stop the session — the original decision was "raise it and shout", since

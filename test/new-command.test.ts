@@ -40,7 +40,12 @@ async function run(config: string, args: string[]): Promise<number> {
 
 test('new records an explicit provider on the real command path', async () => {
   const { config, machine, project } = setup();
-  expect(await run(config, ['new', 'agent-a', project, '--agent', 'claude'])).toBe(0);
+  // An interactive Claude session is returned when it is ready for messages; this machine's Claude
+  // is a stand-in that never draws its interface, so the command registers the session and reports
+  // that it was not ready (2) — the registration is what this test is about.
+  expect(
+    await run(config, ['new', 'agent-a', project, '--agent', 'claude', '--timeout', '1']),
+  ).toBe(2);
   expect(loadSessions(machine)).toHaveLength(1);
   expect(loadSessions(machine)[0]?.agent).toBe('claude');
 });

@@ -1,8 +1,11 @@
 import { existsSync } from 'node:fs';
+import { claudeProfile } from '../agent/claude/profileRoot.ts';
+import { historyFile } from '../agent/claude/resume.ts';
 import { envFileKeys, envFilePath, envFiles, fileDigest } from '../agent/launch/launchInputs.ts';
 import { inheritsUndeclaredEnv } from '../agent/launch/sessionEnv.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { markConversationSeen } from '../session/conversationSeen.ts';
 import { loadSessions, setSessionEnvFile } from '../session/registry.ts';
 import { readLaunchStamp } from '../session/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -103,6 +106,23 @@ export async function cmdEnvFile(args: string[]): Promise<number> {
     if (resolved !== null && !existsSync(resolved)) {
       console.log(
         `warning: ${resolved} does not exist yet — the session will still start, and ccmux will keep saying so.`,
+      );
+    }
+  }
+  // A profile change moves where the conversation is looked for. Said before it is applied, because
+  // the old profile keeps the history and the restart will refuse to start a new one on top of it.
+  const current = loadSessions(m).find((s) => s.name === local);
+  if (current !== undefined) {
+    const next = { dir: current.dir, envFile: clear ? undefined : value };
+    const before = claudeProfile(current, m).projectsDir;
+    const after = claudeProfile(next, m).projectsDir;
+    if (current.agent === 'claude' && before !== after && existsSync(historyFile(current, m))) {
+      // The old profile may no longer be declared by any session once this one moves, so the
+      // restart could not find the conversation there. Having seen it now is what keeps the guard.
+      markConversationSeen(local, current.uuid);
+      console.log(
+        `warning: ${local} keeps its conversation under ${before}; the new profile looks under ${after}, ` +
+          'so a restart will be blocked rather than start a new conversation. Move the conversation, or `ccmux renew` to begin a fresh one.',
       );
     }
   }

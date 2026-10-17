@@ -1,8 +1,10 @@
+import { cursorNumber } from '../agent/claude/menuStep.ts';
+import { detectPrompt } from '../agent/claude/prompts.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { hasNoComposer } from '../runtime/modes.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
-import { sendKeysLiteral, sendKeysNamed } from '../tmux/tmux.ts';
+import { capturePaneScreen, sendKeysLiteral, sendKeysNamed } from '../tmux/tmux.ts';
 import { preview } from '../util/preview.ts';
 
 /** Long, prose-looking text aimed at a session that could have received it as CHAT. `send` types
@@ -12,6 +14,26 @@ import { preview } from '../util/preview.ts';
  *  a careful agent ends up using it for a multi-paragraph review request. */
 export function looksLikeMessage(text: string, recipientChatEnabled: boolean): boolean {
   return recipientChatEnabled && text.length > 200 && !text.trimStart().startsWith('/');
+}
+
+/**
+ * Why typing this into the pane would be wrong right now, or null when it would not.
+ *
+ * `send` types text and then Enter. At a menu that draws no numbers — the form Claude's folder-trust
+ * question takes — the Enter picks whatever the cursor is on, and the cursor starts on the refusal
+ * as often as on the acceptance: the session exits and is blocked for a conversation it never had.
+ * A numbered menu is the documented use (`send <name> 1`), because the number names the option.
+ */
+export function menuRefusal(screen: string, text: string, name: string): string | null {
+  const prompt = detectPrompt(screen);
+  if (prompt === null) return null;
+  if (cursorNumber(screen) !== null && /^\d{1,2}$/.test(text.trim())) return null;
+  return (
+    `send: ${name} is waiting at a menu (${prompt.title}); text and Enter would select the highlighted option. ` +
+    'The supervisor answers trust and resume menus itself (machine config trustPrompt, resumePicker). ' +
+    'A recognised menu is read with the control operation terminal.prompt and answered with terminal.respond; a numbered menu takes its number: ccmux send ' +
+    `${name} 1`
+  );
 }
 
 export async function cmdSend(
@@ -46,6 +68,13 @@ export async function cmdSend(
     return 1;
   }
   const text = keys.join(' ');
+  if (target.agent === 'claude') {
+    const refused = menuRefusal(await capturePaneScreen(m, name).catch(() => ''), text, name);
+    if (refused !== null) {
+      console.error(refused);
+      return 1;
+    }
+  }
   const ok = await sendKeysLiteral(m, name, text);
   if (!ok) {
     console.log(`send failed: ${name} not running?`);

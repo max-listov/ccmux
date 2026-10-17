@@ -334,6 +334,22 @@ export async function capturePane(m: MachineConfig, name: string, lines: number)
   return stdout;
 }
 
+/** The visible screen only, without scrollback: what the pane shows now, not what it showed before
+ *  the process in it last restarted. A menu that was answered or refused leaves its last frame in
+ *  scrollback, and a reader counting options across both would see the menu twice. */
+export async function capturePaneScreen(m: MachineConfig, name: string): Promise<string> {
+  const { code, stdout } = await onAgentPane(m, name, (target) => [
+    'capture-pane',
+    '-t',
+    target,
+    '-p',
+  ]);
+  // A failed capture is not an empty screen: read as "no menu" it would re-arm a menu that was
+  // answered, and the next press would go into a pane nobody looked at.
+  if (code !== 0) throw new Error('the pane could not be captured');
+  return stdout;
+}
+
 /**
  * The same capture, but KEEPING colour and attribute sequences (`-e`).
  *

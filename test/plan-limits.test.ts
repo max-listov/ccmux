@@ -153,6 +153,7 @@ test('the fullest window is read first, because it is the one that stops the wor
 const sample = (overrides: Partial<PlanLimits> = {}): PlanLimits => ({
   answer: 'known',
   plan: 'max',
+  source: 'native',
   windows: [
     {
       key: 'five_hour',
