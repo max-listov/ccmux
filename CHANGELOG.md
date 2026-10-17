@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.84.0] — 2026-10-17
+
+Account quota of every Claude and Codex account in one request, startup menus answered by the text of the option, and Claude profiles honoured for conversation history and resume.
+
 - Startup menus are answered by the text of the option, one key at a time, whether or not the menu is numbered: a session created with `ccmux new` no longer waits at "trust this folder", and the cursor starting on "No, exit" is no longer a refusal. `ccmux new` returns when an interactive Claude session is ready for messages (`--timeout`, default 60 s; exit 2 with the reason otherwise, the session stays registered).
 - `ccmux send` refuses to type text and Enter into a menu, except a lone number at a numbered one.
 - A session's Claude profile (`CLAUDE_CONFIG_DIR` in its env file) now decides where its conversation, sign-in and user settings are looked for. Restarting a session that runs under a profile resumes its conversation instead of ending blocked.
