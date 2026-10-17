@@ -3,9 +3,10 @@ import { loadMachineConfig } from '../config/machine.ts';
 import { delegationStopped } from '../delegation/cancel.ts';
 import { listAgentLiveness } from '../tmux/agentPane.ts';
 import { killSession } from '../tmux/tmux.ts';
-import type { Session } from '../types.ts';
+import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
-import { readLifecycleBlockForSession } from './lifecycleBlocks.ts';
+import { VERSION } from '../util/version.ts';
+import { clearBlockOfOlderVersion, readLifecycleBlockForSession } from './lifecycleBlocks.ts';
 import { findSession, loadSessions, updateSessionUuid } from './registry.ts';
 import { sleepBlocksStart } from './sleep/store.ts';
 import { startSession } from './start.ts';
@@ -41,8 +42,42 @@ export async function ensureOnce(deps: EnsureDeps): Promise<void> {
   }
 }
 
+/**
+ * The heal's start of one down session: not when it is stopped on purpose, and not when a block of THIS
+ * version or a newer one stands. A block written by an older version is not final for this one — it is removed once and
+ * the session is started under the code that is installed now; if that code refuses too, its own block
+ * (with its own version) stays.
+ */
+export async function startHealed(
+  m: MachineConfig,
+  name: string,
+  dir: string,
+  start: (name: string, dir: string) => Promise<void> = (n, d) => startSession(m, n, d),
+): Promise<void> {
+  const session = findSession(loadSessions(m), name);
+  if (!session || delegationStopped(m, session) || sleepBlocksStart(m, session)) return;
+  const block = readLifecycleBlockForSession(m, session);
+  if (block !== null) {
+    // A lock that cannot be taken must not end the pass for the sessions after this one.
+    const cleared = await clearBlockOfOlderVersion(m, name).catch((error: unknown) => {
+      log.warn({ msg: 'heal: could not look at a block', name, err: String(error) });
+      return false;
+    });
+    if (!cleared) return;
+    log.info({
+      msg: 'heal: block written by an older ccmux version — trying again under this one',
+      name,
+      blockVersion: block.version ?? 'unknown',
+      version: VERSION,
+      error: block.error.slice(0, 300),
+    });
+  }
+  log.info({ msg: 'heal: session down — restarting', name });
+  await start(name, dir);
+}
+
 /** One heal pass over this machine's sessions: start what is down, follow forks, and take down a
- *  session kept alive by another window after its agent died. The daemon runs it every second. */
+ *  session kept alive by another window after its agent died. The daemon runs it every `ensureInterval` (30 s by default). */
 export async function healOnce(): Promise<void> {
   const m = loadMachineConfig(); // fresh
   await ensureOnce({
@@ -64,17 +99,6 @@ export async function healOnce(): Promise<void> {
       await updateSessionUuid(m, s.name, next);
       return { ...s, uuid: next };
     },
-    start: (name, dir) => {
-      const session = findSession(loadSessions(m), name);
-      if (
-        !session ||
-        delegationStopped(m, session) ||
-        sleepBlocksStart(m, session) ||
-        readLifecycleBlockForSession(m, session)
-      )
-        return Promise.resolve();
-      log.info({ msg: 'heal: session down — restarting', name });
-      return startSession(m, name, dir);
-    },
+    start: (name, dir) => startHealed(m, name, dir),
   });
 }

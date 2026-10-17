@@ -165,4 +165,6 @@ export const LifecycleBlockSchema = z.object({
   generation: z.uuid().optional(),
   error: z.string().min(1),
   at: z.iso.datetime(),
+  /** The ccmux version that wrote the block. A block is final for that version only. */
+  version: z.string().min(1).optional(),
 });

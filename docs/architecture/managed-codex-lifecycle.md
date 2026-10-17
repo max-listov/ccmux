@@ -19,7 +19,25 @@ UUID in `sessions.jsonl`.
 |---|---|---|---|
 | pending | `pending-sessions.json` | One fresh Codex launch owns a unique generation and marker. | No |
 | ready | `sessions.jsonl` plus a transient `promoted` journal row in `pending-sessions.json` | The row contains the real rollout UUID and is the canonical managed peer. | Yes |
-| blocked | `lifecycle-blocks/<name>.json` | A terminal resume/admission/history error requires an explicit start/restart. | Yes, as `blocked` |
+| blocked | `lifecycle-blocks/<name>.json` | A terminal resume/admission/history error requires an explicit start/restart, or an update of ccmux: the block records the version that wrote it. | Yes, as `blocked` |
+
+### Blocks and updates
+
+A block is final for the version of ccmux that wrote it and for newer ones (`version` in the block
+file). An older version may have judged the session by a rule that has since been fixed, and a fix
+that ships must not leave sessions stopped by the rule it replaced. The heal therefore removes a block written by an older version (or by one
+before blocks carried a version) once and starts the session under the code installed now; when that
+code refuses too, it writes its own block, and a block of the current version stays terminal.
+
+A `_run` supervisor keeps the bundle it loaded, so it can outlive an update. At the top of every
+relaunch step — the agent has exited, nothing is running — it compares the installed bundle with the
+one it loaded; when they differ it leaves without judging the session, and the daemon starts the
+session under the installed code on its next heal pass (`ensureInterval`, 30 s by default). A block of a
+newer version than the daemon's stays, so a daemon that lags behind the installed bundle cannot undo
+the newer code's refusal in a loop. The hand-over also applies to an agent that exited fast. It closes the session's other windows (the
+session is taken down whole) and takes up to one heal pass, where a relaunch inside the pane took
+seconds. A block written by a newer version stays after a rollback until `ccmux start` clears it. A supervisor run from sources (`.ts` entry) never
+leaves, and a bundle that is missing at that instant counts as unchanged.
 
 The pending generation is never a conversation UUID. `sessions.jsonl` contains ready identities
 only, so chat, transcript, list, and fleet code cannot accidentally address a bootstrap token.

@@ -21,10 +21,12 @@ import {
 import { findSession, loadSessions } from '../session/registry.ts';
 import { sleepBlocksStart } from '../session/sleep/store.ts';
 import { writeLaunchStamp } from '../session/status.ts';
+import { supervisorIsStale } from '../session/supervisorCode.ts';
 import { capturePane, capturePaneScreen, sendKeysNamed } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { promptInvocation } from '../util/env.ts';
 import { log, setStderrLogging } from '../util/log.ts';
+import { VERSION } from '../util/version.ts';
 
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -110,13 +112,21 @@ export function missingConversation(
  * Provider-agnostic: a no-op when the provider has no such menu or the policy is "off". Not awaited
  * by the supervisor — it self-terminates while the loop blocks on the agent's exit.
  */
-async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvider): Promise<void> {
+export async function settlePrompts(
+  m: MachineConfig,
+  s: Session,
+  provider: AgentProvider,
+  gone: AbortSignal,
+): Promise<void> {
   const settle = provider.settleMenu;
   if (!settle) return;
   const deadline = Date.now() + PICKER_WATCH_MS;
   let state: MenuSettleState = initialMenuSettle;
   while (Date.now() < deadline) {
     await Bun.sleep(PICKER_POLL_MS);
+    // The agent this watcher was answering for has exited: its menus are not this loop's to answer,
+    // and a watcher left running would press keys at the NEXT launch beside that launch's own.
+    if (gone.aborted) return;
     let step: MenuSettleStep;
     try {
       step = settle(state, await capturePaneScreen(m, s.name), m);
@@ -134,6 +144,7 @@ async function settlePrompts(m: MachineConfig, s: Session, provider: AgentProvid
       });
       return;
     }
+    if (gone.aborted) return; // the agent exited while the screen was being read
     await sendKeysNamed(m, s.name, step.action.key);
     log.info({
       msg: 'answered a blocking prompt',
@@ -212,6 +223,16 @@ async function refuse(m: MachineConfig, s: Session, error: string): Promise<numb
   return 1;
 }
 
+/** Leave the session to the daemon's heal, which starts it under the code installed now. */
+function handOver(name: string): number {
+  log.info({
+    msg: 'supervisor: ccmux was updated since this process started — handing the session to heal',
+    name,
+    loadedVersion: VERSION,
+  });
+  return 0;
+}
+
 /** Supervise only a READY registry Session. Every child launch reloads canonical identity. */
 export async function superviseReady(
   m: MachineConfig,
@@ -225,6 +246,12 @@ export async function superviseReady(
   for (;;) {
     const s = findSession(loadSessions(m), name);
     if (!s) return 1;
+    // Before any decision about this session: the rules below belong to the version installed NOW. A
+    // supervisor that outlived an update would judge by the old ones, and a refusal it writes is
+    // final. No agent is running here, so no conversation is lost by leaving; the daemon takes the
+    // session down whole (other windows of it close) and starts it again under the installed code on
+    // its next heal pass (`ensureInterval`, 30 s by default).
+    if (supervisorIsStale()) return handOver(name);
     if (delegationStopped(m, s) || sleepBlocksStart(m, s)) return 0;
     if (s.agent !== expectedAgent) {
       await writeLifecycleBlock(
@@ -306,6 +333,7 @@ export async function superviseReady(
     writeLaunchStamp(name, computeStamp(s, m, promptInvocation()));
     const startedAt = Date.now();
     let crashed = false;
+    const agentGone = new AbortController();
     try {
       const proc = Bun.spawn(argv, {
         cwd: s.dir,
@@ -318,7 +346,7 @@ export async function superviseReady(
       // trust dialog greets a FRESH session in a directory the agent has not seen — and gating the
       // watcher on `present` is why a fleet-wide restart once left half the sessions stranded at a
       // menu nobody was there to answer. Fire-and-forget: the watcher bounds and ends itself.
-      void settlePrompts(m, s, provider);
+      void settlePrompts(m, s, provider, agentGone.signal);
       await proc.exited;
     } catch (e) {
       crashed = true;
@@ -327,8 +355,13 @@ export async function superviseReady(
       // The one case where the pane would otherwise be blank: no agent ever started, so nothing
       // else will explain the emptiness to whoever attaches. A plain sentence, never JSON.
       console.error(`ccmux: could not start ${provider.id} — ${reason}`);
+    } finally {
+      agentGone.abort();
     }
 
+    // An exit judged by the code of an older version is not judged at all: the daemon starts the
+    // session again under the installed one.
+    if (supervisorIsStale()) return handOver(name);
     const elapsed = Date.now() - startedAt;
     if (crashed || elapsed < FAST_FAIL_MS) {
       fastFails += 1;

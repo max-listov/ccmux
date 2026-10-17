@@ -16,6 +16,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A session no longer ends up blocked because its supervisor outlived an update: after the agent exits, a supervisor whose ccmux bundle was replaced hands the session to the daemon, which starts it under the installed version on its next heal pass (up to 30 s; the session's extra windows close). A block records the version that wrote it, and the daemon retries a block written by an older version once (after an update, every session blocked by earlier code starts once more).
+- The startup-menu watcher stops when its agent exits instead of pressing keys at the next launch.
+
 ## [0.84.0] — 2026-10-17
 
 Account quota of every Claude and Codex account in one request, startup menus answered by the text of the option, and Claude profiles honoured for conversation history and resume.

@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { lifecycleBlockPath } from '../config/paths.ts';
 import type { LifecycleBlock, MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { compareSemver, VERSION } from '../util/version.ts';
 import { loadPendingRows } from './pendingStore.ts';
 import { recoverPromotionsUnlocked } from './promotion.ts';
 import { loadSessions } from './registry.ts';
@@ -47,7 +48,8 @@ export function sessionBlock(
 }
 
 export async function writeLifecycleBlock(m: MachineConfig, block: LifecycleBlock): Promise<void> {
-  const parsed = LifecycleBlockSchema.parse(block);
+  // Every block says which version judged the session, whoever builds the block.
+  const parsed = LifecycleBlockSchema.parse({ ...block, version: VERSION });
   await withSessionRegistryLock(m, async () => {
     await recoverPromotionsUnlocked(m);
     const ready = loadSessions(m).find(
@@ -82,8 +84,34 @@ export async function clearLifecycleBlockIfGeneration(
   });
 }
 
-/** Explicit user start/restart is the recovery action; daemon heal never clears a terminal block. */
+/** Explicit user start/restart is the recovery action; the daemon heal clears only a block written
+ *  by another ccmux version (`clearBlockOfOlderVersion`), never one of its own version. */
 export function clearLifecycleBlock(m: MachineConfig, name: string): void {
   const path = lifecycleBlockPath(m, name);
   if (existsSync(path)) unlinkSync(path);
+}
+
+/** Whether `block` was written by a version older than `version` (or before blocks carried one). */
+export function blockFromOlderVersion(block: LifecycleBlock, version: string): boolean {
+  return block.version === undefined || compareSemver(block.version, version) < 0;
+}
+
+/**
+ * A block is final for the code that wrote it: an OLDER version may have judged the session by a rule
+ * that has since been fixed, and must not leave it stopped. A block of the same or a NEWER version
+ * stays — a daemon that lags behind the installed bundle would otherwise clear the newer code's
+ * refusal every pass and start the session again, forever. Re-read under the registry lock, so a
+ * block written in the meantime stays.
+ */
+export async function clearBlockOfOlderVersion(
+  m: MachineConfig,
+  name: string,
+  version: string = VERSION,
+): Promise<boolean> {
+  return withSessionRegistryLock(m, async () => {
+    const block = readLifecycleBlock(m, name);
+    if (block === null || !blockFromOlderVersion(block, version)) return false;
+    unlinkSync(lifecycleBlockPath(m, name));
+    return true;
+  });
 }
