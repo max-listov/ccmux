@@ -164,13 +164,19 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
       observation: Awaited<ReturnType<typeof observeProcessInstance>>;
     }[] = [];
     try {
+      // A pid file exists before its pid is written; wait for all three pids, not for a file.
+      const pidIn = (name: string) => {
+        const path = join(root, name);
+        return existsSync(path) ? Number(readFileSync(path, 'utf8')) : 0;
+      };
+      const pidFiles = ['guard.pid', 'target.pid', 'member.pid'];
       await until(
-        () => existsSync(join(root, 'member.pid')),
+        () => pidFiles.every((name) => pidIn(name) > 0),
         'provider and descendant started',
         STARTUP_MS,
       );
-      for (const name of ['guard.pid', 'target.pid', 'member.pid']) {
-        const pid = Number(readFileSync(join(root, name), 'utf8'));
+      for (const name of pidFiles) {
+        const pid = pidIn(name);
         tracked.push({ pid, observation: await observeProcessInstance(pid) });
       }
       for (const { observation } of tracked) expect(observation.state).toBe('observed');
