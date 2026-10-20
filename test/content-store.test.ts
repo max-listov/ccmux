@@ -39,13 +39,13 @@ test('idle content does not rewrite files; omissions and closure still publish',
   }
 });
 
-async function deadline<T>(promise: Promise<T>, label: string): Promise<T> {
+async function deadline<T>(promise: Promise<T>, label: string, boundMs = 1500): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<T>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(label)), 1500);
+        timer = setTimeout(() => reject(new Error(label)), boundMs);
       }),
     ]);
   } finally {
@@ -145,7 +145,11 @@ test('failed subscriber construction closes partially opened filesystem watchers
     stderr: 'pipe',
   });
   try {
-    expect(await deadline(child.exited, 'Failed content subscriptions retained watchers')).toBe(0);
+    // A retained watcher keeps the child alive forever; the bound covers starting a whole Bun
+    // process on a loaded machine, which alone outlasted 1.5 s at load average 100.
+    expect(
+      await deadline(child.exited, 'Failed content subscriptions retained watchers', 10_000),
+    ).toBe(0);
     expect(await new Response(child.stderr).text()).toBe('');
   } finally {
     if (child.exitCode === null) {
