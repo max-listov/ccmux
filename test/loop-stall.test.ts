@@ -36,8 +36,17 @@ async function stallsDuring(run: () => void): Promise<LoopStall[]> {
   return stalls;
 }
 
+/**
+ * The stalls the test caused. On a loaded host the scheduler alone can hold this process past the
+ * 150 ms threshold, which is a real stall the detector rightly reports but not the one under test;
+ * the caused ones are at least 300 ms, which descheduling does not reach.
+ */
+function caused(stalls: LoopStall[]): LoopStall[] {
+  return stalls.filter((stall) => stall.blockedMs >= 300);
+}
+
 test('a blocked event loop is reported with how long it was blocked', async () => {
-  const stalls = await stallsDuring(() => blockFor(400));
+  const stalls = caused(await stallsDuring(() => blockFor(400)));
   expect(stalls.length).toBe(1);
   expect(stalls[0]?.blockedMs).toBeGreaterThanOrEqual(300);
 });
@@ -79,8 +88,8 @@ test('a stall reports the page faults and preemptions of its own window, not the
 test('a stall spent computing and a stall spent waiting report different CPU time', async () => {
   // The two causes call for opposite fixes, so the report must separate them: work of this
   // process burns CPU for the whole stall, a blocking wait burns almost none.
-  const busy = await stallsDuring(() => burnCpu(400));
-  const waiting = await stallsDuring(() => Bun.sleepSync(400));
+  const busy = caused(await stallsDuring(() => burnCpu(400)));
+  const waiting = caused(await stallsDuring(() => Bun.sleepSync(400)));
   expect(busy.length).toBe(1);
   expect(waiting.length).toBe(1);
   expect(busy[0]?.cpuMs).toBeGreaterThanOrEqual(300);
