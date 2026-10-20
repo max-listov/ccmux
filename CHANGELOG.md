@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.84.2] — 2026-10-20
+
+A stopped session whose conversation cannot be found names every Claude profile root it searched, and no fresh conversation starts while its history cannot be read.
+
 - Missing-conversation refusals name every searched Claude profile root and stop a fresh launch when history cannot be read.
 
 ## [0.84.1] — 2026-10-17
