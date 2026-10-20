@@ -27,7 +27,9 @@ function server(): { m: MachineConfig; dir: string } {
   const m = makeMachine({
     stateDir: dir,
     tmuxBin,
-    tmuxSocket: `ccmux-agent-pane-${process.pid}-${cleanups.length}`,
+    // A socket of its own per server: `kill-server` from the previous test's cleanup returns before
+    // that server is gone, and a reused name lets the next test reach the dying one.
+    tmuxSocket: `ccmux-agent-pane-${crypto.randomUUID()}`,
     rcPrefix: 'host-a',
   });
   cleanups.push(() => {
