@@ -30,8 +30,13 @@ async function bundle(root: string) {
   return output;
 }
 
-async function until(check: () => boolean | Promise<boolean>, label: string) {
-  const deadline = Date.now() + 5000;
+// Starting a compiled daemon and its provider is setup, not the property under test: on a loaded
+// machine it legitimately takes longer than the reaping these tests bound, so it waits longer.
+const STARTUP_MS = 20_000;
+const REAP_MS = 5000;
+
+async function until(check: () => boolean | Promise<boolean>, label: string, boundMs: number) {
+  const deadline = Date.now() + boundMs;
   while (Date.now() < deadline) {
     if (await check()) return;
     await Bun.sleep(10);
@@ -159,7 +164,11 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
       observation: Awaited<ReturnType<typeof observeProcessInstance>>;
     }[] = [];
     try {
-      await until(() => existsSync(join(root, 'member.pid')), 'provider and descendant started');
+      await until(
+        () => existsSync(join(root, 'member.pid')),
+        'provider and descendant started',
+        STARTUP_MS,
+      );
       for (const name of ['guard.pid', 'target.pid', 'member.pid']) {
         const pid = Number(readFileSync(join(root, name), 'utf8'));
         tracked.push({ pid, observation: await observeProcessInstance(pid) });
@@ -171,18 +180,23 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
         await until(
           () => existsSync(join(root, phase === 'hanging-rpc' ? 'rpc' : 'initialized')),
           phase,
+          STARTUP_MS,
         );
       owner.kill('SIGKILL');
       await owner.exited;
-      await until(async () => {
-        const results = await Promise.all(
-          tracked.map(async ({ pid, observation }) => {
-            if (observation.state !== 'observed') throw new Error('Missing fixture identity');
-            return probeProcessOwner(pid, observation.instance);
-          }),
-        );
-        return results.every((result) => result.liveness === 'gone');
-      }, 'guard, provider and descendant death');
+      await until(
+        async () => {
+          const results = await Promise.all(
+            tracked.map(async ({ pid, observation }) => {
+              if (observation.state !== 'observed') throw new Error('Missing fixture identity');
+              return probeProcessOwner(pid, observation.instance);
+            }),
+          );
+          return results.every((result) => result.liveness === 'gone');
+        },
+        'guard, provider and descendant death',
+        REAP_MS,
+      );
       if (neighborIdentity.state !== 'observed') throw new Error('Missing neighbor identity');
       expect((await probeProcessOwner(neighbor.pid, neighborIdentity.instance)).identity).toBe(
         'matched',
