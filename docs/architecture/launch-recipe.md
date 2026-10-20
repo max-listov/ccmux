@@ -4,7 +4,7 @@ description: The launch recipe — argv plus the external inputs an agent reads 
 type: architecture
 status: active
 created: 2026-08-25
-updated: 2026-08-30
+updated: 2026-10-19 14:20 +07:00
 ---
 
 # What shapes a session
@@ -196,4 +196,11 @@ a conversation and starts fresh. Claude removes old transcripts on its own sched
 session whose file was removed that way is blocked at restart and says where it looked.
 
 `ccmux env-file` warns when a profile change moves the place the conversation is looked for.
+
+Поиск возвращает вместе найденную историю, все корни проектов, в которых он пытался её найти,
+и причины недоступности. Текущий профиль сессии входит в область поиска даже до записи в реестр.
+Отказ supervisor перечисляет эти корни и найденный путь; ошибка чтения обозначается как
+`Search incomplete`, а не как отсутствие разговора. При неполном поиске новый разговор не
+создаётся даже без отметки `seen`. Отсутствующий корень (`ENOENT`) допускает первый запуск;
+нечитаемый или некорректный корень требует восстановления доступа перед `ccmux start`.
 

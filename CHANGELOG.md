@@ -16,6 +16,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Missing-conversation refusals name every searched Claude profile root and stop a fresh launch when history cannot be read.
+
 ## [0.84.1] — 2026-10-17
 
 A supervisor that outlived an update hands the session to the daemon instead of blocking it; blocks record the writing version and an older one is retried once.

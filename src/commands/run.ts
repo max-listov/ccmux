@@ -12,7 +12,7 @@ import { loadMachineConfig } from '../config/machine.ts';
 import { delegationStopped } from '../delegation/cancel.ts';
 import { nativeDriver } from '../runtime/driver.ts';
 import { ManagedRuntimeExit } from '../runtime/exit.ts';
-import { conversationSeen, markConversationSeen } from '../session/conversationSeen.ts';
+import { missingConversation } from '../session/conversationGuard.ts';
 import {
   readLifecycleBlockForSession,
   sessionBlock,
@@ -35,53 +35,6 @@ const FAST_FAILS_BEFORE_FORK = 3;
 
 const PICKER_WATCH_MS = 45_000; // give up watching for blocking startup menus after this
 const PICKER_POLL_MS = 1_000;
-
-/**
- * Whether a missing conversation file stops the launch. Only a conversation that was SEEN (or one
- * found under another root) is worth protecting; one that never existed starts fresh. Pure so the
- * rule is tested without a supervisor.
- */
-export function conversationVerdict(f: {
-  present: boolean;
-  found: string | null;
-  seen: boolean;
-}): 'start' | 'block' {
-  if (f.present) return 'start';
-  return f.found !== null || f.seen ? 'block' : 'start';
-}
-
-/**
- * The reason a launch must not go ahead, when this session's conversation file is missing and the
- * conversation is known to have existed — or null when the launch may proceed. Records the evidence
- * when the file is there. Everything the verdict reads is an argument or the filesystem.
- */
-export function missingConversation(
-  m: MachineConfig,
-  s: Session,
-  provider: AgentProvider,
-  present: boolean,
-  expected: string | null,
-): string | null {
-  if (present) {
-    markConversationSeen(s.name, s.uuid);
-    return null;
-  }
-  const found = provider.findHistoryElsewhere?.(s, m) ?? null;
-  const seen = conversationSeen(s.name, s.uuid);
-  if (conversationVerdict({ present, found, seen }) === 'start') return null;
-  const where =
-    found === null
-      ? 'and it is nowhere else under the projects roots this machine uses'
-      : `— it is at ${found}`;
-  return (
-    `${s.name} has a conversation ${s.uuid}, but it is missing at ${expected ?? 'its expected path'} ${where}. ` +
-    'Refusing to start a NEW conversation on top of it. ' +
-    // Both exits, because the two cases need opposite actions and the reader knows which one
-    // they are in — naming only the recoverable one leaves the other guessing.
-    `If it can be recovered (the project directory or the session's profile moved?), put it where this session now points, then: ccmux start ${s.name}   ·   ` +
-    `If it is gone for good: ccmux renew ${s.name}   — a fresh conversation for this session, keeping its dir, mode, chat and prompt modules`
-  );
-}
 
 /**
  * Dismiss the BLOCKING startup menus on an unattended launch, so a daemon-healed reboot or a freshly

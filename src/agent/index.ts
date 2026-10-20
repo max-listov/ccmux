@@ -15,6 +15,7 @@ import { readTailLines, readTailUntil } from '../util/readLines.ts';
 import { claudeProvider } from './claude/index.ts';
 import { subagentFile } from './claude/subagent.ts';
 import { codexProvider } from './codex/index.ts';
+import type { HistorySearch } from './historySearch.ts';
 import type { LaunchInput } from './launch/launchInputs.ts';
 import type { MenuSettleState, MenuSettleStep } from './menuSettle.ts';
 import {
@@ -96,7 +97,7 @@ export interface AgentProvider {
   /** The same conversation found somewhere OTHER than where this session expects it — used only
    *  when the expected file is missing, to tell "the history moved" apart from "first launch".
    *  Optional: an agent whose history location cannot drift does not implement it. */
-  findHistoryElsewhere?(s: Session, m: MachineConfig): string | null;
+  findHistoryElsewhere?(s: Session, m: MachineConfig): HistorySearch;
   // Some agents (Claude) silently FORK a conversation to a new uuid (e.g. out-of-context
   // continuation) — this reports where the conversation lives NOW, or null if unmoved.
   // Optional: agents whose session ids are actually stable don't implement it.

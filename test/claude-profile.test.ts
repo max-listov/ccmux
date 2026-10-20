@@ -7,9 +7,9 @@ import { claudeProfile, knownProjectsDirs } from '../src/agent/claude/profileRoo
 import { findHistoryElsewhere, historyFile } from '../src/agent/claude/resume.ts';
 import { providerFor } from '../src/agent/index.ts';
 import { endedConversation } from '../src/commands/hookStatus.ts';
-import { conversationVerdict, missingConversation } from '../src/commands/run.ts';
 import { countRender } from '../src/commands/statusLine.ts';
 import { profileViews, viewsBySession } from '../src/quota/view.ts';
+import { conversationVerdict, missingConversation } from '../src/session/conversationGuard.ts';
 import {
   clearConversationSeen,
   conversationSeen,
@@ -91,7 +91,7 @@ test('a conversation left in another profile is found, so a changed profile bloc
   // Negative control: no registered session declares the old profile, so its root is not searched.
   await appendSession(m, moved);
   try {
-    expect(findHistoryElsewhere(moved, m)).toBeNull();
+    expect(findHistoryElsewhere(moved, m).found).toBeNull();
     // Another session on the machine declares it → its root is a place a conversation can be.
     await appendSession(
       m,
@@ -103,7 +103,7 @@ test('a conversation left in another profile is found, so a changed profile bloc
       }),
     );
     expect(knownProjectsDirs(loadSessions(m), m)).toContain(join(oldProfile, 'projects'));
-    expect(findHistoryElsewhere(moved, m)).toBe(old);
+    expect(findHistoryElsewhere(moved, m).found).toBe(old);
   } finally {
     await removeSession(m, 'agent-A');
     await removeSession(m, 'agent-B');
@@ -113,12 +113,26 @@ test('a conversation left in another profile is found, so a changed profile bloc
 test('a conversation that was seen is protected; one that never existed starts fresh', () => {
   // The defect: a session closed on its folder-trust question carried a launch stamp for a
   // conversation that was never created, and was blocked for a missing file.
-  expect(conversationVerdict({ present: false, found: null, seen: false })).toBe('start');
-  expect(conversationVerdict({ present: false, found: null, seen: true })).toBe('block');
-  expect(conversationVerdict({ present: false, found: '/elsewhere/x.jsonl', seen: false })).toBe(
-    'block',
-  );
-  expect(conversationVerdict({ present: true, found: null, seen: false })).toBe('start');
+  expect(
+    conversationVerdict({ present: false, found: null, seen: false, searchComplete: true }),
+  ).toBe('start');
+  expect(
+    conversationVerdict({ present: false, found: null, seen: true, searchComplete: true }),
+  ).toBe('block');
+  expect(
+    conversationVerdict({
+      present: false,
+      found: '/elsewhere/x.jsonl',
+      seen: false,
+      searchComplete: true,
+    }),
+  ).toBe('block');
+  expect(
+    conversationVerdict({ present: true, found: null, seen: false, searchComplete: true }),
+  ).toBe('start');
+  expect(
+    conversationVerdict({ present: false, found: null, seen: false, searchComplete: false }),
+  ).toBe('block');
 });
 
 test('the evidence is keyed by the conversation uuid, so a renewed session inherits none', () => {
@@ -163,6 +177,9 @@ test('a conversation that was seen and is gone blocks the launch, naming where i
   const refusal = missingConversation(m, s, provider, false, expected);
   expect(refusal).toContain('Refusing to start a NEW conversation');
   expect(refusal).toContain(expected);
+  expect(refusal).toContain(
+    `Searched projects roots: ${m.projectsDir}, ${join(profile, 'projects')}`,
+  );
   expect(refusal).toContain(`ccmux renew ${name}`);
   clearConversationSeen(name);
   // A renewed session (new uuid, same name) is not held by the conversation it replaced.

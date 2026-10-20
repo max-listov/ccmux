@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { loadSessions } from '../../session/registry.ts';
 import type { MachineConfig, Session } from '../../types.ts';
+import type { HistorySearch } from '../historySearch.ts';
 import { claudeProfile, knownProjectsDirs } from './profileRoot.ts';
 
 /**
@@ -59,32 +60,44 @@ export function resumeArgs(uuid: string, dir: string, projectsDir: string): stri
  * the uuid elsewhere. Measured on a real fleet: one session had 140 MB of history sitting under the
  * previous directory's encoding while a fresh, empty conversation was being written at the new one.
  *
- * Returns the fullest such file (a relocation leaves the real history far larger than anything a
- * fresh start has written), or null when the conversation genuinely exists nowhere else.
+ * Reports the fullest such file (a relocation leaves the real history far larger than anything a
+ * fresh start has written), every attempted projects root and any read that could not establish
+ * absence. The supervisor must not turn an incomplete search into a fresh conversation.
  */
-export function findHistoryElsewhere(s: Session, m: MachineConfig): string | null {
-  const expected = historyFile(s, m);
+export function findHistoryElsewhere(s: Session, m: MachineConfig): HistorySearch {
+  const expected = normalize(historyFile(s, m));
+  const roots = knownProjectsDirs([s, ...loadSessions(m)], m);
+  const failures: HistorySearch['failures'] = [];
   let best: { path: string; size: number } | null = null;
   // Every root a session on this machine writes to: a conversation that is missing at its own
   // profile's path may sit under the machine's default root or under another profile's, which is
   // what a changed `envFile` leaves behind.
-  for (const root of knownProjectsDirs(loadSessions(m), m)) {
+  for (const root of roots) {
     let dirs: string[];
     try {
       dirs = readdirSync(root);
-    } catch {
-      continue; // no such root → nothing to search there, and nothing to claim
+    } catch (error) {
+      if (!hasCode(error, 'ENOENT')) failures.push({ path: root, reason: String(error) });
+      continue;
     }
     for (const dir of dirs) {
       const candidate = join(root, dir, `${s.uuid}.jsonl`);
-      if (candidate === expected) continue;
       try {
-        const size = statSync(candidate).size;
+        const stat = statSync(candidate);
+        // existsSync cannot distinguish an absent expected file from an inaccessible one.
+        // Observe it before excluding it from relocation candidates so that a read failure blocks.
+        if (candidate === expected || !stat.isFile()) continue;
+        const size = stat.size;
         if (best === null || size > best.size) best = { path: candidate, size };
-      } catch {
-        // not a directory, or no such conversation in it
+      } catch (error) {
+        if (!hasCode(error, 'ENOENT') && (candidate === expected || !hasCode(error, 'ENOTDIR')))
+          failures.push({ path: candidate, reason: String(error) });
       }
     }
   }
-  return best?.path ?? null;
+  return { found: best?.path ?? null, roots, failures };
+}
+
+function hasCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code;
 }
