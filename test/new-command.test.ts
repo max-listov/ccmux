@@ -22,7 +22,7 @@ function setup() {
     codexSessionsDir: join(root, 'codex'),
     rcPrefix: 'host-a',
     stateDir: join(root, 'state'),
-    bootLabel: 'ccmux.service',
+    bootLabel: 'ccmux-test.service',
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));

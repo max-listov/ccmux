@@ -16,6 +16,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A daemon started from source or from an isolated data directory no longer rewrites the installed boot unit; a full test run as root on a systemd host could point the live unit at a temporary bundle.
+
 ## [0.84.3] — 2026-10-21
 
 A directory listing cursor is refused as stale when an entry changes within the same filesystem clock tick, instead of the next page skipping or repeating entries.

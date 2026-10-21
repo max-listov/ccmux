@@ -56,7 +56,7 @@ async function world() {
     projectsDir: join(root, 'projects'),
     rcPrefix: 'host-a',
     stateDir,
-    bootLabel: 'ccmux.service',
+    bootLabel: 'ccmux-test.service',
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));

@@ -108,7 +108,7 @@ describe('external inventory command', () => {
         codexSessionsDir: sessionsDir,
         rcPrefix: 'host-a',
         stateDir,
-        bootLabel: 'ccmux.service',
+        bootLabel: 'ccmux-test.service',
       }),
     );
 

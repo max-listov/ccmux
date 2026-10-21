@@ -30,8 +30,15 @@ export function shimContents(): string {
   return `#!/bin/sh\n${routes}exec "${exec}" "${entry}" "$@"\n`;
 }
 
-/** Only the default installation may change the operator's shared PATH command. */
-export function ownsInstalledShim(dataDir: string = DATA_DIR, isDev: boolean = IS_DEV): boolean {
+/**
+ * Only the default installation may change what the machine shares with it: the PATH command and
+ * the boot unit. Both are written to point at THIS process's program, so a daemon started from an
+ * isolated data root or from source would aim them at a bundle the next boot cannot rely on. The
+ * boot unit's name alone does not protect it — a test machine carried the production label, and a
+ * full test run as root on a systemd host rewrote the live unit at a temporary bundle that was gone
+ * by the next restart.
+ */
+export function ownsInstallation(dataDir: string = DATA_DIR, isDev: boolean = IS_DEV): boolean {
   return !isDev && dataDir === DEFAULT_DATA_DIR;
 }
 
@@ -68,9 +75,8 @@ export async function ensureEmbeddedArtifacts(): Promise<PackagedInstall> {
 export async function ensureInstalledApp(m: MachineConfig): Promise<void> {
   // Before anything takes a lock: without the backend a lock cannot record who holds it.
   await installNativeBackend();
-  if (ownsInstalledShim()) {
-    await installRoutedPrograms();
-    await ensureShim();
-  }
+  if (!ownsInstallation()) return;
+  await installRoutedPrograms();
+  await ensureShim();
   await convergeBootUnit(m);
 }

@@ -92,6 +92,13 @@ list aggregation. It is produced by the existing daemon observation loop.
   `RestartSec=15`. Предел запусков у systemd терминален, и его бюджет тратят старты юнитов с
   `Requires=ccmux.service`: зацикленный соседний адаптер съел половину бюджета, пока демон падал на
   lock. launchd (`KeepAlive`) тоже не сдаётся.
+- **Юнит сводит только установленное приложение**: на старте демон переписывает уже
+  установленный boot-юнит под определение своей версии (`convergeBootUnit`), но только когда он
+  сам — установка по умолчанию: бандл, данные в каталоге по умолчанию (`ownsInstallation`, то же
+  условие охраняет PATH-шим). Демон из временного каталога (тест) или из исходников (`ccmux-dev`)
+  юнит не трогает: иначе он направил бы `ExecStart` на свой бандл. Так полный прогон тестов под
+  root на Linux однажды переписал боевой `ccmux.service`, и следующий рестарт не нашёл бандл.
+  Тестовые машины носят метку `ccmux-test.service`, не боевую.
 - **Новый клиент** — одной командой: `curl -fsSL <repo>/releases/latest/download/install.sh | bash`
   (`scripts/install.sh`): ставит bun при отсутствии, качает бандл + sha256-verify, шим в `~/.local/bin/ccmux`,
   `ccmux install --rc-prefix … --release-url <manifest>` (пишет releaseUrl + autoUpdate). Override

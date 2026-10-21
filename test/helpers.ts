@@ -25,7 +25,7 @@ export function makeMachine(over: Record<string, unknown> = {}): MachineConfig {
     projectsDir: '/root/.claude/projects',
     rcPrefix: 'prod',
     stateDir: '/tmp/ccmux-test-state',
-    bootLabel: 'ccmux.service',
+    bootLabel: 'ccmux-test.service',
     ...over,
   });
 }

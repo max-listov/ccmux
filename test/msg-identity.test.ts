@@ -27,7 +27,7 @@ function setup() {
     codexSessionsDir: '/tmp/codex',
     rcPrefix: 'host-a',
     stateDir,
-    bootLabel: 'ccmux.service',
+    bootLabel: 'ccmux-test.service',
   });
   writeFileSync(configPath, JSON.stringify(machine));
   const target = makeSession({

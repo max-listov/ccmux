@@ -45,7 +45,7 @@ test('MachineConfig: permissionMode is locked to auto — config cannot escalate
     projectsDir: '/root/.claude/projects',
     rcPrefix: 'prod',
     stateDir: '/home/user',
-    bootLabel: 'ccmux.service',
+    bootLabel: 'ccmux-test.service',
   };
   const m = MachineConfigSchema.parse(base);
   expect(m.permissionMode).toBe('auto');
@@ -60,7 +60,7 @@ test('MachineConfig: rcPrefix is a required lowercase slug (any machine label, n
     tmuxBin: '/bin/tmux',
     projectsDir: '/root/.claude/projects',
     stateDir: '/home/user',
-    bootLabel: 'ccmux.service',
+    bootLabel: 'ccmux-test.service',
   };
   // any lowercase slug is valid — the fleet isn't capped at local/dev/prod
   for (const p of ['local', 'dev', 'prod', 'staging', 'edge-1']) {

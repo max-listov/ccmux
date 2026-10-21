@@ -68,8 +68,7 @@ export async function installBoot(m: MachineConfig): Promise<void> {
  * Bring the installed boot unit up to the definition this version renders, when the two differ.
  *
  * Without this a change to the boot policy cannot reach a machine at all: the unit is written by
- * `ccmux install` and, once, by the bundle migration — an ordinary release rolls out the code and
- * leaves the unit exactly as it was. So the daemon's restart policy on every already-installed
+ * `ccmux install` — an ordinary release rolls out the code and leaves the unit exactly as it was. So the daemon's restart policy on every already-installed
  * machine is whatever version installed it, and a fix to that policy ships to nobody.
  *
  * Written only when the content differs, so an unchanged machine does no I/O and no reload, and the
@@ -106,21 +105,6 @@ export async function convergeBootUnit(m: MachineConfig): Promise<boolean> {
   if (!isMac) await run(['systemctl', 'daemon-reload']);
   log.info({ msg: 'boot unit converged to this version', path });
   return true;
-}
-
-/** Write the boot unit WITHOUT touching the running daemon. Used by the bundle migration: the
- *  point is that the NEXT start finds a path that exists, and bouncing a healthy supervisor to
- *  achieve that would trade the problem for a worse one. */
-export async function writeBootUnitOnly(m: MachineConfig): Promise<void> {
-  const ctx = context(m);
-  if (isMac) {
-    const plist = launchdPlistPath(m.bootLabel);
-    mkdirSync(dirname(plist), { recursive: true });
-    await atomicWrite(plist, renderLaunchdPlist(ctx));
-  } else {
-    await atomicWrite(systemdUnitPath(m.bootLabel), renderSystemdUnit(ctx));
-    await run(['systemctl', 'daemon-reload']);
-  }
 }
 
 export async function uninstallBoot(m: MachineConfig): Promise<void> {

@@ -1,9 +1,12 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownsInstalledShim } from '../src/boot/installedApp.ts';
+import * as bootUnit from '../src/boot/install.ts';
+import { ensureInstalledApp, ownsInstallation } from '../src/boot/installedApp.ts';
+import * as nativeBackend from '../src/boot/nativeBackendInstall.ts';
 import { DEFAULT_DATA_DIR } from '../src/config/paths.ts';
+import { makeMachine, shortTempDir } from './helpers.ts';
 
 function tmpRoot(): string {
   return mkdtempSync(join(tmpdir(), 'ccmux-roots-'));
@@ -58,8 +61,23 @@ test('wiping the cache root leaves the runnable code untouched', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('an isolated data root never owns the shared installed shim', () => {
-  expect(ownsInstalledShim(join(tmpdir(), 'isolated-ccmux-data'), false)).toBe(false);
-  expect(ownsInstalledShim(DEFAULT_DATA_DIR, false)).toBe(true);
-  expect(ownsInstalledShim(DEFAULT_DATA_DIR, true)).toBe(false);
+test('an isolated data root or a source run never owns the installed shim or boot unit', () => {
+  expect(ownsInstallation(join(tmpdir(), 'isolated-ccmux-data'), false)).toBe(false);
+  expect(ownsInstallation(DEFAULT_DATA_DIR, false)).toBe(true);
+  expect(ownsInstallation(DEFAULT_DATA_DIR, true)).toBe(false);
+});
+
+test('a daemon that is not the installation leaves the boot unit alone', async () => {
+  // This process runs from source with an isolated data root — the same two facts as a test's
+  // daemon. Converging here once pointed the live systemd unit at a temporary bundle.
+  const converge = spyOn(bootUnit, 'convergeBootUnit').mockResolvedValue(false);
+  // A source run carries no embedded native artifact; that install is not what this case is about.
+  const backend = spyOn(nativeBackend, 'ensureNativeBackend').mockResolvedValue('not-needed');
+  try {
+    await ensureInstalledApp(makeMachine({ stateDir: shortTempDir('ccmux-boot-owner-') }));
+    expect(converge).not.toHaveBeenCalled();
+  } finally {
+    converge.mockRestore();
+    backend.mockRestore();
+  }
 });

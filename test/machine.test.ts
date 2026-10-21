@@ -23,7 +23,7 @@ test('loadMachineConfig: file over defaults, defaults applied, env override wins
       tmuxBin: '/x/tmux',
       projectsDir: '/root/.claude/projects',
       stateDir: '/x',
-      bootLabel: 'ccmux.service',
+      bootLabel: 'ccmux-test.service',
     }),
   );
   const prevCfg = process.env.CCMUX_CONFIG;

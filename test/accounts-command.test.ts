@@ -84,7 +84,7 @@ for await (const chunk of Bun.stdin.stream()) {
     codexSessionsDir: join(root, 'codex-sessions'),
     rcPrefix: 'host-a',
     stateDir: join(root, 'state'),
-    bootLabel: 'ccmux.service',
+    bootLabel: 'ccmux-test.service',
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));
