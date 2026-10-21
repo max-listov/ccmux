@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { runNativeCommand } from 'stitchkit/process';
 import { z } from 'zod';
@@ -7,6 +7,7 @@ import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import type { MachineConfig } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
 import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
+import { ownedChildAlive } from './owned/child.ts';
 import { ownedCodexFlags } from './owned/launch.ts';
 import type { CodexAppRpc } from './rpc.ts';
 import { connectCodexSocket } from './socket.ts';
@@ -28,6 +29,42 @@ export async function nativeModelProvider(rpc: CodexAppRpc, cwd?: string): Promi
   return read.config.model_provider ?? 'openai';
 }
 
+/** The socket directory of a catalog read, named after the process that made it. Short and in
+ * `/tmp` because a unix socket path is limited to about a hundred bytes. */
+const CATALOG_ROOT_PARENT = '/tmp';
+const CATALOG_ROOT = /^ccmux-catalog-(\d+)-[A-Za-z0-9]{6}$/;
+
+/**
+ * Remove the directories of catalog reads whose process is gone. The read removes its own on every
+ * exit it lives through, but a SIGKILL, an OOM kill or a forced exit skips that, and each one left an
+ * empty directory in `/tmp` for good — one per killed daemon, measured across full test runs. The
+ * name carries the creator's pid, so the next read can tell an abandoned directory from a live one
+ * without guessing by age.
+ */
+export function sweepAbandonedCatalogRoots(
+  parent = CATALOG_ROOT_PARENT,
+  alive: (pid: number) => boolean = ownedChildAlive,
+): string[] {
+  const removed: string[] = [];
+  let names: string[];
+  try {
+    names = readdirSync(parent);
+  } catch {
+    return removed;
+  }
+  for (const name of names) {
+    const pid = Number(CATALOG_ROOT.exec(name)?.[1]);
+    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid || alive(pid)) continue;
+    try {
+      rmSync(join(parent, name), { recursive: true, force: true });
+      removed.push(name);
+    } catch {
+      // Another user's directory in a sticky /tmp is theirs to remove.
+    }
+  }
+  return removed;
+}
+
 /** A bounded metadata process has no conversation, TUI, registration or writer. It uses the same
  * native flag and session-environment contracts as managed execution and is reaped on every exit. */
 export async function withCodexCatalogRuntime<T>(
@@ -46,7 +83,8 @@ export async function withCodexCatalogRuntime<T>(
     process.env.NODE_ENV,
   );
   if (recipe.refused.length) throw new Error('Catalog environment contains reserved names');
-  const root = mkdtempSync('/tmp/ccmux-catalog-');
+  sweepAbandonedCatalogRoots();
+  const root = mkdtempSync(join(CATALOG_ROOT_PARENT, `ccmux-catalog-${process.pid}-`));
   const socket = join(root, 'rpc.sock');
   let rpc: CodexAppRpc | undefined;
   const disposal = new AbortController();

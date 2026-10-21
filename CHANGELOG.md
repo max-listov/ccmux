@@ -16,6 +16,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A Codex model-catalog read now removes the socket directories that earlier reads left in `/tmp` when their process was killed mid-read.
+
 ## [0.84.4] — 2026-10-21
 
 A daemon started from source or from an isolated data directory no longer rewrites the installed boot unit, so a test run as root on a systemd host cannot point the live service at a temporary bundle.

@@ -1,8 +1,18 @@
 import { expect, test } from 'bun:test';
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { observeProcessInstance, probeProcessOwner } from 'stitchkit/process';
+import { sweepAbandonedCatalogRoots } from '../src/agent/codex/catalogRuntime.ts';
 
 async function until(check: () => boolean | Promise<boolean>, label: string) {
   const deadline = Date.now() + 5_000;
@@ -96,3 +106,20 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
     }
   });
 }
+
+test('the next catalog read removes the socket directory of a killed one, and only that', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'ccmux-catalog-roots-'));
+  try {
+    const names = {
+      dead: 'ccmux-catalog-101-aB3dE9',
+      live: 'ccmux-catalog-202-xY7zQ1',
+      self: `ccmux-catalog-${process.pid}-k2LmN8`,
+      foreign: 'ccmux-catalog-test-p0QrS4',
+    };
+    for (const name of Object.values(names)) mkdirSync(join(parent, name));
+    expect(sweepAbandonedCatalogRoots(parent, (pid) => pid === 202)).toEqual([names.dead]);
+    expect(readdirSync(parent).sort()).toEqual([names.foreign, names.live, names.self].sort());
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
