@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { remoteTransportAncestor } from '../src/chat/auth.ts';
 import { cliPrincipal, managedPeer } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
 import { anonymousRemoteWarning } from '../src/commands/messagePeers.ts';
@@ -268,23 +269,35 @@ test('receiver rejects a local invocation even when it self-sets SSH_CONNECTION'
   delete env.CCMUX_SESSION;
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
-  env.SSH_CONNECTION = 'forged';
-  const proc = Bun.spawn(['bun', CLI, '_chat-receive-v2'], {
-    env,
-    stdin: new Response(
-      JSON.stringify(
-        makeChatMessage({
-          id: randomUUID(),
-          from: makeCli('host-b'),
-          to: managedPeer(machine.rcPrefix, target),
-        }),
+  delete env.SSH_CONNECTION;
+  delete env.SSH_CLIENT;
+  const receive = async (extra: Record<string, string>) => {
+    const proc = Bun.spawn(['bun', CLI, '_chat-receive-v2'], {
+      env: { ...env, ...extra },
+      stdin: new Response(
+        JSON.stringify(
+          makeChatMessage({
+            id: randomUUID(),
+            from: makeCli('host-b'),
+            to: managedPeer(machine.rcPrefix, target),
+          }),
+        ),
       ),
-    ),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  expect(await proc.exited).toBe(1);
-  expect(loadLedger(machine)).toHaveLength(0);
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    return proc.exited;
+  };
+  // Admission follows the process tree, which the receiver inherits from this runner. Started from
+  // an ssh login the runner really does descend from sshd and both calls are rightly admitted, so
+  // the claim that holds everywhere is that the variable changes nothing; the refusal itself can
+  // only be shown where the runner is local.
+  const local = remoteTransportAncestor(machine, process.pid) === null;
+  const forged = await receive({ SSH_CONNECTION: 'forged' });
+  const plain = await receive({});
+  expect(forged).toBe(plain);
+  expect(loadLedger(machine)).toHaveLength(local ? 0 : 2);
+  if (local) expect(forged).toBe(1);
 });
 
 test('reusing the session name with another provider/thread rejects stale mail before append', async () => {
