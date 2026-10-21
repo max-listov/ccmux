@@ -50,4 +50,4 @@ test('near-limit image decodes out of process while the resident event loop rema
   } finally {
     clearInterval(timer);
   }
-}, 15_000);
+});
