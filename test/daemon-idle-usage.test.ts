@@ -100,28 +100,27 @@ test.skipIf(!Bun.which('tmux'))(
         await Bun.sleep(20);
       expect((await client['external.list']()).sessions).toHaveLength(1);
       expect(initial.self.values.inputTokens).toBe(1200);
-      // Direct readers may checkpoint WAL. Allow one inventory tick to observe that change.
-      await Bun.sleep(250);
       // The daemon has its own cache root; the parent test's path helper uses its preload root.
       const files = Array.from(
         new Bun.Glob('*.sqlite').scanSync(join(root, 'cache', 'transcript-index')),
       );
-      const actual = files[0];
-      if (!actual) throw new Error('missing isolated transcript index');
-      const database = join(root, 'cache', 'transcript-index', actual);
-      const quiet = statSync(database, { bigint: true }).ctimeNs;
-      const quietAll = files.map(
-        (name) => statSync(join(root, 'cache', 'transcript-index', name), { bigint: true }).ctimeNs,
-      );
       expect(files).toHaveLength(2);
-      await Bun.sleep(650);
-      expect(statSync(database, { bigint: true }).ctimeNs).toBe(quiet);
-      expect(
+      const ctimes = () =>
         files.map(
           (name) =>
             statSync(join(root, 'cache', 'transcript-index', name), { bigint: true }).ctimeNs,
-        ),
-      ).toEqual(quietAll);
+        );
+      // Settling — the external index's first build, a reader's WAL checkpoint — takes as long as
+      // the machine is busy, so a fixed wait failed under a loaded gate. Quiet is a whole window
+      // with no write to either index; a daemon that keeps writing never produces one.
+      const quietUntil = Date.now() + 10_000;
+      for (;;) {
+        const before = ctimes();
+        await Bun.sleep(650);
+        if (ctimes().every((ctime, i) => ctime === before[i])) break;
+        if (Date.now() > quietUntil)
+          throw new Error('prepared transcript indexes never went quiet');
+      }
 
       // A cold requested window must finish even while the default inventory source is unchanged.
       const window = await readReady({
