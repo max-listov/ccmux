@@ -98,6 +98,9 @@ async function fixture(deadlineMs?: number) {
   )
     throw Error('Invalid owner fixture');
   const projection = new OwnedCodexProjection(m, s, identity.providerPid);
+  // One instant for both ends of the lease: a reader refuses one longer than its TTL as clock skew,
+  // and two clock reads a millisecond apart made it 5001 ms.
+  const now = Date.now();
   const snapshot = {
     ...projection.snapshot(),
     pid: identity.pid,
@@ -105,8 +108,8 @@ async function fixture(deadlineMs?: number) {
     connected: true,
     state: 'idle',
     reason: null,
-    observedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 5000).toISOString(),
+    observedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 5000).toISOString(),
   };
   const writer = new OwnedCodexStatusWriter(m, s.name);
   await writer.write({ ...snapshot, state: 'idle' });

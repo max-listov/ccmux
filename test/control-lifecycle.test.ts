@@ -1,15 +1,14 @@
 import { expect, test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
 import { managedPeer } from '../src/chat/identity.ts';
 import { archiveControlSession, createControlSession } from '../src/control/lifecycle.ts';
 import type { CreateManagedInput } from '../src/session/create.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 test('control create request is durable and idempotent across a lost reply', async () => {
-  const stateDir = mkdtempSync('/tmp/ccmux-control-lifecycle-');
-  const workspace = mkdtempSync('/tmp/ccmux-control-workspace-');
+  const stateDir = shortTempDir('ccmux-control-lifecycle-');
+  const workspace = shortTempDir('ccmux-control-workspace-');
   const m = makeMachine({ stateDir, rcPrefix: 'host-a' });
   const requestId = crypto.randomUUID();
   let calls = 0;
@@ -55,7 +54,7 @@ test('control create request is durable and idempotent across a lost reply', asy
     ),
   ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
 
-  const secondState = makeMachine({ ...m, stateDir: mkdtempSync('/tmp/ccmux-control-lost-') });
+  const secondState = makeMachine({ ...m, stateDir: shortTempDir('ccmux-control-lost-') });
   const lostId = crypto.randomUUID();
   const lost = async (_machine: typeof m, input: CreateManagedInput) => {
     const session = makeSession({
@@ -84,7 +83,7 @@ test('archive is exact, idempotent and keeps the canonical registry identity', a
   const tmuxBin = Bun.which('tmux');
   assert(tmuxBin, 'tmux must be installed for lifecycle tests');
   const m = makeMachine({
-    stateDir: mkdtempSync('/tmp/ccmux-control-archive-'),
+    stateDir: shortTempDir('ccmux-control-archive-'),
     rcPrefix: 'host-a',
     tmuxBin,
   });

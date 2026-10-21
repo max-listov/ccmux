@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
 import { type FleetMachine, fleetView, machineStanding } from '../src/commands/fleetList.ts';
 import {
   behindBy,
@@ -7,7 +6,7 @@ import {
   releaseStanding,
   writeReleaseCheck,
 } from '../src/release/check.ts';
-import { makeMachine } from './helpers.ts';
+import { makeMachine, shortTempDir } from './helpers.ts';
 
 // A fleet view could show which version each machine RUNS and nothing about whether that is the
 // right one — the other half came from a person reading the releases page and comparing by eye.
@@ -144,7 +143,7 @@ test('the publication date rides along, so lag can be read in time rather than i
 });
 
 test('a check that stopped happening is not the same as one that came back behind', async () => {
-  const stateDir = mkdtempSync('/tmp/ccmux-overdue-');
+  const stateDir = shortTempDir('ccmux-overdue-');
   const m = makeMachine({ stateDir, autoUpdate: true, updateCheckInterval: 300 });
   const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
 

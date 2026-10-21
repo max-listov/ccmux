@@ -1,14 +1,14 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildCodexRuntimeReader } from '../scripts/build-codex-runtime-reader.ts';
 import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
 import { VERSION } from '../src/util/version.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 test('released ESM reader works offline, coalesces 100 callers and never starts CLI/RPC processes', async () => {
-  const root = mkdtempSync('/tmp/ccmux-codex-reader-test-');
+  const root = shortTempDir('ccmux-codex-reader-test-');
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const s = makeSession({ agent: 'codex', runtime: 'app-server' });
   const config = join(root, 'machine.json');

@@ -16,6 +16,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A directory listing cursor is refused as stale when an entry is added or removed within the same filesystem clock tick on Linux, instead of the next page skipping or repeating entries.
+
 ## [0.84.2] — 2026-10-20
 
 A stopped session whose conversation cannot be found names every Claude profile root it searched, and no fresh conversation starts while its history cannot be read.

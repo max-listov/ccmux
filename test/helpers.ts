@@ -1,3 +1,5 @@
+import { onTestFinished } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { CHAT_GENERATION } from '../src/chat/messageSchema.ts';
 import { principalOrigin } from '../src/chat/origin.ts';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
@@ -94,4 +96,14 @@ export function makeChatMessage(over: Partial<ChatMessage> = {}): ChatMessage {
 /** One producer's counters, read through the channel the daemon serves (`producerMetrics`). */
 export function producerMetric(name: string): Record<string, number> {
   return producerMetrics.snapshot()[name] ?? {};
+}
+
+/**
+ * A directory under `/tmp`, removed when the calling test finishes. `/tmp` rather than `tmpdir()`
+ * keeps unix socket paths inside the macOS limit; nothing removes it afterwards except this.
+ */
+export function shortTempDir(prefix: string): string {
+  const root = mkdtempSync(`/tmp/${prefix}`);
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  return root;
 }

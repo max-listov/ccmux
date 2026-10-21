@@ -101,14 +101,16 @@ export async function ownedFixture(leaseMs?: number) {
   );
   const projection = new OwnedCodexProjection(f.m, s, identity.providerPid);
   const writer = new OwnedCodexStatusWriter(f.m, s.name);
+  // One instant for both ends of the lease: a reader refuses one longer than its TTL.
+  const now = Date.now();
   await writer.write({
     ...projection.snapshot(),
     ...identity,
     connected: true,
     state: 'idle',
     reason: null,
-    observedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 5_000).toISOString(),
+    observedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 5_000).toISOString(),
   });
   return { ...f, authority, s, child, identity, target: managedPeer(f.m.rcPrefix, s) };
 }

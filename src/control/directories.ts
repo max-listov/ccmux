@@ -14,9 +14,14 @@ import {
 const CursorSchema = z
   .object({ path: z.string(), version: z.string(), after: z.string(), hidden: z.boolean() })
   .strict();
-const version = (stat: Awaited<ReturnType<typeof lstat>>): string =>
+type Entry = ControlDirectoryResult['entries'][number];
+const identity = (stat: Awaited<ReturnType<typeof lstat>>): string =>
+  [stat.dev, stat.ino, stat.mtimeMs, stat.ctimeMs].join(':');
+// The listing itself is part of the version: a directory's mtime comes from the kernel's coarse
+// clock, so an entry added within the same tick as the previous change leaves the stat unchanged.
+const version = (stat: string, names: [string, Entry['kind']][]): string =>
   createHash('sha256')
-    .update([stat.dev, stat.ino, stat.mtimeMs, stat.ctimeMs].join(':'))
+    .update(JSON.stringify([stat, names.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))]))
     .digest('hex');
 
 async function directoryStat(path: string) {
@@ -46,10 +51,9 @@ export async function readControlDirectory(
   const path = resolve(input.path ?? HOME);
   try {
     signal.throwIfAborted();
-    const stamp = version(await directoryStat(path));
-    let after = '';
+    const stat = identity(await directoryStat(path));
+    let cursor: z.infer<typeof CursorSchema> | null = null;
     if (input.cursor !== null) {
-      let cursor: z.infer<typeof CursorSchema>;
       try {
         cursor = CursorSchema.parse(
           JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')),
@@ -60,14 +64,10 @@ export async function readControlDirectory(
           status: 400,
         });
       }
-      if (cursor.path !== path || cursor.hidden !== input.includeHidden || cursor.version !== stamp)
-        throw new AppError('STALE_CURSOR', {
-          message: 'Directory changed; restart listing',
-          status: 409,
-        });
-      after = cursor.after;
     }
-    const entries: ControlDirectoryResult['entries'] = [];
+    const after = cursor?.after ?? '';
+    const entries: Entry[] = [];
+    const names: [string, Entry['kind']][] = [];
     let scanned = 0;
     const directory = await opendir(path);
     for await (const item of directory) {
@@ -77,20 +77,23 @@ export async function readControlDirectory(
           message: 'Directory exceeds listing budget',
           status: 413,
         });
+      const kind = item.isSymbolicLink()
+        ? 'symlink'
+        : item.isDirectory()
+          ? 'dir'
+          : item.isFile()
+            ? 'file'
+            : 'other';
+      names.push([item.name, kind]);
       if ((!input.includeHidden && item.name.startsWith('.')) || item.name <= after) continue;
-      entries.push({
-        name: item.name,
-        path: join(path, item.name),
-        kind: item.isSymbolicLink()
-          ? 'symlink'
-          : item.isDirectory()
-            ? 'dir'
-            : item.isFile()
-              ? 'file'
-              : 'other',
-      });
+      entries.push({ name: item.name, path: join(path, item.name), kind });
     }
-    if (version(await directoryStat(path)) !== stamp)
+    const stamp = version(stat, names);
+    if (
+      identity(await directoryStat(path)) !== stat ||
+      (cursor !== null &&
+        (cursor.path !== path || cursor.hidden !== input.includeHidden || cursor.version !== stamp))
+    )
       throw new AppError('STALE_CURSOR', {
         message: 'Directory changed; restart listing',
         status: 409,

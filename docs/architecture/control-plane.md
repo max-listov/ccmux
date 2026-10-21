@@ -288,8 +288,10 @@ not a filesystem sandbox or an adversarial path-swap security boundary.
 
 The listing scans at most 20,000 entries, returns at most 512 (default 128) within 240 KiB of entry
 data, and shares the four-reader, five-second budget. The opaque cursor binds path, hidden selector,
-directory inode/version and last name. Changed directories yield `STALE_CURSOR`, requiring a fresh
-listing instead of silently skipping entries. Errors include `NOT_FOUND`, `NOT_A_DIRECTORY`,
+a directory version and last name. The version digests the directory's stat identity together with
+every scanned name and kind: a directory's mtime comes from the kernel's coarse clock, so an entry
+added within the same tick leaves the stat unchanged and only the names reveal it. Changed
+directories yield `STALE_CURSOR`, requiring a fresh listing instead of silently skipping entries. Errors include `NOT_FOUND`, `NOT_A_DIRECTORY`,
 `PERMISSION_DENIED`, `DIRECTORY_TOO_LARGE` and `INVALID_CURSOR`; messages do not leak another path.
 Listing is advisory: create still accepts any accessible absolute workspace, not a listing whitelist.
 

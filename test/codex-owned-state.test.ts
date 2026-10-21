@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { codexRuntimeUpdates } from '../src/agent/codex/owned/cursor.ts';
 import {
@@ -21,7 +21,7 @@ import {
   NATIVE_RUNTIME_MAX_EVENTS,
   NATIVE_RUNTIME_TTL_MS,
 } from '../src/runtime/projectionSchema.ts';
-import { makeMachine, makeSession, UUID } from './helpers.ts';
+import { makeMachine, makeSession, shortTempDir, UUID } from './helpers.ts';
 
 const session = makeSession({ agent: 'codex', runtime: 'app-server' });
 const machine = makeMachine({ codexBin: '/bin/codex', rcPrefix: 'host-a' });
@@ -210,7 +210,7 @@ test('a stopped Codex session keeps the account it ran on, as every other runtim
 });
 
 test('prepared file reader rejects symlinks, permissive files and oversize; coalesced writes retain last state', async () => {
-  const m = makeMachine({ stateDir: mkdtempSync('/tmp/ccmux-native-state-test-') });
+  const m = makeMachine({ stateDir: shortTempDir('ccmux-native-state-test-') });
   const p = new OwnedCodexProjection(m, session, process.pid);
   const writer = new OwnedCodexStatusWriter(m, session.name);
   const writes: Promise<void>[] = [];
@@ -260,7 +260,7 @@ test('native launch keeps endpoint and UUID under owner control and disables onl
 });
 
 test('a rejected projection write cannot strand the next valid publication', async () => {
-  const m = makeMachine({ stateDir: mkdtempSync('/tmp/ccmux-native-write-recovery-') });
+  const m = makeMachine({ stateDir: shortTempDir('ccmux-native-write-recovery-') });
   const p = new OwnedCodexProjection(m, session, process.pid);
   state(p, { type: 'idle' });
   const writer = new OwnedCodexStatusWriter(m, session.name);

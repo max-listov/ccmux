@@ -18,13 +18,14 @@ test('every heartbeat remains fresh; state changes and disconnect publish immedi
     state: z.string(),
   });
   const writer = new RuntimeStatusWriter(path, schema);
+  const now = Date.now();
   const base = {
     pid: process.pid,
     providerPid: process.pid,
     connected: true,
     reason: null,
-    observedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 5000).toISOString(),
+    observedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 5000).toISOString(),
     sequence: 1,
     state: 'idle',
   };
@@ -44,10 +45,11 @@ test('every heartbeat remains fresh; state changes and disconnect publish immedi
     expect(JSON.parse(readFileSync(path, 'utf8')).connected).toBe(false);
     await expect(writer.write({ ...base, observedAt: 'invalid' })).rejects.toThrow();
     await writer.write(base);
+    const renewal = Date.now() + 10;
     const renewed = {
       ...base,
-      observedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 5000).toISOString(),
+      observedAt: new Date(renewal).toISOString(),
+      expiresAt: new Date(renewal + 5000).toISOString(),
     };
     await writer.write(renewed);
     expect(JSON.parse(readFileSync(path, 'utf8')).observedAt).toBe(renewed.observedAt);

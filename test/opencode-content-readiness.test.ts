@@ -1,14 +1,13 @@
 import { expect, spyOn, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { OpenCodeConnection } from '../src/agent/opencode/connection.ts';
 import { readContent } from '../src/content/read.ts';
 import { ContentWriter } from '../src/content/store.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 test('OpenCode persists its content baseline before enabling native callbacks', async () => {
   for (const failWrite of [false, true]) {
-    const m = makeMachine({ stateDir: mkdtempSync('/tmp/ccmux-content-ready-') });
+    const m = makeMachine({ stateDir: shortTempDir('ccmux-content-ready-') });
     const session = makeSession({
       agent: 'opencode',
       runtime: 'native',

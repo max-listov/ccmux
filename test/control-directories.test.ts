@@ -49,6 +49,19 @@ test('directory mutation and different selectors invalidate cursors rather than 
   });
   await expect(read({ path, cursor: 'invalid' })).rejects.toMatchObject({ code: 'INVALID_CURSOR' });
 });
+test('an entry added within the same clock tick as the cursor still invalidates it', async () => {
+  // Linux stamps a directory's mtime from the kernel's coarse clock: a change made a millisecond
+  // after the cursor was issued usually leaves the directory's stat exactly as it was.
+  const path = fixture();
+  for (let i = 0; i < 50; i++) {
+    writeFileSync(join(path, `x${i}`), '');
+    const first = await read({ path, limit: 1 });
+    writeFileSync(join(path, `y${i}`), '');
+    await expect(read({ path, cursor: first.nextCursor })).rejects.toMatchObject({
+      code: 'STALE_CURSOR',
+    });
+  }
+});
 test('directory errors and bounds stay explicit and contain no file contents', async () => {
   const path = fixture();
   await expect(read({ path: join(path, 'absent') })).rejects.toMatchObject({ code: 'NOT_FOUND' });

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { admitOpenCode } from '../src/agent/opencode/admission.ts';
@@ -7,10 +7,10 @@ import { applyOpenCodeInput } from '../src/agent/opencode/input.ts';
 import { OpenCodeProjection } from '../src/agent/opencode/projection.ts';
 import { readRuntimeInput, writeRuntimeInput } from '../src/runtime/input.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/status.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-native-admission-');
+  const root = shortTempDir('ccmux-native-admission-');
   const m = makeMachine({ stateDir: join(root, 'state') });
   const s = makeSession({
     name: 'native',
