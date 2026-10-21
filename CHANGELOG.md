@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.84.4] — 2026-10-21
+
+A daemon started from source or from an isolated data directory no longer rewrites the installed boot unit, so a test run as root on a systemd host cannot point the live service at a temporary bundle.
+
 - A daemon started from source or from an isolated data directory no longer rewrites the installed boot unit; a full test run as root on a systemd host could point the live unit at a temporary bundle.
 
 ## [0.84.3] — 2026-10-21
