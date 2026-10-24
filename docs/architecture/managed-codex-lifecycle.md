@@ -4,7 +4,7 @@ description: Transactional first launch, authoritative thread binding, restart a
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-10-24 13:39 +07:00
 ---
 
 # Managed Codex lifecycle
@@ -75,6 +75,11 @@ CLI and TUI call the same create service. The TUI new-session bar uses Tab to ch
 ## Restart and self-heal
 
 Every ready child launch reloads the Session by name and verifies the provider has not changed.
+Общий `_run` до запуска provider проверяет рабочий каталог. Отсутствующий каталог,
+обычный файл вместо каталога или ошибка его чтения создают штатный lifecycle block
+для exact registration. Та же проверка выполняется после ошибки spawn, если каталог
+исчез между preflight и запуском. Heal не повторяет отказ этого выпуска; UUID,
+история и durable queue сохраняются до явного исправления и `start`/`restart`.
 A ready Codex row without its rollout is a terminal error, not permission to mint a replacement.
 Stopping a pane waits for its managed process group to disappear before restart starts a new
 writer. Killing the Codex child leaves `_run` alive and resumes the same UUID; killing tmux lets the

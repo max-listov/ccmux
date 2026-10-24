@@ -16,7 +16,9 @@ import { z } from 'zod';
 import { buildBundle } from '../scripts/bundle.ts';
 import { encodeDir } from '../src/agent/claude/resume.ts';
 import { lifecycleBlockPath } from '../src/config/paths.ts';
-import { appendSession } from '../src/session/registry.ts';
+import { startHealed } from '../src/session/heal.ts';
+import { readLifecycleBlock } from '../src/session/lifecycleBlocks.ts';
+import { appendSession, loadSessions } from '../src/session/registry.ts';
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 // The shipped supervisor and its real registry, filesystem guard and launch recipe. The executable
@@ -34,8 +36,10 @@ const LaunchSchema = z.object({
   pid: z.number().int().positive(),
 });
 
-async function world() {
+async function world(directory: 'valid' | 'missing' | 'file' = 'valid') {
   const dir = mkdtempSync(join(root, 'project-'));
+  const sessionDir = directory === 'valid' ? dir : join(dir, 'unavailable-project');
+  if (directory === 'file') writeFileSync(sessionDir, 'not a directory');
   const stateDir = join(dir, 'state');
   const profile = join(dir, 'profile');
   const projectsDir = join(dir, 'default-projects');
@@ -60,12 +64,12 @@ await Bun.sleep(15_000);
   writeFileSync(tmuxBin, '#!/bin/sh\nexit 0\n');
   chmodSync(tmuxBin, 0o755);
   const m = makeMachine({ claudeBin, tmuxBin, projectsDir, stateDir, rcPrefix: 'host-a' });
-  const s = makeSession({ name: 'agent-a', dir, uuid: UUID, envFile });
+  const s = makeSession({ name: 'agent-a', dir: sessionDir, uuid: UUID, envFile });
   await appendSession(m, s);
   const config = join(dir, 'machine.json');
   writeFileSync(config, JSON.stringify(m));
   const transcript = (projects: string): string => {
-    const folder = join(projects, encodeDir(dir));
+    const folder = join(projects, encodeDir(sessionDir));
     mkdirSync(folder, { recursive: true });
     const path = join(folder, `${UUID}.jsonl`);
     writeFileSync(path, '{"type":"user","message":{"role":"user","content":"history"}}\n');
@@ -152,22 +156,52 @@ test('a new session with no history starts at its pinned UUID', async () => {
   }
 });
 
-async function blocked(w: World): Promise<string> {
+async function blockedSupervisor(w: World): Promise<string> {
   const supervisor = w.start();
   try {
     await until(() => supervisor.exitCode !== null || w.launched() !== null);
     expect(w.launched()).toBeNull();
     expect(supervisor.exitCode).toBe(1);
     expect(existsSync(lifecycleBlockPath(w.m, w.s.name))).toBe(true);
-    const reason = await new Response(supervisor.stderr).text();
-    expect(reason).toContain(
-      `Searched projects roots: ${w.m.projectsDir}, ${join(w.profile, 'projects')}`,
-    );
-    expect(reason).toContain('Refusing to start a NEW conversation');
-    return reason;
+    return new Response(supervisor.stderr).text();
   } finally {
     await stop(w, supervisor);
   }
+}
+
+async function blocked(w: World): Promise<string> {
+  const reason = await blockedSupervisor(w);
+  expect(reason).toContain(
+    `Searched projects roots: ${w.m.projectsDir}, ${join(w.profile, 'projects')}`,
+  );
+  expect(reason).toContain('Refusing to start a NEW conversation');
+  return reason;
+}
+
+const invalidDirectories: Array<'missing' | 'file'> = ['missing', 'file'];
+for (const directory of invalidDirectories) {
+  test(`an invalid working directory (${directory}) blocks the built supervisor without launching or losing history`, async () => {
+    const w = await world(directory);
+    const history = w.transcript(join(w.profile, 'projects'));
+    w.seen();
+    const original = readFileSync(history, 'utf8');
+    const sessions = loadSessions(w.m);
+    const reason = await blockedSupervisor(w);
+    expect(reason).toContain(
+      `working directory ${directory === 'missing' ? 'does not exist' : 'is not a directory'}`,
+    );
+    expect(reason).toContain(w.s.dir);
+    expect(reason).toContain('ccmux dir agent-a');
+    expect(w.launched()).toBeNull();
+    expect(readFileSync(history, 'utf8')).toBe(original);
+    expect(loadSessions(w.m)).toEqual(sessions);
+    expect(readLifecycleBlock(w.m, w.s.name)?.uuid).toBe(UUID);
+    let launches = 0;
+    await startHealed(w.m, w.s.name, w.s.dir, async () => {
+      launches += 1;
+    });
+    expect(launches).toBe(0);
+  });
 }
 
 test('a conversation in another profile blocks the launch and names every searched root', async () => {

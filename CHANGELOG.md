@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.84.7] — 2026-10-24
+
+- Block a session whose working directory is missing or invalid before launching its provider, and keep its conversation identity for an explicit repair.
+
 ## [0.84.6] — 2026-10-24
 
 - Build and run CI checks with Bun 1.4.4 and its patched TLS certificate policy.

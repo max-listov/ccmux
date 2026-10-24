@@ -22,6 +22,7 @@ import { findSession, loadSessions } from '../session/registry.ts';
 import { sleepBlocksStart } from '../session/sleep/store.ts';
 import { writeLaunchStamp } from '../session/status.ts';
 import { supervisorIsStale } from '../session/supervisorCode.ts';
+import { workingDirectoryIssue, workingDirectoryReason } from '../session/workingDirectory.ts';
 import { capturePane, capturePaneScreen, sendKeysNamed } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { promptInvocation } from '../util/env.ts';
@@ -141,7 +142,7 @@ export function spawnFailureReason(
   dirExists: boolean,
 ): string {
   if (!String(error).includes('ENOENT') || dirExists) return String(error);
-  return `its working directory does not exist: ${dir} — set one that does with \`ccmux dir ${name} <path>\``;
+  return workingDirectoryReason(name, dir, 'does not exist');
 }
 
 export async function cmdRun(name: string | undefined): Promise<number> {
@@ -218,6 +219,8 @@ export async function superviseReady(
       return 1;
     }
     const provider = providerFor(s);
+    const directoryIssue = workingDirectoryIssue(s.name, s.dir);
+    if (directoryIssue !== null) return refuse(m, s, directoryIssue);
     const driver = nativeDriver(s);
     if (driver !== null) {
       const started = Date.now();
@@ -305,6 +308,8 @@ export async function superviseReady(
       crashed = true;
       const reason = spawnFailureReason(e, name, s.dir, existsSync(s.dir));
       log.error({ msg: 'agent spawn failed', name, agent: provider.id, err: reason });
+      const directoryIssue = workingDirectoryIssue(s.name, s.dir);
+      if (directoryIssue !== null) return refuse(m, s, directoryIssue);
       // The one case where the pane would otherwise be blank: no agent ever started, so nothing
       // else will explain the emptiness to whoever attaches. A plain sentence, never JSON.
       console.error(`ccmux: could not start ${provider.id} — ${reason}`);
