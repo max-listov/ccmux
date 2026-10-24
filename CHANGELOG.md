@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.84.6] — 2026-10-24
+
+- Build and run CI checks with Bun 1.4.4 and its patched TLS certificate policy.
+
 ## [0.84.5] — 2026-10-21
 
 A Codex model-catalog read now removes the socket directories that earlier reads left in /tmp when their process was killed mid-read.
