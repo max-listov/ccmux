@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.85.1] — 2026-11-04
+
+First published build of the 0.85.0 changes, whose tag was cut but whose CI build failed on a test.
+
 ## [0.85.0] — 2026-11-04
 
 Resolve one exact external Codex message with its recorded submitter, read Codex threads that Codex split or compressed, keep managed Codex sessions with compressed history running, and let the TUI exit when its terminal closes.
