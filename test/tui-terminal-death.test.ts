@@ -117,6 +117,10 @@ function world(): { env: Record<string, string>; out: string; harness: string } 
   env.HOME = root;
   env.TERM = 'xterm-256color';
   delete env.TMUX;
+  // Ink is not interactive under CI (`is-in-ci`): no raw mode, so nothing for the hangup to restore.
+  // The TUI this test exercises is the one a person runs in a terminal.
+  env.CI = 'false';
+  delete env.CONTINUOUS_INTEGRATION;
   return { env, out: join(root, 'result'), harness };
 }
 
