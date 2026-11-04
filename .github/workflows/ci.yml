@@ -32,7 +32,7 @@ on:
           - macos-latest
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
 
 # Read-only by default; only the release job writes.

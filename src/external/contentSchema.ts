@@ -61,6 +61,9 @@ export const ExternalContentResultSchema = z
     nextCursor: z.string().max(2048).nullable(),
     truncated: z.boolean(),
     omittedRecords: z.number().int().nonnegative(),
+    /** Files of a split thread before the one read. They are not in this history, so `truncated`
+     *  is true whenever this is above zero. */
+    earlierFiles: z.number().int().nonnegative(),
   })
   .strict();
 const UnsupportedControlSchema = z

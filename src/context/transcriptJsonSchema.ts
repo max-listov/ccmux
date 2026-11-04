@@ -42,11 +42,13 @@ export const TranscriptJsonSchema = z.object({
   }),
   // Window bounds of THIS response, for backward pagination (infinite-scroll-up):
   // `firstLine` = absolute line the window starts at, `lastLine` = total lines,
-  // `reachedStart` = firstLine reaches line 1 (nothing older to load).
+  // `reachedStart` = firstLine reaches line 1 (nothing older to load) of the file read.
+  // `earlierFiles` = files of a split Codex thread before that file, not in this transcript.
   window: z.object({
     firstLine: z.number(),
     lastLine: z.number(),
     reachedStart: z.boolean(),
+    earlierFiles: z.number().int().nonnegative(),
   }),
   stats: TranscriptStatsSchema,
   messages: z.array(TranscriptMessageSchema),

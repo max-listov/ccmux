@@ -16,6 +16,11 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- The interactive menu now exits when its terminal tab is closed even if the shell took the terminal back first; before, it could stop itself on the way out and stay behind as a stopped process with no owner.
+- New `external.message` control operation resolves one exact message of an external Codex thread by its native id: its whole text, its turn and what the history records about who sent it (a person, not a person, or not verifiable).
+- Codex threads kept in several files or compressed by Codex (`_<segment>.jsonl`, `.jsonl.zst`) are recognised everywhere. A managed Codex session whose history Codex compressed is resumed instead of being blocked as "missing rollout"; `external.message` reads compressed files too; `external.history` and transcripts read the current file and report the earlier ones in `earlierFiles`; discovery lists such a thread once.
+- The published control clients now require `stitchkit` 0.118.1 or later.
+
 ## [0.84.7] — 2026-10-24
 
 - Block a session whose working directory is missing or invalid before launching its provider, and keep its conversation identity for an explicit repair.

@@ -4,6 +4,8 @@ import type {
   ExternalContentReadSchema,
   ExternalContentSelectorSchema,
 } from '../../external/contentSchema.ts';
+import { readExternalMessage } from '../../external/message.ts';
+import type { ExternalMessageReadSchema } from '../../external/messageSchema.ts';
 import type { UsageListSchema, UsageReadSchema } from '../../usage/schema.ts';
 import { listSessionUsage, readSessionUsage } from '../../usage/service.ts';
 import type { OperationContext } from './context.ts';
@@ -51,6 +53,22 @@ export function usageOperations(context: OperationContext) {
           async ({ signal: admitted }) => {
             dependencies.assertExternalConfig?.();
             const result = await readExternalContent(m, input, admitted);
+            dependencies.assertExternalConfig?.();
+            return result;
+          },
+          {
+            ...(signal ? { signal } : {}),
+            timeoutMs: 6_000,
+          },
+        )
+        .catch(controlRefusal),
+    externalMessage: (input: z.output<typeof ExternalMessageReadSchema>, signal?: AbortSignal) =>
+      reads
+        .run(
+          undefined,
+          async ({ signal: admitted }) => {
+            dependencies.assertExternalConfig?.();
+            const result = await readExternalMessage(m, input, admitted);
             dependencies.assertExternalConfig?.();
             return result;
           },

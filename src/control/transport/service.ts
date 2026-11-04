@@ -54,6 +54,7 @@ export function controlServices(
     'usage.read': ({ input, signal }) => operations.usage(input, signal),
     'usage.list': ({ input, signal }) => operations.usageList(input, signal),
     'external.history': ({ input, signal }) => operations.externalHistory(input, signal),
+    'external.message': ({ input, signal }) => operations.externalMessage(input, signal),
     'external.capabilities': ({ input, signal }) => operations.externalCapabilities(input, signal),
     'message.cancel': ({ input, principal }) =>
       operations.messageCancel(input, ChatPrincipalSchema.parse(principal)),

@@ -4,7 +4,7 @@ description: Exact read-only provider storage projection without adopting an ext
 type: architecture
 status: active
 created: 2026-08-31
-updated: 2026-09-30 14:26 +07:00
+updated: 2026-11-04 19:55 +07:00
 ---
 
 ## Authority and operations
@@ -78,9 +78,60 @@ be qualified, and `stale` means the requested revision changed. Errors outside t
 include disabled access, wrong identity and malformed cursor. Internal causes stay in owner logs;
 public replies never expose storage paths or native error text.
 
+## One exact message: `external.message`
+
+`externalMessage({ target, messageId })` (service operation `external.message`, same access
+policy, admission and six-second deadline as `external.history`) resolves one native message id of
+an external Codex thread. It answers a question the history projection cannot: its entry `id` is a
+byte offset and its text is cut at 4,096 characters, so it cannot prove that a given message exists,
+what it said in full, or who sent it.
+
+The reader streams the thread's file once in constant memory and accepts only an `item_completed`
+record whose item is a `UserMessage` with exactly that id and the thread's own `thread_id`. A
+quotation of the id inside other text, an assistant or tool item with that id, another thread's
+record and a partial last record never resolve. A resolved reply carries the native `id`,
+`clientId`, `turnId`, `recordedAt`, the whole `text` (every text part concatenated in order),
+the number of `images`, the source `revision` and `authorship`.
+
+`authorship` reports what the history itself records, never an inference from the text. Codex writes
+`task_started.turn_attribution.turn_trigger` for every turn the client starts. That attribution
+names the TURN, so it speaks only for the user input that opened it:
+
+| Trigger of the turn the message opened | `verdict` |
+| --- | --- |
+| `composer`, `edit_user_message`, `remote_android`, `remote_ios` | `person` |
+| `app_tool_send_message`, `automation_heartbeat_scheduled`, `goal`, `app_update_resume`, `resume_interrupted_task` | `not-person` |
+| any other trigger (`queue`, `capacity_retry_manual`, …), no trigger | `unverifiable` |
+
+Input added to a turn already running (`position: mid-turn`) is always `unverifiable`. `queue` is
+not a person: a letter an agent sends to a busy thread is queued and opens its turn with the same
+trigger, which real histories show. `person` means a person SENT the message; it does not mean the
+person wrote every word — pasted text is still sent by the person.
+
+Outcomes: `resolved`; `not-found` (no item with that id in this history); `not-user-input`;
+`ambiguous` (two different records carry the id); `too-large` (record over 4 MiB or text over
+256 KiB — returned whole or not at all); `unsupported` (provider other than Codex, a history format
+without native item identities, a content part that is neither text nor image, a compressed or
+unplaceable file of a split history); `history-absent`; `unavailable`. Only `resolved` carries a
+message. One file is streamed up to 2 GiB, measured about 1.3 GB/s plain; a compressed file is
+decoded as a stream in constant memory up to the same 2 GiB of output (a 376 MB file decoded to
+0.62 GB in 0.9 s) and its `session_meta` is checked after decoding. The read shares the external
+reader capacity of two concurrent scans.
+
+## Split Codex histories
+
+Codex Desktop splits a long thread: the first file is `rollout-<time>-<thread>.jsonl`, each later one
+`rollout-<time>-<thread>_<segment>.jsonl`, and finished files may become `.jsonl.zst`. Every file
+starts with the thread's own `session_meta`. The index groups them by thread; the thread id (first
+file) and the segment id are UUIDv7, so each file has a start time. `external.message` reads the
+file a UUIDv7 message id falls into, compressed or not. `external.history` reads the file Codex writes
+now (the newest uncompressed one) and reports the files before it in `earlierFiles`, with
+`truncated: true`; a thread whose every file is compressed answers `unavailable`. Naming is shared
+with the managed side: `src/agent/codex/rolloutFiles.ts`.
+
 ## Shared Codex path index
 
-`src/external/storage.ts` shares one bounded UUID → path index among all threads of a configured
+`src/external/storage.ts` shares one bounded thread → files index among all threads of a configured
 root. Concurrent lookups, including those that find the index expired, share one walk; the walk
 runs under its own deadline, so a caller that abandons its lookup ends only its own wait. Up to 32
 roots are held in the process; the index's maximum age is 5 seconds. A change of the root or of a
@@ -99,6 +150,9 @@ directory.
 
 ## Verification
 
+`test/external-message.test.ts` covers the whole message past 4,096 characters, every attribution
+case, invented/assistant/quoted/foreign ids, the refusals and a split history with a compressed
+file, through the reader and through local and service clients.
 `test/external-content.test.ts` covers pagination across byte windows, large metadata/records,
 partial writes, empty/missing history, cursor and managed identity refusal, permissions/symlinks,
 both provider projections and real local/service ingress. `test/external-snapshot.test.ts` also

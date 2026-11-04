@@ -28,6 +28,10 @@ import {
   ExternalContentResultSchema,
   ExternalContentSelectorSchema,
 } from '../../external/contentSchema.ts';
+import {
+  ExternalMessageReadSchema,
+  ExternalMessageResultSchema,
+} from '../../external/messageSchema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../../runtime/capabilities.ts';
 import {
   IdleProofSchema,
@@ -164,6 +168,15 @@ export const controlContract = defineContract(
       desc: 'Read bounded external authored text without writer mutation',
       input: ExternalContentReadSchema,
       output: ExternalContentResultSchema,
+      idempotent: true,
+      timeout: 7_000,
+    },
+    'external.message': {
+      method: 'POST',
+      path: '/external/message',
+      desc: 'Resolve one exact native message of an external thread with its recorded submitter',
+      input: ExternalMessageReadSchema,
+      output: ExternalMessageResultSchema,
       idempotent: true,
       timeout: 7_000,
     },

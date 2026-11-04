@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { codexHistoryPresent } from '../agent/codex/resume.ts';
 import { type AgentProvider, providerFor } from '../agent/index.ts';
 import { computeStamp } from '../agent/launch/launchStamp.ts';
 import { droppedDeadAgentKeys, withoutDeadAgentEnv } from '../agent/launch/sshEnv.ts';
@@ -246,7 +247,10 @@ export async function superviseReady(
       }
     }
     const hf = provider.historyFile(s, m);
-    const present = hf !== null && existsSync(hf); // re-checked every loop
+    // Re-checked every loop. A Codex thread may be split or compressed by Codex itself, with no
+    // plain file left; it is still the conversation.
+    const present =
+      provider.id === 'codex' ? codexHistoryPresent(s, m) : hf !== null && existsSync(hf);
     if (provider.id === 'codex' && !present) {
       const error = `ready Codex session ${name} is missing rollout ${s.uuid}`;
       return refuse(m, s, error);

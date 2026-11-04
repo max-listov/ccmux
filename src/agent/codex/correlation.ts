@@ -61,7 +61,9 @@ export function rolloutIdsForMarker(m: MachineConfig, marker: string): string[] 
     if (!first) continue;
     try {
       const parsed = SessionMetaEnvelopeSchema.parse(JSON.parse(first));
-      if (parsed.payload.originator === marker) ids.push(parsed.payload.id);
+      // Every file of a split thread carries the same session_meta: one thread, one id.
+      if (parsed.payload.originator === marker && !ids.includes(parsed.payload.id))
+        ids.push(parsed.payload.id);
     } catch {}
   }
   return ids;

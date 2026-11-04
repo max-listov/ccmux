@@ -4,7 +4,7 @@ description: Как ccmux читает историю сессии разных 
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-10-13 23:42 +07:00
+updated: 2026-11-04 19:55 +07:00
 ---
 
 # Транскрипт-адаптеры
@@ -228,11 +228,27 @@ Claude в нативном режиме остаётся файловым: ра�
 строке — текст и номер строки при этом верны. Нативный рантайм без индекса строк читается одним
 окном.
 
+## Файлы одного треда Codex
+
+Codex держит один тред в нескольких файлах, когда он длинный: Desktop делит его на
+`rollout-<time>-<id>.jsonl` и последующие `rollout-<time>-<id>_<segment>.jsonl`, а законченные или
+давно не тронутые файлы сжимает в `.jsonl.zst` (CLI делает это и с целыми простаивающими тредами).
+В каждом файле первая запись — `session_meta` треда. Разбор имён один:
+`src/agent/codex/rolloutFiles.ts` (`parseRolloutName`, `codexRolloutFiles`, `currentRolloutFile`).
+
+- `historyFile` Codex — текущий файл: самый новый несжатый. Его читают transcript, статус и расход.
+  Более ранние файлы в окно не входят; transcript JSON сообщает их число в `window.earlierFiles`,
+  и `reachedStart` относится только к прочитанному файлу.
+- Есть ли беседа, решает `codexHistoryPresent`: любой файл треда, в том числе сжатый. Супервизор
+  (`src/commands/run.ts`) и native-запуск больше не блокируют сессию как «missing rollout», если
+  Codex сжал её журнал; resume сжатого треда делает сам Codex.
+- Обнаружение внешних тредов показывает тред один раз, по текущему файлу.
+
 ## Форматы (выверено на реальных файлах)
 
 | | Claude Code | Codex |
 |---|---|---|
-| Файл | `~/.claude/projects/<enc-cwd>/<uuid>.jsonl` | `~/.codex/sessions/Y/M/D/rollout-*-<id>.jsonl` |
+| Файл | `~/.claude/projects/<enc-cwd>/<uuid>.jsonl` | `~/.codex/sessions/Y/M/D/rollout-*-<id>.jsonl`; длинный тред — ещё `rollout-*-<id>_<segment>.jsonl`, готовые файлы бывают `.jsonl.zst` |
 | Обёртка | `.type` = роль; `.message.content[]` | `.type=response_item`; `.payload` |
 | text | `{type:text\|thinking, …}` | `{type:input_text\|output_text}` |
 | tool call | inline `{type:tool_use, name, id, input}` | top-level `{function_call, name, arguments(JSON-строка), call_id}` |

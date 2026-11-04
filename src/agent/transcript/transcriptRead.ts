@@ -71,6 +71,9 @@ export interface TranscriptRead {
   // `reachedStart` = that window reaches the very first line (nothing older to load).
   firstLine: number;
   reachedStart: boolean;
+  /** Files of a split Codex thread before the one read; their records are not in this window, and
+   *  `reachedStart` speaks only for the file read. Absent means none. */
+  earlierFiles?: number;
   // Whole-session composition (all lines, cached by mtime) — true totals for the header.
   stats: TranscriptStats;
 }

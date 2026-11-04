@@ -31,23 +31,23 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.302",
-    "@biomejs/biome": "2.5.15",
-    "@types/bun": "^1.4.3",
+    "@anthropic-ai/claude-agent-sdk": "0.3.318",
+    "@biomejs/biome": "2.6.4",
+    "@types/bun": "^1.4.4",
     "@types/pngjs": "6.0.5",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
-    "stitchkit": "0.111.2",
+    "stitchkit": "0.118.1",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "3.0.71",
-    "@modelcontextprotocol/ext-apps": "2.0.3",
-    "@modelcontextprotocol/sdk": "1.32.1",
-    "@modelcontextprotocol/server": "2.3.1",
-    "@opencode-ai/sdk": "1.19.3",
+    "@ai-sdk/openai-compatible": "3.0.84",
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@opencode-ai/sdk": "1.19.5",
     "@openrouter/ai-sdk-provider": "3.1.0",
-    "ai": "7.0.143",
+    "ai": "7.0.162",
     "ink": "^8.0.0",
     "jpeg-js": "0.4.4",
     "pngjs": "7.0.0",
@@ -55,7 +55,7 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "stitchkit": ">=0.111.2 <1"
+    "stitchkit": ">=0.118.1 <1"
   },
   "packageManager": "bun@1.4.4"
 }

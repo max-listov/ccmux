@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
+import { createZstdDecompress } from 'node:zlib';
 import { AppError } from 'stitchkit';
 import { projectContent } from './contentProjection.ts';
 import {
@@ -68,8 +69,9 @@ function retain(value: ContentSnapshot) {
   retainedBytes += value.memory;
 }
 
-/** The fixed prefix is hashed, never the newly appended tail. Memory stays one chunk. */
-async function scan(
+/** The fixed prefix is hashed, never the newly appended tail. Memory stays one chunk. Shares the
+ *  reader capacity with every other external scan. */
+export async function scan(
   file: FileHandle,
   size: number,
   signal: AbortSignal,
@@ -101,6 +103,43 @@ async function scan(
     signal.throwIfAborted();
     return hash.digest('hex');
   } finally {
+    scanning--;
+  }
+}
+
+/**
+ * Stream a zstd-compressed source in constant memory, hashing the DECOMPRESSED bytes. Null when the
+ * output passes `maxBytes` (the read is refused, never cut). Shares the reader capacity with `scan`.
+ */
+export async function scanCompressed(
+  file: FileHandle,
+  maxBytes: number,
+  signal: AbortSignal,
+  consume: (chunk: Buffer) => void,
+): Promise<string | null> {
+  if (scanning >= limits.concurrentBuilds)
+    throw new AppError('RESOURCE_EXHAUSTED', {
+      message: 'External history reader capacity is busy',
+      status: 429,
+    });
+  scanning++;
+  const stream = file
+    .createReadStream({ start: 0, highWaterMark: limits.chunkBytes, autoClose: false })
+    .pipe(createZstdDecompress());
+  try {
+    const hash = createHash('sha256');
+    let total = 0;
+    for await (const chunk of stream as AsyncIterable<Buffer>) {
+      signal.throwIfAborted();
+      total += chunk.length;
+      if (total > maxBytes) return null;
+      hash.update(chunk);
+      consume(chunk);
+    }
+    signal.throwIfAborted();
+    return hash.digest('hex');
+  } finally {
+    stream.destroy();
     scanning--;
   }
 }

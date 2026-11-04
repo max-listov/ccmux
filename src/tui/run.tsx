@@ -6,6 +6,7 @@ import { LOG_FILE, log, setStderrLogging } from '../util/log.ts';
 import type { Intent } from './App.tsx';
 import { App } from './App.tsx';
 import { createSession, waitReady } from './actions.ts';
+import { ignoreTerminalStops } from './terminalStops.ts';
 
 function insideTmux(): boolean {
   return process.env.TMUX !== undefined && process.env.TMUX !== '';
@@ -77,25 +78,36 @@ function installCrashTrail(): void {
  *  into a dead pty forever — a real incident: an orphaned TUI burned ~80% of a core for 14h. We
  *  can't rely on default signal behaviour (Ink/Bun swallow SIGHUP/SIGTERM — the orphan ignored
  *  plain `kill`), so we force exit ourselves on hangup OR the first failed stdout write (EIO on the
- *  dead tty) OR stdin EOF. process.exit is immediate, so a hung Ink teardown can't block it. */
+ *  dead tty) OR stdin EOF. process.exit is immediate, so a hung Ink teardown can't block it.
+ *
+ *  The way out must not be stoppable. A closing terminal tab can hand the foreground back to the
+ *  shell before the hangup reaches us; from the background, switching raw mode off (`tcsetattr`) makes
+ *  the kernel STOP the process with SIGTTOU — and not only our own restore does it: Ink's exit hook
+ *  (`signal-exit` → unmount) does the same. The `dying` latch then swallows every later signal and the
+ *  process stays stopped for good, an ownerless orphan in state `T`. So the first thing `die` does is
+ *  ignore the terminal job-control stops; an ignored SIGTTOU lets the call go through instead. When
+ *  the terminal is what died, we do not restore it ourselves — there is nothing left to restore. */
 function installExitOnTerminalDeath(): void {
   let dying = false;
-  const die = (why: string): void => {
+  const die = (why: string, terminalAlive: boolean): void => {
     if (dying) return;
     dying = true;
+    ignoreTerminalStops();
     log.info({ msg: 'terminal died — exiting', why });
-    try {
-      cleanTerminalForAttach();
-    } catch {
-      /* best effort */
+    if (terminalAlive) {
+      try {
+        cleanTerminalForAttach();
+      } catch {
+        /* best effort */
+      }
     }
     process.exit(0);
   };
-  process.on('SIGHUP', () => die('SIGHUP'));
-  process.on('SIGTERM', () => die('SIGTERM'));
-  process.stdout.on('error', () => die('stdout error')); // EIO/EPIPE on a dead pty
-  process.stdin.on('error', () => die('stdin error'));
-  process.stdin.on('end', () => die('stdin end'));
+  process.on('SIGHUP', () => die('SIGHUP', false));
+  process.on('SIGTERM', () => die('SIGTERM', true));
+  process.stdout.on('error', () => die('stdout error', false)); // EIO/EPIPE on a dead pty
+  process.stdin.on('error', () => die('stdin error', false));
+  process.stdin.on('end', () => die('stdin end', false));
 }
 
 export async function runTui(fullscreen: boolean): Promise<number> {

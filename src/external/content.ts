@@ -1,9 +1,7 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { lstat, open, realpath } from 'node:fs/promises';
+import { lstat } from 'node:fs/promises';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import {
@@ -22,34 +20,13 @@ import {
   publishContentSnapshot,
   validateContentSnapshot,
 } from './contentSnapshot.ts';
-import {
-  locateExternalStorage,
-  readExternalCodexMetadata,
-  validateExternalPath,
-} from './storage.ts';
+import { authorizeExternalRead, openExternalSource } from './source.ts';
+import { validateExternalPath } from './storage.ts';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const CursorSchema = z
   .object({ identity: z.string(), snapshot: z.uuid(), end: z.number().int().nonnegative() })
   .strict();
-
-function authorize(m: MachineConfig, target: ExternalContentTarget) {
-  if (target.machine !== m.rcPrefix)
-    throw new AppError('IDENTITY_MISMATCH', {
-      message: 'External identity does not belong to this host',
-      status: 409,
-    });
-  if (!m.externalInventory)
-    throw new AppError('PERMISSION_DENIED', {
-      message: 'External content access is disabled',
-      status: 403,
-    });
-  if (loadSessions(m).some((s) => s.agent === target.provider && s.uuid === target.threadId))
-    throw new AppError('IDENTITY_MISMATCH', {
-      message: 'Use the managed history contract for this identity',
-      status: 409,
-    });
-}
 
 /** Read an immutable authored-text snapshot; never contact or start a provider writer. */
 export async function readExternalContent(
@@ -57,7 +34,7 @@ export async function readExternalContent(
   input: z.output<typeof ExternalContentReadSchema>,
   signal: AbortSignal,
 ): Promise<ExternalContentResult> {
-  authorize(m, input.target);
+  authorizeExternalRead(m, input.target);
   signal.throwIfAborted();
   const result: ExternalContentResult = {
     target: input.target,
@@ -68,6 +45,7 @@ export async function readExternalContent(
     nextCursor: null,
     truncated: false,
     omittedRecords: 0,
+    earlierFiles: 0,
   };
   const identity = digest(JSON.stringify([m.stateDir, input.target]));
   let cursor: z.output<typeof CursorSchema> | null = null;
@@ -89,24 +67,11 @@ export async function readExternalContent(
       });
   }
   try {
-    const configuredRoot = input.target.provider === 'codex' ? m.codexSessionsDir : m.projectsDir;
-    if (!configuredRoot) return { ...result, outcome: cursor ? 'stale' : 'history-absent' };
-    const root = await realpath(configuredRoot);
-    const path = await locateExternalStorage(root, input.target, signal);
-    if (path === null) return { ...result, outcome: cursor ? 'stale' : 'history-absent' };
-    await validateExternalPath(root, path);
-    const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
+    const source = await openExternalSource(m, input.target, signal);
+    if (source === 'absent') return { ...result, outcome: cursor ? 'stale' : 'history-absent' };
+    if (source === 'changed') return { ...result, outcome: 'stale' };
+    const { file, stat, path, root, earlierFiles } = source;
     try {
-      const stat = await file.stat();
-      if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o022) !== 0)
-        throw new AppError('PERMISSION_DENIED', {
-          message: 'External storage is not accessible',
-          status: 403,
-        });
-      if (fileIdentity(await lstat(path), path) !== fileIdentity(stat, path))
-        return { ...result, outcome: 'stale' };
-      if (input.target.provider === 'codex')
-        await readExternalCodexMetadata(file, input.target.threadId);
       const snapshot = cursor
         ? getContentSnapshot(cursor.snapshot)
         : (findContentSnapshot(identity, stat, path) ??
@@ -120,7 +85,7 @@ export async function readExternalContent(
       if (!(await validateContentSnapshot(snapshot, file, path, signal)))
         return { ...result, outcome: 'stale' };
       await validateExternalPath(root, path);
-      authorize(m, input.target);
+      authorizeExternalRead(m, input.target);
       if (fileIdentity(await lstat(path), path) !== snapshot.fileIdentity)
         return { ...result, outcome: 'stale' };
       const end = cursor?.end ?? snapshot.entries.length;
@@ -146,8 +111,13 @@ export async function readExternalContent(
                 'base64url',
               )
             : null,
-        truncated: start > 0 || snapshot.omitted > 0 || entries.some((row) => row.truncated),
+        truncated:
+          start > 0 ||
+          snapshot.omitted > 0 ||
+          earlierFiles > 0 ||
+          entries.some((row) => row.truncated),
         omittedRecords: snapshot.omitted,
+        earlierFiles,
       });
       if (Buffer.byteLength(JSON.stringify(page)) > limits.responseBytes)
         throw new AppError('RESOURCE_EXHAUSTED', {

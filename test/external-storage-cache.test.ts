@@ -19,11 +19,15 @@ test('known threads avoid walks; a duplicate in another directory is caught at t
   const open = spyOn(fs, 'opendir');
   let clock: ReturnType<typeof spyOn> | undefined;
   try {
-    expect(await locateExternalStorage(root, target, new AbortController().signal)).toBe(first);
+    expect((await locateExternalStorage(root, target, new AbortController().signal))?.path).toBe(
+      first,
+    );
     expect(open.mock.calls.length).toBeGreaterThan(1);
     open.mockClear();
     for (let n = 0; n < 20; n++)
-      expect(await locateExternalStorage(root, target, new AbortController().signal)).toBe(first);
+      expect((await locateExternalStorage(root, target, new AbortController().signal))?.path).toBe(
+        first,
+      );
     expect(open.mock.calls).toHaveLength(0);
     // Existing sibling's contents change without changing root or the known file's parent.
     writeFileSync(join(root, 'b', `rollout-copy-${id}.jsonl`), '{}\n');
@@ -56,13 +60,13 @@ test('moving a whole cached parent directory is found without a false unavailabl
   const name = `rollout-test-${id}.jsonl`;
   writeFileSync(join(root, 'live', 'day', name), '{}\n');
   try {
-    expect(await locateExternalStorage(root, target, new AbortController().signal)).toBe(
+    expect((await locateExternalStorage(root, target, new AbortController().signal))?.path).toBe(
       join(root, 'live', 'day', name),
     );
     const stamp = lstatSync(root, { bigint: true });
     renameSync(join(root, 'live', 'day'), join(root, 'archive', 'day'));
     expect(lstatSync(root, { bigint: true }).mtimeNs).toBe(stamp.mtimeNs);
-    expect(await locateExternalStorage(root, target, new AbortController().signal)).toBe(
+    expect((await locateExternalStorage(root, target, new AbortController().signal))?.path).toBe(
       join(root, 'archive', 'day', name),
     );
   } finally {
@@ -88,7 +92,7 @@ test('one caller abandoning a shared walk does not fail the others waiting on it
         (error: unknown) => String(error),
       ),
     ).toContain('Abort');
-    expect(await waiting).toBe(file);
+    expect((await waiting)?.path).toBe(file);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -113,7 +117,7 @@ test('a thread created in an existing day directory is found once the index is b
     const file = join(root, 'day', `rollout-test-${fresh}.jsonl`);
     writeFileSync(file, '{}\n');
     clock = spyOn(Date, 'now').mockReturnValue(Date.now() + STORAGE_MISS_RESCAN_MS + 1);
-    expect(await look(fresh)).toBe(file);
+    expect((await look(fresh))?.path).toBe(file);
   } finally {
     clock?.mockRestore();
     rmSync(root, { recursive: true, force: true });

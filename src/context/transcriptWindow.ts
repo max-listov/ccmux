@@ -1,5 +1,6 @@
 import { claudeProvider } from '../agent/claude/index.ts';
 import { subagentFile } from '../agent/claude/subagent.ts';
+import { codexRolloutFiles } from '../agent/codex/rolloutFiles.ts';
 import { providerFor, readTranscript } from '../agent/index.ts';
 import { clip, DEFAULT_TEXT_LIMIT } from '../agent/transcript/normalize.ts';
 import {
@@ -52,8 +53,13 @@ export async function readTranscriptWindow(
   window: TranscriptWindowOptions,
   signal?: AbortSignal,
 ): Promise<TranscriptRead> {
-  if (providerFor(session).historyFile(session, m) !== null)
-    return readTranscript(session, m, window);
+  if (providerFor(session).historyFile(session, m) !== null) {
+    const read = readTranscript(session, m, window);
+    if (session.agent !== 'codex') return read;
+    // historyFile is the file Codex writes now; a split thread has older ones before it.
+    const files = codexRolloutFiles(m.codexSessionsDir, session.uuid).length;
+    return files > 1 ? { ...read, earlierFiles: files - 1 } : read;
+  }
   // Claude's native SDK writes its own jsonl, just not at the registry uuid the interactive provider
   // points at. Its own file is the source of truth and carries absolute lines, so it answers here.
   if (session.agent === 'claude' && hasNativeRuntime(session))

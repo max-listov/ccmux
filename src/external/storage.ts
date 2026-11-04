@@ -1,6 +1,13 @@
 import { type FileHandle, lstat, opendir, realpath } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { z } from 'zod';
+import {
+  type CodexRolloutFile,
+  currentRolloutFile,
+  parseRolloutName,
+  rolloutFile,
+  sortRolloutFiles,
+} from '../agent/codex/rolloutFiles.ts';
 import { fileStamp } from '../util/fileStamp.ts';
 import { type ExternalContentTarget, EXTERNAL_CONTENT_LIMITS as limits } from './contentSchema.ts';
 
@@ -19,8 +26,10 @@ export const STORAGE_LOOKUP_MAX_AGE_MS = 5_000;
 export const STORAGE_MISS_RESCAN_MS = 250;
 /** The shared walk belongs to no single caller, so it carries its own bound. */
 const STORAGE_SCAN_DEADLINE_MS = 10_000;
+/** One file of a thread's Codex history (see `agent/codex/rolloutFiles.ts`). */
+export type CodexSegment = CodexRolloutFile;
 type StorageIndex = {
-  paths: Map<string, string | null>;
+  segments: Map<string, CodexSegment[] | null>;
   directories: Map<string, string>;
   scannedAt: number;
   expiresAt: number;
@@ -67,21 +76,59 @@ async function codexStorageIndex(root: string, signal: AbortSignal): Promise<Sto
 }
 
 async function scanStorage(root: string, signal: AbortSignal): Promise<StorageIndex> {
-  const paths = new Map<string, string | null>();
+  const segments = new Map<string, CodexSegment[] | null>();
   const directories = new Map<string, string>();
+  const seen = new Set<string>();
   await walkStorage(
     root,
     signal,
     (name, path) => {
-      if (!name.startsWith('rollout-') || !name.endsWith('.jsonl')) return;
-      const id = name.slice(-42, -6);
-      if (!z.uuid().safeParse(id).success) return;
-      paths.set(id, paths.has(id) ? null : path);
+      const parsed = parseRolloutName(name);
+      if (!parsed) return;
+      const { thread, segment } = parsed;
+      const list = segments.get(thread);
+      if (list === null) return;
+      // The same thread or segment twice — plain and compressed alike — is not one history.
+      const key = `${thread}_${segment ?? ''}`;
+      if (seen.has(key)) {
+        segments.set(thread, null);
+        return;
+      }
+      seen.add(key);
+      segments.set(thread, [...(list ?? []), rolloutFile(path, parsed)]);
     },
     directories,
   );
+  for (const list of segments.values()) if (list) sortRolloutFiles(list);
   const scannedAt = Date.now();
-  return { paths, directories, scannedAt, expiresAt: scannedAt + STORAGE_LOOKUP_MAX_AGE_MS };
+  return { segments, directories, scannedAt, expiresAt: scannedAt + STORAGE_LOOKUP_MAX_AGE_MS };
+}
+
+/** All files of one Codex thread, oldest first; null when the thread has no history here. */
+export async function locateCodexSegments(
+  root: string,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<CodexSegment[] | null> {
+  let index = await codexStorageIndex(root, signal);
+  let list = index.segments.get(threadId);
+  const parents = new Set([root, ...(list ? list.map((segment) => dirname(segment.path)) : [])]);
+  for (const directory of parents) {
+    if (index.directories.get(directory) === directoryRevision(directory)) continue;
+    indexes.delete(root);
+    index = await codexStorageIndex(root, signal);
+    list = index.segments.get(threadId);
+    break;
+  }
+  if (list === undefined && Date.now() - index.scannedAt > STORAGE_MISS_RESCAN_MS) {
+    indexes.delete(root);
+    index = await codexStorageIndex(root, signal);
+    list = index.segments.get(threadId);
+  }
+  if (list === null) throw new Error('Ambiguous external storage identity');
+  // The known parent revision detects removal and atomic replacement. The reader checks the final
+  // path, inode/type, permissions and metadata again when opening it.
+  return list ?? null;
 }
 
 /** Fixed configured roots and UUID filenames only. Never follow a caller path or a symlink. */
@@ -91,27 +138,13 @@ export async function locateExternalStorage(
   signal: AbortSignal,
 ) {
   if (target.provider === 'codex') {
-    let index = await codexStorageIndex(root, signal);
-    let path = index.paths.get(target.threadId);
-    const parents = new Set([root, ...(typeof path === 'string' ? [dirname(path)] : [])]);
-    for (const directory of parents) {
-      if (index.directories.get(directory) === directoryRevision(directory)) continue;
-      indexes.delete(root);
-      index = await codexStorageIndex(root, signal);
-      path = index.paths.get(target.threadId);
-      break;
-    }
-    if (path === undefined && Date.now() - index.scannedAt > STORAGE_MISS_RESCAN_MS) {
-      indexes.delete(root);
-      index = await codexStorageIndex(root, signal);
-      path = index.paths.get(target.threadId);
-    }
-    if (path === null) throw new Error('Ambiguous external storage identity');
-    if (path === undefined) return null;
-    // The known parent revision detects removal and atomic replacement. The reader checks
-    // the final path, inode/type, permissions and metadata again when opening it; repeating
-    // lstat here would add an async IO round trip without another authorization guarantee.
-    return path;
+    const segments = await locateCodexSegments(root, target.threadId, signal);
+    if (segments === null) return null;
+    // A split thread is read from the file Codex writes now; the files before it are counted, not
+    // stitched. A thread whose every file is compressed has no such file.
+    const current = currentRolloutFile(segments);
+    if (current === null) throw new Error('External storage is compressed');
+    return { path: current.path, earlierFiles: segments.length - 1 };
   }
   let found: string | null = null;
   await walkStorage(root, signal, (name, path) => {
@@ -119,7 +152,7 @@ export async function locateExternalStorage(
     if (found) throw new Error('Ambiguous external storage identity');
     found = path;
   });
-  return found;
+  return found === null ? null : { path: found, earlierFiles: 0 };
 }
 
 async function walkStorage(

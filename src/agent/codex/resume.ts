@@ -1,8 +1,7 @@
-import { existsSync } from 'node:fs';
-import { Glob } from 'bun';
 import { z } from 'zod';
 import type { MachineConfig, Session } from '../../types.ts';
 import { readFirstLine } from '../../util/readLines.ts';
+import { codexRolloutFiles, currentRolloutFile } from './rolloutFiles.ts';
 
 const RolloutSessionMetaSchema = z.looseObject({
   type: z.literal('session_meta'),
@@ -15,17 +14,21 @@ export type RolloutReadiness =
   | { status: 'ready'; path: string; detail: null };
 
 /**
- * Locate a Codex session's rollout transcript. Codex names rollout files
- * `rollout-<ts>-<id>.jsonl` under ~/.codex/sessions/Y/M/D/. After pending bootstrap promotion,
- * the registry uuid IS Codex's rollout id, so the glob finds it. Returns null when no
- * rollout exists. A ready managed Codex session must always resolve this path.
+ * The Codex session's current rollout: the newest uncompressed file of its thread under
+ * ~/.codex/sessions/Y/M/D/ (a split thread has several, see `rolloutFiles.ts`). After pending
+ * bootstrap promotion, the registry uuid IS Codex's thread id. Null when no uncompressed file exists —
+ * which, for a thread Codex has compressed while idle, is not "no conversation": ask
+ * `codexHistoryPresent` for that.
  */
 export function historyFile(s: Session, m: MachineConfig): string | null {
-  const root = m.codexSessionsDir;
-  if (!root || !existsSync(root)) return null;
-  const glob = new Glob(`**/rollout-*-${s.uuid}.jsonl`);
-  for (const f of glob.scanSync({ cwd: root, absolute: true })) return f;
-  return null;
+  return currentRolloutFile(codexRolloutFiles(m.codexSessionsDir, s.uuid))?.path ?? null;
+}
+
+/** The conversation exists on disk in any form Codex keeps it: plain, split or compressed. Codex
+ *  resumes a compressed thread itself; a supervisor that only looked for `.jsonl` blocked such a
+ *  session as "missing rollout". */
+export function codexHistoryPresent(s: Session, m: MachineConfig): boolean {
+  return codexRolloutFiles(m.codexSessionsDir, s.uuid).length > 0;
 }
 
 /**

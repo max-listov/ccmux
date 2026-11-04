@@ -39,7 +39,7 @@ async function locateInConfiguredRoots(
   machine: string,
   target: Pick<ExternalContentTarget, 'provider' | 'threadId'>,
   signal: AbortSignal,
-): Promise<{ root: string; path: string } | null> {
+): Promise<{ root: string; path: string; earlierFiles: number } | null> {
   for (const candidate of candidates) {
     let root: string;
     try {
@@ -50,7 +50,7 @@ async function locateInConfiguredRoots(
       throw error;
     }
     const found = await locateExternalStorage(root, { ...target, machine }, signal);
-    if (found) return { root, path: found };
+    if (found) return { root, ...found };
   }
   return null;
 }
@@ -63,7 +63,8 @@ export async function withExternalTranscript<T>(
   signal?: AbortSignal,
   inventory?: Session[],
 ): Promise<
-  { source: 'readable'; value: T; dir: string } | { source: 'missing' | 'unreadable'; dir: string }
+  | { source: 'readable'; value: T; dir: string; earlierFiles: number }
+  | { source: 'missing' | 'unreadable'; dir: string }
 > {
   const { provider, threadId } = target;
   if (!z.uuid().safeParse(threadId).success) throw new Error('Invalid external thread ID');
@@ -135,7 +136,7 @@ export async function withExternalTranscript<T>(
       const current = await lstat(path);
       if (current.dev !== stat.dev || current.ino !== stat.ino || current.size < stat.size)
         throw new Error('External storage changed during read');
-      return { source: 'readable', dir, value };
+      return { source: 'readable', dir, value, earlierFiles: located.earlierFiles };
     } finally {
       await file.close();
     }
@@ -166,7 +167,9 @@ export async function readExternalTranscript(
     dir: result.dir,
     read:
       result.source === 'readable'
-        ? result.value
+        ? result.earlierFiles > 0
+          ? { ...result.value, earlierFiles: result.earlierFiles }
+          : result.value
         : unavailableTranscript(
             provider,
             '',

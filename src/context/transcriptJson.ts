@@ -51,6 +51,7 @@ export function transcriptReadJson(
       firstLine: read.firstLine,
       lastLine: read.totalLines,
       reachedStart: read.reachedStart,
+      earlierFiles: read.earlierFiles ?? 0,
     },
     stats: read.stats,
     messages: read.messages,

@@ -18,7 +18,7 @@ import { withLock } from '../../../util/lock.ts';
 import { log } from '../../../util/log.ts';
 import { computeStamp } from '../../launch/launchStamp.ts';
 import { launchEnv } from '../launch.ts';
-import { historyFile } from '../resume.ts';
+import { codexHistoryPresent } from '../resume.ts';
 import { ownedChildAlive, stopOwnedChildGroup } from './child.ts';
 import { OwnedCodexConnection } from './connection.ts';
 import { ownedCodexArgv, ownedCodexClientArgv } from './launch.ts';
@@ -73,7 +73,7 @@ export async function runOwnedCodexProcess(
       // Never attach to an orphan or another supervisor by accidentally reusing its endpoint.
       if (await socketOccupied(socket))
         throw new Error('Native runtime endpoint already has an owner');
-      if (promote === undefined && historyFile(initial, m) === null)
+      if (promote === undefined && !codexHistoryPresent(initial, m))
         throw new Error(
           'Native resume history is missing; refusing to create another conversation',
         );

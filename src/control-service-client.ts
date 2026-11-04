@@ -37,6 +37,15 @@ export {
   ExternalContentTargetSchema,
 } from './external/contentSchema.ts';
 export {
+  type ExternalMessageAuthorship,
+  ExternalMessageAuthorshipSchema,
+  type ExternalMessageRead,
+  ExternalMessageReadSchema,
+  type ExternalMessageResult,
+  ExternalMessageResultSchema,
+  ExternalMessageSchema,
+} from './external/messageSchema.ts';
+export {
   type RemoteTransportRequest,
   RemoteTransportRequestSchema,
   type RemoteTransportResult,

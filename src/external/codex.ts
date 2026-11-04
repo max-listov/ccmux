@@ -2,6 +2,13 @@ import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
 import { Glob } from 'bun';
 import { z } from 'zod';
+import {
+  type CodexRolloutFile,
+  currentRolloutFile,
+  parseRolloutName,
+  rolloutFile,
+  sortRolloutFiles,
+} from '../agent/codex/rolloutFiles.ts';
 import * as codexTranscript from '../agent/codex/transcript.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { ExternalSession, MachineConfig, WriterRuntime } from '../types.ts';
@@ -45,13 +52,28 @@ function readMeta(path: string): CodexMeta | null {
   }
 }
 
+/** One entry per thread: a split thread has several files, and only the current one is listed. The
+ *  thread is what the file's own `session_meta` says; the name only orders a thread's files. */
 function storedRollouts(m: MachineConfig): CodexStored[] {
   if (!m.codexSessionsDir || !existsSync(m.codexSessionsDir)) return [];
   const glob = new Glob('**/rollout-*.jsonl');
-  const out: CodexStored[] = [];
+  const threads = new Map<string, { meta: CodexMeta; file: CodexRolloutFile }[]>();
   for (const path of glob.scanSync({ cwd: m.codexSessionsDir, absolute: true })) {
     const meta = readMeta(path);
-    if (meta) out.push({ meta, path });
+    if (!meta) continue;
+    const id = meta.payload.id;
+    const name = parseRolloutName(path.slice(path.lastIndexOf('/') + 1)) ?? {
+      thread: id,
+      segment: null,
+      compressed: false,
+    };
+    threads.set(id, [...(threads.get(id) ?? []), { meta, file: rolloutFile(path, name) }]);
+  }
+  const out: CodexStored[] = [];
+  for (const entries of threads.values()) {
+    const current = currentRolloutFile(sortRolloutFiles(entries.map((entry) => entry.file)));
+    const entry = entries.find((candidate) => candidate.file === current);
+    if (entry) out.push({ meta: entry.meta, path: entry.file.path });
   }
   return out;
 }
