@@ -55,11 +55,16 @@ test('a loop that keeps turning reports nothing', async () => {
   const stalls: LoopStall[] = [];
   const stop = watchLoopStalls((stall) => stalls.push(stall), 20, 150);
   try {
-    await Bun.sleep(200);
+    // A second of an idle loop: a detector that took sleeping for blocking would report most of it,
+    // far past what the filter below lets through.
+    await Bun.sleep(1_000);
   } finally {
     stop();
   }
-  expect(stalls).toEqual([]);
+  // Only stalls this test could cause. On a loaded host the scheduler alone holds the process past
+  // the 150 ms threshold — seen in a release gate as 220 ms with 1 ms of CPU and 13 preemptions —
+  // which is a true report about the host, not about this loop.
+  expect(caused(stalls)).toEqual([]);
 });
 
 test('a stall reports the page faults and preemptions of its own window, not the totals', async () => {
