@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-11-06
+
+- Read the newest 8 MiB of external histories of any file size, report the exact byte coverage, and keep older pages pinned through appends with bounded rewrite checks.
+
 ## [0.85.1] — 2026-11-04
 
 First published build of the 0.85.0 changes, whose tag was cut but whose CI build failed on a test.

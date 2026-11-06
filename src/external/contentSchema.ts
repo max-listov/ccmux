@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { RC_PREFIX_RE } from '../chat/identitySchema.ts';
 
 export const EXTERNAL_CONTENT_LIMITS = {
-  sourceBytes: 512 * 1024 * 1024,
+  sourceBytes: 8 * 1024 * 1024,
   chunkBytes: 256 * 1024,
   recordBytes: 256 * 1024,
   snapshotBytes: 16 * 1024 * 1024,
@@ -64,6 +64,13 @@ export const ExternalContentResultSchema = z
     /** Files of a split thread before the one read. They are not in this history, so `truncated`
      *  is true whenever this is above zero. */
     earlierFiles: z.number().int().nonnegative(),
+    /** Exact immutable byte window; bytes before startByte were not scanned or counted. */
+    sourceWindow: z
+      .strictObject({
+        startByte: z.int().nonnegative(),
+        endByte: z.int().nonnegative(),
+      })
+      .nullable(),
   })
   .strict();
 const UnsupportedControlSchema = z

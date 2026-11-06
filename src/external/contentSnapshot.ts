@@ -16,6 +16,7 @@ export interface ContentSnapshot {
   fileIdentity: string;
   revision: string;
   size: number;
+  start: number;
   stamp: string;
   expires: number;
   entries: ExternalContentEntry[];
@@ -69,13 +70,14 @@ function retain(value: ContentSnapshot) {
   retainedBytes += value.memory;
 }
 
-/** The fixed prefix is hashed, never the newly appended tail. Memory stays one chunk. Shares the
+/** The fixed byte range is hashed, never the newly appended tail. Memory stays one chunk. Shares the
  *  reader capacity with every other external scan. */
 export async function scan(
   file: FileHandle,
   size: number,
   signal: AbortSignal,
   consume?: (chunk: Buffer, offset: number) => void,
+  start = 0,
 ) {
   if (scanning >= limits.concurrentBuilds)
     throw new AppError('RESOURCE_EXHAUSTED', {
@@ -86,7 +88,7 @@ export async function scan(
   try {
     const hash = createHash('sha256');
     const buffer = Buffer.alloc(limits.chunkBytes);
-    for (let offset = 0; offset < size; ) {
+    for (let offset = start; offset < size; ) {
       signal.throwIfAborted();
       const { bytesRead } = await file.read(
         buffer,
@@ -153,11 +155,6 @@ export async function buildContentSnapshot(
   target: ExternalContentTarget,
   signal: AbortSignal,
 ) {
-  if (stat.size > limits.sourceBytes)
-    throw new AppError('RESOURCE_EXHAUSTED', {
-      message: 'External history source exceeds the snapshot budget',
-      status: 413,
-    });
   if (building >= limits.concurrentBuilds)
     throw new AppError('RESOURCE_EXHAUSTED', {
       message: 'External history snapshot capacity is busy',
@@ -166,38 +163,48 @@ export async function buildContentSnapshot(
   building++;
   try {
     const entries: ExternalContentEntry[] = [];
+    const start = Math.max(0, stat.size - limits.sourceBytes);
     let pending = Buffer.alloc(0),
-      skipping = false,
-      rowStart = 0,
+      // A window boundary may land in a UTF-8 sequence or native JSON record. Never project it.
+      skipping = start > 0,
+      rowStart = start,
       omitted = 0,
       memory = 0;
-    const revision = await scan(file, stat.size, signal, (chunk, offset) => {
-      for (let position = 0; position < chunk.length; ) {
-        const newline = chunk.indexOf(10, position);
-        const end = newline < 0 ? chunk.length : newline;
-        if (!skipping) {
-          if (pending.length + end - position > limits.recordBytes) {
-            pending = Buffer.alloc(0);
-            skipping = true;
-          } else pending = Buffer.concat([pending, chunk.subarray(position, end)]);
+    const revision = await scan(
+      file,
+      stat.size,
+      signal,
+      (chunk, offset) => {
+        for (let position = 0; position < chunk.length; ) {
+          const newline = chunk.indexOf(10, position);
+          const end = newline < 0 ? chunk.length : newline;
+          if (!skipping) {
+            if (pending.length + end - position > limits.recordBytes) {
+              pending = Buffer.alloc(0);
+              skipping = true;
+            } else pending = Buffer.concat([pending, chunk.subarray(position, end)]);
+          }
+          if (newline < 0) break;
+          const entry = skipping
+            ? null
+            : projectContent(pending.toString('utf8'), target, rowStart);
+          if (entry) {
+            memory += entry.text.length * 2 + 256;
+            if (memory > limits.snapshotBytes)
+              throw new AppError('RESOURCE_EXHAUSTED', {
+                message: 'External history projection exceeds the snapshot budget',
+                status: 413,
+              });
+            entries.push(entry);
+          } else omitted++;
+          pending = Buffer.alloc(0);
+          skipping = false;
+          position = newline + 1;
+          rowStart = offset + position;
         }
-        if (newline < 0) break;
-        const entry = skipping ? null : projectContent(pending.toString('utf8'), target, rowStart);
-        if (entry) {
-          memory += entry.text.length * 2 + 256;
-          if (memory > limits.snapshotBytes)
-            throw new AppError('RESOURCE_EXHAUSTED', {
-              message: 'External history projection exceeds the snapshot budget',
-              status: 413,
-            });
-          entries.push(entry);
-        } else omitted++;
-        pending = Buffer.alloc(0);
-        skipping = false;
-        position = newline + 1;
-        rowStart = offset + position;
-      }
-    });
+      },
+      start,
+    );
     if (pending.length || skipping) omitted++;
     if (revision === null) return null;
     const snapshot: ContentSnapshot = {
@@ -205,6 +212,7 @@ export async function buildContentSnapshot(
       identity,
       fileIdentity: fileIdentity(stat, path),
       size: stat.size,
+      start,
       stamp: contentStamp(stat),
       revision,
       expires: Date.now() + limits.snapshotTtlMs,
@@ -218,7 +226,7 @@ export async function buildContentSnapshot(
   }
 }
 
-/** Stat is only a fast path. A changed source must prove its entire pinned prefix. */
+/** Stat is only a fast path. A changed source must prove the entire pinned window. */
 export async function validateContentSnapshot(
   snapshot: ContentSnapshot,
   file: FileHandle,
@@ -229,7 +237,8 @@ export async function validateContentSnapshot(
   if (fileIdentity(before, path) !== snapshot.fileIdentity || before.size < snapshot.size)
     return false;
   if (contentStamp(before) === snapshot.stamp) return true;
-  if ((await scan(file, snapshot.size, signal)) !== snapshot.revision) return false;
+  if ((await scan(file, snapshot.size, signal, undefined, snapshot.start)) !== snapshot.revision)
+    return false;
   const after = await file.stat();
   if (fileIdentity(after, path) !== snapshot.fileIdentity || after.size < snapshot.size)
     return false;

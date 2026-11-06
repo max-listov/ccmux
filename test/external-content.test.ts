@@ -8,6 +8,7 @@ import {
   realpath,
   rename,
   rm,
+  stat,
   symlink,
   truncate,
   writeFile,
@@ -84,6 +85,7 @@ test('external pages retain exact identity and authored text, not internal promp
   const page = await p.read();
   expect(page.outcome).toBe('available');
   expect(page.target).toEqual(p.target);
+  expect(page.sourceWindow).toEqual({ startByte: 0, endByte: (await stat(p.path)).size });
   expect(page.entries.map((row) => row.text)).toEqual(['hello', 'world']);
   expect(JSON.stringify(page)).not.toContain('fixture-internal-secret');
   expect(JSON.stringify(page)).not.toContain('fixture-tool-secret');

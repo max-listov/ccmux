@@ -35,15 +35,19 @@ per-record identity must match. Same-user regular files are required; group/worl
 symlinks, ambiguous lookup and changed paths refuse without returning content.
 
 Lookup visits at most 8,192 directory entries / eight levels; native identity metadata is bounded
-to 256 KiB. A cold snapshot scans at most 512 MiB in 256 KiB chunks and retains only authored text,
-not native tool payloads. A record larger than 256 KiB is omitted without buffering it whole.
-The retained projection is limited to 16 MiB (UTF-16 text plus an object allowance per entry).
-The process retains at most 16 snapshots / 64 MiB of accounted projections, with absolute ten-minute
-expiry checked on access. Eviction, process restart and expiry produce explicit `stale` on resume.
-There is no persistent copy of private text. Two concurrent scans/builds are admitted; excess
-capacity returns `RESOURCE_EXHAUSTED` (429), oversized source/projection returns that code with 413.
-These are not empty successful histories. Transport admission and its six-second deadline still
-apply; cancellation is checked between chunks and after scanning.
+to 256 KiB. История читает только последние 8 MiB текущего файла в chunks по 256 KiB независимо
+от полного размера файла. `sourceWindow: { startByte, endByte }` сообщает точный закреплённый
+диапазон; `null` означает, что диапазон не получен. Байты перед `startByte` не читались и не входят
+в `omittedRecords`. Если `startByte > 0`, `truncated` всегда true, даже на последней странице;
+этот cursor не открывает историю до окна. Первый неполный record и незавершённый последний
+record не проецируются. Record больше 256 KiB пропускается без полного буфера.
+
+Retained projection limited to 16 MiB (UTF-16 text plus object allowance). The process retains at
+most 16 snapshots / 64 MiB, with absolute ten-minute expiry. Eviction, process restart and expiry
+produce explicit `stale`. Two concurrent scans/builds are admitted; excess capacity returns
+`RESOURCE_EXHAUSTED` (429), oversized projection returns that code with 413. Transport admission
+and its six-second deadline apply; cancellation is checked between chunks and after scanning.
+There is no persistent copy of private text.
 
 Pages contain up to 64 entries of 4,096 characters, and fit the 384 KiB serialized response budget.
 JSON escaping and UTF-8 bytes count toward that budget, so a page can contain fewer than the requested
@@ -53,24 +57,21 @@ unchanged source perform no history scan (identity metadata and lookup remain bo
 
 The initial page selects newest content, presented chronologically. `nextCursor` reads older
 records from the same immutable projection. Cursor identity binds the host state scope, provider,
-machine and thread; the server-held snapshot binds the exact path/device/inode and fixed source
-length. Its SHA-256 revision covers that prefix, including a partial tail (which is not projected).
-Append does not invalidate a cursor or introduce new entries into its snapshot; a fresh initial
-read sees the appended content. If source stat changes, the reader verifies the whole fixed prefix,
-never the new tail, against the snapshot hash. This detects same-inode middle rewrites, including
-rewrite combined with append; checking inode/size or only the head could not prove that invariant.
-The successful validation stamp is cached only if stable across the scan. A cold read racing append
-can require two bounded scans (capture plus validation); unchanged pages do not rehash. On an actively
-appending large journal, prefix verification costs O(snapshot source bytes), deliberately not O(page
-size). Arbitrary rewrite detection cannot be promised from stat alone. Entries are owned immutable
-text even when a concurrent change prevents caching the validation stamp, so pages cannot mix
-generations. This is snapshot consistency, not a lock or transactional guarantee about a provider
-that rewrites concurrently with the scan.
+machine and thread; the server-held snapshot binds the exact path/device/inode and fixed byte
+window. SHA-256 covers every byte of that window, including a partial tail. Append does not
+invalidate a cursor or introduce entries into its snapshot; a new initial read captures the new
+tail. A changed source stat requires hashing only the pinned window, never the entire prefix or
+newly appended bytes. Same-inode rewrites inside the window, including rewrite with append,
+return `stale`. Changes outside the window are outside this consistency proof; native thread
+metadata is still checked on each request. A stable validation stamp caches a successful hash.
+A racing append can require two bounded scans; unchanged pages read no history bytes.
 
-Replacement, truncate, changed prefix, lost snapshot or changed root returns `stale`, with no
-entries. Refresh with no cursor. `revision` is opaque and contains no path. `truncated` reports
-older pages, omitted records or clipped text; `omittedRecords` counts exclusions across the pinned
-snapshot, not a per-page delta. Oversized and unfinished records cannot prevent cursor progress.
+Owned immutable text cannot mix generations during concurrent writes. This is snapshot
+consistency, not a provider lock. Replacement, truncate below the pinned end, changed window,
+lost snapshot or changed root returns `stale`, without entries. Refresh without a cursor.
+`revision` is opaque and contains no path. `truncated` also reports older pages, omitted records,
+earlier split files or clipped text. `omittedRecords` counts exclusions only within the pinned
+window, not a per-page delta or an invented count for unscanned bytes.
 
 `available` with empty entries is a successfully read empty/projected page, not missing history.
 `history-absent` means no exact stored transcript was found, `unavailable` means storage could not

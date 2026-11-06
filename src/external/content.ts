@@ -46,6 +46,7 @@ export async function readExternalContent(
     truncated: false,
     omittedRecords: 0,
     earlierFiles: 0,
+    sourceWindow: null,
   };
   const identity = digest(JSON.stringify([m.stateDir, input.target]));
   let cursor: z.output<typeof CursorSchema> | null = null;
@@ -104,6 +105,7 @@ export async function readExternalContent(
         ...result,
         outcome: 'available',
         revision: snapshot.revision,
+        sourceWindow: { startByte: snapshot.start, endByte: snapshot.size },
         entries,
         nextCursor:
           start > 0
@@ -113,6 +115,7 @@ export async function readExternalContent(
             : null,
         truncated:
           start > 0 ||
+          snapshot.start > 0 ||
           snapshot.omitted > 0 ||
           earlierFiles > 0 ||
           entries.some((row) => row.truncated),

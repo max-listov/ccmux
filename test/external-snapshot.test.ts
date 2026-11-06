@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { appendFile, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   type ExternalContentTarget,
@@ -9,6 +9,7 @@ import {
   buildContentSnapshot,
   getContentSnapshot,
   publishContentSnapshot,
+  scan,
   validateContentSnapshot,
 } from '../src/external/contentSnapshot.ts';
 
@@ -85,11 +86,8 @@ test('snapshot expiry is absolute and missing snapshots cannot be resumed', asyn
   }
 });
 
-test('source, projection and cancellation budgets fail explicitly', async () => {
+test('projection and cancellation budgets fail explicitly', async () => {
   const p = await source('');
-  await p.file.truncate(limits.sourceBytes + 1);
-  await expect(p.build()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED', status: 413 });
-  await p.file.truncate(0);
   await writeFile(p.path, message('x'.repeat(4096)).repeat(2100));
   await expect(p.build()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED', status: 413 });
   await expect(
@@ -105,6 +103,71 @@ test('source, projection and cancellation budgets fail explicitly', async () => 
   // A failed build must release capacity for another reader.
   await writeFile(p.path, message('ok'));
   expect((await p.build())?.entries.map((e) => e.text)).toEqual(['ok']);
+});
+
+test('a 1.61 GB tool-heavy source reads only a bounded immutable tail', async () => {
+  const p = await source('');
+  const size = 1_606_938_416;
+  await p.file.truncate(size);
+  const tail =
+    `${JSON.stringify({ type: 'tool', data: 'x'.repeat(200000) })}\n`.repeat(40) +
+    message('older') +
+    message('newer');
+  await p.file.write(tail, size - Buffer.byteLength(tail));
+  const reads = spyOn(p.file, 'read');
+  try {
+    const snapshot = await p.build();
+    if (!snapshot) throw Error('snapshot absent');
+    expect(snapshot.start).toBe(size - limits.sourceBytes);
+    expect(snapshot.entries.map((entry) => entry.text)).toEqual(['older', 'newer']);
+    expect(reads.mock.calls.every((args) => Number(Array.from(args).at(3)) >= snapshot.start)).toBe(
+      true,
+    );
+    expect(reads.mock.calls.length).toBe(Math.ceil(limits.sourceBytes / limits.chunkBytes));
+    reads.mockClear();
+    expect(await validateContentSnapshot(snapshot, p.file, p.path, p.signal)).toBe(true);
+    expect(reads).not.toHaveBeenCalled();
+    await appendFile(p.path, message('appended'));
+    expect(await validateContentSnapshot(snapshot, p.file, p.path, p.signal)).toBe(true);
+    expect(reads.mock.calls.length).toBe(Math.ceil(limits.sourceBytes / limits.chunkBytes));
+    expect(snapshot.entries.map((entry) => entry.text)).toEqual(['older', 'newer']);
+    await p.file.write('X', size - 20);
+    expect(await validateContentSnapshot(snapshot, p.file, p.path, p.signal)).toBe(false);
+    await p.file.truncate(size - 1);
+    expect(await validateContentSnapshot(snapshot, p.file, p.path, p.signal)).toBe(false);
+    await rename(p.path, `${p.path}.old`);
+    await writeFile(p.path, tail);
+    const replacement = await open(p.path, 'r');
+    try {
+      expect(await validateContentSnapshot(snapshot, replacement, p.path, p.signal)).toBe(false);
+    } finally {
+      await replacement.close();
+    }
+  } finally {
+    reads.mockRestore();
+  }
+});
+
+test('a window boundary inside an oversized native record never projects a fragment', async () => {
+  const p = await source(message('excluded'.repeat(limits.sourceBytes / 8)) + message('retained'));
+  const snapshot = await p.build();
+  expect(snapshot?.entries.map((entry) => entry.text)).toEqual(['retained']);
+  expect(snapshot?.omitted).toBe(1);
+});
+
+test('cancellation during a scan releases its reader slot', async () => {
+  const p = await source(message('visible').repeat(20000));
+  const abort = new AbortController();
+  const spy = spyOn(p.file, 'read');
+  try {
+    await expect(
+      scan(p.file, (await p.file.stat()).size, abort.signal, () => abort.abort()),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(spy).toHaveBeenCalledTimes(1);
+  } finally {
+    spy.mockRestore();
+  }
+  expect((await p.build())?.entries.length).toBe(20000);
 });
 
 test('UTF-8 crossing a scan chunk and incomplete tails keep exact authored text', async () => {
