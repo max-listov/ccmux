@@ -15,7 +15,8 @@ import {
   createHeadlessAgentHarness,
 } from 'stitchkit/agent-runtime/harness';
 import { createBunSqliteAgentRuntimeStore } from 'stitchkit/agent-runtime/sqlite/bun';
-import { mountAgent, type RuntimeToolDefinition } from 'stitchkit/tools';
+import type { RuntimeToolDefinition } from 'stitchkit/tools';
+import { mountAgent } from 'stitchkit/tools/agent';
 import { z } from 'zod';
 import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import { finiteWorkloadSandbox } from '../../runtime/workloadSandbox.ts';

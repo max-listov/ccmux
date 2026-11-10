@@ -244,6 +244,28 @@ export const COMMANDS: HelpEntry[] = [
     example: "ccmux transcript cc-api --grep 'deploy|rollback' --kind message",
   },
   {
+    verb: 'search',
+    flags: [
+      { name: 'json', kind: 'boolean' },
+      { name: 'map', kind: 'boolean' },
+      { name: 'local', kind: 'boolean' },
+      { name: 'machine', kind: 'list' },
+      { name: 'provider', kind: 'list' },
+      { name: 'project', kind: 'string' },
+      { name: 'since', kind: 'string' },
+      { name: 'until', kind: 'string' },
+      { name: 'role', kind: 'list' },
+      { name: 'kind', kind: 'list' },
+      { name: 'limit', kind: 'int', min: 1 },
+      { name: 'fixed-strings', short: 'F', kind: 'boolean' },
+      { name: 'ignore-case', short: 'i', kind: 'boolean' },
+      { name: 'case-sensitive', short: 's', kind: 'boolean' },
+    ],
+    args: '[PATTERN] [--map] [-F|--fixed-strings] [-i|--ignore-case] [-s|--case-sensitive] [--role R,..] [--kind K,..] [--project TEXT] [--since WHEN] [--until WHEN] [--provider claude,codex] [--machine M,.. | --local] [--limit N] [--json]',
+    desc: "search EVERY stored conversation on every fleet machine — finished, removed and never-managed ones included, Claude and Codex — when you do not know which session said it. Three questions: PATTERN finds lines, grouped under the address `ccmux transcript` opens, with SEQ, age, role and excerpt; PATTERN --map shows WHERE a subject lived — one row per conversation with its counts (all, the user's, the agent's), first day, last match and newest line; no PATTERN with --project or --since is an OUTLINE of what was discussed — each thing the user wrote and the agent's final answer to it, in order. Every answer ends with what each machine searched and any machine that was NOT searched. By default only what the user and the agent said counts (harness-injected text is `system`) — name --kind (message, thinking, tool_call — a call WITH its output; tool_result is only an output whose call is elsewhere) or --role (user, assistant, system, tool) to choose otherwise; --project is part of the working directory or the session name; WHEN is today, yesterday, 7d, 12h, 2w, YYYY-MM-DD or a timestamp; the newest --limit (50) are shown; exit 0 found, 1 not, 2 not found with a machine unreachable",
+    example: "ccmux search 'rollback|откат' --project api --since 30d --role user",
+  },
+  {
     verb: 'usage',
     flags: [
       { name: 'json', kind: 'boolean' },

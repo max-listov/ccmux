@@ -11,15 +11,15 @@ import { invoke, output, refused } from './custom-tool-observation';
 import { processState as sharedProcessState } from './process-state.ts';
 
 // Optional explicit packed-consumer module for qualifying the upstream mount separately.
-const mountSpecifier = process.argv[2] ?? 'stitchkit/tools';
-const { mountAgent }: typeof import('stitchkit/tools') = await import(mountSpecifier);
+const mountSpecifier = process.argv[2] ?? 'stitchkit/tools/agent';
+const { mountAgent }: typeof import('stitchkit/tools/agent') = await import(mountSpecifier);
 const versionSchema = z.object({ version: z.string() });
 const factoryVersion = versionSchema.parse(
   await Bun.file(new URL('../package.json', import.meta.resolve('stitchkit'))).json(),
 ).version;
 const mountEntry =
   process.argv[2] === undefined
-    ? import.meta.resolve('stitchkit/tools')
+    ? import.meta.resolve('stitchkit/tools/agent')
     : pathToFileURL(mountSpecifier);
 const mountVersion = versionSchema.parse(
   await Bun.file(new URL('../package.json', mountEntry)).json(),

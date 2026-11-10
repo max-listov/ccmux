@@ -59,6 +59,11 @@ Handing work to another session and taking the result. A bare <session> is on TH
   one line per match (SEQ, age, role, kind, excerpt) and the range searched. Never dump \`--json\` to
   grep it yourself — that guesses a window, misses older lines and matches ids and your own searches.
   It finds a place, not a result: a peer's result is \`wait\` + \`--last-message\`, or ask it.
+- ${cli} search '<regex>'                               -> when you do NOT know which session said it: every stored
+  conversation on every machine, finished and removed ones included, Claude and Codex. Add \`--map\`
+  for where a subject lived (one row per conversation), or drop the pattern and give \`--project X\`
+  / \`--since today\` for an outline of what was discussed. Each answer names the address
+  \`transcript\` opens and any machine that was NOT searched.
 - NEVER wrap these in ssh (\`ssh <host> '${cli} msg …'\`). ccmux makes the hop itself and keeps what an
   ssh wrapper throws away: the peer sees WHO wrote and the exact command to answer, and you keep a
   record that you asked. Wrapped in ssh your task arrives anonymous — and the peer reads an

@@ -10,12 +10,15 @@ import { invoke, output } from './custom-tool-observation.ts';
 
 const packageDirectory = process.argv[2];
 if (!packageDirectory) throw new Error('Pass the installed Stitchkit package directory');
-const entry = (name: string) => pathToFileURL(join(packageDirectory, 'dist', name)).href;
+const entry = (name: string) =>
+  pathToFileURL(join(packageDirectory, 'dist', 'entrypoints', name)).href;
 const { createAgentCodingTools }: typeof import('stitchkit/agent-runtime/coding-tools') =
-  await import(entry('agent-runtime-coding-tools.js'));
+  await import(entry('agent-runtime/coding-tools.js'));
 const { createAgentHarnessFileResources }: typeof import('stitchkit/agent-runtime/harness') =
-  await import(entry('agent-runtime-harness.js'));
-const { mountAgent }: typeof import('stitchkit/tools') = await import(entry('tools.js'));
+  await import(entry('agent-runtime/harness.js'));
+const { mountAgent }: typeof import('stitchkit/tools/agent') = await import(
+  entry('tools/agent.js')
+);
 const version = z
   .object({ version: z.string() })
   .parse(JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'))).version;

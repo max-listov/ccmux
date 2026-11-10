@@ -2,6 +2,7 @@ import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
+import { knownProjectsDirs } from '../agent/claude/profileRoot.ts';
 import { getProvider } from '../agent/index.ts';
 import { readTranscriptFile, unavailableTranscript } from '../agent/transcript/transcriptRead.ts';
 import { loadSessions } from '../session/registry.ts';
@@ -89,7 +90,13 @@ export async function withExternalTranscript<T>(
     const located = await locateInConfiguredRoots(
       provider === 'codex'
         ? [sourceRoot, join(dirname(sourceRoot), 'archived_sessions')]
-        : [sourceRoot],
+        : // A session under another profile wrote its earlier conversations to that profile's
+          // store. They are this machine's conversations too, and the machine's own root comes
+          // first so an address that resolved before resolves to the same file.
+          knownProjectsDirs(
+            managed.filter((session) => session.agent === 'claude'),
+            m,
+          ),
       m.rcPrefix,
       target,
       bounded,

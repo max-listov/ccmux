@@ -16,7 +16,7 @@ import { z } from 'zod';
 // real filesystem effects under lost acknowledgements and restart, not model availability.
 const toolsPath = process.argv[2];
 if (!toolsPath) throw new Error('Pass the peer-complete published Stitchkit tools entrypoint');
-const { mountAgent }: typeof import('stitchkit/tools') = await import(
+const { mountAgent }: typeof import('stitchkit/tools/agent') = await import(
   pathToFileURL(toolsPath).href
 );
 const root = await mkdtemp(join(tmpdir(), 'ccmux-harness-qualification-'));

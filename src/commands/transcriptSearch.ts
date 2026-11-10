@@ -32,7 +32,7 @@ export interface SearchArgs {
   agent?: string;
 }
 
-function listed<T extends string>(
+export function listed<T extends string>(
   what: string,
   values: string[],
   allowed: readonly T[],

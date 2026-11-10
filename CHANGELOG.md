@@ -16,6 +16,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Search every stored conversation on every fleet machine with `ccmux search`: lines by pattern, a per-conversation map of where a subject was discussed, or an outline of what was said in a project or period — including finished, removed and never-managed Claude and Codex conversations.
+- Open a Claude conversation stored under another profile by its external address.
+
 ## [0.86.0] - 2026-11-06
 
 - Read the newest 8 MiB of external histories of any file size, report the exact byte coverage, and keep older pages pinned through appends with bounded rewrite checks.

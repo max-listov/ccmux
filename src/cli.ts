@@ -153,6 +153,10 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return (await import('./commands/logs.ts')).cmdLogs(rest);
     case 'transcript':
       return (await import('./commands/transcript.ts')).cmdTranscript(rest);
+    case '_search-shard':
+      return (await import('./commands/searchShard.ts')).cmdSearchShard();
+    case 'search':
+      return (await import('./commands/search.ts')).cmdSearch(rest);
     case 'wait':
       return (await import('./commands/wait.ts')).cmdWait(rest);
     case 'state':

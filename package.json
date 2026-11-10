@@ -31,23 +31,23 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.318",
-    "@biomejs/biome": "2.6.4",
+    "@anthropic-ai/claude-agent-sdk": "0.3.322",
+    "@biomejs/biome": "2.6.6",
     "@types/bun": "^1.4.4",
     "@types/pngjs": "6.0.5",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
-    "stitchkit": "0.118.1",
+    "stitchkit": "0.122.2",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "3.0.84",
+    "@ai-sdk/openai-compatible": "3.0.87",
     "@modelcontextprotocol/ext-apps": "2.0.4",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@modelcontextprotocol/server": "2.4.0",
     "@opencode-ai/sdk": "1.19.5",
     "@openrouter/ai-sdk-provider": "3.1.0",
-    "ai": "7.0.162",
+    "ai": "7.0.166",
     "ink": "^8.0.0",
     "jpeg-js": "0.4.4",
     "pngjs": "7.0.0",

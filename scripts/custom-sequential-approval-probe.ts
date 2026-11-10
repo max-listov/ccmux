@@ -11,7 +11,7 @@ import {
 import { createAgentCodingTools } from 'stitchkit/agent-runtime/coding-tools';
 import { createHeadlessAgentHarness } from 'stitchkit/agent-runtime/harness';
 import { createBunSqliteAgentRuntimeStore } from 'stitchkit/agent-runtime/sqlite/bun';
-import { mountAgent } from 'stitchkit/tools';
+import { mountAgent } from 'stitchkit/tools/agent';
 import { z } from 'zod';
 
 // Only published dependencies: no supervisor, metadata adapter, transport or provider network.

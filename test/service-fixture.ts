@@ -42,7 +42,7 @@ export function stdioService(source: string): { command: string; args: string[] 
 export const TASKS = `
 import { defineContract } from 'stitchkit';
 import { implement } from 'stitchkit/server';
-import { createStdioMcpServer } from 'stitchkit/tools';
+import { createStdioMcpServer } from 'stitchkit/tools/mcp';
 import { z } from 'zod';
 
 const contract = defineContract({ prefix: '/tasks' }, {
