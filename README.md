@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/ccmux-mark.png" width="220" alt="The ccmux mark: an octopus holding four terminal windows">
+</p>
+
 # ccmux
 
 **Persistent, self-healing Claude Code, Codex and OpenCode sessions — across a fleet of machines.**
