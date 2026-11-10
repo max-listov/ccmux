@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { TranscriptKindSchema, TranscriptRoleSchema } from '../agent/transcript/messageSchema.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import {
@@ -120,6 +121,15 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
     throw new UsageError(
       `--kind needs a PATTERN: an outline is of messages\n${usageLine('search')}`,
     );
+  if (flags.bool('full')) {
+    // The lines a person reads are one per match; a whole message does not fit one, and clipping
+    // it there would make `--full` mean two things.
+    if (!flags.bool('json'))
+      throw new UsageError(
+        `--full is each message's whole text, in --json\n${usageLine('search')}`,
+      );
+    query.full = true;
+  }
   if (flags.bool('local') && flags.list('machine').length > 0)
     throw new UsageError(`choose --local or --machine\n${usageLine('search')}`);
   // The compiled pattern and absolute times, not the words: a peer in another zone, or asked a
@@ -133,6 +143,7 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
     ...(query.project === undefined ? [] : ['--project', query.project]),
     ...(query.since === undefined ? [] : ['--since', new Date(query.since).toISOString()]),
     ...(query.until === undefined ? [] : ['--until', new Date(query.until).toISOString()]),
+    ...(query.full === true ? ['--full'] : []),
     // Last and after `--`, so a pattern is never read as a flag.
     ...(query.pattern === undefined
       ? []
@@ -248,6 +259,7 @@ export async function searchFleet(
       since: query.since === undefined ? null : new Date(query.since).toISOString(),
       until: query.until === undefined ? null : new Date(query.until).toISOString(),
       limit: query.limit,
+      full: query.full === true,
     },
     machines,
     total,
@@ -393,6 +405,10 @@ function summaryLines(result: CorpusSearchJson, shownConversations: number): str
 }
 
 export async function cmdSearch(args: string[]): Promise<number> {
+  if (args.length === 1 && args[0] === '--schema') {
+    await printLine(JSON.stringify(z.toJSONSchema(CorpusSearchJsonSchema)));
+    return 0;
+  }
   let opts: SearchOpts;
   try {
     opts = parseSearch(args);

@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -180,7 +180,7 @@ test('a reader that loses the index lock still sees the lines appended since the
   });
 });
 
-test('unchanged Claude parser reuses its version-one index without a history scan', async () => {
+test('an unchanged parser reuses its index without a history scan, under its own revision name', async () => {
   const { createHash } = await import('node:crypto');
   const { statSync } = await import('node:fs');
   const { CACHE_DIR } = await import('../src/config/paths.ts');
@@ -192,22 +192,27 @@ test('unchanged Claude parser reuses its version-one index without a history sca
       'transcript-index',
       `${createHash('sha256').update(path).digest('hex')}.sqlite`,
     );
-    expect(transcriptIndexPath(path, 'claude')).toBe(legacy);
+    // Both providers are past revision 1, so neither reads the unsuffixed file an older build left.
+    const current = legacy.replace(/\.sqlite$/, '-v2.sqlite');
+    expect(transcriptIndexPath(path, 'claude')).toBe(current);
     const first = indexTranscript(path, 'claude', noStats);
     expect(first?.totalLines).toBe(4_000);
-    const store = new UsageStore(legacy);
+    expect(existsSync(legacy)).toBe(false);
+    const store = new UsageStore(current);
     try {
-      expect(store.read('index', StoredIndexSchema)?.version).toBe(1);
+      expect(store.read('index', StoredIndexSchema)?.version).toBe(2);
     } finally {
       store.close();
     }
-    const before = statSync(legacy).mtimeMs;
+    const before = statSync(current).mtimeMs;
     const cached = indexTranscript(path, 'claude', () => {
       throw new Error('unchanged history was scanned again');
     });
     expect(cached?.totalLines).toBe(4_000);
     expect(cached?.read(3_997, 4_000)).toEqual(numbered(4_000).slice(-4));
-    expect(statSync(legacy).mtimeMs).toBe(before);
-    expect(transcriptIndexPath(path, 'codex')).toBe(legacy.replace(/\.sqlite$/, '-v2.sqlite'));
+    expect(statSync(current).mtimeMs).toBe(before);
+    expect(transcriptIndexPath(path, 'codex')).toBe(current);
+    // A provider nobody has revised keeps the plain name.
+    expect(transcriptIndexPath(path, 'opencode')).toBe(legacy);
   });
 });

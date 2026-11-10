@@ -157,6 +157,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return (await import('./commands/searchShard.ts')).cmdSearchShard();
     case 'search':
       return (await import('./commands/search.ts')).cmdSearch(rest);
+    case 'whois':
+      return (await import('./commands/whois.ts')).cmdWhois(rest);
     case 'wait':
       return (await import('./commands/wait.ts')).cmdWait(rest);
     case 'state':

@@ -32,11 +32,18 @@ test('gone, idle and retired indexes go; one in use or with a live transcript st
     writeFileSync(join(dir, name), 'x');
     age(name, ms);
   };
-  const index = (name: string, source: string | null, ms: number) => {
+  const index = (
+    name: string,
+    source: string | null,
+    ms: number,
+    built?: { agent: string; version: number },
+  ) => {
     const db = new Database(join(dir, name));
     db.exec('CREATE TABLE metadata (key TEXT PRIMARY KEY, body TEXT NOT NULL)');
     if (source !== null)
       db.query('INSERT INTO metadata VALUES (?,?)').run('source', JSON.stringify(source));
+    if (built !== undefined)
+      db.query('INSERT INTO metadata VALUES (?,?)').run('index', JSON.stringify(built));
     db.close();
     age(name, ms);
   };
@@ -55,19 +62,26 @@ test('gone, idle and retired indexes go; one in use or with a live transcript st
   index('gone.sqlite', join(dir, 'deleted.jsonl'), 2 * DAY);
   index('present.sqlite', transcript, 2 * DAY);
   index('unrecorded.sqlite', null, 2 * DAY);
+  // Built by a parser revision nothing reads any more: its transcript is still there, and it goes.
+  index('retired-revision.sqlite', transcript, 2 * DAY, { agent: 'claude', version: 1 });
+  // The current revision of the same transcript stays, and so does a provider still at revision 1.
+  index('current-revision.sqlite', transcript, 2 * DAY, { agent: 'claude', version: 2 });
+  index('unrevised.sqlite', transcript, 2 * DAY, { agent: 'opencode', version: 1 });
   // Its transcript is gone, but it was advanced an hour ago: in use, so it is not opened at all.
   index('busy.sqlite', join(dir, 'deleted.jsonl'), 60 * 60 * 1000);
 
   const result = await pruneTranscriptIndexes(now, dir);
   expect(readdirSync(dir).sort()).toEqual([
     'busy.sqlite',
+    'current-revision.sqlite',
     'fresh.sqlite',
     'live.jsonl.txt',
     'present.sqlite',
     'unrecorded.sqlite',
+    'unrevised.sqlite',
     'walonly.sqlite',
     'walonly.sqlite-wal',
   ]);
-  expect(result.removed).toBe(3);
+  expect(result.removed).toBe(4);
   expect(existsSync(join(dir, 'idle.sqlite-shm'))).toBe(false);
 });

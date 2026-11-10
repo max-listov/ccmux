@@ -13,7 +13,12 @@ export const CorpusMatchSchema = z.object({
   threadId: z.string().min(1),
   /** The managed session reading this conversation now, or null. */
   session: z.string().nullable(),
+  /** The managed session this conversation belongs or belonged to — also for a life that session
+   *  left behind at a `/clear`, a fork or a compaction. Null when no registered session lived in it. */
+  ofSession: z.string().nullable(),
   dir: z.string().nullable(),
+  /** `owner/name` of that directory's `origin`, where the directory is still a checkout. */
+  repository: z.string().nullable(),
   /** Whether `seq` is a line the address opens. False for a file the transcript reader does not
    *  read by line: an earlier or compressed Codex file, a second file under an owned id. */
   lines: z.boolean(),
@@ -25,6 +30,8 @@ export const CorpusMatchSchema = z.object({
   field: z.enum(['text', 'input', 'output']),
   count: z.int().positive(),
   excerpt: z.object({ before: z.string(), match: z.string(), after: z.string() }),
+  /** The message's whole text, when the search was asked for it (`--full`); otherwise null. */
+  text: z.string().nullable(),
 });
 export type CorpusMatch = z.infer<typeof CorpusMatchSchema>;
 
@@ -34,7 +41,9 @@ export const ConversationHitsSchema = z.object({
   provider: z.enum(['claude', 'codex']),
   threadId: z.string().min(1),
   session: z.string().nullable(),
+  ofSession: z.string().nullable(),
   dir: z.string().nullable(),
+  repository: z.string().nullable(),
   total: z.int().positive(),
   /** How many of them the user wrote, and how many the agent. */
   user: z.int().nonnegative(),
@@ -81,6 +90,8 @@ export const CorpusSearchJsonSchema = z.object({
     since: z.string().nullable(),
     until: z.string().nullable(),
     limit: z.int().positive(),
+    /** Each match carries the whole text of its message. */
+    full: z.boolean(),
   }),
   machines: z.array(z.union([MachineCoverageSchema, MachineUnavailableSchema])),
   total: z.int().nonnegative(),

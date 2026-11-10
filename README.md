@@ -429,6 +429,30 @@ reports it for remote machines too.
 
 Details in [`docs/architecture/session-events.md`](docs/architecture/session-events.md).
 
+### Which session is this?
+
+A program outside ccmux meets a session by one of its names — the title of its window, the id the
+provider gave its conversation, or its address. `ccmux whois` turns any of them into the session:
+
+```bash
+ccmux whois 'host-a-agent-a - Claude Code' --json   # a window title, matched as a whole word
+ccmux whois 0a1b2c3d-…                              # a provider id — the current one or an earlier one
+ccmux whois --all --json                            # every session of the fleet, same shape
+ccmux whois --follow --json                         # this machine's sessions as they change
+ccmux whois --schema                                # JSON Schema of all three answers
+```
+
+The answer carries the address, provider, directory, the repository of that directory
+(`owner/name` of its `origin`) and every conversation id the session has lived under — a Claude
+session gets a new one at each `/clear`, fork and compaction. A title that only resembles a
+session's is not a session, and a question that fits two names both and chooses neither.
+
+`ccmux search --role user --since 1d --json --full` is the other half: everything the user wrote
+in a day, across the fleet, each message with its whole text, its repository and the session its
+conversation belongs or belonged to.
+
+Details in [`docs/architecture/session-identity.md`](docs/architecture/session-identity.md).
+
 ### Is everything rolled out?
 
 `ccmux fleet` answers both halves now — which version each machine runs, and whether that is the

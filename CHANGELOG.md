@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Ask which session a window title, an address or a provider's conversation id is with `ccmux whois`: one typed answer with the session's directory, the repository of that directory, and every conversation id it has lived under; `--all` lists the fleet, `--follow` streams this machine's sessions as they change, `--schema` prints the JSON Schema.
+- Count a Claude conversation's messages, tool calls and thinking without the stored copies of model requests: the totals in `ccmux transcript --json` are rebuilt once per conversation, on its first read after the update.
+- Export what was said with `ccmux search --json --full`: each message's whole text, with the repository it was written in and the session its conversation belongs or belonged to.
+
 ## [0.87.0] — 2026-11-10
 
 Search every stored conversation on every fleet machine with ccmux search, and read a Claude message sent while the agent was working as the user's message.

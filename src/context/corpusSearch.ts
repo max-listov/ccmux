@@ -2,6 +2,7 @@ import { createReadStream, statSync } from 'node:fs';
 import { createZstdDecompress } from 'node:zlib';
 import { getProvider } from '../agent/index.ts';
 import { rec, str } from '../agent/transcript/normalize.ts';
+import { repositoryOf } from '../session/repository.ts';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../types.ts';
 import type { ConversationHits, CorpusMatch, MachineCoverage } from './corpusSearchSchema.ts';
 import type { StoredConversation, StoredFile } from './storedConversations.ts';
@@ -40,6 +41,8 @@ export interface CorpusQuery {
   until?: number;
   /** How many matches to keep. The newest are kept. */
   limit: number;
+  /** Carry each matched message's whole text, not only the excerpt around the match. */
+  full?: boolean;
 }
 
 /** Source characters handed to the parser at once. Bounds memory; lines are not a unit of size. */
@@ -240,6 +243,7 @@ export async function searchStored(
       continue;
     }
     coverage.conversations++;
+    const repository = await repositoryOf(dir);
     const parser = getProvider(conversation.provider);
     for (const { file, size } of candidates) {
       coverage.files++;
@@ -247,7 +251,7 @@ export async function searchStored(
       try {
         // An outline keeps a turn's last answer, which is only known once the next request comes.
         let answer: TranscriptMessage | null = null;
-        const keep = (match: TranscriptMatch): void => {
+        const keep = (match: TranscriptMatch, message: TranscriptMessage): void => {
           if (query.roles !== undefined && !query.roles.has(match.role)) return;
           const at = match.createdAt === null ? Number.NaN : Date.parse(match.createdAt);
           // A message that does not say when it was written is in no date range.
@@ -260,9 +264,12 @@ export async function searchStored(
             provider: conversation.provider,
             threadId: conversation.threadId,
             session: conversation.session,
+            ofSession: conversation.ofSession,
             dir,
+            repository,
             lines: file.lines,
             ...found,
+            text: query.full === true ? (message.text ?? null) : null,
           };
           kept.push(hit);
           const seen = hits.get(conversation.address);
@@ -272,7 +279,9 @@ export async function searchStored(
               provider: conversation.provider,
               threadId: conversation.threadId,
               session: conversation.session,
+              ofSession: conversation.ofSession,
               dir,
+              repository,
               total: 1,
               user: match.role === 'user' ? 1 : 0,
               assistant: match.role === 'assistant' ? 1 : 0,
@@ -301,19 +310,19 @@ export async function searchStored(
                 : parsed;
             if (query.pattern !== undefined) {
               const match = matchMessage(message, { ...query, pattern: query.pattern });
-              if (match !== null) keep(match);
+              if (match !== null) keep(match, message);
               continue;
             }
             if (message.kind !== 'message' || !message.text) continue;
             if (message.role === 'assistant') answer = message;
             if (message.role !== 'user') continue;
-            if (answer !== null) keep(outlineOf(answer));
+            if (answer !== null) keep(outlineOf(answer), answer);
             answer = null;
-            keep(outlineOf(message));
+            keep(outlineOf(message), message);
           }
           if (kept.length > query.limit * 4) kept = kept.sort(olderMatch).slice(-query.limit);
         }
-        if (answer !== null) keep(outlineOf(answer));
+        if (answer !== null) keep(outlineOf(answer), answer);
       } catch {
         coverage.unreadableFiles++;
       }

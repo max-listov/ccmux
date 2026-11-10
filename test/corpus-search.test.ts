@@ -351,6 +351,7 @@ test('a line number is the one the transcript index gives the same record', asyn
         threadId: FINISHED,
         address: 'x',
         session: null,
+        ofSession: null,
         dir: null,
         files: [{ path, compressed: false, lines: true, startMs: null }],
       },
@@ -583,6 +584,7 @@ test('without a pattern the answer is an outline: each request and the last answ
       threadId: FINISHED,
       address: 'host-a:agent-a',
       session: 'agent-a',
+      ofSession: 'agent-a',
       dir: '/p',
       files: [{ path, compressed: false, lines: true, startMs: null }],
     };
@@ -791,6 +793,7 @@ test('a message sent while the agent was working is the user speaking, at the ti
       threadId: FINISHED,
       address: 'host-a:agent-a',
       session: 'agent-a',
+      ofSession: 'agent-a',
       dir: '/gone/project',
       files: [{ path, compressed: false, lines: true, startMs: null }],
     };

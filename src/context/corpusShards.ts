@@ -43,6 +43,7 @@ export const ShardRequestSchema = z.object({
     since: z.number().nullable(),
     until: z.number().nullable(),
     limit: z.int().positive(),
+    full: z.boolean(),
   }),
   conversations: z.array(
     z.object({
@@ -50,6 +51,7 @@ export const ShardRequestSchema = z.object({
       threadId: z.string(),
       address: z.string(),
       session: z.string().nullable(),
+      ofSession: z.string().nullable(),
       dir: z.string().nullable(),
       files: z.array(
         z.object({
@@ -116,6 +118,7 @@ export function shardQuery(query: CorpusQuery): ShardRequest['query'] {
     since: query.since ?? null,
     until: query.until ?? null,
     limit: query.limit,
+    full: query.full === true,
   };
 }
 
@@ -130,6 +133,7 @@ export function corpusQuery(wire: ShardRequest['query']): CorpusQuery {
   if (wire.project !== null) query.project = wire.project;
   if (wire.since !== null) query.since = wire.since;
   if (wire.until !== null) query.until = wire.until;
+  if (wire.full) query.full = true;
   return query;
 }
 

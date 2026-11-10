@@ -49,13 +49,18 @@ export const SCAN_CHUNK = 4 * 1024 * 1024;
  *  has a different beginning, and its old offsets would point into the middle of other records. */
 const HEAD_BYTES = 4096;
 
-/** Parser changes invalidate only the provider whose derived statistics change. */
 /**
  * The parser revision each provider's index was built with. Raising one provider's revision rebuilds
  * only that provider's indexes: a global bump once re-scanned every Claude history on the fleet.
  * Revision 1 has no file suffix and revision n > 1 is `-v<n>`, which keeps every existing file name.
+ *
+ * Claude is at 2 because revision 1 counted the copy of each model request that Claude Code stores
+ * (`api-request-blob`) as messages: a long conversation's running totals were inflated by thousands,
+ * and totals are accumulated, so only a rebuild corrects the part already counted. A rebuild is one
+ * pass over a file, made the first time that file is read, and its usage facts are rebuilt with it
+ * in the new store — the old one is no longer read by anything.
  */
-const PARSER_REVISIONS: Readonly<Record<string, number>> = { codex: 2 };
+const PARSER_REVISIONS: Readonly<Record<string, number>> = { claude: 2, codex: 2 };
 const parserRevision = (agent: string) => PARSER_REVISIONS[agent] ?? 1;
 const revisionSuffix = (agent: string) => {
   const revision = parserRevision(agent);
@@ -116,26 +121,38 @@ const QUIET_MS = 24 * 60 * 60 * 1000;
 /** Indexes examined between yields, so a prune of thousands never holds the daemon's loop. */
 const PRUNE_BATCH = 100;
 
-/** The transcript path an index records, or null when it records none (written before it did). */
-function recordedSource(index: string): string | null {
+/**
+ * What an index says about itself: the transcript path it records (null when it records none —
+ * written before it did), and whether it was built by a parser revision that is no longer current.
+ * A retired index is under a file name nothing asks for any more, so nothing will ever advance it,
+ * rebuild it or read it; it only waits out the idle period at the size of the history it described.
+ */
+function recorded(index: string): { source: string | null; retired: boolean } {
   let db: Database | undefined;
   try {
     db = new Database(index, { readonly: true });
-    const row = db.query('SELECT body FROM metadata WHERE key=?').get(SOURCE_KEY);
-    const parsed = z.object({ body: z.string() }).safeParse(row);
-    if (!parsed.success) return null;
-    const source = z.string().safeParse(JSON.parse(parsed.data.body));
-    return source.success ? source.data : null;
+    const body = (key: string): unknown => {
+      const row = z
+        .object({ body: z.string() })
+        .safeParse(db?.query('SELECT body FROM metadata WHERE key=?').get(key));
+      return row.success ? JSON.parse(row.data.body) : undefined;
+    };
+    const source = z.string().safeParse(body(SOURCE_KEY));
+    const built = z.object({ agent: z.string(), version: z.number() }).safeParse(body('index'));
+    return {
+      source: source.success ? source.data : null,
+      retired: built.success && built.data.version !== parserRevision(built.data.agent),
+    };
   } catch {
-    return null;
+    return { source: null, retired: false };
   } finally {
     db?.close();
   }
 }
 
 /**
- * Remove indexes whose transcript is gone or that nothing has used for `INDEX_IDLE_MS`, and every
- * file of the retired JSON format.
+ * Remove indexes whose transcript is gone, that a retired parser revision built, or that nothing has
+ * used for `INDEX_IDLE_MS`, and every file of the retired JSON format.
  *
  * Nothing removed an index before, and on one machine indexes of transcripts that no longer existed
  * had reached 3137 of 3420 (575 MB). An index records its transcript's path, so a missing transcript
@@ -195,8 +212,8 @@ export async function pruneTranscriptIndexes(
     const idle = age >= INDEX_IDLE_MS;
     if (!idle) {
       if (age < QUIET_MS) continue;
-      const source = recordedSource(join(dir, name));
-      if (source === null || existsSync(source)) continue;
+      const { source, retired } = recorded(join(dir, name));
+      if (!retired && (source === null || existsSync(source))) continue;
     }
     for (const part of [name, `${name}-wal`, `${name}-shm`]) drop(part);
     removed++;

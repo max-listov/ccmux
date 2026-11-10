@@ -27,6 +27,17 @@ const TAIL_LINES = 50; // enough to find the newest timestamped record
 // this ceiling only ever binds on a pathological file, where reading on would be the worse answer.
 const TAIL_BYTES = 4 * 1024 * 1024;
 
+/**
+ * The title a conversation file opens with — the `-n <title>` its session was launched under.
+ *
+ * Every conversation a session has lived in carries it: a fork, a `/clear` and a compaction each
+ * start a new file under a new id, and each new file begins with the same title. That makes it the
+ * one mark connecting a provider's id to the session it belongs to after the registry has moved on.
+ */
+export function conversationTitle(path: string): string | null {
+  return headTitle(readHeadLines(path, HEAD_BYTES));
+}
+
 /** The `customTitle` of a custom-title event found in the file's head, else null. */
 function headTitle(lines: string[]): string | null {
   for (const raw of lines) {
@@ -108,7 +119,7 @@ export function detectFork(
     } catch {
       continue;
     }
-    if (headTitle(readHeadLines(path, HEAD_BYTES)) !== rcTitle) continue;
+    if (conversationTitle(path) !== rcTitle) continue;
     const ms = lastMessageMs(path);
     if (ms === null || ms <= pinnedMs) continue;
     if (best === null || ms > best.ms) best = { uuid, ms };

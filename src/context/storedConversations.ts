@@ -1,6 +1,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { Glob } from 'bun';
+import { conversationTitle } from '../agent/claude/fork.ts';
 import { knownProjectsDirs } from '../agent/claude/profileRoot.ts';
 import {
   type CodexRolloutFile,
@@ -13,6 +14,7 @@ import { providerFor } from '../agent/index.ts';
 import { ownedClaudeConversations } from '../external/claude.ts';
 import { externalSessionKey } from '../external/keys.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
+import { claudeLineage } from '../session/identity.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { nativeTranscriptPath } from './claude.ts';
@@ -50,6 +52,12 @@ export interface StoredConversation {
   address: string;
   /** The managed session reading this conversation now, or null. */
   session: string | null;
+  /**
+   * The managed session this conversation belongs or belonged to: the one reading it now, or the
+   * one whose title the file opens with — a life that session left behind at a `/clear`, a fork or
+   * a compaction. Null for a conversation no registered session ever lived in.
+   */
+  ofSession: string | null;
   /** The working directory, when the registry already knows it. Otherwise read from the file. */
   dir: string | null;
   /** Oldest first. */
@@ -91,6 +99,7 @@ function claudeConversations(m: MachineConfig, sessions: readonly Session[]): St
   const owned = ownedClaudeConversations(claude);
   // The external reader takes the first store that holds an id, in this same order.
   const addressed = new Set<string>();
+  const formerly = claudeLineage(m, claude);
   const out: StoredConversation[] = [];
   for (const root of knownProjectsDirs(claude, m)) {
     for (const project of entries(root)) {
@@ -111,6 +120,10 @@ function claudeConversations(m: MachineConfig, sessions: readonly Session[]): St
               ? externalSessionKey('claude', m.rcPrefix, threadId)
               : `${m.rcPrefix}:${session.name}`,
           session: session?.name ?? null,
+          // An id another session reads is that session's, whatever title this copy opens with.
+          ofSession:
+            session?.name ??
+            (owned.has(threadId) ? null : (formerly(path, conversationTitle(path))?.name ?? null)),
           dir: session?.dir ?? null,
           files: [
             {
@@ -164,6 +177,7 @@ function codexConversations(m: MachineConfig, sessions: readonly Session[]): Sto
           ? externalSessionKey('codex', m.rcPrefix, threadId)
           : `${m.rcPrefix}:${session.name}`,
       session: session?.name ?? null,
+      ofSession: session?.name ?? null,
       dir: session?.dir ?? null,
       files: sortRolloutFiles([...archivedFiles, ...liveFiles]).map((file) => ({
         path: file.path,
