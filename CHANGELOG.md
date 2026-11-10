@@ -18,6 +18,7 @@ the GitHub Release with that section as the notes.
 
 - Search every stored conversation on every fleet machine with `ccmux search`: lines by pattern, a per-conversation map of where a subject was discussed, or an outline of what was said in a project or period — including finished, removed and never-managed Claude and Codex conversations.
 - Open a Claude conversation stored under another profile by its external address.
+- Read a Claude message sent while the agent was working as the user's message at its own time, and stop reading the stored copies of model requests as a second, undated set of messages.
 
 ## [0.86.0] - 2026-11-06
 

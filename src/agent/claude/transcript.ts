@@ -14,7 +14,7 @@ import {
   str,
 } from '../transcript/normalize.ts';
 import { resultSummary } from '../transcript/toolSummary.ts';
-import { contentItems } from './content.ts';
+import { contentItems, queuedCommand } from './content.ts';
 import { imageDescriptor, resultImages } from './images.ts';
 import { readSubagentFacts, subagentFile } from './subagent.ts';
 
@@ -43,6 +43,8 @@ function kindFor(item: Record<string, unknown>): TranscriptKind {
 
 function roleFor(entry: Record<string, unknown>, item: Record<string, unknown>): TranscriptRole {
   if (str(item.type) === 'tool_result') return 'tool';
+  // A queued prompt has no message of its own; it is what will be said to the model as the user.
+  if (queuedCommand(entry) !== null) return 'user';
   const role = str(rec(entry.message)?.role) ?? str(entry.type);
   if (role === 'user' || role === 'assistant' || role === 'system') return role;
   return 'unknown';

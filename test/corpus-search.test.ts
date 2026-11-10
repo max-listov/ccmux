@@ -723,3 +723,115 @@ test("a conversation in another profile's store is found and opened by the same 
     expect(undeclared.source).toBe('missing');
   });
 });
+
+test('a message sent while the agent was working is the user speaking, at the time it was sent', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ccmux-corpus-queued-'));
+  try {
+    const path = join(dir, `${FINISHED}.jsonl`);
+    const text = (value: string) => [{ type: 'text', text: value }];
+    const queued = (uuid: string, prompt: unknown, at: string, human: boolean) =>
+      L({
+        type: 'attachment',
+        uuid,
+        sessionId: FINISHED,
+        timestamp: at,
+        attachment: {
+          type: 'queued_command',
+          prompt,
+          commandMode: human ? 'prompt' : 'task-notification',
+          ...(human ? { humanTurn: true } : {}),
+        },
+      });
+    // What was sent to the model, kept by hash: no time, and a copy of everything around it.
+    const blob = (content: unknown) =>
+      L({
+        type: 'api-request-blob',
+        sessionId: FINISHED,
+        hash: 'h',
+        message: { role: 'user', content },
+      });
+    const lines = [
+      claudeLine('1', 'user', text('start the work'), '2026-09-01T00:00:01.000Z', '/gone/project'),
+      claudeLine(
+        '2',
+        'assistant',
+        [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }],
+        '2026-09-01T00:00:02.000Z',
+        '/gone/project',
+      ),
+      queued('3', 'the wagtail remark, said mid-turn', '2026-09-01T00:00:03.000Z', true),
+      blob([
+        {
+          type: 'tool_result',
+          tool_use_id: 't',
+          content: 'only the copy carries the dunlin output',
+        },
+        {
+          type: 'text',
+          text: 'The user sent a new message while you were working:\nthe wagtail remark, said mid-turn',
+        },
+      ]),
+      queued(
+        '5',
+        '<task-notification>\n<tool-use-id>t</tool-use-id>\n<status>completed</status>\n</task-notification>',
+        '2026-09-01T00:00:04.000Z',
+        false,
+      ),
+      queued(
+        '6',
+        [{ type: 'text', text: 'a second wagtail remark, as blocks' }],
+        '2026-09-01T00:00:05.000Z',
+        true,
+      ),
+      claudeLine('7', 'assistant', text('done'), '2026-09-01T00:00:06.000Z', '/gone/project'),
+    ];
+    writeFileSync(path, lines.map((line) => `${line}\n`).join(''));
+    const conversation = {
+      provider: 'claude' as const,
+      threadId: FINISHED,
+      address: 'host-a:agent-a',
+      session: 'agent-a',
+      dir: '/gone/project',
+      files: [{ path, compressed: false, lines: true, startMs: null }],
+    };
+    // Found once each, as the user, with its own time — so a date range and "the newest" hold it.
+    const found = await searchStored(
+      'host-a',
+      query('wagtail', { since: Date.parse('2026-09-01T00:00:00Z') }),
+      [conversation],
+    );
+    expect(found.matches.map((match) => [match.seq, match.role, match.createdAt])).toEqual([
+      [3, 'user', '2026-09-01T00:00:03.000Z'],
+      [6, 'user', '2026-09-01T00:00:05.000Z'],
+    ]);
+    // The copy is not the conversation: what only it carries is not found, whatever is asked for.
+    const all = new Set(['message', 'thinking', 'tool_call', 'tool_result'] as const);
+    const { roles: _roles, ...anyRole } = query('dunlin');
+    expect(
+      (await searchStored('host-a', { ...anyRole, kinds: all }, [conversation])).coverage.total,
+    ).toBe(0);
+    // The outline has both remarks, and the runtime's queued notice is not one of the user's.
+    const { pattern: _pattern, ...outline } = query('x');
+    const said = await searchStored('host-a', outline, [conversation]);
+    expect(said.matches.map((match) => [match.seq, match.role])).toEqual([
+      [1, 'user'],
+      [3, 'user'],
+      [6, 'user'],
+      [7, 'assistant'],
+    ]);
+    // `ccmux transcript` reads through the same parser: the same two lines, the same role and time.
+    const read = readTranscriptFile(path, getProvider('claude'), { tail: 100 });
+    expect(
+      read.messages
+        .filter((message) => message.role === 'user')
+        .map((message) => [message.seq, message.createdAt !== null]),
+    ).toEqual([
+      [1, true],
+      [3, true],
+      [5, true],
+      [6, true],
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
