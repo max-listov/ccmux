@@ -27,6 +27,7 @@ const root = mkdtempSync(join(tmpdir(), 'ccmux-test-home-'));
 // Operator identity must not authenticate subprocesses against a synthetic test instance.
 for (const key of [
   'CCMUX_SESSION',
+  'CCMUX_ADDRESS',
   'CCMUX_CHAT_CREDENTIAL',
   'CCMUX_BOOTSTRAP_GENERATION',
   'CCMUX_RC_PREFIX',

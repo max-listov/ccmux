@@ -92,7 +92,7 @@ Git synchronization does not need a new backlog task.
 
 ### Rollout is canary first
 A release reaches one machine first — the maintainer's own — and stays there for an observation
-window of at least ten minutes before any other host gets it. In that window read what the system
+window of five minutes before any other host gets it. In that window read what the system
 says about itself: the daemon's start report, the monitoring snapshot (no running session reported
 `unknown`), the daemon's own and child CPU against the previous release, and the journal. 0.75.0
 went to every host at once, production included, and two regressions — a global transcript-index
@@ -197,7 +197,15 @@ a pipe buffer) goes through `printLine`/`writeOut` (`src/util/stdout.ts`), and a
 
 ## Testing
 
-Use `bun run check` for the complete local gate: Biome, TypeScript, tests and packed clients.
+Use `bun run check` for the complete local gate: Biome, TypeScript, tests and packed clients. Its
+steps run at once and the tests run in several processes (`scripts/gate.ts`,
+`scripts/test-shards.ts`): about a minute and a half instead of five and a half. `bun run test` is
+the same sharded suite, `bun run test:serial` the one-process run, and `bun test <file>` one file. A
+green gate on a clean checkout leaves a receipt for that TREE under the git directory, and the
+pre-push hook passes at once for a tree that has one — a release pushes its commit and its tag, the
+same tree, gated once. A test file that fails only beside the other shares — it measures what
+processes do to each other — is listed in `ALONE` in `test-shards.ts`, with the reason, and runs
+after them.
 `bunfig.toml` preloads `test/preload.ts`, which points every ccmux root (state, cache, data, config)
 at a private temporary home before any test module loads; `test/test-isolation.test.ts` fails if
 that ever stops. A test never writes into the operator's real directories, and one that needs its

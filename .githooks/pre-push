@@ -8,4 +8,11 @@ set -e
 # Bun там не виден. Хук добавляет его каталог сам.
 PATH="$HOME/.bun/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-bun run check
+# Every pushed commit whose tree already passed the gate on this clean checkout is not gated again:
+# a release pushes its commit and then its tag, the same tree.
+shas=""
+while read -r _local sha _remote _remote_sha; do
+  case "$sha" in 0000000000000000000000000000000000000000) ;; *) shas="$shas $sha" ;; esac
+done
+# shellcheck disable=SC2086
+bun scripts/gate.ts --if-needed $shas
