@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.90.0] — 2026-11-11
+
+Ask a daemon by name what whois, search, fleet, the chat log and sent letters answer, manage a session by name, see who sent each marked message, and read which operations a daemon has before calling them.
+
 ## [0.89.0] — 2026-11-11
 
 Read a session's project, its project's checkouts and its own address, ask where a marked message arrived and who sent a message, follow whois across the fleet, and get a letter's receipt as JSON.
