@@ -21,8 +21,9 @@
  *   bun scripts/test-shards.ts [--shares N] [bun test flags…] [files…]
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { availableParallelism, tmpdir } from 'node:os';
+import { availableParallelism, loadavg, tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
+import { sharesFor } from './testShares.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 /** Run alone, after everything else: each fails under the load of the other shares, not on its own. */
@@ -55,10 +56,7 @@ const average = seen.length === 0 ? 1 : seen.reduce((sum, ms) => sum + ms, 0) / 
 const PER_FILE_MS = 400;
 const cost = (file: string): number => (known[file] ?? average) + PER_FILE_MS;
 
-// The tests wait far more than they compute, so a share per core but one is not too many — up to
-// eight: measured on eighteen cores, twelve shares made two timing-bound tests fail that eight
-// never did.
-const wanted = asked ?? Math.max(1, Math.min(8, availableParallelism() - 1));
+const wanted = asked ?? sharesFor(availableParallelism(), loadavg()[0] ?? 0);
 const alone = files.filter((file) => ALONE.has(file));
 const together = files.filter((file) => !ALONE.has(file));
 const count = Math.max(1, Math.min(wanted, together.length));

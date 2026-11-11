@@ -199,7 +199,9 @@ a pipe buffer) goes through `printLine`/`writeOut` (`src/util/stdout.ts`), and a
 
 Use `bun run check` for the complete local gate: Biome, TypeScript, tests and packed clients. Its
 steps run at once and the tests run in several processes (`scripts/gate.ts`,
-`scripts/test-shards.ts`): about a minute and a half instead of five and a half. `bun run test` is
+`scripts/test-shards.ts`): about a minute and a half instead of five and a half. The number of
+test processes follows the cores other work leaves free (`scripts/testShares.ts`, three to eight):
+eight on a machine busy with other work fail timing-bound tests that three pass. `bun run test` is
 the same sharded suite, `bun run test:serial` the one-process run, and `bun test <file>` one file. A
 green gate on a clean checkout leaves a receipt for that TREE under the git directory, and the
 pre-push hook passes at once for a tree that has one — a release pushes its commit and its tag, the
