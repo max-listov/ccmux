@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.89.0] — 2026-11-11
+
+Read a session's project, its project's checkouts and its own address, ask where a marked message arrived and who sent a message, follow whois across the fleet, and get a letter's receipt as JSON.
+
 - Read the project of a session in `ccmux whois` and of every line in `ccmux search --json`: the optional `project` field is what repositories declare in `.passport.json` — the checkout's own `identity.project`, or the one a private working half beside it declares for the source it names — so a product's public source, its working repository and its companions read as one product, and so does a session opened on the folder they sit in. `ccmux search --project` finds a conversation by that name as well.
 - Ask where a marked message arrived with `ccmux search PATTERN --receipts`: one entry per distinct thing the pattern matched, with every conversation that holds it, whose it is and when it first arrived there. In a pattern of `ccmux search` and `ccmux transcript --grep`, `^` and `$` are now the edges of a line of a message, not of the whole message.
 - Follow every machine of the fleet with `ccmux whois --follow`: each machine's sessions, then a `machine` line when it has been read or could not be; `--local` keeps the stream to this machine. A consumer of the stream sees a new event kind and sessions of other machines, and the line a person reads gains the project.
