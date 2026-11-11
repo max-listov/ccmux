@@ -7,6 +7,17 @@ import { AgentKindSchema, RC_PREFIX_RE, SESSION_NAME_RE } from '../chat/identity
  * fleet and travels in the live stream, so a consumer reads it once.
  */
 
+/**
+ * The project a directory's repository says it belongs to. Described in the schema itself: a
+ * consumer that reads by `--schema` learns there what form the value has and when it is absent.
+ */
+export const DeclaredProjectSchema = z
+  .string()
+  .min(1)
+  .describe(
+    'The project the repository of `dir` belongs to, as repositories declare it in `.passport.json`: the `identity.project` of the checkout itself, or of a checkout in the same parent directory whose `source.repositoryId` names this repository; for a directory that holds checkouts, the one project all of them resolve to. The key exactly as written (a slug such as `acme-api`, without a slash, the same for every repository of one product). Absent when nothing declares one or the declarations disagree; never derived from the name of a repository or of a directory.',
+  );
+
 /** One conversation a session has lived in. A session keeps its name while the provider moves it to
  *  a new id — after a `/clear`, a fork or a compaction — so the ids are a list, not a value. */
 export const SessionLifeSchema = z.object({
@@ -33,6 +44,25 @@ export const SessionIdentitySchema = z.object({
   dir: z.string().startsWith('/'),
   /** `owner/name` of that directory's `origin`, or null when it has none. */
   repository: z.string().nullable(),
+  project: DeclaredProjectSchema.optional(),
+  checkouts: z
+    .array(
+      z.object({
+        dir: z.string().startsWith('/'),
+        repository: z.string().nullable(),
+        role: z
+          .string()
+          .min(1)
+          .describe(
+            'The role the checkout declares (`identity.role`); failing that `private-workspace` for one that names the source it is the working half of, and `source` for any other.',
+          ),
+        current: z.boolean().describe("The session's directory is in this checkout."),
+      }),
+    )
+    .optional()
+    .describe(
+      "The checkouts of the session's project on its machine: those in one directory — beside the session's own checkout, or inside the folder it was opened on — that resolve to the same `project`. Where a product's private working half is, it holds the task queue and the working rules. Present with `project`.",
+    ),
   archived: z.boolean(),
   /** Whether the agent is running, as the machine's daemon last observed; null without a daemon. */
   running: z.boolean().nullable(),
@@ -58,6 +88,7 @@ export const StrayConversationSchema = z.object({
   title: z.string().nullable(),
   dir: z.string().nullable(),
   repository: z.string().nullable(),
+  project: DeclaredProjectSchema.optional(),
 });
 export type StrayConversation = z.infer<typeof StrayConversationSchema>;
 
@@ -102,12 +133,21 @@ export const WhoisListSchema = z.object({
 export type WhoisList = z.infer<typeof WhoisListSchema>;
 
 /**
- * One line of `whois --follow`. `session` is a session as it now is — sent once for each when the
- * stream opens, and again whenever anything but its activity times changes; `gone` is a session
- * that left the registry.
+ * One line of `whois --follow`. `session` is a session as it now is — sent once for each when its
+ * machine first answers, and again whenever anything but its activity times changes; `gone` is a
+ * session that left its machine's registry; `machine` says a machine has been read, or that it was
+ * not and why — its sessions are then not known to be gone.
  */
-export const WhoisEventSchema = z.discriminatedUnion('event', [
+export const WhoisEventSchema = z.union([
   z.object({ event: z.literal('session'), session: SessionIdentitySchema }),
+  // A machine as the follower last found it: after the first, each time that changes.
+  ...WhoisMachineSchema.options.map((standing) =>
+    standing
+      .extend({ event: z.literal('machine') })
+      .describe(
+        'A machine as the follower last found it: sent after the first `session` lines of that machine, and again each time its status or the reason changes. The sessions of an unavailable machine are not known to be gone.',
+      ),
+  ),
   z.object({
     event: z.literal('gone'),
     address: z.string().min(1),

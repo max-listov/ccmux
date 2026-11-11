@@ -1,9 +1,9 @@
 import { accessSync, constants } from 'node:fs';
 import { dirname } from 'node:path';
-import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import { chatEnabledFor } from '../../config/chat.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { UID } from '../../util/env.ts';
+import { IDENTITY_ENV_KEYS, pinIdentity } from '../launch/identityEnv.ts';
 import {
   fileSetDigest,
   type LaunchInput,
@@ -107,9 +107,9 @@ function stripDangerous(flags: string[]): string[] {
   );
 }
 
-/** Same two keys as every managed provider: the identity pin and the chat capability. */
+/** The same keys as every managed provider: the identity pin and the chat capability. */
 export function launchEnvKeys(_m: MachineConfig): readonly string[] {
-  return [CHAT_CREDENTIAL_ENV, 'CCMUX_SESSION'];
+  return IDENTITY_ENV_KEYS;
 }
 
 /** Environment for the spawned codex: the provider launch environment and its own home. */
@@ -121,8 +121,7 @@ export function launchEnv(m: MachineConfig, session: Session): Record<string, st
     [m.codexBin ? dirname(m.codexBin) : '', dirname(m.tmuxBin)].filter((p) => p !== ''),
   );
   if (m.codexHome) env.CODEX_HOME = m.codexHome;
-  env.CCMUX_SESSION = session.name;
-  return env;
+  return pinIdentity(env, m, session);
 }
 
 /**

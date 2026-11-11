@@ -4,7 +4,7 @@ import { AppError } from 'stitchkit';
 import { subagentFile, subagentsDir } from '../agent/claude/subagent.ts';
 import { providerFor } from '../agent/index.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
-import { routeFor } from '../fleet/address.ts';
+import { routeFor, selfAddress } from '../fleet/address.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
@@ -37,7 +37,7 @@ export async function readSessionUsage(
       message: 'Usage control requires an exact local address',
       status: 400,
     });
-  const exact = `${m.rcPrefix}:${route.session}`;
+  const exact = selfAddress(m, route.session);
   const token = route.session.split('#')[0] ?? route.session;
   try {
     const sessions = isCodexAppToken(token) ? [] : (inventory ?? loadSessions(m));
@@ -176,7 +176,7 @@ export async function listSessionUsage(
   const nativeIds = new Set(sessions.filter((s) => s.agent === 'codex').map((s) => s.uuid));
   const addresses = [
     ...new Set([
-      ...sessions.map((s) => `${m.rcPrefix}:${s.name}`),
+      ...sessions.map((s) => selfAddress(m, s.name)),
       ...external.filter((id) => !nativeIds.has(id)).map((id) => `${m.rcPrefix}:app/${id}`),
     ]),
   ].sort();

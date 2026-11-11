@@ -29,17 +29,25 @@ import { appendMessage, loadLedger } from '../chat/ledger.ts';
 import { localMessageLookup } from '../chat/localMessages.ts';
 import { principalOrigin } from '../chat/origin.ts';
 import { isRoleToken, resolveRole } from '../chat/roleAddress.ts';
+import {
+  type SendReceipt,
+  SendReceiptSchema,
+  type SentLetterState,
+  SentListSchema,
+  sentLetter,
+} from '../chat/sentLetterSchema.ts';
 import { OWNER, pendingConditional } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { routeFor } from '../fleet/address.ts';
-import { RETRY_WINDOW_MS } from '../fleet/flush.ts';
+import { appendOutboxAck, RETRY_WINDOW_MS } from '../fleet/flush.ts';
 import { appendOutbound } from '../fleet/outbox.ts';
-import { queuedForRetryNotice, relay, runPeer } from '../fleet/transport.ts';
+import { queuedForRetryNotice, relay, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import type { AgentKind, ChatMessage, ChatTarget, CodexAppPeer, MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { preview } from '../util/preview.ts';
+import { printLine } from '../util/stdout.ts';
 import { parseFlags } from './flags.ts';
 import { usageLine } from './help.ts';
 import {
@@ -71,15 +79,49 @@ function announceLetter(envelope: ChatMessage): void {
     );
 }
 
+/**
+ * Say what became of a letter — once, in the form that was asked for.
+ *
+ * A person is told in sentences; a program asked for `--json` and gets exactly one line, the
+ * letter's receipt, with whatever the sentences added carried as its note.
+ */
+async function report(
+  asJson: boolean,
+  from: Parameters<typeof principalLabel>[0],
+  envelope: ChatMessage,
+  state: SentLetterState,
+  told: readonly string[],
+  note: string | null = null,
+): Promise<void> {
+  if (!asJson) {
+    for (const line of told) console.log(line);
+    if (state === 'accepted') announceLetter(envelope);
+    return;
+  }
+  const receipt: SendReceipt = {
+    ...sentLetter(envelope, state),
+    from: principalLabel(from),
+    notBefore: envelope.notBefore,
+    note,
+  };
+  await printLine(JSON.stringify(receipt));
+}
+
+/** The published shape of what `msg` answers a program with. */
+export function msgSchemas(): Record<string, unknown> {
+  return { receipt: z.toJSONSchema(SendReceiptSchema), sent: z.toJSONSchema(SentListSchema) };
+}
+
 /** Record one letter to a peer, and say so. */
-function sendLetter(
+async function sendLetter(
+  asJson: boolean,
   machine: MachineConfig,
   from: Parameters<typeof buildEnvelope>[0],
   target: Parameters<typeof buildEnvelope>[1],
   body: string,
   options: NonNullable<Parameters<typeof buildEnvelope>[3]>,
   senderTransport: Parameters<typeof warnAboutAnonymousRemote>[1],
-): number {
+): Promise<number> {
   // Replace-on-task belongs to TIMERS, not to ordinary mail. A re-armed watchdog means "forget the
   // previous alarm"; two letters under one task name do not mean "forget the first one". Waiting
   // for a turn boundary is the default, so keying this on deferral would silently eat a message
@@ -101,8 +143,9 @@ function sendLetter(
     to: targetLabel(target),
     task: options.task,
   });
-  console.log(`sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
-  announceLetter(envelope);
+  await report(asJson, from, envelope, 'accepted', [
+    `sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`,
+  ]);
   return 0;
 }
 
@@ -148,6 +191,14 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     }
   }
 
+  if (flags.bool('schema')) {
+    await printLine(JSON.stringify(msgSchemas()));
+    return 0;
+  }
+  if (asJson && (positionals[0] === 'pending' || positionals[0] === 'cancel')) {
+    console.error(`msg: --json answers a send and 'sent', not '${positionals[0]}'`);
+    return 1;
+  }
   const machine = loadMachineConfig();
   const sessions = loadSessions(machine);
   const from = await senderFor(machine.rcPrefix, sessions, machine);
@@ -184,7 +235,8 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
   }
   const notBefore = afterSec === null ? null : new Date(Date.now() + afterSec * 1000).toISOString();
   if (afterSec !== null && !defer) {
-    console.log(
+    // A sentence for a person: beside a receipt it is not part of the answer.
+    (asJson ? console.error : console.log)(
       'msg: note — --after with --interrupt fires into whatever the recipient is doing when it comes due',
     );
   }
@@ -193,13 +245,18 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       console.error('msg: owner has no provider/thread');
       return 1;
     }
-    appendMessage(
-      machine,
-      // The owner has no turn to wait for, so the default deferral is meaningless here.
-      buildEnvelope(from, ownerTarget(), body, { task, defer: false, onBehalfOf, notBefore }),
-    );
+    // The owner has no turn to wait for, so the default deferral is meaningless here.
+    const envelope = buildEnvelope(from, ownerTarget(), body, {
+      task,
+      defer: false,
+      onBehalfOf,
+      notBefore,
+    });
+    appendMessage(machine, envelope);
     warnAboutAnonymousRemote(from, senderTransport);
-    console.log(`sent ${principalLabel(from)} → owner: ${preview(body)}`);
+    await report(asJson, from, envelope, 'accepted', [
+      `sent ${principalLabel(from)} → owner: ${preview(body)}`,
+    ]);
     return 0;
   }
 
@@ -220,20 +277,28 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       return 1;
     }
     const target = externalTarget(external.name);
-    appendMessage(
-      machine,
-      buildEnvelope(from, target, body, { task, defer: false, onBehalfOf, notBefore: null }),
-    );
+    const envelope = buildEnvelope(from, target, body, {
+      task,
+      defer: false,
+      onBehalfOf,
+      notBefore: null,
+    });
+    appendMessage(machine, envelope);
     warnAboutAnonymousRemote(from, senderTransport);
     // Refused, and the route is NAMED. A half-success here would be the worst answer available: the
     // sender would believe it had reached the owner, which is the exact failure this address exists
     // to remove.
-    console.log(`recorded ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`);
-    console.log(
+    const where = [
       `ccmux does not deliver there — ${external.where}. It is mirrored to the owner, who carries it.`,
-    );
-    console.log(
       `It stays outstanding until an answer is recorded: ccmux relay ${targetLabel(target)}${task === null ? '' : ` --task ${task}`} "<their answer>"`,
+    ];
+    await report(
+      asJson,
+      from,
+      envelope,
+      'recorded',
+      [`recorded ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`, ...where],
+      where.join(' '),
     );
     return 0;
   }
@@ -325,16 +390,43 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     // lie, and a lie that costs — it is what sent two sessions chasing a transport problem that the
     // supervisor was already handling, and then to the owner with it.
     if (result.transportFailed) {
-      console.log(
-        queuedForRetryNotice(
-          `msg ${targetToken}`,
-          result.failureDetail ?? null,
-          RETRY_WINDOW_MS / 60_000,
-          result.permanent === true,
-          result.delivery,
-        ),
+      const notice = queuedForRetryNotice(
+        `msg ${targetToken}`,
+        result.failureDetail ?? null,
+        RETRY_WINDOW_MS / 60_000,
+        result.permanent === true,
+        result.delivery,
+      );
+      // A refusal that will refuse identically is settled here, so a look back says the same
+      // thing this receipt does; anything else is kept and retried.
+      if (result.permanent === true) appendOutboxAck(machine, envelope.id, 'refused');
+      await report(
+        asJson,
+        from,
+        envelope,
+        result.permanent === true ? 'refused' : 'held',
+        [notice],
+        notice,
       );
       return 0;
+    }
+    if (asJson) {
+      // The far side's own words are for a person: its complaints still reach one, and its
+      // refusal is the note of the receipt.
+      if (result.stderr !== '') process.stderr.write(result.stderr);
+      const refusal = remoteFailureCause(result.stderr) ?? remoteFailureCause(result.stdout);
+      await report(
+        asJson,
+        from,
+        envelope,
+        // Not accepted, and kept: the outbox tries a letter again for as long as its window.
+        result.code === 0 ? 'accepted' : 'held',
+        [],
+        result.code === 0
+          ? null
+          : (refusal ?? `the recipient's machine answered exit ${result.code}`),
+      );
+      return result.code;
     }
     // Only an ACCEPTED letter is named. A letter held for retry has an id and a record here, but it
     // is not yet in the recipient's ledger, and a continuation of a correspondence whose opening
@@ -371,6 +463,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
       return 1;
     }
     return sendLetter(
+      asJson,
       machine,
       from,
       target,
@@ -418,6 +511,7 @@ export async function cmdMsg(args: string[], transport?: RemoteTransport | null)
     return 1;
   }
   return sendLetter(
+    asJson,
     machine,
     from,
     target,

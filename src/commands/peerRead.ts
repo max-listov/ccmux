@@ -8,10 +8,10 @@ import { peerReadContract } from '../fleet/peerReadContract.ts';
 import { writeOut } from '../util/stdout.ts';
 
 const USAGE =
-  'usage: ccmux _peer-read list [--known <digests>] | chat-log -n <N> [--known <digests>]';
+  'usage: ccmux _peer-read list [--known <digests>] | identities [--known <digests>] | chat-log -n <N> [--known <digests>]';
 
 type Request =
-  | { kind: 'list'; known: string[] }
+  | { kind: 'list' | 'identities'; known: string[] }
   | { kind: 'chat-log'; limit: number; known: string[] };
 
 function parse(args: readonly string[]): Request | null {
@@ -25,7 +25,7 @@ function parse(args: readonly string[]): Request | null {
     else if (rest[i] === '-n' && /^\d+$/.test(value)) limit = Number(value);
     else return null;
   }
-  if (kind === 'list' && limit === null) return { kind, known };
+  if ((kind === 'list' || kind === 'identities') && limit === null) return { kind, known };
   if (kind === 'chat-log' && limit !== null) return { kind, limit, known };
   return null;
 }
@@ -84,9 +84,9 @@ export async function cmdPeerRead(args: string[]): Promise<number> {
     );
     try {
       answer =
-        request.kind === 'list'
-          ? await client.list({ known: request.known })
-          : await client['chat-log']({ limit: request.limit, known: request.known });
+        request.kind === 'chat-log'
+          ? await client['chat-log']({ limit: request.limit, known: request.known })
+          : await client[request.kind]({ known: request.known });
     } catch (error) {
       if (!neverDispatched(error)) throw error;
     } finally {
@@ -95,12 +95,16 @@ export async function cmdPeerRead(args: string[]): Promise<number> {
   }
   if (answer === null) {
     const { loadMachineConfig } = await import('../config/machine.ts');
-    const { peerChatLogAnswer, peerListAnswer } = await import('../fleet/peerRead.ts');
+    const { peerChatLogAnswer, peerIdentitiesAnswer, peerListAnswer } = await import(
+      '../fleet/peerRead.ts'
+    );
     const m = loadMachineConfig();
     answer =
-      request.kind === 'list'
-        ? await peerListAnswer(m, request.known)
-        : peerChatLogAnswer(m, request.limit, request.known);
+      request.kind === 'chat-log'
+        ? peerChatLogAnswer(m, request.limit, request.known)
+        : request.kind === 'identities'
+          ? await peerIdentitiesAnswer(m, request.known)
+          : await peerListAnswer(m, request.known);
   }
   await writeOut(`${JSON.stringify(answer)}\n`);
   return 0;

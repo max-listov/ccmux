@@ -1,5 +1,6 @@
 import { TranscriptKindSchema, TranscriptRoleSchema } from '../agent/transcript/messageSchema.ts';
 import type { TranscriptRead } from '../agent/transcript/transcriptRead.ts';
+import type { SenderJudge } from '../context/messageSender.ts';
 import {
   compilePattern,
   SearchPatternError,
@@ -70,6 +71,7 @@ function row(match: TranscriptMatch, now: number, color: boolean): string[] {
   const hit = color ? `${HIGHLIGHT[0]}${match.excerpt.match}${HIGHLIGHT[1]}` : match.excerpt.match;
   return [
     String(match.seq),
+    match.id,
     Number.isFinite(at) ? humanizeDuration(Math.max(0, now - at) / 1000) : '-',
     match.role,
     match.kind === 'tool_call' && match.toolName !== null ? `tool:${match.toolName}` : match.kind,
@@ -142,6 +144,8 @@ export async function runSearch(
     json: boolean;
     target: string;
     header: (read: TranscriptRead) => TranscriptJson;
+    /** Who sent each matched user message, where the conversation's owner can say. */
+    sender?: SenderJudge;
   },
 ): Promise<number> {
   let query: TranscriptQuery;
@@ -151,11 +155,10 @@ export async function runSearch(
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
-  const search = await searchTranscript(
-    readWindow,
-    query,
-    args.agent === undefined ? {} : { agent: args.agent },
-  );
+  const search = await searchTranscript(readWindow, query, {
+    ...(args.agent === undefined ? {} : { agent: args.agent }),
+    sender: render.sender,
+  });
   if (render.json) {
     const header = render.header({ ...search.read, messages: [] });
     await printLine(JSON.stringify(searchJson(header, search, query)));
@@ -166,7 +169,7 @@ export async function runSearch(
     const color = process.stdout.isTTY === true;
     if (search.matches.length > 0)
       for (const line of tableLines(
-        ['SEQ', 'AGE', 'ROLE', 'KIND', 'FIELD', 'MATCH'],
+        ['SEQ', 'ID', 'AGE', 'ROLE', 'KIND', 'FIELD', 'MATCH'],
         search.matches.map((match) => row(match, now, color)),
       ))
         await printLine(line);

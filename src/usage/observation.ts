@@ -1,5 +1,6 @@
 import { createManagedSchedule, type ManagedScheduleClock } from 'stitchkit/application';
 import type { ExternalStatusPublisher } from '../external/residentPublisher.ts';
+import { selfAddress } from '../fleet/address.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
@@ -39,7 +40,7 @@ export function createUsageObservation(
         const ids = new Set(managed.filter((s) => s.agent === 'codex').map((s) => s.uuid));
         const addresses = [
           ...new Set([
-            ...managed.map((s) => `${m.rcPrefix}:${s.name}`),
+            ...managed.map((s) => selfAddress(m, s.name)),
             ...external
               .read()
               .sessions.filter((s) => !ids.has(s.identity.threadId))
@@ -50,7 +51,7 @@ export function createUsageObservation(
         if (!addresses.length) return;
         const address = addresses[cursor++ % addresses.length];
         if (!address) return;
-        const session = managed.find((s) => `${m.rcPrefix}:${s.name}` === address);
+        const session = managed.find((s) => selfAddress(m, s.name) === address);
         const work = session
           ? preparation.inspect(m, session, address)
           : await preparation.inspectExternal(

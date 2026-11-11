@@ -100,7 +100,7 @@ export function peerHeldDir(): string {
   return join(CACHE_DIR, 'peer-reads');
 }
 
-export function loadPeerHeld(machine: string, kind: 'list' | 'chat-log'): PeerHeld {
+export function loadPeerHeld(machine: string, kind: 'list' | 'identities' | 'chat-log'): PeerHeld {
   const dir = peerHeldDir();
   const file = join(dir, `${machine}.${kind}.json`);
   let rows: Record<string, unknown> = {};

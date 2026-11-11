@@ -21,6 +21,13 @@ export const peerReadContract = defineContract(
       input: z.object({ known: KnownSchema }).strict(),
       output: AnswerSchema,
     },
+    identities: {
+      method: 'POST',
+      path: '/identities',
+      desc: "Who this machine's sessions are, packed against the rows the reader holds",
+      input: z.object({ known: KnownSchema }).strict(),
+      output: AnswerSchema,
+    },
     'chat-log': {
       method: 'POST',
       path: '/chat-log',

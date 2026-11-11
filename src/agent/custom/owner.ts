@@ -1,5 +1,4 @@
 import type { AgentLanguageModelProvider } from 'stitchkit/agent-runtime';
-import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../../chat/auth.ts';
 import { ContentProducer } from '../../content/producer.ts';
 import { applyContextCommands, NativeContextPump } from '../../context/pump.ts';
 import { withNativeAdmission } from '../../runtime/admission.ts';
@@ -8,6 +7,7 @@ import { type OwnedRuntimeJournal, openOwnedRuntimeJournal } from '../../runtime
 import { readSelection } from '../../runtime/selection.ts';
 import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../types.ts';
+import { grantIdentity } from '../launch/identityEnv.ts';
 import { CustomChronology } from './chronology.ts';
 import { applyCustomInterrupt, applyCustomResponse } from './commands.ts';
 import { CustomCorrelation } from './correlation.ts';
@@ -96,8 +96,7 @@ export class CustomOwner {
           ),
         ),
         CCMUX_STATE_DIR: this.m.stateDir,
-        CCMUX_SESSION: this.session.name,
-        [CHAT_CREDENTIAL_ENV]: rotateChatCredential(this.m, this.session),
+        ...grantIdentity({}, this.m, this.session),
       },
       ...(provider === undefined ? {} : { provider }),
       publish: (event) => {

@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { Glob } from 'bun';
 import { conversationTitle } from '../agent/claude/fork.ts';
@@ -13,10 +13,12 @@ import {
 import { providerFor } from '../agent/index.ts';
 import { ownedClaudeConversations } from '../external/claude.ts';
 import { externalSessionKey } from '../external/keys.ts';
+import { selfAddress } from '../fleet/address.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { claudeLineage } from '../session/identity.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { entryNames } from '../util/entryNames.ts';
 import { nativeTranscriptPath } from './claude.ts';
 
 /**
@@ -66,14 +68,6 @@ export interface StoredConversation {
 
 const UUID_FILE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 
-function entries(path: string): string[] {
-  try {
-    return readdirSync(path);
-  } catch {
-    return [];
-  }
-}
-
 function isDirectory(path: string): boolean {
   try {
     return statSync(path).isDirectory();
@@ -102,10 +96,10 @@ function claudeConversations(m: MachineConfig, sessions: readonly Session[]): St
   const formerly = claudeLineage(m, claude);
   const out: StoredConversation[] = [];
   for (const root of knownProjectsDirs(claude, m)) {
-    for (const project of entries(root)) {
+    for (const project of entryNames(root)) {
       const projectDir = join(root, project);
       if (!isDirectory(projectDir)) continue;
-      for (const name of entries(projectDir)) {
+      for (const name of entryNames(projectDir)) {
         const threadId = UUID_FILE.exec(name)?.[1];
         if (threadId === undefined) continue;
         const path = join(projectDir, name);
@@ -118,7 +112,7 @@ function claudeConversations(m: MachineConfig, sessions: readonly Session[]): St
           address:
             session === null
               ? externalSessionKey('claude', m.rcPrefix, threadId)
-              : `${m.rcPrefix}:${session.name}`,
+              : selfAddress(m, session.name),
           session: session?.name ?? null,
           // An id another session reads is that session's, whatever title this copy opens with.
           ofSession:
@@ -175,7 +169,7 @@ function codexConversations(m: MachineConfig, sessions: readonly Session[]): Sto
       address:
         session === null
           ? externalSessionKey('codex', m.rcPrefix, threadId)
-          : `${m.rcPrefix}:${session.name}`,
+          : selfAddress(m, session.name),
       session: session?.name ?? null,
       ofSession: session?.name ?? null,
       dir: session?.dir ?? null,

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { forkRolloutIdsForMarker, rolloutIdsForMarker } from '../agent/codex/correlation.ts';
 import { buildAdoptArgv, buildForkArgv, CODEX_LAUNCH_MARKER_ENV } from '../agent/codex/launch.ts';
 import { getProvider } from '../agent/index.ts';
-import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../chat/auth.ts';
+import { grantIdentity } from '../agent/launch/identityEnv.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { readNativeForkIntent } from '../context/fork.ts';
 import { codexLockHeldByDescendant } from '../external/codexLocks.ts';
@@ -127,7 +127,7 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
     return block(generation, 'Interactive bootstrap requires Codex');
   const env = provider.launchEnv(m, provisional);
   env[CODEX_LAUNCH_MARKER_ENV] = pending.marker;
-  env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, provisional);
+  grantIdentity(env, m, provisional);
   const operation = pending.operation;
   const argv =
     operation.kind === 'create'

@@ -4,6 +4,7 @@ import { loadMachineConfig } from '../config/machine.ts';
 import {
   type CorpusQuery,
   matchTime,
+  mergeReceipts,
   olderConversation,
   olderMatch,
 } from '../context/corpusSearch.ts';
@@ -11,7 +12,8 @@ import { type CorpusSearchJson, CorpusSearchJsonSchema } from '../context/corpus
 import { searchMachine } from '../context/corpusShards.ts';
 import { storedConversations } from '../context/storedConversations.ts';
 import { compilePattern, SearchPatternError } from '../context/transcriptSearch.ts';
-import { peersOf, remoteFailureCause, runPeer as runFleetPeer } from '../fleet/transport.ts';
+import { askPeer, FROM_ANOTHER_MACHINE, NOT_IN_FLEET, type PeerRunner } from '../fleet/askPeer.ts';
+import { peersOf } from '../fleet/transport.ts';
 import type { MachineConfig, Session, TranscriptRole } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
 import { HOME } from '../util/env.ts';
@@ -76,6 +78,8 @@ export interface SearchOpts {
   json: boolean;
   /** One line per conversation instead of one per match. */
   map: boolean;
+  /** One entry per distinct thing the pattern matched: where it arrived. */
+  receipts: boolean;
   /** Machines to ask, or null for every machine of the fleet. */
   machines: string[] | null;
   /** What a peer is asked with, so it runs this exact search on its own store. */
@@ -130,6 +134,13 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
       );
     query.full = true;
   }
+  if (flags.bool('receipts')) {
+    if (query.pattern === undefined || flags.bool('map'))
+      throw new UsageError(
+        `--receipts is where each thing a PATTERN matched arrived; it has no --map\n${usageLine('search')}`,
+      );
+    query.receipts = true;
+  }
   if (flags.bool('local') && flags.list('machine').length > 0)
     throw new UsageError(`choose --local or --machine\n${usageLine('search')}`);
   // The compiled pattern and absolute times, not the words: a peer in another zone, or asked a
@@ -144,6 +155,7 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
     ...(query.since === undefined ? [] : ['--since', new Date(query.since).toISOString()]),
     ...(query.until === undefined ? [] : ['--until', new Date(query.until).toISOString()]),
     ...(query.full === true ? ['--full'] : []),
+    ...(query.receipts === true ? ['--receipts'] : []),
     // Last and after `--`, so a pattern is never read as a flag.
     ...(query.pattern === undefined
       ? []
@@ -157,6 +169,7 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
     query,
     json: flags.bool('json'),
     map: flags.bool('map'),
+    receipts: query.receipts === true,
     machines: flags.bool('local')
       ? []
       : flags.list('machine').length > 0
@@ -166,10 +179,7 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
   };
 }
 
-/** How another machine is asked. A parameter so the fleet half is tested without a fleet. */
-export type PeerRunner = typeof runFleetPeer;
-
-type MachineAnswer = Pick<CorpusSearchJson, 'machines' | 'matches' | 'conversations'>;
+type MachineAnswer = Pick<CorpusSearchJson, 'machines' | 'matches' | 'conversations' | 'receipts'>;
 
 const unavailable = (machine: string, error: string): MachineAnswer => ({
   machines: [{ machine, status: 'unavailable', error }],
@@ -177,33 +187,35 @@ const unavailable = (machine: string, error: string): MachineAnswer => ({
   conversations: [],
 });
 
-async function askPeer(
+async function askMachine(
   m: MachineConfig,
   peer: { machine: string; alias: string | null },
   peerArgs: string[],
-  runPeer: PeerRunner,
+  runPeer: PeerRunner | undefined,
 ): Promise<MachineAnswer> {
-  const argv = ['ccmux', 'search', '--local', '--json', ...peerArgs];
-  const result = await runPeer(m, peer.machine, peer.alias, argv, {
-    timeoutMs: PEER_TIMEOUT_MS,
-    connectTimeoutSeconds: PEER_CONNECT_SECONDS,
-  });
-  if (result.transportFailed)
-    return unavailable(peer.machine, result.failureDetail ?? 'not reachable right now');
-  let answer: CorpusSearchJson;
-  try {
-    answer = CorpusSearchJsonSchema.parse(JSON.parse(result.stdout));
-  } catch {
-    const cause = remoteFailureCause(result.stderr) ?? remoteFailureCause(result.stdout);
-    return unavailable(
-      peer.machine,
-      `no search answer (exit ${result.code}): ${cause ?? 'nothing reported'} — is ccmux there older than this command?`,
-    );
-  }
+  const asked = await askPeer(
+    m,
+    peer,
+    ['ccmux', 'search', '--local', '--json', ...peerArgs],
+    (stdout) => CorpusSearchJsonSchema.parse(JSON.parse(stdout)),
+    {
+      what: 'search',
+      timeoutMs: PEER_TIMEOUT_MS,
+      connectTimeoutSeconds: PEER_CONNECT_SECONDS,
+      runPeer,
+    },
+  );
+  if (!asked.ok) return unavailable(peer.machine, asked.error);
+  const { answer } = asked;
   const own = answer.machines.filter((row) => row.machine === peer.machine);
   if (own.length !== answer.machines.length || own.length !== 1)
-    return unavailable(peer.machine, 'the answer came from a different machine than the one asked');
-  return { machines: own, matches: answer.matches, conversations: answer.conversations };
+    return unavailable(peer.machine, FROM_ANOTHER_MACHINE);
+  return {
+    machines: own,
+    matches: answer.matches,
+    conversations: answer.conversations,
+    ...(answer.receipts === undefined ? {} : { receipts: answer.receipts }),
+  };
 }
 
 async function searchHere(
@@ -211,7 +223,7 @@ async function searchHere(
   query: CorpusQuery,
   sessions?: readonly Session[],
 ): Promise<MachineAnswer> {
-  const { coverage, matches, conversations } = await searchMachine(
+  const { coverage, matches, conversations, receipts } = await searchMachine(
     m.rcPrefix,
     query,
     storedConversations(m, sessions),
@@ -220,13 +232,24 @@ async function searchHere(
     machines: [coverage],
     matches: matches.map((match) => ({ ...match, machine: m.rcPrefix })),
     conversations: conversations.map((row) => ({ ...row, machine: m.rcPrefix })),
+    ...(receipts === undefined
+      ? {}
+      : {
+          receipts: {
+            truncated: receipts.truncated,
+            marks: receipts.marks.map(({ mark, deliveries }) => ({
+              mark,
+              deliveries: deliveries.map((row) => ({ ...row, machine: m.rcPrefix })),
+            })),
+          },
+        }),
   };
 }
 
 export async function searchFleet(
   m: MachineConfig,
   opts: SearchOpts,
-  runPeer: PeerRunner = runFleetPeer,
+  runPeer?: PeerRunner,
   sessions?: readonly Session[],
 ): Promise<CorpusSearchJson> {
   const peers = peersOf(m);
@@ -237,8 +260,8 @@ export async function searchFleet(
       if (machine === m.rcPrefix) return searchHere(m, opts.query, sessions);
       const peer = peers.find((candidate) => candidate.machine === machine);
       return peer === undefined
-        ? Promise.resolve(unavailable(machine, 'not a machine of this fleet (see ccmux fleet)'))
-        : askPeer(m, peer, opts.peerArgs, runPeer);
+        ? Promise.resolve(unavailable(machine, NOT_IN_FLEET))
+        : askMachine(m, peer, opts.peerArgs, runPeer);
     }),
   );
   const machines = answers.flatMap((answer) => answer.machines);
@@ -260,12 +283,16 @@ export async function searchFleet(
       until: query.until === undefined ? null : new Date(query.until).toISOString(),
       limit: query.limit,
       full: query.full === true,
+      ...(query.receipts === true ? { receipts: true } : {}),
     },
     machines,
     total,
     truncated: total > matches.length,
     conversations: answers.flatMap((answer) => answer.conversations).sort(olderConversation),
     matches,
+    ...(query.receipts === true
+      ? { receipts: mergeReceipts(answers.map((answer) => answer.receipts)) }
+      : {}),
   };
 }
 
@@ -360,6 +387,33 @@ export function mapLines(result: CorpusSearchJson, now: number, limit: number): 
   return lines;
 }
 
+/** One row per place a mark arrived: the mark, when, whose conversation, and what it belongs to. */
+export function receiptLines(result: CorpusSearchJson, now: number): string[] {
+  const receipts = result.receipts ?? { truncated: false, marks: [] };
+  const rows = receipts.marks.flatMap(({ mark, deliveries }) =>
+    deliveries.map((row, index) => [
+      index === 0 ? mark : '',
+      row.receivedAt === null
+        ? '-'
+        : humanizeDuration(Math.max(0, now - Date.parse(row.receivedAt)) / 1000),
+      row.ofSession === null ? row.address : `${row.machine}:${row.ofSession}`,
+      row.repository ?? '-',
+      row.project ?? '-',
+    ]),
+  );
+  const lines =
+    rows.length === 0 ? [] : tableLines(['MARK', 'AGO', 'IN', 'REPOSITORY', 'PROJECT'], rows);
+  if (receipts.truncated)
+    lines.push(
+      `more than ${receipts.marks.length} distinct marks matched; narrow the pattern, --since or --until`,
+    );
+  lines.push(
+    `${receipts.marks.length} mark(s), ${rows.length} place(s)`,
+    ...summaryLines({ ...result, truncated: false, matches: [] }, 0),
+  );
+  return lines;
+}
+
 function summaryLines(result: CorpusSearchJson, shownConversations: number): string[] {
   const lines: string[] = [];
   const searched = result.machines.filter((row) => row.status === 'searched');
@@ -420,9 +474,11 @@ export async function cmdSearch(args: string[]): Promise<number> {
   const result = await searchFleet(loadMachineConfig(), opts);
   const lines = opts.json
     ? [JSON.stringify(result)]
-    : opts.map
-      ? mapLines(result, Date.now(), opts.query.limit)
-      : searchLines(result, Date.now(), process.stdout.isTTY === true);
+    : opts.receipts
+      ? receiptLines(result, Date.now())
+      : opts.map
+        ? mapLines(result, Date.now(), opts.query.limit)
+        : searchLines(result, Date.now(), process.stdout.isTTY === true);
   for (const line of lines) await printLine(line);
   if (result.total > 0) return 0;
   return result.machines.some((row) => row.status === 'unavailable') ? 2 : 1;

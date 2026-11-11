@@ -4,7 +4,6 @@ import { unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { PermissionResult, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../../../chat/auth.ts';
 import { ContentProducer } from '../../../content/producer.ts';
 import { claudeContextApi } from '../../../context/claude.ts';
 import { readNativeForkIntent } from '../../../context/fork.ts';
@@ -22,6 +21,7 @@ import { sleepBlocksStart } from '../../../session/sleep/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { recordClaudeSdkUsage } from '../../../usage/claudeSdk.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+import { grantIdentity } from '../../launch/identityEnv.ts';
 import { launchEnv } from '../launch.ts';
 import { classifySdkMessage, isFailureResult } from './content.ts';
 import {
@@ -153,7 +153,7 @@ export class ClaudeNativeOwner {
       await atomicWrite(this.startedFile, 'started', 0o600);
     }
     const env = launchEnv(this.m, this.session);
-    env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(this.m, this.session);
+    grantIdentity(env, this.m, this.session);
     const options = sdkOptions({
       m: this.m,
       session: this.session,

@@ -2,9 +2,17 @@ import { createReadStream, statSync } from 'node:fs';
 import { createZstdDecompress } from 'node:zlib';
 import { getProvider } from '../agent/index.ts';
 import { rec, str } from '../agent/transcript/normalize.ts';
-import { repositoryOf } from '../session/repository.ts';
+import { declaredProjectOnly, repositoryOf } from '../session/repository.ts';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../types.ts';
-import type { ConversationHits, CorpusMatch, MachineCoverage } from './corpusSearchSchema.ts';
+import {
+  type ConversationHits,
+  type ConversationRef,
+  type CorpusMatch,
+  type Delivery,
+  type MachineCoverage,
+  RECEIPT_MARKS_MAX,
+  type Receipts,
+} from './corpusSearchSchema.ts';
 import type { StoredConversation, StoredFile } from './storedConversations.ts';
 import { matchMessage, type TranscriptMatch } from './transcriptSearch.ts';
 
@@ -34,7 +42,8 @@ export interface CorpusQuery {
    *  there is rarely the conversation the caller is looking for. */
   kinds: ReadonlySet<TranscriptKind>;
   providers?: ReadonlySet<'claude' | 'codex'>;
-  /** Part of the conversation's working directory or of its session's name, compared without case. */
+  /** Part of the conversation's working directory, of its session's name or of the project its
+   *  repository declares, compared without case. */
   project?: string;
   /** Inclusive bounds on when the matched message was written, in epoch milliseconds. */
   since?: number;
@@ -43,6 +52,8 @@ export interface CorpusQuery {
   limit: number;
   /** Carry each matched message's whole text, not only the excerpt around the match. */
   full?: boolean;
+  /** Say where each distinct thing the pattern matched arrived; `limit` does not apply to that. */
+  receipts?: boolean;
 }
 
 /** Source characters handed to the parser at once. Bounds memory; lines are not a unit of size. */
@@ -157,6 +168,65 @@ export interface MachineSearch {
   /** Every conversation with a match, oldest last match first — not only those of `matches`. */
   conversations: ConversationHits[];
   matches: CorpusMatch[];
+  /** Present when the query asked for receipts. */
+  receipts?: Receipts | undefined;
+}
+
+const arrived = (delivery: Pick<Delivery, 'receivedAt'>): number => {
+  const at = delivery.receivedAt === null ? Number.NaN : Date.parse(delivery.receivedAt);
+  // A message that does not say when it was written is the last candidate for "first".
+  return Number.isFinite(at) ? at : Number.POSITIVE_INFINITY;
+};
+const earlier = (a: Delivery, b: Delivery): number =>
+  arrived(a) - arrived(b) || a.seq - b.seq || a.address.localeCompare(b.address);
+
+type Marks<D extends Delivery> = { truncated: boolean; marks: { mark: string; deliveries: D[] }[] };
+
+/**
+ * One list of receipts from several — the shares of one machine, or the machines of a fleet.
+ *
+ * A mark's deliveries are one per conversation, the earliest message there that carries it. A
+ * Claude session continued in a new file holds copies of its earlier messages under their own ids,
+ * so the same message id in two conversations of one session is one delivery: the copy in the
+ * conversation the session reads now is kept, and failing that the first by address. Nothing else
+ * is a copy — a Codex message is named by its line, and two conversations nobody owns are two.
+ */
+export function mergeReceipts<D extends Delivery & { machine?: string }>(
+  parts: readonly (Marks<D> | undefined)[],
+): Marks<D> {
+  const byMark = new Map<string, Map<string, D>>();
+  for (const part of parts)
+    for (const { mark, deliveries } of part?.marks ?? []) {
+      const seen = byMark.get(mark) ?? new Map<string, D>();
+      byMark.set(mark, seen);
+      for (const delivery of deliveries) {
+        const where = `${delivery.machine ?? ''}\n${delivery.address}`;
+        const held = seen.get(where);
+        if (held === undefined || earlier(delivery, held) < 0) seen.set(where, delivery);
+      }
+    }
+  const marks = [...byMark].map(([mark, seen]) => {
+    const copies = new Map<string, D>();
+    for (const delivery of [...seen.values()].sort(
+      (a, b) =>
+        Number(b.session !== null) - Number(a.session !== null) ||
+        a.address.localeCompare(b.address),
+    )) {
+      const message =
+        delivery.provider === 'claude' && delivery.ofSession !== null
+          ? `${delivery.machine ?? ''}\n${delivery.ofSession}\n${delivery.messageId}`
+          : `${delivery.machine ?? ''}\n${delivery.address}`;
+      if (!copies.has(message)) copies.set(message, delivery);
+    }
+    return { mark, deliveries: [...copies.values()].sort(earlier) };
+  });
+  marks.sort(
+    (a, b) => earlier(a.deliveries[0] as D, b.deliveries[0] as D) || a.mark.localeCompare(b.mark),
+  );
+  return {
+    truncated: parts.some((part) => part?.truncated === true) || marks.length > RECEIPT_MARKS_MAX,
+    marks: marks.slice(0, RECEIPT_MARKS_MAX),
+  };
 }
 
 /**
@@ -216,6 +286,9 @@ export async function searchStored(
   };
   let kept: CorpusMatch[] = [];
   const hits = new Map<string, ConversationHits>();
+  /** Mark → conversation → the earliest message there that carries it. */
+  const marks = new Map<string, Map<string, Delivery>>();
+  let marksTruncated = false;
   const project = query.project?.toLowerCase();
   for (const conversation of conversations) {
     if (query.providers !== undefined && !query.providers.has(conversation.provider)) {
@@ -237,13 +310,24 @@ export async function searchStored(
     const newest = candidates.at(-1);
     if (newest === undefined) continue;
     const dir = conversation.dir ?? (await storedDir(newest.file));
-    const named = `${dir ?? ''} ${conversation.session ?? ''}`.toLowerCase();
+    const declared = await declaredProjectOnly(dir);
+    const named =
+      `${dir ?? ''} ${conversation.session ?? ''} ${declared.project ?? ''}`.toLowerCase();
     if (project !== undefined && !named.includes(project)) {
       coverage.skippedFiles += candidates.length;
       continue;
     }
     coverage.conversations++;
-    const repository = await repositoryOf(dir);
+    const ref: ConversationRef = {
+      address: conversation.address,
+      provider: conversation.provider,
+      threadId: conversation.threadId,
+      session: conversation.session,
+      ofSession: conversation.ofSession,
+      dir,
+      repository: await repositoryOf(dir),
+      ...declared,
+    };
     const parser = getProvider(conversation.provider);
     for (const { file, size } of candidates) {
       coverage.files++;
@@ -258,15 +342,32 @@ export async function searchStored(
           if (query.since !== undefined && !(at >= query.since)) return;
           if (query.until !== undefined && !(at <= query.until)) return;
           coverage.total++;
-          const { id: _id, ...found } = match;
+          const { id, keys, ...found } = match;
+          for (const mark of keys ?? []) {
+            let seen = marks.get(mark);
+            if (seen === undefined) {
+              // A pattern that matches a different thing in every message is not a mark; what is
+              // already held stays exact, and the answer says more were left out.
+              if (marks.size >= RECEIPT_MARKS_MAX) {
+                marksTruncated = true;
+                continue;
+              }
+              seen = new Map();
+              marks.set(mark, seen);
+            }
+            const delivery: Delivery = {
+              ...ref,
+              lines: file.lines,
+              seq: match.seq,
+              receivedAt: Number.isFinite(at) ? match.createdAt : null,
+              role: match.role,
+              messageId: id,
+            };
+            const held = seen.get(ref.address);
+            if (held === undefined || earlier(delivery, held) < 0) seen.set(ref.address, delivery);
+          }
           const hit: CorpusMatch = {
-            address: conversation.address,
-            provider: conversation.provider,
-            threadId: conversation.threadId,
-            session: conversation.session,
-            ofSession: conversation.ofSession,
-            dir,
-            repository,
+            ...ref,
             lines: file.lines,
             ...found,
             text: query.full === true ? (message.text ?? null) : null,
@@ -275,13 +376,7 @@ export async function searchStored(
           const seen = hits.get(conversation.address);
           if (seen === undefined) {
             hits.set(conversation.address, {
-              address: conversation.address,
-              provider: conversation.provider,
-              threadId: conversation.threadId,
-              session: conversation.session,
-              ofSession: conversation.ofSession,
-              dir,
-              repository,
+              ...ref,
               total: 1,
               user: match.role === 'user' ? 1 : 0,
               assistant: match.role === 'assistant' ? 1 : 0,
@@ -309,7 +404,11 @@ export async function searchStored(
                 ? { ...parsed, role: 'system' }
                 : parsed;
             if (query.pattern !== undefined) {
-              const match = matchMessage(message, { ...query, pattern: query.pattern });
+              const match = matchMessage(
+                message,
+                { ...query, pattern: query.pattern },
+                { keys: query.receipts === true },
+              );
               if (match !== null) keep(match, message);
               continue;
             }
@@ -333,5 +432,15 @@ export async function searchStored(
     coverage,
     conversations: [...hits.values()].sort(olderConversation),
     matches: kept.sort(olderMatch).slice(-query.limit),
+    ...(query.receipts === true
+      ? {
+          receipts: mergeReceipts([
+            {
+              truncated: marksTruncated,
+              marks: [...marks].map(([mark, seen]) => ({ mark, deliveries: [...seen.values()] })),
+            },
+          ]),
+        }
+      : {}),
   };
 }

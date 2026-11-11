@@ -1,12 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { readImage } from '../agent/claude/images.ts';
 import { providerFor } from '../agent/index.ts';
+import { DEFAULT_TEXT_LIMIT } from '../agent/transcript/normalize.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
+import { readExactMessage } from '../context/exactMessage.ts';
+import { senderJudge } from '../context/messageSender.ts';
 import { transcriptJson, transcriptReadJson } from '../context/transcriptJson.ts';
 import type { TranscriptWindowOptions } from '../context/transcriptWindow.ts';
 import { readTranscriptWindow } from '../context/transcriptWindow.ts';
 import { parseExternalSessionKey } from '../external/keys.ts';
 import { readExternalTranscript } from '../external/transcript.ts';
+import { selfAddress } from '../fleet/address.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import type { TranscriptMessage } from '../types.ts';
@@ -39,6 +43,8 @@ export interface Opts {
   lastMessage: boolean;
   /** The address a message's `image` carried; asking for the picture, not the record of it. */
   image?: string;
+  /** One message whole, by the id another system quotes it by. */
+  message?: string;
   tail: number;
   cursor?: number;
   before?: number;
@@ -79,6 +85,7 @@ export function parseOpts(args: string[]): Opts {
   };
   const optional = {
     image: flags.str('image'),
+    message: flags.str('message'),
     agent: flags.str('agent'),
     cursor: flags.int('cursor'),
     before: flags.int('before'),
@@ -101,9 +108,15 @@ export function parseOpts(args: string[]): Opts {
 export async function cmdTranscript(args: string[]): Promise<number> {
   const o = parseOpts(args);
   let name = o.name;
-  if (!o.json && !o.lastMessage && o.image === undefined && o.search === undefined)
+  if (
+    !o.json &&
+    !o.lastMessage &&
+    o.image === undefined &&
+    o.search === undefined &&
+    o.message === undefined
+  )
     throw new UsageError(
-      `choose what to read: --json, --last-message, --grep or --image\n${usageLine('transcript')}`,
+      `choose what to read: --json, --last-message, --grep, --message or --image\n${usageLine('transcript')}`,
     );
   let external: ReturnType<typeof parseExternalSessionKey> | undefined;
   try {
@@ -130,6 +143,12 @@ export async function cmdTranscript(args: string[]): Promise<number> {
       console.error(`${name}: external transcript images are not supported`);
       return 1;
     }
+    if (o.message !== undefined) {
+      console.error(
+        `${name}: --message reads a managed session's message; an external thread's is the control service's external.message`,
+      );
+      return 1;
+    }
     try {
       const target =
         external ??
@@ -137,7 +156,7 @@ export async function cmdTranscript(args: string[]): Promise<number> {
           typeof readExternalTranscript
         >[1]);
       const { threadId } = target;
-      const rc = external ? name : `${m.rcPrefix}:${name}`;
+      const rc = external ? name : selfAddress(m, name);
       if (o.search !== undefined) {
         let dir = '';
         return await runSearch(
@@ -196,11 +215,27 @@ export async function cmdTranscript(args: string[]): Promise<number> {
     return 0;
   }
 
+  // `--message`: one message whole, by the id another system quotes it by, and who sent it.
+  if (o.message !== undefined) {
+    const result = await readExactMessage(m, s, o.message);
+    if (o.json) await printLine(JSON.stringify(result));
+    else if (result.message === null) console.error(`${name}: ${o.message} — ${result.outcome}`);
+    else {
+      const { message } = result;
+      await printLine(
+        `${message.id}  SEQ ${message.seq}  ${message.recordedAt ?? '-'}  ${message.sender.verdict} — ${message.sender.reason}`,
+      );
+      await printLine(message.text);
+    }
+    return result.outcome === 'resolved' ? 0 : 1;
+  }
+
   if (o.search !== undefined)
     return runSearch((window) => readTranscriptWindow(m, s, window), searchArgs(o), {
       json: o.json,
-      target: `${m.rcPrefix}:${s.name}`,
+      target: selfAddress(m, s.name),
       header: (read) => transcriptReadJson(m, s, read),
+      sender: senderJudge(m, s.name),
     });
 
   // `--last-message`: the agent's final answer as plain text — the "take the report" gesture, so an
@@ -224,7 +259,19 @@ export async function cmdTranscript(args: string[]): Promise<number> {
   if (o.limit !== undefined) readOpts.limit = o.limit;
   if (o.textLimit !== undefined) readOpts.textLimit = o.textLimit;
   if (o.agent !== undefined) readOpts.agent = o.agent;
-  await printLine(JSON.stringify(await transcriptJson(m, s, readOpts)));
+  const json = await transcriptJson(m, s, readOpts);
+  // Who sent each user message, said by the owner of the conversation and of the records that
+  // tell a letter and typed keys from a person's own message.
+  const judge = senderJudge(m, s.name, readOpts.textLimit ?? DEFAULT_TEXT_LIMIT);
+  await printLine(
+    JSON.stringify({
+      ...json,
+      messages: json.messages.map((message) => {
+        const sender = judge(message);
+        return sender === null ? message : { ...message, sender };
+      }),
+    }),
+  );
   return 0;
 }
 

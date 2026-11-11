@@ -11,7 +11,7 @@ import {
 } from '../../delegation/application.ts';
 import { delegationRefused } from '../../delegation/resolve.ts';
 import type { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
-import { peerChatLogAnswer, peerListAnswer } from '../../fleet/peerRead.ts';
+import { peerChatLogAnswer, peerIdentitiesAnswer, peerListAnswer } from '../../fleet/peerRead.ts';
 import { peerReadContract } from '../../fleet/peerReadContract.ts';
 import type { MachineConfig } from '../../types.ts';
 import { subscribeControlNative } from '../nativeFeed.ts';
@@ -176,6 +176,8 @@ export function controlServices(
       measure('control/peer-list', async () =>
         peerListAnswer(m, input.known, await dependencies.peerRows?.()),
       ),
+    identities: ({ input }) =>
+      measure('control/peer-identities', () => peerIdentitiesAnswer(m, input.known)),
     'chat-log': ({ input }) =>
       measure('control/peer-chat-log', () => peerChatLogAnswer(m, input.limit, input.known)),
   });

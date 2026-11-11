@@ -40,6 +40,7 @@ Coordination boundary:
 
 Manage sessions by running \`${cli}\`:
 - "list sessions"                 -> ${cli} list
+- "which session/project is this" -> ${cli} whois   (no argument: this session — address, repository, project and the project's other checkouts on this machine; a private working half there holds the task queue and its rules)
 - "create NAME in DIR" / "new session" -> ${cli} new NAME DIR
 - "restart this" / "restart NAME" -> ${cli} restart NAME   (this session: ${name}; use msg for any hand-off)
 - "stop NAME" / "start NAME" / "remove NAME" -> ${cli} stop|start|rm NAME

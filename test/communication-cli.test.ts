@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { requireOriginatingBasis } from '../src/chat/communicationAuthorization.ts';
 import { CommunicationAuthorizationInputSchema } from '../src/chat/communicationAuthorizationSchema.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
@@ -11,8 +12,14 @@ import {
   servicePrincipal,
 } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
+import { SendReceiptSchema, SentListSchema } from '../src/chat/sentLetterSchema.ts';
 import { sessionsPath } from '../src/config/paths.ts';
-import { appendOutboxAck } from '../src/fleet/flush.ts';
+import {
+  appendOutboxAck,
+  loadOutboxAcked,
+  loadOutboxSettled,
+  retryCandidates,
+} from '../src/fleet/flush.ts';
 import { appendOutbound, loadOutbox } from '../src/fleet/outbox.ts';
 import {
   communicationAuthorization,
@@ -361,4 +368,155 @@ test('a letter still held for retry is listed with its state and WITHOUT a refer
   }[];
   expect(delivered[0]?.state).toBe('accepted');
   expect(delivered[0]?.ref).toBe(`${away.threadId}#${envelope.id}`);
+});
+
+test('a program that sends a letter is answered with one line: the receipt of that letter', async () => {
+  const f = fixture();
+  const authorized = ['--communication-authorization', communicationAuthorizationFile];
+  const receiptSchema = z.fromJSONSchema(
+    (JSON.parse((await f.run(['--schema'])).stdout) as { receipt: never }).receipt,
+  );
+  const send = async (args: string[]) => {
+    const result = await f.run([...args, '--json']);
+    const lines = result.stdout.split('\n').filter((line) => line !== '');
+    // Exactly one line, and it is the receipt: nothing a person would be told is mixed into it.
+    expect({ lines: lines.length, said: result.stderr }).toMatchObject({ lines: 1 });
+    const receipt = SendReceiptSchema.parse(JSON.parse(lines[0] as string));
+    expect(receiptSchema.safeParse(receipt).success).toBe(true);
+    return { ...result, receipt };
+  };
+
+  const accepted = await send([
+    'host-a:worker',
+    'the heron plan',
+    '--task',
+    'heron',
+    ...authorized,
+  ]);
+  expect(accepted.code).toBe(0);
+  const inLedger = loadLedger(f.machine)[0];
+  expect(accepted.receipt).toMatchObject({
+    state: 'accepted',
+    id: inLedger?.id,
+    to: `ccmux/claude@host-a:worker#${inLedger?.to.kind === 'managed' ? inLedger.to.threadId : ''}`,
+    task: 'heron',
+    notBefore: null,
+    note: null,
+    preview: 'the heron plan',
+  });
+  expect(accepted.receipt.ref).toContain(inLedger?.id as string);
+  // The same letter, in the same shape, when the sender looks back.
+  const listed = SentListSchema.parse(JSON.parse((await f.run(['sent', '--json'])).stdout));
+  const { from: _from, notBefore: _notBefore, note: _note, ...letter } = accepted.receipt;
+  expect(listed.sent).toEqual([letter]);
+
+  // Somewhere ccmux does not deliver: recorded, never reported as delivered, and no reference.
+  const recorded = await send(['owner/specialist', 'carry this']);
+  expect(recorded.receipt).toMatchObject({ state: 'recorded', ref: null });
+  expect(recorded.receipt.note).toContain('ccmux does not deliver there');
+  expect((await send(['owner', 'for you'])).receipt).toMatchObject({
+    state: 'accepted',
+    ref: null,
+  });
+
+  // A machine that cannot be asked who the recipient is: nothing is recorded, so there is no
+  // receipt — the name cannot resolve, the hop fails at once and nothing is contacted.
+  writeFileSync(
+    join(f.root, 'machine.json'),
+    JSON.stringify({ ...f.machine, fleet: { 'host-b': 'host-b.invalid' } }),
+  );
+  const unreachable = await f.run(['host-b:worker', 'later', '--json', ...authorized]);
+  expect([unreachable.code, unreachable.stdout]).toEqual([1, '']);
+  expect(unreachable.stderr).toContain('transport failed');
+  expect(loadOutbox(f.machine)).toEqual([]);
+
+  // A refusal is not a receipt, and the other verbs do not pretend to have one.
+  const refused = await f.run(['host-a:nobody', 'text', '--json', ...authorized]);
+  expect([refused.code, refused.stdout]).toEqual([1, '']);
+  expect((await f.run(['pending', '--json'])).stderr).toContain("--json answers a send and 'sent'");
+  // A person is still told in sentences.
+  const person = await f.run(['host-a:worker', 'plain', ...authorized]);
+  expect(person.stdout).toContain('sent ');
+  expect(person.stdout).toContain('letter ');
+});
+
+test('a letter refused for good is listed as refused, is not retried and offers no reference', async () => {
+  const f = fixture();
+  const away = managedPeer('host-b', makeSession({ uuid: crypto.randomUUID(), name: 'peer' }));
+  const envelope = buildEnvelope(cliPrincipal('host-a'), away, 'never welcome', {
+    task: 'refused-check',
+    communicationAuthorization,
+    communicationReceipt: requireOriginatingBasis(
+      cliPrincipal('host-a'),
+      away,
+      communicationAuthorization,
+      () => null,
+      'refused-check',
+    ),
+  });
+  appendOutbound(f.machine, {
+    kind: 'msg',
+    envelope,
+    result: { ok: false, detail: 'transport failed' },
+  });
+  const listed = async () =>
+    SentListSchema.parse(JSON.parse((await f.run(['sent', 'refused-check', '--json'])).stdout))
+      .sent[0];
+  const pending = () =>
+    retryCandidates(loadOutbox(f.machine), loadOutboxSettled(f.machine), Date.now()).length;
+  expect([(await listed())?.state, pending()]).toEqual(['held', 1]);
+  // The far side said no for good: settled, so nothing more is tried — and it was not delivered,
+  // so the look back does not call it accepted or hand out a reference to continue it by.
+  appendOutboxAck(f.machine, envelope.id, 'refused');
+  expect(await listed()).toMatchObject({ state: 'refused', ref: null, id: envelope.id });
+  expect(pending()).toBe(0);
+  expect(loadOutboxAcked(f.machine).has(envelope.id)).toBe(false);
+  // A delivery recorded for the same letter is a delivery, whatever was said before it.
+  appendOutboxAck(f.machine, envelope.id);
+  expect((await listed())?.state).toBe('accepted');
+  expect((await listed())?.ref).toContain(envelope.id);
+});
+
+test('with no question, a session is told about itself', async () => {
+  const f = fixture();
+  const ask = async (env: Record<string, string>) => {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        join(import.meta.dir, '../src/cli.ts'),
+        'whois',
+        '--json',
+      ],
+      {
+        cwd: f.root,
+        env: { ...process.env, CCMUX_CONFIG: join(f.root, 'machine.json'), ...env },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    return { code, stdout, stderr };
+  };
+  const self = await ask({ CCMUX_SESSION: 'worker' });
+  expect(self.code).toBe(0);
+  expect(JSON.parse(self.stdout)).toMatchObject({
+    found: 'session',
+    by: 'address',
+    session: { address: 'host-a:worker', dir: f.root },
+    // Itself is on this machine: nobody else is asked.
+    machines: [{ machine: 'host-a', status: 'asked' }],
+  });
+  // Outside a session there is nobody to be told about.
+  const { CCMUX_SESSION: _session, ...outside } = process.env;
+  const child = Bun.spawnSync(
+    [process.execPath, '--no-env-file', join(import.meta.dir, '../src/cli.ts'), 'whois'],
+    { cwd: f.root, env: { ...outside, CCMUX_CONFIG: join(f.root, 'machine.json') } },
+  );
+  expect(child.exitCode).not.toBe(0);
+  expect(child.stderr.toString()).toContain('ask about one thing');
 });

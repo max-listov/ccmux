@@ -1,7 +1,8 @@
-import { continuationRef } from '../chat/communicationAuthorizationSchema.ts';
+import type { z } from 'zod';
 import { principalLabel, samePrincipal, sameSender, targetLabel } from '../chat/identity.ts';
 import { loadLedger } from '../chat/ledger.ts';
-import { loadOutboxAcked, RETRY_WINDOW_MS } from '../fleet/flush.ts';
+import { type SentLetterState, type SentListSchema, sentLetter } from '../chat/sentLetterSchema.ts';
+import { loadOutboxAcked, loadOutboxRefused, RETRY_WINDOW_MS } from '../fleet/flush.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
 import type { ChatMessage, ChatPrincipal, MachineConfig } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
@@ -30,10 +31,11 @@ export async function msgSent(
   // question, not this one. A letter abroad is only an attempt until transit settles it: the
   // record says whether the far side accepted it, and the ack log says which later retry did.
   const acked = loadOutboxAcked(machine);
+  const refused = loadOutboxRefused(machine);
   const settled = Date.now();
-  const states = new Map<string, 'accepted' | 'held' | 'undelivered'>();
+  const states = new Map<string, SentLetterState>();
   const collected = new Map<string, ChatMessage>();
-  const note = (message: ChatMessage, state: 'accepted' | 'held' | 'undelivered') => {
+  const note = (message: ChatMessage, state: SentLetterState) => {
     collected.set(message.id, message);
     // One id can hold several outbox rows — an attempt and its retries — so acceptance wins over
     // any earlier failure rather than depending on which row is read last.
@@ -45,9 +47,11 @@ export async function msgSent(
       record.envelope,
       record.result.ok || acked.has(record.envelope.id)
         ? 'accepted'
-        : settled - Date.parse(record.envelope.ts) > RETRY_WINDOW_MS
-          ? 'undelivered'
-          : 'held',
+        : refused.has(record.envelope.id)
+          ? 'refused'
+          : settled - Date.parse(record.envelope.ts) > RETRY_WINDOW_MS
+            ? 'undelivered'
+            : 'held',
     );
   const mine = [...collected.values()]
     .filter((message) => sameSender(message.from, from))
@@ -57,7 +61,7 @@ export async function msgSent(
   // has an id and a record here, but it has not opened a correspondence, and a continuation of one
   // that never arrived is the claim this reference must not help anyone make.
   const refOf = (message: ChatMessage): string | null =>
-    states.get(message.id) === 'accepted' ? continuationRef(message) : null;
+    sentLetter(message, states.get(message.id) ?? 'accepted').ref;
   // A continuation references the LIFE that wrote the letter, not the session name: a restart or a
   // renewed conversation gives the same `machine:session` a new thread, and `resolveCommunicationBasis`
   // compares the full principal. Listing an older life's letters here would hand out references
@@ -69,21 +73,9 @@ export async function msgSent(
     await printLine(
       JSON.stringify({
         sender: principalLabel(from),
-        sent: current.map((message) => ({
-          ref: refOf(message),
-          state: states.get(message.id) ?? 'accepted',
-          id: message.id,
-          thread:
-            message.to.kind === 'managed' || message.to.kind === 'codex-app'
-              ? message.to.threadId
-              : null,
-          to: targetLabel(message.to),
-          task: message.task,
-          ts: message.ts,
-          preview: preview(message.body),
-        })),
+        sent: current.map((message) => sentLetter(message, states.get(message.id) ?? 'accepted')),
         fromEarlierLives: earlier,
-      }),
+      } satisfies z.infer<typeof SentListSchema>),
     );
     return 0;
   }

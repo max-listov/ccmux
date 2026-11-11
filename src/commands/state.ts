@@ -1,3 +1,4 @@
+import { selfAddress } from '../fleet/address.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { collectRows, toListItem } from '../inventory/rows.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
@@ -43,7 +44,7 @@ export async function cmdState(args: string[]): Promise<number> {
   const forwarded = await forwardIfRemote(target, 'state', flags.flagArgs);
   if (forwarded.done) return forwarded.code;
   const { m, session: name } = forwarded;
-  const address = `${m.rcPrefix}:${name}`;
+  const address = selfAddress(m, name);
   const session = findSession(loadSessions(m), name);
   if (session === undefined) {
     const reason = `no session named ${name} on ${m.rcPrefix}`;

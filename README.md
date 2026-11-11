@@ -438,18 +438,26 @@ provider gave its conversation, or its address. `ccmux whois` turns any of them 
 ccmux whois 'host-a-agent-a - Claude Code' --json   # a window title, matched as a whole word
 ccmux whois 0a1b2c3d-…                              # a provider id — the current one or an earlier one
 ccmux whois --all --json                            # every session of the fleet, same shape
-ccmux whois --follow --json                         # this machine's sessions as they change
+ccmux whois --follow --json                         # every machine's sessions as they change
 ccmux whois --schema                                # JSON Schema of all three answers
 ```
 
 The answer carries the address, provider, directory, the repository of that directory
-(`owner/name` of its `origin`) and every conversation id the session has lived under — a Claude
+(`owner/name` of its `origin`), the project it belongs to — its own `identity.project` in the
+`.passport.json` at its root, or the one its private working half beside it declares for it;
+absent when neither does — and every conversation id the session has lived under — a Claude
 session gets a new one at each `/clear`, fork and compaction. A title that only resembles a
 session's is not a session, and a question that fits two names both and chooses neither.
 
 `ccmux search --role user --since 1d --json --full` is the other half: everything the user wrote
-in a day, across the fleet, each message with its whole text, its repository and the session its
-conversation belongs or belonged to.
+in a day, across the fleet, each message with its whole text, its repository, that repository's
+project and the session its conversation belongs or belonged to.
+
+`ccmux search 'ticket-(\d+)$' --role user --receipts --json` answers where a marked message
+arrived: one entry per distinct mark, with every conversation that received it — session,
+repository, project and when. Inside a session, `CCMUX_ADDRESS` is that session's own
+`<machine>:<name>`, and `ccmux whois` with no argument answers about the session itself — with the
+other checkouts of its project on the machine.
 
 Details in [`docs/architecture/session-identity.md`](docs/architecture/session-identity.md).
 

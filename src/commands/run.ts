@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { codexHistoryPresent } from '../agent/codex/resume.ts';
 import { type AgentProvider, providerFor } from '../agent/index.ts';
+import { grantIdentity } from '../agent/launch/identityEnv.ts';
 import { computeStamp } from '../agent/launch/launchStamp.ts';
 import { droppedDeadAgentKeys, withoutDeadAgentEnv } from '../agent/launch/sshEnv.ts';
 import {
@@ -8,7 +9,6 @@ import {
   type MenuSettleState,
   type MenuSettleStep,
 } from '../agent/menuSettle.ts';
-import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../chat/auth.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { delegationStopped } from '../delegation/cancel.ts';
 import { nativeDriver } from '../runtime/driver.ts';
@@ -279,7 +279,7 @@ export async function superviseReady(
       env = withoutDeadAgentEnv(env);
       log.info({ msg: 'dropped a dead agent socket from the session launch', name, dropped });
     }
-    env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, s);
+    grantIdentity(env, m, s);
     // The invocation TAUGHT to the agent (bare `ccmux` shim when installed) — NOT the
     // absolute self re-exec; those are different concerns (see env.ts). Re-evaluated each
     // loop so a shim installed after boot is picked up on the next relaunch.

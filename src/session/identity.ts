@@ -1,14 +1,16 @@
-import { readdirSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { conversationTitle, lastMessageMs } from '../agent/claude/fork.ts';
 import { providerFor } from '../agent/index.ts';
 import { rec, str } from '../agent/transcript/normalize.ts';
 import { rcName } from '../config/machine.ts';
 import { readInventory } from '../events/inventory.ts';
+import { selfAddress } from '../fleet/address.ts';
 import type { MachineConfig, Session } from '../types.ts';
+import { entryNames } from '../util/entryNames.ts';
 import { readFirstLine, readHeadLines } from '../util/readLines.ts';
 import type { SessionIdentity, SessionLife } from './identitySchema.ts';
-import { repositoryOf } from './repository.ts';
+import { declaredProject, repositoryOf } from './repository.ts';
 
 /**
  * A session's identity, assembled from what already records it: the registry (name, directory, the
@@ -123,14 +125,6 @@ export function claudeLineage(
     title === null ? null : (owners.get(`${dirname(path)}\n${title}`) ?? null);
 }
 
-function entries(path: string): string[] {
-  try {
-    return readdirSync(path);
-  } catch {
-    return [];
-  }
-}
-
 function claudeLives(
   m: MachineConfig,
   session: Session,
@@ -143,7 +137,7 @@ function claudeLives(
   // An id another session reads now is that session's, whatever title its file opens with.
   const taken = new Set(sessions.filter((other) => other !== session).map((other) => other.uuid));
   const lives: SessionLife[] = [];
-  for (const name of entries(project)) {
+  for (const name of entryNames(project)) {
     const id = UUID_FILE.exec(name)?.[1];
     if (id === undefined || taken.has(id)) continue;
     const path = join(project, name);
@@ -199,13 +193,14 @@ export async function sessionIdentities(
     const first = conversations.map((life) => ms(life.firstAt)).filter((at) => at > 0);
     const last = conversations.map((life) => ms(life.lastAt)).filter((at) => at > 0);
     out.push({
-      address: `${m.rcPrefix}:${session.name}`,
+      address: selfAddress(m, session.name),
       machine: m.rcPrefix,
       name: session.name,
       provider: session.agent,
       title: rcName(m, session.name),
       dir: session.dir,
       repository: await repositoryOf(session.dir),
+      ...(await declaredProject(session.dir)),
       archived: session.archived,
       running: running.get(session.name) ?? null,
       conversation: session.uuid,

@@ -2,11 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { z } from 'zod';
-import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import { captureNativeStderr, recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { compareSemver } from '../../util/version.ts';
 import { stopOwnedChildGroup } from '../codex/owned/child.ts';
+import { clearIdentity, grantIdentity } from '../launch/identityEnv.ts';
 import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
 import { boundedOpenCodeFetch } from './http.ts';
 
@@ -50,7 +50,8 @@ export async function startOpenCodeServer(
   m: MachineConfig,
   session: Pick<Session, 'dir' | 'envFile'>,
   signal: AbortSignal,
-  identity?: { name: string; credential: string },
+  /** The managed session this server runs for; absent for a server that is nobody's session. */
+  identity?: Session,
 ) {
   preflightOpenCode(m);
   if (m.opencodeBin === undefined) throw new Error('OpenCode executable is not configured');
@@ -59,12 +60,8 @@ export async function startOpenCodeServer(
   const password = randomBytes(32).toString('base64url');
   const env = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
   if (env.refused.length) throw new Error('Declared environment contains reserved names');
-  delete env.env.CCMUX_SESSION;
-  delete env.env[CHAT_CREDENTIAL_ENV];
-  if (identity) {
-    env.env.CCMUX_SESSION = identity.name;
-    env.env[CHAT_CREDENTIAL_ENV] = identity.credential;
-  }
+  if (identity) grantIdentity(env.env, m, identity);
+  else clearIdentity(env.env);
   const child = Bun.spawn(
     [m.opencodeBin, 'serve', '--hostname', '127.0.0.1', '--port', String(port)],
     {

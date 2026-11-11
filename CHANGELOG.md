@@ -16,6 +16,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Read the project of a session in `ccmux whois` and of every line in `ccmux search --json`: the optional `project` field is what repositories declare in `.passport.json` — the checkout's own `identity.project`, or the one a private working half beside it declares for the source it names — so a product's public source, its working repository and its companions read as one product, and so does a session opened on the folder they sit in. `ccmux search --project` finds a conversation by that name as well.
+- Ask where a marked message arrived with `ccmux search PATTERN --receipts`: one entry per distinct thing the pattern matched, with every conversation that holds it, whose it is and when it first arrived there. In a pattern of `ccmux search` and `ccmux transcript --grep`, `^` and `$` are now the edges of a line of a message, not of the whole message.
+- Follow every machine of the fleet with `ccmux whois --follow`: each machine's sessions, then a `machine` line when it has been read or could not be; `--local` keeps the stream to this machine. A consumer of the stream sees a new event kind and sessions of other machines, and the line a person reads gains the project.
+- Read a session's own address inside it from `CCMUX_ADDRESS` (`<machine>:<name>`). Sessions started before this release show `env` in `ccmux list` and `ccmux fleet` until they are next restarted.
+- Get the receipt of a sent letter as one line with `ccmux msg … --json` — state, id, recipient and the reference a continuation cites, in the shape `ccmux msg sent --json` lists letters in; `ccmux msg --schema` prints both. `--json` on `pending` and `cancel` is refused instead of ignored. A letter another machine will always refuse is listed by `ccmux msg sent` as `refused`, without a reference to continue it by.
+- Ask `ccmux whois` with no argument inside a session to read about that session itself, and read in any `whois` answer the checkouts of the session's project on its machine with their roles — where a private working half holds the task queue.
+- Read who sent each user message of a managed session in `ccmux transcript --json` and `--grep --json` — a person, a letter ccmux delivered, the harness, or keys typed by `ccmux send` — and read one message whole by the id it is quoted by with `ccmux transcript <session> --message ID`. `ccmux send` now records that it typed, so text an agent sends into a pane is not read as a person's. The table of `ccmux transcript --grep` gains an `ID` column.
+- `ccmux whois --follow` and `ccmux whois` see a remote added to a checkout after they started.
+
 ## [0.88.0] — 2026-11-10
 
 Ask which session a window title, an address or a provider's conversation id is with ccmux whois, export what was said with its whole text, and count a Claude conversation without the stored copies of model requests.

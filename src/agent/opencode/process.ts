@@ -1,5 +1,4 @@
 import { join } from 'node:path';
-import { rotateChatCredential } from '../../chat/auth.ts';
 import { policyUnavailableReason } from '../../policy/errors.ts';
 import { verifyApplicationPolicy } from '../../policy/resolve.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
@@ -54,10 +53,7 @@ export async function runOpenCodeProcess(
       let connection: OpenCodeConnection | null = null;
       let admitted = false;
       try {
-        const child = await startOpenCodeServer(m, initial, abort.signal, {
-          name: initial.name,
-          credential: rotateChatCredential(m, initial),
-        });
+        const child = await startOpenCodeServer(m, initial, abort.signal, initial);
         server = child;
         void child.child.exited.then(() => abort.abort());
         let session = await admitOpenCode(

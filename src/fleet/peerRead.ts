@@ -4,6 +4,8 @@ import { loadLedger } from '../chat/ledger.ts';
 import { readInventory } from '../events/inventory.ts';
 import { collectRows, type ListRow, toListItem } from '../inventory/rows.ts';
 import { releaseStanding } from '../release/check.ts';
+import { type IdentityCache, sessionIdentities } from '../session/identity.ts';
+import { loadSessions } from '../session/registry.ts';
 import type { ListJson, MachineConfig } from '../types.ts';
 import { VERSION } from '../util/version.ts';
 import { loadOutboxAcked } from './flush.ts';
@@ -72,6 +74,19 @@ export async function peerListAnswer(
     string,
     unknown
   >;
+}
+
+/** What was read from each conversation file, kept between questions: the daemon is asked again
+ *  every few seconds by each follower, and nearly nothing has changed since the last time. */
+const identityFiles: IdentityCache = new Map();
+
+/** Who this machine's sessions are — `whois --all --local`, for a reader that holds some of it. */
+export async function peerIdentitiesAnswer(
+  m: MachineConfig,
+  known: readonly string[],
+): Promise<Record<string, unknown>> {
+  const identities = await sessionIdentities(m, loadSessions(m), identityFiles);
+  return { machine: m.rcPrefix, sessions: pack(identities, new Set(known)) };
 }
 
 export function peerChatLogAnswer(

@@ -1,9 +1,12 @@
 import { cursorNumber } from '../agent/claude/menuStep.ts';
 import { detectPrompt } from '../agent/claude/prompts.ts';
+import { ADDRESS_ENV, SESSION_ENV } from '../agent/launch/identityEnv.ts';
 import { chatEnabledFor } from '../config/chat.ts';
+import { selfAddress } from '../fleet/address.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { hasNoComposer } from '../runtime/modes.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
+import { recordSentKeys } from '../session/sentKeys.ts';
 import { capturePaneScreen, sendKeysLiteral, sendKeysNamed } from '../tmux/tmux.ts';
 import { preview } from '../util/preview.ts';
 
@@ -80,6 +83,15 @@ export async function cmdSend(
     console.log(`send failed: ${name} not running?`);
     return 1;
   }
+  // Recorded once the keys are in the pane: a reader of the conversation can then tell this text
+  // from one a person typed.
+  recordSentKeys(
+    m,
+    name,
+    text,
+    process.env[ADDRESS_ENV] ??
+      (process.env[SESSION_ENV] === undefined ? 'cli' : selfAddress(m, process.env[SESSION_ENV])),
+  );
   // let readline drain the literal text before the separate Enter (avoids a race)
   await Bun.sleep(150);
   await sendKeysNamed(m, name, 'Enter');

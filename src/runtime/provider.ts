@@ -1,7 +1,7 @@
 import type { AgentProvider } from '../agent/index.ts';
+import { IDENTITY_ENV_KEYS, pinIdentity } from '../agent/launch/identityEnv.ts';
 import { sessionEnvRecipe } from '../agent/launch/sessionEnv.ts';
 import { preflightOpenCode } from '../agent/opencode/server.ts';
-import { CHAT_CREDENTIAL_ENV } from '../chat/auth.ts';
 
 /** Native runtimes have no JSONL/pane parser. Their observations use the prepared native feed. */
 export function nativeProvider(id: 'opencode' | 'custom' | 'claude'): AgentProvider {
@@ -18,10 +18,10 @@ export function nativeProvider(id: 'opencode' | 'custom' | 'claude'): AgentProvi
         throw new Error('Native executable is unavailable');
       return [m.opencodeBin, 'serve', '--hostname', '127.0.0.1', '--port', '<owned-ephemeral>'];
     },
-    launchEnv: (_m, s) => sessionEnvRecipe(s, process.env, process.env.NODE_ENV).env,
+    launchEnv: (m, s) =>
+      pinIdentity(sessionEnvRecipe(s, process.env, process.env.NODE_ENV).env, m, s),
     launchEnvKeys: () => [
-      'CCMUX_SESSION',
-      CHAT_CREDENTIAL_ENV,
+      ...IDENTITY_ENV_KEYS,
       'OPENCODE_SERVER_USERNAME',
       'OPENCODE_SERVER_PASSWORD',
     ],

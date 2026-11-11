@@ -1,6 +1,7 @@
 import { statSync } from 'node:fs';
 import type { TranscriptRead } from '../agent/transcript/transcriptRead.ts';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../types.ts';
+import type { MessageSender, SenderJudge } from './messageSender.ts';
 import type { TranscriptWindowOptions } from './transcriptWindow.ts';
 
 /**
@@ -45,6 +46,11 @@ export interface TranscriptMatch {
   /** The first match with its surroundings, whitespace collapsed, split so a consumer can mark the
    *  match without searching for it a second time. */
   excerpt: { before: string; match: string; after: string };
+  /** When asked for: who sent the message — for a user message of a managed session. */
+  sender?: MessageSender;
+  /** When asked for: each distinct thing the pattern matched in this message, in order — its first
+   *  capture group where the pattern has one that took part, the whole match otherwise. */
+  keys?: string[];
 }
 
 export interface TranscriptSearch {
@@ -109,7 +115,8 @@ export function compilePattern(
   const ignore = mode === 'ignore' || (mode === 'smart' && literal === literal.toLowerCase());
   let pattern: RegExp;
   try {
-    pattern = new RegExp(body, ignore ? 'gi' : 'g');
+    // Multiline: a message is many lines, and `^` and `$` mean a line's edges, as in a line search.
+    pattern = new RegExp(body, ignore ? 'gim' : 'gm');
   } catch (error) {
     throw new SearchPatternError(
       `invalid pattern: ${error instanceof Error ? error.message : String(error)} (use -F for a literal string)`,
@@ -176,17 +183,20 @@ function excerptAt(text: string, index: number, length: number): TranscriptMatch
 export function matchMessage(
   message: TranscriptMessage,
   query: Pick<TranscriptQuery, 'pattern' | 'roles' | 'kinds'>,
+  wanted: { keys?: boolean } = {},
 ): TranscriptMatch | null {
   if (query.roles !== undefined && !query.roles.has(message.role)) return null;
   if (query.kinds !== undefined && !query.kinds.has(message.kind)) return null;
   const pattern = new RegExp(query.pattern.source, query.pattern.flags);
   let first: { field: SearchField; excerpt: TranscriptMatch['excerpt'] } | null = null;
   let count = 0;
+  const keys = new Set<string>();
   for (const [field, text] of fieldsOf(message)) {
     pattern.lastIndex = 0;
     for (let found = pattern.exec(text); found !== null; found = pattern.exec(text)) {
       count++;
       first ??= { field, excerpt: excerptAt(text, found.index, found[0].length) };
+      if (wanted.keys === true) keys.add(found[1] ?? found[0]);
       // compilePattern refuses a pattern that matches empty text, but one can still match an empty
       // string somewhere specific (a lookahead); step past it rather than loop on it.
       if (found[0].length === 0) pattern.lastIndex++;
@@ -203,6 +213,7 @@ export function matchMessage(
     field: first.field,
     count,
     excerpt: first.excerpt,
+    ...(wanted.keys === true ? { keys: [...keys] } : {}),
   };
 }
 
@@ -223,7 +234,7 @@ export function matchMessage(
 export async function searchTranscript(
   readWindow: (window: TranscriptWindowOptions) => Promise<TranscriptRead>,
   query: TranscriptQuery,
-  options: { agent?: string } = {},
+  options: { agent?: string; sender?: SenderJudge | undefined } = {},
 ): Promise<TranscriptSearch> {
   const agent = options.agent === undefined ? {} : { agent: options.agent };
   const probe = await readWindow({ tail: 1, textLimit: 1, ...agent });
@@ -264,7 +275,8 @@ export async function searchTranscript(
       const match = matchMessage(message, query);
       if (match === null) continue;
       result.total++;
-      result.matches.push(match);
+      const sender = options.sender?.(message) ?? null;
+      result.matches.push(sender === null ? match : { ...match, sender });
       if (result.matches.length > query.limit) result.matches.shift();
     }
     // Each read is garbage the moment it is searched, and left to the collector's own pace it piled

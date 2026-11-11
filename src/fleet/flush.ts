@@ -28,23 +28,48 @@ import { peersOf, runPeer } from './transport.ts';
 // like the chat ack-log: the outbox stays an immutable record of ATTEMPTS, this says which of them
 // ended up delivered.
 
+/**
+ * How each settled letter was settled. An ack ends the retries of a letter either way; only one
+ * written without `refused` says the far side has it.
+ */
+function settlements(m: MachineConfig): { id: string; refused: boolean }[] {
+  return readJsonl(outboxAckPath(m), OUTBOX_ACKS);
+}
+
+/** Letters a later retry delivered: the far side accepted them. */
 export function loadOutboxAcked(m: MachineConfig): Set<string> {
-  return new Set(readJsonl(outboxAckPath(m), OUTBOX_ACKS));
+  return new Set(settlements(m).flatMap((row) => (row.refused ? [] : [row.id])));
+}
+
+/** Letters the far side will refuse identically however often they are sent again. */
+export function loadOutboxRefused(m: MachineConfig): Set<string> {
+  const rows = settlements(m);
+  const delivered = new Set(rows.flatMap((row) => (row.refused ? [] : [row.id])));
+  return new Set(rows.flatMap((row) => (row.refused && !delivered.has(row.id) ? [row.id] : [])));
+}
+
+/** Letters nothing more is to be tried for — delivered or refused for good. */
+export function loadOutboxSettled(m: MachineConfig): Set<string> {
+  return new Set(settlements(m).map((row) => row.id));
 }
 
 /** One bad line costs that line, never the file. */
 const OUTBOX_ACKS = {
   label: 'outbox ack log',
   badLine: 'skip',
-  decode: (raw: unknown): string | undefined =>
+  decode: (raw: unknown): { id: string; refused: boolean } | undefined =>
     raw !== null && typeof raw === 'object' && 'id' in raw && typeof raw.id === 'string'
-      ? raw.id
+      ? { id: raw.id, refused: 'refused' in raw && raw.refused === true }
       : undefined,
 } as const;
 
-export function appendOutboxAck(m: MachineConfig, id: string): void {
+export function appendOutboxAck(m: MachineConfig, id: string, how?: 'refused'): void {
   try {
-    appendJsonl(outboxAckPath(m), { id, ts: new Date().toISOString() });
+    appendJsonl(outboxAckPath(m), {
+      id,
+      ts: new Date().toISOString(),
+      ...(how === 'refused' ? { refused: true } : {}),
+    });
   } catch {
     // best-effort: a lost ack costs one harmless extra retry, which is a no-op on the far side
   }
@@ -108,7 +133,7 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
   if (peersOf(m).length === 0) return;
   let candidates: Outbound[] = [];
   try {
-    candidates = retryCandidates(loadOutbox(m), loadOutboxAcked(m), Date.now());
+    candidates = retryCandidates(loadOutbox(m), loadOutboxSettled(m), Date.now());
   } catch {
     return;
   }
@@ -149,7 +174,7 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
     // hides the real answer, so it settles and says why. A temporary one (capacity) stays queued —
     // that is exactly the case the retry window exists for.
     if (r.permanent === true) {
-      appendOutboxAck(m, rec.envelope.id);
+      appendOutboxAck(m, rec.envelope.id, 'refused');
       log.warn({
         msg: 'outbox: permanently refused — settling',
         id: rec.envelope.id,

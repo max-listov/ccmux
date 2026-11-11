@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for managed sessions an
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-10-09 16:58 +07:00
+updated: 2026-11-11 08:48 +07:00
 ---
 
 # Peer routing and session identity
@@ -46,7 +46,8 @@ which a consumer reads as "that session has nothing to show".
 ### A peer answers by change
 
 A fleet reader asks every peer for its session list and its chat log every few seconds, and
-between two reads almost nothing moves. The peer is asked `ccmux _peer-read list` or
+between two reads almost nothing moves. The peer is asked `ccmux _peer-read list`,
+`ccmux _peer-read identities` (who its sessions are, for `whois --follow`) or
 `ccmux _peer-read chat-log -n N`, and the reader names in `--known` the rows it already holds. The
 answer is the `list --json` / `chat log --json` envelope with each large array —
 `sessions`, `inventory.sessions`, the log's `rows` — packed as `{ refs, items, volatile? }`: `refs`
@@ -58,7 +59,7 @@ did not name (`src/fleet/peerDelta.ts`).
   everything.
 - **What moves without an event travels beside the digest.** A running session's `uptime` is in
   `volatile`, aligned with `refs`; digesting it would make every row new every second.
-- **The reader's cache** is `~/.cache/ccmux/peer-reads/<machine>.<list|chat-log>.json`, holding
+- **The reader's cache** is `~/.cache/ccmux/peer-reads/<machine>.<list|identities|chat-log>.json`, holding
   exactly the rows of the latest answer. It is loaded once per read and expanded from memory, so a
   concurrent reader rewriting the file cannot remove a row this read claimed to hold.
 - **A reference the reader never held fails the machine's row** as unreadable. It means the peer

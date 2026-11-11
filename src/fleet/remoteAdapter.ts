@@ -27,7 +27,7 @@ export async function runRemoteAdapter(
   m: MachineConfig,
   machine: string,
   argv: string[],
-  opts?: { stdin?: string; timeoutMs?: number; signal?: AbortSignal },
+  opts?: { stdin?: string; timeoutMs?: number; signal?: AbortSignal | undefined },
 ): Promise<RemoteResult> {
   if (opts?.signal?.aborted) return failed('not-sent', 'remote request cancelled before dispatch');
   const socket = remoteAdapterSocketPath(m);

@@ -7,6 +7,7 @@ import { run } from '../util/spawn.ts';
 import {
   type CorpusQuery,
   type MachineSearch,
+  mergeReceipts,
   olderConversation,
   olderMatch,
   searchStored,
@@ -16,6 +17,7 @@ import {
   CorpusMatchSchema,
   type MachineCoverage,
   MachineCoverageSchema,
+  ReceiptsSchema,
 } from './corpusSearchSchema.ts';
 import type { StoredConversation } from './storedConversations.ts';
 
@@ -44,6 +46,7 @@ export const ShardRequestSchema = z.object({
     until: z.number().nullable(),
     limit: z.int().positive(),
     full: z.boolean(),
+    receipts: z.boolean(),
   }),
   conversations: z.array(
     z.object({
@@ -70,6 +73,7 @@ export const ShardAnswerSchema = z.object({
   coverage: MachineCoverageSchema,
   conversations: z.array(ConversationHitsSchema),
   matches: z.array(CorpusMatchSchema),
+  receipts: ReceiptsSchema.optional(),
 });
 
 /** Below this a second process costs more to start than it saves. */
@@ -119,6 +123,7 @@ export function shardQuery(query: CorpusQuery): ShardRequest['query'] {
     until: query.until ?? null,
     limit: query.limit,
     full: query.full === true,
+    receipts: query.receipts === true,
   };
 }
 
@@ -134,6 +139,7 @@ export function corpusQuery(wire: ShardRequest['query']): CorpusQuery {
   if (wire.since !== null) query.since = wire.since;
   if (wire.until !== null) query.until = wire.until;
   if (wire.full) query.full = true;
+  if (wire.receipts) query.receipts = true;
   return query;
 }
 
@@ -193,5 +199,12 @@ export async function searchMachine(
     .sort(olderMatch)
     .slice(-query.limit);
   const found = parts.flatMap((part) => part.conversations).sort(olderConversation);
-  return { coverage, conversations: found, matches };
+  return {
+    coverage,
+    conversations: found,
+    matches,
+    ...(query.receipts === true
+      ? { receipts: mergeReceipts(parts.map((part) => part.receipts)) }
+      : {}),
+  };
 }

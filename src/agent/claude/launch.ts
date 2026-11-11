@@ -1,10 +1,10 @@
 import { accessSync, constants, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import { chatEnabledFor } from '../../config/chat.ts';
 import { rcName } from '../../config/machine.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { UID } from '../../util/env.ts';
+import { IDENTITY_ENV_KEYS, pinIdentity } from '../launch/identityEnv.ts';
 import {
   digestOf,
   fileDigest,
@@ -150,7 +150,7 @@ function stripDangerous(flags: string[]): string[] {
  *  Everything else `launchEnv` touches (PATH, locale) is normalisation, not policy, so it is not
  *  part of the recipe a restart would change. */
 export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): readonly string[] {
-  const keys = [CHAT_CREDENTIAL_ENV, 'CCMUX_SESSION'];
+  const keys = [...IDENTITY_ENV_KEYS];
   if (isRoot && m.allowEscalatedUnderRoot) keys.push(SANDBOX_ENV);
   return keys;
 }
@@ -171,8 +171,7 @@ export function launchEnv(m: MachineConfig, session: Session): Record<string, st
   // sign-in and settings in a place `claudeProfile` — and so every reader — does not look.
   if (profile.configDir === null) delete env.CLAUDE_CONFIG_DIR;
   if (hasOauthAccount(profile.globalConfigFile)) delete env.ANTHROPIC_API_KEY;
-  // so a ccmux run from inside this session can recognize "self" (block rm/stop self)
-  env.CCMUX_SESSION = session.name;
+  pinIdentity(env, m, session);
   // The declared machines, and only those: this is what the agent's root check reads.
   if (UID === 0 && m.allowEscalatedUnderRoot) env[SANDBOX_ENV] = '1';
   return env;

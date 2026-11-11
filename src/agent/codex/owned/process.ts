@@ -1,6 +1,5 @@
 import net from 'node:net';
 import { dirname } from 'node:path';
-import { CHAT_CREDENTIAL_ENV, rotateChatCredential } from '../../../chat/auth.ts';
 import { verifyManagedLaunchRecipe } from '../../../config/launchRecipes.ts';
 import { contextMutationPending } from '../../../context/store.ts';
 import { delegationStopped } from '../../../delegation/cancel.ts';
@@ -16,6 +15,7 @@ import type { MachineConfig, Session } from '../../../types.ts';
 import { promptInvocation } from '../../../util/env.ts';
 import { withLock } from '../../../util/lock.ts';
 import { log } from '../../../util/log.ts';
+import { grantIdentity } from '../../launch/identityEnv.ts';
 import { computeStamp } from '../../launch/launchStamp.ts';
 import { launchEnv } from '../launch.ts';
 import { codexHistoryPresent } from '../resume.ts';
@@ -89,7 +89,7 @@ async function run(
   promote?: (uuid: string) => Promise<Session>,
 ): Promise<void> {
   const env = launchEnv(m, initial);
-  env[CHAT_CREDENTIAL_ENV] = rotateChatCredential(m, initial);
+  grantIdentity(env, m, initial);
   const abort = new AbortController();
   let stopping = false;
   const stop = () => {

@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import { TranscriptKindSchema, TranscriptRoleSchema } from '../agent/transcript/messageSchema.ts';
+import { DeclaredProjectSchema } from '../session/identitySchema.ts';
 
 /*
  * A search across every stored conversation, as one machine answers it and as a fleet of them is
  * merged. The same shape travels between machines, so it has one schema here.
  */
 
-export const CorpusMatchSchema = z.object({
+/** Which conversation a line is in, and whose it is. Every line, conversation and receipt of an
+ *  answer carries exactly this. */
+export const ConversationRefSchema = z.object({
   /** What `ccmux transcript` accepts for this conversation, from any machine of the fleet. */
   address: z.string().min(1),
   provider: z.enum(['claude', 'codex']),
@@ -19,6 +22,11 @@ export const CorpusMatchSchema = z.object({
   dir: z.string().nullable(),
   /** `owner/name` of that directory's `origin`, where the directory is still a checkout. */
   repository: z.string().nullable(),
+  project: DeclaredProjectSchema.optional(),
+});
+export type ConversationRef = z.infer<typeof ConversationRefSchema>;
+
+export const CorpusMatchSchema = ConversationRefSchema.extend({
   /** Whether `seq` is a line the address opens. False for a file the transcript reader does not
    *  read by line: an earlier or compressed Codex file, a second file under an owned id. */
   lines: z.boolean(),
@@ -36,14 +44,7 @@ export const CorpusMatchSchema = z.object({
 export type CorpusMatch = z.infer<typeof CorpusMatchSchema>;
 
 /** One conversation's share of the answer: where a subject lived, before any single line of it. */
-export const ConversationHitsSchema = z.object({
-  address: z.string().min(1),
-  provider: z.enum(['claude', 'codex']),
-  threadId: z.string().min(1),
-  session: z.string().nullable(),
-  ofSession: z.string().nullable(),
-  dir: z.string().nullable(),
-  repository: z.string().nullable(),
+export const ConversationHitsSchema = ConversationRefSchema.extend({
   total: z.int().positive(),
   /** How many of them the user wrote, and how many the agent. */
   user: z.int().nonnegative(),
@@ -54,6 +55,64 @@ export const ConversationHitsSchema = z.object({
   sample: CorpusMatchSchema,
 });
 export type ConversationHits = z.infer<typeof ConversationHitsSchema>;
+
+/**
+ * Where a marked message arrived: one conversation that holds the mark, and the first message there
+ * that carries it.
+ */
+export const DeliverySchema = ConversationRefSchema.extend({
+  /** Whether `seq` is a line the address opens — as for a match. */
+  lines: z.boolean(),
+  seq: z.int().positive(),
+  /** When that first message was written; null when it does not say. */
+  receivedAt: z
+    .string()
+    .nullable()
+    .describe(
+      'When the first message carrying the mark in this conversation was written; null when it does not say.',
+    ),
+  role: TranscriptRoleSchema,
+  /** The provider's id of that message within its conversation. A Claude session continued in a
+   *  new file carries copies of its earlier messages under the same id; such copies are one
+   *  delivery, not two. */
+  messageId: z
+    .string()
+    .describe(
+      "The provider's id of that message within its conversation. A Claude session continued in a new file carries copies of its earlier messages under the same id; such copies are one delivery.",
+    ),
+});
+export type Delivery = z.infer<typeof DeliverySchema>;
+
+/** How many distinct marks one machine keeps receipts for. */
+export const RECEIPT_MARKS_MAX = 10_000;
+
+const receiptsOf = <D extends z.ZodType>(delivery: D) =>
+  z.object({
+    /** More distinct marks matched than are listed: narrow the pattern or the dates. */
+    truncated: z
+      .boolean()
+      .describe('More distinct marks matched than are listed: narrow the pattern or the dates.'),
+    /** One entry per distinct mark — the pattern's first capture group, or the whole match when it
+     *  has none — oldest first by when it first arrived anywhere. */
+    marks: z.array(
+      z.object({
+        mark: z
+          .string()
+          .describe(
+            'What the pattern matched: its first capture group, or the whole match when it has none.',
+          ),
+        /** Every conversation that holds it, by when it arrived there, oldest first. */
+        deliveries: z
+          .array(delivery)
+          .min(1)
+          .describe(
+            'Every conversation that holds the mark, one entry each, by when it arrived there, oldest first. `ofSession` on its machine is the session it belongs to; `limit` does not apply.',
+          ),
+      }),
+    ),
+  });
+export const ReceiptsSchema = receiptsOf(DeliverySchema);
+export type Receipts = z.infer<typeof ReceiptsSchema>;
 
 /** What one machine looked through. "Nothing found" is only an answer beside these numbers. */
 export const MachineCoverageSchema = z.object({
@@ -92,6 +151,9 @@ export const CorpusSearchJsonSchema = z.object({
     limit: z.int().positive(),
     /** Each match carries the whole text of its message. */
     full: z.boolean(),
+    /** The answer says where each distinct mark the pattern matched arrived. Absent in the answer
+     *  of a machine that does not know the mode. */
+    receipts: z.boolean().optional(),
   }),
   machines: z.array(z.union([MachineCoverageSchema, MachineUnavailableSchema])),
   total: z.int().nonnegative(),
@@ -100,5 +162,7 @@ export const CorpusSearchJsonSchema = z.object({
   conversations: z.array(ConversationHitsSchema.extend({ machine: z.string().min(1) })),
   /** The newest `limit` matches, oldest first. */
   matches: z.array(CorpusMatchSchema.extend({ machine: z.string().min(1) })),
+  /** Present when the search asked for receipts; `limit` does not apply to them. */
+  receipts: receiptsOf(DeliverySchema.extend({ machine: z.string().min(1) })).optional(),
 });
 export type CorpusSearchJson = z.infer<typeof CorpusSearchJsonSchema>;

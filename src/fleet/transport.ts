@@ -91,10 +91,18 @@ export interface RemoteResult {
   retryAfterMs?: number;
 }
 
+/** How a call to another machine is bounded. `signal` withdraws it: the process asking is gone. */
+export interface PeerRunOpts {
+  stdin?: string;
+  timeoutMs?: number;
+  connectTimeoutSeconds?: number;
+  signal?: AbortSignal | undefined;
+}
+
 export async function runRemote(
   alias: string,
   argv: string[],
-  opts?: { stdin?: string; timeoutMs?: number; connectTimeoutSeconds?: number },
+  opts?: PeerRunOpts,
 ): Promise<RemoteResult> {
   const cmd = shellJoin(argv);
   const full = [
@@ -107,6 +115,7 @@ export async function runRemote(
   const r = await run(full, {
     timeoutMs,
     ...(opts?.stdin === undefined ? {} : { input: opts.stdin }),
+    signal: opts?.signal,
   });
   const transportFailed = r.timedOut === true || r.code === SSH_EXIT_TRANSPORT;
   return {
@@ -202,7 +211,7 @@ export async function runPeer(
   machine: string,
   alias: string | null,
   argv: string[],
-  opts?: { stdin?: string; timeoutMs?: number; connectTimeoutSeconds?: number },
+  opts?: PeerRunOpts,
 ): Promise<RemoteResult> {
   if (isRemotePeer(m, machine)) {
     const remote = await runRemoteAdapter(m, machine, argv, opts);

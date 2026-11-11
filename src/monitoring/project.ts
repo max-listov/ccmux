@@ -7,6 +7,7 @@ import {
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { rcName } from '../config/machine.ts';
 import { lastSignOfLife, type Observed } from '../events/observe.ts';
+import { selfAddress } from '../fleet/address.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { managedRuntimeView } from '../runtime/view.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
@@ -70,7 +71,7 @@ function projectMonitoringRowImpl(
     agent: s.agent,
     uuid: s.uuid,
     rc: rcName(m, s.name),
-    address: `${m.rcPrefix}:${s.name}`,
+    address: selfAddress(m, s.name),
     dir: s.dir,
     archived: s.archived,
     running,

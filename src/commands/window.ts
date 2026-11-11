@@ -1,3 +1,4 @@
+import { selfAddress } from '../fleet/address.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import { listAgentLiveness, openAuxWindow } from '../tmux/agentPane.ts';
@@ -22,7 +23,7 @@ export async function cmdWindow(args: string[]): Promise<number> {
   const forwarded = await forwardIfRemote(target, 'window', flags.flagArgs);
   if (forwarded.done) return forwarded.code;
   const { m, session: name } = forwarded;
-  const address = `${m.rcPrefix}:${name}`;
+  const address = selfAddress(m, name);
   const session = findSession(loadSessions(m), name);
   if (session === undefined) {
     console.error(`no session named ${name} on ${m.rcPrefix}`);

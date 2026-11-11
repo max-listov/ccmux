@@ -12,7 +12,7 @@ import type {
   WhoisMachine,
 } from './identitySchema.ts';
 import { loadSessions } from './registry.ts';
-import { repositoryOf } from './repository.ts';
+import { declaredProjectOnly, repositoryOf } from './repository.ts';
 
 /**
  * "Which session is this?" — asked with whatever name of it the asker happened to see.
@@ -89,6 +89,7 @@ export async function strayConversation(
     title: stored.provider === 'claude' ? conversationTitle(file.path) : null,
     dir,
     repository: await repositoryOf(dir),
+    ...(await declaredProjectOnly(dir)),
   };
 }
 

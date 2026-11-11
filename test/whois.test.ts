@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { histFile } from '../src/agent/claude/resume.ts';
-import { parseSearch, searchFleet } from '../src/commands/search.ts';
+import { parseSearch, receiptLines, searchFleet } from '../src/commands/search.ts';
 import {
   answerLines,
   followIdentities,
@@ -12,14 +12,22 @@ import {
   whoisFleet,
   whoisSchemas,
 } from '../src/commands/whois.ts';
-import { CorpusSearchJsonSchema } from '../src/context/corpusSearchSchema.ts';
+import { sessionsPath } from '../src/config/paths.ts';
+import { mergeReceipts } from '../src/context/corpusSearch.ts';
+import { CorpusSearchJsonSchema, RECEIPT_MARKS_MAX } from '../src/context/corpusSearchSchema.ts';
+import { searchMachine } from '../src/context/corpusShards.ts';
+import { storedConversations } from '../src/context/storedConversations.ts';
+import { PackedSchema, pack, parseKnown, unpack } from '../src/fleet/peerDelta.ts';
+import { peerIdentitiesAnswer } from '../src/fleet/peerRead.ts';
 import { sessionIdentities } from '../src/session/identity.ts';
 import {
+  type SessionIdentity,
   SessionIdentitySchema,
   WhoisAnswerSchema,
   type WhoisEvent,
+  WhoisEventSchema,
 } from '../src/session/identitySchema.ts';
-import { repositoryKey, repositoryOf } from '../src/session/repository.ts';
+import { projectOf, repositoryKey, repositoryOf } from '../src/session/repository.ts';
 import { readQuestion } from '../src/session/whois.ts';
 import type { MachineConfig, Session } from '../src/types.ts';
 import { makeMachine, makeSession } from './helpers.ts';
@@ -376,11 +384,16 @@ async function until(what: string, reached: () => boolean): Promise<void> {
   }
 }
 
+/** What is said of sessions; a machine's own line is the subject of its own test. */
+const sessionsOnly = (events: WhoisEvent[]) => (event: WhoisEvent) => {
+  if (event.event !== 'machine') events.push(event);
+};
+
 test('the stream opens with every session and then says only what changed about one', async () => {
   await fleet(async ({ m, sessions, api, write, root }) => {
     let registry: Session[] = sessions;
     const events: WhoisEvent[] = [];
-    const stop = followIdentities(m, (event) => events.push(event), {
+    const stop = followIdentities(m, sessionsOnly(events), {
       recheckMs: 20,
       sessions: () => registry,
     });
@@ -455,7 +468,7 @@ test('a registry change is heard from the file, not only from the slow re-read',
     let registry: Session[] = [sessions[0] as Session];
     const events: WhoisEvent[] = [];
     // A re-read that never comes within the test: only the watcher can deliver the change.
-    const stop = followIdentities(m, (event) => events.push(event), {
+    const stop = followIdentities(m, sessionsOnly(events), {
       recheckMs: 3_600_000,
       sessions: () => registry,
     });
@@ -522,4 +535,646 @@ test('the published schemas describe the answers this build gives', async () => 
     const list = z.fromJSONSchema(schemas.list as never);
     expect(list.safeParse(await whoisAll(m, { local: true, sessions })).success).toBe(true);
   });
+});
+
+const passport = (dir: string, text: string): void =>
+  writeFileSync(join(dir, '.passport.json'), text);
+const declares = (project: unknown): string => L({ schemaVersion: 1, identity: { project } });
+
+test('a project is what the checkout declares, never what a name suggests', async () => {
+  await fleet(async ({ m, sessions, api, root }) => {
+    const core = join(api, 'packages', 'core');
+    const plain = join(root, 'work', 'plain');
+    mkdirSync(core, { recursive: true });
+    mkdirSync(plain, { recursive: true });
+    const registry = [
+      sessions[0] as Session,
+      makeSession({ name: 'agent-core', uuid: OTHER, dir: core }),
+      makeSession({ name: 'agent-plain', uuid: FOREIGN, dir: plain }),
+    ];
+    const identities = async () => {
+      const all = await sessionIdentities(m, registry);
+      for (const identity of all) expect(SessionIdentitySchema.parse(identity)).toEqual(identity);
+      return all;
+    };
+    const projects = async () => (await identities()).map((identity) => identity.project);
+    // A declaration above the checkout is some other repository's, and a directory that is no
+    // checkout has none: the field is absent, not null and not the directory's name.
+    passport(join(root, 'work'), declares('umbrella'));
+    expect((await identities()).map((identity) => 'project' in identity)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    expect(await projectOf(join(api, 'no-such-directory'))).toBeNull();
+
+    // The root of the checkout declares it, for every directory inside.
+    passport(api, declares('atlas'));
+    expect(await projects()).toEqual(['atlas', 'atlas', undefined]);
+    expect((await identities())[0]).toMatchObject({ repository: 'acme/api', project: 'atlas' });
+
+    // A declaration that names no project names none.
+    for (const text of [declares(''), declares(7), L({ identity: {} }), L([]), '{ not json']) {
+      passport(api, text);
+      expect(await projects()).toEqual([undefined, undefined, undefined]);
+    }
+    // And one that was rewritten is read again.
+    passport(api, declares('borealis'));
+    expect(await projects()).toEqual(['borealis', 'borealis', undefined]);
+
+    const ask = (query: string) => whoisFleet(m, query, { local: true, sessions: registry });
+    const answer = await ask('host-a:agent-core');
+    expect(WhoisAnswerSchema.parse(answer)).toEqual(answer);
+    expect(answer.session?.project).toBe('borealis');
+    expect(answerLines(answer, Date.now())).toContain('  project       borealis');
+    expect(answerLines(await ask('host-a:agent-plain'), Date.now())).toContain('  project       -');
+    // A conversation no session reads is in a directory too.
+    expect((await ask(REMOVED)).conversation).toMatchObject({ dir: api, project: 'borealis' });
+  });
+});
+
+test('the stream says a session again when its repository declares another project', async () => {
+  await fleet(async ({ m, sessions, api }) => {
+    const events: WhoisEvent[] = [];
+    const stop = followIdentities(m, sessionsOnly(events), {
+      recheckMs: 20,
+      sessions: () => [sessions[0] as Session],
+    });
+    try {
+      await until('the session announced', () => events.length === 1);
+      expect(events[0]?.event === 'session' && 'project' in events[0].session).toBe(false);
+      passport(api, declares('atlas'));
+      await until('the project announced', () => events.length === 2);
+      expect(events[1]?.event === 'session' && events[1].session.project).toBe('atlas');
+      await Bun.sleep(100);
+      expect(events.length).toBe(2);
+    } finally {
+      stop();
+    }
+  });
+});
+
+test('what the user wrote carries the project, and --project finds it by that name', async () => {
+  await fleet(async ({ m, sessions, api }) => {
+    const search = (...args: string[]) =>
+      searchFleet(
+        m,
+        parseSearch(['--since', '2026-01-01', '--role', 'user', '--json', '--full', ...args]),
+        undefined,
+        sessions,
+      );
+    const bare = await search('--local');
+    expect(CorpusSearchJsonSchema.parse(bare)).toEqual(bare);
+    expect(bare.matches.length).toBe(5);
+    expect(bare.matches.some((match) => 'project' in match)).toBe(false);
+    expect(bare.conversations.some((entry) => 'project' in entry)).toBe(false);
+    // Neither the directory nor a session is called this: only the declaration is.
+    expect((await search('--local', '--project', 'atlas')).total).toBe(0);
+
+    passport(api, declares('atlas'));
+    const said = await search('--local');
+    expect(CorpusSearchJsonSchema.parse(said)).toEqual(said);
+    expect(said.matches.map((match) => [match.repository, match.project])).toEqual(
+      said.matches.map(() => ['acme/api', 'atlas']),
+    );
+    expect(said.conversations.map((entry) => [entry.project, entry.sample.project])).toEqual(
+      said.conversations.map(() => ['atlas', 'atlas']),
+    );
+    expect((await search('--local', '--project', 'ATLAS')).total).toBe(5);
+    expect((await search('--local', '--project', 'borealis')).total).toBe(0);
+  });
+});
+
+test('both published schemas describe the project as a field that may be absent', () => {
+  const field = {
+    type: 'string',
+    minLength: 1,
+    description: expect.stringContaining('identity.project'),
+  };
+  const shape = (schema: unknown) => schema as { properties: never; required: string[] };
+  const answer = shape(whoisSchemas().answer);
+  const session = shape(
+    (answer.properties as { session: { anyOf: unknown[] } }).session.anyOf.find(
+      (option) => (option as { type: string }).type === 'object',
+    ),
+  );
+  expect((session.properties as { project: object }).project).toMatchObject(field);
+  expect(session.required).toContain('repository');
+  expect(session.required).not.toContain('project');
+  const search = shape(z.toJSONSchema(CorpusSearchJsonSchema));
+  const match = shape((search.properties as { matches: { items: unknown } }).matches.items);
+  expect((match.properties as { project: object }).project).toMatchObject(field);
+  expect(match.required).not.toContain('project');
+  const talk = shape(
+    (search.properties as { conversations: { items: unknown } }).conversations.items,
+  );
+  expect((talk.properties as { project: object }).project).toMatchObject(field);
+});
+
+test('a source that says nothing is named by the working half beside it', async () => {
+  await fleet(async ({ m, sessions, api, root }) => {
+    // `api` is the public source: its own declaration names the repository and no project.
+    const work = join(root, 'work');
+    const half = join(work, 'api-dev');
+    const other = join(work, 'billing-dev');
+    mkdirSync(half, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    const project = async () => (await sessionIdentities(m, sessions))[0]?.project;
+    const halfDeclares = (source: string, name: unknown) =>
+      passport(half, L({ identity: { project: name }, source: { repositoryId: source } }));
+
+    // A neighbour by name only is not a half of anything.
+    expect(await project()).toBeUndefined();
+    // Nor is one that is the working half of some other repository.
+    halfDeclares('acme/billing', 'atlas');
+    expect(await project()).toBeUndefined();
+    // The half that names this repository speaks for it — a declaration that appeared inside a
+    // directory which was already there, with the origin as the repository's name.
+    halfDeclares('Acme/API', 'atlas');
+    expect(await project()).toBe('atlas');
+    expect((await sessionIdentities(m, sessions))[0]).toMatchObject({
+      repository: 'acme/api',
+      project: 'atlas',
+    });
+    // The repository the source's own declaration names wins over its origin.
+    passport(api, L({ identity: { repositoryId: 'acme/renamed' } }));
+    expect(await project()).toBeUndefined();
+    halfDeclares('acme/renamed', 'atlas');
+    expect(await project()).toBe('atlas');
+    // What the source says of itself outranks what a neighbour says of it.
+    passport(api, L({ identity: { repositoryId: 'acme/renamed', project: 'borealis' } }));
+    expect(await project()).toBe('borealis');
+    passport(api, L({ identity: { repositoryId: 'acme/renamed' } }));
+    // A key the passport format refuses names nothing.
+    for (const refused of ['acme/atlas', 'x'.repeat(201), '']) {
+      halfDeclares('acme/renamed', refused);
+      expect(await project()).toBeUndefined();
+    }
+    // Two halves naming different projects: neither is chosen. The same project twice is one.
+    halfDeclares('acme/renamed', 'atlas');
+    passport(
+      other,
+      L({ identity: { project: 'borealis' }, source: { repositoryId: 'acme/renamed' } }),
+    );
+    expect(await project()).toBeUndefined();
+    passport(
+      other,
+      L({ identity: { project: 'atlas' }, source: { repositoryId: 'acme/renamed' } }),
+    );
+    expect(await project()).toBe('atlas');
+
+    // A session opened on the folder the halves sit in belongs to what both of them resolve to;
+    // a folder is not a checkout, so it has no repository.
+    const onFolder = async () =>
+      (await sessionIdentities(m, [makeSession({ name: 'agent-f', uuid: FOREIGN, dir: work })]))[0];
+    rmSync(other, { recursive: true });
+    expect(await onFolder()).toMatchObject({ repository: null, project: 'atlas' });
+    expect(Bun.spawnSync(['git', 'init', '-q', half]).exitCode).toBe(0);
+    expect((await onFolder())?.project).toBe('atlas');
+    // One checkout in the folder that belongs elsewhere, or nowhere, and the folder is nobody's.
+    const stranger = join(work, 'stranger');
+    expect(Bun.spawnSync(['git', 'init', '-q', stranger]).exitCode).toBe(0);
+    expect((await onFolder())?.project).toBeUndefined();
+    passport(stranger, declares('borealis'));
+    expect((await onFolder())?.project).toBeUndefined();
+    passport(stranger, declares('atlas'));
+    expect((await onFolder())?.project).toBe('atlas');
+    rmSync(stranger, { recursive: true });
+
+    // The project's checkouts on the machine, for the session in one of them and for the one on
+    // the folder: the source it sits in, and the working half that speaks for it.
+    const inSource = (await sessionIdentities(m, sessions))[0];
+    expect(inSource?.checkouts).toEqual([
+      { dir: api, repository: 'acme/renamed', role: 'source', current: true },
+      { dir: half, repository: null, role: 'private-workspace', current: false },
+    ]);
+    expect((await onFolder())?.checkouts?.map((row) => [row.dir, row.current])).toEqual([
+      [api, false],
+      [half, false],
+    ]);
+    // A role the declaration names is the role; a checkout of another project is not listed.
+    passport(
+      half,
+      L({
+        identity: { project: 'atlas', role: 'product-companion' },
+        source: { repositoryId: 'acme/renamed' },
+      }),
+    );
+    expect(Bun.spawnSync(['git', 'init', '-q', stranger]).exitCode).toBe(0);
+    passport(stranger, declares('borealis'));
+    expect(
+      (await sessionIdentities(m, sessions))[0]?.checkouts?.map((row) => [row.dir, row.role]),
+    ).toEqual([
+      [api, 'source'],
+      [half, 'product-companion'],
+    ]);
+    rmSync(stranger, { recursive: true });
+    // Nothing declared, nothing listed.
+    expect(
+      'checkouts' in
+        ((
+          await sessionIdentities(m, [makeSession({ name: 'agent-p', uuid: FOREIGN, dir: root })])
+        )[0] ?? {}),
+    ).toBe(false);
+
+    // And the same answer for what was said there.
+    const said = await searchFleet(
+      m,
+      parseSearch(['--since', '2026-01-01', '--role', 'user', '--json', '--local']),
+      undefined,
+      sessions,
+    );
+    expect(new Set(said.matches.map((match) => match.project))).toEqual(new Set(['atlas']));
+  });
+});
+
+test('a remote added to a checkout is seen without starting again', async () => {
+  await fleet(async ({ root }) => {
+    const fresh = join(root, 'work', 'fresh');
+    mkdirSync(fresh, { recursive: true });
+    expect(await repositoryOf(fresh)).toBeNull();
+    expect(Bun.spawnSync(['git', 'init', '-q', fresh]).exitCode).toBe(0);
+    expect(await repositoryOf(fresh)).toBeNull();
+    const add = ['git', '-C', fresh, 'remote', 'add', 'origin', 'git@example.com:acme/fresh.git'];
+    expect(Bun.spawnSync(add).exitCode).toBe(0);
+    expect(await repositoryOf(join(fresh))).toBe('acme/fresh');
+    // A worktree's root holds a `.git` file, and is a checkout of the same repository.
+    const tree = join(root, 'work', 'fresh-tree');
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'a',
+      GIT_AUTHOR_EMAIL: 'a@example.com',
+      GIT_COMMITTER_NAME: 'a',
+      GIT_COMMITTER_EMAIL: 'a@example.com',
+    };
+    expect(
+      Bun.spawnSync(['git', '-C', fresh, 'commit', '-q', '--allow-empty', '-m', 'first'], { env })
+        .exitCode,
+    ).toBe(0);
+    expect(Bun.spawnSync(['git', '-C', fresh, 'worktree', 'add', '-q', tree]).exitCode).toBe(0);
+    expect(await repositoryOf(tree)).toBe('acme/fresh');
+    // Its remotes are the repository's: a change there is seen from the worktree too.
+    const moved = [
+      'git',
+      '-C',
+      fresh,
+      'remote',
+      'set-url',
+      'origin',
+      'git@example.com:acme/moved.git',
+    ];
+    expect(Bun.spawnSync(moved).exitCode).toBe(0);
+    expect(await repositoryOf(tree)).toBe('acme/moved');
+  });
+});
+
+const MARK = 'ticket ([a-z0-9]{8})\\s*$';
+/** A user message as the provider writes it, under an id the test chooses. */
+const said = (uuid: string, sessionId: string, cwd: string, text: string, at: string): string =>
+  L({
+    type: 'user',
+    uuid,
+    sessionId,
+    timestamp: at,
+    cwd,
+    message: { role: 'user', content: [{ type: 'text', text }] },
+  });
+
+test('a marked message is answered with every place it arrived, and when it first did', async () => {
+  await fleet(async ({ m, sessions, api, write }) => {
+    passport(api, declares('atlas'));
+    // agent-a reads NOW. One paste carries two marks and text after the first; a later message
+    // repeats a mark; the same mark was also pasted to agent-a-two.
+    write(NOW, [
+      L({ type: 'custom-title', customTitle: 'host-a-agent-a', sessionId: NOW }),
+      said(
+        'm-1',
+        NOW,
+        api,
+        'fix this\n\nticket aaaa1111\nand that\n\n[1-3] ticket bbbb2222',
+        '2026-09-02T10:00:00.000Z',
+      ),
+      said('m-2', NOW, api, 'again\n\nticket aaaa1111', '2026-09-02T12:00:00.000Z'),
+      said(
+        'm-3',
+        NOW,
+        api,
+        'the mark ticket cccc3333 in the middle of a line',
+        '2026-09-02T13:00:00.000Z',
+      ),
+    ]);
+    write(OTHER, [
+      L({ type: 'custom-title', customTitle: 'host-a-agent-a-two', sessionId: OTHER }),
+      said('o-1', OTHER, api, 'same one\n\nticket aaaa1111', '2026-09-02T11:00:00.000Z'),
+    ]);
+    // A continuation of agent-a's conversation: the earlier message copied under its own id.
+    write(BEFORE, [
+      L({ type: 'custom-title', customTitle: 'host-a-agent-a', sessionId: BEFORE }),
+      said(
+        'm-1',
+        BEFORE,
+        api,
+        'fix this\n\nticket aaaa1111\nand that\n\n[1-3] ticket bbbb2222',
+        '2026-09-02T10:00:00.000Z',
+      ),
+    ]);
+    const search = (...args: string[]) =>
+      searchFleet(
+        m,
+        parseSearch([MARK, '--role', 'user', '--local', ...args]),
+        undefined,
+        sessions,
+      );
+    const answer = await search('--receipts', '--json', '--limit', '1');
+    expect(CorpusSearchJsonSchema.parse(answer)).toEqual(answer);
+    expect(answer.query.receipts).toBe(true);
+    // --limit trims the lines, not the receipts.
+    expect(answer.matches.length).toBe(1);
+    const places = answer.receipts?.marks.map(({ mark, deliveries }) => [
+      mark,
+      ...deliveries.map((row) => [row.ofSession, row.session, row.receivedAt, row.messageId]),
+    ]);
+    expect(places).toEqual([
+      // The first message that carries it, not the repeat; the copy is the same delivery, kept
+      // where the session reads now; the other session's is a second place.
+      [
+        'aaaa1111',
+        ['agent-a', 'agent-a', '2026-09-02T10:00:00.000Z', 'm-1:0'],
+        ['agent-a-two', 'agent-a-two', '2026-09-02T11:00:00.000Z', 'o-1:0'],
+      ],
+      ['bbbb2222', ['agent-a', 'agent-a', '2026-09-02T10:00:00.000Z', 'm-1:0']],
+    ]);
+    expect(answer.receipts?.marks[0]?.deliveries[0]).toMatchObject({
+      machine: 'host-a',
+      repository: 'acme/api',
+      project: 'atlas',
+      dir: api,
+      role: 'user',
+      lines: true,
+    });
+    expect(answer.receipts?.truncated).toBe(false);
+    // Read by several processes, the answer is the one a single process gives: the copy and the
+    // conversation it was copied from land in different shares.
+    const stored = storedConversations(m, sessions);
+    const dealt = await searchMachine(
+      'host-a',
+      parseSearch([MARK, '--role', 'user', '--receipts']).query,
+      stored,
+      3,
+    );
+    const alone = await searchMachine(
+      'host-a',
+      parseSearch([MARK, '--role', 'user', '--receipts']).query,
+      stored,
+      1,
+    );
+    expect(dealt.receipts).toEqual(alone.receipts as never);
+    expect(dealt.receipts?.marks.map((entry) => entry.deliveries.length)).toEqual([2, 1]);
+    // A pattern without a group is its own mark; without the mode there are no receipts at all.
+    const whole = await searchFleet(
+      m,
+      parseSearch(['ticket cccc3333', '--role', 'user', '--local', '--receipts']),
+      undefined,
+      sessions,
+    );
+    expect(whole.receipts?.marks.map((entry) => entry.mark)).toEqual(['ticket cccc3333']);
+    expect('receipts' in (await search('--json'))).toBe(false);
+    const lines = receiptLines(answer, Date.parse('2026-09-02T12:00:00.000Z'));
+    expect(lines.filter((line) => /^(aaaa1111|bbbb2222|\s+\S)/.test(line)).length).toBe(3);
+    expect(lines).toContain('2 mark(s), 3 place(s)');
+    expect(() => parseSearch(['--since', '1d', '--receipts'])).toThrow('--receipts is where');
+    expect(() => parseSearch([MARK, '--map', '--receipts'])).toThrow('--receipts is where');
+  });
+});
+
+test('receipts are bounded, say so, and merge across machines that may not know them', async () => {
+  await fleet(async ({ m, sessions, api, write }) => {
+    const many = Array.from(
+      { length: RECEIPT_MARKS_MAX + 5 },
+      (_, i) => `k${String(i).padStart(6, '0')}`,
+    );
+    write(NOW, [
+      L({ type: 'custom-title', customTitle: 'host-a-agent-a', sessionId: NOW }),
+      said('m-1', NOW, api, many.join(' '), '2026-09-02T10:00:00.000Z'),
+    ]);
+    const opts = parseSearch(['k(\\d{6})', '--role', 'user', '--receipts', '--json', '--local']);
+    const bounded = await searchFleet(m, opts, undefined, sessions);
+    expect([bounded.receipts?.marks.length, bounded.receipts?.truncated]).toEqual([
+      RECEIPT_MARKS_MAX,
+      true,
+    ]);
+
+    // Another machine's answer joins; one that predates the mode has no receipts and is still read.
+    const fleetOf = { ...m, fleet: { 'host-b': 'b.example', 'host-c': 'c.example' } };
+    const one = parseSearch(['k(000001)', '--role', 'user', '--receipts', '--json']);
+    const here = await searchFleet(
+      m,
+      parseSearch(['k(000001)', '--role', 'user', '--receipts', '--json', '--local']),
+      undefined,
+      sessions,
+    );
+    const from = (machine: string, receipts: boolean) => {
+      const moved = JSON.parse(JSON.stringify(here).replaceAll('host-a', machine)) as typeof here;
+      if (!receipts) {
+        delete moved.receipts;
+        delete moved.query.receipts;
+      }
+      return JSON.stringify(moved);
+    };
+    const asked: string[][] = [];
+    const answer = await searchFleet(
+      fleetOf,
+      one,
+      async (_m, machine, _alias, argv) => {
+        asked.push(argv);
+        return {
+          code: 0,
+          stdout: from(machine, machine === 'host-b'),
+          stderr: '',
+          transportFailed: false,
+          delivery: 'received' as const,
+        };
+      },
+      sessions,
+    );
+    expect(asked.every((argv) => argv.includes('--receipts'))).toBe(true);
+    expect(answer.machines.map((row) => row.status)).toEqual(['searched', 'searched', 'searched']);
+    expect(
+      answer.receipts?.marks.map((entry) => entry.deliveries.map((row) => row.machine)),
+    ).toEqual([['host-a', 'host-b']]);
+  });
+});
+
+test('the stream follows every machine, and one that stops answering loses no session', async () => {
+  await fleet(async ({ m, sessions }) => {
+    const fleetOf = { ...m, fleet: { 'host-b': 'b.example' } };
+    const there = async (name: string, dir: string) =>
+      (
+        await sessionIdentities({ ...m, rcPrefix: 'host-b' }, [
+          makeSession({ name, uuid: FOREIGN, dir }),
+        ])
+      )[0] as SessionIdentity;
+    // The other machine has a session of the same NAME as one here, and one of its own.
+    let remote: SessionIdentity[] | null = [
+      await there('agent-a', '/srv/api'),
+      await there('agent-b', '/srv/api'),
+    ];
+    const asked: string[][] = [];
+    const events: WhoisEvent[] = [];
+    const stop = followIdentities(fleetOf, (event) => events.push(event), {
+      recheckMs: 20,
+      peerEveryMs: 20,
+      sessions: () => [sessions[0] as Session],
+      runPeer: async (_m, machine, _alias, argv) => {
+        asked.push(argv);
+        const known = parseKnown(argv[argv.indexOf('--known') + 1]);
+        return {
+          code: remote === null ? 255 : 0,
+          stdout:
+            remote === null
+              ? ''
+              : L({
+                  machine,
+                  sessions: pack(remote, argv.includes('--known') ? known : new Set()),
+                }),
+          stderr: '',
+          transportFailed: remote === null,
+          delivery: remote === null ? ('unknown' as const) : ('received' as const),
+          ...(remote === null ? { failureDetail: 'no route' } : {}),
+        };
+      },
+    });
+    const said = () =>
+      events.map((event) =>
+        event.event === 'session'
+          ? `session ${event.session.address}`
+          : event.event === 'gone'
+            ? `gone ${event.address}`
+            : `machine ${event.machine} ${event.status}`,
+      );
+    try {
+      await until(
+        'both machines read',
+        () => said().filter((line) => line.startsWith('machine')).length === 2,
+      );
+      for (const event of events) expect(WhoisEventSchema.parse(event)).toEqual(event);
+      expect(said().sort()).toEqual([
+        'machine host-a asked',
+        'machine host-b asked',
+        'session host-a:agent-a',
+        'session host-b:agent-a',
+        'session host-b:agent-b',
+      ]);
+      // A machine's line comes after its sessions: it says they have been read.
+      expect(said().indexOf('machine host-b asked')).toBeGreaterThan(
+        said().indexOf('session host-b:agent-b'),
+      );
+      // Asked by change, of the daemon: the second question names what is already held.
+      await until('asked again', () => asked.length >= 3);
+      expect(asked[0]?.slice(0, 3)).toEqual(['ccmux', '_peer-read', 'identities']);
+      expect(asked.at(-1)).toContain('--known');
+      expect(events.length).toBe(5);
+
+      // The other machine's session moves; this machine's session of the same name does not.
+      remote = [await there('agent-a', '/srv/moved'), remote[1] as SessionIdentity];
+      await until('the move announced', () => events.length === 6);
+      const moved = events[5];
+      expect(moved?.event === 'session' && [moved.session.address, moved.session.dir]).toEqual([
+        'host-b:agent-a',
+        '/srv/moved',
+      ]);
+
+      // It stops answering: said once, with the reason, and none of its sessions is called gone.
+      const whenUp = remote;
+      remote = null;
+      await until('the silence announced', () => events.length === 7);
+      expect(events[6]).toEqual({
+        event: 'machine',
+        machine: 'host-b',
+        status: 'unavailable',
+        error: 'no route',
+      });
+      await Bun.sleep(120);
+      expect(events.length).toBe(7);
+
+      // It answers again without one session: that one is gone, and the machine is read again.
+      remote = [whenUp[0] as SessionIdentity];
+      await until('the return announced', () => events.length === 9);
+      expect(said().slice(7)).toEqual(['gone host-b:agent-b', 'machine host-b asked']);
+    } finally {
+      stop();
+    }
+
+    // Asked for this machine only, nobody else is asked.
+    const before = asked.length;
+    const alone: WhoisEvent[] = [];
+    const stopLocal = followIdentities(fleetOf, (event) => alone.push(event), {
+      local: true,
+      recheckMs: 20,
+      peerEveryMs: 20,
+      sessions: () => [sessions[0] as Session],
+      runPeer: async () => {
+        throw new Error('a local follower asked another machine');
+      },
+    });
+    try {
+      await until('this machine read', () => alone.length === 2);
+      await Bun.sleep(80);
+      expect(alone.map((event) => event.event)).toEqual(['session', 'machine']);
+      expect(asked.length).toBe(before);
+    } finally {
+      stopLocal();
+    }
+  });
+});
+
+test('a machine answers another about its sessions by change', async () => {
+  await fleet(async ({ m, sessions }) => {
+    writeFileSync(sessionsPath(m), sessions.map((session) => `${L(session)}\n`).join(''));
+    const Answer = z.object({ machine: z.string(), sessions: PackedSchema });
+    const first = Answer.parse(await peerIdentitiesAnswer(m, []));
+    expect(first.machine).toBe('host-a');
+    const rows = z.array(SessionIdentitySchema).parse(unpack(first.sessions, {}));
+    expect(rows.map((row) => row.address)).toEqual(['host-a:agent-a', 'host-a:agent-a-two']);
+    // Asked again by a reader that holds them, it sends the names of the rows and no row.
+    const again = Answer.parse(await peerIdentitiesAnswer(m, first.sessions.refs));
+    expect([again.sessions.refs, again.sessions.items]).toEqual([first.sessions.refs, {}]);
+  });
+});
+
+test('only a continued Claude session carries copies: a Codex line number is not a message', () => {
+  const at = (provider: 'claude' | 'codex', address: string, ofSession: string | null) => ({
+    address,
+    provider,
+    threadId: address,
+    session: null,
+    ofSession,
+    dir: null,
+    repository: null,
+    lines: true,
+    seq: 8,
+    receivedAt: '2026-09-02T10:00:00.000Z',
+    role: 'user' as const,
+    messageId: '8:0',
+  });
+  const merged = (deliveries: ReturnType<typeof at>[]) =>
+    mergeReceipts([
+      { truncated: false, marks: [{ mark: 'aaaa1111', deliveries }] },
+    ]).marks[0]?.deliveries.map((row) => row.address);
+  // Two Codex conversations open with a paste on the same line: two places.
+  expect(merged([at('codex', 'thread-1', null), at('codex', 'thread-2', null)])).toEqual([
+    'thread-1',
+    'thread-2',
+  ]);
+  expect(merged([at('codex', 'thread-1', 'agent-a'), at('codex', 'thread-2', 'agent-a')])).toEqual([
+    'thread-1',
+    'thread-2',
+  ]);
+  // Two conversations nobody owns are two, whatever their ids; one session's copy is one.
+  expect(merged([at('claude', 'c-1', null), at('claude', 'c-2', null)])).toEqual(['c-1', 'c-2']);
+  expect(merged([at('claude', 'c-1', 'agent-a'), at('claude', 'c-2', 'agent-b')])).toEqual([
+    'c-1',
+    'c-2',
+  ]);
+  expect(merged([at('claude', 'c-1', 'agent-a'), at('claude', 'c-2', 'agent-a')])).toEqual(['c-1']);
 });
