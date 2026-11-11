@@ -1,299 +1,89 @@
 import { z } from 'zod';
 import { TranscriptKindSchema, TranscriptRoleSchema } from '../agent/transcript/messageSchema.ts';
 import { loadMachineConfig } from '../config/machine.ts';
-import {
-  type CorpusQuery,
-  matchTime,
-  mergeReceipts,
-  olderConversation,
-  olderMatch,
-} from '../context/corpusSearch.ts';
+import { matchTime } from '../context/corpusSearch.ts';
 import { type CorpusSearchJson, CorpusSearchJsonSchema } from '../context/corpusSearchSchema.ts';
-import { searchMachine } from '../context/corpusShards.ts';
-import { storedConversations } from '../context/storedConversations.ts';
-import { compilePattern, SearchPatternError } from '../context/transcriptSearch.ts';
-import { askPeer, FROM_ANOTHER_MACHINE, NOT_IN_FLEET, type PeerRunner } from '../fleet/askPeer.ts';
-import { peersOf } from '../fleet/transport.ts';
-import type { MachineConfig, Session, TranscriptRole } from '../types.ts';
+import {
+  type SearchPlan,
+  SearchRequestError,
+  searchFleet,
+  searchPlan,
+  searchStanding,
+} from '../context/searchFleet.ts';
+import { SEARCH_PROVIDERS, SearchRequestSchema } from '../context/searchRequestSchema.ts';
+import { listed, SearchPatternError } from '../context/transcriptSearch.ts';
 import { humanizeDuration } from '../util/duration.ts';
 import { HOME } from '../util/env.ts';
 import { printLine } from '../util/stdout.ts';
 import { tableLines } from '../util/table.ts';
 import { parseFlags, UsageError } from './flags.ts';
 import { usageLine } from './help.ts';
-import { DEFAULT_MATCHES, listed } from './transcriptSearch.ts';
 
-/**
- * `ccmux search` — one pattern against every stored conversation on every machine of the fleet.
- *
- * Each machine searches its own store: this command runs the search here and asks every other
- * machine to run the same one with `--local`, so the conversations never travel, only the matches.
- * A machine that did not answer is named in the result. Its silence is not "no matches there", and
- * a search that found nothing while a machine was unreachable exits 2, not 1.
- */
+/** `ccmux search` — reads the command line and prints what `context/searchFleet.ts` answers. */
 
-/** A search reads gigabytes on the far side; the default hop deadline is for a command that answers
- *  at once. */
-const PEER_TIMEOUT_MS = 180_000;
-const PEER_CONNECT_SECONDS = 5;
-
-const PROVIDERS = ['claude', 'codex'] as const;
-const DAY_MS = 86_400_000;
-const UNIT_MS: Record<string, number> = { h: 3_600_000, d: DAY_MS, w: 7 * DAY_MS };
-
-/**
- * A point in time as the caller wrote it: `today`, `yesterday`, `7d`/`12h`/`2w` ago, a day, or a
- * full timestamp.
- *
- * A bare day is that whole day in this machine's zone — from its first moment as `--since`, to its
- * last as `--until` — because "until the 3rd" said by a person includes the 3rd.
- */
-export function parseWhen(text: string, edge: 'since' | 'until', now = Date.now()): number {
-  if (text === 'today' || text === 'yesterday') {
-    const day = new Date(now);
-    const start = new Date(
-      day.getFullYear(),
-      day.getMonth(),
-      day.getDate() - (text === 'today' ? 0 : 1),
-    ).getTime();
-    return edge === 'since' ? start : start + DAY_MS - 1;
-  }
-  const relative = /^(\d+)([hdw])$/.exec(text);
-  if (relative) return now - Number(relative[1]) * (UNIT_MS[relative[2] as string] as number);
-  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (day) {
-    const start = new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])).getTime();
-    return edge === 'since' ? start : start + DAY_MS - 1;
-  }
-  const at = Date.parse(text);
-  if (!Number.isFinite(at))
-    throw new SearchPatternError(
-      `--${edge} '${text}' is not a time: use today, yesterday, 7d, 12h, 2w, YYYY-MM-DD or a full timestamp`,
-    );
-  return at;
-}
-
-export interface SearchOpts {
-  query: CorpusQuery;
+export interface SearchOpts extends SearchPlan {
   json: boolean;
   /** One line per conversation instead of one per match. */
   map: boolean;
   /** One entry per distinct thing the pattern matched: where it arrived. */
   receipts: boolean;
-  /** Machines to ask, or null for every machine of the fleet. */
-  machines: string[] | null;
-  /** What a peer is asked with, so it runs this exact search on its own store. */
-  peerArgs: string[];
 }
+
+const some = <T>(set: Set<T> | undefined): T[] | null => (set === undefined ? null : [...set]);
 
 export function parseSearch(args: string[], now = Date.now()): SearchOpts {
   const flags = parseFlags('search', args, [0, 1]);
-  const caseMode = flags.bool('ignore-case')
-    ? 'ignore'
-    : flags.bool('case-sensitive')
-      ? 'sensitive'
-      : 'smart';
-  const source = flags.positionals[0];
-  const kinds = listed('kind', flags.list('kind'), TranscriptKindSchema.options);
-  const query: CorpusQuery = {
-    kinds: kinds ?? new Set(['message']),
-    limit: flags.int('limit') ?? DEFAULT_MATCHES,
-  };
-  if (source !== undefined)
-    query.pattern = compilePattern(source, { fixed: flags.bool('fixed-strings'), caseMode });
-  const roles = listed('role', flags.list('role'), TranscriptRoleSchema.options);
-  const providers = listed('provider', flags.list('provider'), PROVIDERS);
-  const project = flags.str('project');
-  const since = flags.str('since');
-  const until = flags.str('until');
-  // What the two sides said. A `system` record is the harness talking — a hook's output, a reminder
-  // — and it names things nobody in the conversation mentioned. A caller who names kinds has said
-  // what they want, and a tool result's role is `tool`: no role is then assumed for them.
-  const assumed = kinds === undefined ? new Set<TranscriptRole>(['user', 'assistant']) : undefined;
-  const wanted = roles ?? assumed;
-  if (wanted !== undefined) query.roles = wanted;
-  if (providers !== undefined) query.providers = providers;
-  if (project !== undefined && project !== '') query.project = project;
-  if (since !== undefined) query.since = parseWhen(since, 'since', now);
-  if (until !== undefined) query.until = parseWhen(until, 'until', now);
-  // Without a pattern the search is an outline, and an outline of everything ever said is not one.
-  if (query.pattern === undefined && query.project === undefined && query.since === undefined)
-    throw new UsageError(
-      `without a PATTERN, say which conversations to outline: --project or --since\n${usageLine('search')}`,
-    );
-  if (query.pattern === undefined && kinds !== undefined)
-    throw new UsageError(
-      `--kind needs a PATTERN: an outline is of messages\n${usageLine('search')}`,
-    );
-  if (flags.bool('full')) {
-    // The lines a person reads are one per match; a whole message does not fit one, and clipping
-    // it there would make `--full` mean two things.
-    if (!flags.bool('json'))
-      throw new UsageError(
-        `--full is each message's whole text, in --json\n${usageLine('search')}`,
-      );
-    query.full = true;
-  }
-  if (flags.bool('receipts')) {
-    if (query.pattern === undefined || flags.bool('map'))
-      throw new UsageError(
-        `--receipts is where each thing a PATTERN matched arrived; it has no --map\n${usageLine('search')}`,
-      );
-    query.receipts = true;
-  }
+  const usage = (message: string) => new UsageError(`${message}\n${usageLine('search')}`);
+  // The lines a person reads are one per match; a whole message does not fit one, and clipping
+  // it there would make `--full` mean two things.
+  if (flags.bool('full') && !flags.bool('json'))
+    throw usage("--full is each message's whole text, in --json");
+  if (flags.bool('receipts') && flags.bool('map'))
+    throw usage('--receipts is where each thing a PATTERN matched arrived; it has no --map');
   if (flags.bool('local') && flags.list('machine').length > 0)
-    throw new UsageError(`choose --local or --machine\n${usageLine('search')}`);
-  // The compiled pattern and absolute times, not the words: a peer in another zone, or asked a
-  // moment later, must search the same range with the same case rule.
-  const peerArgs = [
-    ...(kinds === undefined ? [] : ['--kind', [...kinds].join(',')]),
-    '--limit',
-    String(query.limit),
-    ...(query.roles === undefined ? [] : ['--role', [...query.roles].join(',')]),
-    ...(providers === undefined ? [] : ['--provider', [...providers].join(',')]),
-    ...(query.project === undefined ? [] : ['--project', query.project]),
-    ...(query.since === undefined ? [] : ['--since', new Date(query.since).toISOString()]),
-    ...(query.until === undefined ? [] : ['--until', new Date(query.until).toISOString()]),
-    ...(query.full === true ? ['--full'] : []),
-    ...(query.receipts === true ? ['--receipts'] : []),
-    // Last and after `--`, so a pattern is never read as a flag.
-    ...(query.pattern === undefined
-      ? []
-      : [
-          query.pattern.flags.includes('i') ? '--ignore-case' : '--case-sensitive',
-          '--',
-          query.pattern.source,
-        ]),
-  ];
-  return {
-    query,
-    json: flags.bool('json'),
-    map: flags.bool('map'),
-    receipts: query.receipts === true,
+    throw usage('choose --local or --machine');
+  const limit = flags.int('limit');
+  const request = SearchRequestSchema.safeParse({
+    pattern: flags.positionals[0] ?? null,
+    fixed: flags.bool('fixed-strings'),
+    caseMode: flags.bool('ignore-case')
+      ? 'ignore'
+      : flags.bool('case-sensitive')
+        ? 'sensitive'
+        : 'smart',
+    roles: some(listed('role', flags.list('role'), TranscriptRoleSchema.options)),
+    kinds: some(listed('kind', flags.list('kind'), TranscriptKindSchema.options)),
+    providers: some(listed('provider', flags.list('provider'), SEARCH_PROVIDERS)),
+    project: flags.str('project') || null,
+    since: flags.str('since') ?? null,
+    until: flags.str('until') ?? null,
+    ...(limit === undefined ? {} : { limit }),
+    full: flags.bool('full'),
+    receipts: flags.bool('receipts'),
     machines: flags.bool('local')
       ? []
       : flags.list('machine').length > 0
         ? flags.list('machine')
         : null,
-    peerArgs,
-  };
-}
-
-type MachineAnswer = Pick<CorpusSearchJson, 'machines' | 'matches' | 'conversations' | 'receipts'>;
-
-const unavailable = (machine: string, error: string): MachineAnswer => ({
-  machines: [{ machine, status: 'unavailable', error }],
-  matches: [],
-  conversations: [],
-});
-
-async function askMachine(
-  m: MachineConfig,
-  peer: { machine: string; alias: string | null },
-  peerArgs: string[],
-  runPeer: PeerRunner | undefined,
-): Promise<MachineAnswer> {
-  const asked = await askPeer(
-    m,
-    peer,
-    ['ccmux', 'search', '--local', '--json', ...peerArgs],
-    (stdout) => CorpusSearchJsonSchema.parse(JSON.parse(stdout)),
-    {
-      what: 'search',
-      timeoutMs: PEER_TIMEOUT_MS,
-      connectTimeoutSeconds: PEER_CONNECT_SECONDS,
-      runPeer,
-    },
-  );
-  if (!asked.ok) return unavailable(peer.machine, asked.error);
-  const { answer } = asked;
-  const own = answer.machines.filter((row) => row.machine === peer.machine);
-  if (own.length !== answer.machines.length || own.length !== 1)
-    return unavailable(peer.machine, FROM_ANOTHER_MACHINE);
-  return {
-    machines: own,
-    matches: answer.matches,
-    conversations: answer.conversations,
-    ...(answer.receipts === undefined ? {} : { receipts: answer.receipts }),
-  };
-}
-
-async function searchHere(
-  m: MachineConfig,
-  query: CorpusQuery,
-  sessions?: readonly Session[],
-): Promise<MachineAnswer> {
-  const { coverage, matches, conversations, receipts } = await searchMachine(
-    m.rcPrefix,
-    query,
-    storedConversations(m, sessions),
-  );
-  return {
-    machines: [coverage],
-    matches: matches.map((match) => ({ ...match, machine: m.rcPrefix })),
-    conversations: conversations.map((row) => ({ ...row, machine: m.rcPrefix })),
-    ...(receipts === undefined
-      ? {}
-      : {
-          receipts: {
-            truncated: receipts.truncated,
-            marks: receipts.marks.map(({ mark, deliveries }) => ({
-              mark,
-              deliveries: deliveries.map((row) => ({ ...row, machine: m.rcPrefix })),
-            })),
-          },
-        }),
-  };
-}
-
-export async function searchFleet(
-  m: MachineConfig,
-  opts: SearchOpts,
-  runPeer?: PeerRunner,
-  sessions?: readonly Session[],
-): Promise<CorpusSearchJson> {
-  const peers = peersOf(m);
-  const wanted = opts.machines ?? [m.rcPrefix, ...peers.map((peer) => peer.machine)];
-  const targets = opts.machines?.length === 0 ? [m.rcPrefix] : wanted;
-  const answers = await Promise.all(
-    [...new Set(targets)].map((machine): Promise<MachineAnswer> => {
-      if (machine === m.rcPrefix) return searchHere(m, opts.query, sessions);
-      const peer = peers.find((candidate) => candidate.machine === machine);
-      return peer === undefined
-        ? Promise.resolve(unavailable(machine, NOT_IN_FLEET))
-        : askMachine(m, peer, opts.peerArgs, runPeer);
-    }),
-  );
-  const machines = answers.flatMap((answer) => answer.machines);
-  const total = machines.reduce((sum, row) => sum + (row.status === 'searched' ? row.total : 0), 0);
-  const matches = answers
-    .flatMap((answer) => answer.matches)
-    .sort(olderMatch)
-    .slice(-opts.query.limit);
-  const { query } = opts;
-  return {
-    query: {
-      pattern: query.pattern?.source ?? null,
-      flags: (query.pattern?.flags ?? '').replace('g', ''),
-      roles: query.roles === undefined ? null : [...query.roles],
-      kinds: [...query.kinds],
-      providers: query.providers === undefined ? null : [...query.providers],
-      project: query.project ?? null,
-      since: query.since === undefined ? null : new Date(query.since).toISOString(),
-      until: query.until === undefined ? null : new Date(query.until).toISOString(),
-      limit: query.limit,
-      full: query.full === true,
-      ...(query.receipts === true ? { receipts: true } : {}),
-    },
-    machines,
-    total,
-    truncated: total > matches.length,
-    conversations: answers.flatMap((answer) => answer.conversations).sort(olderConversation),
-    matches,
-    ...(query.receipts === true
-      ? { receipts: mergeReceipts(answers.map((answer) => answer.receipts)) }
-      : {}),
-  };
+  });
+  if (!request.success) {
+    const issue = request.error.issues[0];
+    // An empty pattern is the one shape a person types; say it as the pattern compiler does.
+    if (issue?.path[0] === 'pattern')
+      throw new SearchPatternError('empty pattern: it would match every message');
+    throw usage(`--${String(issue?.path[0])}: ${issue?.message}`);
+  }
+  try {
+    return {
+      ...searchPlan(request.data, now),
+      json: flags.bool('json'),
+      map: flags.bool('map'),
+      receipts: request.data.receipts,
+    };
+  } catch (error) {
+    if (error instanceof SearchRequestError) throw usage(error.message);
+    throw error;
+  }
 }
 
 const HIGHLIGHT = ['\u001b[1;31m', '\u001b[0m'] as const;
@@ -397,12 +187,14 @@ export function receiptLines(result: CorpusSearchJson, now: number): string[] {
         ? '-'
         : humanizeDuration(Math.max(0, now - Date.parse(row.receivedAt)) / 1000),
       row.ofSession === null ? row.address : `${row.machine}:${row.ofSession}`,
+      // Absent from a machine whose release does not say; `-` is not "a person".
+      row.sender?.verdict ?? '-',
       row.repository ?? '-',
       row.project ?? '-',
     ]),
   );
   const lines =
-    rows.length === 0 ? [] : tableLines(['MARK', 'AGO', 'IN', 'REPOSITORY', 'PROJECT'], rows);
+    rows.length === 0 ? [] : tableLines(['MARK', 'AGO', 'IN', 'BY', 'REPOSITORY', 'PROJECT'], rows);
   if (receipts.truncated)
     lines.push(
       `more than ${receipts.marks.length} distinct marks matched; narrow the pattern, --since or --until`,
@@ -480,6 +272,5 @@ export async function cmdSearch(args: string[]): Promise<number> {
         ? mapLines(result, Date.now(), opts.query.limit)
         : searchLines(result, Date.now(), process.stdout.isTTY === true);
   for (const line of lines) await printLine(line);
-  if (result.total > 0) return 0;
-  return result.machines.some((row) => row.status === 'unavailable') ? 2 : 1;
+  return searchStanding(result);
 }

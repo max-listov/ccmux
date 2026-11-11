@@ -73,6 +73,6 @@ test('unregistering a session takes its block with it', async () => {
   // A verdict describes a session. Once the session is gone it describes nobody, so leaving the
   // file behind hands a later session of the same name a judgement passed on someone else — safe
   // today only because neither generation nor uuid could match, which is luck, not design.
-  const src = await Bun.file(new URL('../src/commands/rm.ts', import.meta.url)).text();
+  const src = await Bun.file(new URL('../src/session/lifecycle.ts', import.meta.url)).text();
   expect(src).toMatch(/clearLifecycleBlock\(m, name\)/);
 });

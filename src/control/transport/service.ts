@@ -53,6 +53,13 @@ export function controlServices(
     'terminal.respond': ({ input, signal }) => operations.terminalRespond(input, signal),
     'usage.read': ({ input, signal }) => operations.usage(input, signal),
     'usage.list': ({ input, signal }) => operations.usageList(input, signal),
+    'identity.whois': ({ input, signal }) => operations.whois(input, signal),
+    'identity.list': ({ input, signal }) => operations.identities(input, signal),
+    'chat.log': ({ input, signal }) => operations.chatLog(input, signal),
+    'fleet.list': ({ signal }) => operations.fleet(signal),
+    'message.read': ({ input, signal }) => operations.exactMessage(input, signal),
+    'letter.list': ({ input, principal }) =>
+      operations.sentLetters(input, ChatPrincipalSchema.parse(principal)),
     'external.history': ({ input, signal }) => operations.externalHistory(input, signal),
     'external.message': ({ input, signal }) => operations.externalMessage(input, signal),
     'external.capabilities': ({ input, signal }) => operations.externalCapabilities(input, signal),
@@ -141,6 +148,16 @@ export function controlServices(
       mutate(principal, input.target, () => operations.wake(input, signal)),
     'session.start': ({ input, signal, principal }) =>
       mutate(principal, input.target, () => operations.start(input, signal)),
+    'session.stop': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.stop(input, signal), true),
+    'session.restart': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.restart(input, signal)),
+    'session.remove': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () => operations.remove(input, signal), true),
+    'session.keys': ({ input, signal, principal }) =>
+      mutate(principal, input.target, () =>
+        operations.keys(input, ChatPrincipalSchema.parse(principal), signal),
+      ),
     'turn.interrupt': ({ input, signal, principal }) =>
       mutate(principal, input.target, () => operations.interrupt(input, signal)),
     'native.read': ({ input }) => operations.native(input),
@@ -167,6 +184,8 @@ export function controlServices(
     watchExternal: ({ signal }) => external.subscribe(signal),
     watchNative: ({ input, signal }) =>
       subscribeControlNative(m, input.target, input.cursor, signal),
+    watchIdentities: ({ input, signal }) => operations.followIdentities(input, signal),
+    search: (call) => operations.search(call),
   });
   // A fleet reader on another machine, relayed by `ccmux _peer-read`: answered here, where the
   // caches that make building the rows cheap are warm.

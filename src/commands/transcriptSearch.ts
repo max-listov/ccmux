@@ -1,9 +1,10 @@
 import { TranscriptKindSchema, TranscriptRoleSchema } from '../agent/transcript/messageSchema.ts';
 import type { TranscriptRead } from '../agent/transcript/transcriptRead.ts';
 import type { SenderJudge } from '../context/messageSender.ts';
+import { DEFAULT_MATCHES } from '../context/searchRequestSchema.ts';
 import {
   compilePattern,
-  SearchPatternError,
+  listed,
   searchTranscript,
   type TranscriptMatch,
   type TranscriptQuery,
@@ -14,9 +15,6 @@ import type { TranscriptJson } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
 import { printLine } from '../util/stdout.ts';
 import { tableLines } from '../util/table.ts';
-
-/** Matches shown when the caller does not say. The newest are kept and the count says how many more. */
-export const DEFAULT_MATCHES = 50;
 
 /** What the command line asks a search for, before it is turned into a query. */
 export interface SearchArgs {
@@ -31,20 +29,6 @@ export interface SearchArgs {
   /** Only when the caller wrote `--tail`: its default is a window size, not a search range. */
   tail?: number;
   agent?: string;
-}
-
-export function listed<T extends string>(
-  what: string,
-  values: string[],
-  allowed: readonly T[],
-): Set<T> | undefined {
-  if (values.length === 0) return undefined;
-  const unknown = values.filter((value) => !(allowed as readonly string[]).includes(value));
-  if (unknown.length > 0)
-    throw new SearchPatternError(
-      `unknown ${what} ${unknown.map((value) => `'${value}'`).join(', ')}; one of: ${allowed.join(', ')}`,
-    );
-  return new Set(values as T[]);
 }
 
 /** The query, or the reason it cannot be one — decided before anything is read. */

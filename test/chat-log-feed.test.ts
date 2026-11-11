@@ -16,8 +16,8 @@ import {
   ZERO_CURSOR,
 } from '../src/chat/logFeed.ts';
 import { CHAT_GENERATION } from '../src/chat/messageSchema.ts';
-import { unreadableReason } from '../src/commands/chat.ts';
 import { chatLedgerPath, outboxPath } from '../src/config/paths.ts';
+import { unreadableReason } from '../src/fleet/chatLog.ts';
 import { makeMachine } from './helpers.ts';
 
 // A snapshot answers "what is there now"; a live surface needs "what changed". Polling the first

@@ -1,8 +1,8 @@
-import { z } from 'zod';
 import { loadLedger } from '../chat/ledger.ts';
 import { keysDigest, sentKeysOf } from '../session/sentKeys.ts';
 import type { MachineConfig, TranscriptMessage } from '../types.ts';
 import { isHarnessText } from './corpusSearch.ts';
+import type { MessageSender } from './messageSenderSchema.ts';
 
 /**
  * Who put a message into the user's side of a managed session's conversation.
@@ -16,18 +16,6 @@ import { isHarnessText } from './corpusSearch.ts';
  * The verdict is about who SENT the message, not who wrote its words — pasted text is sent by the
  * one who pasted it.
  */
-export const MessageSenderSchema = z
-  .object({
-    verdict: z
-      .enum(['person', 'session-letter', 'routed-input', 'harness', 'ccmux-keys', 'unverifiable'])
-      .describe(
-        "person: entered in the provider's own client — typed, pasted, dictated, sent while a turn was running — and not by ccmux. session-letter: a letter from another session, delivered by ccmux and found in its ledger. routed-input: input that came through a router or an application, whose tag says so; its author is not a verified person. harness: the harness speaking — a hook's output, a task notification, a reminder, the output of a local command. ccmux-keys: typed into the pane by `ccmux send`. unverifiable: it reads as a delivered letter or routed input, but this machine's ledger holds no such message — or the text was read cut and cannot be judged; read it whole by its id.",
-      ),
-    reason: z.string().max(256),
-  })
-  .strict();
-export type MessageSender = z.infer<typeof MessageSenderSchema>;
-
 /** A hook's return, wrapped by the harness around whatever the hook printed — a letter included. */
 const HOOK_FEEDBACK = /^\s*Stop hook feedback:\s*/;
 const LETTER = /^\[chat from [^\]]*?· id: ([0-9a-f-]{36})\b/;
@@ -117,5 +105,27 @@ export function senderJudge(m: MachineConfig, session: string, textLimit?: numbe
       reason:
         "entered in the provider's client and not typed by ccmux; keys sent to the pane outside ccmux are not recorded and would read the same",
     };
+  };
+}
+
+/** One judge per session of a machine, made when its first message is asked about. */
+export type ConversationSenders = (ofSession: string | null) => SenderJudge;
+
+/**
+ * The judges of every conversation on this machine, for a reader that walks many of them.
+ *
+ * A conversation no session reads has no pane ccmux could have typed into, so only the ledger and
+ * the harness's own forms can speak about it; the log of sent keys is asked for no session.
+ */
+export function conversationSenders(m: MachineConfig, textLimit?: number): ConversationSenders {
+  const judges = new Map<string, SenderJudge>();
+  return (ofSession) => {
+    const session = ofSession ?? '';
+    let judge = judges.get(session);
+    if (judge === undefined) {
+      judge = senderJudge(m, session, textLimit);
+      judges.set(session, judge);
+    }
+    return judge;
   };
 }

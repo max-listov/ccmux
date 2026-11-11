@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
-import { type FleetMachine, fleetView, machineStanding } from '../src/commands/fleetList.ts';
+import { machineStanding } from '../src/commands/fleetList.ts';
+import { fleetView } from '../src/fleet/fleetList.ts';
+import type { FleetMachine } from '../src/fleet/fleetSchema.ts';
 import {
   behindBy,
   bestKnownRelease,

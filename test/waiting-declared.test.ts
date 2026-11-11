@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from 'bun:test';
-import { RemoteSessionSchema } from '../src/commands/fleetList.ts';
+import { RemoteSessionSchema } from '../src/fleet/fleetSchema.ts';
 import { clearWaiting, readWaiting, writeWaiting } from '../src/session/status.ts';
 
 /**

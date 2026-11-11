@@ -19,6 +19,7 @@ import {
   MachineCoverageSchema,
   ReceiptsSchema,
 } from './corpusSearchSchema.ts';
+import type { ConversationSenders } from './messageSender.ts';
 import type { StoredConversation } from './storedConversations.ts';
 
 /**
@@ -48,6 +49,8 @@ export const ShardRequestSchema = z.object({
     full: z.boolean(),
     receipts: z.boolean(),
   }),
+  /** Whether the reader that dealt this share judges who sent a delivered message. */
+  senders: z.boolean(),
   conversations: z.array(
     z.object({
       provider: ProviderSchema,
@@ -147,8 +150,14 @@ async function shard(
   machine: string,
   query: CorpusQuery,
   conversations: StoredConversation[],
+  senders: ConversationSenders | undefined,
 ): Promise<MachineSearch> {
-  const request: ShardRequest = { machine, query: shardQuery(query), conversations };
+  const request: ShardRequest = {
+    machine,
+    query: shardQuery(query),
+    senders: senders !== undefined,
+    conversations,
+  };
   try {
     const child = await run([...SELF_ARGV, '_search-shard'], {
       input: JSON.stringify(request),
@@ -159,7 +168,7 @@ async function shard(
     // Answered below, by reading the same share in this process.
   }
   // A share nobody read would be a silent hole in "everything was searched".
-  return searchStored(machine, query, conversations);
+  return searchStored(machine, query, conversations, senders);
 }
 
 export async function searchMachine(
@@ -167,6 +176,8 @@ export async function searchMachine(
   query: CorpusQuery,
   conversations: readonly StoredConversation[],
   shares?: number,
+  /** This machine's judges of who sent a message; a share run as its own process makes its own. */
+  senders?: ConversationSenders,
 ): Promise<MachineSearch> {
   const started = performance.now();
   const wanted =
@@ -175,9 +186,9 @@ export async function searchMachine(
       : conversations.filter((conversation) => query.providers?.has(conversation.provider));
   const sized = wanted.map((item) => ({ item, bytes: bytesOf(item) }));
   const count = shares ?? shardCount(sized.reduce((sum, entry) => sum + entry.bytes, 0));
-  if (count <= 1) return searchStored(machine, query, conversations);
+  if (count <= 1) return searchStored(machine, query, conversations, senders);
   const parts = await Promise.all(
-    dealOut(sized, count).map((share) => shard(machine, query, share)),
+    dealOut(sized, count).map((share) => shard(machine, query, share, senders)),
   );
   const [first, ...rest] = parts.map((part) => part.coverage);
   const coverage = { ...(first as MachineCoverage) };

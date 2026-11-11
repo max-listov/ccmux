@@ -6,13 +6,7 @@ import { zstdCompressSync } from 'node:zlib';
 import { histFile } from '../src/agent/claude/resume.ts';
 import { getProvider } from '../src/agent/index.ts';
 import { readTranscriptFile } from '../src/agent/transcript/transcriptRead.ts';
-import {
-  mapLines,
-  parseSearch,
-  parseWhen,
-  searchFleet,
-  searchLines,
-} from '../src/commands/search.ts';
+import { mapLines, parseSearch, searchLines } from '../src/commands/search.ts';
 import {
   type CorpusQuery,
   fileLines,
@@ -20,6 +14,7 @@ import {
   searchStored,
 } from '../src/context/corpusSearch.ts';
 import { dealOut, searchMachine, shardCount } from '../src/context/corpusShards.ts';
+import { parseWhen, searchFleet } from '../src/context/searchFleet.ts';
 import { storedConversations } from '../src/context/storedConversations.ts';
 import { compilePattern } from '../src/context/transcriptSearch.ts';
 import { readExternalTranscript, withExternalTranscript } from '../src/external/transcript.ts';

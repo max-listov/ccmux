@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { accountIsEmpty, nativeAccount } from '../src/agent/claude/native/account.ts';
-import { accountLines, fleetAccounts } from '../src/commands/fleetList.ts';
+import { accountLines } from '../src/commands/accounts.ts';
+import { fleetAccounts } from '../src/fleet/accounts.ts';
 import type { PlanLimits } from '../src/runtime/planLimits.ts';
 
 /**

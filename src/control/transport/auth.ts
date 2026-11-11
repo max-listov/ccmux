@@ -57,7 +57,9 @@ export function controlAuth(m: MachineConfig) {
       return controlPrincipal(m, ctx.req.headers);
     },
     resolveFromContext: async (ctx) => ChatPrincipalSchema.parse(ctx.principal),
-    rules: { local: 'authenticated' },
+    // `public` is the scope of the contract identity the framework mounts; on this socket it is
+    // asked by the same local caller as everything else, and answered on the same terms.
+    rules: { local: 'authenticated', public: 'authenticated' },
     inject: (ctx, principal) => {
       ctx.principal = principal;
       // Carried to the request log: a failure nobody can attribute is a failure nobody can fix —

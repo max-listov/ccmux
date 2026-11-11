@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { expandPeerList, peerListMachine } from '../src/commands/fleetList.ts';
+import { expandPeerList, peerListMachine } from '../src/fleet/fleetList.ts';
 import {
   loadPeerHeld,
   pack,

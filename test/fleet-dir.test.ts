@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { z } from 'zod';
-import { type FleetMachine, fleetView, RemoteSessionSchema } from '../src/commands/fleetList.ts';
+import { fleetView } from '../src/fleet/fleetList.ts';
+import { type FleetMachine, RemoteSessionSchema } from '../src/fleet/fleetSchema.ts';
 import { ListJsonSchema } from '../src/inventory/listSchema.ts';
 
 // A fleet consumer joins a session to a project by matching its checkout path — longest same-host

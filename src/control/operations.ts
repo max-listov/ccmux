@@ -8,6 +8,7 @@ import { readControlModels } from './models.ts';
 import { attachmentOperations } from './operations/attachment.ts';
 import type { ControlOperationDependencies, OperationContext } from './operations/context.ts';
 import { conversationOperations } from './operations/conversation.ts';
+import { readingOperations } from './operations/reading.ts';
 import { controlRefusal } from './operations/refusal.ts';
 import { sessionOperations } from './operations/session.ts';
 import { usageOperations } from './operations/usage.ts';
@@ -91,6 +92,7 @@ export function createControlOperations(
         { ...(signal ? { signal } : {}), timeoutMs: 5_000 },
       ),
     ...usageOperations(context),
+    ...readingOperations(context),
     ...conversationOperations(context),
     ...attachmentOperations(context),
     ...sessionOperations(context),

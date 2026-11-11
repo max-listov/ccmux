@@ -3,8 +3,7 @@ import { createHttpClient } from 'stitchkit';
 import { createUnixClientTransport } from 'stitchkit/server';
 import { z } from 'zod';
 import { machineConfigPath, resolveMonitoringLocation } from '../../config/location.ts';
-import { EXTERNAL_MAX_BYTES } from '../../external/residentSchema.ts';
-import { CONTROL_MAX_BYTES, CONTROL_MAX_READERS } from '../schema/core.ts';
+import { CONTROL_MAX_READERS, CONTROL_RESPONSE_MAX_BYTES } from '../schema/core.ts';
 import { controlSocket } from './socketPath.ts';
 
 export const ControlClientOptionsSchema = z
@@ -43,7 +42,7 @@ export function createControlConnection(options: ControlClientOptions) {
   const unary = createUnixClientTransport({
     ...common,
     maxConnections: 128,
-    maxResponseBytes: Math.max(CONTROL_MAX_BYTES, EXTERNAL_MAX_BYTES) + 1024,
+    maxResponseBytes: CONTROL_RESPONSE_MAX_BYTES + 1024,
   });
   let streaming: ReturnType<typeof createUnixClientTransport> | undefined;
   let stream: ReturnType<typeof createHttpClient> | undefined;

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { peerListMachine } from '../src/commands/fleetList.ts';
+import { peerListMachine } from '../src/fleet/fleetList.ts';
 import { type RemoteResult, remoteFailureCause } from '../src/fleet/transport.ts';
 
 const answer = (r: Partial<RemoteResult>): RemoteResult => ({

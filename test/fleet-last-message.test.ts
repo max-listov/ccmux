@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { RemoteSessionSchema } from '../src/commands/fleetList.ts';
+import { RemoteSessionSchema } from '../src/fleet/fleetSchema.ts';
 
 /**
  * What a peer already knows and used to lose on the way.

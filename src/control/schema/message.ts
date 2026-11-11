@@ -86,6 +86,24 @@ export const ControlInterruptSchema = ControlTargetSchema.extend({
   generation: z.uuid(),
   turnId: z.string().min(1).max(256),
 }).strict();
+/** Keys for a session's terminal composer: a slash command, or a numbered menu's number. */
+export const ControlKeysSchema = ControlTargetSchema.extend({
+  text: z
+    .string()
+    .min(1)
+    .max(16 * 1024),
+}).strict();
+/** What stopping or removing found beside the fact that it happened. */
+export const ControlStopReceiptSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    accepted: z.literal(true),
+    /** False when the session was already down: the state asked for, reached without a kill. */
+    stopped: z.boolean(),
+    /** A process group that outlived the session; null when nothing did. */
+    lingering: z.int().nullable(),
+  })
+  .strict();
 export const ControlActionReceiptSchema = z
   .object({ target: ManagedPeerSchema, accepted: z.literal(true) })
   .strict();

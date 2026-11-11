@@ -10,10 +10,13 @@ import {
   AttachmentUploadReceiptSchema,
   AttachmentUploadSelectorSchema,
 } from '../../attachments/schema.ts';
+import { LogPayloadSchema } from '../../chat/feedSchema.ts';
 import {
   MessageOperationReadSchema,
   MessageOperationResultSchema,
 } from '../../chat/messageOperationSchema.ts';
+import { SentListSchema } from '../../chat/sentLetterSchema.ts';
+import { ExactMessageResultSchema } from '../../context/exactMessageSchema.ts';
 import { NativeForkRequestSchema } from '../../context/schema.ts';
 import {
   ApplicationAuthorityCapabilitiesSchema,
@@ -32,7 +35,9 @@ import {
   ExternalMessageReadSchema,
   ExternalMessageResultSchema,
 } from '../../external/messageSchema.ts';
+import { FleetAnswerSchema } from '../../fleet/fleetSchema.ts';
 import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../../runtime/capabilities.ts';
+import { WhoisAnswerSchema, WhoisListSchema } from '../../session/identitySchema.ts';
 import {
   IdleProofSchema,
   SleepReceiptSchema,
@@ -65,10 +70,12 @@ import { externalListContract } from './externalList.ts';
 import {
   ControlActionReceiptSchema,
   ControlInterruptSchema,
+  ControlKeysSchema,
   ControlMessageCancelReceiptSchema,
   ControlMessageCancelSchema,
   ControlMessageReceiptSchema,
   ControlMessageSchema,
+  ControlStopReceiptSchema,
 } from './message.ts';
 import { ControlModelCatalogSchema, ControlModelsReadSchema } from './model.ts';
 import {
@@ -80,6 +87,13 @@ import {
   ControlTranscriptResultSchema,
 } from './native.ts';
 import { performanceContract } from './performance.ts';
+import {
+  ChatLogReadSchema,
+  ExactMessageReadSchema,
+  IdentityListReadSchema,
+  IdentityWhoisReadSchema,
+  SentLettersReadSchema,
+} from './reading.ts';
 import {
   ControlCommandCatalogSchema,
   ControlCommandsReadSchema,
@@ -161,6 +175,72 @@ export const controlContract = defineContract(
       expose: ['HTTP', 'CLI', 'MCP'],
       timeout: 7_000,
       tool: { name: 'usage_list' },
+    },
+    'identity.whois': {
+      method: 'POST',
+      path: '/identity/whois',
+      desc: 'Which session a window title, an address or a provider conversation id is, asked of every fleet machine; a machine that was not asked is named',
+      input: IdentityWhoisReadSchema,
+      output: WhoisAnswerSchema,
+      idempotent: true,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 30_000,
+      tool: { name: 'whois' },
+    },
+    'identity.list': {
+      method: 'POST',
+      path: '/identity/list',
+      desc: 'Every session of the fleet with its directory, repository, project, checkouts and conversation ids',
+      input: IdentityListReadSchema,
+      output: WhoisListSchema,
+      idempotent: true,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 30_000,
+      tool: { name: 'identities' },
+    },
+    'chat.log': {
+      method: 'POST',
+      path: '/chat/log',
+      desc: 'The newest letters received and sent, of this machine or merged across the fleet in time order; a machine that did not answer is named',
+      input: ChatLogReadSchema,
+      output: LogPayloadSchema,
+      idempotent: true,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 30_000,
+      tool: { name: 'chat_log' },
+    },
+    'fleet.list': {
+      method: 'POST',
+      path: '/fleet/list',
+      desc: 'Every session on every fleet machine with its state, the release each machine runs and the accounts they spend on; a machine that did not answer is a row that says why',
+      input: z.object({}).strict(),
+      output: FleetAnswerSchema,
+      idempotent: true,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 30_000,
+      tool: { name: 'fleet' },
+    },
+    'message.read': {
+      method: 'POST',
+      path: '/message/read',
+      desc: 'One user message of a session on this machine, whole, by its id, with who sent it',
+      input: ExactMessageReadSchema,
+      output: ExactMessageResultSchema,
+      idempotent: true,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 7_000,
+      tool: { name: 'read_message' },
+    },
+    'letter.list': {
+      method: 'POST',
+      path: '/letter/list',
+      desc: 'The letters the caller sent, each with its state and the reference a continuation cites',
+      input: SentLettersReadSchema,
+      output: SentListSchema,
+      idempotent: true,
+      expose: ['HTTP', 'CLI', 'MCP'],
+      timeout: 7_000,
+      tool: { name: 'sent_letters' },
     },
     'external.history': {
       method: 'POST',
@@ -477,6 +557,43 @@ export const controlContract = defineContract(
       input: ControlTargetSchema,
       output: ControlActionReceiptSchema,
       tool: { name: 'start' },
+    },
+    'session.stop': {
+      method: 'POST',
+      path: '/stop',
+      desc: 'Stop one registered session; it stays registered and can be started again',
+      expose: ['HTTP', 'CLI', 'MCP'],
+      idempotent: true,
+      input: ControlTargetSchema,
+      output: ControlStopReceiptSchema,
+      tool: { name: 'stop' },
+    },
+    'session.restart': {
+      method: 'POST',
+      path: '/restart',
+      desc: 'Stop one registered session and start it again under the same identity; the relaunch continues after this answer',
+      expose: ['HTTP', 'CLI', 'MCP'],
+      input: ControlTargetSchema,
+      output: ControlActionReceiptSchema,
+      tool: { name: 'restart' },
+    },
+    'session.remove': {
+      method: 'POST',
+      path: '/remove',
+      desc: 'Stop one session and take it out of the registry; the provider history stays on disk',
+      expose: ['HTTP', 'CLI', 'MCP'],
+      input: ControlTargetSchema,
+      output: ControlStopReceiptSchema,
+      tool: { name: 'remove_session' },
+    },
+    'session.keys': {
+      method: 'POST',
+      path: '/keys',
+      desc: 'Type text and Enter into a session terminal composer — a slash command or a numbered menu answer — and record that ccmux typed it; a message to an agent is message.send',
+      expose: ['HTTP', 'CLI', 'MCP'],
+      input: ControlKeysSchema,
+      output: ControlActionReceiptSchema,
+      tool: { name: 'keys' },
     },
     'turn.interrupt': {
       method: 'POST',

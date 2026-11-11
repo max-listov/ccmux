@@ -1,11 +1,8 @@
 import { expect, test } from 'bun:test';
 import { z } from 'zod';
-import {
-  type FleetMachine,
-  fleetView,
-  partitionParked,
-  RemoteSessionSchema,
-} from '../src/commands/fleetList.ts';
+import { partitionParked } from '../src/commands/fleetList.ts';
+import { fleetView } from '../src/fleet/fleetList.ts';
+import { type FleetMachine, RemoteSessionSchema } from '../src/fleet/fleetSchema.ts';
 import { rowStateLabel } from '../src/inventory/rows.ts';
 
 // Measured 2026-08-31: of 96 rows the fleet map printed, 61 were sessions somebody had deliberately

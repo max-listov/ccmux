@@ -69,7 +69,7 @@ test('the reported shape is the one every other session reports', () => {
 });
 
 test('a peer session carries its context fill through the fleet slice', async () => {
-  const { RemoteSessionSchema } = await import('../src/commands/fleetList.ts');
+  const { RemoteSessionSchema } = await import('../src/fleet/fleetSchema.ts');
   // What `list --json` already sends. Dropped before, because this schema did not name the field —
   // so a consumer watching the whole fleet could read context for local sessions only.
   const parsed = RemoteSessionSchema.parse({

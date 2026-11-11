@@ -13,6 +13,7 @@ import {
   RECEIPT_MARKS_MAX,
   type Receipts,
 } from './corpusSearchSchema.ts';
+import type { ConversationSenders } from './messageSender.ts';
 import type { StoredConversation, StoredFile } from './storedConversations.ts';
 import { matchMessage, type TranscriptMatch } from './transcriptSearch.ts';
 
@@ -60,7 +61,7 @@ export interface CorpusQuery {
 const BATCH_CHARS = 16 * 1024 * 1024;
 const READ_CHUNK = 4 * 1024 * 1024;
 /** Enough for any field a transcript carries; matching a clipped text would miss what was clipped. */
-const SEARCH_TEXT_LIMIT = 1_000_000;
+export const SEARCH_TEXT_LIMIT = 1_000_000;
 /** How far into a file its working directory is looked for. */
 const DIR_LINES = 64;
 
@@ -271,6 +272,9 @@ export async function searchStored(
   machine: string,
   query: CorpusQuery,
   conversations: readonly StoredConversation[],
+  /** Who sent a delivered message, by the session its conversation belongs to. Without it a
+   *  delivery does not say — the caller has none of this machine's records to judge by. */
+  senders?: ConversationSenders,
 ): Promise<MachineSearch> {
   const started = performance.now();
   const coverage: MachineCoverage = {
@@ -335,7 +339,13 @@ export async function searchStored(
       try {
         // An outline keeps a turn's last answer, which is only known once the next request comes.
         let answer: TranscriptMessage | null = null;
-        const keep = (match: TranscriptMatch, message: TranscriptMessage): void => {
+        const keep = (
+          match: TranscriptMatch,
+          message: TranscriptMessage,
+          /** The message as the provider recorded it: a harness record is still on the user's side
+           *  there, which is what its sender is judged by. */
+          recorded: TranscriptMessage = message,
+        ): void => {
           if (query.roles !== undefined && !query.roles.has(match.role)) return;
           const at = match.createdAt === null ? Number.NaN : Date.parse(match.createdAt);
           // A message that does not say when it was written is in no date range.
@@ -362,6 +372,9 @@ export async function searchStored(
               receivedAt: Number.isFinite(at) ? match.createdAt : null,
               role: match.role,
               messageId: id,
+              ...(senders === undefined
+                ? {}
+                : { sender: senders(conversation.ofSession)(recorded) }),
             };
             const held = seen.get(ref.address);
             if (held === undefined || earlier(delivery, held) < 0) seen.set(ref.address, delivery);
@@ -409,7 +422,7 @@ export async function searchStored(
                 { ...query, pattern: query.pattern },
                 { keys: query.receipts === true },
               );
-              if (match !== null) keep(match, message);
+              if (match !== null) keep(match, message, parsed);
               continue;
             }
             if (message.kind !== 'message' || !message.text) continue;

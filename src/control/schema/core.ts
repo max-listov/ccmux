@@ -12,6 +12,9 @@ import {
 } from '../../runtime/selectionSchema.ts';
 
 export const CONTROL_MAX_BYTES = 512 * 1024;
+/** The largest answer one call carries. A fleet's sessions with their last messages, or a message
+ *  read whole, is past what a status snapshot needs; anything larger than this is a stream. */
+export const CONTROL_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 export const CONTROL_MAX_READERS = 32;
 export const ControlTargetSchema = z.object({ target: ManagedPeerSchema }).strict();
 export const ControlRowSchema = z

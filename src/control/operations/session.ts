@@ -1,9 +1,12 @@
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
+import { chatPrincipalKey } from '../../chat/identity.ts';
 import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
 import { cancelDelegation } from '../../delegation/cancel.ts';
 import type { DelegationCancelSchema } from '../../delegation/schema.ts';
 import { readRuntimeCatalog } from '../../runtime/catalog.ts';
+import { typeKeys } from '../../session/keys.ts';
+import { removeRegisteredSession, restartSession, stopSession } from '../../session/lifecycle.ts';
 import { clearLifecycleBlock } from '../../session/lifecycleBlocks.ts';
 import { withSessionRegistryLock } from '../../session/registryLock.ts';
 import { assertSleepTarget, sleepSession, wakeSession } from '../../session/sleep/operations.ts';
@@ -33,7 +36,11 @@ import { readControlNative, respondControlNative } from '../nativeFeed.ts';
 import { readControlPermission, updateControlPermission } from '../permission.ts';
 import type { ControlTargetSchema } from '../schema/core.ts';
 import type { ControlDirectoryReadSchema } from '../schema/directory.ts';
-import type { ControlInterruptSchema, ControlMessageSchema } from '../schema/message.ts';
+import type {
+  ControlInterruptSchema,
+  ControlKeysSchema,
+  ControlMessageSchema,
+} from '../schema/message.ts';
 import type { ControlModelsReadSchema } from '../schema/model.ts';
 import type { ControlNativeReadSchema, ControlNativeResponseSchema } from '../schema/native.ts';
 import type {
@@ -56,6 +63,7 @@ type TargetInput = z.output<typeof ControlTargetSchema>;
 type CreateInput = z.output<typeof ControlCreateSchema>;
 type MessageInput = z.output<typeof ControlMessageSchema>;
 type InterruptInput = z.output<typeof ControlInterruptSchema>;
+type KeysInput = z.output<typeof ControlKeysSchema>;
 type NativeReadInput = z.output<typeof ControlNativeReadSchema>;
 type NativeResponseInput = z.output<typeof ControlNativeResponseSchema>;
 type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
@@ -182,6 +190,76 @@ export function sessionOperations(context: OperationContext) {
               await startSession(m, session.name, session.dir);
               return { target: input.target, accepted: true as const };
             }),
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    stop: (input: TargetInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          async () => {
+            const session = controlTarget(m, input.target);
+            const outcome = await stopSession(m, session.name);
+            return { target: input.target, accepted: true as const, ...outcome };
+          },
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    restart: (input: TargetInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          async () => {
+            const session = controlTarget(m, input.target);
+            try {
+              await restartSession(m, session);
+            } catch (error) {
+              // Refused while the existing owner is still alive: nothing was stopped.
+              throw new AppError('UNAVAILABLE', {
+                message: `Cannot restart: ${error instanceof Error ? error.message : String(error)}`,
+                status: 409,
+              });
+            }
+            return { target: input.target, accepted: true as const };
+          },
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    remove: (input: TargetInput, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          async () => {
+            const session = controlTarget(m, input.target);
+            const removed = await removeRegisteredSession(m, session.name);
+            if (removed === null)
+              throw new AppError('NOT_FOUND', {
+                message: 'Session is not registered',
+                status: 404,
+              });
+            return { target: input.target, accepted: true as const, stopped: true, ...removed };
+          },
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
+    keys: (input: KeysInput, principal: ChatPrincipal, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          async () => {
+            const session = controlTarget(m, input.target);
+            const refused = await typeKeys(m, session, input.text, chatPrincipalKey(principal));
+            if (refused !== null)
+              throw new AppError(
+                refused.reason === 'menu'
+                  ? 'MENU_OPEN'
+                  : refused.reason === 'no-composer'
+                    ? 'UNSUPPORTED'
+                    : 'NOT_RUNNING',
+                { message: refused.message, status: 409 },
+              );
+            return { target: input.target, accepted: true as const };
+          },
           { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
         )
         .catch(controlRefusal),

@@ -10,7 +10,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accountLines, fleetAccounts } from '../src/commands/accounts.ts';
+import { accountLines } from '../src/commands/accounts.ts';
+import { fleetAccounts } from '../src/fleet/accounts.ts';
 import { ListItemSchema } from '../src/inventory/listSchema.ts';
 import { parseClaudeUsage, parseReset } from '../src/quota/claudeUsage.ts';
 import { discoverTargets } from '../src/quota/discover.ts';

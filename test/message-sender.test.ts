@@ -5,12 +5,13 @@ import { join } from 'node:path';
 import { histFile } from '../src/agent/claude/resume.ts';
 import { formatChatInjection } from '../src/chat/format.ts';
 import { appendMessage } from '../src/chat/ledger.ts';
+import { readExactMessage } from '../src/context/exactMessage.ts';
 import {
   EXACT_MESSAGE_LIMITS,
   ExactMessageResultSchema,
-  readExactMessage,
-} from '../src/context/exactMessage.ts';
-import { MessageSenderSchema, senderJudge } from '../src/context/messageSender.ts';
+} from '../src/context/exactMessageSchema.ts';
+import { senderJudge } from '../src/context/messageSender.ts';
+import { MessageSenderSchema } from '../src/context/messageSenderSchema.ts';
 import { compilePattern, searchTranscript } from '../src/context/transcriptSearch.ts';
 import { readTranscriptWindow } from '../src/context/transcriptWindow.ts';
 import { recordSentKeys } from '../src/session/sentKeys.ts';

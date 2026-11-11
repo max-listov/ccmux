@@ -1,13 +1,14 @@
 import { loadMachineConfig } from '../config/machine.ts';
+import { fleetAccounts } from '../fleet/accounts.ts';
+import { collectFleet, fleetView } from '../fleet/fleetList.ts';
 import { collectRows } from '../inventory/rows.ts';
 import { refreshQuota } from '../quota/refresh.ts';
 import { machineProfiles, type ProfileView } from '../quota/view.ts';
 import { loadSessions } from '../session/registry.ts';
 import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
-import { accountLines, fleetAccounts } from './accounts.ts';
+import { accountLines } from './accounts.ts';
 import { parseFlags } from './flags.ts';
-import { collectFleet, fleetView } from './fleetList.ts';
 
 /** A profile the quota layer found but could not name an account for, or could not read. */
 interface AccountProblem {

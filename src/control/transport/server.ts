@@ -1,7 +1,7 @@
 import { AppError } from 'stitchkit';
 import type { ApplicationAdmission } from 'stitchkit/application';
 import { createObservability } from 'stitchkit/observability';
-import { createServer } from 'stitchkit/server';
+import { createServer, withContractIdentity } from 'stitchkit/server';
 import { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
 import type { MachineConfig } from '../../types.ts';
 import { log } from '../../util/log.ts';
@@ -60,7 +60,9 @@ export function createControlServer(
   });
   const server = createServer({
     unix: { path: controlSocket(m), mode: 0o600 },
-    services: controls.services,
+    // Answered beside the operations themselves: a client reads which of them this daemon has and
+    // whether their schemas are its own, before a call tells it by failing.
+    services: withContractIdentity(controls.services),
     maxJsonBodyBytes: 64 * 1024,
     logging: false,
     ...(observability.request ? { observability: observability.request } : {}),

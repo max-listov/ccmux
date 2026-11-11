@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-10-15 08:00 +07:00
+updated: 2026-11-11 15:17 +07:00
 ---
 
 # Terminal-меню
@@ -315,6 +315,56 @@ the delivery cursor and unresolved pickup as well as idle/terminal state: readin
 cancel a queued delivery. Outcomes distinguish `idle`, `completed`, `interrupted`, `failed`,
 `timeout` and `unavailable`. They do not assert that a business task is complete. Client cancellation
 only cancels that wait. Deadlines never acknowledge a message or declare a running operation done.
+
+## Чтения, которые раньше были только командой
+
+Команда человека и операция контракта — два представления одной функции домена. `ccmux whois`,
+`search`, `fleet`, `transcript --message` и `msg sent` читают флаги и печатают; тот же ответ
+программа получает по имени, тем же объектом, что команда печатает под `--json`.
+
+| Операция | Ответ | Функция домена |
+|---|---|---|
+| `identity.whois` | `WhoisAnswerSchema` | `session/whoisFleet.ts` |
+| `identity.list` | `WhoisListSchema` | `session/whoisFleet.ts` |
+| `watchIdentities` (поток) | `WhoisEventSchema` | `followIdentities` |
+| `search` (поток) | `SearchFrameSchema` | `context/searchFleet.ts` |
+| `message.read` | `ExactMessageResultSchema` | `context/exactMessage.ts` |
+| `letter.list` | `SentListSchema` | `chat/sentLetters.ts` |
+| `fleet.list` | `FleetAnswerSchema` | `fleet/fleetList.ts` |
+| `session.stop`, `session.remove` | `ControlStopReceiptSchema` | `session/lifecycle.ts` |
+| `session.restart`, `session.keys` | `ControlActionReceiptSchema` | `session/lifecycle.ts`, `session/keys.ts` |
+
+Запрос поиска — `SearchRequestSchema`: его же собирает команда из флагов, поэтому команда и
+операция не могут начать значить разные поиски.
+
+**Поиск отвечает кадрами.** Один ответ может быть всем, что человек написал за день, целыми
+текстами, — это больше любого ограниченного ответа. Кадры: `conversation`, `match`, `mark` и
+последний `end` с тем, какие машины опрошены и какие нет. `collectSearch` собирает из них объект
+`ccmux search --json`. Поток, оборванный до `end`, — `SearchStreamCutError`: читатель не узнал,
+что было опрошено, и не вправе считать полученное ответом.
+
+**Поиск исполняется не в цикле демона.** Демон отвечает о состоянии всех сессий из одного цикла;
+чтение гигабайтов внутри него — ожидание для всех остальных. Обработчик — Stitchkit
+`createOperationProcesses(...).stream(searchContract, 'search')`: на вызов запускается этот же
+бинарь со скрытой командой `_operation`, которая исполняет `searchContract` через
+`runOperationProcess`. Отмена вызывающим завершает процесс; одновременно идут не больше двух
+поисков, третий получает `OPERATION_BUSY`.
+
+**Клиент знает, с каким демоном говорит.** Демон обновляется сам и на каждой машине в свой
+момент, поэтому клиент часто новее демона. Демон монтирует `withContractIdentity`; клиент
+читает `client.identity()` — отпечаток своего контракта и демона, по каждой операции. Операции нет
+в `server.operations` — у этого демона её нет; дайджест другой — схема изменилась, и отсутствующее
+поле значит «эта версия его не шлёт», а не «значения нет». Демон до 0.90.0 отпечатка не знает
+(`server: undefined`); с 0.90.0 неизвестный маршрут — `UNKNOWN_OPERATION` с именем операции.
+
+**Схема отдельно от кода, который её наполняет.** Клиент собирается в один файл и не должен
+тянуть чтение журналов, SQLite и запуск процессов. Поэтому схемы ответов лежат в модулях без
+логики (`searchRequestSchema.ts`, `exactMessageSchema.ts`, `messageSenderSchema.ts`,
+`fleet/fleetSchema.ts`), а контракт импортирует только их. Проверка упакованного клиента падает,
+если это нарушить.
+
+Операции с адресом сессии отвечают за свою машину. Ответы по флоту (`identity.*`, `search`,
+`fleet.list`) опрашивают остальные машины сами и называют каждую, которая не ответила.
 
 # Resident consumption
 

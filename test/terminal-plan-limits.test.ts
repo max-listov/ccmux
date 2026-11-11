@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { profileAccount } from '../src/agent/claude/account.ts';
 import { claudeProfile } from '../src/agent/claude/profileRoot.ts';
-import { fleetAccounts } from '../src/commands/accounts.ts';
 import { countRender, extractMetrics, originalCommand } from '../src/commands/statusLine.ts';
+import { fleetAccounts } from '../src/fleet/accounts.ts';
 import { statusLinePlanLimits } from '../src/runtime/planLimits.ts';
 import { makeMachine } from './helpers.ts';
 

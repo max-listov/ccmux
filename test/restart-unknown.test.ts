@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { formatFleetSession, RemoteSessionSchema } from '../src/commands/fleetList.ts';
+import { formatFleetSession } from '../src/commands/fleetList.ts';
+import { RemoteSessionSchema } from '../src/fleet/fleetSchema.ts';
 
 const row = (extra: Record<string, unknown> = {}) =>
   RemoteSessionSchema.parse({

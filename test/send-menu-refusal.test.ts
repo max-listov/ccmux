@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { menuRefusal } from '../src/commands/send.ts';
+import { menuRefusal } from '../src/session/keys.ts';
 
 // `send` types text and Enter. At a menu without numbers the Enter picks the highlighted option,
 // and the highlighted option of the folder-trust question is, half the time, "No, exit".

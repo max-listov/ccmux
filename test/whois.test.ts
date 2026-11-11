@@ -1,22 +1,35 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { histFile } from '../src/agent/claude/resume.ts';
-import { parseSearch, receiptLines, searchFleet } from '../src/commands/search.ts';
-import {
-  answerLines,
-  followIdentities,
-  whoisAll,
-  whoisFleet,
-  whoisSchemas,
-} from '../src/commands/whois.ts';
+import { formatChatInjection } from '../src/chat/format.ts';
+import { managedPeer } from '../src/chat/identity.ts';
+import { appendMessage } from '../src/chat/ledger.ts';
+import { SentListSchema } from '../src/chat/sentLetterSchema.ts';
+import { parseSearch, receiptLines } from '../src/commands/search.ts';
+import { answerLines } from '../src/commands/whois.ts';
 import { sessionsPath } from '../src/config/paths.ts';
 import { mergeReceipts } from '../src/context/corpusSearch.ts';
 import { CorpusSearchJsonSchema, RECEIPT_MARKS_MAX } from '../src/context/corpusSearchSchema.ts';
 import { searchMachine } from '../src/context/corpusShards.ts';
+import { readExactMessage } from '../src/context/exactMessage.ts';
+import { searchFleet } from '../src/context/searchFleet.ts';
+import {
+  collectSearch,
+  type SearchFrame,
+  SearchFrameSchema,
+  SearchStreamCutError,
+} from '../src/context/searchFrames.ts';
 import { storedConversations } from '../src/context/storedConversations.ts';
+import { ControlPublisher } from '../src/control/publisher.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
+import { chatLogAnswer } from '../src/fleet/chatLog.ts';
+import { fleetAnswer } from '../src/fleet/fleetList.ts';
+import { FleetAnswerSchema } from '../src/fleet/fleetSchema.ts';
 import { PackedSchema, pack, parseKnown, unpack } from '../src/fleet/peerDelta.ts';
 import { peerIdentitiesAnswer } from '../src/fleet/peerRead.ts';
 import { sessionIdentities } from '../src/session/identity.ts';
@@ -27,10 +40,13 @@ import {
   type WhoisEvent,
   WhoisEventSchema,
 } from '../src/session/identitySchema.ts';
+import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
 import { projectOf, repositoryKey, repositoryOf } from '../src/session/repository.ts';
+import { sentKeysOf } from '../src/session/sentKeys.ts';
 import { readQuestion } from '../src/session/whois.ts';
+import { followIdentities, whoisAll, whoisFleet, whoisSchemas } from '../src/session/whoisFleet.ts';
 import type { MachineConfig, Session } from '../src/types.ts';
-import { makeMachine, makeSession } from './helpers.ts';
+import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 
 /**
  * A program that saw a session by one of its names is owed the session itself — or a plain "that is
@@ -947,6 +963,67 @@ test('a marked message is answered with every place it arrived, and when it firs
   });
 });
 
+test('a delivery says who sent the marked message: a person, a letter that quotes it, the harness', async () => {
+  await fleet(async ({ m, sessions, api, write }) => {
+    const letter = makeChatMessage({ body: 'take the task\n\nticket dddd4444' });
+    appendMessage(m, letter);
+    const forged = makeChatMessage({ body: 'also this\n\nticket ffff6666' });
+    write(NOW, [
+      L({ type: 'custom-title', customTitle: 'host-a-agent-a', sessionId: NOW }),
+      said('p-1', NOW, api, 'do this\n\nticket eeee5555', '2026-09-02T10:00:00.000Z'),
+      // The same mark, quoted to another session in a letter ccmux delivered there.
+      said('l-1', NOW, api, formatChatInjection(letter), '2026-09-02T11:00:00.000Z'),
+      // A letter this machine's ledger does not hold is nobody's letter and no person's paste.
+      said(
+        'f-1',
+        NOW,
+        api,
+        formatChatInjection(forged).replace(
+          `· id: ${forged.id}`,
+          '· id: 99999999-9999-4999-8999-999999999999',
+        ),
+        '2026-09-02T12:00:00.000Z',
+      ),
+      said(
+        'h-1',
+        NOW,
+        api,
+        '<task-notification>\n<task-id>b1</task-id>\nticket abab7777',
+        '2026-09-02T13:00:00.000Z',
+      ),
+    ]);
+    const answer = await searchFleet(
+      m,
+      parseSearch([MARK, '--kind', 'message', '--local', '--receipts', '--json']),
+      undefined,
+      sessions,
+    );
+    expect(CorpusSearchJsonSchema.parse(answer)).toEqual(answer);
+    const verdicts = Object.fromEntries(
+      (answer.receipts?.marks ?? []).map(({ mark, deliveries }) => [
+        mark,
+        deliveries.map((row) => row.sender?.verdict),
+      ]),
+    );
+    expect(verdicts).toEqual({
+      eeee5555: ['person'],
+      dddd4444: ['session-letter'],
+      ffff6666: ['unverifiable'],
+      abab7777: ['harness'],
+    });
+    // A reader with none of the machine's records does not say, rather than guess a person.
+    const blind = await searchMachine(
+      'host-a',
+      parseSearch([MARK, '--kind', 'message', '--receipts']).query,
+      storedConversations(m, sessions),
+      1,
+    );
+    expect(blind.receipts?.marks.every((entry) => !('sender' in (entry.deliveries[0] ?? {})))).toBe(
+      true,
+    );
+  });
+});
+
 test('receipts are bounded, say so, and merge across machines that may not know them', async () => {
   await fleet(async ({ m, sessions, api, write }) => {
     const many = Array.from(
@@ -1177,4 +1254,173 @@ test('only a continued Claude session carries copies: a Codex line number is not
     'c-2',
   ]);
   expect(merged([at('claude', 'c-1', 'agent-a'), at('claude', 'c-2', 'agent-a')])).toEqual(['c-1']);
+});
+
+/** The answers with the times a read takes left out: two reads of one store differ in nothing else. */
+const timeless = <T extends { machines: readonly object[] }>(answer: T): T => ({
+  ...answer,
+  machines: answer.machines.map((row) => ('elapsedMs' in row ? { ...row, elapsedMs: 0 } : row)),
+});
+
+test('a program asks the daemon by name and gets the object the command prints', async () => {
+  await fleet(async ({ root, m: fixture, sessions, api, write }) => {
+    // Every store named: the search runs as a process that reads the machine's file, and a store
+    // that file leaves out is the operator's own.
+    const m: MachineConfig = {
+      ...fixture,
+      codexHome: join(root, 'codex'),
+      codexSessionsDir: join(root, 'codex', 'sessions'),
+      // No session of this fixture runs: a multiplexer that lists nothing says exactly that.
+      tmuxBin: '/usr/bin/true',
+    };
+    mkdirSync(join(root, 'codex', 'sessions'), { recursive: true });
+    write(NOW, [
+      L({ type: 'custom-title', customTitle: 'host-a-agent-a', sessionId: NOW }),
+      said('p-1', NOW, api, 'do this\n\nticket eeee5555', '2026-09-02T10:00:00.000Z'),
+    ]);
+    await writeSessionsUnlocked(m, sessions);
+    const config = join(root, 'machine.json');
+    writeFileSync(config, JSON.stringify(m));
+    // The search runs as this binary started again; it reads the machine the daemon serves.
+    const before = process.env.CCMUX_CONFIG;
+    process.env.CCMUX_CONFIG = config;
+    const publisher = new ControlPublisher(m);
+    const server = createControlServer(m, publisher);
+    const client = createControlClient({ socket: controlSocket(m) });
+    try {
+      // Each answer is the one the command builds, by the same function.
+      expect(await client['identity.whois']({ query: 'host-a-agent-a', local: true })).toEqual(
+        await whoisFleet(m, 'host-a-agent-a', { local: true }),
+      );
+      expect(await client['identity.list']({ local: true })).toEqual(
+        await whoisAll(m, { local: true }),
+      );
+      const request = {
+        pattern: MARK,
+        kinds: ['message' as const],
+        receipts: true,
+        machines: [],
+      };
+      const local = await searchFleet(
+        m,
+        parseSearch([MARK, '--kind', 'message', '--local', '--receipts', '--json']),
+      );
+      const frames: SearchFrame[] = [];
+      const stream = await client.search(request);
+      for await (const frame of stream) frames.push(SearchFrameSchema.parse(frame));
+      expect(frames.at(-1)?.frame).toBe('end');
+      const streamed = await collectSearch(frames);
+      expect(CorpusSearchJsonSchema.parse(streamed)).toEqual(streamed);
+      expect(timeless(streamed)).toEqual(timeless(local));
+      expect(streamed.receipts?.marks[0]?.deliveries[0]?.sender?.verdict).toBe('person');
+      // A stream that stops before its last frame is not an answer, and is not read as one.
+      await expect(collectSearch(frames.slice(0, -1))).rejects.toBeInstanceOf(SearchStreamCutError);
+      // A caller that leaves ends the process that was reading for it.
+      const searching = (): string[] =>
+        Bun.spawnSync(['pgrep', '-P', String(process.pid), '-f', '_operation'])
+          .stdout.toString()
+          .split('\n')
+          .filter((line) => line !== '');
+      const leaving = new AbortController();
+      const left = await client.search.withOptions(request, { signal: leaving.signal });
+      const pending = left.next().then(
+        () => 'answered',
+        () => 'left',
+      );
+      const deadline = Date.now() + 5_000;
+      while (searching().length === 0 && Date.now() < deadline) await Bun.sleep(5);
+      leaving.abort();
+      await pending;
+      while (searching().length > 0 && Date.now() < deadline) await Bun.sleep(10);
+      expect(searching()).toEqual([]);
+
+      // What this client and this daemon each call the contract: the same, operation by operation.
+      // The daemon answers more than a client asks — its own fleet reads — so the whole digests
+      // differ and every operation the client knows is compared by name.
+      const identity = await client.identity();
+      expect(identity.server).toBeDefined();
+      for (const [operation, digest] of Object.entries(identity.client.operations))
+        expect([operation, identity.server?.operations[operation]]).toEqual([operation, digest]);
+      expect(Object.keys(identity.client.operations)).toEqual(
+        expect.arrayContaining(['control.identity.whois', 'control-events.search']),
+      );
+
+      // A request that names no search is the caller's mistake, said before anything is started.
+      await expect(
+        (async () => {
+          for await (const _ of await client.search({ machines: [] })) void _;
+        })(),
+      ).rejects.toBeDefined();
+
+      const message = await client['message.read']({ address: 'host-a:agent-a', messageId: 'p-1' });
+      expect(message).toEqual({
+        ...(await readExactMessage(m, sessions[0] as Session, 'p-1')),
+        observedAt: message.observedAt,
+      });
+      expect(message.message?.sender.verdict).toBe('person');
+      await expect(
+        client['message.read']({ address: 'host-b:agent-a', messageId: 'p-1' }),
+      ).rejects.toBeDefined();
+
+      // The fleet as the command prints it: this machine's sessions under its own name.
+      const fleetNow = await client['fleet.list']({});
+      expect(FleetAnswerSchema.parse(fleetNow)).toEqual(fleetNow);
+      expect(fleetNow.machines.map((row) => [row.machine, row.alias, row.ok])).toEqual([
+        ['host-a', null, true],
+      ]);
+      expect(fleetNow.machines[0]?.sessions.map((row) => row.name).sort()).toEqual(
+        (await fleetAnswer(m)).machines[0]?.sessions.map((row) => row.name).sort() as string[],
+      );
+      expect(fleetNow.machines[0]?.sessions.length).toBe(sessions.length);
+
+      // The chat log as the command builds it, a sent letter in it.
+      appendMessage(m, makeChatMessage({ body: 'build is green' }));
+      const logNow = await client['chat.log']({});
+      expect(logNow).toEqual(await chatLogAnswer(m, { limit: 30, fleet: false }));
+      expect(logNow.rows.length).toBe(1);
+
+      const letters = await client['letter.list']({});
+      expect(SentListSchema.parse(letters)).toEqual(letters);
+      expect(letters.sent).toEqual([]);
+
+      // The stream opens with every session and a line for the machine, as the command's does.
+      const abort = new AbortController();
+      const events: WhoisEvent[] = [];
+      const follow = await client.watchIdentities.withOptions(
+        { local: true },
+        { signal: abort.signal },
+      );
+      for await (const event of follow) {
+        events.push(event);
+        if (event.event === 'machine') break;
+      }
+      abort.abort();
+      expect(events.filter((event) => event.event === 'session').length).toBe(sessions.length);
+      expect(events.at(-1)).toEqual({ event: 'machine', machine: 'host-a', status: 'asked' });
+
+      // Managing a session by name: keys are typed and recorded as ccmux's, a stop says what it
+      // found, a removal takes the session out of the registry and leaves its history.
+      const target = managedPeer(m.rcPrefix, sessions[0] as Session);
+      expect(await client['session.keys']({ target, text: '/compact' })).toEqual({
+        target,
+        accepted: true,
+      });
+      expect(sentKeysOf(m, 'agent-a').map((row) => row.by)).toEqual(['ccmux:host-a:cli']);
+      expect(await client['session.stop']({ target })).toMatchObject({ accepted: true });
+      expect(await client['session.remove']({ target })).toMatchObject({
+        accepted: true,
+        stopped: true,
+      });
+      expect(loadSessions(m).map((session) => session.name)).toEqual(['agent-a-two']);
+      expect(existsSync(histFile(api, NOW, m.projectsDir))).toBe(true);
+      await expect(client['session.stop']({ target })).rejects.toBeDefined();
+    } finally {
+      await client.close();
+      publisher.close();
+      await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
+      await server.observability.close();
+      if (before === undefined) delete process.env.CCMUX_CONFIG;
+      else process.env.CCMUX_CONFIG = before;
+    }
+  });
 });

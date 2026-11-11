@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { TranscriptKindSchema, TranscriptRoleSchema } from '../agent/transcript/messageSchema.ts';
 import { DeclaredProjectSchema } from '../session/identitySchema.ts';
+import { MessageSenderSchema } from './messageSenderSchema.ts';
 
 /*
  * A search across every stored conversation, as one machine answers it and as a fleet of them is
@@ -80,6 +81,14 @@ export const DeliverySchema = ConversationRefSchema.extend({
     .describe(
       "The provider's id of that message within its conversation. A Claude session continued in a new file carries copies of its earlier messages under the same id; such copies are one delivery.",
     ),
+  /** Who sent that message, judged on the machine that holds the conversation — its ledger and its
+   *  log of typed keys are the only records that can tell. Null for a message that is not the
+   *  user's; absent when that machine runs a release that does not say. */
+  sender: MessageSenderSchema.nullable()
+    .optional()
+    .describe(
+      "Who sent that first message, in the words of `transcript --json`: person, session-letter, routed-input, harness, ccmux-keys or unverifiable. Null when the message is not on the user's side. Absent when the machine holding the conversation runs a release that does not say — not the same as null.",
+    ),
 });
 export type Delivery = z.infer<typeof DeliverySchema>;
 
@@ -137,6 +146,12 @@ export const MachineUnavailableSchema = z.object({
   error: z.string(),
 });
 
+/** A machine's row in the fleet's answer: the same row, with the machine that holds it. */
+const onMachine = { machine: z.string().min(1) };
+export const FleetConversationHitsSchema = ConversationHitsSchema.extend(onMachine);
+export const FleetMatchSchema = CorpusMatchSchema.extend(onMachine);
+export const FleetDeliverySchema = DeliverySchema.extend(onMachine);
+
 export const CorpusSearchJsonSchema = z.object({
   query: z.object({
     /** Null for an outline: no pattern, every turn of the chosen conversations. */
@@ -159,10 +174,10 @@ export const CorpusSearchJsonSchema = z.object({
   total: z.int().nonnegative(),
   truncated: z.boolean(),
   /** Every conversation with a match, by its last match, oldest first. */
-  conversations: z.array(ConversationHitsSchema.extend({ machine: z.string().min(1) })),
+  conversations: z.array(FleetConversationHitsSchema),
   /** The newest `limit` matches, oldest first. */
-  matches: z.array(CorpusMatchSchema.extend({ machine: z.string().min(1) })),
+  matches: z.array(FleetMatchSchema),
   /** Present when the search asked for receipts; `limit` does not apply to them. */
-  receipts: receiptsOf(DeliverySchema.extend({ machine: z.string().min(1) })).optional(),
+  receipts: receiptsOf(FleetDeliverySchema).optional(),
 });
 export type CorpusSearchJson = z.infer<typeof CorpusSearchJsonSchema>;

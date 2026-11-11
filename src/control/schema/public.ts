@@ -71,6 +71,17 @@ export {
   type NotificationAudience,
   NotificationAudienceSchema,
 } from '../../chat/originSchema.ts';
+// Who a session is, what was said and who sent it, and what was sent: the answers of `ccmux whois`,
+// `search`, `transcript --message` and `msg sent`, read here as operations of this contract.
+export {
+  type SendReceipt,
+  SendReceiptSchema,
+  type SentLetter,
+  SentLetterSchema,
+  type SentLetterState,
+  SentLetterStateSchema,
+  SentListSchema,
+} from '../../chat/sentLetterSchema.ts';
 export {
   LaunchRecipeMetadataSchema,
   LaunchRecipeReferenceSchema,
@@ -90,6 +101,34 @@ export {
   ToolOutcomeSchema,
 } from '../../content/toolSchema.ts';
 export {
+  type ConversationHits,
+  ConversationHitsSchema,
+  type ConversationRef,
+  ConversationRefSchema,
+  type CorpusMatch,
+  CorpusMatchSchema,
+  type CorpusSearchJson,
+  CorpusSearchJsonSchema,
+  type Delivery,
+  DeliverySchema,
+  FleetConversationHitsSchema,
+  FleetDeliverySchema,
+  FleetMatchSchema,
+  type MachineCoverage,
+  MachineCoverageSchema,
+  MachineUnavailableSchema,
+  RECEIPT_MARKS_MAX,
+  type Receipts,
+  ReceiptsSchema,
+} from '../../context/corpusSearchSchema.ts';
+export {
+  EXACT_MESSAGE_LIMITS,
+  ExactMessageOutcomeSchema,
+  type ExactMessageResult,
+  ExactMessageResultSchema,
+} from '../../context/exactMessageSchema.ts';
+export { type MessageSender, MessageSenderSchema } from '../../context/messageSenderSchema.ts';
+export {
   type NativeForkRequest,
   NativeForkRequestSchema,
   type NativeHistoryEntry,
@@ -98,6 +137,20 @@ export {
   NativeHistoryPageSchema,
   NativeHistoryQuerySchema,
 } from '../../context/schema.ts';
+export {
+  collectSearch,
+  SEARCH_FRAME_MAX_BYTES,
+  type SearchFrame,
+  SearchFrameSchema,
+  SearchStreamCutError,
+} from '../../context/searchFrames.ts';
+export {
+  DEFAULT_MATCHES,
+  SEARCH_LIMIT_MAX,
+  SEARCH_PROVIDERS,
+  type SearchRequest,
+  SearchRequestSchema,
+} from '../../context/searchRequestSchema.ts';
 export {
   ApplicationAuthorityCapabilitiesSchema,
   ApplicationAuthorityOpenSchema,
@@ -114,6 +167,21 @@ export {
   DelegationRequestSchema,
   DelegationSchema,
 } from '../../delegation/schema.ts';
+export {
+  type AccountProfile,
+  AccountProfileSchema,
+  type FleetAccount,
+  FleetAccountSchema,
+  type FleetAnswer,
+  FleetAnswerSchema,
+  type FleetMachine,
+  FleetMachineSchema,
+  type FleetView,
+  FleetViewSchema,
+  type ProjectedPlanLimits,
+  ProjectedPlanLimitsSchema,
+  RemoteSessionSchema,
+} from '../../fleet/fleetSchema.ts';
 export {
   ApplicationPolicyEvidenceSchema,
   ApplicationPolicyMetadataSchema,
@@ -137,6 +205,27 @@ export {
   type NativeTurnOptions,
   NativeTurnOptionsSchema,
 } from '../../runtime/selectionSchema.ts';
+export {
+  DeclaredProjectSchema,
+  type SessionIdentity,
+  SessionIdentitySchema,
+  type SessionLife,
+  SessionLifeSchema,
+  type StrayConversation,
+  StrayConversationSchema,
+  type WhoisAnswer,
+  WhoisAnswerSchema,
+  type WhoisBy,
+  WhoisBySchema,
+  type WhoisCandidate,
+  WhoisCandidateSchema,
+  type WhoisEvent,
+  WhoisEventSchema,
+  type WhoisList,
+  WhoisListSchema,
+  type WhoisMachine,
+  WhoisMachineSchema,
+} from '../../session/identitySchema.ts';
 export {
   IdleProofSchema,
   SleepReceiptSchema,
@@ -207,6 +296,13 @@ export {
   type ControlNativeSnapshot,
   ControlNativeSnapshotSchema,
 } from './native.ts';
+export {
+  ChatLogReadSchema,
+  ExactMessageReadSchema,
+  IdentityListReadSchema,
+  IdentityWhoisReadSchema,
+  SentLettersReadSchema,
+} from './reading.ts';
 export {
   SelectionReadSchema,
   SelectionResultSchema,

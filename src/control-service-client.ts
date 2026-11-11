@@ -2,9 +2,11 @@ export { ControlTargetSchema } from './control/schema/core.ts';
 export {
   ControlActionReceiptSchema,
   ControlInterruptSchema,
+  ControlKeysSchema,
   type ControlMessage,
   ControlMessageReceiptSchema,
   ControlMessageSchema,
+  ControlStopReceiptSchema,
 } from './control/schema/message.ts';
 export {
   CCMUX_NATIVE_STREAM_COMMAND,

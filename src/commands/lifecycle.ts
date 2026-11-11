@@ -1,13 +1,10 @@
-import { verifyManagedLaunchRecipe } from '../config/launchRecipes.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
+import { restartSession, stopSession } from '../session/lifecycle.ts';
 import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import { startSession } from '../session/start.ts';
-import { killSession, lingeringNotice } from '../tmux/tmux.ts';
-import { SELF_ARGV } from '../util/env.ts';
-import { log } from '../util/log.ts';
-import { runDetached } from '../util/spawn.ts';
+import { lingeringNotice } from '../tmux/tmux.ts';
 import { refusesSelf } from './guard.ts';
 
 export async function cmdStart(name: string | undefined): Promise<number> {
@@ -47,9 +44,8 @@ export async function cmdStop(name: string | undefined, force = false): Promise<
     console.error(`unknown session: ${name}`);
     return 1;
   }
-  const { killed, lingering } = await killSession(m, name);
-  if (killed) log.info({ msg: 'session stopped', name });
-  console.log(killed ? `stopped ${name}` : `${name} not running`);
+  const { stopped, lingering } = await stopSession(m, name);
+  console.log(stopped ? `stopped ${name}` : `${name} not running`);
   // Said, not thrown: the session IS down, and a process group that outlived it is a fact an
   // operator can act on rather than a failure of the command that reports it.
   if (lingering !== null) console.log(lingeringNotice(lingering, name));
@@ -69,18 +65,12 @@ export async function cmdRestart(target: string): Promise<number> {
     console.error(`unknown session: ${name}`);
     return 1;
   }
-  // Refuse a known impossible continuation while the existing owner is still alive.
-  // Launch revalidates again; this preflight cannot authorize a later changed configuration.
   try {
-    verifyManagedLaunchRecipe(m, session);
+    await restartSession(m, session);
   } catch (error) {
     console.error(`cannot restart ${name}: ${String(error)}`);
     return 1;
   }
-  await killSession(m, name);
-  // Detached worker (own process group) survives killing the very session this runs in
-  // — so a session can restart ITSELF and still get pinged back once it's ready.
-  runDetached([...SELF_ARGV, '_restart-worker', name]);
   console.log(`restarting ${name}`);
   return 0;
 }

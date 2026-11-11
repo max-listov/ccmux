@@ -1,7 +1,8 @@
 import { statSync } from 'node:fs';
 import type { TranscriptRead } from '../agent/transcript/transcriptRead.ts';
 import type { TranscriptKind, TranscriptMessage, TranscriptRole } from '../types.ts';
-import type { MessageSender, SenderJudge } from './messageSender.ts';
+import type { SenderJudge } from './messageSender.ts';
+import type { MessageSender } from './messageSenderSchema.ts';
 import type { TranscriptWindowOptions } from './transcriptWindow.ts';
 
 /**
@@ -286,4 +287,18 @@ export async function searchTranscript(
     if (end < lastLine) Bun.gc(true);
   }
   return result;
+}
+
+export function listed<T extends string>(
+  what: string,
+  values: string[],
+  allowed: readonly T[],
+): Set<T> | undefined {
+  if (values.length === 0) return undefined;
+  const unknown = values.filter((value) => !(allowed as readonly string[]).includes(value));
+  if (unknown.length > 0)
+    throw new SearchPatternError(
+      `unknown ${what} ${unknown.map((value) => `'${value}'`).join(', ')}; one of: ${allowed.join(', ')}`,
+    );
+  return new Set(values as T[]);
 }
