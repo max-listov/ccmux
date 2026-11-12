@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.91.0] — 2026-11-12
+
+Read, start, stop, restart, remove and type into a session on another machine through your own daemon, send letters and follow the chat log through the client, and let a transport build its service descriptor from the effects each operation declares.
+
 - Read a message of, and start, stop, restart, remove or type into, a session on another machine through your own daemon: the operation is handed to that machine's daemon and answered or refused there under its own code; a machine without the operation refuses it by name.
 - Send a letter through the client with `letter.send` and get the receipt `ccmux msg --json` prints; both are one sender.
 - Follow a machine's chat log through the client with `watchChatLog`, resuming from the cursor each frame carries.
