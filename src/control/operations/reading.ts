@@ -1,6 +1,8 @@
 import { AppError } from 'stitchkit';
 import { createOperationProcesses } from 'stitchkit/process';
 import type { z } from 'zod';
+import { principalLabel } from '../../chat/identity.ts';
+import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
 import type { LetterRequest } from '../../chat/letterRequestSchema.ts';
 import { followLog, type LogFrame, parseCursor, ZERO_CURSOR } from '../../chat/logFeed.ts';
 import { sendLetter } from '../../chat/sendLetter.ts';
@@ -8,6 +10,7 @@ import { sentLetters } from '../../chat/sentLetters.ts';
 import { readExactMessage } from '../../context/exactMessage.ts';
 import { SearchRequestError, searchPlan } from '../../context/searchFleet.ts';
 import { SEARCH_FRAME_MAX_BYTES } from '../../context/searchFrames.ts';
+import { journalEntry, journaledFrames, journalSearch } from '../../context/searchJournal.ts';
 import { SearchRequestSchema } from '../../context/searchRequestSchema.ts';
 import { SearchPatternError } from '../../context/transcriptSearch.ts';
 import { routeFor } from '../../fleet/address.ts';
@@ -122,7 +125,8 @@ export function readingOperations(context: OperationContext) {
      * when the caller leaves; a third search at once is refused, not queued behind two that may run
      * for minutes.
      */
-    search: (call: Parameters<typeof searchInProcess>[0]) => {
+    /** A search asked through the API; its line in this machine's journal names `principal`. */
+    search: (call: Parameters<typeof searchInProcess>[0], principal: unknown) => {
       try {
         // Said before a process is started: a request that names no search is the caller's.
         searchPlan(SearchRequestSchema.parse(call.input));
@@ -131,7 +135,15 @@ export function readingOperations(context: OperationContext) {
           throw new AppError('VALIDATION_ERROR', { message: error.message, status: 400 });
         throw error;
       }
-      return searchInProcess(call);
+      const startedAt = Date.now();
+      const asker = ChatPrincipalSchema.safeParse(principal);
+      const caller = asker.success ? principalLabel(asker.data) : null;
+      return journaledFrames(searchInProcess(call), (end) =>
+        journalSearch(
+          m,
+          journalEntry({ via: 'control', caller, dir: null, map: false, answer: end, startedAt }),
+        ),
+      );
     },
     exactMessage: (input: z.output<typeof ExactMessageReadSchema>, signal?: AbortSignal) =>
       reads

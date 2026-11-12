@@ -9,6 +9,7 @@ import {
   searchPlan,
   searchStanding,
 } from '../context/searchFleet.ts';
+import { commandCaller, journalEntry, journalSearch } from '../context/searchJournal.ts';
 import { SEARCH_PROVIDERS, SearchRequestSchema } from '../context/searchRequestSchema.ts';
 import { listed, SearchPatternError } from '../context/transcriptSearch.ts';
 import { humanizeDuration } from '../util/duration.ts';
@@ -18,6 +19,7 @@ import { tableLines } from '../util/table.ts';
 import { COMMAND_SCHEMAS } from './answerSchemas.ts';
 import { parseFlags, UsageError } from './flags.ts';
 import { usageLine } from './help.ts';
+import { cmdSearchReport } from './searchReport.ts';
 
 /** `ccmux search` — reads the command line and prints what `context/searchFleet.ts` answers. */
 
@@ -27,6 +29,8 @@ export interface SearchOpts extends SearchPlan {
   map: boolean;
   /** One entry per distinct thing the pattern matched: where it arrived. */
   receipts: boolean;
+  /** The machine whose fleet search this run answers; such a run is that machine's to record. */
+  askedBy: string | null;
 }
 
 const some = <T>(set: Set<T> | undefined): T[] | null => (set === undefined ? null : [...set]);
@@ -42,6 +46,11 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
     throw usage('--receipts is where each thing a PATTERN matched arrived; it has no --map');
   if (flags.bool('local') && flags.list('machine').length > 0)
     throw usage('choose --local or --machine');
+  if (flags.bool('report'))
+    throw usage('--report reads the journal of searches; it is not a search');
+  const askedBy = flags.str('asked-by') ?? null;
+  if (askedBy !== null && !flags.bool('local'))
+    throw usage('--asked-by is how a fleet search asks one machine: it goes with --local');
   const limit = flags.int('limit');
   const request = SearchRequestSchema.safeParse({
     pattern: flags.positionals[0] ?? null,
@@ -79,6 +88,7 @@ export function parseSearch(args: string[], now = Date.now()): SearchOpts {
       json: flags.bool('json'),
       map: flags.bool('map'),
       receipts: request.data.receipts,
+      askedBy,
     };
   } catch (error) {
     if (error instanceof SearchRequestError) throw usage(error.message);
@@ -255,6 +265,7 @@ export async function cmdSearch(args: string[]): Promise<number> {
     await printLine(JSON.stringify(COMMAND_SCHEMAS.search()));
     return 0;
   }
+  if (parseFlags('search', args, [0, 1]).bool('report')) return cmdSearchReport(args);
   let opts: SearchOpts;
   try {
     opts = parseSearch(args);
@@ -263,7 +274,21 @@ export async function cmdSearch(args: string[]): Promise<number> {
     console.error(error.message);
     return 2;
   }
-  const result = await searchFleet(loadMachineConfig(), opts);
+  const m = loadMachineConfig();
+  const startedAt = Date.now();
+  const result = await searchFleet(m, opts);
+  if (opts.askedBy === null)
+    journalSearch(
+      m,
+      journalEntry({
+        via: 'cli',
+        caller: commandCaller(m.rcPrefix),
+        dir: process.cwd(),
+        map: opts.map,
+        answer: result,
+        startedAt,
+      }),
+    );
   const lines = opts.json
     ? [JSON.stringify(result)]
     : opts.receipts

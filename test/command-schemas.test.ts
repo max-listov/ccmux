@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { CorpusSearchJsonSchema } from '../src/context/corpusSearchSchema.ts';
+import { SearchReportJsonSchema } from '../src/context/searchReport.ts';
 import { controlContract } from '../src/control/schema/contract.ts';
 import { controlEventsContract } from '../src/control/schema/eventsContract.ts';
 
@@ -24,7 +25,13 @@ const EXPECTED: [string[], unknown][] = [
   [['chat', 'log', '--schema'], output('chat.log')],
   [['msg', '--schema'], { receipt: output('letter.send'), sent: output('letter.list') }],
   // A stream on the wire, collected into the one answer the command prints.
-  [['search', '--schema'], z.toJSONSchema(CorpusSearchJsonSchema)],
+  [
+    ['search', '--schema'],
+    {
+      answer: z.toJSONSchema(CorpusSearchJsonSchema),
+      report: z.toJSONSchema(SearchReportJsonSchema),
+    },
+  ],
 ];
 
 test('a command describes its --json answer with the schema its operation declares', async () => {

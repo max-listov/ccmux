@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CorpusSearchJsonSchema } from '../context/corpusSearchSchema.ts';
+import { SearchReportJsonSchema } from '../context/searchReport.ts';
 import { controlContract } from '../control/schema/contract.ts';
 import { controlEventsContract } from '../control/schema/eventsContract.ts';
 
@@ -16,7 +17,8 @@ const output = (key: keyof typeof controlContract.endpoints) =>
  * answer its operation does not give.
  *
  * `search` is a stream on the wire (`search` in `controlEventsContract`): its frames are collected
- * into the answer the command prints (`collectSearch`), which is the schema here.
+ * into the answer the command prints (`collectSearch`), which is the schema here; `--report` is the
+ * journal of searches, read by the command alone.
  */
 export const COMMAND_SCHEMAS = {
   whois: () => ({
@@ -27,5 +29,8 @@ export const COMMAND_SCHEMAS = {
   fleet: () => output('fleet.list'),
   'chat log': () => output('chat.log'),
   msg: () => ({ receipt: output('letter.send'), sent: output('letter.list') }),
-  search: () => z.toJSONSchema(CorpusSearchJsonSchema),
+  search: () => ({
+    answer: z.toJSONSchema(CorpusSearchJsonSchema),
+    report: z.toJSONSchema(SearchReportJsonSchema),
+  }),
 } as const;

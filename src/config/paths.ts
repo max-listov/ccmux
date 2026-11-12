@@ -137,6 +137,9 @@ export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, 'out
  *  is a stream with no natural end, and read by outside surfaces that must not have to know the
  *  file layout (that is what `ccmux events` is for). */
 export const eventsPath = (m: MachineConfig): string => join(m.stateDir, 'events.jsonl');
+/** Every `search` asked on this machine, who asked it and what came of it (`context/searchJournal.ts`). */
+export const searchJournalPath = (m: Pick<MachineConfig, 'stateDir'>): string =>
+  join(m.stateDir, 'search-journal.jsonl');
 /** Bounded read-only monitoring projection published by the existing observation loop. */
 export const monitoringStatusPath = (m: Pick<MachineConfig, 'stateDir'>): string =>
   join(m.stateDir, 'monitoring-status.json');

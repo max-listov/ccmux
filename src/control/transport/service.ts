@@ -235,7 +235,7 @@ export function controlServices(
       subscribeControlNative(m, input.target, input.cursor, signal),
     watchIdentities: ({ input, signal }) => operations.followIdentities(input, signal),
     watchChatLog: ({ input, signal }) => operations.followChatLog(input, signal),
-    search: (call) => operations.search(call),
+    search: (call) => operations.search(call, call.principal),
   });
   // A fleet reader on another machine, relayed by `ccmux _peer-read`: answered here, where the
   // caches that make building the rows cheap are warm.

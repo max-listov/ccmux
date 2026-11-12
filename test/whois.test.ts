@@ -23,6 +23,7 @@ import {
   SearchFrameSchema,
   SearchStreamCutError,
 } from '../src/context/searchFrames.ts';
+import { readSearchJournal } from '../src/context/searchJournal.ts';
 import { storedConversations } from '../src/context/storedConversations.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
 import { ControlSnapshotSchema } from '../src/control/schema/core.ts';
@@ -1315,6 +1316,17 @@ test('a program asks the daemon by name and gets the object the command prints',
       expect(CorpusSearchJsonSchema.parse(streamed)).toEqual(streamed);
       expect(timeless(streamed)).toEqual(timeless(local));
       expect(streamed.receipts?.marks[0]?.deliveries[0]?.sender?.verdict).toBe('person');
+      // The search is this machine's to record, under the principal that asked it.
+      const journaled = () =>
+        readSearchJournal(m, 0, null).entries.map((row) => [
+          row.via,
+          row.mode,
+          row.total,
+          row.caller,
+        ]);
+      expect(journaled()).toEqual([
+        ['control', 'receipts', streamed.total, 'ccmux/service@host-a'],
+      ]);
       // A stream that stops before its last frame is not an answer, and is not read as one.
       await expect(collectSearch(frames.slice(0, -1))).rejects.toBeInstanceOf(SearchStreamCutError);
       // A caller that leaves ends the process that was reading for it.
@@ -1335,6 +1347,8 @@ test('a program asks the daemon by name and gets the object the command prints',
       await pending;
       while (searching().length > 0 && Date.now() < deadline) await Bun.sleep(10);
       expect(searching()).toEqual([]);
+      // A search its caller left before the answer was not answered: it is not written.
+      expect(journaled()).toHaveLength(1);
 
       // What this client and this daemon each call the contract: the same, operation by operation.
       // The daemon answers more than a client asks — its own fleet reads — so the whole digests

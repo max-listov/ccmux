@@ -16,6 +16,9 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `ccmux search` writes every search to a journal on the machine where it was asked — who asked, the question, how each machine answered, how many were found and how long it took — and `ccmux search --report` reads the journals of the whole fleet for a period: searches by mode, the share that found nothing, response times, who searches and the newest searches.
+- `ccmux search --schema` prints the schema of the answer and of the report.
+
 ## [0.92.1] — 2026-11-12
 
 Require stitchkit 0.123.2.
