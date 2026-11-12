@@ -139,33 +139,61 @@ test('the journal is read for a period across rotations, and a line it cannot re
 test('a search asked here is written; one another machine asked for is not', async () => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-search-cli-')));
   const state = join(home, 'state');
-  const run = (...args: string[]) =>
-    Bun.spawn([process.execPath, join(import.meta.dir, '../src/cli.ts'), 'search', ...args], {
-      env: {
-        ...process.env,
-        HOME: home,
-        CCMUX_STATE_DIR: state,
-        CCMUX_SESSION: 'agent-a',
-        CCMUX_CONFIG: join(home, 'no-config.json'),
+  // The machine named in full: a config left to detection looks for an agent binary, and a host
+  // without one (a CI runner) would fail the command before it searched anything.
+  const config = join(home, 'machine.json');
+  writeFileSync(
+    config,
+    JSON.stringify({
+      claudeBin: '/bin/claude',
+      tmuxBin: '/usr/bin/true',
+      projectsDir: join(home, 'projects'),
+      rcPrefix: 'host-a',
+      stateDir: state,
+      bootLabel: 'ccmux-test.service',
+    }),
+  );
+  const run = async (...args: string[]) => {
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, '../src/cli.ts'), 'search', ...args],
+      {
+        env: {
+          ...process.env,
+          HOME: home,
+          CCMUX_STATE_DIR: state,
+          CCMUX_SESSION: 'agent-a',
+          CCMUX_CONFIG: config,
+        },
+        cwd: home,
+        stdout: 'pipe',
+        stderr: 'pipe',
       },
-      cwd: home,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    }).exited;
-  expect(await run('zz-never-said', '--local')).toBe(1);
-  expect(await run('zz-never-said', '--local', '--json', '--asked-by', 'host-b')).toBe(1);
+    );
+    const [out, err, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { out, err, code };
+  };
+  // Exit 1 is "searched, nothing found" only when the command says it searched.
+  const asked = await run('zz-never-said', '--local');
+  expect([asked.code, asked.err]).toEqual([1, '']);
+  expect(asked.out).toContain('no matches — searched host-a');
+  const served = await run('zz-never-said', '--local', '--json', '--asked-by', 'host-b');
+  expect([served.code, served.err]).toEqual([1, '']);
   const lines = readFileSync(searchJournalPath({ stateDir: state }), 'utf8')
     .trim()
     .split('\n');
   expect(lines).toHaveLength(1);
   const entry = JSON.parse(lines[0] as string) as SearchJournalEntry;
-  expect([entry.via, entry.caller?.endsWith(':agent-a'), entry.dir, entry.query.pattern]).toEqual([
+  expect([entry.via, entry.caller, entry.dir, entry.query.pattern, entry.total]).toEqual([
     'cli',
-    true,
+    'host-a:agent-a',
     home,
     'zz-never-said',
+    0,
   ]);
-  expect(entry.total).toBe(0);
 });
 
 test('a fleet search tells each machine it asks whose search it is', async () => {
