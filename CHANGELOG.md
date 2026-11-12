@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.93.1] — 2026-11-12
+
+First published build of the 0.93.0 changes, whose tag was cut but whose CI build failed on a test.
+
 ## [0.93.0] — 2026-11-12
 
 Every search is written to a journal on the machine where it was asked, and ccmux search --report shows who searched what across the fleet.
