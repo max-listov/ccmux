@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.92.0] — 2026-11-12
+
+A daemon with autoUpdate takes a release only once it has settled for ten minutes, so a release runs on one machine first; ccmux update takes it at once.
+
 - A daemon with `autoUpdate` takes a release only once it is `autoUpdateSettleSeconds` old (600 by default), so a release can run on one machine first; `ccmux update` takes it at once, and `0` restores the previous behaviour.
 
 ## [0.91.1] — 2026-11-12
