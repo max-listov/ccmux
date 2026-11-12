@@ -99,6 +99,11 @@ went to every host at once, production included, and two regressions — a globa
 rebuild that doubled daemon CPU, and a lost first command after a missed file event — were found
 there and fixed in 0.75.1 and 0.75.2 within eighty minutes. A canary would have shown both.
 
+The window is held by the daemons themselves, not by the release procedure: an unattended update
+takes a release only once it is `autoUpdateSettleSeconds` old by its own `releasedAt` (ten minutes by
+default), while `ccmux update` on the first machine takes it at once. 0.91.1 reached production on
+the third minute of its window because nothing held it.
+
 CHANGELOG lines describe what changed for a user; "X remains intact" and "Y is retained" describe
 what did not, and do not belong there.
 

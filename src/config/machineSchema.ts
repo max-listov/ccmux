@@ -214,6 +214,9 @@ export const MachineConfigSchema = z.object({
   // updateCheckInterval seconds and applies a newer release (bounce, sessions survive).
   autoUpdate: z.boolean().default(false),
   updateCheckInterval: z.number().int().positive().default(300),
+  // How old a release must be, by its own releasedAt, before the daemon takes it unattended: the
+  // time a release runs on its first machine alone. `ccmux update` does not wait. 0 takes at once.
+  autoUpdateSettleSeconds: z.number().int().nonnegative().default(600),
   // Fleet-wide extra flags appended to every session (after per-session flags).
   extraFlags: z.array(z.string()).default([]),
   // System-log threshold (the state root's ccmux.log). Re-read live by the daemon each tick —

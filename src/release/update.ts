@@ -327,6 +327,26 @@ export async function downloadVerifyApply(
   return null;
 }
 
+/**
+ * Whether the daemon may take this release on its own yet.
+ *
+ * A release reaches one machine first and is watched there before the others get it; a daemon that
+ * takes whatever is newest the moment it is published ends that window from the outside. So an
+ * unattended update waits until the release is `settleSeconds` old by its own `releasedAt`, and a
+ * person who runs `ccmux update` is not asked to wait. A release that does not say when it was cut
+ * cannot be aged and is taken as before.
+ */
+export function releaseSettled(
+  releasedAt: string | undefined,
+  settleSeconds: number,
+  nowMs: number,
+): boolean {
+  if (releasedAt === undefined) return true;
+  const cut = Date.parse(releasedAt);
+  if (Number.isNaN(cut)) return true;
+  return nowMs - cut >= settleSeconds * 1000;
+}
+
 /** Daemon auto-update tick: verify/install and return whether a restart is needed.
  *  Never await a service-manager restart from inside the daemon being stopped: its managed
  *  schedule must settle before shutdown can drain. The caller requests normal process shutdown.
@@ -356,6 +376,17 @@ export async function autoUpdateOnce(m: MachineConfig): Promise<boolean> {
       msg: 'auto-update check: no newer release',
       local: VERSION,
       remote: release.version,
+    });
+    return false;
+  }
+  // A bundle gone from disk is restored at once: that is this machine unable to start, not a
+  // new release being tried.
+  if (!missing && !releaseSettled(release.releasedAt, m.autoUpdateSettleSeconds, Date.now())) {
+    log.info({
+      msg: 'auto-update waits for the release to settle',
+      to: release.version,
+      releasedAt: release.releasedAt,
+      settleSeconds: m.autoUpdateSettleSeconds,
     });
     return false;
   }

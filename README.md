@@ -813,7 +813,8 @@ ccmux update --rollback  # revert to the previous bundle (.bak)
 
 With `autoUpdate` on (wired at install via `--release-url`), the daemon checks every
 `updateCheckInterval` seconds (default 300) and applies a newer release on its own — hands-off
-across the whole fleet.
+across the whole fleet. It takes a release once it is `autoUpdateSettleSeconds` old (default 600), so
+a release can run on one machine first; `ccmux update` takes it at once.
 
 ## Develop
 

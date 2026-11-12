@@ -80,6 +80,9 @@ list aggregation. It is produced by the existing daemon observation loop.
 - **Подписка флота**: машины ставят `releaseUrl = .../releases/latest/download/release.json` +
   `autoUpdate:true`. Демон каждые `updateCheckInterval` (деф. 300с; серверам ставим 60с) сравнивает
   semver, тянет, **sha256-verify → preflight → swap**. Анонимный HTTPS + CDN GitHub, токены не нужны.
+  Сам демон берёт релиз, только когда тот отлежался: `releasedAt` из `release.json` старше
+  `autoUpdateSettleSeconds` (деф. 600с) — это время, которое релиз живёт на первой машине один.
+  `ccmux update` руками берёт сразу; пропавший с диска бандл восстанавливается без выдержки.
 - **Защита от кривого релиза, 2 слоя** (`update.ts` + `util/bootGuard.ts`): (1) **preflight** —
   `bun <candidate> version` обязан вернуть верную версию ДО свапа (ловит не-загружающийся бандл,
   live не трогается); (2) **boot-guard** — счётчик стартов демона (`~/.ccmux/boot-attempts`):
