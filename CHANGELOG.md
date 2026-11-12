@@ -16,6 +16,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- The package and the packed control-service client now require `stitchkit` 0.123.2 or later.
+
 ## [0.92.0] — 2026-11-12
 
 A daemon with autoUpdate takes a release only once it has settled for ten minutes, so a release runs on one machine first; ccmux update takes it at once.

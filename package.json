@@ -38,7 +38,7 @@
     "@types/pngjs": "6.0.5",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
-    "stitchkit": "0.123.1",
+    "stitchkit": "0.123.2",
     "typescript": "^7.0.2"
   },
   "dependencies": {
@@ -56,7 +56,7 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "stitchkit": ">=0.123.1 <1"
+    "stitchkit": ">=0.123.2 <1"
   },
   "packageManager": "bun@1.4.4"
 }
