@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.92.1] — 2026-11-12
+
+Require stitchkit 0.123.2.
+
 - The package and the packed control-service client now require `stitchkit` 0.123.2 or later.
 
 ## [0.92.0] — 2026-11-12
