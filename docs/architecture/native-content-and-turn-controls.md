@@ -113,11 +113,11 @@ the complete typed observation. Duplicate or late nonterminal/unknown updates ca
 terminal evidence; changing a known call identity on the same item is refused. History cannot infer
 a lifecycle event it did not observe when the native stored item supplies no status.
 
-Both published clients and native stream serialization use these same schemas. The existing
-descriptor and `current` revision remain; there is no new route, alternative stream, compatibility
-adapter, provider reader or writer. The descriptor's operation count is not written here: it changes
-whenever an operation is added, and a number in prose that nothing checks is stale by the next
-change — `ControlServiceOperationSchema` is the list, and the descriptor's length is pinned to it. See the
+Both published clients and native stream serialization use these same schemas; there is no new
+route, alternative stream, compatibility adapter, provider reader or writer. The declared service's
+operations are the control contract's own, each declaring whether it reads or writes
+([control-plane](control-plane.md#declared-service-and-native-stream-binding)); their count is not
+written here, because a number in prose that nothing checks is stale by the next operation. See the
 [tool observation decision](../decisions/2026-08-30-native-tool-observation-outcomes.md).
 
 # Steering and context

@@ -171,6 +171,39 @@ test('authorization precedes body handling, managed credentials rotate, and exac
     headers: { [CCMUX_CONTROL_CALLER_HEADER]: 'host-b' },
   });
   expect(transported.status).toBe(200);
+  // The service caller reaches the control operations and nothing else on this socket — not the
+  // contract identity, not the peer reads — whatever the transport forwards.
+  for (const [method, path] of [
+    ['POST', '/ccmux-peer-read/list'],
+    ['GET', '/contract-identity'],
+  ] as const) {
+    const local = await fetch(`http://ccmux.local${path}`, {
+      unix: f.socket,
+      method,
+      ...(method === 'POST' ? { body: '{}', headers: { 'content-type': 'application/json' } } : {}),
+    });
+    // The route's own answer, never an access refusal.
+    expect([path, local.status === 403]).toEqual([path, false]);
+    const outside = await fetch(`http://ccmux.local${path}`, {
+      unix: f.socket,
+      method,
+      headers: {
+        [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
+        ...(method === 'POST' ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(method === 'POST' ? { body: '{}' } : {}),
+    });
+    expect([path, outside.status]).toEqual([path, 403]);
+    expect(await outside.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+  }
+  // Measuring the daemon is part of the service: its own answer (this fixture collects no CPU).
+  const performance = await fetch('http://ccmux.local/control/daemon/performance', {
+    unix: f.socket,
+    method: 'POST',
+    headers: { [CCMUX_CONTROL_CALLER_HEADER]: 'host-b', 'content-type': 'application/json' },
+    body: '{}',
+  });
+  expect(performance.status === 403).toBe(false);
   const conflicting = await fetch('http://ccmux.local/control/sessions', {
     unix: f.socket,
     method: 'POST',
@@ -438,12 +471,23 @@ test('native approval/input/working states remain distinct; interruption cannot 
   await f.publish();
   // The case is that a wait resolves when the state it waits for is published, not how fast this
   // machine publishes it: under a loaded suite one second was the machine speaking, not the code.
-  // A hang still fails, at the suite's own bound.
+  //
+  // A wait counts only a state observed after it began, and when it begins in the daemon is not
+  // this test's to know. One publish 30 ms after the request was a guess at that: at load ~40 the
+  // request arrived after it, the snapshot was older than the wait, nothing else was published,
+  // and the wait answered "timeout" at 15 s. So the state is published until the wait answers, as
+  // a live producer keeps publishing; the wait's own 15 s still fails a wait that never resolves.
   const waiting = f.client['session.wait']({ target: f.target, timeoutMs: 15_000 });
-  await Bun.sleep(30);
-  p.reconcile({ type: 'idle' }, p.revision);
-  await writer.write(p.snapshot());
-  await f.publish();
+  let answered = false;
+  const answer = waiting.finally(() => {
+    answered = true;
+  });
+  while (!answered) {
+    p.reconcile({ type: 'idle' }, p.revision);
+    await writer.write(p.snapshot());
+    await f.publish();
+    await Promise.race([answer, Bun.sleep(50)]);
+  }
   expect((await waiting).outcome).toBe('idle');
   await f.client['message.send']({
     communicationAuthorization,

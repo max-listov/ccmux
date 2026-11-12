@@ -204,9 +204,10 @@ export const COMMANDS: HelpEntry[] = [
       { name: 'framed', kind: 'boolean' },
       { name: 'since', kind: 'string' },
       { name: 'cursor-env', kind: 'string' },
+      { name: 'schema', kind: 'boolean' },
     ],
-    args: '<log [-n N] [--fleet] [--json] [-f|--follow [--framed] [--since CURSOR] [--cursor-env NAME]] | on <name|machine:name> | off <name|machine:name> | default <name|machine:name>>',
-    desc: "the exchange log — what arrived AND what this machine sent elsewhere (including sends that never left); --fleet merges every machine's log into one time-ordered stream; per-session enable (default off)",
+    args: '<log [-n N] [--fleet] [--json] [-f|--follow [--framed] [--since CURSOR] [--cursor-env NAME]] | log --schema | on <name|machine:name> | off <name|machine:name> | default <name|machine:name>>',
+    desc: "the exchange log — what arrived AND what this machine sent elsewhere (including sends that never left); --fleet merges every machine's log into one time-ordered stream; log --schema prints the JSON Schema of the --json answer, the one the chat.log operation gives; per-session enable (default off)",
     example: 'ccmux chat log --fleet -n 50',
   },
   {
@@ -343,9 +344,10 @@ export const COMMANDS: HelpEntry[] = [
     flags: [
       { name: 'json', kind: 'boolean' },
       { name: 'all', kind: 'boolean' },
+      { name: 'schema', kind: 'boolean' },
     ],
-    args: '[--json] [--all]',
-    desc: 'every managed session on every fleet machine, with explicit provider and full address; never infer a target from cwd/project; an older peer with no provider reports unknown, not Claude',
+    args: '[--json] [--all] | --schema',
+    desc: 'every managed session on every fleet machine, with explicit provider and full address; never infer a target from cwd/project; an older peer with no provider reports unknown, not Claude; --schema prints the JSON Schema of the --json answer, the one the fleet.list operation gives',
     example: 'ccmux fleet',
   },
   {

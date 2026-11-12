@@ -25,3 +25,19 @@ test('only the CLI entry and the commands themselves import from src/commands', 
   }
   expect(offenders).toEqual([]);
 });
+
+/**
+ * Asking another machine is the domain's, not a command's: the answer a command prints for a fleet
+ * is built where the daemon and `letter.send` build the same answer (`fleet/`, `chat/`, `usage/`),
+ * so a command cannot ask the fleet a question the operation answers differently.
+ */
+test('no command asks another machine itself', () => {
+  const commands = join(import.meta.dir, '..', 'src', 'commands');
+  const offenders: string[] = [];
+  for (const file of new Bun.Glob('**/*.{ts,tsx}').scanSync(commands))
+    for (const [name] of readFileSync(join(commands, file), 'utf8').matchAll(
+      /\b(?:runPeer|askPeer|runRemote|runRemoteAdapter)\b/g,
+    ))
+      offenders.push(`${file}: ${name}`);
+  expect(offenders).toEqual([]);
+});

@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { remoteTransportAncestor } from '../src/chat/auth.ts';
 import { cliPrincipal, managedPeer } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
-import { anonymousRemoteWarning } from '../src/commands/messagePeers.ts';
+import { anonymousRemoteWarning } from '../src/chat/letterParties.ts';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { sessionsPath } from '../src/config/paths.ts';
 import { communicationAuthorizationFile } from './communication-fixture.ts';

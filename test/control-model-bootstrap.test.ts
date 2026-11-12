@@ -1,5 +1,13 @@
 import { expect, test } from 'bun:test';
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { readControlModels } from '../src/control/models.ts';
 import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
@@ -100,6 +108,22 @@ test('host catalog needs no managed row and metadata child is reaped', async () 
     expect(page.target).toBeUndefined();
     expect(page.data[0]).toMatchObject({ id: 'preset-a', model: 'model-a' });
     expect(loadSessions(f.machine)).toEqual([]);
+    await reaped(f.root);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test('a provider whose socket path appears before it listens is read, not refused', async () => {
+  const f = fixture();
+  try {
+    writeFileSync(join(f.root, 'late-listen'), '');
+    const page = await readControlModels(
+      f.machine,
+      ControlModelsReadSchema.parse({ runtime: 'codex' }),
+      AbortSignal.timeout(10_000),
+    );
+    expect(page.data[0]).toMatchObject({ id: 'preset-a', model: 'model-a' });
     await reaped(f.root);
   } finally {
     rmSync(f.root, { recursive: true, force: true });

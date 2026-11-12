@@ -8,10 +8,19 @@ import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import '../src/monitoring/tmux.ts';
 import {
   MONITORING_MAX_READERS,
+  MONITORING_MAX_TIMEOUT_MS,
   readMonitoringStatus,
   STATUS_MAX_BYTES,
 } from '../src/monitoring-reader.ts';
 import { makeMachine, makeSession, producerMetric } from './helpers.ts';
+
+/**
+ * A read whose subject is the snapshot's file — missing, malformed, oversized, foreign — and not
+ * the reader's deadline gets the longest deadline the reader allows. The default (250 ms) is a
+ * product bound for a live consumer; at load average 95 a read of a malformed file answered
+ * `deadline` instead of `invalid`. The deadline itself is proven in its own case.
+ */
+const UNHURRIED = { timeoutMs: MONITORING_MAX_TIMEOUT_MS };
 
 let root: string;
 let previousConfig: string | undefined;
@@ -79,7 +88,7 @@ test('public native API: 100 sequential and 100 concurrent reads reuse one publi
   // Callers cannot corrupt the shared result delivered to other callers.
   if (reads[0]?.snapshot) reads[0].snapshot.sessions.length = 0;
   expect(reads[1]?.snapshot?.sessions.length).toBe(1);
-  expect((await readMonitoringStatus()).snapshot).toEqual(snapshot);
+  expect((await readMonitoringStatus(UNHURRIED)).snapshot).toEqual(snapshot);
 });
 
 test('native capacity, independent abort, invalid deadline and no retention of completed data', async () => {
@@ -117,7 +126,7 @@ test('native malformed, oversized, stale, mismatched and dead-producer snapshots
   const { snapshot, path } = await fixture();
   const check = async (value: string, reason: string) => {
     writeFileSync(path, value);
-    expect(await readMonitoringStatus()).toMatchObject({ reason, snapshot: null });
+    expect(await readMonitoringStatus(UNHURRIED)).toMatchObject({ reason, snapshot: null });
   };
   await check('{', 'invalid');
   await check(' '.repeat(STATUS_MAX_BYTES + 1), 'oversized');
@@ -132,17 +141,17 @@ test('native malformed, oversized, stale, mismatched and dead-producer snapshots
   await check(JSON.stringify({ ...snapshot, rcPrefix: 'host-b' }), 'invalid');
   await check(JSON.stringify({ ...snapshot, pid: 2147483647 }), 'producer-stopped');
   rmSync(path);
-  expect((await readMonitoringStatus()).reason).toBe('missing');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('missing');
 });
 
 test('native discovery follows root/config changes and replaces identities/removals without caches', async () => {
   const { machine, publisher, snapshot } = await fixture();
-  expect((await readMonitoringStatus()).snapshot?.generation).toBe(snapshot.generation);
+  expect((await readMonitoringStatus(UNHURRIED)).snapshot?.generation).toBe(snapshot.generation);
   const stateDir = join(root, 'new-state');
   mkdirSync(stateDir);
   const nextMachine = { ...machine, stateDir };
   writeFileSync(join(root, 'machine.json'), JSON.stringify(nextMachine));
-  expect((await readMonitoringStatus()).reason).toBe('missing');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('missing');
   const next = new MonitoringPublisher();
   next.begin(nextMachine);
   next.sample(
@@ -153,32 +162,32 @@ test('native discovery follows root/config changes and replaces identities/remov
     UNSEEN,
   );
   await next.publish(nextMachine);
-  const read = await readMonitoringStatus();
+  const read = await readMonitoringStatus(UNHURRIED);
   expect(read.snapshot?.generation).not.toBe(snapshot.generation);
   expect(read.snapshot?.sessions[0]?.agent).toBe('codex');
   next.begin(nextMachine);
   await next.publish(nextMachine);
-  expect((await readMonitoringStatus()).snapshot?.sessions).toEqual([]);
+  expect((await readMonitoringStatus(UNHURRIED)).snapshot?.sessions).toEqual([]);
   publisher.stop(); // Old producer cannot remove the new root's data.
-  expect((await readMonitoringStatus()).status).toBe('live');
+  expect((await readMonitoringStatus(UNHURRIED)).status).toBe('live');
   next.stop();
-  expect((await readMonitoringStatus()).reason).toBe('missing');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('missing');
 });
 
 test('native refuses unsafe permissions, symlinks, FIFOs and oversized/invalid configuration', async () => {
   const { path } = await fixture();
   chmodSync(path, 0o666);
-  expect((await readMonitoringStatus()).reason).toBe('unauthorized');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('unauthorized');
   rmSync(path);
   symlinkSync(join(root, 'machine.json'), path);
-  expect((await readMonitoringStatus()).reason).toBe('read-failed');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('read-failed');
   rmSync(path);
   expect(Bun.spawnSync(['mkfifo', path]).exitCode).toBe(0);
-  expect((await readMonitoringStatus()).reason).toBe('invalid');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('invalid');
   writeFileSync(join(root, 'machine.json'), ' '.repeat(128 * 1024 + 1));
-  expect((await readMonitoringStatus()).reason).toBe('oversized');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('oversized');
   writeFileSync(join(root, 'machine.json'), '{');
-  expect((await readMonitoringStatus()).reason).toBe('invalid');
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('invalid');
 });
 
 for (const mode of ['hang', 'migration']) {

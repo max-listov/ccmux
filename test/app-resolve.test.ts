@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { type CodexAppRpc, CodexAppRpcRefusal } from '../src/agent/codex/rpc.ts';
 import { type CodexAppFailureKind, CodexAppUnavailable } from '../src/agent/codex/socket.ts';
 import { appResolveFailureText, resolveAppOutcome } from '../src/chat/appResolve.ts';
-import { resolveRemoteCodexAppPeer } from '../src/commands/messagePeers.ts';
+import { resolveRemoteCodexAppPeer } from '../src/chat/letterParties.ts';
 import type { RemoteResult } from '../src/fleet/transport.ts';
 import { makeAppPeer, makeMachine, UUID } from './helpers.ts';
 

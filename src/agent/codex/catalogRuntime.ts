@@ -10,7 +10,7 @@ import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
 import { ownedChildAlive } from './owned/child.ts';
 import { ownedCodexFlags } from './owned/launch.ts';
 import type { CodexAppRpc } from './rpc.ts';
-import { connectCodexSocket } from './socket.ts';
+import { CodexAppUnavailable, connectCodexSocket } from './socket.ts';
 
 const NativeConfigSchema = z.object({
   config: z.object({
@@ -65,6 +65,37 @@ export function sweepAbandonedCatalogRoots(
   return removed;
 }
 
+const LISTEN_POLL_MS = 20;
+
+/**
+ * The provider's endpoint, once something listens on it.
+ *
+ * The socket path appears at bind() and the server listens a step later. On a loaded machine the
+ * provider can be descheduled between the two, and a single connect inside that window is refused:
+ * the whole read fails as "unavailable" with the caller's budget unspent — the shape of a test that
+ * failed at load ~100 after 1.5 s of its 3 s. A refused or vanished endpoint is therefore "not
+ * yet", retried until the caller's signal or the provider's exit ends the read; anything else — a
+ * refused upgrade, a lost connection — is the provider's answer and stands. The managed runtime
+ * does the same: its owner retries the connection until its admission deadline
+ * (`owned/process.ts`).
+ */
+async function connectWhenListening(socket: string, signal: AbortSignal): Promise<CodexAppRpc> {
+  for (;;) {
+    signal.throwIfAborted();
+    if (existsSync(socket)) {
+      try {
+        return await connectCodexSocket(socket, { signal, maxMessageBytes: 2 * 1024 * 1024 });
+      } catch (error) {
+        const notYet =
+          error instanceof CodexAppUnavailable &&
+          (error.kind === 'endpoint-not-listening' || error.kind === 'endpoint-absent');
+        if (!notYet) throw error;
+      }
+    }
+    await Bun.sleep(LISTEN_POLL_MS);
+  }
+}
+
 /** A bounded metadata process has no conversation, TUI, registration or writer. It uses the same
  * native flag and session-environment contracts as managed execution and is reaped on every exit. */
 export async function withCodexCatalogRuntime<T>(
@@ -111,15 +142,7 @@ export async function withCodexCatalogRuntime<T>(
     return await Promise.race([
       command,
       (async () => {
-        while (!existsSync(socket)) {
-          lifetime.throwIfAborted();
-          await Bun.sleep(20);
-        }
-        lifetime.throwIfAborted();
-        rpc = await connectCodexSocket(socket, {
-          signal: lifetime,
-          maxMessageBytes: 2 * 1024 * 1024,
-        });
+        rpc = await connectWhenListening(socket, lifetime);
         return await read(rpc);
       })(),
     ]);

@@ -1,6 +1,7 @@
 import type { ApplicationAdmission } from 'stitchkit/application';
 import { implement } from 'stitchkit/server';
 import { sameTarget } from '../../chat/identity.ts';
+import type { ChatPrincipal } from '../../chat/identitySchema.ts';
 import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
 import {
   applicationAuthorityCapabilities,
@@ -11,12 +12,19 @@ import {
 } from '../../delegation/application.ts';
 import { delegationRefused } from '../../delegation/resolve.ts';
 import type { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
+import { routeFor } from '../../fleet/address.ts';
 import { peerChatLogAnswer, peerIdentitiesAnswer, peerListAnswer } from '../../fleet/peerRead.ts';
 import { peerReadContract } from '../../fleet/peerReadContract.ts';
 import type { MachineConfig } from '../../types.ts';
 import { subscribeControlNative } from '../nativeFeed.ts';
 import type { ControlOperationDependencies } from '../operations/context.ts';
 import { createControlOperations } from '../operations.ts';
+import {
+  type ForwardedInput,
+  type ForwardedOperation,
+  type ForwardedOutput,
+  forwardOperation,
+} from '../peerOperation.ts';
 import type { ControlPublisher } from '../publisher.ts';
 import { controlContract } from '../schema/contract.ts';
 import { controlEventsContract } from '../schema/eventsContract.ts';
@@ -45,6 +53,32 @@ export function controlServices(
     authorizeApplicationMutation(m, ChatPrincipalSchema.parse(principal), target, allowEnded);
     return run();
   };
+  /**
+   * An operation on a session of another machine is that machine's daemon's to answer
+   * (`peerOperation.ts`); one of this machine's runs here. `address` is the session's fleet address.
+   */
+  const atTarget = <K extends ForwardedOperation>(
+    key: K,
+    address: string,
+    input: ForwardedInput<K>,
+    principal: unknown,
+    signal: AbortSignal | undefined,
+    here: () => Promise<ForwardedOutput<K>>,
+  ): Promise<ForwardedOutput<K>> => {
+    const route = routeFor(address, m);
+    if (route.kind !== 'remote') return here();
+    return forwardOperation(
+      m,
+      route,
+      key,
+      input,
+      ChatPrincipalSchema.parse(principal) as ChatPrincipal,
+      signal,
+      dependencies.runPeer,
+    );
+  };
+  const addressOf = (target: { machine: string; session: string }) =>
+    `${target.machine}:${target.session}`;
   const service = implement(controlContract, {
     'daemon.performance': operations.performance,
     'daemon.performance.configure': ({ input, signal }) =>
@@ -57,9 +91,14 @@ export function controlServices(
     'identity.list': ({ input, signal }) => operations.identities(input, signal),
     'chat.log': ({ input, signal }) => operations.chatLog(input, signal),
     'fleet.list': ({ signal }) => operations.fleet(signal),
-    'message.read': ({ input, signal }) => operations.exactMessage(input, signal),
+    'message.read': ({ input, signal, principal }) =>
+      atTarget('message.read', input.address, input, principal, signal, () =>
+        operations.exactMessage(input, signal),
+      ),
     'letter.list': ({ input, principal }) =>
       operations.sentLetters(input, ChatPrincipalSchema.parse(principal)),
+    'letter.send': ({ input, principal }) =>
+      operations.sendLetter(input, ChatPrincipalSchema.parse(principal)),
     'external.history': ({ input, signal }) => operations.externalHistory(input, signal),
     'external.message': ({ input, signal }) => operations.externalMessage(input, signal),
     'external.capabilities': ({ input, signal }) => operations.externalCapabilities(input, signal),
@@ -147,16 +186,26 @@ export function controlServices(
     'session.wake': ({ input, signal, principal }) =>
       mutate(principal, input.target, () => operations.wake(input, signal)),
     'session.start': ({ input, signal, principal }) =>
-      mutate(principal, input.target, () => operations.start(input, signal)),
+      atTarget('session.start', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () => operations.start(input, signal)),
+      ),
     'session.stop': ({ input, signal, principal }) =>
-      mutate(principal, input.target, () => operations.stop(input, signal), true),
+      atTarget('session.stop', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () => operations.stop(input, signal), true),
+      ),
     'session.restart': ({ input, signal, principal }) =>
-      mutate(principal, input.target, () => operations.restart(input, signal)),
+      atTarget('session.restart', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () => operations.restart(input, signal)),
+      ),
     'session.remove': ({ input, signal, principal }) =>
-      mutate(principal, input.target, () => operations.remove(input, signal), true),
+      atTarget('session.remove', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () => operations.remove(input, signal), true),
+      ),
     'session.keys': ({ input, signal, principal }) =>
-      mutate(principal, input.target, () =>
-        operations.keys(input, ChatPrincipalSchema.parse(principal), signal),
+      atTarget('session.keys', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () =>
+          operations.keys(input, ChatPrincipalSchema.parse(principal), signal),
+        ),
       ),
     'turn.interrupt': ({ input, signal, principal }) =>
       mutate(principal, input.target, () => operations.interrupt(input, signal)),
@@ -185,6 +234,7 @@ export function controlServices(
     watchNative: ({ input, signal }) =>
       subscribeControlNative(m, input.target, input.cursor, signal),
     watchIdentities: ({ input, signal }) => operations.followIdentities(input, signal),
+    watchChatLog: ({ input, signal }) => operations.followChatLog(input, signal),
     search: (call) => operations.search(call),
   });
   // A fleet reader on another machine, relayed by `ccmux _peer-read`: answered here, where the

@@ -1,12 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { fmtRow, machineColumnWidth } from '../chat/fleetLog.ts';
-import {
-  followRows,
-  type LogFrame,
-  machineFrame,
-  parseCursor,
-  ZERO_CURSOR,
-} from '../chat/logFeed.ts';
+import { followLog, type LogFrame, parseCursor, ZERO_CURSOR } from '../chat/logFeed.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { archiveDir } from '../config/paths.ts';
 import { chatLogAnswer } from '../fleet/chatLog.ts';
@@ -15,6 +9,7 @@ import { setSessionChatEnabled } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { printLine } from '../util/stdout.ts';
+import { COMMAND_SCHEMAS } from './answerSchemas.ts';
 import { resolveSince, resumeCursor } from './events.ts';
 import { type ParsedFlags, parseFlags } from './flags.ts';
 
@@ -77,11 +72,7 @@ async function cmdChatFeed(m: MachineConfig, flags: ParsedFlags): Promise<number
     process.stdout.write(`${json || framed ? JSON.stringify(frame) : fmtFrame(frame)}\n`);
   };
 
-  // Identity first, so a reader can attribute every row that follows without being told separately
-  // which machine it opened — and so a stream that is alive but quiet is distinguishable from one
-  // that never opened.
-  emit(machineFrame(m.rcPrefix, cursor));
-  const stop = followRows(m, cursor, emit);
+  const stop = followLog(m, cursor, emit);
   await new Promise<void>((resolve) => {
     const end = (): void => {
       stop();
@@ -105,6 +96,10 @@ function fmtFrame(frame: LogFrame): string {
 }
 
 async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number> {
+  if (flags.bool('schema')) {
+    await printLine(JSON.stringify(COMMAND_SCHEMAS['chat log']()));
+    return 0;
+  }
   if (flags.bool('follow')) return cmdChatFeed(m, flags);
   const limit = flags.int('n') ?? 30;
   const { machines, rows } = await chatLogAnswer(m, { limit, fleet: flags.bool('fleet') });

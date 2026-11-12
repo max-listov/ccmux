@@ -8,11 +8,12 @@ import type {
   WhoisList,
   WhoisMachine,
 } from '../session/identitySchema.ts';
-import { followIdentities, whoisAll, whoisFleet, whoisSchemas } from '../session/whoisFleet.ts';
+import { followIdentities, whoisAll, whoisFleet } from '../session/whoisFleet.ts';
 import type { MachineConfig } from '../types.ts';
 import { humanizeDuration } from '../util/duration.ts';
 import { printLine } from '../util/stdout.ts';
 import { alignedLines, tableLines } from '../util/table.ts';
+import { COMMAND_SCHEMAS } from './answerSchemas.ts';
 import { parseFlags, UsageError } from './flags.ts';
 import { usageLine } from './help.ts';
 
@@ -152,7 +153,7 @@ export async function cmdWhois(args: string[]): Promise<number> {
       `ask about one thing: a title, address or conversation id — or --all, --follow, --schema; with no question, a session is told about itself\n${usageLine('whois')}`,
     );
   if (flags.bool('schema')) {
-    await printLine(JSON.stringify(whoisSchemas()));
+    await printLine(JSON.stringify(COMMAND_SCHEMAS.whois()));
     return 0;
   }
   const m = loadMachineConfig();

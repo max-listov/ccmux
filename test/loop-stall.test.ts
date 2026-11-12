@@ -80,14 +80,18 @@ test('a stall reports the page faults and preemptions of its own window, not the
   );
   try {
     await Bun.sleep(60);
-    blockFor(300);
+    // Long enough to pass the filter below on any host, as the cases above it.
+    blockFor(400);
     current = { cpuMicros: 5_040_000, majorFaults: 912, preemptions: 70_450 };
     await Bun.sleep(60);
   } finally {
     stop();
   }
-  expect(stalls.length).toBe(1);
-  expect(stalls[0]).toMatchObject({ cpuMs: 40, majorFaults: 12, preemptions: 450 });
+  // The stall this test caused; the scheduler of a loaded host adds its own past 150 ms, which the
+  // detector rightly reports — at load average 107 there were two.
+  const own = caused(stalls);
+  expect(own.length).toBe(1);
+  expect(own[0]).toMatchObject({ cpuMs: 40, majorFaults: 12, preemptions: 450 });
 });
 
 test('a stall spent computing and a stall spent waiting report different CPU time', async () => {

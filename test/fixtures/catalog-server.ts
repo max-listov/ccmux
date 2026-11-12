@@ -1,11 +1,21 @@
 #!/usr/bin/env bun
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const home = process.env.CODEX_HOME;
 const address = process.argv[process.argv.indexOf('--listen') + 1];
 if (!home || !address?.startsWith('unix://')) throw new Error('fixture configuration missing');
 writeFileSync(join(home, 'fixture.pid'), String(process.pid));
+// `late-listen` in the home: the socket path exists for a while before anything listens on it.
+// A real server's path appears at bind() and listen() follows; a loaded machine can hold that
+// window open, and a reader that takes the path for readiness is refused inside it. A plain file
+// stands in for the bound socket: the connect is refused (ENOTSOCK rather than ECONNREFUSED), and
+// the reader classifies both as `endpoint-not-listening`.
+if (existsSync(join(home, 'late-listen'))) {
+  writeFileSync(address.slice(7), '');
+  await Bun.sleep(300);
+  unlinkSync(address.slice(7));
+}
 const server = Bun.serve({
   unix: address.slice(7),
   fetch(request, server) {

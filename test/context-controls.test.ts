@@ -245,7 +245,12 @@ test('history projects native IDs and reasoning summaries, never hidden reasonin
     expect(JSON.stringify(page)).not.toMatch(/HIDDEN_REASONING|PRIVATE_COMMAND|PRIVATE_OUTPUT/);
     expect(calls).toEqual(['thread/items/list']);
     const pending = readNativeHistory(f.m, f.s, { limit: 8 }, AbortSignal.timeout(HANG_GUARD_MS));
-    await Bun.sleep(30);
+    // The owner answers what is in the mailbox, so the read's request must be there first — waited
+    // for, not slept for. Thirty milliseconds were not enough at load average 58: the pass found an
+    // empty mailbox and the read waited out its whole deadline.
+    const queued = Date.now() + HANG_GUARD_MS;
+    while (readHistoryMailbox(f.m, f.s)?.state !== 'queued' && Date.now() < queued)
+      await Bun.sleep(5);
     await applyContextCommands(f.m, f.s, f.generation, api, AbortSignal.timeout(HANG_GUARD_MS));
     expect((await pending).entries).toEqual(page.entries);
   } finally {
@@ -511,6 +516,18 @@ test('cancelled Codex context RPC retains one slot until its late ACK and never 
   }
 });
 
+/**
+ * Closing the pump does not wait for the stalled read: it settles while that read is still held.
+ * Not a number of milliseconds — the close writes the mailbox's failure, and on a machine loaded by
+ * other work that write alone took 120 ms against the 100 ms this used to be. A close that waited
+ * for the read would never settle before the test releases it; the bound only fails that fast.
+ */
+const closedBeforeTheRead = (pump: NativeContextPump) =>
+  Promise.race([
+    pump.close().then(() => 'closed'),
+    Bun.sleep(5_000).then(() => 'waited for the stalled read'),
+  ]);
+
 test('single background context pump leaves heartbeat and approval usable during a stalled history read', async () => {
   const f = await fixture(),
     released = Promise.withResolvers<void>();
@@ -560,9 +577,7 @@ test('single background context pump leaves heartbeat and approval usable during
     expect(approvals).toBe(1);
     expect(historyCalls).toBe(1);
     expect(readHistoryMailbox(f.m, f.s)?.state).toBe('queued');
-    const started = performance.now();
-    await pump.close();
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(await closedBeforeTheRead(pump)).toBe('closed');
     expect(readHistoryMailbox(f.m, f.s)?.state).toBe('failed');
     released.resolve();
     await Bun.sleep(0);
@@ -647,9 +662,7 @@ test('OpenCode owner pump keeps native status and permission RPC usable while hi
     expect(statuses).toBe(3);
     expect(approvals).toBe(1);
     expect(readHistoryMailbox(f.m, session)?.state).toBe('queued');
-    const started = performance.now();
-    await pump.close();
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(await closedBeforeTheRead(pump)).toBe('closed');
     expect(readHistoryMailbox(f.m, session)?.state).toBe('failed');
     released.resolve();
     await Bun.sleep(0);

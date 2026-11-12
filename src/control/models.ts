@@ -54,9 +54,19 @@ const ProviderModelPageSchema = z.looseObject({
   nextCursor: z.string().max(4_096).nullable(),
 });
 
+/**
+ * The caller is told only that the catalog is unavailable; the reason travels as the error's
+ * `cause`, which stays in this process — the wire envelope (`AppError.toJSON`) carries code and
+ * message, never the cause. Without it the reason reached only `log.debug`, and a test that failed
+ * here on a loaded machine said "unavailable" and nothing else.
+ */
 function unavailable(reason: string, error: unknown): never {
   log.debug({ msg: 'provider model catalog read failed', reason, err: String(error) });
-  throw new AppError('UNAVAILABLE', { message: 'Model catalog is unavailable', status: 503 });
+  throw new AppError('UNAVAILABLE', {
+    message: 'Model catalog is unavailable',
+    status: 503,
+    cause: error,
+  });
 }
 
 async function readProviderModels(

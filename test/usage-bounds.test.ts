@@ -193,11 +193,51 @@ test('independent processes serialize the same cold checkpoint and restart from 
     return z.object({ count: z.number(), total: z.number() }).parse(JSON.parse(stdout));
   };
   const results = await Promise.all([scan(), scan()]);
-  expect(results.map((r) => r.count).sort((a, b) => a - b)).toEqual([0, 600]);
+  // Both answer the whole file. One of them writes the checkpoint; the other either waits for it and
+  // reads it (count 0) or, when the writer's first pass outlasts the busy timeout — a loaded
+  // machine — reads the file in memory without writing (count 600). It used to fail there instead,
+  // with "database is locked". That only one checkpoint was committed is what the next two scans
+  // show: each starts from the committed offset.
+  expect(results.map((r) => r.total)).toEqual([600, 600]);
+  expect(results.map((r) => r.count).sort((a, b) => a - b)).toEqual(expect.arrayContaining([600]));
+  for (const { count } of results) expect([0, 600]).toContain(count);
   fs.appendFileSync(
     path,
     '{"type":"assistant","message":{"id":"last","usage":{"input_tokens":1}}}\n',
   );
   expect(await scan()).toEqual({ count: 1, total: 601 });
   expect(await scan()).toEqual({ count: 0, total: 601 });
+});
+
+test('a reader behind a writer that has committed nothing yet reads the file itself', () => {
+  const path = join(fixture(), 'history.jsonl');
+  const index = transcriptIndexPath(path, 'claude');
+  indexes.push(index);
+  fs.writeFileSync(
+    path,
+    `${Array.from({ length: 600 }, (_, i) => JSON.stringify({ type: 'assistant', message: { id: String(i), usage: { input_tokens: 1 } } })).join('\n')}\n`,
+  );
+  // Another process's first pass: the schema committed, the write lock held, no index yet.
+  const holder = new UsageStore(index);
+  holder.db.exec('BEGIN IMMEDIATE');
+  try {
+    let count = 0;
+    const result = indexTranscript(path, 'claude', (lines) => {
+      count += lines.length;
+      return { ...EMPTY_STATS, messages: lines.length };
+    });
+    // Past the busy timeout it answers the whole file from the file — it used to throw "database is
+    // locked" — and writes nothing: the holder records the index itself.
+    expect({ total: result?.totalLines, count }).toEqual({ total: 600, count: 600 });
+  } finally {
+    holder.db.exec('ROLLBACK');
+    holder.close();
+  }
+  const reader = new UsageStore(index);
+  try {
+    expect(reader.db.query("SELECT 1 FROM sqlite_master WHERE name='facts'").get()).not.toBeNull();
+    expect(reader.read('index', z.unknown())).toBeNull();
+  } finally {
+    reader.close();
+  }
 });

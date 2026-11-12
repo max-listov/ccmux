@@ -2,8 +2,8 @@ import { loadMachineConfig } from '../config/machine.ts';
 import { createControlClient } from '../control/transport/client.ts';
 import { controlSocket } from '../control/transport/socketPath.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
-import { peersOf, runPeer } from '../fleet/transport.ts';
-import { UsageListResultSchema, UsageQuerySchema } from '../usage/schema.ts';
+import { fleetUsage } from '../usage/fleetUsage.ts';
+import { UsageQuerySchema } from '../usage/schema.ts';
 import { printLine } from '../util/stdout.ts';
 import { parseFlags } from './flags.ts';
 
@@ -66,43 +66,13 @@ export async function cmdUsage(args: string[]): Promise<number> {
           ? 2
           : 0;
       }
-      const remoteArgs = args.filter((a) => a !== '--fleet');
-      const machines = await Promise.all(
-        peersOf(m).map(async (peer) => {
-          const result = await runPeer(
-            m,
-            peer.machine,
-            peer.alias,
-            ['ccmux', 'usage', ...remoteArgs],
-            { timeoutMs: 10_000, connectTimeoutSeconds: 3 },
-          );
-          if (result.transportFailed || (result.code !== 0 && result.code !== 2))
-            return { machine: peer.machine, status: 'unavailable', data: null };
-          try {
-            const data = UsageListResultSchema.parse(JSON.parse(result.stdout));
-            if (data.machine !== peer.machine) throw new Error('Machine identity mismatch');
-            return { machine: peer.machine, status: 'available', data };
-          } catch {
-            return { machine: peer.machine, status: 'unavailable', data: null };
-          }
-        }),
+      const answer = await fleetUsage(
+        m,
+        local,
+        args.filter((a) => a !== '--fleet'),
       );
-      const all = [{ machine: m.rcPrefix, status: 'available', data: local }, ...machines];
-      const partial = all.some(
-        (row) =>
-          row.status !== 'available' ||
-          row.data?.nextCursor ||
-          row.data?.data.some((s) => s.self.coverage !== 'full' || s.state !== 'ready'),
-      );
-      await printLine(
-        JSON.stringify({
-          coverage: partial ? 'partial' : 'full',
-          machines: all,
-          total: null,
-          totalReason: 'cross-session-lineage-unproven',
-        }),
-      );
-      return partial ? 2 : 0;
+      await printLine(JSON.stringify(answer));
+      return answer.coverage === 'partial' ? 2 : 0;
     } finally {
       await client.close();
     }

@@ -1,14 +1,17 @@
 import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { prepareManagedCodexTurn } from '../src/agent/codex/appServer.ts';
 import { ownedCodexArgv, ownedCodexThreadParams } from '../src/agent/codex/owned/launch.ts';
 import { verifyManagedLaunchRecipe } from '../src/config/launchRecipes.ts';
 import { validateModelSelection } from '../src/config/modelSelection.ts';
+import { requestLockPath, storeLockPath } from '../src/control/createReceipts.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
 import { ControlCreateSchema } from '../src/control/schema/session.ts';
+import { privateRuntimeDirectory } from '../src/runtime/store.ts';
 import type { CreateManagedInput } from '../src/session/create.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
+import { withLock } from '../src/util/lock.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('one profile serves two model selections; retries and restart preserve one writer and selection', async () => {
@@ -181,4 +184,41 @@ test('a loaded provider mismatch is refused before collaboration discovery or tu
     }),
   ).rejects.toMatchObject({ code: 'COLLABORATION_MODE_UNAVAILABLE' });
   expect(reads).toBe(0);
+});
+
+test("a create waiting for a held request lock ends at the caller's deadline, not the lock's", async () => {
+  const root = mkdtempSync('/tmp/ccmux-selection-lock-');
+  const machine = makeMachine({ stateDir: join(root, 'state'), codexBin: '/bin/codex' });
+  const requestId = crypto.randomUUID();
+  privateRuntimeDirectory(dirname(storeLockPath(machine)));
+  const held = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
+  const holder = withLock(
+    requestLockPath(machine, requestId),
+    async () => {
+      entered.resolve();
+      await held.promise;
+    },
+    'test holder',
+  );
+  try {
+    await entered.promise;
+    const started = performance.now();
+    await expect(
+      createControlSession(
+        machine,
+        { requestId, name: 'held', workspace: root, flags: [] },
+        AbortSignal.timeout(200),
+        async () => {
+          throw new Error('a create behind a held lock must not reach the provider');
+        },
+      ),
+    ).rejects.toMatchObject({ name: 'TimeoutError' });
+    // The lock's own bound is ten seconds; the caller's is 200 ms.
+    expect(performance.now() - started).toBeLessThan(5_000);
+  } finally {
+    held.resolve();
+    await holder;
+    rmSync(root, { recursive: true, force: true });
+  }
 });

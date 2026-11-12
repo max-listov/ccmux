@@ -94,6 +94,8 @@ export async function packageControlServiceClient(directory: string): Promise<{
         exports: {
           '.': { types: './types/control-service-client.d.ts', import: './dist/index.js' },
           './native-stream.json': './native-stream.json',
+          // A descriptor projected from this package names its version as the service revision.
+          './package.json': './package.json',
         },
         dependencies: sourcePackage.dependencies,
         peerDependencies: sourcePackage.peerDependencies,

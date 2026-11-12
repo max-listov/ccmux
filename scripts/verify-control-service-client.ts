@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { VERSION } from '../src/util/version.ts';
 import { packageControlServiceClient } from './package-control-service.ts';
 
 const directory = mkdtempSync('/tmp/ccmux-packed-service-');
@@ -43,7 +44,8 @@ try {
   );
   await Bun.write(
     join(consumer, 'check.ts'),
-    `import { controlContract, createInjectedControlClient, type UsageSummary } from '@ccmux/control-service-client';
+    `import { controlContract, controlServiceEffects, createInjectedControlClient, type ServiceEffect, type UsageSummary } from '@ccmux/control-service-client';
+import { version as packageVersion } from '@ccmux/control-service-client/package.json';
 const aggregate: UsageSummary['self'] = {
   values:{inputTokens:10,outputTokens:5,cacheReadTokens:null,cacheCreationTokens:null,reasoningTokens:null,totalTokens:null},
   measured:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheCreationTokens:0,reasoningTokens:0,totalTokens:0},
@@ -67,6 +69,11 @@ if (result.path !== '/tmp' || result.entries.length !== 0) throw new Error('type
 if (!controlContract.endpoints['usage.read'] || !controlContract.endpoints['usage.list']) throw new Error('usage contract missing');
 const usage = await client['usage.read']({address:'host-a:agent-a'});
 if (usage.self.values.inputTokens !== 10 || usage.self.values.outputTokens !== 5) throw new Error('typed usage lost');
+// The declared service as a transport projects it: every operation, its effect, the version.
+if (Object.keys(controlServiceEffects).length !== Object.keys(controlContract.endpoints).length) throw new Error('effects incomplete');
+const stop: ServiceEffect = controlServiceEffects['session.stop'];
+if (stop !== 'write' || controlServiceEffects['fleet.list'] !== 'read') throw new Error('service effects lost');
+if (packageVersion !== ${JSON.stringify(VERSION)}) throw new Error('package version not readable');
 `,
   );
   if (!run('bun', ['install', '--ignore-scripts'])) throw new Error('consumer install failed');
@@ -82,6 +89,7 @@ if (usage.self.values.inputTokens !== 10 || usage.self.values.outputTokens !== 5
       'esnext',
       '--target',
       'es2022',
+      '--resolveJsonModule',
       'check.ts',
     ])
   )

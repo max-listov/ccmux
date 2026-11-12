@@ -101,47 +101,76 @@ test('a session with nothing left behind reports no straggler', async () => {
   }
 }, 30_000);
 
-test('rm answers with its exit code, and prints a cause rather than its own source', async () => {
-  const f = fixture('rm-verdict');
-  const configPath = join(f.dir, 'machine.json');
-  writeFileSync(configPath, `${JSON.stringify(f.m)}\n`);
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = configPath;
-  env.CCMUX_STATE_DIR = f.dir;
-  env.CCMUX_CACHE_DIR = join(f.dir, 'cache');
-  const rm = async (name: string) => {
-    const proc = Bun.spawn(['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'rm', name], {
-      env,
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const [out, err, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { out, err, code };
-  };
-  try {
-    await appendSession(f.m, makeSession({ name: 'agent-a', dir: f.dir }));
-    await newSession(f.m, 'agent-a', f.dir, ['sh', '-c', 'trap "" HUP TERM; sleep 30 & sleep 30']);
-    // Removed AND leaving a straggler: the straggler is a line, the verdict is still zero, because
-    // the question `rm` answers is whether the session is off the registry.
-    const removed = await rm('agent-a');
-    expect(removed.code).toBe(0);
-    expect(removed.out).toContain('removed agent-a');
-    expect(removed.out).toMatch(/warning: process group \d+ from agent-a is still running/);
-    // Not a stack, not a slice of the built bundle: those arrive with line numbers and pipes, and
-    // they landed where a person was waiting for a cause.
-    expect(`${removed.out}${removed.err}`).not.toContain('Bun.sleep');
-    expect(removed.err).not.toMatch(/^\s*\d+ \|/m);
-    // The most common mistake — a name that is not there — is the one that answered zero.
-    const missing = await rm('agent-zzz');
-    expect(missing.code).toBe(1);
-    expect(missing.out).toContain("'agent-zzz' not in");
-  } finally {
-    f.cleanup();
-  }
-}, 30_000);
+/**
+ * Two cold starts of the real CLI, a tmux session and `rm`'s own five-second wait for the
+ * straggler: the case is the exit code and the sentence, not the speed. Sixteen parallel runs at
+ * load 80–100 took 9.9–15.7 s; inside a gate beside a second suite at load 137–170 it passed 30 s
+ * in both suites at once. The bound is against a hang, and a hung child is named by `RM_HANG_MS`.
+ */
+const RM_HANG_MS = 50_000;
+const RM_TEST_MS = 60_000;
+
+test(
+  'rm answers with its exit code, and prints a cause rather than its own source',
+  async () => {
+    const f = fixture('rm-verdict');
+    const configPath = join(f.dir, 'machine.json');
+    writeFileSync(configPath, `${JSON.stringify(f.m)}\n`);
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env))
+      if (value !== undefined) env[key] = value;
+    env.CCMUX_CONFIG = configPath;
+    env.CCMUX_STATE_DIR = f.dir;
+    env.CCMUX_CACHE_DIR = join(f.dir, 'cache');
+    const rm = async (name: string) => {
+      const proc = Bun.spawn(['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'rm', name], {
+        env,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      // A child that has not answered by now is stopped and its output reported, so a hang says
+      // where it was rather than ending as the suite's timeout with the child killed unseen.
+      let hung = false;
+      const guard = setTimeout(() => {
+        hung = true;
+        proc.kill('SIGKILL');
+      }, RM_HANG_MS);
+      const [out, err, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]).finally(() => clearTimeout(guard));
+      if (hung)
+        throw new Error(
+          `ccmux rm ${name} did not exit within ${RM_HANG_MS} ms; it printed: ${out}${err}`,
+        );
+      return { out, err, code };
+    };
+    try {
+      await appendSession(f.m, makeSession({ name: 'agent-a', dir: f.dir }));
+      await newSession(f.m, 'agent-a', f.dir, [
+        'sh',
+        '-c',
+        'trap "" HUP TERM; sleep 30 & sleep 30',
+      ]);
+      // Removed AND leaving a straggler: the straggler is a line, the verdict is still zero, because
+      // the question `rm` answers is whether the session is off the registry.
+      const removed = await rm('agent-a');
+      expect(removed.code).toBe(0);
+      expect(removed.out).toContain('removed agent-a');
+      expect(removed.out).toMatch(/warning: process group \d+ from agent-a is still running/);
+      // Not a stack, not a slice of the built bundle: those arrive with line numbers and pipes, and
+      // they landed where a person was waiting for a cause.
+      expect(`${removed.out}${removed.err}`).not.toContain('Bun.sleep');
+      expect(removed.err).not.toMatch(/^\s*\d+ \|/m);
+      // The most common mistake — a name that is not there — is the one that answered zero.
+      const missing = await rm('agent-zzz');
+      expect(missing.code).toBe(1);
+      expect(missing.out).toContain("'agent-zzz' not in");
+    } finally {
+      f.cleanup();
+    }
+  },
+  RM_TEST_MS,
+);

@@ -7,11 +7,11 @@ import {
   requireCommunicationAuthorization,
 } from '../src/chat/communicationAuthorization.ts';
 import { CommunicationAuthorizationSchema } from '../src/chat/communicationAuthorizationSchema.ts';
-import { LogFrameSchema } from '../src/chat/feedSchema.ts';
+import { LOG_FRAME_MAX_BYTES, LogFrameSchema } from '../src/chat/feedSchema.ts';
 import { rowFromLedgerRecord, rowFromOutbound } from '../src/chat/fleetLog.ts';
 import { managedPeer, servicePrincipal } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
-import { boundFrame, MAX_FRAME_BYTES } from '../src/chat/logFeed.ts';
+import { boundFrame } from '../src/chat/logFeed.ts';
 import { ChatMessageSchema } from '../src/chat/messageSchema.ts';
 import { principalOrigin } from '../src/chat/origin.ts';
 import { chatPaths } from '../src/chat/store.ts';
@@ -208,7 +208,7 @@ test('history absence stays absent; projections retain complete evidence without
     },
   };
   const frame = boundFrame({ kind: 'row', cursor: 'unchanged', row: large });
-  expect(Buffer.byteLength(JSON.stringify(frame))).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+  expect(Buffer.byteLength(JSON.stringify(frame))).toBeLessThanOrEqual(LOG_FRAME_MAX_BYTES);
   expect(LogFrameSchema.safeParse(frame).success).toBe(true);
   expect(frame).toMatchObject({
     cursor: 'unchanged',

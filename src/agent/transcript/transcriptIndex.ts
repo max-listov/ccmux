@@ -290,29 +290,30 @@ function indexTranscriptImpl(
     store = new UsageStore(transcriptIndexPath(path, agent));
     const owner = store;
     const identity = `${stat.dev}:${stat.ino}`;
+    const fresh = (): StoredIndex => ({
+      version: parserRevision(agent),
+      agent,
+      head,
+      identity,
+      mtime: stat.mtimeMs,
+      observedAt: new Date().toISOString(),
+      observedSize: size,
+      readOffset: 0,
+      pending: '',
+      skipping: false,
+      malformed: 0,
+      context: { model: null, epoch: head },
+      size: 0,
+      lines: 0,
+      checkpoints: [0],
+      stats: { ...EMPTY_STATS },
+    });
     const index = advanceOrCommitted(
       owner,
       () => {
         const stored = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
         if (!stored) owner.reset();
-        const index: StoredIndex = stored ?? {
-          version: parserRevision(agent),
-          agent,
-          head,
-          identity,
-          mtime: stat.mtimeMs,
-          observedAt: new Date().toISOString(),
-          observedSize: size,
-          readOffset: 0,
-          pending: '',
-          skipping: false,
-          malformed: 0,
-          context: { model: null, epoch: head },
-          size: 0,
-          lines: 0,
-          checkpoints: [0],
-          stats: { ...EMPTY_STATS },
-        };
+        const index: StoredIndex = stored ?? fresh();
         const oldOffset = index.readOffset;
         if (index.readOffset < size)
           scanForward(fd, index, Math.min(size, oldOffset + maxBytes), accumulate, (fact) =>
@@ -330,9 +331,11 @@ function indexTranscriptImpl(
         return index;
       },
       () => {
-        const committed = loadStored(owner, agent, head, size, identity, stat.mtimeMs);
+        // Nothing committed yet: the process holding the lock is building this index from the
+        // start, and this read builds the same in memory rather than fail because it is slower.
+        const committed = loadStored(owner, agent, head, size, identity, stat.mtimeMs) ?? fresh();
         // Caught up in memory only: the process holding the lock records these lines itself.
-        if (committed && committed.readOffset < size)
+        if (committed.readOffset < size)
           scanForward(
             fd,
             committed,
@@ -363,21 +366,22 @@ function indexTranscriptImpl(
  * lock. The other does not wait for it and does not fail: it takes the committed index, which is
  * correct up to its own offset, and scans the rest of the file in memory without writing. Answering
  * from the committed state alone would end the file where the last commit ended it, and a `tail`
- * read at the end of a turn would come back `ok` without the turn's final lines. Anything other
- * than a busy lock, or a committed index that no longer matches the file, is still the failure it was.
+ * read at the end of a turn would come back `ok` without the turn's final lines. Where nothing
+ * that matches the file is committed yet — the holder is building it from the start — the reader
+ * builds the same in memory. It used to fail there: on a loaded machine the holder's first pass
+ * outlasted the busy timeout, and the slower of two readers answered "database is locked". Anything
+ * other than a busy lock is still the failure it was.
  */
 function advanceOrCommitted(
   store: UsageStore,
   advance: () => StoredIndex,
-  committed: () => StoredIndex | null,
+  committed: () => StoredIndex,
 ): StoredIndex {
   try {
     return store.transaction(advance);
   } catch (error) {
     if (!isSqliteBusy(error)) throw error;
-    const index = committed();
-    if (index === null) throw error;
-    return index;
+    return committed();
   }
 }
 

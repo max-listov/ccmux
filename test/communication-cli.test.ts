@@ -12,8 +12,15 @@ import {
   servicePrincipal,
 } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
+import { REMOTE_HOP_MS } from '../src/chat/letterParties.ts';
+import { LetterRequestSchema } from '../src/chat/letterRequestSchema.ts';
+import { sendLetter } from '../src/chat/sendLetter.ts';
 import { SendReceiptSchema, SentListSchema } from '../src/chat/sentLetterSchema.ts';
 import { sessionsPath } from '../src/config/paths.ts';
+import { ControlPublisher } from '../src/control/publisher.ts';
+import { createControlClient } from '../src/control/transport/client.ts';
+import { createControlServer } from '../src/control/transport/server.ts';
+import { controlSocket } from '../src/control/transport/socketPath.ts';
 import {
   appendOutboxAck,
   loadOutboxAcked,
@@ -21,6 +28,7 @@ import {
   retryCandidates,
 } from '../src/fleet/flush.ts';
 import { appendOutbound, loadOutbox } from '../src/fleet/outbox.ts';
+import type { runPeer } from '../src/fleet/transport.ts';
 import {
   communicationAuthorization,
   communicationAuthorizationFile,
@@ -519,4 +527,103 @@ test('with no question, a session is told about itself', async () => {
   );
   expect(child.exitCode).not.toBe(0);
   expect(child.stderr.toString()).toContain('ask about one thing');
+});
+
+test('a letter sent through the client is answered with the receipt ccmux msg --json prints', async () => {
+  const f = fixture();
+  const before = process.env.CCMUX_CONFIG;
+  process.env.CCMUX_CONFIG = join(f.root, 'machine.json');
+  const publisher = new ControlPublisher(f.machine);
+  const server = createControlServer(f.machine, publisher);
+  const client = createControlClient({ socket: controlSocket(f.machine) });
+  try {
+    const request = {
+      to: 'host-a:worker',
+      body: 'the kestrel plan',
+      task: 'kestrel',
+      communicationAuthorization,
+    };
+    const byClient = await client['letter.send'](request);
+    const byCommand = SendReceiptSchema.parse(
+      JSON.parse(
+        (
+          await f.run([
+            request.to,
+            request.body,
+            '--task',
+            request.task,
+            '--communication-authorization',
+            communicationAuthorizationFile,
+            '--json',
+          ])
+        ).stdout,
+      ),
+    );
+    // Two letters, so two ids, two references and two times. And two senders, each named as what
+    // it is: a program on the control socket is this machine's service, the command its command
+    // line — an agent's session is the same managed sender on both roads. Every other field is
+    // the same.
+    const same = ({ id: _id, ref: _ref, ts: _ts, from: _from, ...rest }: typeof byClient) => rest;
+    expect(same(byClient)).toEqual(same(byCommand));
+    expect([byClient.from, byCommand.from]).toEqual(['ccmux/service@host-a', 'ccmux/cli@host-a']);
+    expect(byClient).toMatchObject({ state: 'accepted', task: 'kestrel', note: null });
+    expect(loadLedger(f.machine).map((row) => row?.id)).toEqual([byClient.id, byCommand.id]);
+
+    // A letter that cannot be sent is refused with the sentence the command says, and not written.
+    await expect(
+      client['letter.send']({ to: 'nobody', body: 'hello', communicationAuthorization }),
+    ).rejects.toMatchObject({
+      code: 'LETTER_REFUSED',
+      message: "msg: no such session 'nobody'",
+    });
+    expect(
+      (
+        await f.run([
+          'nobody',
+          'hello',
+          '--communication-authorization',
+          communicationAuthorizationFile,
+        ])
+      ).stderr,
+    ).toContain("msg: no such session 'nobody'");
+    expect(loadLedger(f.machine)).toHaveLength(2);
+  } finally {
+    await client.close();
+    publisher.close();
+    await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
+    await server.observability.close();
+    if (before === undefined) delete process.env.CCMUX_CONFIG;
+    else process.env.CCMUX_CONFIG = before;
+  }
+});
+
+test("a letter to another machine spends the caller's time, not twenty seconds a hop", async () => {
+  const root = mkdtempSync('/tmp/ccmux-letter-budget-');
+  roots.push(root);
+  const machine = makeMachine({ stateDir: root, rcPrefix: 'host-a', fleet: { 'host-b': 'b' } });
+  const asked: number[] = [];
+  const run: typeof runPeer = async (_m, _machine, _alias, _argv, opts) => {
+    asked.push(opts?.timeoutMs ?? -1);
+    return {
+      code: 1,
+      stdout: '',
+      stderr: '',
+      transportFailed: true,
+      delivery: 'not-sent',
+      failureDetail: 'test: not reachable',
+    };
+  };
+  const request = LetterRequestSchema.parse({
+    to: 'host-b:worker',
+    body: 'the kestrel plan',
+    communicationAuthorization,
+  });
+  const from = cliPrincipal('host-a');
+  await sendLetter(machine, from, request, { run, deadline: Date.now() + 5_000 });
+  // A command line has no deadline: each hop has its own.
+  await sendLetter(machine, from, request, { run });
+  expect(asked).toHaveLength(2);
+  expect(asked[0]).toBeLessThanOrEqual(5_000);
+  expect(asked[0]).toBeGreaterThan(4_000);
+  expect(asked[1]).toBe(REMOTE_HOP_MS);
 });

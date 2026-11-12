@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { LOG_FRAME_MAX_BYTES } from '../src/chat/feedSchema.ts';
 import { rowFromLedgerRecord } from '../src/chat/fleetLog.ts';
 import {
   boundFrame,
   formatCursor,
   type LogFrame,
   LogFrameSchema,
-  MAX_FRAME_BYTES,
   machineFrame,
   parseCursor,
   rowsAfter,
@@ -171,15 +171,15 @@ test('an oversized record is REPLACED with a named refusal, never cut', () => {
     from: 'a',
     to: 'b',
     task: null,
-    body: 'x'.repeat(MAX_FRAME_BYTES * 2),
+    body: 'x'.repeat(LOG_FRAME_MAX_BYTES * 2),
     note: '',
   };
   const bounded = boundFrame({ kind: 'row', cursor: '2.1.0', row });
-  expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+  expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(LOG_FRAME_MAX_BYTES);
   expect(bounded.kind).toBe('row');
   if (bounded.kind !== 'row') throw new Error('unreachable');
   expect(bounded.row.body).toContain('body omitted');
-  expect(bounded.row.body).toContain(String(MAX_FRAME_BYTES * 2)); // the real size is named
+  expect(bounded.row.body).toContain(String(LOG_FRAME_MAX_BYTES * 2)); // the real size is named
   expect(bounded.row.note).toContain('oversized');
   // Everything that makes the record findable survives — route, time and position.
   expect(bounded.row.from).toBe('a');
@@ -191,7 +191,7 @@ test('an oversized record is REPLACED with a named refusal, never cut', () => {
 test('the cap counts BYTES, so a long Unicode body is bounded by what the transport carries', () => {
   // Characters are not bytes: an emoji body a third the character count of an ASCII one can be the
   // same size on the remote transport, and a cap that counted characters would let it through.
-  const emoji = '🙂'.repeat(MAX_FRAME_BYTES / 2); // 4 bytes each — well past the cap
+  const emoji = '🙂'.repeat(LOG_FRAME_MAX_BYTES / 2); // 4 bytes each — well past the cap
   const row = {
     ...rowFromLedgerRecord('host-a', null),
     machine: 'host-a',
@@ -204,7 +204,7 @@ test('the cap counts BYTES, so a long Unicode body is bounded by what the transp
     note: '',
   };
   const bounded = boundFrame({ kind: 'row', cursor: '2.1.0', row });
-  expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+  expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(LOG_FRAME_MAX_BYTES);
   if (bounded.kind !== 'row') throw new Error('unreachable');
   expect(bounded.row.body).toContain('body omitted');
 });
@@ -230,13 +230,13 @@ test('a long Unicode body that FITS is passed through untouched', () => {
 });
 
 test('an oversized record still advances the stream — it keeps its position', () => {
-  appendLedger('2026-08-26T10:00:00.000Z', 'y'.repeat(MAX_FRAME_BYTES * 2));
+  appendLedger('2026-08-26T10:00:00.000Z', 'y'.repeat(LOG_FRAME_MAX_BYTES * 2));
   appendLedger('2026-08-26T10:00:01.000Z', 'after the big one');
   const out = rowsAfter(machine(), ZERO_CURSOR);
   expect(bodies(out.frames)[1]).toBe('after the big one');
   expect(out.cursor.ledger).toBe(2);
   for (const f of out.frames)
-    expect(Buffer.byteLength(JSON.stringify(f))).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+    expect(Buffer.byteLength(JSON.stringify(f))).toBeLessThanOrEqual(LOG_FRAME_MAX_BYTES);
 });
 
 // ── the frame contract ───────────────────────────────────────────────────────────────────────────

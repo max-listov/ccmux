@@ -65,7 +65,7 @@ export class UsageStore {
       // INSERT asks for the write lock whether or not it inserts — so running them on every open made
       // every reader queue behind whichever process was advancing the same index, and give up after
       // the busy timeout as "database is locked". They run only when something is actually missing.
-      if (!this.schemaPresent()) this.db.exec(SCHEMA);
+      if (!this.schemaPresent()) this.createSchema();
     } catch (error) {
       this.close();
       throw error;
@@ -80,6 +80,20 @@ export class UsageStore {
       this.db.query('PRAGMA journal_mode=WAL').get();
     } catch (error) {
       if (!isSqliteBusy(error)) throw error;
+    }
+  }
+  /**
+   * Two processes opening a new file both find no schema, and both create it. The first commits it
+   * at once and then holds the write lock for as long as it indexes; the second waits for that lock
+   * past the busy timeout. What it waited for is already there — the first committed the schema
+   * before it began — so a busy lock with the schema present is an open, not a failure. At load
+   * average 95 the second process failed here with "database is locked".
+   */
+  private createSchema(): void {
+    try {
+      this.db.exec(SCHEMA);
+    } catch (error) {
+      if (!isSqliteBusy(error) || !this.schemaPresent()) throw error;
     }
   }
   private schemaPresent(): boolean {

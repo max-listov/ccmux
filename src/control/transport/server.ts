@@ -7,7 +7,7 @@ import type { MachineConfig } from '../../types.ts';
 import { log } from '../../util/log.ts';
 import type { ControlOperationDependencies } from '../operations/context.ts';
 import type { ControlPublisher } from '../publisher.ts';
-import { controlAuth } from './auth.ts';
+import { controlAuth, refuseOutsideService } from './auth.ts';
 import { controlServices } from './service.ts';
 import { controlSocket, prepareControlDirectory } from './socketPath.ts';
 
@@ -81,6 +81,7 @@ export function createControlServer(
             status: 403,
           });
         await authorize(ctx, endpoint);
+        refuseOutsideService(ctx.principal, endpoint.meta);
       },
     },
   });

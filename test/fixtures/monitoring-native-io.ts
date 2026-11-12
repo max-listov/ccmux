@@ -28,7 +28,15 @@ mock.module('node:fs/promises', () => ({
     return originalOpen(...args);
   },
 }));
-const { readMonitoringStatus } = await import('../../src/monitoring-reader.ts');
+const { MONITORING_MAX_TIMEOUT_MS, readMonitoringStatus } = await import(
+  '../../src/monitoring-reader.ts'
+);
+/**
+ * A read whose subject is not its deadline gets the longest one the reader allows. The default of
+ * 250 ms is a product bound for a live consumer, and on a machine loaded by other work this
+ * process's first reads exceed it — the answer was `deadline`, not what the line checks.
+ */
+const unhurried = { timeoutMs: MONITORING_MAX_TIMEOUT_MS };
 if (mode === 'hang') {
   expect((await readMonitoringStatus({ timeoutMs: 5 })).reason).toBe('deadline');
   for (let i = 0; i < 100; i++) {
@@ -40,12 +48,12 @@ if (mode === 'hang') {
   }
   expect(calls).toBe(1); // Hung I/O remains single-flight; abandoned callers do not retry it.
   resume();
-  expect((await readMonitoringStatus({ timeoutMs: 1000 })).status).toBe('live');
+  expect((await readMonitoringStatus(unhurried)).status).toBe('live');
   expect(calls).toBe(3);
-  expect((await readMonitoringStatus()).status).toBe('live');
+  expect((await readMonitoringStatus(unhurried)).status).toBe('live');
   expect(calls).toBe(6); // No completed-result cache, even immediately after the previous read.
 } else if (mode === 'migration') {
-  expect((await readMonitoringStatus()).reason).toBe('config-changed');
-  expect((await readMonitoringStatus()).reason).toBe('invalid'); // Old snapshot cannot pass the new identity.
+  expect((await readMonitoringStatus(unhurried)).reason).toBe('config-changed');
+  expect((await readMonitoringStatus(unhurried)).reason).toBe('invalid'); // Old snapshot cannot pass the new identity.
 } else throw new Error('unknown fixture mode');
 console.log('native I/O proof OK');

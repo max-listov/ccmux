@@ -232,6 +232,9 @@ or a bounded `baseline` with `reset=initial|generation|gap|context`. There is no
 target or registry row. An optional `launchRecipe: { id, revision }` selects host-owned configuration;
 a host-catalog env source must be absolute or home-relative, not workspace-relative. CCMux starts
 one short-lived metadata App Server with the existing native flags/session-environment mechanism,
+connects once it accepts connections — the socket path appears at `bind()` before the server
+listens, so a refused or vanished endpoint is retried until the caller's signal or the provider's
+exit, and any other refusal stands —
 initializes it, reads `config/read` and `model/list`, then closes the socket and reaps its entire
 process group through `stitchkit/process` with `ownerLoss: 'terminate'`. A native guard owns the
 group and kills it when its inherited kernel channel closes after owner death, including SIGKILL;
@@ -241,7 +244,8 @@ and claims only the guard invocation, so the full process runner stays behind a 
 An unavailable guard refuses the catalog before provider startup. Release-bundle tests cover
 catalog reads and owner loss without installed dependencies beside the bundle. It never calls `thread/start`
 or `thread/resume`. Failure retains only the last
-bounded diagnostic in owner-only `control/catalog-diagnostic.json` (0600), never in the response.
+bounded diagnostic in owner-only `control/catalog-diagnostic.json` (0600), never in the response;
+an in-process caller also gets the reason as the error's `cause`, which the wire envelope omits.
 
 That read outlives the call that asked for it. A metadata App Server's cold start was measured at
 18–22 s on a loaded host against the 5 s call budget, so every call timed out and the next paid the
@@ -319,8 +323,14 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 ## Чтения, которые раньше были только командой
 
 Команда человека и операция контракта — два представления одной функции домена. `ccmux whois`,
-`search`, `fleet`, `transcript --message` и `msg sent` читают флаги и печатают; тот же ответ
-программа получает по имени, тем же объектом, что команда печатает под `--json`.
+`search`, `fleet`, `chat log`, `transcript --message`, `msg` и `msg sent` читают флаги и
+печатают; тот же ответ программа получает по имени, тем же объектом, что команда печатает под
+`--json`. Схему этого ответа команда печатает под `--schema` из одной таблицы
+(`src/commands/answerSchemas.ts`), которая читает её из самого контракта; тест сравнивает то, что
+печатает каждая команда, с контрактом, так что команда не может описать ответ, которого её
+операция не даёт. Грамматика команды — короткие флаги, позиционные аргументы, слова `chat log` и
+`msg sent` — остаётся в `src/commands/help.ts`: она для человека, а значение запроса проверяет
+схема входа операции.
 
 | Операция | Ответ | Функция домена |
 |---|---|---|
@@ -330,6 +340,9 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 | `search` (поток) | `SearchFrameSchema` | `context/searchFleet.ts` |
 | `message.read` | `ExactMessageResultSchema` | `context/exactMessage.ts` |
 | `letter.list` | `SentListSchema` | `chat/sentLetters.ts` |
+| `letter.send` | `SendReceiptSchema` | `chat/sendLetter.ts` |
+| `chat.log` | `LogPayloadSchema` | `fleet/chatLog.ts` |
+| `watchChatLog` (поток) | `LogFrameSchema` | `followLog` в `chat/logFeed.ts` |
 | `fleet.list` | `FleetAnswerSchema` | `fleet/fleetList.ts` |
 | `session.stop`, `session.remove` | `ControlStopReceiptSchema` | `session/lifecycle.ts` |
 | `session.restart`, `session.keys` | `ControlActionReceiptSchema` | `session/lifecycle.ts`, `session/keys.ts` |
@@ -363,8 +376,37 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 `fleet/fleetSchema.ts`), а контракт импортирует только их. Проверка упакованного клиента падает,
 если это нарушить.
 
-Операции с адресом сессии отвечают за свою машину. Ответы по флоту (`identity.*`, `search`,
-`fleet.list`) опрашивают остальные машины сами и называют каждую, которая не ответила.
+Ответы по флоту (`identity.*`, `search`, `fleet.list`, `chat.log` с `fleet`) опрашивают
+остальные машины сами и называют каждую, которая не ответила.
+
+**Операцию с сессией другой машины исполняет демон той машины.** `message.read`, `session.start`,
+`session.stop`, `session.restart`, `session.remove` и `session.keys` с целью на другой машине
+демон не исполняет и не отклоняет: он передаёт тот же вызов — имя операции и проверенный вход —
+машине цели (`src/control/peerOperation.ts`). Та запускает `ccmux _peer-operation <операция>` со
+входом на stdin; программа спрашивает свой демон через локальный сокет и печатает одну строку —
+ответ или отказ с его кодом. Транспорт тот же, что у чтений флота: удалённый маршрут, где он
+настроен, иначе ssh. Отказ машины цели возвращается под её кодом; машина, чей выпуск ещё не знает
+`_peer-operation` или чей демон не знает операцию, даёт `UNKNOWN_OPERATION` с именем операции.
+
+Права решаются там, где сессия. Демон цели видит вызов как командную строку своей машины —
+ровно так, как туда всегда приходила `ccmux stop <машина>:<имя>`, — поэтому делегированная сессия
+отказывает, если правила её машины не разрешают это командной строке. Вызывающего через
+объявленный сервис (`declared-service`) демон не передаёт: его досягаемость — машина, чей сервис
+его аутентифицировал, а переданный вызов действовал бы на другой машине с правами её командной
+строки, которых ему никто там не давал. Такой вызывающий обращается к сервису машины цели.
+
+**Письмо — одна функция.** `ccmux msg` и `letter.send` вызывают `sendLetter`
+(`src/chat/sendLetter.ts`): кто может отправить, куда разрешается имя, что пишется в журнал и что
+отвечает квитанция, у двух дорог одно. Отправитель — тот, кто вызвал: сессия со своим
+удостоверением, командная строка (`cli`) или программа на сокете (`service`). `message.send` —
+другая операция: ввод хода управляемой сессии от приложения, с параметрами хода, вложениями и
+происхождением; письмом он не является.
+
+**Лента чата потоком.** `watchChatLog` отдаёт ленту этой машины от курсора, который она же дала:
+сначала кадр машины, затем каждую строку по мере записи. Это кадры `ccmux chat log --follow` от
+того же источника (`followLog`); курсор, которого лента не давала, — `INVALID_INPUT`, а не «с
+этого момента». Читатель, отставший больше чем на 4096 кадров, получает `LAGGED` и продолжает со
+своего последнего курсора.
 
 # Resident consumption
 
@@ -462,32 +504,39 @@ install an MCP server into existing provider sessions or change Desktop configur
 # Declared service and native stream binding
 
 The local control routes remain a same-user API and are never exposed directly as a remote
-service. A transport that already authenticates nodes and grants declared operations binds the
-separate fixed owner ingress at `/ccmux-control/invoke`. The transport constructs this strict
-envelope:
+service. A transport that already authenticates nodes and grants declared operations runs beside
+the daemon as the same user and delivers each call to that operation's own route on the local
+socket, naming the authenticated node in `x-ccmux-caller`. The daemon reads that caller as a
+`declared-service` principal — a session credential beside it is refused — and runs the same
+handlers, mutation admission, wait admission, registry, chat ledger and native provider adapter as
+for a local caller. It is not an HTTP-to-CLI proxy and cannot create another provider writer.
 
-```ts
-{
-  v: 1, id, caller,
-  service: "ccmux.control", revision: "current",
-  operation, payload: JSON.stringify(input),
-}
-```
+**The service is the contract, and each operation says what it does.** The declared service carries
+every operation of `controlContract`, and each one declares in `meta.service` whether it is a `read`
+or a `write` (`src/control/schema/serviceEffect.ts`). There is no default — an operation that says
+nothing does not compile — because the failure this replaced was a silent one: a transport kept its
+own list of reads beside the contract, written at one release, which called every later operation a
+write, and the descriptor built from it was never regenerated, so every operation added after it was
+absent from the service on every machine, with nothing saying so.
 
-`operation` is trusted outer metadata. The ingress selects one handler from it and only then parses
-`payload` with the existing control input schema; a nested selector cannot change the handler.
-The result is validated with the matching existing output schema and wrapped as
-`{ v: 1, revision: "current", result }`. The ingress and local routes share one in-process operation
-surface, mutation admission, wait admission, registry, chat ledger and native provider adapter.
-It is not an HTTP-to-CLI proxy and cannot create another provider writer.
+- A `read` changes nothing on the owner, so a grant to read the service admits it without naming it;
+  a `write` needs a grant naming it. Idempotent is not read: `session.archive`, `letter.send`,
+  `daemon.performance.configure` and every lifecycle operation are writes.
+- The daemon holds the boundary itself: a `declared-service` caller reaches the control operations
+  and is answered `FORBIDDEN` (403) for anything else on the socket — the contract identity, the
+  event streams, the peer reads — whatever a transport forwards.
+- Every operation is a POST with a static route and a unary JSON answer, the only shape a service
+  descriptor carries (`test/control-service.test.ts`); a parameterised route or a stream would make
+  the projection refuse the whole service.
 
 The release asset `ccmux-control-service-client-<version>.tgz` contains the typed injected-fetch
-client, `descriptor.json`, `native-stream.json` and declarations. Its adjacent
-`control-service-client.sha256` authenticates the artifact. The same surface is available from
-`ccmux/control-service-client` in a source checkout. `ccmuxControlServiceComposition` contains only
-virtual routing metadata and the descriptor. It grants nothing and opens no connection. The
-operator owns the private ingress socket path, node binding, credentials and exact
-service/revision/operation/effect grants.
+client, `native-stream.json` and declarations. Its adjacent `control-service-client.sha256`
+authenticates the artifact. The same surface is available from `ccmux/control-service-client` in a
+source checkout. For a transport projecting its descriptor it exports `controlServiceEffects`, and
+its own `package.json`: the package version is the service revision, so a node serving a descriptor
+from an older client says which release that is. The package grants nothing and opens no connection. The operator owns the
+transport's socket path, node binding, credentials and exact service/revision/operation/effect
+grants.
 
 `message.cancel` withdraws one letter the caller itself queued and that has not been delivered. The
 mechanism was already there — a cancel tombstone in the ack log — reachable only from the command

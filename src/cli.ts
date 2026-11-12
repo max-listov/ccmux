@@ -141,8 +141,10 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return (await import('./commands/receiveChat.ts')).cmdReceiveChat();
     case '_peer-read':
       return (await import('./commands/peerRead.ts')).cmdPeerRead(rest);
+    case '_peer-operation':
+      return (await import('./commands/peerOperation.ts')).cmdPeerOperation(rest);
     case '_codex-app-resolve':
-      return (await import('./commands/messagePeers.ts')).cmdResolveCodexApp(rest);
+      return (await import('./commands/resolveCodexApp.ts')).cmdResolveCodexApp(rest);
     case 'inbox':
       return (await import('./commands/inbox.ts')).cmdInbox(rest);
     case 'chat':

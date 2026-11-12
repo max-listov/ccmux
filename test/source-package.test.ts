@@ -22,4 +22,6 @@ test('source package is deterministic and contains bytes from the exact commit',
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
+  // Two whole packs of the source. The suite's 20 s is for a hang; at load average 160 the packs
+  // alone took longer, and that says nothing about whether they are the same bytes.
+}, 60_000);

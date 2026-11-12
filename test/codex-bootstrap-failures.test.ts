@@ -14,6 +14,7 @@ import { Glob } from 'bun';
 import { exhaustedBudgetReason } from '../src/commands/bootstrap.ts';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { lifecycleBlockPath } from '../src/config/paths.ts';
+import { readLifecycleBlock } from '../src/session/lifecycleBlocks.ts';
 import { loadPendingSessions, reservePendingSession } from '../src/session/pending.ts';
 import { loadSessions } from '../src/session/registry.ts';
 import { PendingSessionSchema } from '../src/session/schema.ts';
@@ -201,7 +202,11 @@ test(
       bootLabel: 'ccmux-probe.service',
       remoteControl: false,
       autoUpdate: false,
-      codexCorrelationTimeoutMs: 1_500,
+      // The child crashes; the budget is not the subject, for the reason `runFailure` gives. This
+      // case kept 1.5 s after `runFailure` stopped, and at load ~100 the budget ran out before the
+      // fake had even started: `_bootstrap` still exited 1 — as a timeout — and the test read a
+      // missing invocation file instead of saying so. The crash ends the loop at once either way.
+      codexCorrelationTimeoutMs: 30_000,
     });
     writeFileSync(configPath, `${JSON.stringify(machine)}\n`);
     await reservePendingSession(
@@ -230,11 +235,15 @@ test(
         stdout: 'pipe',
         stderr: 'pipe',
       });
+      const stderr = new Response(proc.stderr).text();
       expect(await proc.exited).toBe(1);
       expect(loadPendingSessions(machine)).toEqual([]);
       expect(loadSessions(machine)).toEqual([]);
+      // The block names WHY the bootstrap gave up, so it is read before anything that only shows
+      // what is missing: a run that blocked for another reason fails here with that reason.
+      const reason = readLifecycleBlock(machine, 'agent-a')?.error ?? `no block; ${await stderr}`;
+      expect(reason).toContain('exited before writing session_meta');
       expect(readFileSync(invocationPath, 'utf8').trim().split('\n')).toHaveLength(1);
-      expect(existsSync(lifecycleBlockPath(machine, 'agent-a'))).toBe(true);
     } finally {
       Bun.spawnSync(tmuxArgv(machine, 'kill-server'), { stdout: 'ignore', stderr: 'ignore' });
       rmSync(root, { recursive: true, force: true });

@@ -29,7 +29,7 @@ import { loadPendingSessions } from '../session/pending.ts';
 import { archiveSessionExact } from '../session/registry.ts';
 import { killSession } from '../tmux/tmux.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
-import { withLock } from '../util/lock.ts';
+import { LOCK_TIMEOUT_MS, withLock } from '../util/lock.ts';
 import { log } from '../util/log.ts';
 import {
   type CreateInput,
@@ -234,6 +234,8 @@ export async function createControlSession(
           await saveCreateReceipts(m, [...rows, row]);
         },
         'control create receipt',
+        LOCK_TIMEOUT_MS,
+        signal,
       );
       signal.throwIfAborted();
       if (row.status === 'failed')
@@ -404,6 +406,11 @@ export async function createControlSession(
       };
     },
     'control create request',
+    // The caller's deadline bounds the wait for both locks a create takes before it acts; the
+    // receipt it writes after the session exists is not withdrawn by it, or a created session
+    // would be left with a pending receipt.
+    LOCK_TIMEOUT_MS,
+    signal,
   );
 }
 

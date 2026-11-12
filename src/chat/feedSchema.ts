@@ -37,6 +37,17 @@ export const LogPayloadSchema = z.object({
   rows: z.array(LogRowSchema).default([]),
 });
 export type LogPayload = z.infer<typeof LogPayloadSchema>;
+/**
+ * The largest frame this feed will emit.
+ *
+ * Anchored to the transport rather than chosen by taste: the remote transport carries a stream in 32 KiB chunks,
+ * so a record that fits inside one is never split across two, and a reader assembling lines never
+ * has to hold a partial record across a chunk boundary. The cap is on the WHOLE frame, not on the
+ * body alone — otherwise a long address or task name could still push a frame over while the field
+ * everyone watches looked innocent.
+ */
+export const LOG_FRAME_MAX_BYTES = 32 * 1024;
+
 /** The cursor is an opaque producer position; consumers return it unchanged. */
 export const LogFrameSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('row'), cursor: z.string(), row: LogRowSchema }).strict(),

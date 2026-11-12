@@ -3,6 +3,7 @@ import { chatLedgerPath, outboxPath } from '../config/paths.ts';
 import { OutboundSchema } from '../fleet/outbox.ts';
 import type { MachineConfig } from '../types.ts';
 import type { LogFrame, LogRow } from './feedSchema.ts';
+import { LOG_FRAME_MAX_BYTES } from './feedSchema.ts';
 import { CHAT_GENERATION } from './messageSchema.ts';
 
 export { type LogFrame, LogFrameSchema } from './feedSchema.ts';
@@ -88,17 +89,6 @@ export function parseCursor(raw: string): CursorParse {
 }
 
 /**
- * The largest frame this feed will emit.
- *
- * Anchored to the transport rather than chosen by taste: the remote transport carries a stream in 32 KiB chunks,
- * so a record that fits inside one is never split across two, and a reader assembling lines never
- * has to hold a partial record across a chunk boundary. The cap is on the WHOLE frame, not on the
- * body alone — otherwise a long address or task name could still push a frame over while the field
- * everyone watches looked innocent.
- */
-export const MAX_FRAME_BYTES = 32 * 1024;
-
-/**
  * A frame guaranteed to fit, with an oversized record REPLACED rather than cut.
  *
  * Truncating JSON is the failure this feed exists to remove: a cut document is not partly readable,
@@ -109,17 +99,17 @@ export const MAX_FRAME_BYTES = 32 * 1024;
  */
 export function boundFrame(frame: LogFrame): LogFrame {
   const size = Buffer.byteLength(JSON.stringify(frame));
-  if (size <= MAX_FRAME_BYTES || frame.kind !== 'row') return frame;
+  if (size <= LOG_FRAME_MAX_BYTES || frame.kind !== 'row') return frame;
   const bytes = Buffer.byteLength(frame.row.body);
   const bounded: LogFrame = {
     ...frame,
     row: {
       ...frame.row,
-      body: `(body omitted: ${bytes} bytes exceeds this feed's ${MAX_FRAME_BYTES}-byte record limit — read it with: ccmux chat log -n 1 --json)`,
+      body: `(body omitted: ${bytes} bytes exceeds this feed's ${LOG_FRAME_MAX_BYTES}-byte record limit — read it with: ccmux chat log -n 1 --json)`,
       note: frame.row.note === '' ? 'oversized' : `${frame.row.note}; oversized`,
     },
   };
-  if (Buffer.byteLength(JSON.stringify(bounded)) <= MAX_FRAME_BYTES) return bounded;
+  if (Buffer.byteLength(JSON.stringify(bounded)) <= LOG_FRAME_MAX_BYTES) return bounded;
   // Never truncate a verbatim quote into different evidence. Keep the full claim on disk and
   // explicitly report its omission in this bounded projection.
   const {
@@ -215,6 +205,20 @@ export function rowsAfter(
  * because filesystem events are advisory — dropped under load, absent over some mounts — and a feed
  * that silently stops is worse than one that is a second late.
  */
+/**
+ * The follow every reader of this machine's log gets: the machine first — so a reader can attribute
+ * every row that follows, and a stream alive but quiet is told from one that never opened — then
+ * each row from `from` on. `ccmux chat log --follow` prints it; the `watchChatLog` stream yields it.
+ */
+export function followLog(
+  m: MachineConfig,
+  from: LogCursor,
+  onFrame: (frame: LogFrame) => void,
+): () => void {
+  onFrame(machineFrame(m.rcPrefix, from));
+  return followRows(m, from, onFrame);
+}
+
 export function followRows(
   m: MachineConfig,
   from: LogCursor,

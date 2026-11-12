@@ -10,6 +10,7 @@ import { loadSessions } from '../session/registry.ts';
 import { printLine } from '../util/stdout.ts';
 import { alignedLines } from '../util/table.ts';
 import { accountLines } from './accounts.ts';
+import { COMMAND_SCHEMAS } from './answerSchemas.ts';
 import { parseFlags } from './flags.ts';
 
 /** `ccmux fleet` — prints what `fleet/fleetList.ts` answers. */
@@ -105,6 +106,10 @@ export function partitionParked<T extends { archived: boolean }>(
 
 export async function cmdFleet(args: string[] = []): Promise<number> {
   const flags = parseFlags('fleet', args, [0, 0]);
+  if (flags.bool('schema')) {
+    await printLine(JSON.stringify(COMMAND_SCHEMAS.fleet()));
+    return 0;
+  }
   const m = loadMachineConfig();
   const answer = await fleetAnswer(m);
   if (flags.bool('json')) {

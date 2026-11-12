@@ -16,6 +16,17 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Read a message of, and start, stop, restart, remove or type into, a session on another machine through your own daemon: the operation is handed to that machine's daemon and answered or refused there under its own code; a machine without the operation refuses it by name.
+- Send a letter through the client with `letter.send` and get the receipt `ccmux msg --json` prints; both are one sender.
+- Follow a machine's chat log through the client with `watchChatLog`, resuming from the cursor each frame carries.
+- `ccmux fleet --schema` and `ccmux chat log --schema` print the JSON Schema of their `--json` answer; every command's schema is the one its operation declares.
+- A create waiting behind another create's lock ends at the caller's deadline instead of waiting ten seconds per lock.
+- A transcript read that meets another process building the same transcript's first index answers from the file instead of failing with "database is locked".
+- A host model catalog read waits for the provider to accept connections instead of answering "unavailable" when its socket appears a moment earlier, as it can on a busy machine.
+- Every control operation declares whether it reads or writes, and the declared-service client exports those effects and its own `package.json`, so a transport builds its service descriptor and revision from the contract instead of a list of its own.
+- A caller through the declared service is refused anything on the control socket that is not a control operation.
+- The package and the packed control-service client now require `stitchkit` 0.123.1 or later.
+
 ## [0.90.0] — 2026-11-11
 
 Ask a daemon by name what whois, search, fleet, the chat log and sent letters answer, manage a session by name, see who sent each marked message, and read which operations a daemon has before calling them.

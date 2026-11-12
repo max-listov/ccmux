@@ -1,16 +1,11 @@
+/**
+ * Who a letter is from and who it is to, before anything is written: the sender this process is,
+ * and the exact recipient another machine has under a name. `ccmux msg` and `letter.send` both ask
+ * here (`sendLetter.ts`), so a name cannot resolve to two different sessions on the two roads.
+ */
 import { z } from 'zod';
 import { CodexAppUnavailable } from '../agent/codex/socket.ts';
 import { lastTranscriptMessage } from '../agent/index.ts';
-import {
-  AppResolveOutcomeSchema,
-  appResolveDiagnostic,
-  appResolveFailureText,
-  resolveAppOutcome,
-} from '../chat/appResolve.ts';
-import { CHAT_CREDENTIAL_ENV, hasChatCredential, type RemoteTransport } from '../chat/auth.ts';
-import { currentCodexAppThreadId, resolveCodexAppPeer } from '../chat/codexApp.ts';
-import { cliPrincipal, codexAppThreadId, managedPeer, principalLabel } from '../chat/identity.ts';
-import { isRoleToken, type RoleCandidate, resolveRole } from '../chat/roleAddress.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { runPeer } from '../fleet/transport.ts';
@@ -24,9 +19,20 @@ import type {
   ManagedPeer,
   Session,
 } from '../types.ts';
-import { printLine } from '../util/stdout.ts';
+import {
+  AppResolveOutcomeSchema,
+  appResolveDiagnostic,
+  appResolveFailureText,
+} from './appResolve.ts';
+import { CHAT_CREDENTIAL_ENV, hasChatCredential, type RemoteTransport } from './auth.ts';
+import { currentCodexAppThreadId, resolveCodexAppPeer } from './codexApp.ts';
+import { cliPrincipal, codexAppThreadId, managedPeer, principalLabel } from './identity.ts';
+import { isRoleToken, type RoleCandidate, resolveRole } from './roleAddress.ts';
 
 const RemoteListSchema = ListJsonSchema.pick({ sessions: true });
+
+/** One hop of a letter to another machine — naming the recipient, or handing it the letter. */
+export const REMOTE_HOP_MS = 20_000;
 
 export function anonymousRemoteWarning(
   from: ChatPrincipal,
@@ -39,14 +45,6 @@ export function anonymousRemoteWarning(
     'so the recipient cannot reply to the originating agent. Run ccmux msg <machine>:<session> from the managed ' +
     `session instead of invoking remote ccmux msg through ${transportLabel}.`
   );
-}
-
-export function warnAboutAnonymousRemote(
-  from: ChatPrincipal,
-  transport: RemoteTransport | null,
-): void {
-  const warning = anonymousRemoteWarning(from, transport);
-  if (warning !== null) console.error(warning);
 }
 
 export async function senderFor(
@@ -104,11 +102,12 @@ export async function resolveRemoteCodexAppPeer(
   machine: string,
   token: string,
   execute: typeof runPeer = runPeer,
+  timeoutMs = REMOTE_HOP_MS,
 ): Promise<CodexAppPeer | { error: string }> {
   const parsed = z.uuid().safeParse(codexAppThreadId(token));
   if (!parsed.success) return { error: `msg ${machine}:${token}: app address needs a thread UUID` };
   const result = await execute(cfg, machine, alias, ['ccmux', '_codex-app-resolve', parsed.data], {
-    timeoutMs: 20_000,
+    timeoutMs,
   });
   if (result.transportFailed)
     return {
@@ -138,23 +137,17 @@ export async function resolveRemoteCodexAppPeer(
   }
 }
 
-export async function cmdResolveCodexApp(args: string[]): Promise<number> {
-  const outcome = await resolveAppOutcome(loadMachineConfig(), args[0] ?? '');
-  await printLine(JSON.stringify(outcome));
-  if (outcome.ok) return 0;
-  console.error(`codex app resolve: ${appResolveFailureText(outcome.failure)}`);
-  return 1;
-}
-
 export async function resolveRemotePeer(
   cfg: MachineConfig,
   alias: string | null,
   machine: string,
   token: string,
+  execute: typeof runPeer = runPeer,
+  timeoutMs = REMOTE_HOP_MS,
 ): Promise<ManagedPeer | { error: string }> {
   const name = token;
-  const result = await runPeer(cfg, machine, alias, ['ccmux', 'list', '--json'], {
-    timeoutMs: 20_000,
+  const result = await execute(cfg, machine, alias, ['ccmux', 'list', '--json'], {
+    timeoutMs,
   });
   if (result.transportFailed)
     return {

@@ -83,6 +83,24 @@ The relay runs as its own program: the PATH shim sends `_peer-read` to `peer-rea
 bundle, compiled from the same command (`src/boot/routedPrograms.ts`), so a fleet read does not pay
 for parsing the whole CLI.
 
+### An operation on another machine's session
+
+A control operation whose target is a session on another machine is answered by that machine's
+daemon. `message.read`, `session.start`, `session.stop`, `session.restart`, `session.remove` and
+`session.keys` are handed over as they arrived — the operation's name and its validated input —
+through this same transport: the target machine runs `ccmux _peer-operation <operation>` with the
+input on stdin, the program asks its own daemon over the local socket, and prints one line, the
+answer or the refusal with its code (`src/control/peerOperation.ts`). A refusal is an answer, so the
+program exits 0 either way; anything else on the far side — a release that predates the program,
+which answers an unknown verb with its help — is `UNKNOWN_OPERATION` naming the operation.
+
+The far daemon sees the call as its own machine's command line, the authority `ccmux stop
+<machine>:<name>` has always arrived with, and decides there. A caller authenticated by this
+machine's declared service is not handed over: its reach is the machine whose service authenticated
+it, and on another machine it would act with that machine's command-line authority, which nothing
+there granted. A transport failure says whether the call was sent, as every write does here: a
+call whose delivery is unknown is not repeated, and the refusal says to read the session first.
+
 ### Rows from the last observation, and the external relay
 
 The daemon keeps the creation times, exact agent panes and captured text from its two-second

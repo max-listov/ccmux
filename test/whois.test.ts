@@ -8,6 +8,7 @@ import { formatChatInjection } from '../src/chat/format.ts';
 import { managedPeer } from '../src/chat/identity.ts';
 import { appendMessage } from '../src/chat/ledger.ts';
 import { SentListSchema } from '../src/chat/sentLetterSchema.ts';
+import { COMMAND_SCHEMAS } from '../src/commands/answerSchemas.ts';
 import { parseSearch, receiptLines } from '../src/commands/search.ts';
 import { answerLines } from '../src/commands/whois.ts';
 import { sessionsPath } from '../src/config/paths.ts';
@@ -24,6 +25,7 @@ import {
 } from '../src/context/searchFrames.ts';
 import { storedConversations } from '../src/context/storedConversations.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
+import { ControlSnapshotSchema } from '../src/control/schema/core.ts';
 import { createControlClient } from '../src/control/transport/client.ts';
 import { createControlServer } from '../src/control/transport/server.ts';
 import { controlSocket } from '../src/control/transport/socketPath.ts';
@@ -44,7 +46,7 @@ import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts'
 import { projectOf, repositoryKey, repositoryOf } from '../src/session/repository.ts';
 import { sentKeysOf } from '../src/session/sentKeys.ts';
 import { readQuestion } from '../src/session/whois.ts';
-import { followIdentities, whoisAll, whoisFleet, whoisSchemas } from '../src/session/whoisFleet.ts';
+import { followIdentities, whoisAll, whoisFleet } from '../src/session/whoisFleet.ts';
 import type { MachineConfig, Session } from '../src/types.ts';
 import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 
@@ -541,7 +543,7 @@ test('everything the user wrote, with the session and repository it was written 
 
 test('the published schemas describe the answers this build gives', async () => {
   await fleet(async ({ m, sessions }) => {
-    const schemas = whoisSchemas();
+    const schemas = COMMAND_SCHEMAS.whois();
     expect(Object.keys(schemas)).toEqual(['answer', 'list', 'event']);
     const answer = z.fromJSONSchema(schemas.answer as never);
     expect(
@@ -668,7 +670,7 @@ test('both published schemas describe the project as a field that may be absent'
     description: expect.stringContaining('identity.project'),
   };
   const shape = (schema: unknown) => schema as { properties: never; required: string[] };
-  const answer = shape(whoisSchemas().answer);
+  const answer = shape(COMMAND_SCHEMAS.whois().answer);
   const session = shape(
     (answer.properties as { session: { anyOf: unknown[] } }).session.anyOf.find(
       (option) => (option as { type: string }).type === 'object',
@@ -1414,6 +1416,68 @@ test('a program asks the daemon by name and gets the object the command prints',
       expect(loadSessions(m).map((session) => session.name)).toEqual(['agent-a-two']);
       expect(existsSync(histFile(api, NOW, m.projectsDir))).toBe(true);
       await expect(client['session.stop']({ target })).rejects.toBeDefined();
+    } finally {
+      await client.close();
+      publisher.close();
+      await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
+      await server.observability.close();
+      if (before === undefined) delete process.env.CCMUX_CONFIG;
+      else process.env.CCMUX_CONFIG = before;
+    }
+  });
+});
+
+test("while a search reads gigabytes, the daemon's session list answers in its own time", async () => {
+  await fleet(async ({ root, m: fixture, sessions, api, write }) => {
+    const m: MachineConfig = {
+      ...fixture,
+      codexHome: join(root, 'codex'),
+      codexSessionsDir: join(root, 'codex', 'sessions'),
+      tmuxBin: '/usr/bin/true',
+    };
+    mkdirSync(join(root, 'codex', 'sessions'), { recursive: true });
+    // A conversation large enough that reading it takes the search a while: about 40 MB.
+    const filler = 'x'.repeat(400);
+    write(
+      NOW,
+      Array.from({ length: 100_000 }, (_, index) =>
+        said(`p-${index}`, NOW, api, `${filler} ${index}`, '2026-09-02T10:00:00.000Z'),
+      ),
+    );
+    await writeSessionsUnlocked(m, sessions);
+    const config = join(root, 'machine.json');
+    writeFileSync(config, JSON.stringify(m));
+    const before = process.env.CCMUX_CONFIG;
+    process.env.CCMUX_CONFIG = config;
+    const publisher = new ControlPublisher(m);
+    const server = createControlServer(m, publisher);
+    const client = createControlClient({ socket: controlSocket(m) });
+    const searching = (): boolean =>
+      Bun.spawnSync(['pgrep', '-P', String(process.pid), '-f', '_operation']).stdout.length > 0;
+    try {
+      let ended = false;
+      const search = (async () => {
+        const frames: SearchFrame[] = [];
+        for await (const frame of await client.search({ pattern: 'zz-never-said', machines: [] }))
+          frames.push(frame);
+        ended = true;
+        return frames;
+      })();
+      const deadline = Date.now() + 10_000;
+      while (!searching() && Date.now() < deadline) await Bun.sleep(5);
+      expect(searching()).toBe(true);
+      // The search is a process of its own; the list is read from the prepared snapshot, in the
+      // daemon's loop, which the search does not hold.
+      const started = performance.now();
+      const listed = await client['session.list']();
+      const tookMs = performance.now() - started;
+      // The snapshot the daemon publishes, whole: what a monitor reads every few seconds.
+      expect(ControlSnapshotSchema.parse(listed)).toEqual(listed);
+      expect({ tookMs: tookMs < 1_000, searchStillRunning: !ended }).toEqual({
+        tookMs: true,
+        searchStillRunning: true,
+      });
+      expect((await search).at(-1)?.frame).toBe('end');
     } finally {
       await client.close();
       publisher.close();

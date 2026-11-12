@@ -164,6 +164,27 @@ test('a codex app-server session keeps its real rollout file, not the native fee
   }
 });
 
+/**
+ * How long a native read driven through the mailbox may take before the test calls it hung. What
+ * these tests check is the cursor and the items, not the speed: eighteen pages take about a second
+ * on an idle machine, and at load average 72 they took more than the five seconds this used to be,
+ * which failed a correct read. Below the suite's 20 s, so a real hang fails with this message.
+ */
+const NATIVE_READ_HANG_MS = 15_000;
+
+/**
+ * The product reads a whole native history inside `HISTORY_LIMITS.deadlineMs` and, past it, answers
+ * that the history is unavailable. Eighteen pages through the mailbox at load average 150 did not
+ * fit: an honest answer about a busy machine, not about the cursor these tests check. It is taken
+ * once more; unavailable twice still fails.
+ */
+async function readable<T extends { source: { available: boolean } }>(
+  read: () => Promise<T>,
+): Promise<T> {
+  const once = await read();
+  return once.source.available ? once : read();
+}
+
 async function drive<T>(
   read: Promise<T>,
   f: Awaited<ReturnType<typeof nativeFixture>>,
@@ -179,7 +200,7 @@ async function drive<T>(
       settled = true;
     },
   );
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + NATIVE_READ_HANG_MS;
   while (!settled) {
     if (Date.now() > deadline) throw new Error('native transcript read did not settle');
     await applyContextCommands(f.m, f.session, f.generation, api, signal);
@@ -262,30 +283,30 @@ test('control and CLI builder keep the appended native item after eighteen mailb
     compactionMarker: async () => null,
     compact: async () => {},
   };
-  const signal = AbortSignal.timeout(5_000);
+  const signal = AbortSignal.timeout(NATIVE_READ_HANG_MS);
   try {
-    const first = await drive(
-      readControlTranscript(
-        f.m,
-        ControlTranscriptReadSchema.parse({
-          target: managedPeer(f.m.rcPrefix, f.session),
-          tail: 2,
-        }),
+    const first = await readable(() =>
+      drive(
+        readControlTranscript(
+          f.m,
+          ControlTranscriptReadSchema.parse({
+            target: managedPeer(f.m.rcPrefix, f.session),
+            tail: 2,
+          }),
+          signal,
+        ),
+        f,
+        api,
         signal,
       ),
-      f,
-      api,
-      signal,
     );
     expect(first.cursor.line).toBe(1100);
     if (first.cursor.line === null) throw new Error('native cursor missing');
     expect(first.messages.map((item) => item.id)).toEqual(['i1099', 'i1100']);
     size++;
-    const next = await drive(
-      transcriptJson(f.m, f.session, { tail: 2, cursor: first.cursor.line }, signal),
-      f,
-      api,
-      signal,
+    const cursor = first.cursor.line;
+    const next = await readable(() =>
+      drive(transcriptJson(f.m, f.session, { tail: 2, cursor }, signal), f, api, signal),
     );
     expect(next.source.available).toBe(true);
     expect(next.cursor.line).toBe(1101);

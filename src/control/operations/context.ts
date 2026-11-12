@@ -1,5 +1,6 @@
 import type { BoundedAdmission } from 'stitchkit/application';
 import type { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
+import type { runPeer } from '../../fleet/transport.ts';
 import type { ListRow } from '../../inventory/rows.ts';
 import type { DaemonPerformance } from '../../monitoring/performance.ts';
 import type { CreateManagedInput } from '../../session/create.ts';
@@ -13,6 +14,8 @@ export type ControlOperationDependencies = {
   peerRows?: () => readonly ListRow[] | Promise<readonly ListRow[]>;
   performance?: DaemonPerformance;
   measure?: <T>(name: string, run: () => T) => T;
+  /** How a call reaches another machine; a test answers it with a second daemon. */
+  runPeer?: typeof runPeer;
 };
 
 /** What every group of operations shares: the machine, the publishers, and the admissions created

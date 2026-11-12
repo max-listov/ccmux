@@ -4,10 +4,11 @@ import { requireOriginatingBasis } from '../src/chat/communicationAuthorization.
 import { CommunicationAuthorizationInputSchema } from '../src/chat/communicationAuthorizationSchema.ts';
 import { resolveCommunicationBasis } from '../src/chat/communicationBasis.ts';
 import { buildEnvelope } from '../src/chat/compose.ts';
+import { LOG_FRAME_MAX_BYTES } from '../src/chat/feedSchema.ts';
 import { rowFromLedgerRecord } from '../src/chat/fleetLog.ts';
 import { codexAppPeer, managedPeer } from '../src/chat/identity.ts';
 import { appendMessage, loadLedger } from '../src/chat/ledger.ts';
-import { boundFrame, MAX_FRAME_BYTES } from '../src/chat/logFeed.ts';
+import { boundFrame } from '../src/chat/logFeed.ts';
 import { acceptControlMessage } from '../src/control/message.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { communicationAuthorization } from './communication-fixture.ts';
@@ -189,7 +190,7 @@ test('feed preserves source evidence or explicitly omits it whole without trunca
   const row = rowFromLedgerRecord('host-a', message);
   expect(row.communicationReceipt?.sourceLetter?.body).toBe(body);
   const bounded = boundFrame({ kind: 'row', cursor: '2.1.0', row });
-  expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+  expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(LOG_FRAME_MAX_BYTES);
   if (bounded.kind !== 'row') throw new Error('expected row');
   expect(bounded.row.communicationReceipt).toBeUndefined();
   expect(bounded.row.note).toContain('communication authorization omitted');

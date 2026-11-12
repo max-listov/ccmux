@@ -19,7 +19,6 @@ import {
   type WhoisAnswer,
   WhoisAnswerSchema,
   type WhoisEvent,
-  WhoisEventSchema,
   type WhoisList,
   WhoisListSchema,
   type WhoisMachine,
@@ -334,14 +333,5 @@ export function followIdentities(
     clearInterval(timer);
     for (const wait of waits) clearTimeout(wait);
     watcher?.close();
-  };
-}
-
-/** The published shape of every identity answer, for a consumer that reads by schema. */
-export function whoisSchemas(): Record<string, unknown> {
-  return {
-    answer: z.toJSONSchema(WhoisAnswerSchema),
-    list: z.toJSONSchema(WhoisListSchema),
-    event: z.toJSONSchema(WhoisEventSchema),
   };
 }

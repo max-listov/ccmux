@@ -7,13 +7,13 @@ import {
 } from '../chat/communicationAuthorization.ts';
 import { managedPeer, principalLabel, targetLabel } from '../chat/identity.ts';
 import { appendMessageOnce } from '../chat/ledger.ts';
+import { assertExpected } from '../chat/letterParties.ts';
 import { ChatMessageSchema } from '../chat/messageSchema.ts';
 import { principalOrigin } from '../chat/origin.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import type { ChatMessage } from '../types.ts';
-import { assertExpected } from './messagePeers.ts';
 
 /** Transport-only v2 receiver. Old binaries reject the unknown verb before appending anything. */
 export async function cmdReceiveChat(

@@ -1,6 +1,9 @@
 import { AppError } from 'stitchkit';
 import { createOperationProcesses } from 'stitchkit/process';
 import type { z } from 'zod';
+import type { LetterRequest } from '../../chat/letterRequestSchema.ts';
+import { followLog, type LogFrame, parseCursor, ZERO_CURSOR } from '../../chat/logFeed.ts';
+import { sendLetter } from '../../chat/sendLetter.ts';
 import { sentLetters } from '../../chat/sentLetters.ts';
 import { readExactMessage } from '../../context/exactMessage.ts';
 import { SearchRequestError, searchPlan } from '../../context/searchFleet.ts';
@@ -15,7 +18,9 @@ import { findSession, loadSessions } from '../../session/registry.ts';
 import { followIdentities, whoisAll, whoisFleet } from '../../session/whoisFleet.ts';
 import type { ChatPrincipal } from '../../types.ts';
 import { SELF_ARGV } from '../../util/env.ts';
+import { followed } from '../../util/followed.ts';
 import type {
+  ChatFollowReadSchema,
   ChatLogReadSchema,
   ExactMessageReadSchema,
   IdentityListReadSchema,
@@ -33,6 +38,11 @@ const FLEET_READ_MS = 29_000;
 const SEARCHES_AT_ONCE = 2;
 /** The longest a search may run; a fleet machine is given three minutes of it. */
 const SEARCH_MS = 200_000;
+/**
+ * How long a letter to another machine may take to name its recipient there and hand it over: the
+ * hops share it, inside the 30 s every public operation answers within.
+ */
+const LETTER_SEND_MS = 27_000;
 /** Changes a follower may fall behind by before it is told to read again from the start. */
 const FOLLOW_BACKLOG = 4096;
 
@@ -69,43 +79,40 @@ export function readingOperations(context: OperationContext) {
     followIdentities: (
       input: z.output<typeof IdentityListReadSchema>,
       signal: AbortSignal,
-    ): AsyncIterable<WhoisEvent> => {
-      const queue: WhoisEvent[] = [];
-      let wake: (() => void) | null = null;
-      let lagged = false;
-      const stop = followIdentities(
-        m,
-        (event) => {
-          if (queue.length >= FOLLOW_BACKLOG) lagged = true;
-          else queue.push(event);
-          wake?.();
-        },
-        { local: input.local },
-      );
-      const end = () => wake?.();
-      signal.addEventListener('abort', end, { once: true });
-      return (async function* () {
-        try {
-          while (!signal.aborted) {
-            // A reader this far behind would be told changes out of an order it can trust.
-            if (lagged)
-              throw new AppError('LAGGED', {
-                message: 'The identity stream fell behind its reader; follow again',
-                status: 409,
-              });
-            const next = queue.shift();
-            if (next !== undefined) yield next;
-            else
-              await new Promise<void>((resolve) => {
-                wake = resolve;
-              });
-            wake = null;
-          }
-        } finally {
-          signal.removeEventListener('abort', end);
-          stop();
-        }
-      })();
+    ): AsyncIterable<WhoisEvent> =>
+      followed<WhoisEvent>(signal, (emit) => followIdentities(m, emit, { local: input.local }), {
+        backlog: FOLLOW_BACKLOG,
+        // A reader this far behind would be told changes out of an order it can trust.
+        lagged: () =>
+          new AppError('LAGGED', {
+            message: 'The identity stream fell behind its reader; follow again',
+            status: 409,
+          }),
+      }),
+    /**
+     * This machine's chat log from a cursor, then every row as it is written: the frames
+     * `ccmux chat log --follow` prints, from the same producer (`followLog`).
+     */
+    followChatLog: (
+      input: z.output<typeof ChatFollowReadSchema>,
+      signal: AbortSignal,
+    ): AsyncIterable<LogFrame> => {
+      const from = input.since === null ? ZERO_CURSOR : parseCursor(input.since);
+      if ('error' in from)
+        throw new AppError('INVALID_INPUT', {
+          message: `since needs a cursor this log gave: ${from.error}`,
+          status: 400,
+        });
+      const cursor = 'cursor' in from ? from.cursor : from;
+      return followed<LogFrame>(signal, (emit) => followLog(m, cursor, emit), {
+        backlog: FOLLOW_BACKLOG,
+        lagged: () =>
+          new AppError('LAGGED', {
+            message:
+              'The chat log stream fell behind its reader; follow again from its last cursor',
+            status: 409,
+          }),
+      });
     },
     /**
      * One search of every stored conversation, in frames; `collectSearch` makes the object of it.
@@ -147,5 +154,17 @@ export function readingOperations(context: OperationContext) {
     /** What the CALLER sent: a letter's state and the reference a continuation cites. */
     sentLetters: (input: z.output<typeof SentLettersReadSchema>, caller: ChatPrincipal) =>
       sentLetters(m, caller, input.task ?? undefined),
+    /**
+     * A letter from the caller, as `ccmux msg --json` sends it and with its receipt: the same
+     * function. A letter that cannot be sent as asked is refused with the sentence the command says.
+     */
+    sendLetter: async (input: LetterRequest, caller: ChatPrincipal) => {
+      const outcome = await sendLetter(m, caller, input, {
+        deadline: Date.now() + LETTER_SEND_MS,
+      });
+      if (outcome.status === 'refused')
+        throw new AppError('LETTER_REFUSED', { message: outcome.reason, status: 409 });
+      return outcome.receipt;
+    },
   };
 }

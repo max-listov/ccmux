@@ -1,8 +1,7 @@
-import { z } from 'zod';
 import { TranscriptKindSchema, TranscriptRoleSchema } from '../agent/transcript/messageSchema.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { matchTime } from '../context/corpusSearch.ts';
-import { type CorpusSearchJson, CorpusSearchJsonSchema } from '../context/corpusSearchSchema.ts';
+import type { CorpusSearchJson } from '../context/corpusSearchSchema.ts';
 import {
   type SearchPlan,
   SearchRequestError,
@@ -16,6 +15,7 @@ import { humanizeDuration } from '../util/duration.ts';
 import { HOME } from '../util/env.ts';
 import { printLine } from '../util/stdout.ts';
 import { tableLines } from '../util/table.ts';
+import { COMMAND_SCHEMAS } from './answerSchemas.ts';
 import { parseFlags, UsageError } from './flags.ts';
 import { usageLine } from './help.ts';
 
@@ -252,7 +252,7 @@ function summaryLines(result: CorpusSearchJson, shownConversations: number): str
 
 export async function cmdSearch(args: string[]): Promise<number> {
   if (args.length === 1 && args[0] === '--schema') {
-    await printLine(JSON.stringify(z.toJSONSchema(CorpusSearchJsonSchema)));
+    await printLine(JSON.stringify(COMMAND_SCHEMAS.search()));
     return 0;
   }
   let opts: SearchOpts;

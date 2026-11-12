@@ -15,7 +15,7 @@ export const IdentityListReadSchema = z.object({ local: z.boolean().default(fals
 
 export const ExactMessageReadSchema = z
   .object({
-    /** The session's address on this machine. */
+    /** The session's fleet address; another machine's session is read by that machine. */
     address: z.string().min(1).max(256),
     /** The provider's record id, or the id a window read names the message by. */
     messageId: z.string().min(1).max(256),
@@ -29,6 +29,11 @@ export const ChatLogReadSchema = z
     /** Merge every other machine's log in; otherwise only this machine's. */
     fleet: z.boolean().default(false),
   })
+  .strict();
+
+/** Where a follower of the chat log starts: a cursor this log gave, or its beginning. */
+export const ChatFollowReadSchema = z
+  .object({ since: z.string().min(1).max(128).nullable().default(null) })
   .strict();
 
 export const SentLettersReadSchema = z
