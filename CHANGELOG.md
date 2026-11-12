@@ -16,6 +16,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- `ccmux chat log --schema` answers on a machine with no agent runtime installed.
+
 ## [0.91.0] — 2026-11-12
 
 Read, start, stop, restart, remove and type into a session on another machine through your own daemon, send letters and follow the chat log through the client, and let a transport build its service descriptor from the effects each operation declares.

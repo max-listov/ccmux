@@ -96,10 +96,6 @@ function fmtFrame(frame: LogFrame): string {
 }
 
 async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number> {
-  if (flags.bool('schema')) {
-    await printLine(JSON.stringify(COMMAND_SCHEMAS['chat log']()));
-    return 0;
-  }
   if (flags.bool('follow')) return cmdChatFeed(m, flags);
   const limit = flags.int('n') ?? 30;
   const { machines, rows } = await chatLogAnswer(m, { limit, fleet: flags.bool('fleet') });
@@ -136,6 +132,12 @@ async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number>
 export async function cmdChat(args: string[]): Promise<number> {
   const flags = parseFlags('chat', args, [1, 2]);
   const sub = flags.positionals[0];
+  // The schema is a fact about the contract, not about this machine: it is answered before the
+  // machine config is read, which refuses on a host with no agent runtime installed.
+  if (sub === 'log' && flags.bool('schema')) {
+    await printLine(JSON.stringify(COMMAND_SCHEMAS['chat log']()));
+    return 0;
+  }
   const m = loadMachineConfig();
 
   if (sub === 'log') return cmdChatLog(m, flags);
