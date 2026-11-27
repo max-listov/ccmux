@@ -227,9 +227,11 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return (await import('./commands/controlNativeStream.ts')).cmdControlNativeStream();
     case 'version':
     case '-v':
-    case '--version':
-      console.log(`stitchmux ${VERSION}`);
+    case '--version': {
+      const { reportedName } = await import('./migration/renameFromCcmux.ts');
+      console.log(`${reportedName()} ${VERSION}`);
       return 0;
+    }
     case 'help':
     case '-h':
     case '--help':

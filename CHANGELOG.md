@@ -6,6 +6,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- A machine on 0.95.0 can take this release: its updater accepts the new bundle's version answer, which the renamed 0.96.0 bundle failed.
+
 ## [0.96.0] — 2026-11-27
 
 Stitchmux: ccmux renamed with a one-release migration window, one client package @stitchmux/client, declared refusals for session lifecycle operations and per-model Antigravity reasoning efforts.

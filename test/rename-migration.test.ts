@@ -302,3 +302,27 @@ test('the previous release’s command runs this installation, once that program
   expect(await bridgePreviousCommand(previous, '#!/bin/sh\nnew\n', program)).toBe(true);
   expect(readFileSync(previous, 'utf8')).toBe('#!/bin/sh\nnew\n');
 });
+
+test('run as the previous release runs it, the program reports its version under the old name', async () => {
+  const { reportedName } = await import('../src/migration/renameFromCcmux.ts');
+  expect(reportedName('/u/.local/share/ccmux/app/ccmux.js')).toBe('ccmux');
+  expect(reportedName('/u/.local/share/ccmux/app/.ccmux.js.candidate-0123abcd.js')).toBe('ccmux');
+  expect(reportedName('/u/.local/share/stitchmux/app/stitchmux.js')).toBe('stitchmux');
+  expect(reportedName('/u/src/cli.ts')).toBe('stitchmux');
+  // What the previous release's updater does with the answer: strip `ccmux`, compare the number.
+  const dir = realpathSync(mkdtempSync('/tmp/stitchmux-candidate-'));
+  homes.push(dir);
+  const candidate = join(dir, '.ccmux.js.candidate-0123abcd.js');
+  writeFileSync(
+    candidate,
+    `import ${JSON.stringify(join(import.meta.dir, '..', 'src', 'cli.ts'))};\n`,
+  );
+  const child = Bun.spawnSync([process.execPath, candidate, 'version']);
+  const { VERSION } = await import('../src/util/version.ts');
+  expect(
+    child.stdout
+      .toString()
+      .trim()
+      .replace(/^ccmux\s+/, ''),
+  ).toBe(VERSION);
+});

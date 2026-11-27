@@ -10,7 +10,7 @@ import {
   rmSync,
   symlinkSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { writeFileAtomicSync } from 'stitchkit/files';
 import { HOME } from '../util/home.ts';
 
@@ -450,6 +450,19 @@ export function adoptPreviousEnv(env: NodeJS.ProcessEnv = process.env, home = HO
     const next = `STITCHMUX_${key.slice('CCMUX_'.length)}`;
     if (env[next] === undefined) env[next] = value;
   }
+}
+
+/**
+ * The name this program reports with its version.
+ *
+ * The previous release's updater checks a candidate before it replaces itself: it runs
+ * `<candidate> version`, strips only a leading `ccmux`, and compares the rest with the release's
+ * number — so `stitchmux 0.96.0` failed it and no machine could take the release (0.96.0's canary).
+ * It writes that candidate beside its own bundle as `.ccmux.js.candidate-<hex>.js` and runs the
+ * installed one as `ccmux.js`; run from such a file this program answers under the old name.
+ */
+export function reportedName(main: string = Bun.main): string {
+  return /(?:^|\.)ccmux\.js(?:\.|$)/.test(basename(main)) ? 'ccmux' : 'stitchmux';
 }
 
 /**
