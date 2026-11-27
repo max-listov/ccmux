@@ -155,37 +155,55 @@ const SOURCE = /(?<!\\)"source"\s*:\s*"ccmux"/g;
 const KEY = /(?<!\\)"ccmux:/g;
 
 /** Rewrite the managed-address identifiers in one JSON or JSONL text; null when nothing changed. */
-export function rewriteIdentifiers(text: string, configPaths: RenameRoots | null): string | null {
-  let next = text.replace(SOURCE, `"source":"${NEW}"`).replace(KEY, `"${NEW}:`);
-  if (configPaths !== null)
-    next = next.split(`"${configPaths.legacy}/`).join(`"${configPaths.current}/`);
+/** Paths into any moved root, as JSON string values: the root itself or something under it. */
+function rewritePaths(text: string, roots: readonly RenameRoots[]): string {
+  let next = text;
+  for (const root of roots)
+    next = next
+      .split(`"${root.legacy}/`)
+      .join(`"${root.current}/`)
+      .split(`"${root.legacy}"`)
+      .join(`"${root.current}"`);
+  return next;
+}
+
+export function rewriteIdentifiers(text: string, roots: readonly RenameRoots[]): string | null {
+  const next = rewritePaths(
+    text.replace(SOURCE, `"source":"${NEW}"`).replace(KEY, `"${NEW}:`),
+    roots,
+  );
   return next === text ? null : next;
 }
 
-/** State files that store managed addresses or keys built from them. */
-const STATE_FILES = [
-  'chat.jsonl',
-  'chat-cursors.json',
-  'chat-ack.jsonl',
-  'outbox.jsonl',
-  'outbox-ack.jsonl',
-  'sessions.jsonl',
-  join('attachments', 'index.json'),
-];
+/**
+ * Every file of the state directory that can hold a managed address, a key built from one or a
+ * path: its JSON and JSON Lines, at any depth. A fixed list missed the records inside each session's
+ * runtime directory — a sleep record kept `"source":"ccmux"`, which the new schema refuses, and 87
+ * native content snapshots kept it too (0.96.1 on the first machine). Logs are history and stay.
+ */
+export function identifierFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...identifierFiles(path));
+    else if (entry.isFile() && /\.jsonl?$/.test(entry.name)) files.push(path);
+  }
+  return files;
+}
 
 /** Rewrite one file atomically when it holds identifiers to rewrite. */
-function rewriteFile(path: string, configPaths: RenameRoots | null): boolean {
+export function rewriteFile(path: string, roots: readonly RenameRoots[]): boolean {
   if (!existsSync(path)) return false;
-  const next = rewriteIdentifiers(readFileSync(path, 'utf8'), configPaths);
+  const next = rewriteIdentifiers(readFileSync(path, 'utf8'), roots);
   if (next === null) return false;
   writeFileAtomicSync(path, next, { mode: 0o600 });
   return true;
 }
 
-/** `machine.json`: paths into the moved config directory. */
-export function rewriteMachineConfig(text: string, configPaths: RenameRoots | null): string | null {
-  if (configPaths === null) return null;
-  const next = text.split(`"${configPaths.legacy}/`).join(`"${configPaths.current}/`);
+/** `machine.json`: paths into every moved root — the data root holds `claudeNativeSdk`. */
+export function rewriteMachineConfig(text: string, roots: readonly RenameRoots[]): string | null {
+  const next = rewritePaths(text, roots);
   return next === text ? null : next;
 }
 
@@ -400,7 +418,7 @@ export function migrateFromCcmux(
     report.renamed.push(...renameNamedFiles(join(config.current, 'services')));
     const machine = join(config.current, 'machine.json');
     if (existsSync(machine)) {
-      const next = rewriteMachineConfig(readFileSync(machine, 'utf8'), config);
+      const next = rewriteMachineConfig(readFileSync(machine, 'utf8'), roots);
       if (next !== null) {
         writeFileAtomicSync(machine, next, { mode: 0o600 });
         report.rewritten.push(machine);
@@ -408,9 +426,8 @@ export function migrateFromCcmux(
     }
   }
   if (state !== null)
-    for (const file of STATE_FILES)
-      if (rewriteFile(join(state.current, file), config))
-        report.rewritten.push(join(state.current, file));
+    for (const file of identifierFiles(state.current))
+      if (rewriteFile(file, roots)) report.rewritten.push(file);
   if (state !== null && report.conflicts.length === 0 && report.deferred.length === 0) {
     mkdirSync(state.current, { recursive: true });
     writeFileAtomicSync(join(state.current, '.renamed-from-ccmux'), new Date().toISOString());

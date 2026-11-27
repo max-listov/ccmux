@@ -326,3 +326,36 @@ test('run as the previous release runs it, the program reports its version under
       .replace(/^ccmux\s+/, ''),
   ).toBe(VERSION);
 });
+
+test('records inside session directories and paths into every root move with the machine', () => {
+  const { home, config, state } = legacyMachine();
+  const legacyData = join(home, '.local', 'share', 'ccmux');
+  mkdirSync(join(legacyData, 'claude-agent-sdk'), { recursive: true });
+  const record = join(state, 'native-runtime', '0123', 'sleep.json');
+  mkdirSync(join(state, 'native-runtime', '0123'), { recursive: true });
+  writeFileSync(
+    record,
+    JSON.stringify({
+      target: { kind: 'managed', source: 'ccmux', session: 'agent-a' },
+      note: 'a body that says "source":"ccmux" stays',
+    }),
+  );
+  const machine = JSON.parse(readFileSync(join(config, 'machine.json'), 'utf8'));
+  writeFileSync(
+    join(config, 'machine.json'),
+    JSON.stringify({ ...machine, claudeNativeSdk: join(legacyData, 'claude-agent-sdk', 'sdk') }),
+  );
+  expect(migrateFromCcmux(env(home), home)?.conflicts).toEqual([]);
+  const newState = join(home, '.local', 'state', 'stitchmux');
+  const moved = JSON.parse(
+    readFileSync(join(newState, 'native-runtime', '0123', 'sleep.json'), 'utf8'),
+  );
+  expect(moved.target.source).toBe('stitchmux');
+  expect(moved.note).toBe('a body that says "source":"ccmux" stays');
+  const rewritten = JSON.parse(
+    readFileSync(join(home, '.config', 'stitchmux', 'machine.json'), 'utf8'),
+  );
+  expect(rewritten.claudeNativeSdk).toBe(
+    join(home, '.local', 'share', 'stitchmux', 'claude-agent-sdk', 'sdk'),
+  );
+});
