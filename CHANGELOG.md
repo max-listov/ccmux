@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.96.0] — 2026-11-27
+
+Stitchmux: ccmux renamed with a one-release migration window, one client package @stitchmux/client, declared refusals for session lifecycle operations and per-model Antigravity reasoning efforts.
+
 - `@stitchmux/client` is the one client package: its root exports both the local socket client and the injected-transport client with the refusal catalog, and `@stitchmux/client/monitoring` reads monitoring snapshots. The `./control-client` subpath is gone — import from the package root. `zod` is now a peer dependency, like `stitchkit`.
 - ccmux is now Stitchmux. The command is `stitchmux`, the client package `@stitchmux/client`, the environment variables `STITCHMUX_*`, the directories `~/.config/stitchmux`, `~/.local/state/stitchmux`, `~/.local/share/stitchmux` and `~/.cache/stitchmux`, the boot units `com.stitchmux.daemon` and `stitchmux.service`, and the declared control service `stitchmux.control`. The first run on a machine moves its directories, renames its files and rewrites the stored session addresses and the keys built from them; `stitchmux install` retires the previous boot units while the live tmux server and every session keep running. For this release only, letters and forwarded calls from a machine still on the previous release, and sessions started before the update, keep working: the `ccmux` command runs the new installation, and the previous directories are links to the moved ones.
 - A letter that arrives while a terminal session is being put to sleep now waits and is delivered once after the session wakes, instead of being typed into an agent that is about to stop. Such a hold reports the kind `sleeping`.
