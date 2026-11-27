@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.95.0] — 2026-11-27
+
+Install typed control clients from npm and read Antigravity content immediately after create or resume.
+
 - Install typed control clients from the public npm package `@ccmux/control-service-client`. The package includes the injected service client and the resident Unix client with ESM declarations for Bundler and NodeNext.
 - Read and stream native items immediately after creating or resuming a managed Antigravity session. The first content snapshot uses the conversation ID confirmed by ACP.
 - Use Stitchkit 0.132.2 for ACP teardown so stopped sessions reject pending approvals and suppress late updates.
