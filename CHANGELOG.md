@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.94.0] — 2026-11-27
+
+Serve peer control directly from the daemon, select account profiles, and sleep or wake managed sessions.
+
 - Expose `ccmux.control` on the daemon's existing Unix socket and route peer commands directly through the public Stitchwire SDK when enabled in machine configuration.
 - Reversible sleep and wake for interactive TUI and non-delegated native Claude and Codex sessions: `ccmux sleep <name> [-f|--force]`, `ccmux wake <name>`, `ccmux pin|unpin <name>`, `ccmux attach <name>`, and control operations `session.idle`, `session.sleep` (`forcePolicy`), `session.wake`, and `session.pin` (forwarded across fleet peers).
 - Opt-in automatic idle sleep (`idleSleep` in `machine.json`, disabled by default) with per-profile keepalive (`minAwakePerProfile`), `pinned` protection, fail-closed process-tree checks (allowing declared stdio MCP servers while refusing shells, builds and unknown background processes), and automatic wake-on-demand when due mail arrives or when attaching.
