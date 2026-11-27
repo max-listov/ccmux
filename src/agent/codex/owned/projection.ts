@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { nativeTurnState } from '../../../external/turnState.ts';
 import type { ApplicationPolicyEvidence } from '../../../policy/schema.ts';
 import { ApplicationPolicyEvidenceSchema } from '../../../policy/schema.ts';
-import type { PlanLimits } from '../../../runtime/planLimits.ts';
+import type { PlanLimits } from '../../../runtime/planLimitsSchema.ts';
 import {
   NATIVE_RUNTIME_MAX_EVENTS,
   NATIVE_RUNTIME_MAX_NATIVE_ITEMS,
@@ -18,9 +18,9 @@ import {
 } from '../../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { VERSION } from '../../../util/version.ts';
-import type { CodexRpcEvent, CodexRpcRequest } from '../rpc.ts';
 import { codexSelectionEvent } from '../selectionEvidence.ts';
 import { projectNativeEvent, projectNativeRequest, resolvedRequestId } from './native.ts';
+import type { CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
 import type { OwnedCodexSnapshot } from './schema.ts';
 
 const StatusEvent = z.object({ threadId: z.uuid(), status: z.unknown() });

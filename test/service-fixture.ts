@@ -64,6 +64,7 @@ const service = implement(contract, {
 await createStdioMcpServer({
   serverInfo: { name: 'tasks', version: '1.0.0' },
   services: [service],
+  access: { open: 'local-operator' },
   auth: undefined,
 });
 `;

@@ -4,9 +4,12 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } f
 import { dirname, join } from 'node:path';
 import type { ServerWebSocket } from 'bun';
 import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
-import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import { managedPeer } from '../src/chat/identity.ts';
-import { type ControlModelsConnector, readControlModels } from '../src/control/models.ts';
+import {
+  type ControlModelsClient,
+  type ControlModelsConnector,
+  readControlModels,
+} from '../src/control/models.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
 import { ControlModelCatalogSchema, ControlModelsReadSchema } from '../src/control/schema/model.ts';
 import {
@@ -490,11 +493,9 @@ test('handler bounds drop provider extras, honor optional efforts and reject ove
   const connect =
     (respond: () => unknown): ControlModelsConnector =>
     async () => ({
-      request: (method) =>
-        Promise.resolve(
-          method === 'config/read' ? { config: { model_provider: 'openai' } } : respond(),
-        ),
-      close: () => undefined,
+      readConfig: async () => ({ config: { model_provider: 'openai' } }),
+      listModels: async () => respond() as never,
+      close: async () => undefined,
     });
   const minimal = await readControlModels(
     m,
@@ -538,7 +539,7 @@ test('handler bounds drop provider extras, honor optional efforts and reject ove
   const cancel = new AbortController();
   cancel.abort();
   const connectHanging: ControlModelsConnector = (_machine, options) =>
-    new Promise<CodexAppRpc>((_resolve, reject) => {
+    new Promise<ControlModelsClient>((_resolve, reject) => {
       options.signal?.throwIfAborted();
       options.signal?.addEventListener('abort', () => reject(new Error('cancelled')), {
         once: true,

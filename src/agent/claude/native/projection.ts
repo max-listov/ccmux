@@ -1,32 +1,49 @@
+import type { ExecutorDelta } from 'stitchkit/agent-executor';
+import type { ClaudeRuntimeEvent, ClaudeSdkTurnUsage } from 'stitchkit/agent-executor/claude-sdk';
 import type { ContentProducer } from '../../../content/producer.ts';
-import { mergeRateLimitEvent } from '../../../runtime/planLimits.ts';
-import type { NativeSnapshot, PermissionMode } from '../../../runtime/projectionSchema.ts';
-import { deltaText, toolBlocks } from './content.ts';
+import type {
+  NativeSnapshot,
+  NativeUsage,
+  PermissionMode,
+} from '../../../runtime/projectionSchema.ts';
+import { summarise } from './permission.ts';
 import { composeSnapshot, type SnapshotIdentity } from './snapshot.ts';
-import { initialTurn, type TurnState } from './turn.ts';
-import { nativeUsage, type SdkModelUsage, turnDelta } from './usage.ts';
-
-type RateLimitInfo = { rateLimitType?: string; utilization?: number; resetsAt?: number };
+import { advanceTurn, initialTurn, type TurnState } from './turn.ts';
 
 /** Bounded so a long session cannot grow the published observation without limit. */
 const MAX_ITEMS = 256;
 
+/** Sum per-model additive turn deltas from `ClaudeSdkTurnUsage` into CCMux's `NativeUsage`. */
+export function nativeUsageFromTurn(usage: ClaudeSdkTurnUsage): NativeUsage | null {
+  const entries = Object.values(usage.modelUsageDelta ?? {});
+  if (entries.length === 0) return null;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cachedInputTokens = 0;
+  for (const model of entries) {
+    inputTokens += model.inputTokens;
+    outputTokens += model.outputTokens;
+    cachedInputTokens += (model.cacheReadInputTokens ?? 0) + (model.cacheCreationInputTokens ?? 0);
+  }
+  return {
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    // The SDK has no provider-reported reasoning count; its estimate is kept out of usage.
+    reasoningOutputTokens: null,
+    totalTokens: null,
+  };
+}
+
 /**
- * Everything a session publishes about itself, and the only thing that changes it.
- *
- * Every native adapter keeps this in a projection object rather than on the connection holder, and
- * for the same reason: the state and the methods that advance it belong together. Split apart, the
- * methods become free functions over someone else's mutable fields, which is worse than either.
- *
- * `composeSnapshot` stays a pure function underneath this, which is one layer more than the
- * siblings have and is worth keeping: what the snapshot IS remains testable without a projection.
+ * Everything a native Claude session publishes about itself, projected from
+ * `stitchkit/agent-executor/claude-sdk` deltas and callbacks.
  */
 export class NativeProjection {
   content: ContentProducer | null = null;
   items: NativeSnapshot['nativeItems'] = [];
   sequence = 0;
   connected = false;
-  usageSoFar: Record<string, SdkModelUsage> = {};
   turn: TurnState = initialTurn;
   turnId: string | null = null;
   turnStartedAt: string | null = null;
@@ -34,138 +51,184 @@ export class NativeProjection {
   textItem = new Map<string, number>();
   /** What the runtime is actually using, published so a reader never has to guess. */
   selection: NativeSnapshot['nativeSelection'] = null;
-  /**
-   * The mode the next turn runs under. Held here because the runtime has no getter: what a session
-   * publishes must be what it last successfully applied, not what someone hoped it applied.
-   */
-  permissionMode: PermissionMode = 'default';
-  /** The last context measurement the runtime gave, refreshed when a turn ends rather than per tick. */
+  /** The mode the next turn runs under, updated only when the runtime accepts it. */
+  permissionMode: PermissionMode | undefined = 'default';
+  /** The last context measurement the runtime gave, refreshed when a turn ends. */
   contextUsage: NativeSnapshot['contextUsage'];
-  /** Which account this session runs on, asked once — it does not change while a session lives. */
+  /** Which account this session runs on, asked once at startup. */
   account: NativeSnapshot['account'];
-  /** How full the account's plan windows are, refreshed when a turn ends and on a limit event. */
+  /** How full the account's plan windows are, refreshed when a turn ends and on clock ticks. */
   planLimits: NativeSnapshot['planLimits'];
-  /** The session's MCP servers and their connection status, refreshed when one is acted on. */
+  /** The session's MCP servers and their connection status. */
   mcpServers: NativeSnapshot['mcpServers'];
-  /** Cumulative spend, as the runtime reports it at the end of each turn. */
+  /** Cumulative spend, as reported by the runtime on `usage` deltas. */
   spend: NativeSnapshot['spend'];
 
-  /**
-   * Keep what a `rate_limit_event` said instead of filing it as a diagnostic and losing it.
-   *
-   * The event is the only limit signal that arrives without being asked — including the `rejected`
-   * status, which IS the refusal. It names one window, so it merges onto the read rather than
-   * replacing every window with the single one the server mentioned.
-   */
-  takeRateLimit(message: { type: string }): void {
-    if (message.type !== 'rate_limit_event') return;
-    const info = (message as { rate_limit_info?: unknown }).rate_limit_info;
-    if (info === null || typeof info !== 'object') return;
-    this.planLimits = mergeRateLimitEvent(this.planLimits, info as RateLimitInfo, Date.now());
-  }
+  applyDelta(delta: ExecutorDelta): void {
+    this.turn = advanceTurn(this.turn, { step: 'delta', delta });
+    const turnId = this.turnId ?? delta.turnId;
 
-  record(message: { type: string }, kind: string, failed: boolean): void {
-    const turnId = this.turnId ?? 'unknown';
-    if (kind === 'tool') {
-      this.recordTool(message, turnId);
+    if (delta.type === 'text') {
+      if (delta.text.length === 0) return;
+      const itemId = `${turnId}:text`;
+      this.content?.buffer.text('assistant', turnId, itemId, delta.text, 'append');
+      this.content?.publish();
+      const at = this.textItem.get(itemId);
+      if (at === undefined) {
+        this.textItem.set(
+          itemId,
+          this.appendItem({
+            kind: 'assistant',
+            stage: 'updated',
+            nativeId: itemId,
+            turnId,
+            requestId: null,
+            status: null,
+            text: delta.text,
+            tool: null,
+            usage: null,
+          }),
+        );
+        return;
+      }
+      const existing = this.items[at];
+      if (existing)
+        this.items[at] = { ...existing, text: `${existing.text ?? ''}${delta.text}`.slice(-8_192) };
       return;
     }
-    if (kind === 'terminal') {
-      this.content?.buffer.lifecycle(
-        'terminal',
+
+    if (delta.type === 'tool-call') {
+      const name = delta.toolName.slice(0, 128);
+      this.content?.buffer.tool(turnId, delta.callId, {
+        callId: delta.callId,
+        name,
+        lifecycle: 'running',
+        outcome: 'unknown',
+        exitCode: null,
+      });
+      this.appendItem({
+        kind: 'tool',
+        stage: 'started',
+        nativeId: delta.callId,
         turnId,
-        `${turnId}:end`,
-        failed ? 'failed' : 'completed',
-      );
+        requestId: null,
+        status: 'running',
+        text: summarise(delta.toolName, delta.input),
+        tool: name,
+        usage: null,
+      });
+      this.content?.publish();
+      return;
+    }
+
+    if (delta.type === 'tool-result') {
+      const name = delta.toolName.slice(0, 128);
+      this.content?.buffer.tool(turnId, delta.callId, {
+        callId: delta.callId,
+        name,
+        lifecycle: 'completed',
+        outcome: delta.outcome === 'success' ? 'succeeded' : 'failed',
+        exitCode: null,
+      });
+      this.appendItem({
+        kind: 'tool',
+        stage: 'completed',
+        nativeId: delta.callId,
+        turnId,
+        requestId: null,
+        status: 'completed',
+        text: null,
+        tool: name,
+        usage: null,
+      });
+      this.content?.publish();
+      return;
+    }
+
+    if (delta.type === 'usage') {
+      if (delta.costUsd !== undefined && Number.isFinite(delta.costUsd) && delta.costUsd >= 0) {
+        this.spend = {
+          totalCostUsd: delta.costUsd,
+          observedAt: new Date().toISOString(),
+        };
+      }
+      return;
+    }
+
+    if (delta.type === 'window' && delta.reset === 'context') {
+      this.content?.buffer.resetContext();
+      this.content?.publish();
+      return;
+    }
+
+    if (delta.type === 'turn-end') {
+      const terminalStatus = delta.outcome === 'failed' ? 'failed' : 'completed';
+      this.content?.buffer.lifecycle('terminal', turnId, `${turnId}:end`, terminalStatus);
       this.appendItem({
         kind: 'terminal',
         stage: 'completed',
         nativeId: `${turnId}:end`,
         turnId,
         requestId: null,
-        status: failed ? 'failed' : 'completed',
+        status: terminalStatus,
         text: null,
         tool: null,
         usage: null,
       });
-      // Into the CONTENT stream, which is the surface consumers actually read — the numbers were
-      // never missing here, they rode on the terminal item of a projection nobody scans for spend,
-      // so a turn on this runtime read as free rather than unreported. Same record shape and same
-      // item id as the other runtimes, with the accounting scope declared: this figure is one
-      // turn's, differenced against the runtime's running total.
-      const spent = this.takeUsage(message);
-      if (spent !== null)
-        this.content?.buffer.lifecycle(
-          'usage',
-          turnId,
-          `${turnId}:usage`,
-          'updated',
-          JSON.stringify({ scope: 'run', ...spent }),
-        );
       this.content?.publish();
-      return;
     }
-    const text =
-      message.type === 'stream_event' ? deltaText((message as { event?: unknown }).event) : null;
-    if (text === null) return;
-    // Coalesced: one item per turn's answer rather than one per fragment. The buffer appends, so a
-    // reader sees the answer grow instead of a thousand disconnected pieces.
-    const itemId = `${turnId}:text`;
-    this.content?.buffer.text('assistant', turnId, itemId, text, 'append');
-    this.content?.publish();
-    const at = this.textItem.get(itemId);
-    if (at === undefined) {
-      this.textItem.set(
-        itemId,
-        this.appendItem({
-          kind: 'assistant',
-          stage: 'updated',
-          nativeId: itemId,
-          turnId,
-          requestId: null,
-          status: null,
-          text,
-          tool: null,
-          usage: null,
-        }),
-      );
-      return;
-    }
-    const existing = this.items[at];
-    if (existing)
-      this.items[at] = { ...existing, text: `${existing.text ?? ''}${text}`.slice(-8_192) };
   }
 
-  /** Tool use and its result, which carry no text blocks and would otherwise vanish entirely. */
-  recordTool(message: { type: string }, turnId: string): void {
-    for (const block of toolBlocks(message)) {
-      this.content?.buffer.tool(turnId, block.callId, {
-        callId: block.callId,
-        name: block.name,
-        lifecycle: block.lifecycle,
-        outcome:
-          block.lifecycle === 'completed' ? (block.failed ? 'failed' : 'succeeded') : 'unknown',
-        exitCode: null,
-      });
+  /** Publish per-turn additive spend into the content stream from Stitchkit's `onTurnUsage`. */
+  applyTurnUsage(usage: ClaudeSdkTurnUsage): void {
+    const spent = nativeUsageFromTurn(usage);
+    if (spent === null) return;
+    const turnId = this.turnId ?? usage.turnId;
+    this.content?.buffer.lifecycle(
+      'usage',
+      turnId,
+      `${turnId}:usage`,
+      'updated',
+      JSON.stringify({ scope: 'run', ...spent }),
+    );
+    this.content?.publish();
+  }
+
+  /** Record non-delta subagent/tool progress runtime events from Stitchkit's `onEvent`. */
+  applyRuntimeEvent(event: ClaudeRuntimeEvent): void {
+    const turnId = this.turnId ?? 'unknown';
+    if (event.type === 'tool_progress') {
       this.appendItem({
         kind: 'tool',
-        stage: block.lifecycle === 'completed' ? 'completed' : 'started',
-        nativeId: block.callId,
+        stage: 'started',
+        nativeId: event.toolUseId,
         turnId,
         requestId: null,
-        status: block.lifecycle,
-        text: block.detail,
-        tool: block.name,
+        status: 'running',
+        text: event.toolName,
+        tool: event.toolName.slice(0, 128),
+        usage: null,
+      });
+      return;
+    }
+    if (event.type === 'task_started' || event.type === 'task_notification') {
+      this.appendItem({
+        kind: 'tool',
+        stage: event.type === 'task_notification' ? 'completed' : 'started',
+        nativeId: event.taskId,
+        turnId,
+        requestId: null,
+        status: event.type === 'task_notification' ? event.status : 'running',
+        text: event.type === 'task_notification' ? event.summary : event.description,
+        tool: 'Task',
         usage: null,
       });
     }
-    this.content?.publish();
   }
 
   appendItem(item: Omit<NativeSnapshot['nativeItems'][number], 'sequence' | 'at'>): number {
     this.sequence += 1;
     this.items.push({ ...item, sequence: this.sequence, at: new Date().toISOString() });
-    // Trimmed at the source rather than only in the view, so memory is bounded too.
     if (this.items.length > MAX_ITEMS) {
       const dropped = this.items.length - MAX_ITEMS;
       this.items.splice(0, dropped);
@@ -175,26 +238,6 @@ export class NativeProjection {
       }
     }
     return this.items.length - 1;
-  }
-
-  /** The conversation's running cost, as the runtime states it — never derived from token counts. */
-  takeSpend(message: unknown): void {
-    const record = message as { type?: unknown; total_cost_usd?: unknown };
-    if (record.type !== 'result' || typeof record.total_cost_usd !== 'number') return;
-    if (!Number.isFinite(record.total_cost_usd) || record.total_cost_usd < 0) return;
-    this.spend = {
-      totalCostUsd: record.total_cost_usd,
-      observedAt: new Date().toISOString(),
-    };
-  }
-
-  /** Per-turn spend, differenced against the running total the runtime keeps for the session. */
-  takeUsage(message: unknown): NativeSnapshot['nativeItems'][number]['usage'] {
-    const record = message as { modelUsage?: Record<string, SdkModelUsage> };
-    if (record.modelUsage === undefined) return nativeUsage({ reported: false });
-    const delta = turnDelta(record.modelUsage, this.usageSoFar);
-    this.usageSoFar = record.modelUsage;
-    return nativeUsage({ reported: true, delta });
   }
 
   /** The observation to publish now, from what has been collected and the requests still open. */

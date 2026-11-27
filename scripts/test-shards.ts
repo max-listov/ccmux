@@ -23,13 +23,23 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism, loadavg, tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
+import { enterCheckRunner } from './checkRunner.ts';
 import { sharesFor } from './testShares.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
+const args = process.argv.slice(2);
+const serial = args[0] === '--serial';
+enterCheckRunner(ROOT, serial ? 'ccmux-tests-serial' : 'ccmux-tests');
+if (serial) {
+  const argv = [process.execPath, 'test', '--timeout', '20000', ...args.slice(1)];
+  if (process.execve) process.execve(process.execPath, argv, process.env);
+  process.exit(
+    Bun.spawnSync(argv, { stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' }).exitCode,
+  );
+}
 /** Run alone, after everything else: each fails under the load of the other shares, not on its own. */
 const ALONE = new Set(['test/usage-bounds.test.ts', 'test/context-controls.test.ts']);
 const TIMINGS = join(ROOT, '.cache', 'test-timings.json');
-const args = process.argv.slice(2);
 const sharesAt = args.indexOf('--shares');
 const asked = sharesAt === -1 ? undefined : Number(args.splice(sharesAt, 2)[1]);
 const named = args.filter((arg) => !arg.startsWith('-'));

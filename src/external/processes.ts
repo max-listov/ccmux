@@ -1,3 +1,5 @@
+import { run } from '../util/spawn.ts';
+
 export type ProcessSnapshot = {
   pid: number;
   ppid: number;
@@ -44,9 +46,25 @@ export function processSnapshot(): ProcessSnapshot[] | null {
   }
 }
 
+/** Non-blocking process table snapshot for async daemon/sleep paths. */
+export async function processSnapshotAsync(
+  signal?: AbortSignal,
+): Promise<ProcessSnapshot[] | null> {
+  try {
+    const result = await run(['ps', '-axww', '-o', 'pid=,ppid=,pgid=,lstart=,command='], {
+      signal,
+    });
+    if (result.code !== 0) return null;
+    return parseProcessSnapshot(result.stdout);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return null;
+  }
+}
+
 /** Strict descendant check: a process is not its own descendant. */
 export function isDescendantProcess(
-  rows: ProcessSnapshot[],
+  rows: readonly ProcessSnapshot[],
   pid: number,
   ancestorPid: number,
 ): boolean {
@@ -61,7 +79,7 @@ export function isDescendantProcess(
   return false;
 }
 
-export function processAncestors(rows: ProcessSnapshot[], pid: number): ProcessSnapshot[] {
+export function processAncestors(rows: readonly ProcessSnapshot[], pid: number): ProcessSnapshot[] {
   const byPid = new Map(rows.map((row) => [row.pid, row]));
   const ancestors: ProcessSnapshot[] = [];
   const seen = new Set<number>();

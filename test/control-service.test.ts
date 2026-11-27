@@ -1,15 +1,16 @@
 import { expect, test } from 'bun:test';
+import { OperationEffectSchema } from 'stitchkit/contract';
 import { controlContract } from '../src/control/schema/contract.ts';
 import { controlServiceEffects } from '../src/control/schema/service.ts';
-import { ServiceEffectSchema } from '../src/control/schema/serviceEffect.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 
 const endpoints = Object.entries(controlContract.endpoints);
 
 test('every control operation says whether it reads or writes', () => {
-  // The compiler already refuses an operation without `meta.service`; this guards the value too,
+  // The compiler already refuses an operation without `effect`; this guards the value too,
   // because a cast or a spread contract can put a word there no transport classifies.
   const undeclared = endpoints
-    .filter(([, endpoint]) => !ServiceEffectSchema.safeParse(endpoint.meta?.service).success)
+    .filter(([, endpoint]) => !OperationEffectSchema.safeParse(endpoint.effect).success)
     .map(([id]) => id);
   expect(undeclared).toEqual([]);
 });
@@ -19,7 +20,7 @@ test('the effects a transport projects are the operations’ own, one per operat
   for (const [id, endpoint] of endpoints)
     expect([id, controlServiceEffects[id as keyof typeof controlServiceEffects]]).toEqual([
       id,
-      endpoint.meta.service,
+      endpoint.effect,
     ]);
 });
 
@@ -74,4 +75,15 @@ test('reading is decided per operation, and idempotent is not read', () => {
     'daemon.performance.configure',
   ] as const)
     expect([id, controlServiceEffects[id]]).toEqual([id, 'write']);
+});
+
+test('createInjectedControlClient performs no retry on failing idempotent operations', async () => {
+  let calls = 0;
+  const client = createInjectedControlClient(async () => {
+    calls += 1;
+    throw new Error('simulated transport uncertainty');
+  }, 5_000);
+
+  await expect(client['directory.list']({})).rejects.toThrow('simulated transport uncertainty');
+  expect(calls).toBe(1);
 });

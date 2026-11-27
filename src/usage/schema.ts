@@ -37,7 +37,7 @@ export function emptyUsage(): UsageMetrics {
 export const UsageFactSchema = z
   .object({
     id: z.string().min(1).max(512),
-    runtime: z.enum(['claude', 'codex', 'opencode', 'custom']),
+    runtime: z.enum(['claude', 'codex', 'opencode', 'custom', 'antigravity']),
     model: z.string().max(256).nullable(),
     provider: z.string().max(128).nullable(),
     at: z.iso.datetime().nullable(),

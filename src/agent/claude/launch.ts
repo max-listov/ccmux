@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { chatEnabledFor } from '../../config/chat.ts';
 import { rcName } from '../../config/machine.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { UID } from '../../util/env.ts';
+import { HOME, UID } from '../../util/env.ts';
 import { IDENTITY_ENV_KEYS, pinIdentity } from '../launch/identityEnv.ts';
 import {
   digestOf,
@@ -15,7 +15,8 @@ import {
 } from '../launch/launchInputs.ts';
 import { providerLaunchEnv } from '../launch/sessionEnv.ts';
 import { buildPrompt } from '../prompt/managePrompt.ts';
-import { claudeProfile } from './profileRoot.ts';
+import { verifySessionProfile } from './namedProfiles.ts';
+import { CLAUDE_PROFILE_AUTH_ENV, claudeProfile } from './profileRoot.ts';
 
 export function preflight(m: MachineConfig): void {
   accessSync(m.claudeBin, constants.X_OK);
@@ -161,12 +162,18 @@ export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): re
  * OAuth login exists, so the login wins.
  */
 export function launchEnv(m: MachineConfig, session: Session): Record<string, string> {
+  verifySessionProfile(m, session);
   // The environment is BUILT, not inherited: the recipe drops what the working directory's env files
   // leak in and applies the file this session actually declared. See agent/launch/sessionEnv.ts.
   const env = providerLaunchEnv(session, [dirname(m.claudeBin), dirname(m.tmuxBin)]);
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
   const profile = claudeProfile(session, m);
+  if (session.profile) {
+    for (const key of CLAUDE_PROFILE_AUTH_ENV) delete env[key];
+    env.HOME = HOME;
+    if (profile.configDir !== null) env.CLAUDE_CONFIG_DIR = profile.configDir;
+  }
   // The profile is what the session DECLARED. An inherited value would put the agent's conversation,
   // sign-in and settings in a place `claudeProfile` — and so every reader — does not look.
   if (profile.configDir === null) delete env.CLAUDE_CONFIG_DIR;

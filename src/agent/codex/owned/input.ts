@@ -1,3 +1,5 @@
+import type { CodexSession } from 'stitchkit/agent-executor/codex';
+import { findCodexTurnByClientId } from 'stitchkit/agent-executor/codex';
 import { resolveMessageAttachments } from '../../../attachments/pins.ts';
 import { nativeDeliveryHold } from '../../../chat/settlement.ts';
 import { contextMutationPending } from '../../../context/store.ts';
@@ -24,12 +26,22 @@ import {
   prepareManagedCodexTurn,
   readCodexAppThread,
   resumeCodexAppThreadContext,
-  startCodexAppTurn,
 } from '../appServer.ts';
 import { inspectNativeCodexInput } from '../pane.ts';
-import type { CodexAppRpc } from '../rpc.ts';
 import { codexTextInput } from '../turnInput.ts';
-import { findOwnedCodexReceipt } from './receipt.ts';
+import { startOwnedCodexTurn } from './thread.ts';
+
+export type OwnedCodexInputClient = Pick<
+  CodexSession,
+  | 'readThread'
+  | 'resumeThread'
+  | 'listSkills'
+  | 'listCollaborationModes'
+  | 'listTurns'
+  | 'startTurn'
+>;
+
+export type OwnedCodexInterruptClient = Pick<CodexSession, 'readThread' | 'interruptTurn'>;
 
 /**
  * The owned-Codex owner's side of the session mailboxes: it starts the turn the daemon queued, and
@@ -61,7 +73,7 @@ export const ownedInputDependencies = {
 export async function applyOwnedCodexInput(
   m: MachineConfig,
   session: Session,
-  rpc: CodexAppRpc,
+  executor: OwnedCodexInputClient,
   snapshot: () => NativeSnapshot,
   deps = ownedInputDependencies,
 ): Promise<boolean> {
@@ -71,7 +83,7 @@ export async function applyOwnedCodexInput(
   await tryNativeAdmission(m, session, async () => {
     if (sleepBlocksStart(m, session)) return;
     try {
-      started = await applyLocked(m, session, rpc, snapshot, deps);
+      started = await applyLocked(m, session, executor, snapshot, deps);
     } catch (error) {
       // The failure is this letter's hold, where a sender looking at it will read it; the journal
       // keeps whatever phase it reached, and the next tick settles it from there.
@@ -86,19 +98,22 @@ export async function applyOwnedCodexInput(
 async function applyLocked(
   m: MachineConfig,
   session: Session,
-  rpc: CodexAppRpc,
+  executor: OwnedCodexInputClient,
   snapshot: () => NativeSnapshot,
   deps: typeof ownedInputDependencies,
 ): Promise<boolean> {
   const input = readRuntimeInput(m, session);
   if (input === null || input.phase === 'accepted') return false;
   if (input.phase === 'dispatching') {
-    await settleDispatch(m, session, rpc, input);
+    await settleDispatch(m, session, executor, input);
     return false;
   }
   // Uncertain waits for a person, or for the provider's record to turn up on a later read.
   if (input.phase === 'uncertain') {
-    const receipt = await findOwnedCodexReceipt(rpc, session.uuid, input.messageId);
+    const receipt = await findCodexTurnByClientId(executor, {
+      threadId: session.uuid,
+      clientId: input.messageId,
+    });
     if (receipt !== null)
       await writeRuntimeInput(m, session, { ...input, phase: 'accepted', turnId: receipt.id });
     return false;
@@ -128,8 +143,8 @@ async function applyLocked(
     }
     const context =
       session.launchRecipe?.collaborationMode === undefined && input.turnOptions === undefined
-        ? { thread: await readCodexAppThread(rpc, session.uuid) }
-        : await resumeCodexAppThreadContext(rpc, session.uuid);
+        ? { thread: await readCodexAppThread(executor, session.uuid) }
+        : await resumeCodexAppThreadContext(executor, session.uuid);
     const reason = appThreadHoldReason(context.thread);
     if (reason !== null || context.thread.status.type !== 'idle') {
       await hold(reason ?? 'native runtime is not idle');
@@ -147,7 +162,13 @@ async function applyLocked(
     }
     let policy: Awaited<ReturnType<typeof prepareManagedCodexTurn>>;
     try {
-      policy = await prepareManagedCodexTurn(rpc, m, session, context, input.turnOptions?.options);
+      policy = await prepareManagedCodexTurn(
+        executor,
+        m,
+        session,
+        context,
+        input.turnOptions?.options,
+      );
     } catch {
       await hold('managed collaboration policy is unavailable');
       return false;
@@ -171,7 +192,7 @@ async function applyLocked(
       turnInput.push({ type: 'localImage', path: attachment.path });
     // The message id is the provider's client id for this turn: it is what finds the turn again
     // when this response is lost.
-    const turnId = await startCodexAppTurn(rpc, session.uuid, input.messageId, turnInput, policy);
+    const turnId = await startOwnedCodexTurn(executor, input.messageId, turnInput, policy);
     await writeRuntimeInput(m, session, { ...input, phase: 'accepted', turnId });
     deps.clearHold(session.name);
     log.info({
@@ -189,10 +210,13 @@ async function applyLocked(
 async function settleDispatch(
   m: MachineConfig,
   session: Session,
-  rpc: CodexAppRpc,
+  executor: Pick<OwnedCodexInputClient, 'listTurns'>,
   input: RuntimeInput,
 ): Promise<void> {
-  const receipt = await findOwnedCodexReceipt(rpc, session.uuid, input.messageId);
+  const receipt = await findCodexTurnByClientId(executor, {
+    threadId: session.uuid,
+    clientId: input.messageId,
+  });
   await writeRuntimeInput(
     m,
     session,
@@ -211,7 +235,7 @@ async function settleDispatch(
 export async function applyOwnedCodexInterrupt(
   m: MachineConfig,
   session: Session,
-  rpc: CodexAppRpc,
+  executor: OwnedCodexInterruptClient,
   snapshot: () => NativeSnapshot,
 ): Promise<void> {
   const command = readRuntimeInterrupt(m, session);
@@ -219,7 +243,7 @@ export async function applyOwnedCodexInterrupt(
   const valid = () => isCancellableTurn(snapshot(), command.generation, command.turnId);
   const reject = () => writeRuntimeInterrupt(m, session, { ...command, phase: 'rejected' });
   if (!valid()) return reject();
-  const thread = await readCodexAppThread(rpc, session.uuid);
+  const thread = await readCodexAppThread(executor, session.uuid);
   if (
     thread.status.type !== 'active' ||
     thread.status.activeFlags.some(
@@ -229,6 +253,6 @@ export async function applyOwnedCodexInterrupt(
     return reject();
   await writeRuntimeInterrupt(m, session, { ...command, phase: 'uncertain' });
   if (!valid()) return reject();
-  await rpc.request('turn/interrupt', { threadId: session.uuid, turnId: command.turnId });
+  await executor.interruptTurn({ threadId: session.uuid, turnId: command.turnId });
   await writeRuntimeInterrupt(m, session, { ...command, phase: 'accepted' });
 }

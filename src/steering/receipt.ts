@@ -1,5 +1,5 @@
-import { findOwnedCodexReceipt } from '../agent/codex/owned/receipt.ts';
-import type { CodexAppRpc } from '../agent/codex/rpc.ts';
+import type { CodexControlConnection } from 'stitchkit/agent-executor/codex';
+import { findCodexTurnByClientId } from 'stitchkit/agent-executor/codex';
 import { chatPrincipalKey } from '../chat/identity.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
 import {
@@ -32,19 +32,22 @@ export async function reconcileSteering(
   s: Session,
   journal: SteeringJournal,
   operation: SteeringOperation,
-  connect: () => Promise<CodexAppRpc>,
+  connect: () => Promise<Pick<CodexControlConnection, 'listTurns' | 'close'>>,
 ): Promise<SteeringReceipt> {
   if (operation.phase === 'submitted') return operation.receipt;
-  let rpc: CodexAppRpc | null = null;
+  let controls: Pick<CodexControlConnection, 'listTurns' | 'close'> | null = null;
   let accepted = false;
   try {
-    rpc = await connect();
-    const found = await findOwnedCodexReceipt(rpc, s.uuid, operation.receipt.clientUserMessageId);
+    controls = await connect();
+    const found = await findCodexTurnByClientId(controls, {
+      threadId: s.uuid,
+      clientId: operation.receipt.clientUserMessageId,
+    });
     accepted = found?.id === operation.receipt.turnId;
   } catch {
     /* An absent or unreachable proof retains uncertainty; nothing is reinjected. */
   } finally {
-    rpc?.close();
+    await controls?.close().catch(() => {});
   }
   operation.phase = accepted ? 'submitted' : 'uncertain';
   operation.reason = accepted ? null : 'native-acceptance-unresolved';

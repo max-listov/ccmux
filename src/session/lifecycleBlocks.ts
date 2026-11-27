@@ -23,7 +23,7 @@ export function readLifecycleBlockForSession(
 ): LifecycleBlock | null {
   const block = readLifecycleBlock(m, session.name);
   if (!block || block.agent !== session.agent) return null;
-  if (session.registrationGeneration !== undefined) {
+  if (session.registrationGeneration !== undefined && block.generation !== undefined) {
     return block.generation === session.registrationGeneration ? block : null;
   }
   return block.uuid === session.uuid ? block : null;
@@ -60,7 +60,7 @@ export async function writeLifecycleBlock(m: MachineConfig, block: LifecycleBloc
     );
     const matchesReady =
       ready !== undefined &&
-      (ready.registrationGeneration !== undefined
+      (ready.registrationGeneration !== undefined && parsed.generation !== undefined
         ? parsed.generation === ready.registrationGeneration
         : parsed.uuid === ready.uuid);
     const matchesPending = pending !== undefined && parsed.generation === pending.generation;

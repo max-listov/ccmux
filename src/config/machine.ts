@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { readJsonFileSync } from 'stitchkit/files';
 import type { MachineConfig } from '../types.ts';
 import { HOME, PLATFORM } from '../util/env.ts';
 import { FileSnapshot } from '../util/fileSnapshot.ts';
@@ -53,7 +54,7 @@ function detectClaudeBin(): string {
  * different machine than the daemon did: a runtime the daemon launched becomes "not configured" for
  * that one reader. The install locations come after PATH so that PATH still wins when it has one.
  */
-function detectOptionalBin(name: 'codex' | 'opencode'): string | undefined {
+function detectOptionalBin(name: 'codex' | 'opencode' | 'agy'): string | undefined {
   return firstExisting([
     Bun.which(name),
     `${HOME}/.bun/bin/${name}`,
@@ -79,8 +80,13 @@ function detectTmuxBin(): string {
 export function loadMachineConfig(): MachineConfig {
   const path = machineConfigPath();
   const file = machineFile.read(path, () => {
-    const raw: unknown = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
-    return MachineFileSchema.parse(raw);
+    try {
+      return readJsonFileSync(path, MachineFileSchema);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT')
+        return MachineFileSchema.parse({});
+      throw error;
+    }
   });
   const merged: Record<string, unknown> = {
     ...resolveDefaults(PLATFORM),
@@ -95,6 +101,10 @@ export function loadMachineConfig(): MachineConfig {
   if (merged.opencodeBin === undefined) {
     const opencode = detectOptionalBin('opencode');
     if (opencode) merged.opencodeBin = opencode;
+  }
+  if (merged.antigravityBin === undefined) {
+    const agy = detectOptionalBin('agy');
+    if (agy) merged.antigravityBin = agy;
   }
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();
   return MachineConfigSchema.parse(merged);

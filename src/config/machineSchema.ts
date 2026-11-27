@@ -1,3 +1,4 @@
+import { AcpMcpServerSchema } from 'stitchkit/agent-executor/acp';
 import { z } from 'zod';
 import { RC_PREFIX_RE, SESSION_NAME_RE } from '../chat/identitySchema.ts';
 import { MessageApplicationsSchema } from '../chat/originSchema.ts';
@@ -5,11 +6,13 @@ import { ApplicationDelegationGrantSchema } from '../delegation/applicationSchem
 import { DelegationAuthoritySchema } from '../delegation/schema.ts';
 import { AgentPoliciesSchema } from '../policy/schema.ts';
 import { FiniteWorkloadsSchema } from '../runtime/workloadContract.ts';
+import { ProfileDirectorySchema, ProfileNameSchema } from './claudeProfileSchema.ts';
 import {
   LaunchRecipeIdSchema,
   MachineLaunchRecipeSchema,
   PermissionModeSchema,
 } from './launchSchema.ts';
+import { RemoteTransportSchema } from './remoteTransport.ts';
 
 /*
  * This machine's configuration (`machine.json`) and the release it tracks. Every persisted or
@@ -34,9 +37,14 @@ export const MachineConfigSchema = z.object({
   finiteWorkloads: FiniteWorkloadsSchema.optional(),
   // Absolute binaries — differ per machine (ordered-fallback-detected, overridable).
   claudeBin: z.string().startsWith('/'),
+  /** Locally declared names for existing Claude Code configuration directories. */
+  claudeProfiles: z.record(ProfileNameSchema, ProfileDirectorySchema).optional(),
   // Codex CLI binary — optional; only required for agent="codex" sessions.
   codexBin: z.string().startsWith('/').optional(),
   opencodeBin: z.string().startsWith('/').optional(),
+  antigravityBin: z.string().startsWith('/').optional(),
+  antigravityDataDir: z.string().startsWith('/').optional(),
+  antigravityMcpServers: z.array(AcpMcpServerSchema).max(32).optional(),
   /**
    * Opt-in for the native Claude execution mode, off unless this host turns it on.
    *
@@ -127,22 +135,7 @@ export const MachineConfigSchema = z.object({
    * addressed the project instead, and a project name is usually also a session name.
    */
   externals: z.record(z.string().regex(SESSION_NAME_RE), z.string().min(1)).default({}),
-  remoteTransport: z
-    .object({
-      peers: z.array(z.string().regex(RC_PREFIX_RE)).default([]),
-      // Absent = the stable generic adapter path under this user's state root.
-      socket: z.string().startsWith('/').optional(),
-      /** Exact authenticated receiver ancestor. This is deployment data, never provider code. */
-      trustedAncestor: z
-        .object({
-          executable: z.string().startsWith('/'),
-          argument: z.string().min(1).max(128),
-        })
-        .strict()
-        .optional(),
-    })
-    .strict()
-    .optional(),
+  remoteTransport: RemoteTransportSchema.optional(),
   // Optional command run once before a batch of outbox retries, for fleets where transit can be
   // restored locally (re-pointing a forwarded-key socket, refreshing a token). An argv ARRAY, never
   // a string: no shell ever sees it. Absent = nothing runs, which is the default everywhere.
@@ -156,6 +149,28 @@ export const MachineConfigSchema = z.object({
   stateDir: z.string().startsWith('/'),
   // Daemon heal period (seconds). Per-machine-tunable, re-read live each loop.
   ensureInterval: z.number().int().positive().default(30),
+  /**
+   * Opt-in automatic sleep for idle sessions.
+   *
+   * Disabled by default (`enabled: false`) so upgrading ccmux never changes existing host behavior
+   * until an operator opts in explicitly. When enabled, the daemon puts stably idle sessions to
+   * sleep after `idleAfterMinutes`, keeping pinned sessions and at least `minAwakePerProfile`
+   * healthy awake sessions in each provider profile (preserving Remote Control entry points).
+   */
+  idleSleep: z
+    .object({
+      enabled: z.boolean().default(false),
+      idleAfterMinutes: z.number().int().positive().default(60),
+      minAwakePerProfile: z.number().int().nonnegative().default(1),
+      checkIntervalSeconds: z.number().int().positive().default(60),
+    })
+    .strict()
+    .default({
+      enabled: false,
+      idleAfterMinutes: 60,
+      minAwakePerProfile: 1,
+      checkIntervalSeconds: 60,
+    }),
   // Linux: the `oom_score_adj` the supervising spine runs at — the daemon, the tmux server, each
   // pane's `_run` and its agent — so a shared cgroup's OOM killer takes an agent's browser or build
   // before the agent. Descendants that merely inherited it are returned to 0. `null` turns it off;
@@ -199,6 +214,12 @@ export const MachineConfigSchema = z.object({
   // Boot-unit label so install + update-bounce can target it.
   // launchd: "com.ccmux.daemon"; systemd: "ccmux.service".
   bootLabel: z.string().min(1),
+  // Optional macOS LaunchAgent label for the managed tmux server (default derived from bootLabel,
+  // e.g. "com.ccmux.tmux"). Unused on Linux.
+  tmuxBootLabel: z.string().min(1).optional(),
+  // Optional macOS CFBundleIdentifier override for the signed background ccmux.app bundle.
+  // Default is "com.ccmux.app". Unused on Linux.
+  macosBundleId: z.string().min(1).optional(),
   // Self-update source (where release.json lives). The bundle it names is downloaded over https
   // only — stitchkit's `applyCliUpdate` refuses any other scheme and private hosts; a local build is
   // tested with `bun run stage` + `ccmux update`. Optional — `update` is a clear no-op when unset.

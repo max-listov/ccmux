@@ -1,10 +1,11 @@
 import { isAbsolute } from 'node:path';
 import { AppError } from 'stitchkit';
+import type { CodexControlClient, CodexControlConnection } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
+import { readAntigravityModels } from '../agent/antigravity/catalog.ts';
 import { readClaudeModels } from '../agent/claude/native/catalog.ts';
 import { nativeModelProvider, withCodexCatalogRuntime } from '../agent/codex/catalogRuntime.ts';
-import { connectOwnedCodex } from '../agent/codex/owned/rpc.ts';
-import type { CodexAppRpc, CodexRpcOptions } from '../agent/codex/rpc.ts';
+import { type CodexControlConnectOptions, connectOwnedCodex } from '../agent/codex/owned/rpc.ts';
 import { readCustomModels } from '../agent/custom/catalog.ts';
 import { expandHome } from '../agent/launch/launchInputs.ts';
 import { readOpenCodeModels } from '../agent/opencode/catalog.ts';
@@ -20,11 +21,16 @@ import {
 } from './schema/model.ts';
 import { controlTarget } from './target.ts';
 
+export type ControlModelsClient = Pick<
+  CodexControlConnection,
+  'readConfig' | 'listModels' | 'close'
+>;
+
 export type ControlModelsConnector = (
   machine: MachineConfig,
-  options: CodexRpcOptions,
+  options: CodexControlConnectOptions,
   session: Session,
-) => Promise<CodexAppRpc>;
+) => Promise<ControlModelsClient>;
 type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
 
 /** The provider owns this catalog. Only listed safe fields cross the control boundary. */
@@ -54,12 +60,6 @@ const ProviderModelPageSchema = z.looseObject({
   nextCursor: z.string().max(4_096).nullable(),
 });
 
-/**
- * The caller is told only that the catalog is unavailable; the reason travels as the error's
- * `cause`, which stays in this process — the wire envelope (`AppError.toJSON`) carries code and
- * message, never the cause. Without it the reason reached only `log.debug`, and a test that failed
- * here on a loaded machine said "unavailable" and nothing else.
- */
 function unavailable(reason: string, error: unknown): never {
   log.debug({ msg: 'provider model catalog read failed', reason, err: String(error) });
   throw new AppError('UNAVAILABLE', {
@@ -70,19 +70,17 @@ function unavailable(reason: string, error: unknown): never {
 }
 
 async function readProviderModels(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlClient, 'listModels'>,
   input: ModelsReadInput,
   source: ControlModelCatalog['source'],
 ): Promise<ControlModelCatalog> {
-  // Native picker metadata is not an authoritative inventory for an arbitrary custom endpoint.
-  // Never label the default catalog as a custom provider's models.
   if (source.provider !== 'openai')
     throw new AppError('UNSUPPORTED', {
       message: 'This provider does not expose a supported model catalog',
       status: 409,
     });
   const page = ProviderModelPageSchema.parse(
-    await rpc.request('model/list', {
+    await controls.listModels({
       limit: input.limit,
       ...(input.cursor === null ? {} : { cursor: input.cursor }),
       ...(input.includeHidden ? { includeHidden: true } : {}),
@@ -136,6 +134,12 @@ export async function readControlModels(
         status: 409,
       });
     const runtime = target?.agent ?? input.runtime ?? 'codex';
+    if (input.profile !== undefined && (runtime !== 'claude' || target !== undefined))
+      throw new AppError('UNSUPPORTED', {
+        message: 'Choose a named profile for a Claude host catalog',
+        status: 409,
+      });
+    if (runtime === 'antigravity') return await readAntigravityModels(m, input, target, signal);
     if (runtime === 'opencode') return await readOpenCodeModels(m, input, target, signal);
     if (runtime === 'custom') return readCustomModels(m, input, target);
     if (runtime === 'claude') return await readClaudeModels(m, input, target, signal);
@@ -151,21 +155,20 @@ export async function readControlModels(
           message: 'Model catalog requires an owned App Server session',
           status: 409,
         });
-      const rpc = await connect(m, { signal, maxMessageBytes: 2 * 1024 * 1024 }, session);
+      const controls = await connect(m, { signal, maxFrameBytes: 2 * 1024 * 1024 }, session);
       try {
-        return await readProviderModels(rpc, input, {
+        return await readProviderModels(controls, input, {
           kind: 'session',
           runtime: 'codex',
           machine: m.rcPrefix,
-          provider: await nativeModelProvider(rpc),
+          provider: await nativeModelProvider(controls),
           providerLabel: null,
-          // Computed on the spot from what the host declares, so there is no observation to date.
           observedAt: null,
           freshness: null,
           ...(session.launchRecipe === undefined ? {} : { launchRecipe: session.launchRecipe }),
         });
       } finally {
-        rpc.close();
+        await controls.close().catch(() => {});
       }
     }
     if (m.codexHome === undefined) throw new Error('Codex home is not configured');
@@ -175,14 +178,13 @@ export async function readControlModels(
         message: 'Host catalog requires a host-scoped environment source',
         status: 409,
       });
-    return await withCodexCatalogRuntime(m, launch, m.codexHome, signal, async (rpc) =>
-      readProviderModels(rpc, input, {
+    return await withCodexCatalogRuntime(m, launch, m.codexHome, signal, async (controls) =>
+      readProviderModels(controls, input, {
         kind: 'host',
         runtime: 'codex',
         machine: m.rcPrefix,
-        provider: await nativeModelProvider(rpc),
+        provider: await nativeModelProvider(controls),
         providerLabel: null,
-        // Computed on the spot from what the host declares, so there is no observation to date.
         observedAt: null,
         freshness: null,
         ...(launch.launchRecipe === undefined ? {} : { launchRecipe: launch.launchRecipe }),

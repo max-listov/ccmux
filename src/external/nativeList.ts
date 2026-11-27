@@ -1,5 +1,6 @@
+import type { CodexControlClient } from 'stitchkit/agent-executor/codex';
+import { CODEX_THREAD_SOURCE_KINDS } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
-import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import { compareSemver } from '../util/version.ts';
 
 export const NATIVE_PAGE_SIZE = 128;
@@ -40,36 +41,31 @@ function supportsVersion(userAgent: string | undefined, minimum: string): boolea
   return !!core && (compared > 0 || (compared === 0 && !version?.[2]));
 }
 
-export async function nativeStatusPage(rpc: CodexAppRpc, cursor: string | null) {
+export async function nativeStatusPage(
+  controls: Pick<CodexControlClient, 'listThreads'>,
+  cursor: string | null,
+) {
   return PageSchema.parse(
-    await rpc.request('thread/list', {
+    await controls.listThreads({
       cursor,
       limit: NATIVE_PAGE_SIZE,
       sortKey: 'updated_at',
       useStateDbOnly: true,
-      sourceKinds: [
-        'cli',
-        'vscode',
-        'exec',
-        'appServer',
-        'subAgent',
-        'subAgentReview',
-        'subAgentCompact',
-        'subAgentThreadSpawn',
-        'subAgentOther',
-        'unknown',
-      ],
+      sourceKinds: CODEX_THREAD_SOURCE_KINDS,
     }),
   );
 }
 
-export async function nativeStatusInventory(rpc: CodexAppRpc, signal: AbortSignal) {
+export async function nativeStatusInventory(
+  controls: Pick<CodexControlClient, 'listThreads'>,
+  signal: AbortSignal,
+) {
   const rows = new Map<string, NativeThreadSummary>();
   const cursors = new Set<string>();
   let cursor: string | null = null;
   for (let page = 0; page < NATIVE_MAX_PAGES; page++) {
     signal.throwIfAborted();
-    const result = await nativeStatusPage(rpc, cursor);
+    const result = await nativeStatusPage(controls, cursor);
     signal.throwIfAborted();
     for (const row of result.data) rows.set(row.id, row);
     cursor = result.nextCursor;

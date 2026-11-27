@@ -14,5 +14,6 @@ export function createInjectedControlClient(fetch: ClientFetch, timeoutMs = 30_0
     baseUrl: 'http://ccmux.local',
     fetch,
     timeout: timeoutMs,
+    retry: { limit: 0 },
   });
 }

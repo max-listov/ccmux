@@ -6,11 +6,12 @@ import { join } from 'node:path';
 import {
   applyOwnedCodexInput,
   applyOwnedCodexInterrupt,
+  type OwnedCodexInputClient,
+  type OwnedCodexInterruptClient,
   type ownedInputDependencies,
 } from '../src/agent/codex/owned/input.ts';
 import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
-import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import { loadAcks } from '../src/chat/ackLog.ts';
 import { managedPeer, managedPeerKey } from '../src/chat/identity.ts';
 import { prepareMessageOperation, readMessageJournal } from '../src/chat/messageOperationStore.ts';
@@ -59,44 +60,61 @@ function owner() {
   let receipts: unknown[] = [];
   let resumeParams: unknown = null;
   let hold = '';
-  const rpc: CodexAppRpc = {
-    close() {},
-    async request(method, params) {
-      calls.push(method);
-      const thread = {
-        id: s.uuid,
-        name: s.name,
-        source: 'appServer',
-        status: nativeStatus,
-        canAcceptDirectInput,
-      };
-      if (method === 'thread/read') return { thread };
-      if (method === 'thread/resume') {
-        resumeParams = params;
-        return { thread, model: 'model-current', reasoningEffort: 'low' };
-      }
-      if (method === 'collaborationMode/list') return { data: collaborationModes };
-      if (method === 'turn/start') {
-        // Recorded as in flight BEFORE the provider is asked, so a lost answer is visible.
-        expect(readRuntimeInput(m, s)?.phase).toBe('dispatching');
-        expect(params).toMatchObject({ threadId: s.uuid, clientUserMessageId: msg.id });
-        if (s.launchRecipe?.collaborationMode !== undefined)
-          expect(params).toMatchObject({
-            collaborationMode: {
-              mode: 'plan',
-              settings: {
-                model: 'model-current',
-                reasoning_effort: 'medium',
-                developer_instructions: null,
-              },
+  const makeThread = () => ({
+    id: s.uuid,
+    name: s.name,
+    source: 'appServer',
+    status: nativeStatus,
+    canAcceptDirectInput,
+  });
+  const rpc: OwnedCodexInputClient & OwnedCodexInterruptClient = {
+    async readThread() {
+      calls.push('thread/read');
+      return { thread: makeThread() } as never;
+    },
+    async resumeThread(params) {
+      calls.push('thread/resume');
+      resumeParams = params;
+      return { thread: makeThread(), model: 'model-current', reasoningEffort: 'low' } as never;
+    },
+    async listSkills() {
+      calls.push('skills/list');
+      return { data: [] };
+    },
+    async listCollaborationModes() {
+      calls.push('collaborationMode/list');
+      return { data: collaborationModes } as never;
+    },
+    async startTurn(turnInput) {
+      calls.push('turn/start');
+      // Recorded as in flight BEFORE the provider is asked, so a lost answer is visible.
+      expect(readRuntimeInput(m, s)?.phase).toBe('dispatching');
+      expect(turnInput).toMatchObject({ clientId: msg.id });
+      if (s.launchRecipe?.collaborationMode !== undefined)
+        expect(turnInput).toMatchObject({
+          collaborationMode: {
+            mode: 'plan',
+            settings: {
+              model: 'model-current',
+              reasoning_effort: 'medium',
+              developer_instructions: null,
             },
-          });
-        if (failStart) throw new Error('response lost after request was sent');
-        return { turn: { id: 'native-turn' } };
-      }
-      if (method === 'thread/turns/list') return { data: receipts };
-      if (method === 'turn/interrupt') return {};
-      throw new Error(`unexpected RPC ${method}`);
+          },
+        });
+      if (failStart) throw new Error('response lost after request was sent');
+      return {
+        nativeTurnId: 'native-turn',
+        deltas: (async function* () {})(),
+        interrupt: async () => {},
+        respond: async () => {},
+      };
+    },
+    async listTurns() {
+      calls.push('thread/turns/list');
+      return { data: receipts } as never;
+    },
+    async interruptTurn() {
+      calls.push('turn/interrupt');
     },
   };
   const deps: typeof ownedInputDependencies = {

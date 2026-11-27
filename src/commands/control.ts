@@ -56,6 +56,7 @@ export async function cmdControl(args: string[]): Promise<number> {
         version: VERSION,
         argv: args,
         services: [proxy],
+        access: { open: 'remote' },
         signal: controller.signal,
         stdin: async () => null,
         exit: (value) => {

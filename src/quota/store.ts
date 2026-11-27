@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { STATE_DIR } from '../config/paths.ts';
-import { PlanLimitsSchema } from '../runtime/planLimits.ts';
+import { PlanLimitsSchema } from '../runtime/planLimitsSchema.ts';
 import { atomicWrite } from '../util/atomic.ts';
 
 /**

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { NativeItem, NativePendingRequest } from '../../../runtime/projectionSchema.ts';
-import type { CodexRpcEvent, CodexRpcRequest } from '../rpc.ts';
+import type { CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
 
 const ItemEvent = z.object({
   threadId: z.string(),

@@ -1,16 +1,17 @@
+import { JsonRpcError } from 'stitchkit/agent-executor';
+import type { CodexControlConnection } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
 import { codexAppMessagePersisted } from '../agent/codex/appPickup.ts';
 import {
   appThreadHoldReason,
-  connectCodexAppServer,
   readCodexAppThread,
   resumeCodexAppThread,
-  startCodexAppTurn,
 } from '../agent/codex/appServer.ts';
-import type { CodexAppRpc } from '../agent/codex/rpc.ts';
-import { codexTextInput } from '../agent/codex/turnInput.ts';
+import { connectCodexAppServerControl } from '../agent/codex/owned/rpc.ts';
 import type { ChatMessage, CodexAppPeer, MachineConfig } from '../types.ts';
 import { codexAppPeer } from './identity.ts';
+
+export type CodexAppResolveClient = Pick<CodexControlConnection, 'readThread' | 'close'>;
 
 export function currentCodexAppThreadId(env: NodeJS.ProcessEnv = process.env): string | null {
   if (
@@ -27,15 +28,15 @@ export function currentCodexAppThreadId(env: NodeJS.ProcessEnv = process.env): s
 export async function resolveCodexAppPeer(
   m: MachineConfig,
   threadId: string,
-  connect: (m: MachineConfig) => Promise<CodexAppRpc> = connectCodexAppServer,
+  connect: (m: MachineConfig) => Promise<CodexAppResolveClient> = connectCodexAppServerControl,
 ): Promise<CodexAppPeer> {
   const id = z.uuid().parse(threadId);
-  const rpc = await connect(m);
+  const controls = await connect(m);
   try {
-    const thread = await readCodexAppThread(rpc, id);
+    const thread = await readCodexAppThread(controls, id);
     return codexAppPeer(m.rcPrefix, thread.id, thread.name);
   } finally {
-    rpc.close();
+    await controls.close().catch(() => {});
   }
 }
 
@@ -49,7 +50,11 @@ export async function deliverCodexAppMessage(
   m: MachineConfig,
   msg: ChatMessage,
   text: string,
-  connect: (m: MachineConfig) => Promise<CodexAppRpc> = connectCodexAppServer,
+  connect: (
+    m: MachineConfig,
+  ) => Promise<
+    Pick<CodexControlConnection, 'readThread' | 'resumeThread' | 'startThreadTurn' | 'close'>
+  > = connectCodexAppServerControl,
   persisted: (
     m: MachineConfig,
     threadId: string,
@@ -62,16 +67,16 @@ export async function deliverCodexAppMessage(
     return { delivered: false, reason: 'Codex App recipient belongs to another machine' };
   if (await persisted(m, msg.to.threadId, msg.id))
     return { delivered: true, duplicate: true, turnId: null };
-  const rpc = await connect(m);
+  const controls = await connect(m);
   try {
-    let thread = await readCodexAppThread(rpc, msg.to.threadId);
+    let thread = await readCodexAppThread(controls, msg.to.threadId);
     const initialHold = appThreadHoldReason(thread);
     if (initialHold !== null) return { delivered: false, reason: initialHold };
     if (thread.status.type === 'notLoaded') {
-      thread = await resumeCodexAppThread(rpc, msg.to.threadId);
-      // Resume can race a turn started by another App client. Re-read with turns before deciding,
+      await resumeCodexAppThread(controls, msg.to.threadId);
+      // Resume can race a turn started by another App client. Re-read before deciding,
       // so a prior accepted delivery wins over a transient active status and is never duplicated.
-      thread = await readCodexAppThread(rpc, msg.to.threadId);
+      thread = await readCodexAppThread(controls, msg.to.threadId);
       const resumedHold = appThreadHoldReason(thread);
       if (resumedHold !== null) return { delivered: false, reason: resumedHold };
       if (thread.status.type !== 'idle')
@@ -79,20 +84,16 @@ export async function deliverCodexAppMessage(
     }
     if (thread.status.type !== 'idle')
       return { delivered: false, reason: `Codex App thread is ${thread.status.type}` };
-    const turnId = await startCodexAppTurn(rpc, msg.to.threadId, msg.id, codexTextInput(text));
+    const { turnId } = await controls.startThreadTurn({
+      threadId: msg.to.threadId,
+      clientId: msg.id,
+      input: text.length ? [{ type: 'text', text }] : [],
+    });
     return { delivered: true, duplicate: false, turnId };
   } catch (error) {
-    // A refusal from the provider is a HOLD, not a failure of ours — and it can come from ANY of
-    // the calls above, not the one it is easiest to imagine. A thread another App client is working
-    // in reports `notLoaded` here, so the refusal arrives from the resume, not from `turn/start`.
-    // Read as an exception it becomes a warning on every delivery pass for as long as that other
-    // client keeps working, which is hours. The barrier is retained either way; what changes is
-    // that the reason is the provider's own sentence. Anything that is not a provider answer — a
-    // dead socket, a closed connection — is still a failure and still throws.
-    const reason = error instanceof Error ? error.message : String(error);
-    if (!reason.startsWith('App Server RPC failed:')) throw error;
-    return { delivered: false, reason };
+    if (!(error instanceof JsonRpcError)) throw error;
+    return { delivered: false, reason: `App Server RPC failed: ${error.message}` };
   } finally {
-    rpc.close();
+    await controls.close();
   }
 }

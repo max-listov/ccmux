@@ -1,4 +1,4 @@
-import { lastActivityMs, lastTranscriptMessage, providerFor } from '../agent/index.ts';
+import { lastTranscriptMessage, providerFor, transcriptMtimeMs } from '../agent/index.ts';
 import { assistantEndedCurrentTurn, turnState } from '../chat/turnState.ts';
 import { eventsEnabledFor } from '../config/events.ts';
 import {
@@ -219,11 +219,11 @@ export function observe(
   const lifecycle = readLifecycle(s.name);
   const scan = pane === null ? null : provider.scanPane(pane);
   const lm = lastTranscriptMessage(s, m);
-  const activity = lastActivityMs(s, m);
+  const fileMtime = transcriptMtimeMs(s, m);
   const paneWorking = scan?.state === 'working';
   const paneWorkingMs = paneWorking ? nowMs : lastPaneWorkingMs;
   const claimed = lifecycle?.state === 'working' ? lifecycle.ts : null;
-  const aliveMs = lastSignOfLife(activity, paneWorkingMs, claimed);
+  const aliveMs = lastSignOfLife(fileMtime, paneWorkingMs, claimed);
   const state =
     pane === null
       ? null
@@ -231,7 +231,7 @@ export function observe(
           paneWorking,
           paneReady: provider.inspectChatPane === undefined ? true : scan?.ready === true,
           atMenu: scan?.atPrompt !== null,
-          endedOnAssistantText: assistantEndedCurrentTurn(lm, activity, claimed),
+          endedOnAssistantText: assistantEndedCurrentTurn(lm, fileMtime, claimed),
           msSinceActivity: aliveMs === null ? null : nowMs - aliveMs,
         });
   // The lifecycle file claims a turn is running, and the turn state proves it is not. Only a SETTLED
@@ -251,7 +251,7 @@ export function observe(
     // frozen or forked transcript can never produce a negative duration or one that runs into the
     // future; a session that never spoke has no transcript instant to use, so the pass's own clock
     // stands in.
-    turnOverMs: over ? Math.round(Math.min(nowMs, Math.max(claimed, activity ?? nowMs))) : null,
+    turnOverMs: over ? Math.round(Math.min(nowMs, Math.max(claimed, fileMtime ?? nowMs))) : null,
     turnInterrupted: over && state?.why === 'idle-after-interrupt',
   };
 }

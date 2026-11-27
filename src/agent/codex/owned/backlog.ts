@@ -1,4 +1,4 @@
-import type { CodexRpcEvent, CodexRpcRequest } from '../rpc.ts';
+import type { CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
 
 const MAX_EVENTS = 128;
 const MAX_REQUESTS = 16;

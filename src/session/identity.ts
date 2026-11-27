@@ -2,6 +2,7 @@ import { statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { conversationTitle, lastMessageMs } from '../agent/claude/fork.ts';
 import { providerFor } from '../agent/index.ts';
+import { readTailActivity, type TailMessageParser } from '../agent/transcript/activity.ts';
 import { rec, str } from '../agent/transcript/normalize.ts';
 import { rcName } from '../config/machine.ts';
 import { readInventory } from '../events/inventory.ts';
@@ -11,6 +12,7 @@ import { entryNames } from '../util/entryNames.ts';
 import { readFirstLine, readHeadLines } from '../util/readLines.ts';
 import type { SessionIdentity, SessionLife } from './identitySchema.ts';
 import { declaredProject, repositoryOf } from './repository.ts';
+import { sleepBlocksStart } from './sleep/store.ts';
 
 /**
  * A session's identity, assembled from what already records it: the registry (name, directory, the
@@ -92,8 +94,11 @@ function titleOf(path: string, facts: FileFacts): string | null {
   return facts.title;
 }
 
-function timesOf(path: string, facts: FileFacts): FileTimes {
-  facts.times ??= { firstAt: iso(firstMessageMs(path)), lastAt: iso(lastMessageMs(path)) };
+function timesOf(path: string, facts: FileFacts, parse?: TailMessageParser): FileTimes {
+  facts.times ??= {
+    firstAt: iso(firstMessageMs(path)),
+    lastAt: iso(parse ? readTailActivity(path, parse).lastActivityMs : lastMessageMs(path)),
+  };
   return facts.times;
 }
 
@@ -162,9 +167,10 @@ function livesOf(
   const lives = claudeLives(m, session, sessions, cache);
   if (!lives.some((life) => life.current)) {
     // A provider with one id for life, or a conversation whose file is not written yet.
-    const path = providerFor(session).historyFile(session, m);
+    const provider = providerFor(session);
+    const path = provider.historyFile(session, m);
     const facts = path === null ? null : factsOf(path, cache);
-    const times = path === null || facts === null ? null : timesOf(path, facts);
+    const times = path === null || facts === null ? null : timesOf(path, facts, provider.parse);
     lives.push({
       id: session.uuid,
       current: true,
@@ -182,8 +188,8 @@ export async function sessionIdentities(
   sessions: readonly Session[],
   cache: IdentityCache = new Map(),
 ): Promise<SessionIdentity[]> {
-  const running = new Map(
-    (readInventory(m)?.sessions ?? []).map((row) => [row.name, row.running] as const),
+  const inventoryByName = new Map(
+    (readInventory(m)?.sessions ?? []).map((row) => [row.name, row] as const),
   );
   // Asked together: each is a `git` process, and one after another they are most of the answer's time.
   await Promise.all(sessions.map((session) => repositoryOf(session.dir)));
@@ -192,6 +198,12 @@ export async function sessionIdentities(
     const conversations = livesOf(m, session, sessions, cache);
     const first = conversations.map((life) => ms(life.firstAt)).filter((at) => at > 0);
     const last = conversations.map((life) => ms(life.lastAt)).filter((at) => at > 0);
+    const invRow = inventoryByName.get(session.name);
+    const isRunning = invRow?.running ?? null;
+    const isSleeping =
+      !session.archived &&
+      isRunning !== true &&
+      (invRow?.sleeping === true || sleepBlocksStart(m, session));
     out.push({
       address: selfAddress(m, session.name),
       machine: m.rcPrefix,
@@ -202,7 +214,9 @@ export async function sessionIdentities(
       repository: await repositoryOf(session.dir),
       ...(await declaredProject(session.dir)),
       archived: session.archived,
-      running: running.get(session.name) ?? null,
+      running: isRunning,
+      ...(isSleeping ? { sleeping: true } : {}),
+      ...(session.pinned === true ? { pinned: true } : {}),
       conversation: session.uuid,
       conversations,
       createdAt: first.length === 0 ? null : iso(Math.min(...first)),

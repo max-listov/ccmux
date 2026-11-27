@@ -23,7 +23,9 @@ import { join } from 'node:path';
  * the suite; a call that passes its own `env` is untouched. `Bun.$` already inherits the current one.
  */
 // Each root ends in the tool's own directory, as it does on a real machine: code and tests may rely on it.
-const root = mkdtempSync(join(tmpdir(), 'ccmux-test-home-'));
+// Socket fixtures live below this directory. Darwin's per-user TMPDIR alone
+// can consume most of sockaddr_un.sun_path before the fixture adds its name.
+const root = mkdtempSync(join(process.platform === 'darwin' ? '/tmp' : tmpdir(), 'ccmx-'));
 // Operator identity must not authenticate subprocesses against a synthetic test instance.
 for (const key of [
   'CCMUX_SESSION',

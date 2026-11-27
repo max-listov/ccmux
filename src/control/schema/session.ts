@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentKindSchema, ManagedPeerSchema, SESSION_NAME_RE } from '../../chat/identitySchema.ts';
+import { ProfileNameSchema } from '../../config/claudeProfileSchema.ts';
 import {
   LaunchRecipeMetadataSchema,
   LaunchRecipeReferenceSchema,
@@ -31,6 +32,7 @@ export const ControlCreateSchema = z
     workspace: z.string().startsWith('/').max(4_096),
     flags: z.array(z.string().max(4_096)).max(32).default([]),
     launchRecipe: LaunchRecipeReferenceSchema.optional(),
+    profile: ProfileNameSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     applicationPolicy: ApplicationPolicyReferenceSchema.optional(),
     delegation: DelegationRequestSchema.optional(),
@@ -44,6 +46,7 @@ export const ControlCreateReceiptSchema = z
     workspace: z.string().startsWith('/').max(4_096),
     registrationGeneration: z.uuid(),
     duplicate: z.boolean(),
+    profile: ProfileNameSchema.optional(),
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     applicationPolicy: ApplicationPolicyEvidenceSchema.optional(),

@@ -224,6 +224,8 @@ export function FullscreenView({
               <Txt color="green">{'  sending…'}</Txt>
             ) : canCompose ? (
               <Txt dim>{'› press i to send a message'}</Txt>
+            ) : sel?.row.sleeping ? (
+              <Txt dim>{'  sleeping · press Enter to wake & attach'}</Txt>
             ) : (
               <Txt dim>{'  read-only · external session'}</Txt>
             )}
@@ -237,7 +239,9 @@ export function FullscreenView({
             ? ` compose — ↵ send   esc cancel `
             : sel?.ext
               ? ` ←→ pane   ↑↓ session   ${externalActionHint(sel.ext)}   [ ] resize   x external off   f inline   q quit `
-              : ` ←→ pane   ↑↓ ${focus === 'transcript' ? 'scroll' : 'session'}   i message   [ ] resize   ↵ attach   x external ${load.externalOn ? 'off' : 'on'}   f inline   q quit `}
+              : sel?.row.sleeping
+                ? ` ←→ pane   ↑↓ ${focus === 'transcript' ? 'scroll' : 'session'}   [ ] resize   ↵ wake & attach   x external ${load.externalOn ? 'off' : 'on'}   f inline   q quit `
+                : ` ←→ pane   ↑↓ ${focus === 'transcript' ? 'scroll' : 'session'}   i message   [ ] resize   ↵ attach   x external ${load.externalOn ? 'off' : 'on'}   f inline   q quit `}
         </Text>
       </Box>
     </Box>

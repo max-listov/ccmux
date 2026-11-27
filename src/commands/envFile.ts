@@ -113,7 +113,7 @@ export async function cmdEnvFile(args: string[]): Promise<number> {
   // the old profile keeps the history and the restart will refuse to start a new one on top of it.
   const current = loadSessions(m).find((s) => s.name === local);
   if (current !== undefined) {
-    const next = { dir: current.dir, envFile: clear ? undefined : value };
+    const next = { ...current, envFile: clear ? undefined : value };
     const before = claudeProfile(current, m).projectsDir;
     const after = claudeProfile(next, m).projectsDir;
     if (current.agent === 'claude' && before !== after && existsSync(historyFile(current, m))) {

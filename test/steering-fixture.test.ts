@@ -1,10 +1,10 @@
 import { expect } from 'bun:test';
 import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
-import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
 import type { ManagedRuntimeRead } from '../src/runtime/schema.ts';
 import { SteeringInputSchema } from '../src/steering/schema.ts';
 import {
   readNativeSteering,
+  type SteeringCodexClient,
   type SteeringDependencies,
   steerNativeTurn,
 } from '../src/steering/service.ts';
@@ -40,23 +40,26 @@ export async function steeringFixture() {
     pane = frames.working;
   let recentlyTyped = false,
     receipts: unknown[] = [];
-  let onSteer: (params: unknown) => Promise<unknown> = async () => ({
+  let onSteer: (params: unknown) => Promise<{ readonly turnId: string }> = async () => ({
     turnId: input.expectedTurnId,
   });
-  const rpc: CodexAppRpc = {
-    close() {
+  const rpc: SteeringCodexClient = {
+    async close() {
       calls.push('close');
     },
-    async request(method, params) {
-      calls.push(method);
-      if (method === 'thread/read') return { thread: { id: f.session.uuid, status: nativeStatus } };
-      if (method === 'thread/turns/list') return { data: receipts };
-      if (method === 'turn/steer') {
-        expect(readSteeringJournal(f.machine, f.session).operations.at(-1)?.phase).toBe('intent');
-        submissions.push(params);
-        return onSteer(params);
-      }
-      throw new Error('unexpected native operation');
+    async readThread() {
+      calls.push('thread/read');
+      return { thread: { id: f.session.uuid, status: nativeStatus } } as never;
+    },
+    async listTurns() {
+      calls.push('thread/turns/list');
+      return { data: receipts } as never;
+    },
+    async steerTurn(params) {
+      calls.push('turn/steer');
+      expect(readSteeringJournal(f.machine, f.session).operations.at(-1)?.phase).toBe('intent');
+      submissions.push(params);
+      return onSteer(params);
     },
   };
   const deps: SteeringDependencies = {
@@ -98,7 +101,7 @@ export async function steeringFixture() {
     setTyping(value: boolean) {
       recentlyTyped = value;
     },
-    setSteer(value: (params: unknown) => Promise<unknown>) {
+    setSteer(value: (params: unknown) => Promise<{ readonly turnId: string }>) {
       onSteer = value;
     },
     receipts(value: unknown[]) {

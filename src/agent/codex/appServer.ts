@@ -1,5 +1,10 @@
-import { join } from 'node:path';
 import { AppError } from 'stitchkit';
+import type {
+  CodexApprovalPolicy,
+  CodexControlClient,
+  CodexTurnInput as CodexExecutorTurnInput,
+  CodexTurnInputPart,
+} from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
 import { delegationStopped } from '../../delegation/cancel.ts';
 import { delegatedCodexPolicy } from '../../delegation/codex.ts';
@@ -10,8 +15,6 @@ import { verifyApplicationPolicy } from '../../policy/resolve.ts';
 import type { NativeTurnOptions } from '../../runtime/selectionSchema.ts';
 import type { CodexCollaborationMode, MachineConfig, Session } from '../../types.ts';
 import { log } from '../../util/log.ts';
-import type { CodexAppRpc, CodexRpcOptions } from './rpc.ts';
-import { connectCodexSocket } from './socket.ts';
 import type { CodexTurnInput } from './turnInput.ts';
 
 export const ThreadStatusSchema = z.discriminatedUnion('type', [
@@ -56,7 +59,7 @@ export type CodexAppTurnPolicy = {
   effort?: string;
   skillInputs?: PolicySkillInput[];
   beforeStart?: () => void;
-  approvalPolicy?: string;
+  approvalPolicy?: CodexApprovalPolicy;
   sandboxPolicy?: ReturnType<typeof delegatedCodexPolicy>['sandboxPolicy'];
   cwd?: string;
   runtimeWorkspaceRoots?: string[];
@@ -82,7 +85,7 @@ function collaborationUnavailable(session: Session, reason: string): never {
 
 /** Native model/mode options never change the host sandbox, credentials or permission policy. */
 export async function prepareManagedCodexTurn(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlClient, 'listSkills' | 'listCollaborationModes'>,
   m: MachineConfig,
   session: Session,
   context: CodexAppThreadContext,
@@ -107,7 +110,7 @@ export async function prepareManagedCodexTurn(
           application,
           session.dir,
           application.runtime === 'codex' && application.skills.length > 0
-            ? await rpc.request('skills/list', { cwds: [session.dir], forceReload: true })
+            ? await controls.listSkills({ cwds: [session.dir], forceReload: true })
             : null,
         );
   const skills = skillInputs.length > 0 ? { skillInputs } : {};
@@ -142,7 +145,7 @@ export async function prepareManagedCodexTurn(
   try {
     const response = z
       .object({ data: z.array(CollaborationModePresetSchema) })
-      .parse(await rpc.request('collaborationMode/list', {}));
+      .parse(await controls.listCollaborationModes());
     presets = response.data;
   } catch (error) {
     return collaborationUnavailable(session, `provider capability probe failed: ${String(error)}`);
@@ -169,16 +172,6 @@ export async function prepareManagedCodexTurn(
     },
   };
 }
-export function connectCodexAppServer(
-  m: MachineConfig,
-  options: CodexRpcOptions = {},
-): Promise<CodexAppRpc> {
-  if (!m.codexHome) return Promise.reject(new Error('Codex home is not configured'));
-  return connectCodexSocket(
-    join(m.codexHome, 'app-server-control', 'app-server-control.sock'),
-    options,
-  );
-}
 
 export class CodexAppIdentityMismatch extends Error {
   constructor(message: string) {
@@ -188,13 +181,13 @@ export class CodexAppIdentityMismatch extends Error {
 }
 
 export async function readCodexAppThread(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlClient, 'readThread'>,
   threadId: string,
   includeTurns = false,
 ): Promise<CodexAppThread> {
   const response = z
     .object({ thread: ThreadSchema })
-    .parse(await rpc.request('thread/read', { threadId, includeTurns }));
+    .parse(await controls.readThread({ threadId, includeTurns }));
   if (response.thread.id !== threadId)
     throw new CodexAppIdentityMismatch('Codex App Server returned a different thread identity');
   return response.thread;
@@ -213,10 +206,10 @@ export function appThreadHoldReason(thread: CodexAppThread): string | null {
 }
 
 export async function resumeCodexAppThread(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlClient, 'resumeThread'>,
   threadId: string,
 ): Promise<CodexAppThread> {
-  const response = await resumeCodexAppThreadContext(rpc, threadId);
+  const response = await resumeCodexAppThreadContext(controls, threadId);
   return response.thread;
 }
 
@@ -231,33 +224,43 @@ export async function resumeCodexAppThread(
  * 2,429,351 bytes with the turns, 1,777 without, carrying the same four fields.
  */
 export async function resumeCodexAppThreadContext(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlClient, 'resumeThread'>,
   threadId: string,
 ): Promise<CodexAppThreadContext> {
   const response = CodexAppThreadContextSchema.parse(
-    await rpc.request('thread/resume', { threadId, excludeTurns: true }),
+    await controls.resumeThread({ threadId, excludeTurns: true }),
   );
   if (response.thread.id !== threadId)
     throw new CodexAppIdentityMismatch('Codex App Server resumed a different thread identity');
   return response;
 }
 
-export async function startCodexAppTurn(
-  rpc: CodexAppRpc,
-  threadId: string,
+/** Convert ccmux turn inputs + managed policy into a Stitchkit `CodexTurnInput` payload. */
+export function buildCodexExecutorTurnInput(
   messageId: string,
   input: CodexTurnInput[],
   policy?: CodexAppTurnPolicy,
-): Promise<string> {
-  const { skillInputs, beforeStart, ...nativePolicy } = policy ?? {};
-  beforeStart?.();
-  const response = z.object({ turn: z.looseObject({ id: z.string().min(1) }) }).parse(
-    await rpc.request('turn/start', {
-      threadId,
-      clientUserMessageId: messageId,
-      input: [...input, ...(skillInputs ?? [])],
-      ...nativePolicy,
-    }),
-  );
-  return response.turn.id;
+): CodexExecutorTurnInput {
+  const parts: CodexTurnInputPart[] = [];
+  for (const item of input) {
+    if (item.type === 'text') parts.push({ type: 'text', text: item.text });
+    else parts.push(item);
+  }
+  for (const skill of policy?.skillInputs ?? []) parts.push(skill);
+  return {
+    turnId: messageId,
+    clientId: messageId,
+    input: parts,
+    ...(policy?.cwd === undefined ? {} : { cwd: policy.cwd }),
+    ...(policy?.model === undefined ? {} : { model: policy.model }),
+    ...(policy?.effort === undefined ? {} : { reasoningEffort: policy.effort }),
+    ...(policy?.collaborationMode === undefined
+      ? {}
+      : { collaborationMode: policy.collaborationMode }),
+    ...(policy?.approvalPolicy === undefined ? {} : { approvalPolicy: policy.approvalPolicy }),
+    ...(policy?.sandboxPolicy === undefined ? {} : { sandboxPolicy: policy.sandboxPolicy }),
+    ...(policy?.runtimeWorkspaceRoots === undefined
+      ? {}
+      : { runtimeWorkspaceRoots: policy.runtimeWorkspaceRoots }),
+  };
 }

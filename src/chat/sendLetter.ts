@@ -6,6 +6,7 @@ import { appendOutboxAck, RETRY_WINDOW_MS } from '../fleet/flush.ts';
 import { appendOutbound } from '../fleet/outbox.ts';
 import { queuedForRetryNotice, remoteFailureCause, runPeer } from '../fleet/transport.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
+import { sleepBlocksStart } from '../session/sleep/store.ts';
 import type {
   ChatMessage,
   ChatPrincipal,
@@ -287,6 +288,7 @@ export async function sendLetter(
 
   token = route.session;
   let target: Exclude<ChatTarget, { kind: 'owner' | 'external' }>;
+  let localSession: ReturnType<typeof findSession>;
   if (isCodexAppToken(token)) {
     const parsed = z.uuid().safeParse(codexAppThreadId(token));
     if (!parsed.success) return refused('app address needs a thread UUID');
@@ -310,6 +312,7 @@ export async function sendLetter(
     }
     const session = findSession(sessions, token);
     if (!session) return refused(`no such session '${token}'`);
+    localSession = session;
     target = managedPeer(m.rcPrefix, session);
     const mismatch = assertExpected(target, toAgent, toThread);
     if (mismatch !== null) return refused(mismatch);
@@ -341,10 +344,18 @@ export async function sendLetter(
   });
   appendMessage(m, envelope);
   warned();
+  const sleepNote =
+    localSession !== undefined && !localSession.archived && sleepBlocksStart(m, localSession)
+      ? `recipient '${localSession.name}' is sleeping and will wake automatically when due`
+      : null;
+  if (sleepNote !== null) aside.push(`msg: note — ${sleepNote}`);
   log.info({ msg: 'chat message sent', from: principalLabel(from), to: targetLabel(target), task });
-  return sent(envelope, 'accepted', [
-    `sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`,
-  ]);
+  return sent(
+    envelope,
+    'accepted',
+    [`sent ${principalLabel(from)} → ${targetLabel(target)}: ${preview(body)}`],
+    sleepNote,
+  );
 }
 
 const refused = (reason: string): LetterOutcome => ({

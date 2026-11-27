@@ -249,11 +249,14 @@ test('expired host authority and inherited deadlines refuse admission before any
   await expect(
     prepareManagedCodexTurn(
       {
-        request: async () => {
+        listSkills: async () => {
           calls++;
-          return null;
+          throw new Error('unexpected capability read');
         },
-        close() {},
+        listCollaborationModes: async () => {
+          calls++;
+          throw new Error('unexpected capability read');
+        },
       },
       f.m,
       s,

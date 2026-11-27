@@ -120,6 +120,7 @@ export async function forkControlSession(
     const launch = {
       flags,
       ...(sourceLaunch.envFile === undefined ? {} : { envFile: sourceLaunch.envFile }),
+      ...(sourceLaunch.profile === undefined ? {} : { profile: sourceLaunch.profile }),
       ...(sourceLaunch.launchRecipe === undefined
         ? {}
         : { launchRecipe: sourceLaunch.launchRecipe }),

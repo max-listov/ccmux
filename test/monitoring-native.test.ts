@@ -144,6 +144,51 @@ test('native malformed, oversized, stale, mismatched and dead-producer snapshots
   expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('missing');
 });
 
+test('native reader accepts snapshots with startedAt/step/atPrompt/waitingFor, legacy snapshots without them, and future additive fields', async () => {
+  const { snapshot, path } = await fixture();
+  const withFields = await readMonitoringStatus(UNHURRIED);
+  expect(withFields.status).toBe('live');
+  expect(withFields.snapshot?.sessions[0]?.startedAt).toBeNull();
+  expect(withFields.snapshot?.sessions[0]?.step).toBeNull();
+  expect(withFields.snapshot?.sessions[0]?.atPrompt).toBeNull();
+  expect(withFields.snapshot?.sessions[0]?.waitingFor).toBeNull();
+
+  const legacyRows = snapshot.sessions.map(
+    ({ startedAt: _started, step: _step, atPrompt: _prompt, waitingFor: _waiting, ...rest }) =>
+      rest,
+  );
+  writeFileSync(path, JSON.stringify({ ...snapshot, sessions: legacyRows }));
+  const legacyRead = await readMonitoringStatus(UNHURRIED);
+  expect(legacyRead.status).toBe('live');
+  expect(legacyRead.snapshot?.sessions[0]?.startedAt).toBeUndefined();
+  expect(legacyRead.snapshot?.sessions[0]?.step).toBeUndefined();
+  expect(legacyRead.snapshot?.sessions[0]?.atPrompt).toBeUndefined();
+  expect(legacyRead.snapshot?.sessions[0]?.waitingFor).toBeUndefined();
+
+  // Forward-compatible protocol-1 reader tolerates additive fields from a newer producer
+  // while still strictly validating declared fields (negative control below).
+  writeFileSync(
+    path,
+    JSON.stringify({
+      ...snapshot,
+      futureHeaderField: 'tolerated',
+      sessions: snapshot.sessions.map((row) => ({ ...row, futureRowField: 42 })),
+    }),
+  );
+  const additiveRead = await readMonitoringStatus(UNHURRIED);
+  expect(additiveRead.status).toBe('live');
+  expect(additiveRead.snapshot?.sessions[0]?.uuid).toBe(snapshot.sessions[0]?.uuid);
+
+  writeFileSync(
+    path,
+    JSON.stringify({
+      ...snapshot,
+      sessions: snapshot.sessions.map((row) => ({ ...row, state: 'not-a-valid-state' })),
+    }),
+  );
+  expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('invalid');
+});
+
 test('native discovery follows root/config changes and replaces identities/removals without caches', async () => {
   const { machine, publisher, snapshot } = await fixture();
   expect((await readMonitoringStatus(UNHURRIED)).snapshot?.generation).toBe(snapshot.generation);

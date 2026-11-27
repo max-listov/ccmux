@@ -26,7 +26,7 @@ function fixture() {
 test('catalog names the inference boundary of every creatable runtime and mode', () => {
   const { m } = fixture();
   const rows = readRuntimeCatalog(m).runtimes;
-  expect(rows).toHaveLength(5);
+  expect(rows).toHaveLength(6);
   for (const row of rows) {
     if (row.runtime === 'claude' && row.mode === 'native') {
       expect(row.capabilities.creation).toEqual({

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TranscriptMessageSchema } from '../agent/transcript/messageSchema.ts';
 import { AgentKindSchema } from '../chat/identitySchema.ts';
 import { InventorySnapshotSchema } from '../events/schema.ts';
-import { PlanLimitsSchema } from '../runtime/planLimits.ts';
+import { PlanLimitsSchema } from '../runtime/planLimitsSchema.ts';
 import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 
 /*
@@ -52,6 +52,8 @@ export const ListItemSchema = z.object({
   rc: z.string(),
   running: z.boolean(),
   archived: z.boolean(),
+  sleeping: z.boolean().default(false),
+  pinned: z.boolean().default(false),
   state: SessionStateSchema,
   // The blocking menu this session is sitting at, if any. Separate from `state` on purpose: every
   // other signal reads such a session as idle — still pane, no tool running — when it is the exact
@@ -124,6 +126,8 @@ export const ListItemSchema = z.object({
    *  a session that will not boot is worse for a supervisor than one variable short — so this is how a
    *  reader finds out at all. Null = nothing declared. */
   envFile: z.object({ path: z.string(), present: z.boolean() }).nullable().default(null),
+  /** Operator-selected profile name. Older registrations can still use an env file. */
+  profile: z.string().optional(),
   createdAt: z.string().nullable(),
   lastMessage: TranscriptMessageSchema.nullable(),
   /**

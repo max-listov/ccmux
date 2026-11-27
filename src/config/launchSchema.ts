@@ -21,7 +21,7 @@ export const PermissionModeSchema = z.enum([
 /** Provider continuation is not the managed registration UUID. */
 export const NativeSessionSchema = z
   .object({
-    runtime: z.enum(['opencode', 'custom', 'claude']),
+    runtime: z.enum(['opencode', 'custom', 'claude', 'antigravity']),
     id: z.string().min(1).max(256),
     version: z.string().min(1).max(64),
   })

@@ -31,16 +31,21 @@ function lsofBin(): string | null {
 export function codexThreadLockState(
   m: MachineConfig,
   threadId: string,
+  codexHome: string | undefined = m.codexHome,
 ): { path: string; present: boolean } | null {
-  if (!m.codexHome) return null;
-  const path = `${m.codexHome}/thread-writer-locks/${threadId}.lock`;
+  if (!codexHome) return null;
+  const path = `${codexHome}/thread-writer-locks/${threadId}.lock`;
   // lsof reports canonical names. macOS exposes the temp root as /var/... while the kernel reports
   // /private/var/...; comparing the unresolved spelling made a real held lock look unobserved.
   return existsSync(path) ? { path: realpathSync(path), present: true } : { path, present: false };
 }
 
-export function codexThreadLockPath(m: MachineConfig, threadId: string): string | null {
-  return codexThreadLockState(m, threadId)?.path ?? null;
+export function codexThreadLockPath(
+  m: MachineConfig,
+  threadId: string,
+  codexHome: string | undefined = m.codexHome,
+): string | null {
+  return codexThreadLockState(m, threadId, codexHome)?.path ?? null;
 }
 
 /**
@@ -118,8 +123,12 @@ export function lsofPathChunks(
 }
 
 /** Exact, read-only writer evidence for one Codex thread. An unheld stale lock file is not live. */
-export function inspectCodexThreadLock(m: MachineConfig, threadId: string): CodexLockInspection {
-  const path = codexThreadLockPath(m, threadId);
+export function inspectCodexThreadLock(
+  m: MachineConfig,
+  threadId: string,
+  codexHome: string | undefined = m.codexHome,
+): CodexLockInspection {
+  const path = codexThreadLockPath(m, threadId, codexHome);
   if (!path) return { evidence: 'unknown', path: '', holders: [] };
   const bin = lsofBin();
   if (!bin) return { evidence: 'unknown', path, holders: [] };
@@ -213,8 +222,9 @@ export function codexLockHeldByDescendant(
   m: MachineConfig,
   threadId: string,
   ancestorPid: number,
+  codexHome: string | undefined = m.codexHome,
 ): boolean {
-  const inspection = inspectCodexThreadLock(m, threadId);
+  const inspection = inspectCodexThreadLock(m, threadId, codexHome);
   if (inspection.evidence !== 'observed') return false;
   const rows = processSnapshot();
   return rows !== null && lockHeldByDescendant(inspection, rows, ancestorPid);

@@ -1,8 +1,7 @@
 import { AppError } from 'stitchkit';
-import { z } from 'zod';
-import { connectOwnedCodex } from '../agent/codex/owned/rpc.ts';
+import type { CodexControlConnection, CodexTurnInputPart } from 'stitchkit/agent-executor/codex';
+import { type CodexControlConnectOptions, connectOwnedCodex } from '../agent/codex/owned/rpc.ts';
 import { inspectNativeCodexInput } from '../agent/codex/pane.ts';
-import { codexTextInput } from '../agent/codex/turnInput.ts';
 import { resolveMessageAttachments, withPinnedAttachments } from '../attachments/pins.ts';
 import { chatPrincipalKey } from '../chat/identity.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
@@ -34,7 +33,25 @@ import {
   writeSteeringJournal,
 } from './store.ts';
 
-export const steeringDependencies = {
+export type SteeringCodexClient = Pick<
+  CodexControlConnection,
+  'readThread' | 'steerTurn' | 'listTurns' | 'close'
+>;
+
+export interface SteeringDependencies {
+  connect: (
+    m: MachineConfig,
+    s: Pick<Session, 'name' | 'dir' | 'envFile'>,
+    options?: CodexControlConnectOptions,
+  ) => Promise<SteeringCodexClient>;
+  readStatus: typeof readManagedRuntimeStatus;
+  typing: typeof clientTypingRecently;
+  gate: typeof setPaneInputEnabled;
+  capture: typeof capturePaneStyled;
+  images: typeof validateSteeringImages;
+}
+
+export const steeringDependencies: SteeringDependencies = {
   connect: connectOwnedCodex,
   readStatus: readManagedRuntimeStatus,
   typing: clientTypingRecently,
@@ -42,7 +59,6 @@ export const steeringDependencies = {
   capture: capturePaneStyled,
   images: validateSteeringImages,
 };
-export type SteeringDependencies = typeof steeringDependencies;
 
 async function safeSteering<T>(run: () => Promise<T>): Promise<T> {
   try {
@@ -104,7 +120,7 @@ async function submit(
   fingerprint: string,
 ) {
   let gated = false;
-  const rpc = await deps.connect(m, session, { signal });
+  const controls = await deps.connect(m, session, { signal });
   try {
     gated = await deps.gate(m, session.name, false);
     if (
@@ -112,7 +128,7 @@ async function submit(
       inspectNativeCodexInput(await deps.capture(m, session.name, 40)).state !== 'deliverable'
     )
       return steeringFailure('BUSY');
-    await requireNativeSteeringTurn(rpc, input);
+    await requireNativeSteeringTurn(controls, input);
     await withPinnedAttachments(
       m,
       principal,
@@ -129,9 +145,10 @@ async function submit(
       input.images,
       signal,
     );
-    const nativeInput = codexTextInput(input.body);
+    const steerParts: CodexTurnInputPart[] = [];
+    if (input.body.length > 0) steerParts.push({ type: 'text', text: input.body });
     for (const attachment of attachments)
-      nativeInput.push({ type: 'localImage', path: attachment.path });
+      steerParts.push({ type: 'localImage', path: attachment.path });
     requireSteeringTurn(m, session, input, deps.readStatus);
     signal.throwIfAborted();
     const operation: SteeringOperation = {
@@ -154,14 +171,12 @@ async function submit(
     journal.operations.push(operation);
     writeSteeringJournal(m, session, journal);
     try {
-      const response = z.object({ turnId: z.string() }).parse(
-        await rpc.request('turn/steer', {
-          threadId: session.uuid,
-          expectedTurnId: input.expectedTurnId,
-          clientUserMessageId: operation.receipt.clientUserMessageId,
-          input: nativeInput,
-        }),
-      );
+      const response = await controls.steerTurn({
+        threadId: session.uuid,
+        expectedTurnId: input.expectedTurnId,
+        clientId: operation.receipt.clientUserMessageId,
+        input: steerParts,
+      });
       if (response.turnId !== input.expectedTurnId) throw new Error('native-turn-mismatch');
       operation.phase = 'submitted';
     } catch {
@@ -182,7 +197,7 @@ async function submit(
     try {
       if (gated) await deps.gate(m, session.name, true);
     } finally {
-      rpc.close();
+      await controls.close().catch(() => {});
     }
   }
 }

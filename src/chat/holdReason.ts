@@ -16,6 +16,7 @@ import { targetLabel } from './identity.ts';
 export type HoldReason =
   | { kind: 'recipient-unknown'; text: string }
   | { kind: 'recipient-stopped'; text: string }
+  | { kind: 'recipient-sleeping'; text: string }
   | { kind: 'chat-off'; text: string }
   | { kind: 'agent-unsupported'; text: string }
   | { kind: 'owner'; text: string }
@@ -30,6 +31,8 @@ export interface HoldContext {
    *  than read off the session, so this cannot disagree with what delivery actually does. */
   chatEnabled: boolean;
   running: boolean;
+  /** True when the recipient is intentionally sleeping (daemon wakes it when mail is due). */
+  sleeping?: boolean;
   nowMs: number;
   /** Can the recipient's agent receive chat at all? False = the daemon skips it entirely, so its mail
    *  is not "slow", it is never coming. */
@@ -79,11 +82,30 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
       text: `recipient runs ${ctx.recipient.agent}, which cannot receive chat — this will never be delivered`,
     };
   }
-  if (!ctx.running)
+  if (!ctx.running) {
+    if (ctx.sleeping === true) {
+      if (msg.notBefore !== null) {
+        const due = Date.parse(msg.notBefore);
+        if (Number.isFinite(due) && ctx.nowMs < due) {
+          return {
+            kind: 'not-due',
+            text: `scheduled — not before ${msg.notBefore} (${Math.ceil((due - ctx.nowMs) / 1000)}s); recipient is sleeping and will wake when due`,
+          };
+        }
+      }
+      if (ctx.daemonHold != null && ctx.daemonHold.reason !== '') {
+        return { kind: 'recipient-sleeping', text: ctx.daemonHold.reason };
+      }
+      return {
+        kind: 'recipient-sleeping',
+        text: `recipient is sleeping — daemon will wake it automatically (or run: ccmux wake ${sessionName})`,
+      };
+    }
     return {
       kind: 'recipient-stopped',
       text: `recipient is not running (ccmux start ${sessionName})`,
     };
+  }
   if (msg.notBefore !== null) {
     const due = Date.parse(msg.notBefore);
     if (Number.isFinite(due) && ctx.nowMs < due) {

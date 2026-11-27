@@ -37,10 +37,23 @@ test.skipIf(!Bun.which('tmux'))(
     });
     const history = histFile(a.dir, a.uuid, machine.projectsDir);
     mkdirSync(dirname(history), { recursive: true });
+    const stepAt = '2026-11-25T04:40:00.000Z';
     const record = (model: string) =>
       `${JSON.stringify({
         type: 'assistant',
-        message: { role: 'assistant', model, content: 'private transcript body' },
+        timestamp: stepAt,
+        message: {
+          role: 'assistant',
+          model,
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_daemon_1',
+              name: 'Bash',
+              input: { command: 'private transcript body' },
+            },
+          ],
+        },
       })}\n`;
     writeFileSync(history, record('model-a'));
     await writeSessionsUnlocked(machine, [a, b]);
@@ -109,8 +122,26 @@ test.skipIf(!Bun.which('tmux'))(
       expect(firstRun?.pid).toBe(daemon.pid);
       expect(firstRun?.termination).toBe('active');
       expect(firstRun?.readyAt).toBeString();
-      expect(first.sessions[0]).toMatchObject({ state: 'working', uuid: a.uuid, agent: 'claude' });
-      expect(first.sessions[1]).toMatchObject({ state: 'stopped', uuid: b.uuid, agent: 'codex' });
+      expect(first.sessions[0]).toMatchObject({
+        state: 'working',
+        uuid: a.uuid,
+        agent: 'claude',
+        lastActivityAt: stepAt,
+        step: { kind: 'tool_call', role: 'assistant', toolName: 'Bash', at: stepAt },
+        atPrompt: null,
+        waitingFor: null,
+      });
+      expect(first.sessions[0]?.startedAt).toBeString();
+      expect(first.sessions[1]).toMatchObject({
+        state: 'stopped',
+        uuid: b.uuid,
+        agent: 'codex',
+        startedAt: null,
+        lastActivityAt: null,
+        step: null,
+        atPrompt: null,
+        waitingFor: null,
+      });
       expect(JSON.stringify(first)).not.toContain('private transcript body');
       writeFileSync(`${history}.next`, record('model-b'));
       renameSync(`${history}.next`, history);

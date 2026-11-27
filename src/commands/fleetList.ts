@@ -29,13 +29,14 @@ function fleetSessionCells(
       : session.staleUnknown !== null
         ? '  ⟳ ?'
         : '';
+  const pinned = session.pinned ? '  [pinned]' : '';
   const role = session.role === null ? '' : `  ${ROLE_SIGIL}${session.role}`;
   return [
     `  ${machine}:${session.name}`,
     session.agent ?? 'unknown',
     stateCell(session.state, session.atPrompt),
     `${vendorGlyph(session.modelId ?? session.model)} ${session.model ?? '-'}`,
-    `${session.uptime?.text ?? ''}${role}${restart}`,
+    `${session.uptime?.text ?? ''}${pinned}${role}${restart}`,
   ];
 }
 
@@ -132,7 +133,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
       fm.alias === null
         ? `${fm.machine} (this machine)`
         : fm.alias === 'remote'
-          ? `${fm.machine} via remote adapter`
+          ? `${fm.machine} via remote transport`
           : fm.fallback !== null
             ? `${fm.machine} → ${fm.alias} (ssh fallback: ${fm.fallback})`
             : `${fm.machine} → ${fm.alias}`;

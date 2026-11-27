@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { type CodexAppRpc, CodexAppRpcRefusal } from '../src/agent/codex/rpc.ts';
-import { type CodexAppFailureKind, CodexAppUnavailable } from '../src/agent/codex/socket.ts';
+import { JsonRpcError } from 'stitchkit/agent-executor';
+import { CodexUnixSocketError } from 'stitchkit/agent-executor/codex';
+import type { CodexAppFailureKind } from '../src/agent/codex/owned/rpc.ts';
 import { appResolveFailureText, resolveAppOutcome } from '../src/chat/appResolve.ts';
+import type { CodexAppResolveClient } from '../src/chat/codexApp.ts';
 import { resolveRemoteCodexAppPeer } from '../src/chat/letterParties.ts';
 import type { RemoteResult } from '../src/fleet/transport.ts';
 import { makeAppPeer, makeMachine, UUID } from './helpers.ts';
@@ -17,13 +19,12 @@ const thread = (id = UUID) => ({
     canAcceptDirectInput: false,
   },
 });
-const rpc = (read: () => unknown): CodexAppRpc => ({
-  request: async (method, params) => {
-    expect(method).toBe('thread/read');
+const rpc = (read: () => unknown): CodexAppResolveClient => ({
+  readThread: async (params) => {
     expect(params).toEqual({ threadId: UUID, includeTurns: false });
-    return read();
+    return read() as Awaited<ReturnType<CodexAppResolveClient['readThread']>>;
   },
-  close() {},
+  close: async () => {},
 });
 
 test('exact App outcome reads once, closes, and does not resume or start a turn', async () => {
@@ -33,7 +34,7 @@ test('exact App outcome reads once, closes, and does not resume or start a turn'
     reads++;
     return thread();
   });
-  client.close = () => {
+  client.close = async () => {
     closed = true;
   };
   expect(await resolveAppOutcome(machine(), UUID, async () => client)).toEqual({
@@ -45,7 +46,7 @@ test('exact App outcome reads once, closes, and does not resume or start a turn'
 });
 
 test('input and missing configuration refuse before connecting', async () => {
-  const connect = async (): Promise<CodexAppRpc> => {
+  const connect = async (): Promise<CodexAppResolveClient> => {
     throw new Error('must not connect');
   };
   expect(await resolveAppOutcome(machine(), 'invalid', connect)).toMatchObject({
@@ -66,7 +67,7 @@ test('endpoint refusals retain the source kind, phase and exact diagnostic', asy
     'connection-lost',
   ];
   for (const kind of kinds) {
-    const error = new CodexAppUnavailable(kind, `Owner endpoint: ${kind}`);
+    const error = new CodexUnixSocketError(kind, '/tmp/codex.sock', `Owner endpoint: ${kind}`);
     expect(
       await resolveAppOutcome(machine(), UUID, async () => {
         throw error;
@@ -85,7 +86,7 @@ test('provider refusal and missing thread retain RPC code and full sentence with
   ]) {
     const outcome = await resolveAppOutcome(machine(), UUID, async () =>
       rpc(() => {
-        throw new CodexAppRpcRefusal(-32600, sentence);
+        throw new JsonRpcError(-32600, sentence);
       }),
     );
     expect(outcome).toEqual({
@@ -109,7 +110,7 @@ test('identity and invalid response fail separately and close the provider conne
   ]) {
     let closed = false;
     const client = rpc(() => answer);
-    client.close = () => {
+    client.close = async () => {
       closed = true;
     };
     expect(await resolveAppOutcome(machine(), UUID, async () => client)).toMatchObject({
@@ -127,7 +128,7 @@ test('diagnostics mask secret shapes and exact environment secrets while retaini
   try {
     const outcome = await resolveAppOutcome(machine(), UUID, async () =>
       rpc(() => {
-        throw new CodexAppRpcRefusal(
+        throw new JsonRpcError(
           -32000,
           `denied ${secret}; https://example.test/?api_key=opaque-secret; reason stays`,
         );

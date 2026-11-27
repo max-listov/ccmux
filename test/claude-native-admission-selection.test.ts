@@ -42,7 +42,7 @@ async function discover(requested?: string, initialization?: 'no-inference'): Pr
   const d: Discovery = {
     m,
     session,
-    query: { supportedModels: async () => supported } as never,
+    sdkSession: { supportedModels: async () => supported } as never,
     projection: new NativeProjection(),
     report: async (error: unknown) => {
       throw error;
@@ -82,7 +82,7 @@ test('inference-free admission fails closed when the runtime cannot verify the r
   const selected = await discover('haiku');
   selected.session.initialization = 'no-inference';
   selected.session.modelSelection = { provider: 'claude', model: 'sonnet' };
-  selected.query = { supportedModels: async () => undefined } as never;
+  selected.sdkSession = { supportedModels: async () => undefined } as never;
   await expect(loadCatalog(selected)).rejects.toThrow('requires the runtime model catalog');
   const valid = await discover('sonnet', 'no-inference');
   expect(readSelection(valid.m, valid.session)?.options.model).toEqual({

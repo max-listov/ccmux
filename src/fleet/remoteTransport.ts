@@ -1,13 +1,18 @@
 import { existsSync } from 'node:fs';
+import { defaultWireSocketPath } from '@stitchwire/client';
 import { createClient, createHttpClient } from 'stitchkit';
 import { createUnixClientTransport, UnixClientTransportError } from 'stitchkit/server';
 import type { MachineConfig } from '../types.ts';
 import { HOME } from '../util/env.ts';
 import { remoteTransportContract } from './remoteTransportContract.ts';
+import { callStitchwire } from './stitchwire.ts';
 import type { RemoteResult } from './transport.ts';
 
-export function remoteAdapterSocketPath(m: MachineConfig): string {
-  return m.remoteTransport?.socket ?? `${HOME}/.local/state/ccmux/remote-adapter.sock`;
+export function remoteSocketPath(m: MachineConfig): string {
+  const route = m.remoteTransport;
+  if (route && 'kind' in route)
+    return route.agentSocket ?? defaultWireSocketPath({ homeDir: HOME });
+  return route?.socket ?? `${HOME}/.local/state/ccmux/remote-adapter.sock`;
 }
 
 export function remotePeers(m: MachineConfig): string[] {
@@ -22,17 +27,24 @@ function failed(delivery: RemoteResult['delivery'], failureDetail: string): Remo
   return { code: 1, stdout: '', stderr: '', transportFailed: true, delivery, failureDetail };
 }
 
-/** Calls one injected local adapter; provider protocol and credentials stay outside CCMux. */
-export async function runRemoteAdapter(
+/** Use the configured command transport and preserve its delivery evidence for route selection. */
+export async function runRemoteTransport(
   m: MachineConfig,
   machine: string,
   argv: string[],
   opts?: { stdin?: string; timeoutMs?: number; signal?: AbortSignal | undefined },
 ): Promise<RemoteResult> {
   if (opts?.signal?.aborted) return failed('not-sent', 'remote request cancelled before dispatch');
-  const socket = remoteAdapterSocketPath(m);
-  if (!existsSync(socket)) return failed('not-sent', 'local remote adapter is unavailable');
+  const socket = remoteSocketPath(m);
   const timeoutMs = opts?.timeoutMs ?? 30_000;
+  if (m.remoteTransport && 'kind' in m.remoteTransport) {
+    return callStitchwire(
+      socket,
+      { to: machine, argv, stdin: opts?.stdin ?? null, timeoutMs },
+      opts?.signal,
+    );
+  }
+  if (!existsSync(socket)) return failed('not-sent', 'local remote adapter is unavailable');
   const transport = createUnixClientTransport({
     socketPath: socket,
     maxConnections: 1,

@@ -68,6 +68,13 @@ export const runtimeModes = {
     creatable: ['native'],
     keepsTerminal: false,
   },
+  antigravity: {
+    native: 'native',
+    interactive: null,
+    fallback: 'native',
+    creatable: ['native'],
+    keepsTerminal: false,
+  },
 } satisfies Record<Session['agent'], RuntimeModes>;
 
 /** Whether this session speaks its runtime's own protocol rather than driving a terminal. */

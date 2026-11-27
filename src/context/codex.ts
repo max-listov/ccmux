@@ -1,6 +1,7 @@
 import { AppError } from 'stitchkit';
+import type { CodexControlClient } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
-import type { CodexAppRpc, CodexRpcEvent } from '../agent/codex/rpc.ts';
+import type { CodexRpcEvent } from '../agent/codex/owned/rpc.ts';
 import { CodexToolFieldsSchema, codexToolObservation } from '../agent/codex/toolObservation.ts';
 import { toolHistoryStatus } from '../content/toolSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -9,26 +10,27 @@ import type { NativeContextApi } from './pump.ts';
 import type { NativeHistoryEntry } from './schema.ts';
 import { HISTORY_LIMITS } from './schema.ts';
 
+export type CodexContextClient = Pick<CodexControlClient, 'listItems' | 'compactThread'>;
+
 // Cancellation releases the caller, not the native request. Retain its one slot until ACK/timeout
 // so repeated cancelled reads cannot accumulate work on the shared owner connection.
-const pendingRequests = new WeakMap<CodexAppRpc, Promise<unknown>>();
-async function contextRequest(
-  rpc: CodexAppRpc,
-  method: string,
-  params: unknown,
+const pendingRequests = new WeakMap<CodexContextClient, Promise<unknown>>();
+async function contextRequest<T>(
+  controls: CodexContextClient,
+  run: () => Promise<T>,
   signal: AbortSignal,
-): Promise<unknown> {
+): Promise<T> {
   signal.throwIfAborted();
-  if (pendingRequests.has(rpc))
+  if (pendingRequests.has(controls))
     throw new AppError('CONTEXT_RPC_PENDING', {
       message: 'A native context request is still pending',
       status: 409,
     });
-  const reply = rpc.request(method, params);
-  pendingRequests.set(rpc, reply);
+  const reply = run();
+  pendingRequests.set(controls, reply);
   void reply.then(
-    () => pendingRequests.delete(rpc),
-    () => pendingRequests.delete(rpc),
+    () => pendingRequests.delete(controls),
+    () => pendingRequests.delete(controls),
   );
   return new Promise((resolve, reject) => {
     const aborted = () => reject(signal.reason);
@@ -79,18 +81,22 @@ export function isCodexContextCompletion(event: CodexRpcEvent, threadId: string)
   const parsed = CompletionSchema.safeParse(event.params);
   return parsed.success && parsed.data.threadId === threadId;
 }
-export function codexContextApi(m: MachineConfig, s: Session, rpc: CodexAppRpc): NativeContextApi {
+export function codexContextApi(
+  m: MachineConfig,
+  s: Session,
+  controls: CodexContextClient,
+): NativeContextApi {
   const read = async (limit: number, signal: AbortSignal, cursor?: string) =>
     PageSchema.parse(
       await contextRequest(
-        rpc,
-        'thread/items/list',
-        {
-          threadId: s.uuid,
-          limit,
-          sortDirection: 'desc',
-          ...(cursor === undefined ? {} : { cursor }),
-        },
+        controls,
+        () =>
+          controls.listItems({
+            threadId: s.uuid,
+            limit,
+            sortDirection: 'desc',
+            ...(cursor === undefined ? {} : { cursor }),
+          }),
         signal,
       ),
     );
@@ -168,9 +174,8 @@ export function codexContextApi(m: MachineConfig, s: Session, rpc: CodexAppRpc):
     },
     async compact(signal) {
       await contextRequest(
-        rpc,
-        'thread/compact/start',
-        { threadId: s.uuid },
+        controls,
+        () => controls.compactThread({ threadId: s.uuid }),
         boundedSignal(signal),
       );
     },

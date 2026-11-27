@@ -43,6 +43,7 @@ async function fileBoundary() {
   await writeFile(join(workspace, 'nested', 'source.txt'), 'original');
   await writeFile(join(outside, 'source.txt'), 'outside-fixture');
   const tools = mountAgent([], {
+    access: { open: 'local-operator' },
     runtimeTools: createAgentCodingTools({ root: workspace, authorize: () => true }),
   });
   const read = await invoke(tools, 'read_file', { path: 'nested/source.txt' });
@@ -66,6 +67,7 @@ async function fileBoundary() {
   const entered = Promise.withResolvers<void>();
   const allow = Promise.withResolvers<void>();
   const delayed = mountAgent([], {
+    access: { open: 'local-operator' },
     runtimeTools: createAgentCodingTools({
       root: workspace,
       authorize: async () => {
@@ -96,6 +98,7 @@ async function patchBoundary() {
   await writeFile(join(outside, 'source.txt'), 'same-content');
   const positive = await invoke(
     mountAgent([], {
+      access: { open: 'local-operator' },
       runtimeTools: createAgentCodingTools({ root: workspace, authorize: () => true }),
     }),
     'read_file',
@@ -108,6 +111,7 @@ async function patchBoundary() {
   const entered = Promise.withResolvers<void>();
   const allow = Promise.withResolvers<void>();
   const tools = mountAgent([], {
+    access: { open: 'local-operator' },
     runtimeTools: createAgentCodingTools({
       root: workspace,
       authorize: async () => {
@@ -140,6 +144,7 @@ async function cancellation() {
   const workspace = join(root, 'commands');
   await mkdir(workspace);
   const tools = mountAgent([], {
+    access: { open: 'local-operator' },
     runtimeTools: createAgentCodingTools({
       root: workspace,
       authorize: () => true,

@@ -42,8 +42,12 @@ function hasExactForkMarker(path: string, marker: string): boolean {
 }
 
 /** Exact rollout correlation. cwd/mtime/source are display metadata and never selectors. */
-export function rolloutIdsForMarker(m: MachineConfig, marker: string): string[] {
-  const root = m.codexSessionsDir;
+export function rolloutIdsForMarker(
+  m: MachineConfig,
+  marker: string,
+  sessionsDir: string | undefined = m.codexSessionsDir,
+): string[] {
+  const root = sessionsDir;
   if (!root || !existsSync(root)) return [];
   const ids: string[] = [];
   const markerField = `"originator":${JSON.stringify(marker)}`;
@@ -76,8 +80,9 @@ export function forkRolloutIdsForMarker(
   m: MachineConfig,
   marker: string,
   sourceThreadId: string,
+  sessionsDir: string | undefined = m.codexSessionsDir,
 ): string[] {
-  const root = m.codexSessionsDir;
+  const root = sessionsDir;
   if (!root || !existsSync(root)) return [];
   const ids: string[] = [];
   for (const path of new Glob('**/rollout-*.jsonl').scanSync({ cwd: root, absolute: true })) {

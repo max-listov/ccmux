@@ -206,11 +206,11 @@ export function parse(
       // and the call it answers is named in its first lines. The message keeps the call's id so a
       // consumer can join the two without parsing the tags itself.
       let title: string | null = null;
-      if (kind === 'message' && roleFor(entry, item) === 'user') {
+      if (kind === 'message' && roleFor(entry, item) === 'user' && NOTIFICATION.test(text0)) {
+        title = 'task-notification';
         const notified = notificationOf(text0);
         if (notified) {
           callId = notified.toolUseId;
-          title = 'task-notification';
           notifications.set(callId, { ...notified.notification, at: createdAt });
         }
       }

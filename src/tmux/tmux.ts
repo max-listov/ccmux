@@ -1,3 +1,4 @@
+import { waitForManagedTmuxReady } from '../boot/macos/tmuxAgent.ts';
 import { clearStatus } from '../session/status.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
@@ -72,6 +73,9 @@ export async function newSession(
   extraEnv: Record<string, string> = {},
   signal?: AbortSignal,
 ): Promise<void> {
+  // Wait for the managed macOS tmux LaunchAgent before invoking `new-session`, so a login or
+  // restart race can never spawn an unmanaged rogue tmux server outside `ccmux.app`.
+  await waitForManagedTmuxReady(m, signal ? { signal } : {});
   // `-s NAME` (plain, for creation), `-e` pins the instance env into the pane (see above), `--` so
   // tmux treats the rest as command tokens.
   const envArgs = [...instanceEnvArgs()];
@@ -376,6 +380,23 @@ export async function capturePaneStyled(
   return stdout;
 }
 
+/** Most recent attached client keystroke timestamp in epoch milliseconds, or null if none attached. */
+export async function lastClientActivityMs(m: MachineConfig, name: string): Promise<number | null> {
+  const { code, stdout } = await run(
+    tmuxArgv(m, 'list-clients', '-t', exactTarget(name), '-F', '#{client_activity}'),
+  );
+  if (code !== 0) return null;
+  let latest: number | null = null;
+  for (const line of stdout.trim().split('\n')) {
+    const at = Number.parseInt(line.trim(), 10);
+    if (Number.isFinite(at) && at > 0) {
+      const ms = at * 1000;
+      if (latest === null || ms > latest) latest = ms;
+    }
+  }
+  return latest;
+}
+
 /** Did an attached human touch the keyboard within the last `withinSec`? Watching a pane is harmless
  *  for chat delivery — typing into it is not (our injected line would land in their half-written
  *  one). `client_activity` is tmux's own last-input timestamp, so this asks the precise question
@@ -385,14 +406,6 @@ export async function clientTypingRecently(
   name: string,
   withinSec: number,
 ): Promise<boolean> {
-  const { code, stdout } = await run(
-    tmuxArgv(m, 'list-clients', '-t', exactTarget(name), '-F', '#{client_activity}'),
-  );
-  if (code !== 0) return false;
-  const nowSec = Date.now() / 1000;
-  for (const line of stdout.trim().split('\n')) {
-    const at = Number.parseInt(line.trim(), 10);
-    if (Number.isFinite(at) && nowSec - at <= withinSec) return true;
-  }
-  return false;
+  const latest = await lastClientActivityMs(m, name);
+  return latest !== null && Date.now() - latest <= withinSec * 1000;
 }

@@ -1,9 +1,10 @@
 import { mkdirSync } from 'node:fs';
 import { z } from 'zod';
-import { CREDENTIAL_KEYS } from '../agent/claude/profileRoot.ts';
+import { CLAUDE_PROFILE_AUTH_ENV } from '../agent/claude/profileRoot.ts';
 import { isReservedEnvKey, readEnvFile } from '../agent/launch/sessionEnv.ts';
 import { STATE_DIR } from '../config/paths.ts';
-import { codexPlanLimits, type PlanLimits } from '../runtime/planLimits.ts';
+import { codexPlanLimits } from '../runtime/planLimits.ts';
+import type { PlanLimits } from '../runtime/planLimitsSchema.ts';
 import type { MachineConfig } from '../types.ts';
 import { run } from '../util/spawn.ts';
 import { parseClaudeUsage, usageLimits } from './claudeUsage.ts';
@@ -52,9 +53,8 @@ const STRIPPED = [
   'CLAUDECODE',
   'CLAUDE_CODE_ENTRYPOINT',
   'CODEX_HOME',
-  'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
-  ...CREDENTIAL_KEYS,
+  ...CLAUDE_PROFILE_AUTH_ENV,
 ];
 
 function childEnv(target: ProbeTarget): Record<string, string> {
@@ -95,6 +95,39 @@ function probeDirectory(): string {
 
 const PROBE_TIMEOUT_MS = 90_000;
 
+type AuthResult =
+  | { ok: true; status: z.infer<typeof AuthStatusSchema> }
+  | { ok: false; error: string };
+
+async function claudeAuthStatus(
+  bin: string,
+  env: Record<string, string>,
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<AuthResult> {
+  const auth = await run([bin, 'auth', 'status', '--json'], {
+    cwd,
+    env,
+    timeoutMs: 15_000,
+    signal,
+  });
+  if (auth.timedOut) return { ok: false, error: 'claude auth status timed out' };
+  try {
+    const status = AuthStatusSchema.parse(JSON.parse(auth.stdout));
+    if (auth.code !== 0 && (status.loggedIn || auth.code !== 1))
+      return { ok: false, error: `claude auth status exited ${auth.code}` };
+    return { ok: true, status };
+  } catch {
+    return { ok: false, error: 'claude auth status gave no readable answer' };
+  }
+}
+
+/** Reads the vendor's login status without making an inference or asking about usage. */
+export function profileAuthStatus(m: MachineConfig, home: string | null): Promise<AuthResult> {
+  const env = childEnv({ provider: 'claude', key: home ?? 'default', home, envFile: null });
+  return claudeAuthStatus(m.claudeBin, env, probeDirectory());
+}
+
 export async function probeClaude(
   m: MachineConfig,
   target: ProbeTarget,
@@ -102,19 +135,9 @@ export async function probeClaude(
 ): Promise<ProbeOutcome> {
   const env = childEnv(target);
   const cwd = probeDirectory();
-  const auth = await run([m.claudeBin, 'auth', 'status', '--json'], {
-    cwd,
-    env,
-    timeoutMs: 15_000,
-    signal,
-  });
-  if (auth.timedOut) return { ok: false, error: 'claude auth status timed out' };
-  let status: z.infer<typeof AuthStatusSchema>;
-  try {
-    status = AuthStatusSchema.parse(JSON.parse(auth.stdout));
-  } catch {
-    return { ok: false, error: 'claude auth status gave no readable answer' };
-  }
+  const auth = await claudeAuthStatus(m.claudeBin, env, cwd, signal);
+  if (!auth.ok) return auth;
+  const { status } = auth;
   if (!status.loggedIn) return { ok: false, error: 'the profile is not signed in' };
   const now = Date.now();
   const label = clean(status.email, 256);

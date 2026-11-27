@@ -1,11 +1,13 @@
-import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, expect, onTestFinished, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readClaudeModels, validateClaudeSelection } from '../src/agent/claude/native/catalog.ts';
+import { probeClaudeModels } from '../src/agent/claude/native/hostProbe.ts';
 import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
+import { HOME } from '../src/util/env.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**
@@ -35,16 +37,22 @@ const model = {
 /** A stdout-less stand-in for the vendor SDK: a real module, imported the way the real one is. */
 const FAKE_SDK = `
 export function query({ prompt, options }) {
-  const calls = [];
   globalThis.__probeCalls ??= [];
-  globalThis.__probeCalls.push({ cwd: options.cwd, bin: options.pathToClaudeCodeExecutable });
+  globalThis.__probeCalls.push({ cwd: options.cwd, bin: options.pathToClaudeCodeExecutable, configDir: options.env.CLAUDE_CONFIG_DIR });
+  let release;
+  const stopped = new Promise((resolve) => { release = resolve; });
   return {
+    async *[Symbol.asyncIterator]() {
+      await stopped;
+    },
+    interrupt: async () => {},
     supportedModels: async () => [
       { value: 'sonnet', displayName: 'Sonnet', description: 'd', resolvedModel: 'claude-sonnet-5' },
       { value: 'opus[1m]', displayName: 'Opus', supportsEffort: true, supportedEffortLevels: ['low'] },
     ],
-    return: () => {
+    close: () => {
       globalThis.__probeClosed = (globalThis.__probeClosed ?? 0) + 1;
+      release();
     },
   };
 }
@@ -92,6 +100,53 @@ async function host(options: {
 
 const read = ControlModelsReadSchema.parse({ runtime: 'claude' });
 const signal = () => new AbortController().signal;
+
+test('host catalogs and concurrent SDK probes stay in the requested Claude profile', async () => {
+  const { m } = await host({ sdk: true, publish: true, sdkSource: FAKE_SDK });
+  const oldXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = m.stateDir;
+  onTestFinished(() => {
+    if (oldXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = oldXdg;
+  });
+  const left = join(m.stateDir, 'left'),
+    right = join(m.stateDir, 'right');
+  mkdirSync(left);
+  mkdirSync(right);
+  m.claudeProfiles = { left, right };
+  const calls = () => (globalThis as { __probeCalls?: { configDir: string }[] }).__probeCalls ?? [];
+  const before = calls().length;
+  const get = (profile: string) => readClaudeModels(m, { ...read, profile }, undefined, signal());
+  const [a, b] = await Promise.all([get('left'), get('right')]);
+  expect([a.source.profile, b.source.profile]).toEqual(['left', 'right']);
+  expect(a.data.map((row) => row.model)).toEqual(['sonnet', 'opus[1m]']);
+  expect(b.data).toEqual(a.data);
+  await get('left');
+  expect(
+    calls()
+      .slice(before)
+      .map((call) => call.configDir)
+      .sort(),
+  ).toEqual([realpathSync(left), realpathSync(right)].sort());
+});
+
+test('the default login and an explicit .claude directory have separate capability caches', async () => {
+  const { m } = await host({ sdk: true, publish: false, sdkSource: FAKE_SDK });
+  const home = join(HOME, '.claude');
+  m.projectsDir = join(home, 'projects');
+  const calls = () =>
+    (globalThis as { __probeCalls?: { configDir?: string }[] }).__probeCalls ?? [];
+  const before = calls().length;
+  const explicit = { source: 'machine', name: 'explicit', configDir: home } as const;
+  await probeClaudeModels(m, signal());
+  await probeClaudeModels(m, signal(), explicit);
+  await probeClaudeModels(m, signal(), explicit);
+  expect(
+    calls()
+      .slice(before)
+      .map((call) => call.configDir),
+  ).toEqual([undefined, home]);
+});
 
 test('a host answers with the list its last owner published, and says it is not live', async () => {
   const observedAt = '2026-09-01T10:00:00.000Z';

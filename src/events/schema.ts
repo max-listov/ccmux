@@ -52,6 +52,8 @@ export const InventoryRowSchema = z
     address: z.string().min(1),
     archived: z.boolean(),
     running: z.boolean(),
+    sleeping: z.boolean().optional(),
+    pinned: z.boolean().optional(),
     /** The monitoring vocabulary: working, idle, prompt, stopped, blocked, unknown. */
     state: z.string().min(1),
     model: z.string().nullable(),

@@ -188,6 +188,23 @@ const capabilities = {
     history: true,
     imageInput: true,
   },
+  antigravity: {
+    runtime: 'antigravity',
+    structured: true,
+    modelCatalog: true,
+    modelSelection: true,
+    approval: true,
+    input: false,
+    nativeStream: true,
+    interrupt: true,
+    resume: true,
+    ...unsupportedNativeOperations,
+    selectionDefaults: true,
+    turnOptions: true,
+    imageInput: true,
+    permissionModes: true,
+    history: true,
+  },
 } satisfies Record<Session['agent'], RuntimeCapabilities>;
 
 export function runtimeCapabilities(
@@ -205,6 +222,7 @@ export function runtimeCapabilities(
       nativeStream: false,
       interrupt: false,
       ...unsupportedNativeOperations,
+      sleep: ['codex', 'claude'].includes(session.agent),
     };
   return {
     ...declared,
@@ -212,6 +230,6 @@ export function runtimeCapabilities(
     ...(session.delegation?.applicationAuthority === undefined
       ? {}
       : { turnSteering: false, approval: false, input: false }),
-    sleep: ['codex', 'claude'].includes(session.agent) && session.delegation !== undefined,
+    sleep: ['codex', 'claude'].includes(session.agent),
   };
 }

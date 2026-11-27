@@ -8,6 +8,7 @@ import { loadMachineConfig } from '../config/machine.ts';
 import { STATE_DIR } from '../config/paths.ts';
 import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
 import { findSession, loadSessions, updateSessionUuid } from '../session/registry.ts';
+import { sleepBlocksStart } from '../session/sleep/store.ts';
 import { startSession } from '../session/start.ts';
 import { killSession, listSessionNames } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -34,6 +35,8 @@ const SWEEP_LOCK = `${STATE_DIR}/restart-all.lock`;
 
 export interface RestartAllDeps {
   sessions: () => Session[];
+  /** Optional predicate for intentionally sleeping sessions skipped by fleet-wide restart. */
+  isSleeping?: (s: Session) => boolean;
   /** This ccmux's own session name (CCMUX_SESSION), or undefined when run outside a managed pane. */
   self: string | undefined;
   /** Re-pin the registry if the conversation forked to a new uuid; returns the current session. */
@@ -47,12 +50,12 @@ export interface RestartAllDeps {
 
 /**
  * The sweep itself — pure over injected deps so it's unit-testable without tmux or a registry.
- * Order: archived skipped; the CALLING session goes LAST (its pane dies and comes back, so doing it
- * first would blank the operator's own window for the whole sweep); every session is killed and
- * started before the next one is touched.
+ * Order: archived and sleeping skipped; the CALLING session goes LAST (its pane dies and comes back,
+ * so doing it first would blank the operator's own window for the whole sweep); every session is
+ * killed and started before the next one is touched.
  */
 export async function restartAllOnce(deps: RestartAllDeps): Promise<string[]> {
-  const targets = deps.sessions().filter((s) => !s.archived);
+  const targets = deps.sessions().filter((s) => !s.archived && deps.isSleeping?.(s) !== true);
   // self last — everything else keeps registry order
   const ordered = [
     ...targets.filter((s) => s.name !== deps.self),
@@ -193,7 +196,7 @@ export async function cmdRestartAll(): Promise<number> {
     return 1;
   }
   const m = loadMachineConfig();
-  const targets = loadSessions(m).filter((s) => !s.archived);
+  const targets = loadSessions(m).filter((s) => !s.archived && !sleepBlocksStart(m, s));
   if (targets.length === 0) {
     console.log('no sessions to restart');
     return 0;
@@ -219,6 +222,7 @@ export async function cmdRestartAllWorker(): Promise<number> {
   try {
     done = await restartAllOnce({
       sessions: () => loadSessions(m),
+      isSleeping: (s) => sleepBlocksStart(m, s),
       self,
       followFork: async (s) => {
         const next = forkedUuid(s, m, loadSessions(m));

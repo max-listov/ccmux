@@ -8,6 +8,7 @@ import {
   type ManagedScheduleConfig,
   managedServerResource,
 } from 'stitchkit/application';
+import { repeatLimited } from 'stitchkit/observability';
 import { pruneTranscriptIndexes } from '../agent/transcript/transcriptIndex.ts';
 import { CursorsUnreadableError } from '../chat/cursors.ts';
 import { deliverPending } from '../chat/deliver.ts';
@@ -15,6 +16,7 @@ import { mirrorPending } from '../chat/telegram.ts';
 import { settleUndeliverable } from '../chat/undeliverable.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { BOOT_ATTEMPTS } from '../config/paths.ts';
+import { stitchwireRoute } from '../config/remoteTransport.ts';
 import { ControlPublisher } from '../control/publisher.ts';
 import { ControlModelsReadSchema } from '../control/schema/model.ts';
 import { createControlServer } from '../control/transport/server.ts';
@@ -25,10 +27,11 @@ import { ExternalStatusPublisher } from '../external/residentPublisher.ts';
 import { EXTERNAL_INTERVAL_MS } from '../external/residentSchema.ts';
 import { flushOutbox } from '../fleet/flush.ts';
 import { PeerRows } from '../inventory/peerRows.ts';
+import { MEMORY_SAMPLE_INTERVAL_MS, MemorySampler } from '../monitoring/memory.ts';
 import { DaemonPerformance } from '../monitoring/performance.ts';
 import { MonitoringPublisher } from '../monitoring/publish.ts';
 import { STATUS_INTERVAL_MS } from '../monitoring/schema.ts';
-import { processRoots } from '../monitoring/tmux.ts';
+import { observedSessionPanePids, processRoots } from '../monitoring/tmux.ts';
 import { refreshQuota } from '../quota/refresh.ts';
 import { autoUpdateOnce } from '../release/update.ts';
 import { sweepFiniteWorkloadDirectories } from '../runtime/finiteWorkload.ts';
@@ -42,6 +45,7 @@ import {
 import { readProcTable } from '../runtime/procTable.ts';
 import { healOnce } from '../session/heal.ts';
 import { loadSessions } from '../session/registry.ts';
+import { runAutoSleepPass } from '../session/sleep/autoSleep.ts';
 import type { MachineConfig } from '../types.ts';
 import { createUsageObservation } from '../usage/observation.ts';
 import { proveBootBundle } from '../util/bootGuard.ts';
@@ -56,6 +60,12 @@ export function createDaemonApplication(
   initial: MachineConfig,
   clockFor?: (id: string) => ManagedScheduleClock,
 ) {
+  const scheduleLog = repeatLimited({
+    warn: (msg, data) => log.warn({ ...data, msg }),
+    error: (msg, data) => log.error({ ...data, msg }),
+    info: (msg, data) => log.info({ ...data, msg }),
+    debug: (msg, data) => log.debug({ ...data, msg }),
+  });
   const performance = new DaemonPerformance();
   const measure = <T>(name: string, run: () => T) => performance.run(name, run);
   const measuredClock = (id: string): ManagedScheduleClock => {
@@ -183,6 +193,19 @@ export function createDaemonApplication(
     dependsOn: [controlOwner],
     server: (ctx) => ctx.use(controlOwner).server,
   });
+  const wireDeclaration = defineManagedResource({
+    id: 'wire-declaration',
+    dependsOn: [control, controlOwner],
+    start: async (ctx) => {
+      const wire = ctx.use(controlOwner).wire;
+      await wire?.start();
+      return { value: wire };
+    },
+    close: async (ctx) => {
+      await ctx.use(controlOwner).wire?.close();
+    },
+  });
+  const memorySampler = new MemorySampler();
   const observation = schedule({
     id: 'observation',
     dependsOn: [projection.id],
@@ -198,7 +221,14 @@ export function createDaemonApplication(
         previous,
         Date.now(),
         (m, s, startedAt, pane, seen) => {
-          const row = monitoring.sample(m, s, startedAt, pane, seen);
+          const row = monitoring.sample(
+            m,
+            s,
+            startedAt,
+            pane,
+            seen,
+            memorySampler.rawMemoryFor(s.name),
+          );
           if (row !== null) inventory.sample(m, s, row, startedAt);
         },
         async (observation) => {
@@ -223,7 +253,7 @@ export function createDaemonApplication(
         outcome: 'unavailable',
       });
       publisher.unavailable('observation-failed');
-      log.warn({ msg: 'session event pass failed', err: String(error) });
+      scheduleLog.warn('session event pass failed', { err: String(error) });
     },
   });
   const freshness = schedule({
@@ -245,7 +275,7 @@ export function createDaemonApplication(
     run: ({ signal }) => externalObserver.refresh(machine(), signal),
     onError: (error) => {
       external.unavailable('invalid-response');
-      log.warn({ msg: 'external observation failed', err: String(error) });
+      scheduleLog.warn('external observation failed', { err: String(error) });
     },
   });
   // Held delivery is a condition, not an event: said when it starts, changes and ends — not every
@@ -265,7 +295,7 @@ export function createDaemonApplication(
         // a letter whose recipient is gone is closed here or it waits in the queue for ever.
         await settleUndeliverable(m);
         signal.throwIfAborted();
-        await deliverPending(m);
+        await deliverPending(m, signal);
         signal.throwIfAborted();
         await mirrorPending(m);
       } catch (error) {
@@ -280,7 +310,7 @@ export function createDaemonApplication(
       // Outbound mail does not depend on the cursors, so a held inbound side does not hold it.
       await flushOutbox(m);
     },
-    onError: (error) => log.warn({ msg: 'chat delivery pass failed', err: String(error) }),
+    onError: (error) => scheduleLog.warn('chat delivery pass failed', { err: String(error) }),
   });
   let nextEnsureAt = 0;
   let lastUpdateCheck = 0;
@@ -302,7 +332,7 @@ export function createDaemonApplication(
             guardCleared = true;
           }
         } catch (error) {
-          log.error({ msg: 'ensure pass failed', err: String(error) });
+          scheduleLog.error('ensure pass failed', { err: String(error) });
         }
         signal.throwIfAborted();
         if (m.autoUpdate && Date.now() - lastUpdateCheck >= m.updateCheckInterval * 1000) {
@@ -318,7 +348,7 @@ export function createDaemonApplication(
       }
     },
     onError: (error) =>
-      log.warn({ msg: 'config re-read / auto-update failed', err: String(error) }),
+      scheduleLog.warn('config re-read / auto-update failed', { err: String(error) }),
   });
   let stopLoopWatch = (): void => {};
   const loopStalls = defineManagedResource({
@@ -362,7 +392,7 @@ export function createDaemonApplication(
         });
       }
     },
-    onError: (error) => log.warn({ msg: 'oom priority pass failed', err: String(error) }),
+    onError: (error) => scheduleLog.warn('oom priority pass failed', { err: String(error) }),
   });
   const cachePrune = schedule({
     id: 'cache-prune',
@@ -384,7 +414,7 @@ export function createDaemonApplication(
           megabytes: Math.round(bytes / 2 ** 20),
         });
     },
-    onError: (error) => log.warn({ msg: 'transcript index prune failed', err: String(error) }),
+    onError: (error) => scheduleLog.warn('transcript index prune failed', { err: String(error) }),
   });
   // The account quota behind `list`, `fleet` and `accounts`. A terminal session's status line only
   // reports while the session works, so an account whose sessions are quiet is re-read from the
@@ -400,7 +430,40 @@ export function createDaemonApplication(
       if (m.quota.probe === 'off') return;
       await refreshQuota(m, loadSessions(m), { signal });
     },
-    onError: (error) => log.warn({ msg: 'quota refresh failed', err: String(error) }),
+    onError: (error) => scheduleLog.warn('quota refresh failed', { err: String(error) }),
+  });
+  const memorySample = schedule({
+    id: 'memory-sample',
+    dependsOn: [projection.id],
+    everyMs: MEMORY_SAMPLE_INTERVAL_MS,
+    startAfterMs: 1_000,
+    overlap: { mode: 'skip' },
+    run: async () => {
+      const m = machine();
+      await memorySampler.refresh(m, loadSessions(m), observedSessionPanePids(m));
+    },
+    onError: (error) => scheduleLog.warn('memory sample pass failed', { err: String(error) }),
+  });
+  let nextAutoSleepAt = 0;
+  const autoSleep = schedule({
+    id: 'auto-sleep',
+    dependsOn: [projection.id],
+    everyMs: 5_000,
+    startAfterMs: 15_000,
+    overlap: { mode: 'skip' },
+    run: async ({ signal }) => {
+      const m = machine();
+      if (!m.idleSleep.enabled) return;
+      const now = Date.now();
+      if (now < nextAutoSleepAt) return;
+      nextAutoSleepAt = now + m.idleSleep.checkIntervalSeconds * 1000;
+      const paneWorkingMs = new Map<string, number>();
+      for (const [name, seen] of previous) {
+        if (seen.paneWorkingMs !== null) paneWorkingMs.set(name, seen.paneWorkingMs);
+      }
+      await runAutoSleepPass(m, { now, signal, paneWorkingMs });
+    },
+    onError: (error) => scheduleLog.warn('auto-sleep pass failed', { err: String(error) }),
   });
   const application: ApplicationHandle = createApplication({
     id: 'ccmux-daemon',
@@ -412,12 +475,15 @@ export function createDaemonApplication(
       externalOwner,
       controlOwner,
       control,
+      ...(stitchwireRoute(initial.remoteTransport)?.serviceDirectory ? [wireDeclaration] : []),
       observation,
+      memorySample,
       usageObservation,
       externalObservation,
       freshness,
       delivery,
       healing,
+      autoSleep,
       oomPriority,
       cachePrune,
       quotaRefresh,
@@ -436,11 +502,13 @@ export function createDaemonApplication(
     performance,
     schedules: {
       observation,
+      memorySample,
       usageObservation,
       externalObservation,
       freshness,
       delivery,
       healing,
+      autoSleep,
       oomPriority,
       cachePrune,
       quotaRefresh,

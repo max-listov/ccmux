@@ -1,6 +1,10 @@
+import { CodexProtocolError } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
-import { connectCodexAppServer } from '../agent/codex/appServer.ts';
-import type { CodexAppRpc, CodexRpcEvent, CodexRpcOptions } from '../agent/codex/rpc.ts';
+import {
+  type CodexControlConnectOptions,
+  type CodexRpcEvent,
+  connectCodexAppServerControl,
+} from '../agent/codex/owned/rpc.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
@@ -21,12 +25,24 @@ import {
   type ExternalStatusRow,
   type ExternalStatusSnapshot,
 } from './residentSchema.ts';
-import { nativeTurnState, reasonFor, TURN_OBSERVATION_DEADLINE_MS } from './turnState.ts';
+import {
+  type ExternalTurnControlClient,
+  nativeTurnState,
+  reasonFor,
+  TURN_OBSERVATION_DEADLINE_MS,
+} from './turnState.ts';
 
 const EventSchema = z.object({ threadId: z.uuid(), status: NativeStatusEnvelopeSchema });
-type Connection = { abort: AbortController; root: string | undefined; rpc?: CodexAppRpc };
+type Connection = {
+  abort: AbortController;
+  root: string | undefined;
+  controls?: ExternalTurnControlClient;
+};
 type Observation = { revision: number; at: number; status: unknown; turn?: NativeTurn };
-type Connector = (machine: MachineConfig, options: CodexRpcOptions) => Promise<CodexAppRpc>;
+type Connector = (
+  machine: MachineConfig,
+  options: CodexControlConnectOptions,
+) => Promise<ExternalTurnControlClient>;
 
 /** One read-only provider connection with bounded reconciliation and notification overlays. */
 export class ExternalStatusObserver {
@@ -41,7 +57,7 @@ export class ExternalStatusObserver {
   constructor(
     private initial: MachineConfig,
     readonly publisher: ExternalStatusPublisher,
-    private connect: Connector = connectCodexAppServer,
+    private connect: Connector = connectCodexAppServerControl,
   ) {}
 
   refresh(machine: MachineConfig = this.initial, signal?: AbortSignal): Promise<void> {
@@ -78,22 +94,23 @@ export class ExternalStatusObserver {
       TURN_OBSERVATION_DEADLINE_MS,
     );
     try {
-      if (!connection.rpc) {
+      if (!connection.controls) {
         this.publisher.connecting();
         this.events.clear();
         this.stats.connections++;
-        connection.rpc = await this.connect(machine, {
+        connection.controls = await this.connect(machine, {
           signal: connection.abort.signal,
-          maxMessageBytes: 2 * 1024 * 1024,
-          onEvent: (event) => this.event(connection, event),
-          onClose: (error) => {
+          maxFrameBytes: 2 * 1024 * 1024,
+          onNotification: (event) =>
+            this.event(connection, { method: event.method, params: event.params }),
+          onDisconnect: (error) => {
             if (this.connection === connection)
               log.debug({ msg: 'external provider connection closed', err: String(error) });
             this.disconnect(reasonFor(error), connection);
           },
         });
         if (this.connection !== connection || this.stopped) {
-          connection.rpc.close();
+          void connection.controls.close().catch(() => {});
           return;
         }
         // The boundary belongs to the connection that exists, not to the attempt that might not
@@ -101,16 +118,16 @@ export class ExternalStatusObserver {
         this.publisher.producerChanged();
       }
       connection.abort.signal.throwIfAborted();
-      if (!supportsNativeStatus(connection.rpc.userAgent)) {
+      if (!supportsNativeStatus(connection.controls.userAgent)) {
         this.disconnect('unsupported-runtime', connection);
         return;
       }
       const revision = this.revision,
         startedAt = Date.now();
       this.stats.reconciliations++;
-      const inventory = await nativeStatusInventory(connection.rpc, connection.abort.signal);
+      const inventory = await nativeStatusInventory(connection.controls, connection.abort.signal);
       const turns = await readNativeTurns(
-        connection.rpc,
+        connection.controls,
         inventory.rows
           .filter((row) => row.status.type === 'active' && !this.managed.has(row.id))
           .map((row) => row.id),
@@ -144,7 +161,9 @@ export class ExternalStatusObserver {
       if (this.connection === connection) {
         log.debug({ msg: 'external native observation failed', err: String(error) });
         this.disconnect(
-          error instanceof z.ZodError ? 'invalid-response' : reasonFor(error),
+          error instanceof z.ZodError || error instanceof CodexProtocolError
+            ? 'invalid-response'
+            : reasonFor(error),
           connection,
         );
       }
@@ -245,12 +264,12 @@ export class ExternalStatusObserver {
     this.connection = undefined;
     this.events.clear();
     expected?.abort.abort();
-    expected?.rpc?.close();
+    void expected?.controls?.close().catch(() => {});
     this.publisher.unavailable(reason);
   }
 
   metrics() {
-    return { ...this.stats, connected: this.connection?.rpc !== undefined };
+    return { ...this.stats, connected: this.connection?.controls !== undefined };
   }
   async close(): Promise<void> {
     if (this.stopped) return;

@@ -1,11 +1,29 @@
-import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { afterEach, expect, test } from 'bun:test';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { forkRolloutIdsForMarker, rolloutIdsForMarker } from '../src/agent/codex/correlation.ts';
-import { buildAdoptArgv, buildArgv, buildForkArgv } from '../src/agent/codex/launch.ts';
-import { historyFile } from '../src/agent/codex/resume.ts';
+import {
+  buildAdoptArgv,
+  buildArgv,
+  buildForkArgv,
+  launchEnv,
+  launchInputs,
+} from '../src/agent/codex/launch.ts';
+import { ownedCodexArgv } from '../src/agent/codex/owned/launch.ts';
+import { codexProfile } from '../src/agent/codex/profileRoot.ts';
+import { codexHistoryPresent, historyFile } from '../src/agent/codex/resume.ts';
 import { makeMachine, makeSession } from './helpers.ts';
+
+const tempDirs: string[] = [];
+const makeTemp = (prefix = 'ccmux-codex-'): string => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+};
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 const codexMachine = (over: Record<string, unknown> = {}) =>
   makeMachine({ codexBin: '/opt/codex/codex', ...over });
@@ -145,9 +163,157 @@ test('fork correlation requires both exact launch marker and provider-recorded p
 });
 
 test('ready Codex identity resolves its exact rollout', () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-'));
+  const root = makeTemp();
   rollout(root, '2026/07/30', CODEX_ID, '/home/user', 'ccmux_11111111-1111-4111-8111-111111111111');
   const s = makeSession({ agent: 'codex', dir: '/home/user', uuid: CODEX_ID });
   const m = codexMachine({ codexSessionsDir: root });
   expect(historyFile(s, m)).not.toBeNull();
+});
+
+// ── per-session CODEX_HOME profiles ────────────────────────────────────────────────────
+
+function declareCodexProfile(codexHome: string): string {
+  const file = join(makeTemp('ccmux-codex-env-'), 'profile.env');
+  writeFileSync(file, `CODEX_HOME=${codexHome}\n`);
+  return file;
+}
+
+test('session CODEX_HOME overrides machine codexHome; machine codexHome remains the default', () => {
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = '/inherited/foreign/codex';
+  try {
+    const machineHome = makeTemp('ccmux-codex-default-');
+    const secondHome = makeTemp('ccmux-codex-second-');
+    const m = codexMachine({
+      codexHome: machineHome,
+      codexSessionsDir: join(machineHome, 'sessions'),
+    });
+    const plain = makeSession({ agent: 'codex', name: 'agent-a' });
+    const second = makeSession({
+      agent: 'codex',
+      name: 'agent-b',
+      envFile: declareCodexProfile(secondHome),
+    });
+
+    expect(launchEnv(m, plain).CODEX_HOME).toBe(machineHome);
+    expect(launchEnv(m, second).CODEX_HOME).toBe(secondHome);
+
+    // Without a machine default, an inherited CODEX_HOME must not leak into undeclared sessions.
+    const noDefault = codexMachine({ codexHome: undefined, codexSessionsDir: undefined });
+    expect(launchEnv(noDefault, plain).CODEX_HOME).toBeUndefined();
+    expect(launchEnv(noDefault, second).CODEX_HOME).toBe(secondHome);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  }
+});
+
+test('codexProfile routes launchInputs and rollout discovery to the session CODEX_HOME', () => {
+  const machineHome = makeTemp('ccmux-codex-default-');
+  const secondHome = makeTemp('ccmux-codex-second-');
+  const m = codexMachine({
+    codexHome: machineHome,
+    codexSessionsDir: join(machineHome, 'sessions'),
+  });
+  const secondSessions = join(secondHome, 'sessions');
+  rollout(
+    secondSessions,
+    '2026/11/25',
+    CODEX_ID,
+    '/work/app',
+    'ccmux_22222222-2222-4222-8222-222222222222',
+  );
+  const second = makeSession({
+    agent: 'codex',
+    name: 'agent-b',
+    uuid: CODEX_ID,
+    envFile: declareCodexProfile(secondHome),
+  });
+  const plain = makeSession({ agent: 'codex', name: 'agent-a', uuid: CODEX_ID });
+
+  expect(codexProfile(second, m)).toEqual({
+    configDir: secondHome,
+    codexHome: secondHome,
+    sessionsDir: secondSessions,
+  });
+  expect(launchInputs(second, m).flatMap((input) => input.paths)).toEqual([
+    `${secondHome}/AGENTS.md`,
+    `${secondHome}/config.toml`,
+  ]);
+  expect(codexHistoryPresent(second, m)).toBe(true);
+  expect(historyFile(second, m)?.startsWith(secondSessions)).toBe(true);
+  // Negative control: default-profile session does not see the second profile's rollout.
+  expect(codexHistoryPresent(plain, m)).toBe(false);
+  expect(historyFile(plain, m)).toBeNull();
+});
+
+test('two Codex profiles on one host launch app-server each with its own CODEX_HOME', async () => {
+  const root = makeTemp('ccmux-codex-two-');
+  const homeA = join(root, 'codex-a');
+  const homeB = join(root, 'codex-b');
+  const stateDir = join(root, 'state');
+  mkdirSync(homeA, { recursive: true });
+  mkdirSync(homeB, { recursive: true });
+  mkdirSync(stateDir, { recursive: true });
+
+  // Fake codex binary: records the received CODEX_HOME and argv when invoked as `app-server`,
+  // and writes a session_meta rollout into its own `$CODEX_HOME/sessions`.
+  const fakeCodex = join(root, 'fake-codex');
+  writeFileSync(
+    fakeCodex,
+    `#!/bin/sh
+set -eu
+mkdir -p "$CODEX_HOME/sessions/2026/11/25"
+printf '%s\\n%s\\n' "$CODEX_HOME" "$*" > "$CODEX_HOME/observed.txt"
+printf '{"type":"session_meta","payload":{"id":"%s","originator":"app-server"}}\\n' "$TEST_THREAD_ID" > "$CODEX_HOME/sessions/2026/11/25/rollout-2026-11-25T00-00-00-$TEST_THREAD_ID.jsonl"
+`,
+  );
+  chmodSync(fakeCodex, 0o755);
+
+  // Machine default points to homeA; session B overrides it with homeB via its profile envFile.
+  const m = codexMachine({
+    stateDir,
+    codexBin: fakeCodex,
+    codexHome: homeA,
+    codexSessionsDir: join(homeA, 'sessions'),
+  });
+  const uuidA = '11111111-1111-4111-8111-111111111111';
+  const uuidB = '22222222-2222-4222-8222-222222222222';
+  const sessionA = makeSession({
+    agent: 'codex',
+    runtime: 'native',
+    name: 'agent-a',
+    uuid: uuidA,
+    dir: root,
+    envFile: declareCodexProfile(homeA),
+  });
+  const sessionB = makeSession({
+    agent: 'codex',
+    runtime: 'native',
+    name: 'agent-b',
+    uuid: uuidB,
+    dir: root,
+    envFile: declareCodexProfile(homeB),
+  });
+
+  const runServer = async (session: typeof sessionA) => {
+    const proc = Bun.spawn(ownedCodexArgv(session, m, 'ccmux'), {
+      cwd: session.dir,
+      env: { ...launchEnv(m, session), TEST_THREAD_ID: session.uuid },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const code = await proc.exited;
+    expect(code).toBe(0);
+  };
+  await Promise.all([runServer(sessionA), runServer(sessionB)]);
+
+  const observedA = readFileSync(join(homeA, 'observed.txt'), 'utf8').trim().split('\n');
+  const observedB = readFileSync(join(homeB, 'observed.txt'), 'utf8').trim().split('\n');
+  expect(observedA[0]).toBe(homeA);
+  expect(observedA[1]).toContain('app-server');
+  expect(observedB[0]).toBe(homeB);
+  expect(observedB[1]).toContain('app-server');
+  expect(historyFile(sessionA, m)?.startsWith(join(homeA, 'sessions'))).toBe(true);
+  expect(historyFile(sessionB, m)?.startsWith(join(homeB, 'sessions'))).toBe(true);
 });

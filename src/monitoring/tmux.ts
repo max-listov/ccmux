@@ -13,6 +13,7 @@ const inventories = new Map<
     roots: number[];
     rootStarts: Map<number, string>;
     agentPanes: Map<string, string>;
+    sessionPanePids: Map<string, number[]>;
     peerLineLimits: Map<string, number>;
   }
 >();
@@ -42,6 +43,15 @@ export async function processRoots(m: MachineConfig, nowMs = Date.now()): Promis
 
 export function observedAgentPanes(m: MachineConfig): ReadonlyMap<string, string> {
   return inventories.get(inventoryKey(m))?.agentPanes ?? new Map();
+}
+
+export function observedSessionPanePids(
+  m: MachineConfig,
+  nowMs = Date.now(),
+): ReadonlyMap<string, readonly number[]> {
+  const inventory = inventories.get(inventoryKey(m));
+  if (!inventory || nowMs - inventory.at > INVENTORY_FRESH_MS) return new Map();
+  return inventory.sessionPanePids;
 }
 
 /** capture-pane -S -30 includes the visible pane plus up to thirty scrollback lines. */
@@ -153,6 +163,7 @@ export async function observedSessionInventory(m: MachineConfig): Promise<Map<st
     roots: [...roots],
     rootStarts,
     agentPanes: parsed.agentPanes,
+    sessionPanePids: parsed.sessionPanePids,
     peerLineLimits: parsed.peerLineLimits,
   });
   return parsed.startedAt;

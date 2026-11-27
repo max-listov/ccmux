@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { AppError } from 'stitchkit';
+import { verifySessionProfile } from '../agent/claude/namedProfiles.ts';
 import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { getProvider } from '../agent/index.ts';
 import type { ModelSelection } from '../config/modelSelectionFlags.ts';
@@ -52,6 +53,7 @@ export type CreateManagedInput = {
   /** Declared at creation so the session's very FIRST launch already runs the recipe it will keep —
    *  otherwise a session is born inheriting and has to be migrated the day it is made. */
   envFile?: string;
+  profile?: Session['profile'];
   launchRecipe?: LaunchRecipeMetadata;
   modelSelection?: ModelSelection;
   initialization?: 'no-inference';
@@ -92,6 +94,7 @@ function sessionFields(input: CreateManagedInput): Omit<Session, 'uuid'> {
     ...(input.router ? { promptModules: ['router'], chatEnabled: true } : {}),
     ...(input.chatEnabled === undefined ? {} : { chatEnabled: input.chatEnabled }),
     ...(input.envFile === undefined ? {} : { envFile: input.envFile }),
+    ...(input.profile === undefined ? {} : { profile: input.profile }),
     ...(input.launchRecipe === undefined ? {} : { launchRecipe: input.launchRecipe }),
     ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
     ...(input.fileCheckpoints === undefined ? {} : { fileCheckpoints: input.fileCheckpoints }),
@@ -116,7 +119,7 @@ async function createClaude(m: MachineConfig, input: CreateManagedInput): Promis
   const session = SessionSchema.parse({
     ...sessionFields(input),
     uuid: randomUUID(),
-    registrationGeneration: input.registrationGeneration,
+    registrationGeneration: input.registrationGeneration ?? randomUUID(),
   });
   await appendSession(m, session);
   try {
@@ -153,6 +156,7 @@ export async function createNativeBootstrap(
   input: CreateManagedInput,
   operation: NativeBootstrapOperation,
 ): Promise<Session> {
+  verifySessionProfile(m, input);
   assertInferenceFreeCreate({ ...input, runtime: storedRuntime(input) });
   verifyCreatePolicy(m, input);
   verifyDelegatedSession(
@@ -180,7 +184,7 @@ export async function createNativeBootstrap(
   });
   await reservePendingSession(m, pending);
   try {
-    await startBootstrapSession(m, pending.session.name, pending.session.dir, pending.generation);
+    await startBootstrapSession(m, pending);
   } catch (error) {
     return rollbackPending(
       m,
@@ -277,6 +281,7 @@ export async function createManagedSession(
   m: MachineConfig,
   input: CreateManagedInput,
 ): Promise<Session> {
+  verifySessionProfile(m, input);
   assertInferenceFreeCreate({ ...input, runtime: storedRuntime(input) });
   verifyCreatePolicy(m, input);
   verifyDelegatedSession(

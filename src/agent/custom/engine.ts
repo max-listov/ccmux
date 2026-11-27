@@ -186,7 +186,8 @@ export async function openCustomEngine(input: {
         },
       },
       resources: { load: () => resources.load() },
-      tools: (run) => mountAgent([], { runtimeTools: tools, lifecycle: run.toolFenceLifecycle }),
+      tools: (run) =>
+        mountAgent([], { runtimeTools: tools, access: { gate: run.toolFenceLifecycle } }),
       promptBudget: ({ contextWindow }) => ({
         contextWindow,
         reservedOutput: Math.min(4096, Math.floor(contextWindow / 4)),

@@ -2,15 +2,71 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createStubClaudeSdkSession } from 'stitchkit/agent-executor/testing';
 import {
   claudeCommands,
   commandText,
   resolveCommand,
 } from '../src/agent/claude/native/commands.ts';
+import { applyMode, type Mailboxes } from '../src/agent/claude/native/mailboxes.ts';
+import { NativeProjection } from '../src/agent/claude/native/projection.ts';
 import { runtimeCapabilities } from '../src/runtime/capabilities.ts';
-import { readRuntimeMode, shouldRestoreMode } from '../src/runtime/sessionMode.ts';
+import {
+  readRuntimeMode,
+  shouldRestoreMode,
+  writeRuntimeMode,
+} from '../src/runtime/sessionMode.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
 import { makeMachine, makeSession } from './helpers.ts';
+
+test('Claude publishes the effective mode and retains the SDK acknowledgement for hosts without a payload', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ccmux-effective-mode-'));
+  try {
+    const m = makeMachine({ stateDir: root });
+    const generation = crypto.randomUUID();
+    const session = makeSession({ registrationGeneration: generation });
+    const projection = new NativeProjection();
+    const failures: unknown[] = [];
+    const report = async (error: unknown) => {
+      failures.push(error);
+    };
+    const box: Mailboxes = {
+      m,
+      session,
+      projection,
+      sdkSession: null,
+      activeTurn: () => null,
+      pending: new Map(),
+      discovery: { m, session, projection, sdkSession: null, report },
+      publish: async () => {},
+      report,
+    };
+    const request = async () => {
+      await writeRuntimeMode(m, session, {
+        operationId: crypto.randomUUID(),
+        generation,
+        mode: 'plan',
+        phase: 'queued',
+        reason: null,
+      });
+      await applyMode(box);
+      return readRuntimeMode(m, session)?.phase;
+    };
+    box.sdkSession = createStubClaudeSdkSession({
+      setPermissionMode: async () => ({ mode: 'acceptEdits' }),
+    });
+    expect(await request()).toBe('failed');
+    expect(projection.permissionMode).toBe('acceptEdits');
+    box.sdkSession = createStubClaudeSdkSession({ setPermissionMode: async () => undefined });
+    expect(await request()).toBe('complete');
+    expect(projection.permissionMode).toBe('plan');
+    box.sdkSession = null;
+    expect(await request()).toBe('failed');
+    expect(failures).toHaveLength(2);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 /**
  * Slash commands and permission mode: the two ordinary controls the native mode lacked.

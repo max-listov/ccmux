@@ -19,6 +19,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { enterCheckRunner } from './checkRunner.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const git = (...args: string[]): string | null => {
@@ -55,6 +56,7 @@ if (args[0] === '--if-needed') {
   }
 }
 
+enterCheckRunner(ROOT, 'ccmux-gate');
 const before = cleanTree();
 const started = performance.now();
 const steps: [string, string[]][] = [

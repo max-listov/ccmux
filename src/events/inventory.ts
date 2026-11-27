@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
 import { lastTranscriptMessage } from '../agent/index.ts';
 import { inventoryPath } from '../config/paths.ts';
+import { monitoringStepOf } from '../monitoring/project.ts';
 import type { MonitoringRow } from '../monitoring/schema.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../types.ts';
 import { writeEphemeralSnapshot } from '../util/atomic.ts';
@@ -42,21 +43,15 @@ export function inventoryRow(
     address: row.address,
     archived: row.archived,
     running: row.running,
+    ...(row.sleeping === undefined ? {} : { sleeping: row.sleeping }),
+    ...(row.pinned === undefined ? {} : { pinned: row.pinned }),
     state: row.state,
     model: row.model,
     // Whole percent: the fraction moves with every token and says nothing a reader acts on.
     contextPercent: row.contextPercent === null ? null : Math.round(row.contextPercent),
     startedAt: startedAt === undefined ? null : new Date(startedAt * 1000).toISOString(),
     turnStartedAt: row.turnStartedAt,
-    step:
-      row.running && message !== null
-        ? {
-            kind: message.kind,
-            role: message.role,
-            toolName: message.toolName,
-            at: message.createdAt,
-          }
-        : null,
+    step: monitoringStepOf(row.running, message) ?? (row.running ? (row.step ?? null) : null),
   };
 }
 

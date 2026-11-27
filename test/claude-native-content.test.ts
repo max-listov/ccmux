@@ -1,63 +1,108 @@
 import { expect, test } from 'bun:test';
-import { classifySdkMessage } from '../src/agent/claude/native/content.ts';
+import type { ExecutorDelta } from 'stitchkit/agent-executor';
+import { NativeProjection } from '../src/agent/claude/native/projection.ts';
 
-/**
- * The runtime's message union has dozens of members and grows every release. What is being asserted
- * here is mostly that nothing disappears quietly: an unrecognised member must be reported as
- * unhandled, never swallowed by a default that produces no content and no error.
- */
+const raw = (type: string) => ({ source: 'claude', type });
 
-test('assistant output is content, complete and incremental alike', () => {
-  expect(classifySdkMessage('assistant')).toEqual({ kind: 'assistant' });
-  // Without incremental output a turn is silent until it ends — the difference between watching a
-  // conversation and waiting for one.
-  expect(classifySdkMessage('stream_event')).toEqual({ kind: 'assistant' });
+test('assistant text deltas coalesce into one item per turn in both snapshot and content', () => {
+  const calls: unknown[][] = [];
+  const projection = new NativeProjection();
+  projection.turnId = 'turn-1';
+  projection.content = {
+    buffer: { text: (...args: unknown[]) => calls.push(args) },
+    publish: () => undefined,
+  } as never;
+  projection.applyDelta({
+    type: 'text',
+    turnId: 'turn-1',
+    itemId: 'msg:0',
+    text: 'hello ',
+    raw: raw('stream_event/text_delta'),
+  });
+  projection.applyDelta({
+    type: 'text',
+    turnId: 'turn-1',
+    itemId: 'msg:0',
+    text: 'world',
+    raw: raw('stream_event/text_delta'),
+  });
+  expect(projection.items).toHaveLength(1);
+  expect(projection.items[0]?.text).toBe('hello world');
+  expect(calls).toHaveLength(2);
 });
 
-test('a tool RESULT wears the user role, and must not be read as the operator speaking', () => {
-  // There is no separate result member: results come back with the user role. Attributing them to
-  // the person would put the runtime's own tool output in their mouth.
-  expect(classifySdkMessage('user')).toEqual({ kind: 'tool' });
+test('tool calls and tool results project start and completion with accurate outcomes', () => {
+  const tools: unknown[][] = [];
+  const projection = new NativeProjection();
+  projection.turnId = 'turn-1';
+  projection.content = {
+    buffer: { tool: (...args: unknown[]) => tools.push(args) },
+    publish: () => undefined,
+  } as never;
+  projection.applyDelta({
+    type: 'tool-call',
+    turnId: 'turn-1',
+    itemId: 'msg:1',
+    callId: 'call-1',
+    toolName: 'Bash',
+    input: { command: 'ls -la' },
+    raw: raw('assistant/tool_use'),
+  });
+  projection.applyDelta({
+    type: 'tool-result',
+    turnId: 'turn-1',
+    itemId: 'result:call-1',
+    callId: 'call-1',
+    toolName: 'Bash',
+    outcome: 'error',
+    output: 'exit 1',
+    raw: raw('user/tool_result'),
+  });
+  expect(projection.items[0]).toMatchObject({
+    kind: 'tool',
+    stage: 'started',
+    tool: 'Bash',
+    text: 'Bash: ls -la',
+  });
+  expect(projection.items[1]).toMatchObject({
+    kind: 'tool',
+    stage: 'completed',
+    tool: 'Bash',
+  });
+  expect(tools[1]?.[2]).toMatchObject({ lifecycle: 'completed', outcome: 'failed' });
 });
 
-test('a terminal message ends the turn, including a refusal', () => {
-  expect(classifySdkMessage('result')).toEqual({ kind: 'terminal' });
-  // A refusal is how the turn ended. Classifying it as ordinary output would leave the turn looking
-  // unfinished forever.
-  expect(classifySdkMessage('model_refusal_fallback')).toEqual({ kind: 'terminal' });
-  expect(classifySdkMessage('model_refusal_no_fallback')).toEqual({ kind: 'terminal' });
+test('unhandled executor errors are collected without silently dropping them', () => {
+  const projection = new NativeProjection();
+  const unhandled: ExecutorDelta = {
+    type: 'error',
+    turnId: 'turn-1',
+    itemId: 'err-1',
+    kind: 'unhandled',
+    message: 'unknown member',
+    raw: raw('some_future_member'),
+  };
+  projection.applyDelta(unhandled);
+  expect(projection.turn.unhandled).toEqual(['some_future_member']);
 });
 
-test('an unknown member is reported by name, not silently dropped', () => {
-  // The failure this guards against has no symptom: a member added upstream lands in a default,
-  // produces nothing, and a conversation is missing part of itself with no error anywhere.
-  expect(classifySdkMessage('some_future_member')).toEqual({ unhandled: 'some_future_member' });
-  expect(classifySdkMessage('')).toEqual({ unhandled: '' });
-});
-
-test('members that are genuinely not conversation say which sort they are', () => {
-  // Three different reasons to skip, kept apart because they belong in different places: plumbing
-  // nobody reads, diagnostics that belong in the journal, and state changes that add no content.
-  expect(classifySdkMessage('control_request')).toEqual({ skip: 'transport' });
-  expect(classifySdkMessage('api_retry')).toEqual({ skip: 'diagnostic' });
-  expect(classifySdkMessage('conversation_reset')).toEqual({ skip: 'lifecycle' });
-});
-
-test('an estimated count is not published as usage', () => {
-  // This project's usage fields carry provider-reported counts. Letting an estimate in beside them
-  // would make one field mean two different things depending on which runtime filled it in.
-  expect(classifySdkMessage('thinking_tokens')).toEqual({ skip: 'diagnostic' });
-});
-
-test('the compaction boundary is named as a gap rather than hidden', () => {
-  // No content kind fits it, and it still matters: usage after a compaction is not comparable with
-  // usage before, so a reader without the boundary sees an unexplained drop.
-  expect(classifySdkMessage('compact_boundary')).toEqual({ unhandled: 'compact_boundary' });
-});
-
-test('subagent activity is content, and its flattening is a declared loss', () => {
-  // Tool observations here carry no parent or agent identity, so nested work cannot be represented
-  // as nested. Recording it in the main transcript is the honest option; losing it is not.
-  for (const type of ['task_started', 'task_updated', 'task_progress', 'task_notification'])
-    expect(classifySdkMessage(type)).toEqual({ kind: 'tool' });
+test('context window reset delta forwards resetContext to the content buffer', () => {
+  let resets = 0;
+  const projection = new NativeProjection();
+  projection.content = {
+    buffer: {
+      resetContext: () => {
+        resets += 1;
+      },
+    },
+    publish: () => undefined,
+  } as never;
+  projection.applyDelta({
+    type: 'window',
+    turnId: 'turn-1',
+    itemId: 'compact:1',
+    reset: 'context',
+    raw: raw('system/compact_boundary'),
+  });
+  expect(resets).toBe(1);
 });

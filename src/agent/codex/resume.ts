@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { MachineConfig, Session } from '../../types.ts';
 import { readFirstLine } from '../../util/readLines.ts';
+import { codexProfile } from './profileRoot.ts';
 import { codexRolloutFiles, currentRolloutFile } from './rolloutFiles.ts';
 
 const RolloutSessionMetaSchema = z.looseObject({
@@ -21,14 +22,16 @@ export type RolloutReadiness =
  * `codexHistoryPresent` for that.
  */
 export function historyFile(s: Session, m: MachineConfig): string | null {
-  return currentRolloutFile(codexRolloutFiles(m.codexSessionsDir, s.uuid))?.path ?? null;
+  return (
+    currentRolloutFile(codexRolloutFiles(codexProfile(s, m).sessionsDir, s.uuid))?.path ?? null
+  );
 }
 
 /** The conversation exists on disk in any form Codex keeps it: plain, split or compressed. Codex
  *  resumes a compressed thread itself; a supervisor that only looked for `.jsonl` blocked such a
  *  session as "missing rollout". */
 export function codexHistoryPresent(s: Session, m: MachineConfig): boolean {
-  return codexRolloutFiles(m.codexSessionsDir, s.uuid).length > 0;
+  return codexRolloutFiles(codexProfile(s, m).sessionsDir, s.uuid).length > 0;
 }
 
 /**

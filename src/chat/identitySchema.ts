@@ -5,7 +5,7 @@ export const SESSION_NAME_RE = /^[^|\s#:]+$/;
 /** Machine identity is an extensible lowercase slug, not a fixed fleet enum. */
 export const RC_PREFIX_RE = /^[a-z][a-z0-9-]*$/;
 /** Execution runtime is independent of the selected model provider. */
-export const AgentKindSchema = z.enum(['claude', 'codex', 'opencode', 'custom']);
+export const AgentKindSchema = z.enum(['claude', 'codex', 'opencode', 'custom', 'antigravity']);
 
 export const ManagedPeerSchema = z
   .object({

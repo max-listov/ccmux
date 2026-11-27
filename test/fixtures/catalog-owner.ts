@@ -21,8 +21,8 @@ await withCodexCatalogRuntime(
   { flags: [] },
   root,
   AbortSignal.timeout(15_000),
-  async (rpc) => {
+  async (controls) => {
     writeFileSync(join(root, 'initialized'), 'ready');
-    await rpc.request('model/list', { cursor: 'hang' });
+    await controls.listModels({ cursor: 'hang' });
   },
 );

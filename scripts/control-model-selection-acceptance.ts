@@ -2,14 +2,19 @@
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdtempSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { z } from 'zod';
 import {
   prepareManagedCodexTurn,
   resumeCodexAppThreadContext,
-  startCodexAppTurn,
 } from '../src/agent/codex/appServer.ts';
-import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
+import {
+  codexExecutorProfile,
+  connectOwnedCodex,
+  createCodexSocketDriver,
+  OWNED_CODEX_MAX_FRAME_BYTES,
+} from '../src/agent/codex/owned/rpc.ts';
 import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
+import { startOwnedCodexTurn } from '../src/agent/codex/owned/thread.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
@@ -153,19 +158,22 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
   const before = await remote['native.read']({ target, cursor: null });
   const body = `Use the native shell tool to run pwd in this workspace (read only), then reply exactly ${marker}. Do not edit files or contact any sessions.`;
   if (differentPreset !== undefined) {
-    const rpc = await connectOwnedCodex(machine, session, { signal: AbortSignal.timeout(15_000) });
+    const rpc = await createCodexSocketDriver(ownedCodexSocket(machine, session.name), {
+      maxFrameBytes: OWNED_CODEX_MAX_FRAME_BYTES,
+    }).open({
+      profile: codexExecutorProfile(machine, session),
+      cwd: session.dir,
+      nativeThreadId: target.threadId,
+      signal: AbortSignal.timeout(15_000),
+    });
     try {
       const context = await resumeCodexAppThreadContext(rpc, target.threadId);
       const policy = await prepareManagedCodexTurn(
         {
-          close() {},
-          request: async (method, params) => {
-            const response = await rpc.request(method, params);
-            if (method !== 'collaborationMode/list') return response;
-            const presets = z
-              .object({ data: z.array(z.looseObject({ mode: z.string().nullable() })) })
-              .parse(response);
-            return { data: presets.data.map((preset) => ({ ...preset, model: differentPreset })) };
+          listSkills: (params) => rpc.listSkills(params),
+          listCollaborationModes: async () => {
+            const { data } = await rpc.listCollaborationModes();
+            return { data: data.map((preset) => ({ ...preset, model: differentPreset })) };
           },
         },
         machine,
@@ -176,15 +184,9 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
         policy?.collaborationMode?.settings.model === session.modelSelection?.model,
         'Preset replaced model',
       );
-      await startCodexAppTurn(
-        rpc,
-        target.threadId,
-        crypto.randomUUID(),
-        codexTextInput(body),
-        policy,
-      );
+      await startOwnedCodexTurn(rpc, crypto.randomUUID(), codexTextInput(body), policy);
     } finally {
-      rpc.close();
+      await rpc.close();
     }
   } else
     await remote['message.send']({
@@ -217,7 +219,7 @@ async function toolTurn(target: ManagedPeer, session: Session, differentPreset?:
       'Native execution changed selected provider/model',
     );
   } finally {
-    rpc.close();
+    await rpc.close();
   }
 }
 const targets: ManagedPeer[] = [];

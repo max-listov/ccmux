@@ -304,6 +304,28 @@ test('claude adapter treats an agent whose transcript ends on its own answer as 
   expect(call?.agent?.usage?.outputTokens).toBe(295);
 });
 
+test('claude adapter marks batched orphan-shell task-notifications even without tool-use-id', () => {
+  const msgs = parseClaude(
+    [
+      L({
+        type: 'user',
+        uuid: 'u-orphan',
+        timestamp: '2026-11-25T17:34:29.630Z',
+        message: {
+          role: 'user',
+          content:
+            '<task-notification>\n<task-id>__orphan_summary__:shell</task-id>\n<status>stopped</status>\n<summary>3 background tasks ended</summary>\n</task-notification>',
+        },
+      }),
+    ],
+    1,
+  );
+  expect(msgs).toHaveLength(1);
+  expect(msgs[0]?.role).toBe('user');
+  expect(msgs[0]?.title).toBe('task-notification');
+  expect(msgs[0]?.toolCallId).toBeNull();
+});
+
 test('claude adapter without a source path still marks the spawn, and says the agent file was not available', () => {
   const { lines } = spawnFixture({ notify: false, agentIdle: true });
   const msgs = parseClaude(lines, 1);

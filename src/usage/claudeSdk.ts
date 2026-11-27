@@ -1,4 +1,4 @@
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { ClaudeSdkTurnUsage } from 'stitchkit/agent-executor/claude-sdk';
 import type { MachineConfig } from '../types.ts';
 import { recordUsageBatch } from './live.ts';
 import { token } from './normalize.ts';
@@ -9,14 +9,15 @@ export function recordClaudeSdkUsage(
   m: Pick<MachineConfig, 'stateDir'>,
   uuid: string,
   epoch: string,
-  message: SDKMessage,
+  turnUsage: ClaudeSdkTurnUsage,
 ) {
-  if (message.type !== 'result') return;
+  const cumulative = turnUsage.cumulativeModelUsage;
+  if (cumulative === undefined) return;
   const at = new Date().toISOString();
   const facts: UsageFact[] = [];
-  for (const [model, usage] of Object.entries(message.modelUsage)) {
+  for (const [model, usage] of Object.entries(cumulative)) {
     facts.push({
-      id: `${message.uuid}:${model}`,
+      id: `${turnUsage.turnId}:${model}`,
       runtime: 'claude',
       model,
       provider: usage.provider ?? null,
@@ -37,8 +38,8 @@ export function recordClaudeSdkUsage(
         reasoningTokens: token(usage.thinkingTokens),
       },
       cost:
-        Number.isFinite(usage.costUSD) && usage.costUSD >= 0
-          ? { value: usage.costUSD, currency: 'USD', provenance: 'estimated' }
+        usage.costUsd !== undefined && Number.isFinite(usage.costUsd) && usage.costUsd >= 0
+          ? { value: usage.costUsd, currency: 'USD', provenance: 'estimated' }
           : null,
       details: {
         canonicalModel: usage.canonicalModel ?? null,

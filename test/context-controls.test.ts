@@ -205,9 +205,8 @@ test('history projects native IDs and reasoning summaries, never hidden reasonin
   const f = await fixture();
   const calls: string[] = [];
   const api = codexContextApi(f.m, f.s, {
-    close() {},
-    async request(method) {
-      calls.push(method);
+    async listItems() {
+      calls.push('thread/items/list');
       return {
         nextCursor: null,
         data: [
@@ -235,6 +234,9 @@ test('history projects native IDs and reasoning summaries, never hidden reasonin
           },
         ],
       };
+    },
+    async compactThread() {
+      calls.push('thread/compact/start');
     },
   });
   try {
@@ -448,10 +450,14 @@ test('Codex history cancellation rejects before a delayed native reply without c
     close() {
       closed++;
     },
-    async request() {
+    async listItems() {
       calls++;
       await Bun.sleep(150);
       return response;
+    },
+    async compactThread() {
+      calls++;
+      await Bun.sleep(150);
     },
   };
   try {
@@ -475,10 +481,14 @@ test('cancelled Codex context RPC retains one slot until its late ACK and never 
     close() {
       closed++;
     },
-    async request() {
+    async listItems() {
       calls++;
       if (calls === 1) await released.promise;
       return { data: [], nextCursor: null };
+    },
+    async compactThread() {
+      calls++;
+      if (calls === 1) await released.promise;
     },
   };
   try {
@@ -540,11 +550,14 @@ test('single background context pump leaves heartbeat and approval usable during
     close() {
       closed++;
     },
-    async request(method: string) {
-      if (method === 'thread/items/list') {
-        historyCalls++;
-        await released.promise;
-      } else if (method === 'thread/read') heartbeats++;
+    async listItems() {
+      historyCalls++;
+      await released.promise;
+      return { data: [], nextCursor: null };
+    },
+    async compactThread() {},
+    async readThread() {
+      heartbeats++;
       return { data: [], nextCursor: null };
     },
     async respond() {
@@ -569,7 +582,7 @@ test('single background context pump leaves heartbeat and approval usable during
     const status = new OwnedCodexStatusWriter(f.m, f.s.name);
     for (let tick = 0; tick < 5; tick++) {
       pump.start(AbortSignal.timeout(5_000), run);
-      await rpc.request('thread/read');
+      await rpc.readThread();
       await status.write(f.projection.snapshot());
     }
     await rpc.respond();

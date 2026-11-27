@@ -2,9 +2,8 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { readCodexAppThread } from '../src/agent/codex/appServer.ts';
-import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
+import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
 import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
-import { connectCodexSocket } from '../src/agent/codex/socket.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
@@ -118,7 +117,7 @@ for (const name of ['agent-a', 'agent-b']) {
       throw new Error('Native session has no live resident status after admission');
     await Bun.sleep(200);
   }
-  const rpc = await connectCodexSocket(ownedCodexSocket(machine, name));
+  const rpc = await connectOwnedCodex(machine, session);
   try {
     const thread = await readCodexAppThread(rpc, session.uuid);
     const resident = readOwnedCodexStatus(machine, session);
@@ -128,7 +127,7 @@ for (const name of ['agent-a', 'agent-b']) {
       JSON.stringify({ phase: 'ready', name, uuid: session.uuid, native: thread.status, resident }),
     );
   } finally {
-    rpc.close();
+    await rpc.close();
   }
 }
 await newSession(

@@ -29,7 +29,7 @@ export const row = (id = UUID, type = 'active') => ({
   updatedAt: 1_787_900_000,
   status: { type, activeFlags: [] },
   preview: 'private body never exported',
-  turns: [{ secret: true }],
+  turns: [{ id: 'prior', status: 'completed', items: [{ type: 'agentMessage', secret: true }] }],
 });
 
 export async function fixture() {

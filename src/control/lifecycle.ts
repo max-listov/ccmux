@@ -1,6 +1,8 @@
 import { dirname } from 'node:path';
 import { AppError } from 'stitchkit';
 import type { z } from 'zod';
+import { validateAntigravitySelection } from '../agent/antigravity/catalog.ts';
+import { selectClaudeProfile } from '../agent/claude/namedProfiles.ts';
 import { validateClaudeSelection } from '../agent/claude/native/catalog.ts';
 import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { stableJson } from '../agent/launch/launchInputs.ts';
@@ -153,6 +155,7 @@ export async function createControlSession(
   if (
     delegation !== undefined &&
     (input.launchRecipe !== undefined ||
+      input.profile !== undefined ||
       input.flags?.length ||
       input.applicationPolicy !== undefined)
   )
@@ -160,6 +163,30 @@ export async function createControlSession(
       message: 'Delegated create requires typed execution policy without launch overrides',
       status: 409,
     });
+  const profileName = input.profile ?? fork?.launch.profile?.name;
+  if (priorCreate !== undefined && priorCreate.profile?.name !== profileName)
+    throw new AppError('IDEMPOTENCY_CONFLICT', {
+      message: 'Create request profile changed',
+      status: 409,
+    });
+  if (profileName !== undefined && runtime !== 'claude')
+    throw new AppError('UNSUPPORTED', {
+      message: 'Named profiles are available for Claude only',
+      status: 409,
+    });
+  let profile = priorCreate?.profile ?? fork?.launch.profile;
+  if (profileName !== undefined && profile === undefined) {
+    try {
+      profile = selectClaudeProfile(m, runtime, profileName);
+    } catch (error) {
+      await recordRuntimeDiagnostic(m, null, 'claude-profile-selection', error);
+      throw new AppError('PROFILE_UNAVAILABLE', {
+        message: 'The selected Claude profile is unavailable on this host',
+        status: 409,
+        cause: error,
+      });
+    }
+  }
   const canonical = {
     ...(delegation === undefined ? {} : { delegation, delegationRequest: input.delegation }),
     ...(input.initialization === 'no-inference' ? { initialization: input.initialization } : {}),
@@ -171,6 +198,7 @@ export async function createControlSession(
     ],
     ...(runtime === 'codex' ? {} : { runtime }),
     ...(resolved.envFile === undefined ? {} : { envFile: resolved.envFile }),
+    ...(profile === undefined ? {} : { profile }),
     ...(resolved.launchRecipe === undefined ? {} : { launchRecipe: resolved.launchRecipe }),
     ...(modelSelection === undefined ? {} : { modelSelection }),
     ...(applicationPolicy === undefined ? {} : { applicationPolicy }),
@@ -191,7 +219,9 @@ export async function createControlSession(
       await validateOpenCodeSelection(m, workspace, modelSelection, signal);
     else if (runtime === 'codex')
       await validateSelection(m, resolved, workspace, modelSelection, signal);
-    else if (runtime === 'claude') validateClaudeSelection(m, modelSelection);
+    else if (runtime === 'claude') validateClaudeSelection(m, modelSelection, profile);
+    else if (runtime === 'antigravity')
+      await validateAntigravitySelection(m, modelSelection, signal);
   }
   privateRuntimeDirectory(dirname(storeLockPath(m)));
   return withLock(
@@ -277,6 +307,7 @@ export async function createControlSession(
                 registrationGeneration: row.generation,
                 chatEnabled: true,
                 ...(row.envFile === undefined ? {} : { envFile: row.envFile }),
+                ...(row.profile === undefined ? {} : { profile: row.profile }),
                 ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
                 ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }),
                 ...(row.applicationPolicy === undefined
@@ -352,6 +383,7 @@ export async function createControlSession(
         stableJson(session.flags) !== stableJson(row.flags) ||
         stableJson(session.delegation ?? null) !== stableJson(row.delegation ?? null) ||
         session.envFile !== row.envFile ||
+        stableJson(session.profile ?? null) !== stableJson(row.profile ?? null) ||
         stableJson(session.launchRecipe ?? null) !== stableJson(row.launchRecipe ?? null) ||
         stableJson(session.modelSelection ?? null) !== stableJson(row.modelSelection ?? null) ||
         stableJson(session.applicationPolicy ?? null) !== stableJson(row.applicationPolicy ?? null)
@@ -398,6 +430,7 @@ export async function createControlSession(
         workspace: row.workspace,
         duplicate,
         registrationGeneration: row.generation,
+        ...(row.profile === undefined ? {} : { profile: row.profile.name }),
         ...(row.launchRecipe === undefined ? {} : { launchRecipe: row.launchRecipe }),
         ...(row.modelSelection === undefined ? {} : { modelSelection: row.modelSelection }),
         ...sessionApplicationPolicy(m, session, row.applicationPolicy, native),

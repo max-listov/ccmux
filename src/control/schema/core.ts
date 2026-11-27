@@ -20,7 +20,10 @@ export const ControlTargetSchema = z.object({ target: ManagedPeerSchema }).stric
 export const ControlRowSchema = z
   .object({
     identity: ManagedPeerSchema,
+    registrationGeneration: z.uuid().nullable().optional(),
     runtime: z.enum(['cli', 'app-server', 'native']),
+    pinned: z.boolean().optional(),
+    memoryBytes: z.number().int().nonnegative().nullable().optional(),
     nativeSession: NativeSessionSchema.optional(),
     driverCapabilities: RuntimeCapabilitiesSchema.optional(),
     sleep: z

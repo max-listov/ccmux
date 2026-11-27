@@ -1,9 +1,6 @@
 import { freshestLimits, type ProfileView } from '../quota/view.ts';
-import {
-  type PlanLimits,
-  planLimitsStaleAfterMs,
-  planWindowExpired,
-} from '../runtime/planLimits.ts';
+import { planLimitsStaleAfterMs, planWindowExpired } from '../runtime/planLimits.ts';
+import type { PlanLimits } from '../runtime/planLimitsSchema.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
 import type { FleetAccount, ProjectedPlanLimits } from './fleetSchema.ts';
 

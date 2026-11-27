@@ -16,8 +16,8 @@ export async function validateModelSelection(
   signal: AbortSignal,
 ): Promise<void> {
   try {
-    await withCodexCatalogRuntime(m, launch, workspace, signal, async (rpc) => {
-      const provider = await nativeModelProvider(rpc, workspace);
+    await withCodexCatalogRuntime(m, launch, workspace, signal, async (controls) => {
+      const provider = await nativeModelProvider(controls, workspace);
       if (provider !== selection.provider)
         throw new Error('Selected provider differs from host launch configuration');
       // Custom providers own their model identifiers; native thread admission verifies them.
@@ -31,7 +31,7 @@ export async function validateModelSelection(
             nextCursor: z.string().nullable(),
           })
           .parse(
-            await rpc.request('model/list', {
+            await controls.listModels({
               limit: 64,
               includeHidden: true,
               ...(cursor === null ? {} : { cursor }),

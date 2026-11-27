@@ -247,6 +247,12 @@ test at all). Platform-only tests count only where they run: Linux-only tests ru
 job, the Darwin-only native test in the `darwin-native` job, and a local macOS gate that skipped them
 is not evidence for them.
 
+For a checkout with local run monitoring, set Git's `ccmux.checkRunner` to the absolute path of
+its runner executable. The full gate passes `--project ccmux --label ccmux-gate -- <command>`.
+The standalone test suite uses `ccmux-tests` for sharded runs and `ccmux-tests-serial` for serial
+runs. The outer command owns its nested checks and their exit status. With the setting absent,
+Bun runs the same stages directly.
+
 `bun run lint` checks without editing; `bun run format` formats; `bun run lint:fix` applies safe
 Biome fixes. The shared style is two spaces, 100 columns, single quotes and semicolons. Use the
 checked-in `biome.json`; do not introduce a parallel formatter or suppress whole rule groups to

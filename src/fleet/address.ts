@@ -1,5 +1,5 @@
 import type { MachineConfig } from '../types.ts';
-import { remotePeers } from './remoteAdapter.ts';
+import { remotePeers } from './remoteTransport.ts';
 
 /**
  * A fleet address — `<machine>:<session>` — is the missing piece that made cross-machine work

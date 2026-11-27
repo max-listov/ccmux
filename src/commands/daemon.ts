@@ -1,5 +1,6 @@
 import { bindProcessSignals } from 'stitchkit/server';
 import { ensureInstalledApp } from '../boot/installedApp.ts';
+import { waitForManagedTmuxReady } from '../boot/macos/tmuxAgent.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { APP_BUNDLE, BOOT_ATTEMPTS } from '../config/paths.ts';
 import { createDaemonApplication } from '../daemon/application.ts';
@@ -16,6 +17,14 @@ export async function cmdDaemon(): Promise<number> {
     m = loadMachineConfig();
     setLogLevel(m.logLevel);
     if (!IS_DEV) await ensureInstalledApp(m);
+    const managedTmux = await waitForManagedTmuxReady(m);
+    if (managedTmux !== null) {
+      log.info({
+        msg: 'managed tmux server ready',
+        pid: managedTmux.pid,
+        waitedMs: managedTmux.waitedMs,
+      });
+    }
   } catch (error) {
     log.error({ msg: 'daemon initialization failed', err: String(error) });
     return 1;

@@ -1,11 +1,9 @@
+import { type CodexSkillInput, CodexSkillInputSchema } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
 import { policyUnavailable } from './errors.ts';
 import type { MaterializedPolicy } from './schema.ts';
 
-const SkillInputSchema = z
-  .object({ type: z.literal('skill'), name: z.string(), path: z.string() })
-  .strict();
-export type PolicySkillInput = z.infer<typeof SkillInputSchema>;
+export type PolicySkillInput = CodexSkillInput;
 const InventorySchema = z.object({
   data: z
     .array(
@@ -59,7 +57,7 @@ export function policySkillInputs(
       candidates.some((item) => item.path !== skill.path || !item.enabled)
     )
       policyUnavailable(policy.metadata.id, 'native-skill-selection-unavailable');
-    return SkillInputSchema.parse({ type: 'skill', name: skill.name, path: skill.path });
+    return CodexSkillInputSchema.parse({ type: 'skill', name: skill.name, path: skill.path });
   });
 }
 
@@ -81,7 +79,7 @@ export function nativePolicySkillsAcknowledged(
     .safeParse(params);
   if (!parsed.success || parsed.data.threadId !== threadId) return false;
   const selected = parsed.data.item.content.flatMap((item) => {
-    const skill = SkillInputSchema.safeParse(item);
+    const skill = CodexSkillInputSchema.safeParse(item);
     return skill.success ? [skill.data] : [];
   });
   return policy.skills.every((skill) =>

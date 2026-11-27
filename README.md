@@ -203,16 +203,21 @@ unavailable runtimes remain unknown. See the [external read contract](docs/archi
 
 ### Reaching another machine
 
-An address is `<machine>:<session>` and it never says how the call travels. Two transports carry it,
-and the choice is per direction in `machine.json`:
+An address is `<machine>:<session>`. Each machine chooses its route to a peer in `machine.json`.
 
 | Transport | Use it for | Configured by |
 |---|---|---|
 | ssh | machines that can address each other | `fleet: { <machine>: <alias> }` |
-| injected remote adapter | a machine with no stable address — it dials out and keeps the link | `remoteTransport: { peers: [<machine>] }` |
+| Stitchwire | peers connected to a Stitchwire broker | `remoteTransport: { kind: "stitchwire", peers: [<machine>] }` |
+| external adapter | a custom implementation of the remote command contract | `remoteTransport: { peers: [<machine>], socket: <path> }` |
 
-A machine in `remoteTransport.peers` is reached over the remote transport even when it also has an ssh alias, so the remote transport is
-adoptable one direction at a time.
+CCMux talks directly to the local Stitchwire agent using the public npm package
+`@stitchwire/client`. Set `agentSocket` in `remoteTransport` when the agent uses a custom Unix
+socket. To offer the control service as well, set `serviceDirectory` to an absolute, private
+directory, put the grants in `ccmux.control.callers.json` there and add the full path to
+`ccmux.control.declaration.json` to the agent's `services.descriptors`. Restart CCMux after
+changing the service directory. SSH-only installations need no Stitchwire agent.
+See the [service and grants](docs/architecture/control-plane.md#declared-service-and-native-stream-binding).
 
 Two things are worth knowing before diagnosing a route:
 
@@ -490,6 +495,25 @@ and **nobody has been able to check** (`latest: null`, or `ok: false` beside a r
 The last one must never be drawn as current.
 
 ## Session environment
+
+### Select a Claude profile
+
+```bash
+ccmux profiles list
+ccmux profiles doctor --profile work
+ccmux new review ~/src/project --agent claude --profile work
+```
+
+`profiles list` shows the implicit `default`, entries from the host's optional
+`machine.json` setting `"claudeProfiles": {"work": "/absolute/path/to/claude-work"}`, and
+Claude Code profiles from an existing `claude-multiprofile` registry. The manager is optional.
+Sign in to each profile with Claude. The doctor command asks Claude for its login status.
+
+The session keeps its selected directory across restart and wake. If its registration disappears,
+its name points at a different directory, or a previously identified account changes, its next launch
+reports the reason. A project `--env-file` can supply unrelated settings alongside the profile.
+
+### Declare a project environment
 
 A session's environment is a **declared recipe**, not whatever the supervisor happened to inherit.
 

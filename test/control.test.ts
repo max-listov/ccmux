@@ -94,7 +94,7 @@ test('Unix HTTP, CLI and peer-free tools share contract output and auth; no publ
   expect(read.sessions[0]?.identity).toEqual(f.target);
   expect(await f.client['session.get']({ target: f.target })).toMatchObject({ identity: f.target });
   const proxy = createControlProxy({ socket: f.socket });
-  const invoker = createToolInvoker(proxy, { transport: 'MCP' });
+  const invoker = createToolInvoker(proxy, { transport: 'MCP', access: { open: 'remote' } });
   expect(await invoker.invokeOrThrow('sessions', {})).toEqual(read);
   const lines: string[] = [];
   let exitCode = -1;
@@ -103,6 +103,7 @@ test('Unix HTTP, CLI and peer-free tools share contract output and auth; no publ
     version: '0.0.0',
     argv: ['sessions'],
     services: [proxy],
+    access: { open: 'remote' },
     stdin: async () => null,
     stdout: (line) => {
       lines.push(line);
@@ -118,7 +119,10 @@ test('Unix HTTP, CLI and peer-free tools share contract output and auth; no publ
   expect(JSON.stringify(lines)).toContain(f.s.uuid);
   const bad = createControlProxy({ socket: f.socket, session: f.s.name, credential: 'wrong' });
   await expect(
-    createToolInvoker(bad, { transport: 'MCP' }).invokeOrThrow('sessions', {}),
+    createToolInvoker(bad, { transport: 'MCP', access: { open: 'remote' } }).invokeOrThrow(
+      'sessions',
+      {},
+    ),
   ).rejects.toThrow();
 });
 
@@ -412,7 +416,10 @@ test.each(['client', 'proxy'] as const)(
       const request =
         transport === 'client'
           ? f.client['message.send'].withOptions(input, { signal: stop.signal })
-          : createToolInvoker(proxy, { transport: 'CLI' }).invokeOrThrow('message', input, {
+          : createToolInvoker(proxy, {
+              transport: 'CLI',
+              access: { open: 'remote' },
+            }).invokeOrThrow('message', input, {
               context: { signal: stop.signal },
             });
       const rejected = request.catch((error: unknown) => error);

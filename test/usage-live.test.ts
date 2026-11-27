@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { ClaudeSdkTurnUsage } from 'stitchkit/agent-executor/claude-sdk';
 import { AgentUsageSchema } from 'stitchkit/agent-runtime';
 import { encodeDir } from '../src/agent/claude/resume.ts';
 import { subagentsDir } from '../src/agent/claude/subagent.ts';
@@ -135,41 +135,16 @@ test('Claude self, child and SDK query pipeline are separate accounting scopes',
   writeFileSync(path, line('parent', 10));
   mkdirSync(subagentsDir(path), { recursive: true });
   writeFileSync(join(subagentsDir(path), 'agent-abc123.jsonl'), line('child', 20));
-  const result: SDKResultMessage = {
-    type: 'result',
-    subtype: 'success',
-    duration_ms: 10,
-    duration_api_ms: 5,
-    is_error: false,
-    num_turns: 1,
-    result: 'not-accounting-data',
-    stop_reason: null,
-    total_cost_usd: 0.5,
-    permission_denials: [],
-    uuid: crypto.randomUUID(),
-    session_id: s.uuid,
-    usage: {
-      input_tokens: 10,
-      output_tokens: 5,
-      cache_read_input_tokens: 0,
-      cache_creation_input_tokens: 0,
-      server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 },
-      service_tier: 'standard',
-      cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
-      inference_geo: 'not_available',
-      speed: 'standard',
-      iterations: [],
-      output_tokens_details: { thinking_tokens: 0 },
-      fallback_credit: { status: { type: 'not_applied', reason: 'not_enabled' } },
-    },
-    modelUsage: {
+  const result: ClaudeSdkTurnUsage = {
+    turnId: crypto.randomUUID(),
+    cumulativeModelUsage: {
       'model-a': {
         inputTokens: 40,
         outputTokens: 15,
         thinkingTokens: 4,
         cacheReadInputTokens: 8,
         cacheCreationInputTokens: 2,
-        costUSD: 0.5,
+        costUsd: 0.5,
         webSearchRequests: 1,
         contextWindow: 200000,
         maxOutputTokens: 64000,

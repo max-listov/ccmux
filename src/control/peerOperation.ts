@@ -25,6 +25,10 @@ import { controlContract } from './schema/contract.ts';
  * machine's command-line authority, which no service on that machine granted.
  */
 export const FORWARDED_OPERATIONS = [
+  'session.idle',
+  'session.sleep',
+  'session.wake',
+  'session.pin',
   'session.start',
   'session.stop',
   'session.restart',

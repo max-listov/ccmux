@@ -19,11 +19,12 @@ export async function codexAppMessagePersisted(
   m: MachineConfig,
   threadId: string,
   messageId: string,
+  sessionsDir: string | undefined = m.codexSessionsDir,
 ): Promise<boolean> {
-  if (!m.codexSessionsDir) return false;
+  if (!sessionsDir) return false;
   const glob = new Glob(`**/*-${threadId}.jsonl`);
   const needle = Buffer.from(`"client_id":"${messageId}"`);
-  for (const path of glob.scanSync({ cwd: m.codexSessionsDir, absolute: true })) {
+  for (const path of glob.scanSync({ cwd: sessionsDir, absolute: true })) {
     if (await fileContains(path, needle)) return true;
   }
   return false;

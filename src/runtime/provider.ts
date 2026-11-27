@@ -1,19 +1,33 @@
+import { preflightAntigravity } from '../agent/antigravity/preflight.ts';
 import type { AgentProvider } from '../agent/index.ts';
 import { IDENTITY_ENV_KEYS, pinIdentity } from '../agent/launch/identityEnv.ts';
 import { sessionEnvRecipe } from '../agent/launch/sessionEnv.ts';
 import { preflightOpenCode } from '../agent/opencode/server.ts';
 
 /** Native runtimes have no JSONL/pane parser. Their observations use the prepared native feed. */
-export function nativeProvider(id: 'opencode' | 'custom' | 'claude'): AgentProvider {
+export function nativeProvider(
+  id: 'opencode' | 'custom' | 'claude' | 'antigravity',
+): AgentProvider {
   return {
     id,
-    preflight: id === 'opencode' ? preflightOpenCode : () => undefined,
+    preflight:
+      id === 'opencode'
+        ? preflightOpenCode
+        : id === 'antigravity'
+          ? (m) => {
+              preflightAntigravity(m);
+            }
+          : () => undefined,
     buildArgv: (_s, m) => {
       if (id === 'custom') return ['stitchkit/agent-runtime/harness'];
       // Deliberately fictional but STABLE, like the Custom runtime's: the launch stamp compares
       // argv across restarts, and a native mode whose stamp drifts would demand restarts for
       // changes its runtime cannot act on. The real process is the ccmux-owned SDK bridge.
       if (id === 'claude') return ['ccmux/claude-native-bridge'];
+      if (id === 'antigravity') {
+        const bin = preflightAntigravity(m);
+        return [bin, 'acp', '--stdio', '--process-per-session', '--sandbox'];
+      }
       if (id !== 'opencode' || m.opencodeBin === undefined)
         throw new Error('Native executable is unavailable');
       return [m.opencodeBin, 'serve', '--hostname', '127.0.0.1', '--port', '<owned-ephemeral>'];

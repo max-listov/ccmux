@@ -4,7 +4,7 @@ description: The launch recipe — argv plus the external inputs an agent reads 
 type: architecture
 status: active
 created: 2026-08-25
-updated: 2026-10-19 14:20 +07:00
+updated: 2026-11-27 14:41 +08:00
 ---
 
 # What shapes a session
@@ -169,7 +169,21 @@ asks it: the history file and resume branch, follow-the-fork, the native transcr
 in `list`. (The status-line process runs inside the agent and reads the profile from its own
 `CLAUDE_CONFIG_DIR`, which the launch sets from this same answer.)
 
-The profile comes from the **session's declared env file** (`CLAUDE_CONFIG_DIR` in it) and from the
+A named Claude profile is chosen on the host by `ccmux new --profile NAME` or the `profile` field of
+`session.create`. Names resolve from machine configuration and the optional read-only
+`claude-multiprofile` Code registry. The registration stores the source, physical directory and,
+when the provider publishes its account UUID, a digest of that identity. The default login keeps
+its directory override unset. A restart or wake verifies the original source and account before
+starting Claude. Renaming a label at the same directory preserves the conversation. A missing or
+reassigned binding creates a lifecycle block. A project env file can still declare unrelated values.
+Host catalog reads accept the same profile name and reuse observations for its context.
+
+At the stock root the SDK receives `claudeConfigDir: 'default'` and the transcript home
+`~/.claude`. An explicitly selected directory is passed as `CLAUDE_CONFIG_DIR`, including when
+it points to that same location. Native forks set the profile on the bootstrap process because the
+vendor's standalone transcript-copy operation reads its own environment before a query exists.
+
+For registrations without a named profile, the profile comes from the **session's declared env file** (`CLAUDE_CONFIG_DIR` in it) and from the
 machine's `projectsDir`, never from the environment of the process that asks. The daemon, a
 `ccmux list` typed inside another profile's session and the supervisor loop have different
 environments; a session whose profile depended on who looked would be a different session to each.

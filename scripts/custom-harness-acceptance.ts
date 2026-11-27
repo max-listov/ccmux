@@ -78,7 +78,7 @@ function open(model: MockLanguageModelV4) {
     tools: (context) =>
       mountAgent([], {
         runtimeTools: createAgentCodingTools({ root, authorize: () => true }),
-        lifecycle: context.toolFenceLifecycle,
+        access: { gate: context.toolFenceLifecycle },
       }),
     promptBudget: ({ contextWindow }) => ({
       contextWindow,

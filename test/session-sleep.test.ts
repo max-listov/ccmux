@@ -117,7 +117,7 @@ async function fixture(deadlineMs?: number) {
 }
 test('idle proof measures exact producer and changes revision when new input is queued', async () => {
   const f = await fixture();
-  const before = idleProof(f.m, f.s);
+  const before = await idleProof(f.m, f.s);
   expect(before.eligible).toBe(true);
   expect(before).toMatchObject({ run: 'idle', queue: 0, approvals: 0, children: 0, background: 0 });
   const message = buildEnvelope(cliPrincipal('host-a'), managedPeer('host-a', f.s), 'queued work', {
@@ -126,7 +126,7 @@ test('idle proof measures exact producer and changes revision when new input is 
     task: null,
   });
   await appendMessageOnce(f.m, message, new AbortController().signal);
-  const after = idleProof(f.m, f.s);
+  const after = await idleProof(f.m, f.s);
   expect(after.revision).not.toBe(before.revision);
   expect(after.reason).toBe('queued-input');
   await expect(
@@ -144,17 +144,17 @@ test('idle proof measures exact producer and changes revision when new input is 
   expect(readSleep(f.m, f.s)).toBeNull();
   expect(f.child.exitCode).toBeNull();
 });
-test('approval, stale state, owned child and unbounded native work refuse sleep rather than guess zero', async () => {
+test('approval, stale state, owned child and unsupported providers refuse sleep rather than guess zero', async () => {
   const f = await fixture();
   await f.writer.write({ ...f.snapshot, state: 'waiting-approval' });
-  expect(idleProof(f.m, f.s).eligible).toBe(false);
+  expect((await idleProof(f.m, f.s)).eligible).toBe(false);
   await f.writer.write({
     ...f.snapshot,
     state: 'idle',
     observedAt: new Date(Date.now() - 10000).toISOString(),
     expiresAt: new Date(Date.now() - 5000).toISOString(),
   });
-  expect(idleProof(f.m, f.s).run).toBe('unknown');
+  expect((await idleProof(f.m, f.s)).run).toBe('unknown');
   await f.writer.write({ ...f.snapshot, state: 'idle' });
   if (f.s.delegation === undefined) throw Error('missing delegated fixture');
   const child = makeSession({
@@ -171,14 +171,15 @@ test('approval, stale state, owned child and unbounded native work refuse sleep 
     },
   });
   await writeSessionsUnlocked(f.m, [f.s, child]);
-  expect(idleProof(f.m, f.s).reason).toBe('owned-children');
-  expect(idleProof(f.m, { ...f.s, delegation: undefined }).reason).toBe(
-    'unbounded-native-background-state',
-  );
+  expect((await idleProof(f.m, f.s)).reason).toBe('owned-children');
+  expect(
+    (await idleProof(f.m, { ...f.s, agent: 'opencode', runtime: 'native', delegation: undefined }))
+      .reason,
+  ).toBe('unsupported');
 });
 test('sleep intent persists across fresh readers and processReleased checks process incarnation', async () => {
   const f = await fixture();
-  const proof = idleProof(f.m, f.s);
+  const proof = await idleProof(f.m, f.s);
   const row = {
     target: managedPeer('host-a', f.s),
     registrationGeneration: f.s.registrationGeneration ?? '',
@@ -198,7 +199,7 @@ test('sleep intent persists across fresh readers and processReleased checks proc
 
 test('sleep CAS is consumed by its actual owner and retry reuses the durable release receipt', async () => {
   const f = await fixture();
-  const proof = idleProof(f.m, f.s);
+  const proof = await idleProof(f.m, f.s);
   expect(proof.eligible).toBe(true);
   const input = {
     target: managedPeer('host-a', f.s),
@@ -224,7 +225,7 @@ test('sleep CAS is consumed by its actual owner and retry reuses the durable rel
 test('cancelled sleeping child stays stopped and cancellation retries confirm the same released work', async () => {
   const f = await fixture();
   if (f.s.delegation === undefined) throw Error('missing delegation');
-  const proof = idleProof(f.m, f.s);
+  const proof = await idleProof(f.m, f.s);
   await sleepSession(
     f.m,
     {
@@ -260,7 +261,7 @@ test('cancelled sleeping child stays stopped and cancellation retries confirm th
 
 test('a completed wake operation cannot wake a subsequent sleep', async () => {
   const f = await fixture();
-  const proof = idleProof(f.m, f.s);
+  const proof = await idleProof(f.m, f.s);
   const target = managedPeer('host-a', f.s),
     registrationGeneration = f.s.registrationGeneration ?? '';
   const firstSleep = crypto.randomUUID(),
@@ -304,7 +305,7 @@ test('a pending wake refuses a superseding sleep before starting its executor', 
     target,
     registrationGeneration,
     operationId: currentSleep,
-    proof: idleProof(f.m, f.s),
+    proof: await idleProof(f.m, f.s),
     phase: 'sleeping',
     updatedAt: new Date().toISOString(),
   });
@@ -323,11 +324,38 @@ test('a corrupt journal is refused while an absent journal is only missing', asy
   expect(() => readSleep(f.m, f.s)).toThrow('Private journal is unreadable');
 });
 
-test('an executor without bounded delegation returns unsupported without changing its lifecycle', async () => {
+test('an unsupported provider returns unsupported without changing its lifecycle', async () => {
+  const f = await fixture();
+  const unsupported = {
+    ...f.s,
+    agent: 'opencode' as const,
+    runtime: 'native' as const,
+    nativeSession: { runtime: 'opencode' as const, id: f.s.uuid, version: '1.0.0' },
+    delegation: undefined,
+  };
+  await writeSessionsUnlocked(f.m, [unsupported]);
+  const proof = await idleProof(f.m, unsupported);
+  const result = await sleepSession(
+    f.m,
+    {
+      target: managedPeer('host-a', unsupported),
+      registrationGeneration: unsupported.registrationGeneration ?? '',
+      operationId: crypto.randomUUID(),
+      revision: proof.revision,
+    },
+    new AbortController().signal,
+  );
+  expect(result).toMatchObject({ release: 'unsupported', state: 'unchanged' });
+  expect(readSleep(f.m, unsupported)).toBeNull();
+  expect(f.child.exitCode).toBeNull();
+});
+
+test('a non-delegated native codex session sleeps cleanly when idle and policy allows', async () => {
   const f = await fixture();
   const ordinary = { ...f.s, delegation: undefined };
   await writeSessionsUnlocked(f.m, [ordinary]);
-  const proof = idleProof(f.m, ordinary);
+  const proof = await idleProof(f.m, ordinary);
+  expect(proof.eligible).toBe(true);
   const result = await sleepSession(
     f.m,
     {
@@ -335,12 +363,13 @@ test('an executor without bounded delegation returns unsupported without changin
       registrationGeneration: ordinary.registrationGeneration ?? '',
       operationId: crypto.randomUUID(),
       revision: proof.revision,
+      forcePolicy: true,
     },
     new AbortController().signal,
   );
-  expect(result).toMatchObject({ release: 'unsupported', state: 'unchanged' });
-  expect(readSleep(f.m, ordinary)).toBeNull();
-  expect(f.child.exitCode).toBeNull();
+  expect(result).toMatchObject({ release: 'processReleased', state: 'sleeping' });
+  expect(await f.child.exited).toBe(0);
+  expect(readSleep(f.m, ordinary)?.phase).toBe('sleeping');
 });
 
 test('active cancellation releases its owned provider and leaves an unrelated identical executable alive', async () => {
@@ -378,7 +407,7 @@ test('an inherited deadline releases the actually owned provider without a cance
 
 test('an acknowledged cold start returns pending within its bounded wait and keeps its durable wake identity', async () => {
   const f = await fixture();
-  const proof = idleProof(f.m, f.s);
+  const proof = await idleProof(f.m, f.s);
   await sleepSession(
     f.m,
     {

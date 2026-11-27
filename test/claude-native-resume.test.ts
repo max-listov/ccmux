@@ -2,11 +2,13 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { resumesConversation } from '../src/agent/claude/native/resume.ts';
+import { createClaudeSdkDriver } from 'stitchkit/agent-executor/claude-sdk';
 import { histFile } from '../src/agent/claude/resume.ts';
 
 /**
- * A session that never took a turn must not be sentenced to a conversation that was never written.
+ * Stitchkit's Claude SDK driver decides `sessionId` vs `resume` from whether the transcript file
+ * actually exists on disk, so a session that never persisted a turn starts fresh while an existing
+ * conversation resumes cleanly.
  */
 
 const roots: string[] = [];
@@ -14,42 +16,48 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function fixture(options: { marker: boolean; conversation: boolean }) {
+async function probeOpenOptions(withTranscript: boolean): Promise<Record<string, unknown>> {
   const root = mkdtempSync(join(tmpdir(), 'ccmux-native-resume-'));
   roots.push(root);
-  const m = { projectsDir: join(root, 'projects') };
-  const session = {
-    dir: join(root, 'work'),
-    nativeSession: { runtime: 'claude' as const, id: '9850b4af-8986-4a79-bb28-b1f62bd9a9ba' },
-  };
-  const startedFile = join(root, 'conversation.started');
-  if (options.marker) writeFileSync(startedFile, 'created\n');
-  if (options.conversation) {
-    const path = histFile(session.dir, session.nativeSession.id, m.projectsDir);
+  const work = join(root, 'work');
+  mkdirSync(work, { recursive: true });
+  const id = '9850b4af-8986-4a79-bb28-b1f62bd9a9ba';
+  if (withTranscript) {
+    const path = histFile(work, id, join(root, 'projects'));
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, '{}\n');
   }
-  return { m, session, startedFile };
+  let captured: Record<string, unknown> = {};
+  const driver = createClaudeSdkDriver({
+    query: ({ options }) => {
+      captured = (options ?? {}) as Record<string, unknown>;
+      return {
+        async *[Symbol.asyncIterator]() {},
+        interrupt: async () => {},
+        supportedModels: async () => [],
+        close: () => {},
+      };
+    },
+    sdkVersion: 'test',
+  });
+  const session = await driver.open({
+    profile: { engine: 'claude-sdk', profileId: 'local', home: root },
+    cwd: work,
+    nativeThreadId: id,
+  });
+  await session.supportedModels();
+  await session.close();
+  return captured;
 }
 
-test('a marker without a conversation starts fresh instead of resuming forever', () => {
-  // The exact state three sessions were found in: a marker written by the runtime's opening frame,
-  // and no conversation anywhere under the projects directory. Resuming that id fails identically
-  // on every start, so the session was blocked over a conversation with nothing in it.
-  const { m, session, startedFile } = fixture({ marker: true, conversation: false });
-  expect(resumesConversation(m, session as never, startedFile)).toBe(false);
+test('an absent transcript starts fresh with sessionId instead of resuming a missing conversation', async () => {
+  const options = await probeOpenOptions(false);
+  expect(options.sessionId).toBe('9850b4af-8986-4a79-bb28-b1f62bd9a9ba');
+  expect(options.resume).toBeUndefined();
 });
 
-test('a marker with its conversation still resumes it', () => {
-  // The other half, and the reason this is not "always start new": a real conversation must never
-  // be discarded because a start failed once.
-  const { m, session, startedFile } = fixture({ marker: true, conversation: true });
-  expect(resumesConversation(m, session as never, startedFile)).toBe(true);
-});
-
-test('a conversation without a marker is not resumed either', () => {
-  // The marker still carries something the file cannot: that THIS supervisor started it. A file
-  // that appeared some other way is not evidence to resume against.
-  const { m, session, startedFile } = fixture({ marker: false, conversation: true });
-  expect(resumesConversation(m, session as never, startedFile)).toBe(false);
+test('an existing transcript resumes the pinned conversation id', async () => {
+  const options = await probeOpenOptions(true);
+  expect(options.resume).toBe('9850b4af-8986-4a79-bb28-b1f62bd9a9ba');
+  expect(options.sessionId).toBeUndefined();
 });

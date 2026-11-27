@@ -28,27 +28,28 @@
     "stage": "bun scripts/release.ts --stage",
     "release": "bun scripts/release.ts",
     "test": "bun scripts/test-shards.ts",
-    "test:serial": "bun test --timeout 20000",
+    "test:serial": "bun scripts/test-shards.ts --serial",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.322",
-    "@biomejs/biome": "2.6.6",
-    "@types/bun": "^1.4.4",
+    "@anthropic-ai/claude-agent-sdk": "0.3.332",
+    "@biomejs/biome": "2.6.9",
+    "@types/bun": "^1.4.5",
     "@types/pngjs": "6.0.5",
-    "@types/react": "^19.3.0",
+    "@types/react": "^19.3.3",
     "ink-testing-library": "^4.0.0",
-    "stitchkit": "0.123.2",
+    "stitchkit": "0.132.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "3.0.87",
+    "@ai-sdk/openai-compatible": "3.0.96",
     "@modelcontextprotocol/ext-apps": "2.0.4",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@modelcontextprotocol/server": "2.4.0",
-    "@opencode-ai/sdk": "1.19.5",
+    "@opencode-ai/sdk": "1.19.6",
     "@openrouter/ai-sdk-provider": "3.1.0",
-    "ai": "7.0.166",
+    "@stitchwire/client": "0.31.0",
+    "ai": "7.0.183",
     "ink": "^8.0.0",
     "jpeg-js": "0.4.4",
     "pngjs": "7.0.0",
@@ -56,7 +57,7 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "stitchkit": ">=0.123.2 <1"
+    "stitchkit": ">=0.132.0 <1"
   },
-  "packageManager": "bun@1.4.4"
+  "packageManager": "bun@1.4.5"
 }

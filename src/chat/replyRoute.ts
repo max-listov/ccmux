@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { routeFor } from '../fleet/address.ts';
-import { isRemotePeer, remoteAdapterSocketPath } from '../fleet/remoteAdapter.ts';
+import { isRemotePeer, remoteSocketPath } from '../fleet/remoteTransport.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { codexAppAddress } from './identity.ts';
 
@@ -38,16 +38,11 @@ export function replyRouteFor(m: MachineConfig, machine: string, session: string
   if (route.kind === 'error') return { replyable: false, reason: route.message };
   if (route.kind === 'local') return { replyable: true };
   if (isRemotePeer(m, route.machine)) {
-    const socket = remoteAdapterSocketPath(m);
-    if (socket === null)
-      return {
-        replyable: false,
-        reason: 'no remote adapter socket path is known here (HOME is unset)',
-      };
+    const socket = remoteSocketPath(m);
     if (!existsSync(socket))
       return {
         replyable: false,
-        reason: `the remote adapter is not running here — no socket at ${socket}`,
+        reason: `the ${m.remoteTransport && 'kind' in m.remoteTransport ? 'Stitchwire agent' : 'remote adapter'} is not running here — no socket at ${socket}`,
       };
   }
   return { replyable: true };

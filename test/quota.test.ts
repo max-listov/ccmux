@@ -24,7 +24,8 @@ import {
 import { backoffMs, measurementDue, refreshQuota } from '../src/quota/refresh.ts';
 import { readQuotaRecord } from '../src/quota/store.ts';
 import { freshestLimits, profileViews } from '../src/quota/view.ts';
-import { formatPlanLimits, type PlanLimits } from '../src/runtime/planLimits.ts';
+import { formatPlanLimits } from '../src/runtime/planLimits.ts';
+import type { PlanLimits } from '../src/runtime/planLimitsSchema.ts';
 import { writeMetricsFile } from '../src/session/metricsFile.ts';
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 

@@ -1,11 +1,16 @@
 #!/usr/bin/env bun
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { z } from 'zod';
-import { startCodexAppTurn } from '../src/agent/codex/appServer.ts';
-import { findOwnedCodexReceipt } from '../src/agent/codex/owned/receipt.ts';
-import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import { findCodexTurnByClientId } from 'stitchkit/agent-executor/codex';
+import { resumeCodexAppThreadContext } from '../src/agent/codex/appServer.ts';
+import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
+import {
+  codexExecutorProfile,
+  createCodexSocketDriver,
+  OWNED_CODEX_MAX_FRAME_BYTES,
+} from '../src/agent/codex/owned/rpc.ts';
 import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
+import { startOwnedCodexTurn } from '../src/agent/codex/owned/thread.ts';
 import { inspectNativeCodexInput } from '../src/agent/codex/pane.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
 import { loadCursors } from '../src/chat/cursors.ts';
@@ -120,12 +125,20 @@ await sendKeysNamed(m, session.name, 'C-u');
 await command(['wait', session.name, '--timeout', '120']);
 progress('partial-input', { preserved: true, completedAfterClear: true, threadId: session.uuid });
 
-let rpc = await connectOwnedCodex(m, session);
+const openProbeSession = () =>
+  createCodexSocketDriver(ownedCodexSocket(m, session.name), {
+    maxFrameBytes: OWNED_CODEX_MAX_FRAME_BYTES,
+  }).open({
+    profile: codexExecutorProfile(m, session),
+    cwd: session.dir,
+    nativeThreadId: session.uuid,
+  });
+
+let rpc = await openProbeSession();
 try {
   const nativeBeforeApproval = await client['native.read']({ target, cursor: null });
-  const approvalTurn = await startCodexAppTurn(
+  const approvalTurn = await startOwnedCodexTurn(
     rpc,
-    session.uuid,
     crypto.randomUUID(),
     codexTextInput(
       'This is an authorized approval-boundary test. Request permission to run the harmless command printf APPROVAL_TEST with sandbox_permissions=require_escalated and justification=approval boundary test. Do not use a non-escalated alternative; wait for the actual approval response. Do not modify files or message anyone.',
@@ -235,9 +248,8 @@ try {
     subsequentMessageCompleted: true,
   });
 
-  const interrupted = await startCodexAppTurn(
+  const interrupted = await startOwnedCodexTurn(
     rpc,
-    session.uuid,
     crypto.randomUUID(),
     codexTextInput(
       'Run sleep 30, then reply INTERRUPTION_TEST_DONE. Do not contact anyone or change files.',
@@ -247,7 +259,7 @@ try {
     'real active turn before interruption',
     () => current()?.turn?.id === interrupted && current()?.state === 'working',
   );
-  await rpc.request('turn/interrupt', { threadId: session.uuid, turnId: interrupted });
+  await rpc.interruptTurn({ threadId: session.uuid, turnId: interrupted });
   const settled = await command(['wait', session.name, '--timeout', '30']);
   check(settled.includes('interrupted'), 'Interrupted turn reported as completed');
   await command([
@@ -259,14 +271,15 @@ try {
   const last = loadLedger(m).find((msg) => msg?.body.includes(`${token} after interruption`));
   check(last, 'Missing recovery message');
   check(
-    (await findOwnedCodexReceipt(rpc, session.uuid, last.id))?.status === 'completed',
+    (await findCodexTurnByClientId(rpc, { threadId: session.uuid, clientId: last.id }))?.status ===
+      'completed',
     'Interrupted pickup did not recover',
   );
   progress('interrupted-pickup', { interrupted, settled: settled.trim(), recovered: last.id });
 
   const beforeRestart = current();
   check(beforeRestart !== null, 'Missing restart baseline');
-  rpc.close();
+  await rpc.close();
   await command(['restart', session.name]);
   await until('same UUID, new provider after restart', () => {
     const next = current();
@@ -292,11 +305,12 @@ try {
     nativeAfterRestart.reset === 'generation',
     'Provider restart did not emit an explicit native resync boundary',
   );
-  rpc = await connectOwnedCodex(m, session);
-  const resumed = z
-    .object({ thread: z.object({ id: z.uuid() }), model: z.string() })
-    .parse(await rpc.request('thread/resume', { threadId: session.uuid, excludeTurns: true }));
-  check(resumed.thread.id === session.uuid, 'Provider resumed a different identity');
+  rpc = await openProbeSession();
+  const resumed = await resumeCodexAppThreadContext(rpc, session.uuid);
+  check(
+    resumed.thread.id === session.uuid && resumed.model !== undefined,
+    'Provider resumed a different identity',
+  );
   progress('restart-resume', {
     threadId: session.uuid,
     beforePid: beforeRestart.providerPid,
@@ -305,55 +319,52 @@ try {
 
   // A resumed provider can retain stale mode guidance despite reporting Plan in turn_context.
   // Establish a real Default -> Plan transition, rather than treating a repeated mode as a reset.
-  const baseline = z.object({ turn: z.object({ id: z.string() }) }).parse(
-    await rpc.request('turn/start', {
-      threadId: session.uuid,
-      clientUserMessageId: crypto.randomUUID(),
-      collaborationMode: {
-        mode: 'default',
-        settings: {
-          model: resumed.model,
-          reasoning_effort: 'low',
-          developer_instructions:
-            'The current collaboration mode is Default. Reply MODE_BASELINE_READY only for this isolated test.',
-        },
+  const baselineId = crypto.randomUUID();
+  const baseline = await rpc.startTurn({
+    turnId: baselineId,
+    clientId: baselineId,
+    collaborationMode: {
+      mode: 'default',
+      settings: {
+        model: resumed.model,
+        reasoning_effort: 'low',
+        developer_instructions:
+          'The current collaboration mode is Default. Reply MODE_BASELINE_READY only for this isolated test.',
       },
-      input: [{ type: 'text', text: 'Reply MODE_BASELINE_READY only.', text_elements: [] }],
-    }),
-  );
+    },
+    input: [{ type: 'text', text: 'Reply MODE_BASELINE_READY only.' }],
+  });
   await until(
     'known Default-mode baseline',
     () =>
-      current()?.turn?.id === baseline.turn.id &&
+      current()?.turn?.id === baseline.nativeTurnId &&
       current()?.turn?.status === 'completed' &&
       current()?.state === 'idle',
   );
-  const response = z.object({ turn: z.object({ id: z.string() }) }).parse(
-    await rpc.request('turn/start', {
-      threadId: session.uuid,
-      clientUserMessageId: crypto.randomUUID(),
-      collaborationMode: {
-        mode: 'plan',
-        settings: {
-          model: resumed.model,
-          reasoning_effort: 'low',
-          developer_instructions:
-            'The current collaboration mode is Plan. request_user_input is available. For this isolated boundary test, call request_user_input once with Red and Blue options, then wait for the user. Do not perform other work.',
-        },
+  const responseId = crypto.randomUUID();
+  const response = await rpc.startTurn({
+    turnId: responseId,
+    clientId: responseId,
+    collaborationMode: {
+      mode: 'plan',
+      settings: {
+        model: resumed.model,
+        reasoning_effort: 'low',
+        developer_instructions:
+          'The current collaboration mode is Plan. request_user_input is available. For this isolated boundary test, call request_user_input once with Red and Blue options, then wait for the user. Do not perform other work.',
       },
-      input: [
-        {
-          type: 'text',
-          text: 'Use request_user_input to ask me to choose Red or Blue. This is a user-input boundary test. Do not decide for me or do other work.',
-          text_elements: [],
-        },
-      ],
-    }),
-  );
+    },
+    input: [
+      {
+        type: 'text',
+        text: 'Use request_user_input to ask me to choose Red or Blue. This is a user-input boundary test. Do not decide for me or do other work.',
+      },
+    ],
+  });
   await until('actual native input wait', () => {
     const state = current();
     check(
-      state?.turn?.id !== response.turn.id || state.turn.status === 'inProgress',
+      state?.turn?.id !== response.nativeTurnId || state.turn.status === 'inProgress',
       'Native input-test turn ended without requesting input; inspect its actual provider response',
     );
     return state?.state === 'waiting-input';
@@ -366,12 +377,12 @@ try {
   ]);
   await command(['wait', session.name, '--timeout', '2'], 2);
   check(
-    current()?.turn?.id === response.turn.id && current()?.state === 'waiting-input',
+    current()?.turn?.id === response.nativeTurnId && current()?.state === 'waiting-input',
     'Input request was bypassed',
   );
   const inputFrame = await client['native.read']({ target, cursor: null });
   const input = inputFrame.pending.find(
-    (request) => request.kind === 'input' && request.turnId === response.turn.id,
+    (request) => request.kind === 'input' && request.turnId === response.nativeTurnId,
   );
   check(input && input.questions.length > 0, 'Exact native input request is unavailable');
   await expectCode(
@@ -405,13 +416,13 @@ try {
   check(inputReceipt.outcome === 'submitted', 'Input response remained uncertain');
   await command(['wait', session.name, '--timeout', '120']);
   progress('input-exact-response', {
-    waitingTurn: response.turn.id,
+    waitingTurn: response.nativeTurnId,
     requestId: input.requestId,
     operationId: inputOperation,
     answeredQuestionIds: Object.keys(answers),
   });
 } finally {
-  rpc.close();
+  await rpc.close();
   await client.close();
 }
 progress('completed-safety-e2e', { threadId: session.uuid, config });

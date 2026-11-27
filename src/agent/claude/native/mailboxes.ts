@@ -1,10 +1,12 @@
-import type { Query } from '@anthropic-ai/claude-agent-sdk';
+import type { AgentEngineTurn } from 'stitchkit/agent-executor';
+import type { ClaudeSdkSession } from 'stitchkit/agent-executor/claude-sdk';
 import {
   isCancellableTurn,
   readRuntimeInterrupt,
   writeRuntimeInterrupt,
 } from '../../../runtime/interrupt.ts';
 import { readRuntimeMcpRequest, writeRuntimeMcpRequest } from '../../../runtime/mcpControl.ts';
+import { type PermissionMode, PermissionModeSchema } from '../../../runtime/projectionSchema.ts';
 import { answerNativeCommand } from '../../../runtime/response.ts';
 import { readRuntimeRewind, writeRuntimeRewind } from '../../../runtime/rewind.ts';
 import { RewindResultSchema } from '../../../runtime/rewindSchema.ts';
@@ -15,29 +17,23 @@ import {
 } from '../../../runtime/sessionMode.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { type Discovery, refreshMcpServers } from './discovery.ts';
-import type { PendingApproval } from './permission.ts';
-import { permissionResult } from './permission.ts';
+import { type PendingApproval, toInteractionReply } from './permission.ts';
 import type { NativeProjection } from './projection.ts';
 import { advanceTurn } from './turn.ts';
 
 /**
- * Everything a caller can ask a live session to DO, other than take a turn.
- *
- * Six requests, one shape: read the mailbox, refuse what this conversation cannot answer, act on
- * the runtime, and write back what happened. The shared half of that shape — the waiting, the
- * identity check, the retry receipt — belongs to the caller's side in `runtime/mailbox.ts`; this
- * is the session's side of the same four files, plus the two that answer an operator directly.
+ * Everything a caller can ask a live native Claude session to DO, other than take a turn.
  */
 export interface Mailboxes {
   m: MachineConfig;
   session: Session;
-  query: Query | null;
+  sdkSession: ClaudeSdkSession | null;
+  activeTurn: () => AgentEngineTurn | null;
   projection: NativeProjection;
   discovery: Discovery;
   pending: Map<string, PendingApproval>;
   publish: () => Promise<void>;
   report: (error: unknown) => Promise<void>;
-  settleAll: (decision: 'cancel' | 'decline') => void;
 }
 
 /** Apply one decision the control plane wrote, and acknowledge it. */
@@ -47,11 +43,14 @@ export async function applyResponse(o: Mailboxes): Promise<void> {
     pending: (requestId) => o.pending.get(requestId)?.request ?? null,
     submit: async (command) => {
       const waiting = o.pending.get(command.requestId);
-      // Only approvals are published by this runtime, so a refusal has already ruled out the rest.
-      if (waiting === undefined || command.decision === null)
+      const turn = o.activeTurn();
+      if (waiting === undefined || turn === null || command.decision === null)
         throw new Error('Validated approval disappeared');
+      await turn.respond(
+        command.requestId,
+        toInteractionReply(command.decision, { toolName: waiting.toolName }),
+      );
       o.pending.delete(command.requestId);
-      waiting.settle(permissionResult(command.decision, { toolName: waiting.toolName }));
       o.projection.turn = advanceTurn(o.projection.turn, { step: 'answered' });
       o.projection.content?.buffer.lifecycle(
         'request',
@@ -65,13 +64,7 @@ export async function applyResponse(o: Mailboxes): Promise<void> {
   });
 }
 
-/**
- * Cancel the running turn, leaving the runtime alive to answer for it.
- *
- * Outstanding permissions are settled with a cancel rather than abandoned: the runtime is holding
- * those callbacks, and interrupting behind their backs leaves them unresolved for the life of the
- * process while the snapshot claims the session is idle.
- */
+/** Cancel the running turn through `AgentEngineTurn.interrupt()`. */
 export async function applyInterrupt(o: Mailboxes): Promise<void> {
   const command = readRuntimeInterrupt(o.m, o.session);
   if (command === null || !['queued', 'uncertain'].includes(command.phase)) return;
@@ -92,94 +85,77 @@ export async function applyInterrupt(o: Mailboxes): Promise<void> {
       command.generation,
       command.turnId,
     );
-  if (!cancellable()) {
+  const turn = o.activeTurn();
+  if (!cancellable() || turn === null) {
     await writeRuntimeInterrupt(o.m, o.session, { ...command, phase: 'rejected' });
     return;
   }
   await writeRuntimeInterrupt(o.m, o.session, { ...command, phase: 'uncertain' });
-  // Writing yields, and the turn may settle in that gap. Re-checking is what stops this cancelling
-  // whatever turn started next.
-  if (!cancellable()) {
+  if (!cancellable() || o.activeTurn() === null) {
     await writeRuntimeInterrupt(o.m, o.session, { ...command, phase: 'rejected' });
     return;
   }
-  o.settleAll('cancel');
   try {
-    await o.query?.interrupt?.();
+    await turn.interrupt();
   } catch (error) {
-    // An interrupt that cannot be delivered is a rejected interrupt, not a dead session. Throwing
-    // here would destroy the conversation the contract promises to keep.
     await writeRuntimeInterrupt(o.m, o.session, { ...command, phase: 'rejected' });
     await o.report(error);
     return;
   }
+  o.pending.clear();
   o.projection.turn = advanceTurn(o.projection.turn, { step: 'interrupted' });
   await writeRuntimeInterrupt(o.m, o.session, { ...command, phase: 'accepted' });
   await o.publish();
 }
 
-/**
- * Put the session back into the permission mode it was last given.
- *
- * A restart otherwise dropped it silently: the request file still said the mode had been applied while the
- * runtime came up in `default`, and the drop went the dangerous way — from a mode that asks
- * before writing to one that asks less. A session surviving a restart is this project's whole
- * promise, and a setting that decides what a turn may do to a working tree is part of the session.
- */
+async function setRuntimeMode(o: Mailboxes, requested: PermissionMode): Promise<void> {
+  if (o.sdkSession === null) throw new Error('Claude permission control is unavailable');
+  const response = await o.sdkSession.setPermissionMode(requested);
+  // The SDK permits a successful command to acknowledge the requested mode with no payload.
+  const applied = response?.mode ?? requested;
+  const effective = PermissionModeSchema.safeParse(applied);
+  o.projection.permissionMode = effective.success ? effective.data : undefined;
+  if (applied !== requested) throw new Error(`Claude applied ${applied} instead of ${requested}`);
+}
+
 export async function restoreMode(o: Mailboxes): Promise<void> {
   const request = readRuntimeMode(o.m, o.session);
   if (!shouldRestoreMode(request, o.session.registrationGeneration) || request === null) return;
   try {
-    await o.query?.setPermissionMode?.(request.mode);
-    o.projection.permissionMode = request.mode;
+    await setRuntimeMode(o, request.mode);
   } catch (error) {
-    // Reported rather than assumed: publishing a mode the runtime refused would be worse than
-    // coming up in the default one, because a reader would trust it.
     await o.report(error);
   }
 }
 
-/**
- * Move the session to the permission mode a caller asked for.
- *
- * Applied between turns only. Changing it mid-turn would move the boundary under a tool call that
- * was already judged against the old one — the approval a person gave would then be for a
- * different question than the one being answered.
- */
 export async function applyMode(o: Mailboxes): Promise<void> {
   const request = readRuntimeMode(o.m, o.session);
   if (request === null || request.phase !== 'queued') return;
   if (request.generation !== o.session.registrationGeneration) return;
   if (o.projection.turn.status === 'inProgress') return;
   try {
-    await o.query?.setPermissionMode?.(request.mode);
+    await setRuntimeMode(o, request.mode);
   } catch (error) {
     await writeRuntimeMode(o.m, o.session, {
       ...request,
       phase: 'failed',
-      reason: 'The runtime refused this permission mode',
+      reason: 'The runtime did not confirm the requested permission mode',
     });
+    await o.publish();
     await o.report(error);
     return;
   }
-  o.projection.permissionMode = request.mode;
   await writeRuntimeMode(o.m, o.session, { ...request, phase: 'complete', reason: null });
   await o.publish();
 }
 
-/**
- * Enable, disable or reconnect one server, then publish what it looks like afterwards.
- *
- * Republishing is the point: a request the runtime accepted is not a server that works, and the
- * caller is answered from the refreshed status rather than from the acceptance.
- */
 export async function applyMcpRequest(o: Mailboxes): Promise<void> {
   const request = readRuntimeMcpRequest(o.m, o.session);
   if (request === null || request.phase !== 'queued') return;
   if (request.generation !== o.session.registrationGeneration) return;
   try {
-    if (request.action === 'reconnect') await o.query?.reconnectMcpServer?.(request.server);
-    else await o.query?.toggleMcpServer?.(request.server, request.action === 'enable');
+    if (request.action === 'reconnect') await o.sdkSession?.reconnectMcpServer(request.server);
+    else await o.sdkSession?.toggleMcpServer(request.server, request.action === 'enable');
     await refreshMcpServers(o.discovery);
     await o.publish();
     await writeRuntimeMcpRequest(o.m, o.session, { ...request, phase: 'complete' });
@@ -193,30 +169,15 @@ export async function applyMcpRequest(o: Mailboxes): Promise<void> {
   }
 }
 
-/**
- * Put the files back, when a caller asked and the turn that touched them has ended.
- *
- * Between turns only, for the same reason the mode change is: restoring files under a running
- * turn changes the tree the turn is reasoning about, halfway through.
- */
 export async function applyRewind(o: Mailboxes): Promise<void> {
   const request = readRuntimeRewind(o.m, o.session);
   if (request === null || request.phase !== 'queued') return;
   if (request.generation !== o.session.registrationGeneration) return;
   if (o.projection.turn.status === 'inProgress') return;
   try {
-    const result = (await o.query?.rewindFiles?.(request.messageId, {
+    const result = await o.sdkSession?.rewindFiles(request.messageId, {
       dryRun: request.dryRun,
-    })) as
-      | {
-          canRewind?: boolean;
-          error?: string;
-          filesChanged?: string[];
-          insertions?: number;
-          deletions?: number;
-          skippedLinks?: number;
-        }
-      | undefined;
+    });
     if (!result) throw new Error('The runtime returned no rewind result');
     await writeRuntimeRewind(o.m, o.session, {
       ...request,
@@ -227,8 +188,6 @@ export async function applyRewind(o: Mailboxes): Promise<void> {
         filesChanged: (result.filesChanged ?? []).slice(0, 512),
         insertions: result.insertions ?? null,
         deletions: result.deletions ?? null,
-        // Absent means "no refusals happened", which is a different fact from "not measured" —
-        // and only a real rewind can report it at all, so a preview leaves it null.
         skippedLinks: request.dryRun ? null : (result.skippedLinks ?? 0),
       }),
     });

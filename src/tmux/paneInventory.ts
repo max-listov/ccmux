@@ -10,6 +10,7 @@ function parsePaneInventoryImpl(stdout: string, withProcessRoots = false) {
   const agentPanes = new Map<string, string>();
   const startedAt = new Map<string, number>();
   const roots = new Set<number>();
+  const sessionPanePids = new Map<string, number[]>();
   const peerLineLimits = new Map<string, number>();
   // Sessions with a row this parser could not read. What such a session's agent is doing is
   // unknown, and unknown is not "gone": a rejected agent-pane row beside an accepted auxiliary one
@@ -53,6 +54,9 @@ function parsePaneInventoryImpl(stdout: string, withProcessRoots = false) {
     if (withProcessRoots) {
       roots.add(serverPid);
       roots.add(panePid);
+      const pids = sessionPanePids.get(name) ?? [];
+      pids.push(panePid);
+      sessionPanePids.set(name, pids);
       if (!agent || pane === agent) peerLineLimits.set(name, height + 30);
     }
   }
@@ -77,7 +81,16 @@ function parsePaneInventoryImpl(stdout: string, withProcessRoots = false) {
       startedAt.delete(name);
     }
   }
-  return { live, agentGone, uncertain, agentPanes, startedAt, roots, peerLineLimits };
+  return {
+    live,
+    agentGone,
+    uncertain,
+    agentPanes,
+    startedAt,
+    roots,
+    sessionPanePids,
+    peerLineLimits,
+  };
 }
 
 // One warning per continuous invalid episode and reader, without publishing raw pane/session data.

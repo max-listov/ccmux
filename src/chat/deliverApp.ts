@@ -1,4 +1,4 @@
-import { CodexAppUnavailable } from '../agent/codex/socket.ts';
+import { codexFailureKindOf } from '../agent/codex/owned/rpc.ts';
 import { remedyFor } from '../external/turnSchema.ts';
 import type { ChatTarget, MachineConfig } from '../types.ts';
 import { promptInvocation } from '../util/env.ts';
@@ -34,9 +34,8 @@ export function holdChanged(seen: Map<string, string>, key: string, reason: stri
 }
 
 export function appFailureDetails(error: unknown) {
-  return error instanceof CodexAppUnavailable
-    ? { cause: error.kind, remedy: remedyFor(error.kind) }
-    : {};
+  const kind = codexFailureKindOf(error);
+  return kind !== null ? { cause: kind, remedy: remedyFor(kind) } : {};
 }
 
 export function noteAppHold(

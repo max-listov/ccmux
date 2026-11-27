@@ -7,7 +7,7 @@ import {
   ListItemSchema,
   ReleaseStandingSchema,
 } from '../inventory/listSchema.ts';
-import { PlanLimitsSchema, PlanWindowSchema } from '../runtime/planLimits.ts';
+import { PlanLimitsSchema, PlanWindowSchema } from '../runtime/planLimitsSchema.ts';
 
 /** The fleet's answer — its machines, their sessions and the accounts they spend on — as schemas
  *  alone, so a client reads the shape without the code that collects it. */

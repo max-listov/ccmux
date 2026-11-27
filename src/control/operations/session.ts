@@ -8,14 +8,22 @@ import { readRuntimeCatalog } from '../../runtime/catalog.ts';
 import { typeKeys } from '../../session/keys.ts';
 import { removeRegisteredSession, restartSession, stopSession } from '../../session/lifecycle.ts';
 import { clearLifecycleBlock } from '../../session/lifecycleBlocks.ts';
+import { setSessionPinned } from '../../session/registry.ts';
 import { withSessionRegistryLock } from '../../session/registryLock.ts';
-import { assertSleepTarget, sleepSession, wakeSession } from '../../session/sleep/operations.ts';
+import {
+  assertSleepTarget,
+  sleepSession,
+  wakeSession,
+  wakeSleepingSession,
+} from '../../session/sleep/operations.ts';
 import { idleProof } from '../../session/sleep/proof.ts';
 import type {
+  PinRequestSchema,
   SleepRequestSchema,
   SleepTargetSchema,
   WakeRequestSchema,
 } from '../../session/sleep/schema.ts';
+import { sleepUnsettled } from '../../session/sleep/store.ts';
 import { startSession } from '../../session/start.ts';
 import type { ChatPrincipal } from '../../types.ts';
 import {
@@ -78,11 +86,45 @@ export function sessionOperations(context: OperationContext) {
   return {
     cancelDelegation: (input: z.output<typeof DelegationCancelSchema>, signal?: AbortSignal) =>
       cancelDelegation(m, input, signal ?? new AbortController().signal),
-    idle: (input: z.output<typeof SleepTargetSchema>) => idleProof(m, assertSleepTarget(m, input)),
+    idle: (input: z.output<typeof SleepTargetSchema>, signal?: AbortSignal) =>
+      Promise.resolve()
+        .then(() =>
+          idleProof(m, assertSleepTarget(m, input), {
+            ...(signal === undefined ? {} : { signal }),
+          }),
+        )
+        .catch(controlRefusal),
     sleep: (input: z.output<typeof SleepRequestSchema>, signal?: AbortSignal) =>
-      sleepSession(m, input, signal ?? new AbortController().signal),
+      mutations
+        .run(input.target.session, ({ signal: admitted }) => sleepSession(m, input, admitted), {
+          ...(signal ? { signal } : {}),
+          timeoutMs: 30_000,
+        })
+        .catch(controlRefusal),
     wake: (input: z.output<typeof WakeRequestSchema>, signal?: AbortSignal) =>
-      wakeSession(m, input, signal ?? new AbortController().signal),
+      mutations
+        .run(input.target.session, ({ signal: admitted }) => wakeSession(m, input, admitted), {
+          ...(signal ? { signal } : {}),
+          timeoutMs: 30_000,
+        })
+        .catch(controlRefusal),
+    pin: (input: z.output<typeof PinRequestSchema>, signal?: AbortSignal) =>
+      mutations
+        .run(
+          input.target.session,
+          async () => {
+            const session = controlTarget(m, input.target);
+            if (session.archived)
+              throw new AppError('ARCHIVED', {
+                message: 'Archived sessions cannot be pinned',
+                status: 409,
+              });
+            await setSessionPinned(m, session.name, input.pinned);
+            return { target: input.target, pinned: input.pinned };
+          },
+          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+        )
+        .catch(controlRefusal),
     runtimes: () => readRuntimeCatalog(m),
     list: () => publisher.read(),
     external: () => external.read(),
@@ -177,8 +219,21 @@ export function sessionOperations(context: OperationContext) {
       mutations
         .run(
           input.target.session,
-          ({ signal: admitted }) =>
-            withSessionRegistryLock(m, async () => {
+          async ({ signal: admitted }) => {
+            // Check sleeping state OUTSIDE `withSessionRegistryLock` to preserve the strict lock
+            // hierarchy (`profile-policy.lock -> admission.lock -> registry.lock`).
+            const candidate = controlTarget(m, input.target);
+            if (candidate.archived)
+              throw new AppError('ARCHIVED', {
+                message: 'Archived sessions cannot be started',
+                status: 409,
+              });
+            if (sleepUnsettled(m, candidate)) {
+              clearLifecycleBlock(m, candidate.name);
+              await wakeSleepingSession(m, candidate, admitted);
+              return { target: input.target, accepted: true as const };
+            }
+            return withSessionRegistryLock(m, async () => {
               admitted.throwIfAborted();
               const session = controlTarget(m, input.target);
               if (session.archived)
@@ -189,8 +244,9 @@ export function sessionOperations(context: OperationContext) {
               clearLifecycleBlock(m, session.name);
               await startSession(m, session.name, session.dir);
               return { target: input.target, accepted: true as const };
-            }),
-          { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
+            });
+          },
+          { ...(signal ? { signal } : {}), timeoutMs: 30_000 },
         )
         .catch(controlRefusal),
     stop: (input: TargetInput, signal?: AbortSignal) =>
@@ -285,9 +341,9 @@ export function sessionOperations(context: OperationContext) {
         .run(
           undefined,
           ({ signal: admitted }) =>
-            // Only the Codex host catalog costs a process start per read; a session's own catalog
-            // and other runtimes' catalogs answer from something already running.
-            input.target === undefined && (input.runtime ?? 'codex') === 'codex'
+            // A cold Codex or ACP host catalog starts a separate metadata process.
+            input.target === undefined &&
+            (input.runtime === 'antigravity' || (input.runtime ?? 'codex') === 'codex')
               ? catalog.get(input, admitted)
               : readControlModels(m, input, admitted),
           {

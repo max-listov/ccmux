@@ -278,7 +278,48 @@ describe('Codex session metadata', () => {
   });
 });
 
+import {
+  lastModel as claudeLastModel,
+  usedTokens as claudeUsedTokens,
+  parse as parseClaude,
+} from '../src/agent/claude/transcript.ts';
+import { readExternalTail } from '../src/external/tail.ts';
 import { unknownTurnState } from '../src/external/turnSchema.ts';
+
+describe('external tail activity', () => {
+  test('widens past 120 trailing bookkeeping lines instead of falling back to file mtime', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ccmux-ext-tail-'));
+    try {
+      const path = join(root, 'session.jsonl');
+      const replyAt = '2026-10-13T12:11:11.000Z';
+      const lines = [
+        JSON.stringify({
+          type: 'assistant',
+          timestamp: replyAt,
+          message: {
+            role: 'assistant',
+            model: 'claude-sonnet-5-5',
+            usage: { input_tokens: 100 },
+            content: [{ type: 'text', text: 'external answer' }],
+          },
+        }),
+        ...Array.from({ length: 150 }, (_, i) =>
+          JSON.stringify({ type: 'bridge-session', seq: i }),
+        ),
+      ];
+      writeFileSync(path, `${lines.join('\n')}\n`);
+      const tail = readExternalTail(path, 2000, {
+        parse: parseClaude,
+        lastModel: claudeLastModel,
+        usedTokens: claudeUsedTokens,
+      });
+      expect(tail.lastActivityMs).toBe(Date.parse(replyAt));
+      expect(tail.lastMessage?.text).toBe('external answer');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('lsof batching', () => {
   const lockA = '/Users/u/.codex/thread-writer-locks/a.lock';

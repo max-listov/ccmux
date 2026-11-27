@@ -14,6 +14,7 @@ import { providerLaunchEnv } from '../launch/sessionEnv.ts';
 import { buildPrompt } from '../prompt/managePrompt.ts';
 import { ownedCodexArgv } from './owned/launch.ts';
 import { isOwnedCodex } from './owned/paths.ts';
+import { codexProfile } from './profileRoot.ts';
 
 export const CODEX_LAUNCH_MARKER_ENV = 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE';
 
@@ -112,7 +113,7 @@ export function launchEnvKeys(_m: MachineConfig): readonly string[] {
   return IDENTITY_ENV_KEYS;
 }
 
-/** Environment for the spawned codex: the provider launch environment and its own home. */
+/** Environment for the spawned codex: the provider launch environment and its resolved home. */
 export function launchEnv(m: MachineConfig, session: Session): Record<string, string> {
   // Same recipe as every other provider — the env layer is core-owned precisely so two agents cannot
   // end up with two different answers to "what is this session's environment".
@@ -120,7 +121,11 @@ export function launchEnv(m: MachineConfig, session: Session): Record<string, st
     session,
     [m.codexBin ? dirname(m.codexBin) : '', dirname(m.tmuxBin)].filter((p) => p !== ''),
   );
-  if (m.codexHome) env.CODEX_HOME = m.codexHome;
+  // A session's declared CODEX_HOME wins over the machine default; without a declaration, the
+  // machine default applies and any inherited CODEX_HOME from the parent process is dropped.
+  const profile = codexProfile(session, m);
+  if (profile.codexHome !== undefined) env.CODEX_HOME = profile.codexHome;
+  else delete env.CODEX_HOME;
   return pinIdentity(env, m, session);
 }
 
@@ -128,16 +133,17 @@ export function launchEnv(m: MachineConfig, session: Session): Record<string, st
  * What Codex reads at startup besides argv — same contract as the Claude provider, different files,
  * which is exactly why this belongs to the provider and not to the core.
  *
- * `rules` — the global `AGENTS.md` under this machine's declared Codex home, plus its imports.
+ * `rules` — the global `AGENTS.md` under this session's resolved Codex home, plus its imports.
  * `mcp` — the `mcp_servers` table of `config.toml`, and only that table: Codex appends a `[projects]`
  * entry to the same file whenever a directory is trusted, so hashing the file would report a
  * configuration change every time somebody opened a new project.
  *
- * A machine with no `codexHome` declared contributes nothing rather than guessing a path: an invented
- * location would hash as permanently absent and quietly disagree with wherever Codex actually reads.
+ * A session with no `codexHome` declared (neither per-session nor machine-level) contributes nothing
+ * rather than guessing a path: an invented location would hash as permanently absent and quietly
+ * disagree with wherever Codex actually reads.
  */
-export function launchInputs(_s: Session, m: MachineConfig): LaunchInput[] {
-  const home = m.codexHome;
+export function launchInputs(s: Session, m: MachineConfig): LaunchInput[] {
+  const home = codexProfile(s, m).codexHome;
   if (home === undefined) return [];
   const rules = ruleSetFiles(`${home}/AGENTS.md`);
   const config = `${home}/config.toml`;

@@ -2,6 +2,7 @@ import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import type { ClaudeProfileBinding } from '../../../config/claudeProfileSchema.ts';
 import { pageModelCatalog } from '../../../control/modelPage.ts';
 import type {
   ControlModel,
@@ -18,6 +19,8 @@ import { privateRuntimeDirectory, readPrivateJson } from '../../../runtime/store
 import { loadSessions } from '../../../session/registry.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { atomicWrite } from '../../../util/atomic.ts';
+import { selectClaudeProfile } from '../namedProfiles.ts';
+import { claudeProfile } from '../profileRoot.ts';
 import { probeClaudeModels } from './hostProbe.ts';
 import { resolveAgentSdk } from './resolve.ts';
 
@@ -156,13 +159,8 @@ export async function writeClaudeCatalog(
 }
 
 /**
- * The list this host last observed, from whichever owner published it.
- *
- * A caller choosing a model does so BEFORE creating the session that would carry the choice, so
- * "ask a running session" is a circle with no way out: the list needs a session, the session needs
- * the list. The way out is that the list is not a property of a conversation at all — it is what
- * the installed CLI and the operator's settings offer, and every owner on this host receives the
- * same one at startup, before its first turn.
+ * A caller can choose a model before creating a conversation. Reuse a catalog published by an
+ * owner on the same host, in the same Claude configuration and pinned account.
  *
  * So the answer is the newest catalog any owner left behind, said to be exactly that: with when it
  * was observed, and whether the session that published it is still running. A list from a session
@@ -171,14 +169,23 @@ export async function writeClaudeCatalog(
  */
 function hostCatalog(
   m: MachineConfig,
+  profile?: ClaudeProfileBinding,
 ): { models: readonly ControlModel[]; observedAt: string | null; live: boolean } | null {
   let best: { models: readonly ControlModel[]; observedAt: string | null; live: boolean } | null =
     null;
   for (const candidate of loadSessions(m)) {
     if (candidate.agent !== 'claude' || !hasNativeRuntime(candidate)) continue;
+    const effective = claudeProfile(candidate, m);
+    if (
+      effective.ownCredentials ||
+      effective.configDir !== (profile?.configDir ?? null) ||
+      candidate.profile?.accountDigest !== profile?.accountDigest
+    )
+      continue;
     const file = path(m, candidate);
     const prepared = readPrivateJson(file, PreparedSchema, MAX_BYTES);
-    if (prepared === null) continue;
+    if (prepared === null || prepared.registrationGeneration !== candidate.registrationGeneration)
+      continue;
     // A catalog written before the field existed still counts; its file says when it was written.
     let observedAt = prepared.observedAt ?? null;
     if (observedAt === null) {
@@ -213,8 +220,12 @@ function hostCatalog(
  * honest answer is "cannot judge", and the runtime itself refuses the key at admission. Turning an
  * unread catalog into a rejection would make the first native session on a fresh host impossible.
  */
-export function validateClaudeSelection(m: MachineConfig, selection: NativeModelSelection): void {
-  const best = hostCatalog(m);
+export function validateClaudeSelection(
+  m: MachineConfig,
+  selection: NativeModelSelection,
+  profile?: ClaudeProfileBinding,
+): void {
+  const best = hostCatalog(m, profile);
   if (best === null) return;
   if (!best.models.some((row) => (row.model ?? row.id) === selection.model))
     throw new AppError('MODEL_UNAVAILABLE', {
@@ -249,10 +260,13 @@ async function readClaudeHostModels(
       message: 'This host does not publish a catalog for this runtime',
       status: 409,
     });
-  const best = hostCatalog(m);
+  const profile =
+    input.profile === undefined ? undefined : selectClaudeProfile(m, 'claude', input.profile);
+  const best = hostCatalog(m, profile);
   if (best !== null)
     return pageModelCatalog(best.models, input, {
       kind: 'host',
+      ...(profile ? { profile: profile.name } : {}),
       machine: m.rcPrefix,
       runtime: 'claude',
       provider: 'claude',
@@ -262,7 +276,7 @@ async function readClaudeHostModels(
     });
   let probed: Awaited<ReturnType<typeof probeClaudeModels>>;
   try {
-    probed = await probeClaudeModels(m, signal);
+    probed = await probeClaudeModels(m, signal, profile);
   } catch (error) {
     if (error instanceof AppError) throw error;
     // The state AND the action, because the caller is the one who has to do something about it: a
@@ -275,6 +289,7 @@ async function readClaudeHostModels(
   }
   return pageModelCatalog(probed.models, input, {
     kind: 'host',
+    ...(profile ? { profile: profile.name } : {}),
     machine: m.rcPrefix,
     runtime: 'claude',
     provider: 'claude',
@@ -320,6 +335,7 @@ export async function readClaudeModels(
     input,
     {
       kind: 'session',
+      ...(session.profile ? { profile: session.profile.name } : {}),
       machine: m.rcPrefix,
       runtime: 'claude',
       provider: 'claude',

@@ -1,3 +1,4 @@
+export type { OperationEffect } from 'stitchkit/contract';
 export { ControlTargetSchema } from './control/schema/core.ts';
 export {
   ControlActionReceiptSchema,
@@ -29,11 +30,6 @@ export { ControlWaitResultSchema } from './control/schema/runtimeOps.ts';
 // Whether each operation reads or writes, read from the contract, so a transport projects its
 // descriptor instead of keeping a list beside it.
 export { controlServiceEffects } from './control/schema/service.ts';
-export {
-  type ControlEndpointMeta,
-  type ServiceEffect,
-  ServiceEffectSchema,
-} from './control/schema/serviceEffect.ts';
 export { createInjectedControlClient } from './control/transport/boundary.ts';
 export {
   EXTERNAL_CONTENT_LIMITS,

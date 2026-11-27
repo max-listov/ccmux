@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { antigravityAvailability } from '../agent/antigravity/preflight.ts';
 import { resolveAgentSdk } from '../agent/claude/native/resolve.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { type RuntimeMode, runtimeModes } from './modes.ts';
@@ -41,6 +42,7 @@ export function runtimeAvailability(
     return answer(Boolean(m.codexBin && existsSync(m.codexBin)), 'runtime-not-configured');
   if (agent === 'opencode')
     return answer(Boolean(m.opencodeBin && existsSync(m.opencodeBin)), 'runtime-not-configured');
+  if (agent === 'antigravity') return antigravityAvailability(m);
   return answer(
     Object.values(m.launchRecipes).some((recipe) => recipe.custom !== undefined),
     'runtime-not-configured',

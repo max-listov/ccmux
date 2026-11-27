@@ -1,6 +1,11 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { runNativeCommand } from 'stitchkit/process';
+import { sanitizeProfileEnv } from 'stitchkit/agent-executor';
+import {
+  type CodexControlClient,
+  type CodexControlConnection,
+  createCodexDriver,
+} from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
 import type { ResolvedControlLaunch } from '../../config/launchRecipes.ts';
 import { privateRuntimeDirectory } from '../../runtime/store.ts';
@@ -9,8 +14,6 @@ import { atomicWrite } from '../../util/atomic.ts';
 import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
 import { ownedChildAlive } from './owned/child.ts';
 import { ownedCodexFlags } from './owned/launch.ts';
-import type { CodexAppRpc } from './rpc.ts';
-import { CodexAppUnavailable, connectCodexSocket } from './socket.ts';
 
 const NativeConfigSchema = z.object({
   config: z.object({
@@ -19,9 +22,12 @@ const NativeConfigSchema = z.object({
 });
 
 /** Native configuration, not a caller-provided endpoint, owns provider identity. */
-export async function nativeModelProvider(rpc: CodexAppRpc, cwd?: string): Promise<string> {
+export async function nativeModelProvider(
+  controls: Pick<CodexControlClient, 'readConfig'>,
+  cwd?: string,
+): Promise<string> {
   const read = NativeConfigSchema.parse(
-    await rpc.request('config/read', {
+    await controls.readConfig({
       includeLayers: false,
       ...(cwd === undefined ? {} : { cwd }),
     }),
@@ -35,11 +41,7 @@ const CATALOG_ROOT_PARENT = '/tmp';
 const CATALOG_ROOT = /^ccmux-catalog-(\d+)-[A-Za-z0-9]{6}$/;
 
 /**
- * Remove the directories of catalog reads whose process is gone. The read removes its own on every
- * exit it lives through, but a SIGKILL, an OOM kill or a forced exit skips that, and each one left an
- * empty directory in `/tmp` for good — one per killed daemon, measured across full test runs. The
- * name carries the creator's pid, so the next read can tell an abandoned directory from a live one
- * without guessing by age.
+ * Remove the directories of catalog reads whose process is gone.
  */
 export function sweepAbandonedCatalogRoots(
   parent = CATALOG_ROOT_PARENT,
@@ -65,45 +67,17 @@ export function sweepAbandonedCatalogRoots(
   return removed;
 }
 
-const LISTEN_POLL_MS = 20;
-
 /**
- * The provider's endpoint, once something listens on it.
- *
- * The socket path appears at bind() and the server listens a step later. On a loaded machine the
- * provider can be descheduled between the two, and a single connect inside that window is refused:
- * the whole read fails as "unavailable" with the caller's budget unspent — the shape of a test that
- * failed at load ~100 after 1.5 s of its 3 s. A refused or vanished endpoint is therefore "not
- * yet", retried until the caller's signal or the provider's exit ends the read; anything else — a
- * refused upgrade, a lost connection — is the provider's answer and stands. The managed runtime
- * does the same: its owner retries the connection until its admission deadline
- * (`owned/process.ts`).
+ * A bounded metadata process backed by `stitchkit/agent-executor/codex` (`unix-listen` +
+ * `connectControl`): no conversation, TUI, registration or writer, reaped on every exit including
+ * owner-loss SIGKILL.
  */
-async function connectWhenListening(socket: string, signal: AbortSignal): Promise<CodexAppRpc> {
-  for (;;) {
-    signal.throwIfAborted();
-    if (existsSync(socket)) {
-      try {
-        return await connectCodexSocket(socket, { signal, maxMessageBytes: 2 * 1024 * 1024 });
-      } catch (error) {
-        const notYet =
-          error instanceof CodexAppUnavailable &&
-          (error.kind === 'endpoint-not-listening' || error.kind === 'endpoint-absent');
-        if (!notYet) throw error;
-      }
-    }
-    await Bun.sleep(LISTEN_POLL_MS);
-  }
-}
-
-/** A bounded metadata process has no conversation, TUI, registration or writer. It uses the same
- * native flag and session-environment contracts as managed execution and is reaped on every exit. */
 export async function withCodexCatalogRuntime<T>(
   m: MachineConfig,
   launch: ResolvedControlLaunch,
   cwd: string,
   signal: AbortSignal,
-  read: (rpc: CodexAppRpc) => Promise<T>,
+  read: (controls: CodexControlConnection) => Promise<T>,
 ): Promise<T> {
   signal.throwIfAborted();
   if (!m.codexBin || !m.codexHome) throw new Error('Codex catalog runtime is not configured');
@@ -116,36 +90,27 @@ export async function withCodexCatalogRuntime<T>(
   if (recipe.refused.length) throw new Error('Catalog environment contains reserved names');
   sweepAbandonedCatalogRoots();
   const root = mkdtempSync(join(CATALOG_ROOT_PARENT, `ccmux-catalog-${process.pid}-`));
+  privateRuntimeDirectory(root);
   const socket = join(root, 'rpc.sock');
-  let rpc: CodexAppRpc | undefined;
-  const disposal = new AbortController();
-  const stopReason = new Error('Catalog read completed');
-  const lifetime = AbortSignal.any([signal, disposal.signal]);
-  let command: Promise<never> | undefined;
-  let diagnostic = Buffer.alloc(0);
+  let connection: CodexControlConnection | undefined;
   try {
-    command = runNativeCommand({
+    const driver = createCodexDriver({
       executable: m.codexBin,
-      args: ['app-server', '--listen', `unix://${socket}`, ...flags],
-      cwd,
-      env: { ...recipe.env, CODEX_HOME: m.codexHome },
-      signal: lifetime,
-      ownerLoss: 'terminate',
-      stop: { target: 'group', graceMs: 2_000 },
-      onOutput(bytes, channel) {
-        // Only a bounded private tail survives; provider output never reaches public responses.
-        if (channel === 'stderr') diagnostic = Buffer.concat([diagnostic, bytes]).subarray(-16_384);
-      },
-    }).then((result) => {
-      throw new Error(`Catalog runtime exited (${result.exitCode}, ${result.signal})`);
+      transport: { kind: 'unix-listen', socketPath: socket },
+      serverArgs: flags,
+      ambient: recipe.env,
     });
-    return await Promise.race([
-      command,
-      (async () => {
-        rpc = await connectWhenListening(socket, lifetime);
-        return await read(rpc);
-      })(),
-    ]);
+    connection = await driver.connectControl({
+      profile: {
+        engine: 'codex',
+        profileId: 'catalog',
+        home: m.codexHome,
+        env: sanitizeProfileEnv(recipe.env),
+      },
+      cwd,
+      signal,
+    });
+    return await read(connection);
   } catch (error) {
     const directory = join(m.stateDir, 'control');
     privateRuntimeDirectory(directory);
@@ -154,18 +119,14 @@ export async function withCodexCatalogRuntime<T>(
       JSON.stringify({
         observedAt: new Date().toISOString(),
         reason: String(error).slice(0, 2_048),
-        stderr: diagnostic.toString('utf8'),
+        stderr: '',
       }),
       0o600,
     );
     throw error;
   } finally {
-    rpc?.close();
-    disposal.abort(stopReason);
     try {
-      await command?.catch((error: unknown) => {
-        if (error !== stopReason && error !== signal.reason) throw error;
-      });
+      await connection?.close();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

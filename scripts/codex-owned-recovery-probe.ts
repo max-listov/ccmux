@@ -1,11 +1,18 @@
 #!/usr/bin/env bun
 import { readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { readCodexAppThread, startCodexAppTurn } from '../src/agent/codex/appServer.ts';
+import type { CodexNotificationEvent } from 'stitchkit/agent-executor/codex';
+import { readCodexAppThread } from '../src/agent/codex/appServer.ts';
 import { ownedCodexSocket, ownedCodexStatusPath } from '../src/agent/codex/owned/paths.ts';
 import { readCodexRuntime } from '../src/agent/codex/owned/read.ts';
-import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import {
+  codexExecutorProfile,
+  connectOwnedCodex,
+  createCodexSocketDriver,
+  OWNED_CODEX_MAX_FRAME_BYTES,
+} from '../src/agent/codex/owned/rpc.ts';
 import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
+import { startOwnedCodexTurn } from '../src/agent/codex/owned/thread.ts';
 import { inspectNativeCodexInput } from '../src/agent/codex/pane.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
@@ -64,9 +71,19 @@ async function until(label: string, condition: () => boolean, timeout = 60_000) 
   }
 }
 
+const openProbeSession = (onNotification?: (event: CodexNotificationEvent) => void) =>
+  createCodexSocketDriver(ownedCodexSocket(m, s.name), {
+    maxFrameBytes: OWNED_CODEX_MAX_FRAME_BYTES,
+    ...(onNotification === undefined ? {} : { onNotification }),
+  }).open({
+    profile: codexExecutorProfile(m, s),
+    cwd: s.dir,
+    nativeThreadId: s.uuid,
+  });
+
 const baseline = snapshot();
 check(baseline?.state === 'idle', 'Known positive live idle required');
-let rpc = await connectOwnedCodex(m, s);
+let rpc = await openProbeSession();
 check((await readCodexAppThread(rpc, s.uuid)).status.type === 'idle', 'Native baseline not idle');
 check(
   inspectNativeCodexInput(await capturePaneStyled(m, s.name, 40)).state === 'deliverable',
@@ -111,9 +128,8 @@ progress('same-writer-and-native-feed', {
   events: feed.map(({ event, threadId }) => ({ event, threadId })),
 });
 
-const active = await startCodexAppTurn(
+const active = await startOwnedCodexTurn(
   rpc,
-  s.uuid,
   crypto.randomUUID(),
   codexTextInput(
     'Run sleep 8, then reply DAEMON_CONTINUITY. Do not change files or message anyone.',
@@ -145,7 +161,7 @@ check(
     args.stdout.toString().includes(`app-server --listen unix://${ownedCodexSocket(m, s.name)}`),
   'Crash target does not match isolated provider',
 );
-rpc.close();
+await rpc.close();
 const killedAt = performance.now();
 process.kill(baseline.providerPid, 'SIGKILL');
 await until('dead producer expires', () => readOwnedCodexStatus(m, s).status !== 'live', 5_000);
@@ -163,9 +179,12 @@ check(
   loadSessions(m).find((row) => row.name === s.name)?.uuid === s.uuid,
   'Crash recovery changed UUID',
 );
-rpc = await connectOwnedCodex(m, s);
-check((await readCodexAppThread(rpc, s.uuid)).id === s.uuid, 'Recovered native identity mismatch');
-rpc.close();
+const recoveredControl = await connectOwnedCodex(m, s);
+check(
+  (await readCodexAppThread(recoveredControl, s.uuid)).id === s.uuid,
+  'Recovered native identity mismatch',
+);
+await recoveredControl.close();
 progress('provider-crash-resume', {
   threadId: s.uuid,
   beforePid: baseline.providerPid,
@@ -181,16 +200,13 @@ let completedAt: number | null = null,
   loadTurn: string | null = null;
 let sawWorking = false,
   sawCompletion = false;
-rpc = await connectOwnedCodex(m, s, {
-  onEvent(event) {
-    if (event.method !== 'turn/completed') return;
-    const value = event.params as { threadId?: unknown; turn?: { id?: unknown } };
-    if (value.threadId === s.uuid && value.turn?.id === loadTurn) completedAt = Date.now();
-  },
+// Native notifications are connection-scoped: opening the session resumes the already-owned thread
+// with excludeTurns=true before measuring event delivery.
+rpc = await openProbeSession((event) => {
+  if (event.method !== 'turn/completed') return;
+  const value = event.params as { threadId?: unknown; turn?: { id?: unknown } };
+  if (value.threadId === s.uuid && value.turn?.id === loadTurn) completedAt = Date.now();
 });
-// Native notifications are connection-scoped: rejoin the already-owned thread before measuring
-// event delivery. Starting a turn from an unjoined RPC client alone is not a subscription.
-await rpc.request('thread/resume', { threadId: s.uuid, excludeTurns: true });
 const started = performance.now(),
   cpu = process.cpuUsage(),
   initialRss = process.memoryUsage().rss;
@@ -200,9 +216,8 @@ let calls = 0,
 try {
   while (performance.now() - started < 60_000) {
     if (loadTurn === null && performance.now() - started >= 1000)
-      loadTurn = await startCodexAppTurn(
+      loadTurn = await startOwnedCodexTurn(
         rpc,
-        s.uuid,
         crypto.randomUUID(),
         codexTextInput('Reply READER_LOAD_TEST briefly. No tools, files or messages.'),
       );
@@ -230,7 +245,7 @@ try {
     await Bun.sleep(100);
   }
 } finally {
-  rpc.close();
+  await rpc.close();
 }
 check(
   sawWorking && sawCompletion && deliveredAfterMs !== null,

@@ -137,5 +137,7 @@ export function initialTurnOptions(
       return { runtime: 'custom', model };
     case 'claude':
       return { runtime: 'claude', model };
+    case 'antigravity':
+      return { runtime: 'antigravity', model };
   }
 }

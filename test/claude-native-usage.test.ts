@@ -1,78 +1,39 @@
 import { expect, test } from 'bun:test';
-import { NativeProjection } from '../src/agent/claude/native/projection.ts';
-import { nativeUsage, type SdkModelUsage, turnDelta } from '../src/agent/claude/native/usage.ts';
+import { NativeProjection, nativeUsageFromTurn } from '../src/agent/claude/native/projection.ts';
 
-const usage = (over: Partial<SdkModelUsage> = {}): SdkModelUsage => ({
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheReadInputTokens: 0,
-  cacheCreationInputTokens: 0,
-  ...over,
-});
-
-test('a turn is what changed, not the running total', () => {
-  // Counts accumulate for the life of a streaming session. Publishing the total as the turn's spend
-  // inflates every turn after the first, and the error compounds down the conversation.
-  const before = { sonnet: usage({ inputTokens: 100, outputTokens: 40 }) };
-  const now = { sonnet: usage({ inputTokens: 175, outputTokens: 55 }) };
-  expect(turnDelta(now, before)).toMatchObject({ inputTokens: 75, outputTokens: 15 });
-});
-
-test('spend across several models is one turn', () => {
-  const now = { a: usage({ inputTokens: 10 }), b: usage({ inputTokens: 5, outputTokens: 7 }) };
-  expect(turnDelta(now, {})).toMatchObject({ inputTokens: 15, outputTokens: 7 });
-});
-
-test('a total that went down is a reset, not a negative turn', () => {
-  // A cleared conversation or a freshly resumed session restarts the running count. The honest
-  // reading of the next turn is its own absolute spend; a subtraction would report a negative one.
-  const before = { a: usage({ inputTokens: 900 }) };
-  const now = { a: usage({ inputTokens: 30 }) };
-  expect(turnDelta(now, before).inputTokens).toBe(30);
-});
-
-test('a genuine zero survives, because the provider did report it', () => {
-  // The reference implementation drops zeros to avoid fabricating them. That erases a real
-  // measurement: a turn served entirely from cache legitimately spends zero fresh input tokens.
-  const mapped = nativeUsage({ reported: true, delta: usage({ cacheReadInputTokens: 500 }) });
-  expect(mapped).toMatchObject({ inputTokens: 0, outputTokens: 0, cachedInputTokens: 500 });
-});
-
-test('a turn that produced no result reports nothing at all', () => {
-  // A crashed or aborted turn carries zeroed counts. Writing them as zero would state a measurement
-  // of nothing where there was no measurement.
-  expect(nativeUsage({ reported: false })).toBeNull();
-  expect(nativeUsage({ reported: false, delta: usage({ inputTokens: 0 }) })).toBeNull();
-});
-
-test('counts the SDK does not carry are never invented', () => {
-  const mapped = nativeUsage({
-    reported: true,
-    delta: usage({ inputTokens: 12, outputTokens: 3 }),
+test('turn usage sums per-model additive deltas from stitchkit without fabricating absent counters', () => {
+  const mapped = nativeUsageFromTurn({
+    turnId: 'turn-1',
+    modelUsageDelta: {
+      a: {
+        inputTokens: 10,
+        outputTokens: 4,
+        cacheReadInputTokens: 40,
+        cacheCreationInputTokens: 60,
+      },
+      b: { inputTokens: 5, outputTokens: 3 },
+    },
   });
-  // No counterpart exists; the nearest value the SDK offers is explicitly an estimate.
-  expect(mapped?.reasoningOutputTokens).toBeNull();
-  // Summing input and output would look like a provider figure and be wrong wherever the provider
-  // counts something those two do not cover.
-  expect(mapped?.totalTokens).toBeNull();
-});
-
-test('cache reads and cache writes are one cached figure', () => {
-  const mapped = nativeUsage({
-    reported: true,
-    delta: usage({ cacheReadInputTokens: 40, cacheCreationInputTokens: 60 }),
+  expect(mapped).toEqual({
+    inputTokens: 15,
+    outputTokens: 7,
+    cachedInputTokens: 100,
+    reasoningOutputTokens: null,
+    totalTokens: null,
   });
-  expect(mapped?.cachedInputTokens).toBe(100);
 });
 
-test('a completed turn reports its spend into the content stream, like every other runtime', () => {
-  // The numbers were never missing on this runtime — they rode on a projection nobody scans for
-  // cost, so five threads read as free rather than unreported. This asserts the surface consumers
-  // actually read, at the item id the other runtimes use, with the accounting scope declared: a
-  // per-turn figure taken for a session total is wrong by every previous turn.
-  // A recorder rather than a real buffer: what must be true is that the projection CALLS lifecycle
-  // with the record the other runtimes emit, and the argument shape is pinned by the compiler
-  // against the buffer's own signature.
+test('a genuine zero survives, while absent modelUsageDelta returns null', () => {
+  expect(
+    nativeUsageFromTurn({
+      turnId: 'turn-1',
+      modelUsageDelta: { sonnet: { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 500 } },
+    }),
+  ).toMatchObject({ inputTokens: 0, outputTokens: 0, cachedInputTokens: 500 });
+  expect(nativeUsageFromTurn({ turnId: 'turn-1' })).toBeNull();
+});
+
+test('a completed turn reports its per-turn spend into the content stream and keeps terminal usage null', () => {
   const calls: unknown[][] = [];
   const projection = new NativeProjection();
   projection.turnId = 'turn-1';
@@ -80,11 +41,17 @@ test('a completed turn reports its spend into the content stream, like every oth
     buffer: { lifecycle: (...args: unknown[]) => calls.push(args) },
     publish: () => undefined,
   } as never;
-  projection.record(
-    { type: 'result', modelUsage: { 'claude-x': { inputTokens: 10, outputTokens: 4 } } } as never,
-    'terminal',
-    false,
-  );
+  projection.applyTurnUsage({
+    turnId: 'turn-1',
+    modelUsageDelta: { 'claude-x': { inputTokens: 10, outputTokens: 4 } },
+  });
+  projection.applyDelta({
+    type: 'turn-end',
+    turnId: 'turn-1',
+    itemId: 'turn-1:end',
+    outcome: 'completed',
+    raw: { source: 'claude', type: 'result' },
+  });
   const usage = calls.filter((call) => call[0] === 'usage');
   expect(usage).toHaveLength(1);
   expect(usage[0]?.[1]).toBe('turn-1');
@@ -94,7 +61,5 @@ test('a completed turn reports its spend into the content stream, like every oth
     inputTokens: 10,
     outputTokens: 4,
   });
-  // And the terminal record no longer carries the same figure: one number in two places is two
-  // authorities on it.
   expect(projection.items.filter((item) => item.kind === 'terminal')[0]?.usage).toBeNull();
 });

@@ -32,7 +32,7 @@ export const NativeHistoryEntrySchema = z
   .strict();
 export const NativeHistoryPageSchema = z
   .object({
-    runtime: z.enum(['codex', 'opencode', 'custom', 'claude']),
+    runtime: z.enum(['codex', 'opencode', 'custom', 'claude', 'antigravity']),
     nativeId: Id,
     revision: z.number().int().nonnegative(),
     entries: z.array(NativeHistoryEntrySchema).max(HISTORY_LIMITS.entries),

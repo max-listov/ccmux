@@ -74,7 +74,7 @@ function SessionCardImpl({
     const textW = Math.max(8, cardWidth - 4); // usable text width inside │ … │
     // header sewn into the top border: ╭─ name ─── ◔ status ─────╮ — measured by DISPLAY
     // width (not .length) and the name clipped, so the top ╮ corner aligns with the body │.
-    const badge = `${statusMark(status, spin)} ${status.label}`;
+    const badge = `${statusMark(status, spin)} ${status.label}${s.pinned === true ? ' · pin' : ''}`;
     const name = clipWidth(s.name, Math.max(3, cardWidth - 12 - dispWidth(badge)));
     const trail = '─'.repeat(Math.max(0, cardWidth - 10 - dispWidth(name) - dispWidth(badge)));
     // preview: up to TWO wrapped lines (always renders 2 rows → stable card height)
@@ -301,14 +301,16 @@ export const SessionCard = memo(SessionCardImpl, (a, b) => {
     x.row.model !== y.row.model ||
     x.row.contextLabel !== y.row.contextLabel ||
     x.row.uptimeText !== y.row.uptimeText ||
-    x.row.lifecycleError !== y.row.lifecycleError
+    x.row.lifecycleError !== y.row.lifecycleError ||
+    x.row.sleeping !== y.row.sleeping
   )
     return false;
   if (x.activityText !== y.activityText) return false;
   if (
     x.row.session.name !== y.row.session.name ||
     x.row.session.dir !== y.row.session.dir ||
-    x.row.session.agent !== y.row.session.agent
+    x.row.session.agent !== y.row.session.agent ||
+    Boolean(x.row.session.pinned) !== Boolean(y.row.session.pinned)
   )
     return false;
   const ps = x.status;

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ContentBuffer } from '../../content/buffer.ts';
 import { projectNativeRequest, publicRequestId } from './owned/native.ts';
-import type { CodexRpcEvent, CodexRpcRequest } from './rpc.ts';
+import type { CodexRpcEvent, CodexRpcRequest } from './owned/rpc.ts';
 import { CodexToolFieldsSchema, codexToolObservation } from './toolObservation.ts';
 
 const Id = z.string().min(1).max(256);

@@ -8,14 +8,14 @@ export function delegatedCodexPolicy(session: Session) {
   const access = session.delegation.policy.access;
   if (access === 'full-access') delegationRefused('Unconfined delegation is unsupported');
   return {
-    approvalPolicy: 'never',
+    approvalPolicy: 'never' as const,
     cwd: session.dir,
     runtimeWorkspaceRoots: [session.dir],
     sandboxPolicy:
       access === 'read-only'
-        ? { type: 'readOnly', networkAccess: false }
+        ? { type: 'readOnly' as const, networkAccess: false }
         : {
-            type: 'workspaceWrite',
+            type: 'workspaceWrite' as const,
             writableRoots: [session.dir],
             networkAccess: false,
             excludeTmpdirEnvVar: true,

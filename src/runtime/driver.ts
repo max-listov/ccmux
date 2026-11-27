@@ -1,3 +1,5 @@
+import { preflightAntigravity } from '../agent/antigravity/preflight.ts';
+import { runAntigravityProcess } from '../agent/antigravity/process.ts';
 import { runClaudeNativeProcess } from '../agent/claude/native/process.ts';
 import { resolveAgentSdk } from '../agent/claude/native/resolve.ts';
 import { preflightOwnedCodex } from '../agent/codex/owned/launch.ts';
@@ -49,6 +51,12 @@ const drivers: Partial<Record<Session['agent'], ManagedRuntimeDriver>> = {
       preflightOpenCode(m);
     },
     run: runOpenCodeProcess,
+  },
+  antigravity: {
+    preflight: (m, flags) => {
+      preflightAntigravity(m, flags);
+    },
+    run: runAntigravityProcess,
   },
 };
 

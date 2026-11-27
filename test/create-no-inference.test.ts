@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { sdkOptions } from '../src/agent/claude/native/sdk.ts';
+import { claudeSdkDriverConfig } from '../src/agent/claude/native/driver.ts';
 import { managedPeer } from '../src/chat/identity.ts';
 import { loadCreateReceipts } from '../src/control/createReceipts.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
@@ -126,18 +126,20 @@ test('provider boundary requires explicit selection and delegation, and isolates
   const result = await createControlSession(f.m, f.input, AbortSignal.timeout(5000), f.create);
   const child = loadSessions(f.m).find((s) => s.name === result.target.session);
   if (!child) throw new Error('missing child');
-  const options = sdkOptions({
+  const config = claudeSdkDriverConfig({
     m: f.m,
     session: child,
-    env: {},
-    started: false,
-    canUseTool: async () => ({ behavior: 'deny', message: 'test' }),
+    sdk: { query: (() => ({}) as never) as never },
   });
-  expect(options.model).toBe('haiku');
-  expect(options.sessionId).toBe(result.nativeSession?.id);
-  expect(options.settingSources).toEqual([]);
-  expect(options.plugins).toEqual([]);
-  expect(options.mcpServers).toEqual({});
-  expect(options.tools).toEqual(['Read', 'Glob', 'Grep']);
-  expect(Object.keys(options.hooks ?? {})).toEqual(['PreToolUse']);
+  expect(config.model).toBe('haiku');
+  expect(child.nativeSession?.id).toBe(result.nativeSession?.id);
+  expect(config.settingSources).toEqual([]);
+  expect(config.plugins).toEqual([]);
+  expect(config.mcpServers).toEqual({});
+  expect(config.tools).toEqual(['Read', 'Glob', 'Grep']);
+  expect(Object.keys(config.hooks ?? {})).toEqual(['PreToolUse']);
+  expect(config.verifyDelegation).toEqual({
+    requireHooksApplied: true,
+    requireNoMcpServers: true,
+  });
 });

@@ -112,6 +112,7 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
       promptModules: [],
     },
     running,
+    sleeping: false,
     atPrompt: null,
     waitingFor: null, // external sessions are observed, never driven — we do not read their menus
     state: 'external',
@@ -178,6 +179,7 @@ export function buildItems(
         isWorking: row.state === 'working' || recentlyActive(row.lastActivityMs),
         lastMessage: row.lastMessage,
         blocked: row.state === 'blocked',
+        sleeping: row.sleeping,
         atPrompt: row.atPrompt,
       }),
       activityText: row.lastActivityMs !== null ? fmtAge(row.lastActivityMs) : null,

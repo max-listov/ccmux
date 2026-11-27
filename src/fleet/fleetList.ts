@@ -101,7 +101,7 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
     // the fleet view simply relabels the state, which is the only thing it says differently.
     sessions: local.map((r) => ({
       ...toListItem(m, r),
-      state: rowStateLabel(r.state, r.running, r.session.archived),
+      state: rowStateLabel(r.state, r.running, r.session.archived, r.sleeping),
       uptime: { text: r.running ? r.uptimeText : null, seconds: r.uptimeSeconds },
     })),
   };
@@ -187,7 +187,7 @@ export function peerListMachine(
     // halves of the map are read by the same rule.
     sessions: parsed.sessions.map((session) => ({
       ...session,
-      state: rowStateLabel(session.state, session.running, session.archived),
+      state: rowStateLabel(session.state, session.running, session.archived, session.sleeping),
     })),
   };
 }

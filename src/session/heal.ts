@@ -1,13 +1,20 @@
 import { forkedUuid } from '../agent/index.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { delegationStopped } from '../delegation/cancel.ts';
+import { withNativeAdmission } from '../runtime/admission.ts';
 import { listAgentLiveness } from '../tmux/agentPane.ts';
 import { killSession } from '../tmux/tmux.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { log } from '../util/log.ts';
 import { VERSION } from '../util/version.ts';
 import { clearBlockOfOlderVersion, readLifecycleBlockForSession } from './lifecycleBlocks.ts';
-import { findSession, loadSessions, updateSessionUuid } from './registry.ts';
+import {
+  backfillRegistrationGenerations,
+  findSession,
+  loadSessions,
+  updateSessionUuid,
+} from './registry.ts';
+import { reconcileSleepRecord } from './sleep/operations.ts';
 import { sleepBlocksStart } from './sleep/store.ts';
 import { startSession } from './start.ts';
 
@@ -15,6 +22,8 @@ type EnsureDeps = {
   sessions: () => Session[];
   /** Sessions whose agent runs, and sessions that exist while their agent's pane is gone. */
   observe: () => Promise<{ live: Set<string>; agentGone: Set<string>; uncertain?: Set<string> }>;
+  /** Optional predicate for intentionally sleeping sessions skipped before followFork/retire/start. */
+  shouldSkip?: (s: Session) => boolean;
   /** Take down a session whose agent is gone, so it can be started again. */
   retire: (name: string) => Promise<void>;
   // Follow-the-fork: if the agent moved the conversation to a new uuid, re-pin the
@@ -30,7 +39,7 @@ type EnsureDeps = {
 export async function ensureOnce(deps: EnsureDeps): Promise<void> {
   const { live, agentGone, uncertain } = await deps.observe();
   for (const s of deps.sessions()) {
-    if (s.archived) continue;
+    if (s.archived || deps.shouldSkip?.(s) === true) continue;
     const cur = await deps.followFork(s);
     // A session tmux reported in a form we could not read is neither up nor down: acting on it —
     // taking it down, or starting it again every second — would act on a guess.
@@ -80,9 +89,19 @@ export async function startHealed(
  *  session kept alive by another window after its agent died. The daemon runs it every `ensureInterval` (30 s by default). */
 export async function healOnce(): Promise<void> {
   const m = loadMachineConfig(); // fresh
+  await backfillRegistrationGenerations(m).catch((error: unknown) => {
+    log.warn({ msg: 'heal: could not backfill registration generations', err: String(error) });
+  });
+  for (const s of loadSessions(m)) {
+    if (s.archived) continue;
+    await reconcileSleepRecord(m, s).catch((error: unknown) => {
+      log.warn({ msg: 'heal: could not reconcile sleep record', name: s.name, err: String(error) });
+    });
+  }
   await ensureOnce({
     sessions: () => loadSessions(m), // fresh — no module-level cache
     observe: () => listAgentLiveness(m), // one fork per tick (P3-15)
+    shouldSkip: (s) => sleepBlocksStart(m, s),
     retire: async (name) => {
       log.warn({ msg: 'heal: agent pane gone while the session lived on — taking it down', name });
       await killSession(m, name);
@@ -90,14 +109,18 @@ export async function healOnce(): Promise<void> {
     followFork: async (s) => {
       const next = forkedUuid(s, m, loadSessions(m));
       if (next === null) return s;
-      log.info({
-        msg: 'follow fork: conversation moved — re-pinning',
-        name: s.name,
-        from: s.uuid,
-        to: next,
+      return withNativeAdmission(m, s, async () => {
+        const fresh = findSession(loadSessions(m), s.name) ?? s;
+        if (fresh.archived || sleepBlocksStart(m, fresh)) return fresh;
+        log.info({
+          msg: 'follow fork: conversation moved — re-pinning',
+          name: fresh.name,
+          from: fresh.uuid,
+          to: next,
+        });
+        await updateSessionUuid(m, fresh.name, next);
+        return { ...fresh, uuid: next };
       });
-      await updateSessionUuid(m, s.name, next);
-      return { ...s, uuid: next };
     },
     start: (name, dir) => startHealed(m, name, dir),
   });

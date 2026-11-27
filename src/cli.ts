@@ -72,6 +72,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       const own = (await import('./commands/flags.ts')).parseFlags('new', positionals, [2, 2]);
       const agent = own.str('agent');
       const envFile = own.str('env-file');
+      const profile = own.str('profile');
       const runtime = own.str('runtime');
       const timeoutSec = own.int('timeout');
       return (await import('./commands/new.ts')).cmdNew(
@@ -82,6 +83,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
           router: own.bool('router'),
           ...(agent === undefined ? {} : { agent }),
           ...(envFile === undefined ? {} : { envFile }),
+          ...(profile === undefined ? {} : { profile }),
           ...(runtime === undefined ? {} : { runtime }),
           ...(timeoutSec === undefined ? {} : { timeoutSec }),
         },
@@ -103,6 +105,16 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
         flags.bool('force'),
       );
     }
+    case 'sleep':
+      return (await import('./commands/sleep.ts')).cmdSleep(rest);
+    case 'wake':
+      return (await import('./commands/sleep.ts')).cmdWake(rest);
+    case 'pin':
+      return (await import('./commands/sleep.ts')).cmdPin(rest, true);
+    case 'unpin':
+      return (await import('./commands/sleep.ts')).cmdPin(rest, false);
+    case 'attach':
+      return (await import('./commands/sleep.ts')).cmdAttach(rest);
     case 'restart': {
       // One session, or every session on this machine — never both.
       const flags = (await import('./commands/flags.ts')).parseFlags(
@@ -175,6 +187,8 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
       return (await import('./commands/doctor.ts')).cmdDoctor(rest);
     case 'fleet':
       return (await import('./commands/fleetList.ts')).cmdFleet(rest);
+    case 'profiles':
+      return (await import('./commands/profiles.ts')).cmdProfiles(rest);
     case 'accounts':
       return (await import('./commands/accountsCommand.ts')).cmdAccounts(rest);
     case 'external':

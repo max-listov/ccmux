@@ -180,11 +180,22 @@ export function controlServices(
         );
       return operations.cancelDelegation(input, signal);
     },
-    'session.idle': ({ input }) => operations.idle(input),
+    'session.idle': ({ input, signal, principal }) =>
+      atTarget('session.idle', addressOf(input.target), input, principal, signal, () =>
+        operations.idle(input, signal),
+      ),
     'session.sleep': ({ input, signal, principal }) =>
-      mutate(principal, input.target, () => operations.sleep(input, signal)),
+      atTarget('session.sleep', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () => operations.sleep(input, signal)),
+      ),
     'session.wake': ({ input, signal, principal }) =>
-      mutate(principal, input.target, () => operations.wake(input, signal)),
+      atTarget('session.wake', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () => operations.wake(input, signal)),
+      ),
+    'session.pin': ({ input, signal, principal }) =>
+      atTarget('session.pin', addressOf(input.target), input, principal, signal, () =>
+        mutate(principal, input.target, () => operations.pin(input, signal)),
+      ),
     'session.start': ({ input, signal, principal }) =>
       atTarget('session.start', addressOf(input.target), input, principal, signal, () =>
         mutate(principal, input.target, () => operations.start(input, signal)),

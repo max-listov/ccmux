@@ -36,7 +36,7 @@ test('no command asks another machine itself', () => {
   const offenders: string[] = [];
   for (const file of new Bun.Glob('**/*.{ts,tsx}').scanSync(commands))
     for (const [name] of readFileSync(join(commands, file), 'utf8').matchAll(
-      /\b(?:runPeer|askPeer|runRemote|runRemoteAdapter)\b/g,
+      /\b(?:runPeer|askPeer|runRemote|runRemoteTransport)\b/g,
     ))
       offenders.push(`${file}: ${name}`);
   expect(offenders).toEqual([]);

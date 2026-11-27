@@ -85,6 +85,13 @@ export const NativeTurnOptionsSchema = z.discriminatedUnion('runtime', [
       variant: z.string().min(1).max(128).optional(),
     })
     .strict(),
+  z
+    .object({
+      runtime: z.literal('antigravity'),
+      model: NativeModelSelectionSchema,
+      effort: z.string().min(1).max(64).optional(),
+    })
+    .strict(),
 ]);
 export type NativeModelSelection = z.infer<typeof NativeModelSelectionSchema>;
 export type NativeTurnOptions = z.infer<typeof NativeTurnOptionsSchema>;

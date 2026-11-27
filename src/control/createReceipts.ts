@@ -5,6 +5,7 @@ import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { stableJson } from '../agent/launch/launchInputs.ts';
 import { AgentKindSchema } from '../chat/identitySchema.ts';
+import { ClaudeProfileBindingSchema } from '../config/claudeProfileSchema.ts';
 import type { ResolvedControlLaunch } from '../config/launchRecipes.ts';
 import { LaunchRecipeMetadataSchema, ModelSelectionSchema } from '../config/launchSchema.ts';
 import { type NativeForkSource, NativeForkSourceSchema } from '../context/fork.ts';
@@ -31,6 +32,7 @@ export const CreateRowSchema = z
     workspace: z.string(),
     flags: z.array(z.string()),
     envFile: z.string().min(1).optional(),
+    profile: ClaudeProfileBindingSchema.optional(),
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     initialization: z.literal('no-inference').optional(),
@@ -52,7 +54,10 @@ export type CreateRow = z.infer<typeof CreateRowSchema>;
 
 export type ForkAdmission = {
   source: NativeForkSource;
-  launch: ResolvedControlLaunch & { applicationPolicy?: ApplicationPolicyMetadata };
+  launch: ResolvedControlLaunch & {
+    applicationPolicy?: ApplicationPolicyMetadata;
+    profile?: Session['profile'];
+  };
 };
 
 export const StoreSchema = z.array(CreateRowSchema).max(256);

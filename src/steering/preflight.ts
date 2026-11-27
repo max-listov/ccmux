@@ -1,7 +1,7 @@
+import type { CodexControlClient } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
 import { ThreadStatusSchema } from '../agent/codex/appServer.ts';
 import { isOwnedCodex } from '../agent/codex/owned/paths.ts';
-import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import { loadCursors } from '../chat/cursors.ts';
 import { managedPeer, managedPeerKey } from '../chat/identity.ts';
 import { loadLedger } from '../chat/ledger.ts';
@@ -49,13 +49,13 @@ export function requireSteeringTurn(
 
 /** A direct read narrows the projection race; expectedTurnId remains the actual atomic precondition. */
 export async function requireNativeSteeringTurn(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlClient, 'readThread'>,
   input: SteeringInput,
 ): Promise<void> {
   const response = z
     .object({ thread: z.object({ id: z.string(), status: ThreadStatusSchema }) })
     .parse(
-      await rpc.request('thread/read', {
+      await controls.readThread({
         threadId: input.target.threadId,
         includeTurns: false,
       }),

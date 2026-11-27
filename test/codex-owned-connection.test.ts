@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { OwnedCodexConnection } from '../src/agent/codex/owned/connection.ts';
 import { supportsOwnedCodexVersion } from '../src/agent/codex/owned/launch.ts';
 import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
-import { OWNED_CODEX_OMIT_NOTIFICATIONS } from '../src/agent/codex/owned/rpc.ts';
 import { OwnedCodexStatusWriter, readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { readContent } from '../src/content/read.ts';
 import { ContentWriter } from '../src/content/store.ts';
@@ -84,7 +83,7 @@ function fixture(
           return;
         }
         const message = z
-          .object({ id: z.number().optional(), method: z.string(), params: z.unknown() })
+          .object({ id: z.number().optional(), method: z.string(), params: z.unknown().optional() })
           .parse(decoded);
         requests.push(message.method);
         const respond = (result: unknown) => ws.send(JSON.stringify({ id: message.id, result }));
@@ -92,11 +91,16 @@ function fixture(
           expect(message.params).toMatchObject({
             capabilities: {
               experimentalApi: true,
-              optOutNotificationMethods: OWNED_CODEX_OMIT_NOTIFICATIONS,
+              optOutNotificationMethods: expect.arrayContaining([
+                'app/list/updated',
+                'item/commandExecution/outputDelta',
+                'item/fileChange/outputDelta',
+              ]),
             },
           });
           respond({ userAgent: 'codex/0.147.0' });
         }
+        if (message.method === 'config/read') respond({ config: {} });
         if (message.method === 'thread/start') {
           const directory = join(codexSessionsDir, '2026', '08', '29');
           mkdirSync(directory, { recursive: true });
@@ -184,7 +188,10 @@ function fixture(
               : [{ name: 'Default', mode: 'default', model: null, reasoning_effort: null }],
           });
         if (message.method === 'thread/turns/list')
-          respond({ data: [{ id: 'turn-a', status: 'inProgress' }] });
+          respond({
+            data: [{ id: 'turn-a', status: 'inProgress', items: [], itemsView: 'summary' }],
+            nextCursor: null,
+          });
       },
     },
   });

@@ -15,6 +15,8 @@ export {
   MonitoringRowSchema,
   type MonitoringSnapshot,
   MonitoringSnapshotSchema,
+  type MonitoringStep,
+  MonitoringStepSchema,
   STATUS_MAX_AGE_MS,
   STATUS_MAX_BYTES,
   STATUS_MAX_ITEMS,

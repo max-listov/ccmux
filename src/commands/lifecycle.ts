@@ -3,6 +3,8 @@ import { forwardIfRemote } from '../fleet/forward.ts';
 import { restartSession, stopSession } from '../session/lifecycle.ts';
 import { clearLifecycleBlock } from '../session/lifecycleBlocks.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
+import { wakeSessionByName } from '../session/sleep/operations.ts';
+import { sleepUnsettled } from '../session/sleep/store.ts';
 import { startSession } from '../session/start.ts';
 import { lingeringNotice } from '../tmux/tmux.ts';
 import { refusesSelf } from './guard.ts';
@@ -22,6 +24,10 @@ export async function cmdStart(name: string | undefined): Promise<number> {
     return 1;
   }
   clearLifecycleBlock(m, name);
+  if (sleepUnsettled(m, s)) {
+    await wakeSessionByName(m, name);
+    return 0;
+  }
   await startSession(m, name, s.dir);
   return 0;
 }
@@ -82,6 +88,10 @@ export async function cmdRestartWorker(name: string | undefined): Promise<number
   const s = findSession(loadSessions(m), name);
   if (!s) return 1;
   clearLifecycleBlock(m, name);
+  if (sleepUnsettled(m, s)) {
+    await wakeSessionByName(m, name);
+    return 0;
+  }
   await startSession(m, name, s.dir);
   return 0;
 }

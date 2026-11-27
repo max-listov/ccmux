@@ -1,70 +1,8 @@
-import { z } from 'zod';
+import { createHash } from 'node:crypto';
+import * as executor from 'stitchkit/agent-executor';
+import { codexPlanLimits as readCodexPlanLimits } from 'stitchkit/agent-executor/codex';
+import type { PlanLimits, PlanWindow } from './planLimitsSchema.ts';
 import type { RateLimitsReport } from './rateLimitsReport.ts';
-
-/**
- * How much of a subscription plan a runtime says has been used, in one vocabulary.
- *
- * The two runtimes disagree about everything except the percentage. Claude names its windows
- * (`five_hour`, `seven_day`) and leaves the duration implied; Codex numbers them (`primary`,
- * `secondary`) and states the duration explicitly — and a measured `primary` turned out to be the
- * WEEKLY window, so rendering position as duration would have been an invention. So a window here
- * carries its provider's own key AND the duration when the provider declares one; neither is
- * derived from the other.
- *
- * The limit belongs to the ACCOUNT, not to the session that happened to ask. Ten sessions on one
- * account share one window, and ten identical bars beside them is a wrong model rather than a
- * cosmetic issue — which is why the projection travels next to the account label a reader groups on.
- */
-export const PlanWindowSchema = z
-  .object({
-    /** The provider's own name for the window. Never translated: a rename would be a claim. */
-    key: z.string().min(1).max(64),
-    /** A human label when the provider supplies one (a limit's name, a model's display name). */
-    label: z.string().min(1).max(128).nullable(),
-    percent: z.number().min(0).max(100),
-    /** Declared duration. Null when the provider only names the window and never states it. */
-    windowMinutes: z.number().int().positive().nullable(),
-    resetsAt: z.iso.datetime().nullable(),
-    /** The model this window is scoped to, when it is scoped to one. */
-    scope: z.string().min(1).max(128).nullable(),
-  })
-  .strict();
-export type PlanWindow = z.infer<typeof PlanWindowSchema>;
-
-/**
- * Three answers, kept apart because collapsing any two of them lies to an operator.
- *
- * `known` carries windows. `no-plan-limit` is a session that has no plan window at all — an API
- * key, Bedrock, Vertex — and is not "nothing used yet". `unpublished` is a runtime that does not
- * report the fact, which is not "no limit". A zero would read as an empty window in all three.
- */
-export const PlanLimitsSchema = z
-  .object({
-    answer: z.enum(['known', 'no-plan-limit', 'unpublished']),
-    plan: z.string().min(1).max(64).nullable(),
-    windows: z.array(PlanWindowSchema).max(32),
-    observedAt: z.iso.datetime(),
-    /**
-     * Where the numbers came from, because the same account is measured three ways and they do not
-     * age alike. `native` is the runtime's own session answering for its account; `statusline` is
-     * the status line of a terminal session (only sent after the session's first model response);
-     * `probe` is a one-shot call of the vendor's own CLI for an account that has no fresher answer.
-     * Defaulted, because records written before this field existed were all `native`.
-     */
-    source: z.enum(['native', 'statusline', 'probe']).default('native'),
-    /**
-     * Why the last attempt to refresh this sample did not replace it.
-     *
-     * A failed read leaves the previous measurement standing, which is right — a zero would be a
-     * claim nobody made. But standing silently makes "nobody has spent since" and "we have not been
-     * able to ask" the same picture, and they call for opposite reactions. Null is a sample that
-     * was refreshed the last time it was asked. Defaulted, because records written before this
-     * field existed carry no attempt at all.
-     */
-    error: z.string().max(160).nullable().default(null),
-  })
-  .strict();
-export type PlanLimits = z.infer<typeof PlanLimitsSchema>;
 
 /** How long a sample may stand before it is asked again, whichever runtime produced it. */
 export const PLAN_LIMITS_MAX_AGE_MS = 5 * 60_000;
@@ -101,10 +39,23 @@ export function planWindowExpired(window: PlanWindow, now: number): boolean {
  * that. `no-plan-limit` is not due either: a session with no plan window does not grow one.
  */
 export function planLimitsDue(limits: PlanLimits | null | undefined, now: number): boolean {
-  if (limits === null || limits === undefined) return true;
-  if (limits.answer !== 'known') return false;
-  if (now - Date.parse(limits.observedAt) >= PLAN_LIMITS_MAX_AGE_MS) return true;
-  return limits.windows.some((window) => planWindowExpired(window, now));
+  return executor.planLimitsDue({
+    now: new Date(now),
+    maxAgeMs: PLAN_LIMITS_MAX_AGE_MS,
+    limits:
+      limits == null
+        ? undefined
+        : {
+            answer: limits.answer,
+            observedAt: limits.observedAt,
+            ...(limits.error === null ? {} : { error: limits.error }),
+            windows: limits.windows.map((window) => ({
+              name: window.key,
+              usedPercent: window.percent,
+              ...(window.resetsAt === null ? {} : { resetsAt: window.resetsAt }),
+            })),
+          },
+  });
 }
 
 /** The same sample, carrying the reason its refresh failed. Never invents or clears a measurement. */
@@ -135,40 +86,21 @@ const percent = (value: unknown): number | null => {
   return Math.min(100, Math.round(value * 10) / 10);
 };
 
-const label = (value: unknown, max = 128): string | null => {
-  const text = typeof value === 'string' ? value.trim() : '';
-  return text.length === 0 ? null : text.slice(0, max);
-};
-
-/**
- * A window as either runtime writes one, read structurally rather than by a closed schema.
- *
- * The live Claude response carried buckets absent from the published types — `seven_day_cowork`,
- * `nimbus_quill`, and more — so a closed set would break on the server's next experiment. Known
- * windows are read by name; anything else shaped like a window is carried under its own key.
- */
+/** The percentage sampled by a passive status update. */
 const readWindow = (
   key: string,
-  raw: unknown,
-  extra?: { label?: string | null; scope?: string | null },
+  used: number | undefined,
+  resetsAt: number | null | undefined,
 ): PlanWindow | null => {
-  if (raw === null || typeof raw !== 'object') return null;
-  const source = raw as Record<string, unknown>;
-  const filled = percent(
-    source.utilization ?? source.usedPercent ?? source.used_percent ?? source.used_percentage,
-  );
+  const filled = percent(used);
   if (filled === null) return null;
-  const minutes = source.windowDurationMins ?? source.window_minutes ?? source.windowMinutes;
   return {
     key: key.slice(0, 64),
-    label: extra?.label ?? null,
+    label: null,
     percent: filled,
-    windowMinutes:
-      typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0
-        ? Math.round(minutes)
-        : null,
-    resetsAt: iso((source.resets_at ?? source.resetsAt) as string | number | null | undefined),
-    scope: extra?.scope ?? null,
+    windowMinutes: null,
+    resetsAt: iso(resetsAt),
+    scope: null,
   };
 };
 
@@ -188,7 +120,7 @@ export function statusLinePlanLimits(report: RateLimitsReport | null): PlanLimit
     ['seven_day', report.sevenDay],
   ] as const) {
     if (window === null) continue;
-    const read = readWindow(key, { used_percentage: window.pct, resets_at: window.resetsAt });
+    const read = readWindow(key, window.pct, window.resetsAt);
     if (read !== null) windows.push(read);
   }
   if (windows.length === 0) return null;
@@ -217,51 +149,40 @@ export function unpublishedPlanLimits(
   };
 }
 
-/**
- * What Claude's usage read reports, mapped without narrowing the server's vocabulary.
- *
- * `rate_limits_available: false` is its own answer and the reason this cannot just count windows:
- * an API-key session reports no windows AND no limit, and a subscription session that has used
- * nothing reports windows at zero. Those are opposite facts with the same window count.
- */
-export function claudePlanLimits(
-  reported: unknown,
-  now: number,
-  origin: PlanLimits['source'] = 'native',
+/** Project the executor's measured answer into the on-disk CCMux format. */
+export function projectExecutorPlanLimits(
+  limits: executor.PlanLimits,
+  source: PlanLimits['source'] = 'native',
 ): PlanLimits {
-  const observedAt = new Date(now).toISOString();
-  if (reported === null || typeof reported !== 'object') return unpublishedPlanLimits(now, origin);
-  const source = reported as Record<string, unknown>;
-  const plan = label(source.subscription_type, 64);
-  if (source.rate_limits_available === false)
-    return { answer: 'no-plan-limit', plan, windows: [], observedAt, source: origin, error: null };
-  const limits = source.rate_limits;
-  if (limits === null || typeof limits !== 'object') return unpublishedPlanLimits(now, origin);
-  const windows: PlanWindow[] = [];
-  for (const [key, raw] of Object.entries(limits as Record<string, unknown>)) {
-    if (key === 'model_scoped') {
-      for (const entry of Array.isArray(raw) ? raw : []) {
-        const scope = label((entry as Record<string, unknown> | null)?.display_name);
-        const window = readWindow(`model_scoped:${scope ?? 'unknown'}`, entry, {
-          ...(scope === null ? {} : { label: scope, scope }),
-        });
-        if (window) windows.push(window);
-      }
-      continue;
-    }
-    // `limits` and `spend` are the same numbers in a second arrangement, and `extra_usage` is a
-    // credit balance rather than a window. Carrying them would double-count what is already read.
-    if (key === 'limits' || key === 'spend' || key === 'extra_usage') continue;
-    const window = readWindow(key, raw);
-    if (window) windows.push(window);
-  }
+  const keys = new Set<string>();
   return {
-    answer: 'known',
-    plan,
-    windows: windows.slice(0, 32),
-    observedAt,
-    source: origin,
-    error: null,
+    answer: limits.answer,
+    observedAt: new Date(limits.observedAt).toISOString(),
+    plan: limits.plan?.slice(0, 64) ?? null,
+    error: limits.error?.slice(0, 160) ?? null,
+    source,
+    windows: limits.windows.map((window) => {
+      // Existing CCMux readers and stored samples use model_scoped for Claude's named windows.
+      const name =
+        window.scope && window.name.startsWith('model:')
+          ? `model_scoped:${window.name.slice(6)}`
+          : window.name === 'model_scoped'
+            ? 'model_scoped:unknown'
+            : window.name;
+      const key =
+        name.length <= 64 && !keys.has(name) && window.name !== 'model:unknown'
+          ? name
+          : `${name.slice(0, 47)}-${createHash('sha256').update(window.name).digest('hex').slice(0, 16)}`;
+      keys.add(key);
+      return {
+        key,
+        label: window.label?.slice(0, 128) ?? null,
+        scope: window.scope?.slice(0, 128) ?? null,
+        percent: Math.round(window.usedPercent * 10) / 10,
+        windowMinutes: window.windowDurationMins ?? null,
+        resetsAt: iso(window.resetsAt),
+      };
+    }),
   };
 }
 
@@ -278,7 +199,7 @@ export function mergeRateLimitEvent(
   info: { rateLimitType?: string; utilization?: number; resetsAt?: number },
   now: number,
 ): PlanLimits | undefined {
-  const window = readWindow(info.rateLimitType ?? 'unknown', info);
+  const window = readWindow(info.rateLimitType ?? 'unknown', info.utilization, info.resetsAt);
   if (!window) return current;
   const base = current ?? { answer: 'known' as const, plan: null, windows: [] };
   return {
@@ -291,82 +212,14 @@ export function mergeRateLimitEvent(
   };
 }
 
-/**
- * What Codex reports, from either place it writes it.
- *
- * `account/rateLimits/read` answers on demand in camelCase; the rollout's `token_count` carries the
- * same fact in snake_case after a turn. One reader for both, because a second one would drift.
- * `rateLimitsByLimitId` carries the per-model buckets, keyed by the id the server named them with.
- */
+/** Account RPC and rollout records share the executor's Codex reader. */
 export function codexPlanLimits(
   reported: unknown,
   now: number,
   origin: PlanLimits['source'] = 'native',
 ): PlanLimits {
-  const observedAt = new Date(now).toISOString();
-  if (reported === null || typeof reported !== 'object') return unpublishedPlanLimits(now, origin);
-  const outer = reported as Record<string, unknown>;
-  // The account read answers with an envelope — the main bucket beside a map of the per-model ones
-  // — while the rollout writes the bucket alone. Unwrapping here rather than at each caller is what
-  // keeps the per-model windows: reading the inner bucket and passing that on silently drops them.
-  const inner = outer.rateLimits;
-  const source: Record<string, unknown> =
-    inner !== null && typeof inner === 'object'
-      ? { ...(inner as Record<string, unknown>), rateLimitsByLimitId: outer.rateLimitsByLimitId }
-      : outer;
-  const primaryId = label(source.limitId ?? source.limit_id, 64);
-  const plan = label(source.planType ?? source.plan_type, 64);
-  const windows: PlanWindow[] = [];
-  const push = (id: string | null, bucket: Record<string, unknown>): void => {
-    const name = label(bucket.limitName ?? bucket.limit_name);
-    for (const position of ['primary', 'secondary'] as const) {
-      const raw = bucket[position];
-      const minutes =
-        raw !== null && typeof raw === 'object'
-          ? ((raw as Record<string, unknown>).windowDurationMins ??
-            (raw as Record<string, unknown>).window_minutes)
-          : undefined;
-      // A window is identified by its limit AND its length, never by the slot it arrived in.
-      // Measured: the account read puts the weekly window in `primary` while a pushed update puts
-      // that model's five hours in the same slot under the same limit id — so a positional key made
-      // the push overwrite the account's week with a five-hour figure, and the 91% simply vanished.
-      const suffix =
-        typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0
-          ? `${Math.round(minutes)}m`
-          : position;
-      const window = readWindow(`${id ?? 'limit'}:${suffix}`, raw, {
-        ...(name === null ? {} : { label: name }),
-      });
-      if (window) windows.push(window);
-    }
-  };
-  push(primaryId, source);
-  const byId = source.rateLimitsByLimitId ?? source.rate_limits_by_limit_id;
-  if (byId !== null && typeof byId === 'object')
-    for (const [id, bucket] of Object.entries(byId as Record<string, unknown>)) {
-      if (id === primaryId || bucket === null || typeof bucket !== 'object') continue;
-      push(id, bucket as Record<string, unknown>);
-    }
-  if (windows.length === 0) return unpublishedPlanLimits(now, origin);
-  return {
-    answer: 'known',
-    plan,
-    windows: windows.slice(0, 32),
-    observedAt,
-    source: origin,
-    error: null,
-  };
+  return projectExecutorPlanLimits(readCodexPlanLimits(reported, new Date(now)), origin);
 }
-
-/** Known window names, for the providers that name a window instead of stating its length. */
-const NAMED_MINUTES: Record<string, number> = {
-  five_hour: 300,
-  seven_day: 10_080,
-  seven_day_opus: 10_080,
-  seven_day_sonnet: 10_080,
-  seven_day_oauth_apps: 10_080,
-  seven_day_overage_included: 10_080,
-};
 
 /**
  * How long the window is, when that is knowable at all.
@@ -376,7 +229,12 @@ const NAMED_MINUTES: Record<string, number> = {
  * window whose length neither source gives — printed as its own key rather than as a guess.
  */
 export function planWindowMinutes(window: PlanWindow): number | null {
-  return window.windowMinutes ?? NAMED_MINUTES[window.key] ?? null;
+  return (
+    executor.planWindowDurationMins({
+      name: window.key,
+      ...(window.windowMinutes === null ? {} : { windowDurationMins: window.windowMinutes }),
+    }) ?? null
+  );
 }
 
 /**

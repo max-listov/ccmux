@@ -25,16 +25,19 @@ const ago = (at: string | null, now: number): string =>
 const liveness = (session: SessionIdentity): string =>
   session.archived
     ? 'archived'
-    : session.running === null
-      ? 'state unknown'
-      : session.running
-        ? 'running'
-        : 'stopped';
+    : session.sleeping === true && session.running !== true
+      ? 'sleeping'
+      : session.running === null
+        ? 'state unknown'
+        : session.running
+          ? 'running'
+          : 'stopped';
 
 export function identityLines(session: SessionIdentity, now: number): string[] {
   const lives = session.conversations.length;
+  const pinMark = session.pinned === true ? '  [pinned]' : '';
   return [
-    `${session.address}  ${session.provider}  ${liveness(session)}`,
+    `${session.address}  ${session.provider}  ${liveness(session)}${pinMark}`,
     ...alignedLines([
       ['  title', session.title],
       ['  dir', session.dir],

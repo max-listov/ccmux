@@ -1,4 +1,9 @@
 import { statSync } from 'node:fs';
+import {
+  FAST_TAIL_LINES,
+  LAST_MESSAGE_TEXT_LIMIT,
+  tailActivityFromMessages,
+} from '../agent/transcript/activity.ts';
 import type { TranscriptMessage } from '../types.ts';
 import { readTailUntil } from '../util/readLines.ts';
 
@@ -13,8 +18,9 @@ export interface TailReader {
  * What an external session was last doing, from the end of its transcript.
  *
  * Bounded in bytes, not just lines: records can be large enough that a fixed line window once meant
- * reading gigabytes to display a model name. The last message dates the activity; a transcript with
- * no dated message falls back to the file's own modification time.
+ * reading gigabytes to display a model name. The last real conversation message dates the activity,
+ * widening across the already-read tail when trailing bookkeeping exceeds the 120-line fast slice;
+ * a transcript with no dated message falls back to the file's own modification time.
  */
 export function readExternalTail(path: string, maxLines: number, reader: TailReader) {
   const tail = readTailUntil(
@@ -22,9 +28,14 @@ export function readExternalTail(path: string, maxLines: number, reader: TailRea
     maxLines,
     (lines) => reader.lastModel(lines) !== null && reader.usedTokens(lines) !== null,
   );
-  const lastMessage = reader.parse(tail.slice(-120), 1, 280).at(-1) ?? null;
-  const parsedTime = lastMessage?.createdAt ? Date.parse(lastMessage.createdAt) : Number.NaN;
-  let lastActivityMs: number | null = Number.isFinite(parsedTime) ? parsedTime : null;
+  const fast = tailActivityFromMessages(
+    reader.parse(tail.slice(-FAST_TAIL_LINES), 1, LAST_MESSAGE_TEXT_LIMIT),
+  );
+  const activity =
+    fast.lastActivityMs === null && tail.length > FAST_TAIL_LINES
+      ? tailActivityFromMessages(reader.parse(tail, 1, LAST_MESSAGE_TEXT_LIMIT))
+      : fast;
+  let lastActivityMs = activity.lastActivityMs;
   if (lastActivityMs === null) {
     try {
       lastActivityMs = statSync(path).mtimeMs;
@@ -37,6 +48,6 @@ export function readExternalTail(path: string, maxLines: number, reader: TailRea
     lastActivityMs,
     lastModel: reader.lastModel(tail),
     usedTokens: reader.usedTokens(tail),
-    lastMessage,
+    lastMessage: activity.lastMessage,
   };
 }

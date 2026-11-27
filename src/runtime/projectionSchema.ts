@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ApplicationPolicyEvidenceSchema } from '../policy/reference.ts';
 import { RuntimeAppliedProfileSchema } from '../policy/runtimeProfile.ts';
 import { PermissionScopeSchema } from './permissionScope.ts';
-import { PlanLimitsSchema } from './planLimits.ts';
+import { PlanLimitsSchema } from './planLimitsSchema.ts';
 import { NativeSelectionEvidenceSchema } from './selectionSchema.ts';
 
 export const NATIVE_RUNTIME_TTL_MS = 5_000;
@@ -185,7 +185,7 @@ export type NativeMcpServer = z.infer<typeof NativeMcpServerSchema>;
 export const NativeSnapshotSchema = z
   .object({
     protocol: z.literal(1),
-    provider: z.enum(['codex', 'opencode', 'custom', 'claude']),
+    provider: z.enum(['codex', 'opencode', 'custom', 'claude', 'antigravity']),
     machine: z.string().min(1).max(128),
     session: z.string().min(1).max(256),
     threadId: z.uuid(),

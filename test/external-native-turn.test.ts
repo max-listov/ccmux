@@ -14,7 +14,7 @@ const page = (startedAt: number | null = 1_000) => ({
   data: [
     {
       id: 'native-turn',
-      status: 'inProgress',
+      status: 'inProgress' as const,
       startedAt,
       itemsView: 'notLoaded',
       items: [],
@@ -30,9 +30,7 @@ test('metadata reads are bounded in concurrency and count, never request history
   const turns = await readNativeTurns(
     {
       userAgent: 'codex/0.151.0',
-      close() {},
-      request: async (method, params) => {
-        expect(method).toBe('thread/turns/list');
+      listTurns: async (params) => {
         expect(params).toMatchObject({
           cursor: null,
           limit: 1,
@@ -64,7 +62,7 @@ test('missing, failed, malformed and non-metadata reads do not manufacture a tur
     { ...page(), data: [...page().data, ...page().data] },
   ]) {
     const turns = await readNativeTurns(
-      { userAgent: 'codex/0.151.0', close() {}, request: async () => result },
+      { userAgent: 'codex/0.151.0', listTurns: async () => result as never },
       [UUID],
       new AbortController().signal,
     );
@@ -77,8 +75,7 @@ test('missing, failed, malformed and non-metadata reads do not manufacture a tur
   const turns = await readNativeTurns(
     {
       userAgent: 'codex/0.151.0',
-      close() {},
-      request: async () => {
+      listTurns: async () => {
         throw new Error('unreadable');
       },
     },
@@ -127,11 +124,12 @@ test('exact external discovery projection carries the same native fact as reside
   });
   const result = await observeExternalTurns(makeMachine(), [row], async () => ({
     userAgent: 'codex/0.151.0',
-    close() {},
-    request: async (method) =>
-      method === 'thread/list'
-        ? { data: [{ id: UUID, status: { type: 'active', activeFlags: [] } }], nextCursor: null }
-        : page(),
+    close: async () => {},
+    listThreads: async () => ({
+      data: [{ id: UUID, status: { type: 'active' as const, activeFlags: [] } }],
+      nextCursor: null,
+    }),
+    listTurns: async () => page(),
   }));
   expect(result[0]?.turnState).toMatchObject({
     turnId: 'native-turn',

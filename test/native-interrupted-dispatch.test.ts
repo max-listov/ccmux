@@ -1,10 +1,20 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { nativeInputDelivered } from '../src/agent/claude/native/pickup.ts';
+import {
+  type CodexListTurnsParams,
+  type CodexTurnsPage,
+  findCodexTurnByClientId,
+} from 'stitchkit/agent-executor/codex';
+import {
+  nativeInputDelivered,
+  nativeInputFoundByClientId,
+  TurnPickup,
+} from '../src/agent/claude/native/pickup.ts';
+import { NativeProjection } from '../src/agent/claude/native/projection.ts';
 import { nativeTranscriptPath } from '../src/context/claude.ts';
-import { RuntimeInputSchema } from '../src/runtime/input.ts';
+import { RuntimeInputSchema, readRuntimeInput, writeRuntimeInput } from '../src/runtime/input.ts';
 import type { MachineConfig, Session } from '../src/types.ts';
 import { makeMachine } from './helpers.ts';
 
@@ -109,4 +119,146 @@ test('a dispatch written before this field existed is judged by when its record 
 test('an absent transcript means the turn never arrived', () => {
   const { session, m } = conversation([]);
   expect(nativeInputDelivered(m, session, input(), '2026-09-01T10:00:00.000Z')).toBe(false);
+});
+
+test('Claude client-id reconcile via stitchkit findInput matches user uuid and ignores assistant uuid', async () => {
+  const msgId = '22222222-2222-4222-8222-222222222222';
+  const assistantOnly = conversation([
+    {
+      type: 'assistant',
+      uuid: msgId,
+      message: { role: 'assistant', content: [{ type: 'text', text: 'reply' }] },
+    },
+  ]);
+  expect(await nativeInputFoundByClientId(assistantOnly.m, assistantOnly.session, input())).toBe(
+    false,
+  );
+
+  const userPresent = conversation([
+    {
+      type: 'user',
+      uuid: msgId,
+      message: { role: 'user', content: [{ type: 'text', text: 'ship the thing' }] },
+    },
+  ]);
+  expect(await nativeInputFoundByClientId(userPresent.m, userPresent.session, input())).toBe(true);
+
+  const linkPath = join(dirname(userPresent.dir), 'work-symlink');
+  symlinkSync(userPresent.dir, linkPath);
+  expect(
+    await nativeInputFoundByClientId(
+      userPresent.m,
+      { ...userPresent.session, dir: linkPath },
+      input(),
+    ),
+  ).toBe(true);
+});
+
+test('Codex receipt lookup walks subsequent pages and rejects cursor loops', async () => {
+  const targetClientId = '33333333-3333-4333-8333-333333333333';
+  const pages: Record<string, CodexTurnsPage> = {
+    first: {
+      data: [
+        { id: 'turn-1', status: 'completed', items: [{ type: 'userMessage', clientId: 'other' }] },
+      ],
+      nextCursor: 'page-2',
+    },
+    'page-2': {
+      data: [
+        {
+          id: 'turn-2',
+          status: 'completed',
+          items: [{ type: 'userMessage', clientId: targetClientId }],
+        },
+      ],
+      nextCursor: null,
+    },
+  };
+  const rpc = {
+    listTurns: async (params: CodexListTurnsParams) => {
+      const page = pages[params.cursor ?? 'first'];
+      if (!page) throw new Error('unexpected history cursor');
+      return page;
+    },
+  };
+  const found = await findCodexTurnByClientId(rpc, {
+    threadId: 'thread-1',
+    clientId: targetClientId,
+  });
+  expect(found?.id).toBe('turn-2');
+
+  const loopingRpc = {
+    listTurns: async () => ({ data: [], nextCursor: 'same-cursor' }),
+  };
+  await expect(
+    findCodexTurnByClientId(loopingRpc, { threadId: 'thread-1', clientId: targetClientId }),
+  ).rejects.toThrow(/repeated cursor/);
+});
+
+test('TurnPickup resolves interrupted Claude dispatch through findInput without resending', async () => {
+  const msgId = '44444444-4444-4444-8444-444444444444';
+  const { session, m } = conversation([
+    {
+      type: 'user',
+      uuid: msgId,
+      message: { role: 'user', content: [{ type: 'text', text: 'ship the thing' }] },
+    },
+  ]);
+  await writeRuntimeInput(m, session, input({ messageId: msgId, phase: 'dispatching' }));
+  let startTurnCalls = 0;
+  const pickup = new TurnPickup();
+  await pickup.run({
+    m,
+    session,
+    projection: new NativeProjection(),
+    sdkSession: null,
+    selectModel: async () => {},
+    setResolvedFiles: () => {},
+    startTurn: async () => {
+      startTurnCalls += 1;
+    },
+  });
+  expect(startTurnCalls).toBe(0);
+  expect(readRuntimeInput(m, session)?.phase).toBe('accepted');
+});
+
+test('Claude holds a lost acknowledgement until its exact receipt arrives without another start', async () => {
+  const { session, m } = conversation([]);
+  const queued = input({ phase: 'queued' });
+  await writeRuntimeInput(m, session, queued);
+  let starts = 0;
+  const target = {
+    m,
+    session,
+    projection: new NativeProjection(),
+    sdkSession: null,
+    selectModel: async () => {},
+    setResolvedFiles: () => {},
+    startTurn: async () => {
+      starts += 1;
+      if (starts === 1) throw new Error('lost acknowledgement');
+    },
+  };
+  await expect(new TurnPickup().run(target)).rejects.toThrow('lost acknowledgement');
+  target.projection = new NativeProjection();
+  const restarted = new TurnPickup();
+  const entry = (uuid: string) =>
+    JSON.stringify({
+      type: 'user',
+      uuid,
+      timestamp: new Date().toISOString(),
+      message: { role: 'user', content: queued.text },
+    });
+  const other = entry(crypto.randomUUID());
+  const path = nativeTranscriptPath(session, m);
+  writeFileSync(path, `${other}\n`);
+  await restarted.run(target);
+  expect(starts).toBe(1);
+  expect(readRuntimeInput(m, session)?.phase).toBe('uncertain');
+  await restarted.run(target);
+  expect(starts).toBe(1);
+  writeFileSync(path, `${other}\n${entry(queued.messageId)}\n`);
+  await restarted.run(target);
+  expect(readRuntimeInput(m, session)?.phase).toBe('accepted');
+  expect(starts).toBe(1);
 });

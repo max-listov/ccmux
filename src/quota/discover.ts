@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { claudeProfile } from '../agent/claude/profileRoot.ts';
+import { codexProfile } from '../agent/codex/profileRoot.ts';
 import { envFilePath } from '../agent/launch/launchInputs.ts';
-import { readEnvFile } from '../agent/launch/sessionEnv.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { HOME } from '../util/env.ts';
 import type { ProbeTarget } from './probe.ts';
@@ -108,10 +108,11 @@ export function discoverTargets(
       );
     } else if (session.agent === 'codex') {
       const path = envFilePath(session);
-      // `$HOME` in a declared value is expanded the way the launch expands it.
-      const declared =
-        path === null ? undefined : readEnvFile(path, { HOME: home }).CODEX_HOME?.trim();
-      const dir = declared === undefined || declared === '' ? null : declared.replace(/\/+$/, '');
+      const dir = codexProfile(
+        session,
+        { codexHome: undefined, codexSessionsDir: undefined },
+        home,
+      ).configDir;
       add(
         { provider: 'codex', key: `codex:${dir ?? 'default'}`, home: dir, envFile: path },
         session.name,

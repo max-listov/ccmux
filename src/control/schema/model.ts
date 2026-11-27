@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentKindSchema, ManagedPeerSchema } from '../../chat/identitySchema.ts';
+import { ProfileNameSchema } from '../../config/claudeProfileSchema.ts';
 import {
   LaunchRecipeMetadataSchema,
   LaunchRecipeReferenceSchema,
@@ -11,13 +12,16 @@ export const ControlModelsReadSchema = z
     runtime: AgentKindSchema.optional(),
     target: ManagedPeerSchema.optional(),
     launchRecipe: LaunchRecipeReferenceSchema.optional(),
+    profile: ProfileNameSchema.optional(),
     cursor: z.string().min(1).max(4_096).nullable().default(null),
     limit: z.number().int().min(1).max(CONTROL_MODELS_MAX_PAGE).default(CONTROL_MODELS_MAX_PAGE),
     includeHidden: z.boolean().default(false),
   })
   .strict()
   .refine(
-    (input) => input.target === undefined || input.launchRecipe === undefined,
+    (input) =>
+      input.target === undefined ||
+      (input.launchRecipe === undefined && input.profile === undefined),
     'Choose a host recipe or an exact managed runtime, not both',
   );
 export type ControlModelsRead = z.input<typeof ControlModelsReadSchema>;
@@ -69,6 +73,7 @@ export const ControlModelCatalogSchema = z
         /** Which server backs `provider`, when the host declared one. Reported, never matched on. */
         providerLabel: z.string().max(64).nullable().default(null),
         runtime: AgentKindSchema,
+        profile: ProfileNameSchema.optional(),
         launchRecipe: LaunchRecipeMetadataSchema.optional(),
         /**
          * When this list was observed: for a runtime whose catalog only a running session can ask,

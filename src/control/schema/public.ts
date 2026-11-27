@@ -228,6 +228,8 @@ export {
 } from '../../session/identitySchema.ts';
 export {
   IdleProofSchema,
+  PinReceiptSchema,
+  PinRequestSchema,
   SleepReceiptSchema,
   SleepRequestSchema,
   SleepTargetSchema,

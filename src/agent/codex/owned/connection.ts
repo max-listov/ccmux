@@ -1,3 +1,5 @@
+import type { InteractionReply } from 'stitchkit/agent-executor';
+import type { CodexSession } from 'stitchkit/agent-executor/codex';
 import { ContentProducer } from '../../../content/producer.ts';
 import { codexContextApi, isCodexContextCompletion } from '../../../context/codex.ts';
 import { readNativeForkIntent } from '../../../context/fork.ts';
@@ -7,7 +9,7 @@ import {
   observeContextCompletion,
 } from '../../../context/pump.ts';
 import { recordDelegationApplied } from '../../../delegation/evidence.ts';
-import { nativePolicySkillsAcknowledged, policySkillInputs } from '../../../policy/codex.ts';
+import { nativePolicySkillsAcknowledged } from '../../../policy/codex.ts';
 import { applicationPolicyEvidence, verifyApplicationPolicy } from '../../../policy/resolve.ts';
 import type { MaterializedPolicy } from '../../../policy/schema.ts';
 import { emitRuntimeBoundaries } from '../../../runtime/events.ts';
@@ -25,13 +27,12 @@ import type { MachineConfig, Session } from '../../../types.ts';
 import { log } from '../../../util/log.ts';
 import { readCodexAppThread } from '../appServer.ts';
 import { CODEX_CONTENT_METHODS, observeCodexContent, observeCodexRequest } from '../content.ts';
-import type { CodexAppRpc, CodexRpcEvent } from '../rpc.ts';
 import { codexAccount } from './account.ts';
 import { AdmissionBacklog } from './backlog.ts';
 import { applyOwnedCodexInput, applyOwnedCodexInterrupt } from './input.ts';
 import { restoreOwnedTurn } from './observer.ts';
 import { OwnedCodexProjection } from './projection.ts';
-import { connectOwnedCodex } from './rpc.ts';
+import { type CodexRpcEvent, connectOwnedCodex } from './rpc.ts';
 import { OwnedCodexStatusWriter } from './status.ts';
 import { bootstrapOwnedThread, openOwnedThread } from './thread.ts';
 
@@ -61,9 +62,16 @@ const OBSERVED_EVENTS = new Set([
   'model/rerouted',
 ]);
 
+function approvalReply(decision: string | null): InteractionReply['reply'] {
+  if (decision === 'accept') return { kind: 'approve', scope: 'once' };
+  if (decision === 'acceptForSession') return { kind: 'approve', scope: 'session' };
+  if (decision === 'cancel') return { kind: 'deny', message: 'cancelled', interrupt: true };
+  return { kind: 'deny', message: 'declined', interrupt: false };
+}
+
 /** A connection owns its projection and callbacks. A retired connection cannot change a new one. */
 export class OwnedCodexConnection {
-  private rpc: CodexAppRpc | null = null;
+  private executor: CodexSession | null = null;
   private projection: OwnedCodexProjection | null = null;
   private backlog = new AdmissionBacklog();
   private content: ContentProducer | null = null;
@@ -96,110 +104,116 @@ export class OwnedCodexConnection {
     );
   }
 
+  /** Probe that the spawned App Server Unix socket is accepting and initialized before admission. */
   async open(signal: AbortSignal): Promise<void> {
-    this.rpc = await connectOwnedCodex(this.m, this.initial, {
-      signal,
-      onEvent: (event) => {
-        if (!this.active) return;
-        if (event.method === ACCOUNT_LIMITS_EVENT) {
-          // The push is a signal that something moved, never the figure itself. Measured on a live
-          // account: it carries the limits of the model the turn ran on while labelling them with
-          // the account-wide limit id, so publishing it replaced the account's week (91%) with a
-          // model's (7%) under the same name. The account read is the one authoritative answer, so
-          // the event triggers a re-read instead of becoming data.
-          if (this.projection !== null && Date.now() - this.lastLimitsAt >= LIMITS_PUSH_MS)
-            void this.readAccountLimits(Date.now()).then(() => this.publish());
-          return;
-        }
-        if (!OBSERVED_EVENTS.has(event.method) && !CODEX_CONTENT_METHODS.has(event.method)) return;
-        if (this.projection === null) {
-          this.failure ??= this.backlog.event(event);
-        } else {
-          try {
-            this.observePolicy(event);
-            if (this.content !== null && this.contentThreadId !== null) {
-              observeCodexContent(this.content.buffer, this.contentThreadId, event);
-              this.content.publish();
-            }
-            if (
-              this.feedSession !== null &&
-              isCodexContextCompletion(event, this.feedSession.uuid)
-            ) {
-              this.contextCompletionSeen++;
-              this.notify();
-            }
-            if (
-              event.method === 'turn/completed' &&
-              Date.now() - this.lastLimitsAt >= LIMITS_REFRESH_MS
-            )
-              // A turn is one of the moments the answer can have changed — the other is the clock,
-              // which the periodic refresh covers. The server does not always push either.
-              void this.readAccountLimits(Date.now()).then(() => this.publish());
-            if (OBSERVED_EVENTS.has(event.method) && this.projection.event(event)) {
-              this.publish();
-              if (this.feedSession !== null && event.method !== 'thread/status/changed') {
-                this.emittedBoundary = emitRuntimeBoundaries(
-                  this.m,
-                  this.feedSession,
-                  this.projection.snapshot(),
-                  this.emittedBoundary,
-                );
-              }
-            }
-          } catch (error) {
-            this.failure = new Error('Native content observation failed', { cause: error });
-          }
-        }
-      },
-      onRequest: (request) => {
-        if (!this.active) return;
-        if (this.projection === null) {
-          this.failure ??= this.backlog.request(request);
-        } else if (this.projection.request(request)) {
-          if (this.content !== null && this.contentThreadId !== null) {
-            observeCodexRequest(this.content.buffer, this.contentThreadId, request);
-            this.content.publish();
-          }
-          this.publish();
-        }
-      },
-      onClose: (error) => {
-        if (!this.active) return;
-        this.failure = error;
-        this.notify();
-        this.projection?.unavailable('disconnected');
-        this.publish();
-      },
-    });
+    const probe = await connectOwnedCodex(this.m, this.initial, { signal });
+    await probe.close();
   }
 
   async admit(fresh: boolean, signal: AbortSignal): Promise<Session> {
-    const rpc = this.liveRpc();
     const application =
       this.initial.applicationPolicy === undefined
         ? null
         : verifyApplicationPolicy(this.m, 'codex', this.initial.applicationPolicy);
-    if (application?.runtime === 'codex' && application.skills.length > 0)
-      policySkillInputs(
-        application,
-        this.initial.dir,
-        await rpc.request('skills/list', { cwds: [this.initial.dir], forceReload: true }),
-      );
     const fork = fresh ? readNativeForkIntent(this.m, this.initial) : null;
-    const response = await openOwnedThread(rpc, this.m, this.initial, fresh, fork, signal);
-    if (!fresh && response.thread.id !== this.initial.uuid)
-      throw new Error('Native resume returned a different thread identity');
+    const { session: executor, response } = await openOwnedThread(
+      this.m,
+      this.initial,
+      fresh,
+      fork,
+      {
+        onNotification: (notification) => {
+          if (!this.active) return;
+          const event: CodexRpcEvent = { method: notification.method, params: notification.params };
+          if (event.method === ACCOUNT_LIMITS_EVENT) {
+            // The push is a signal that something moved, never the figure itself. The account read
+            // is the one authoritative answer, so the event triggers a re-read instead of becoming
+            // data.
+            if (this.projection !== null && Date.now() - this.lastLimitsAt >= LIMITS_PUSH_MS)
+              void this.readAccountLimits(Date.now()).then(() => this.publish());
+            return;
+          }
+          if (!OBSERVED_EVENTS.has(event.method) && !CODEX_CONTENT_METHODS.has(event.method))
+            return;
+          if (this.projection === null) {
+            this.failure ??= this.backlog.event(event);
+          } else {
+            try {
+              this.observePolicy(event);
+              if (this.content !== null && this.contentThreadId !== null) {
+                observeCodexContent(this.content.buffer, this.contentThreadId, event);
+                this.content.publish();
+              }
+              if (
+                this.feedSession !== null &&
+                isCodexContextCompletion(event, this.feedSession.uuid)
+              ) {
+                this.contextCompletionSeen++;
+                this.notify();
+              }
+              if (
+                event.method === 'turn/completed' &&
+                Date.now() - this.lastLimitsAt >= LIMITS_REFRESH_MS
+              )
+                void this.readAccountLimits(Date.now()).then(() => this.publish());
+              if (OBSERVED_EVENTS.has(event.method) && this.projection.event(event)) {
+                this.publish();
+                if (this.feedSession !== null && event.method !== 'thread/status/changed') {
+                  this.emittedBoundary = emitRuntimeBoundaries(
+                    this.m,
+                    this.feedSession,
+                    this.projection.snapshot(),
+                    this.emittedBoundary,
+                  );
+                }
+              }
+            } catch (error) {
+              this.failure = new Error('Native content observation failed', { cause: error });
+            }
+          }
+        },
+        onServerRequest: (serverRequest) => {
+          if (!this.active) return;
+          const request = {
+            id: serverRequest.requestId,
+            method: serverRequest.method,
+            params: serverRequest.params,
+          };
+          if (this.projection === null) {
+            this.failure ??= this.backlog.request(request);
+          } else if (this.projection.request(request)) {
+            if (this.content !== null && this.contentThreadId !== null) {
+              observeCodexRequest(this.content.buffer, this.contentThreadId, request);
+              this.content.publish();
+            }
+            this.publish();
+          }
+        },
+        onDisconnect: (error) => {
+          if (!this.active) return;
+          this.failure = error;
+          this.notify();
+          this.projection?.unavailable('disconnected');
+          this.publish();
+        },
+      },
+      signal,
+    );
+    this.executor = executor;
     const currentSelection = readSelection(this.m, this.initial);
     const desiredOptions = currentSelection?.options ?? fork?.source.selection;
-    const expectedModel = currentSelection?.options.model ?? this.initial.modelSelection;
-    if (
-      expectedModel !== undefined &&
-      (response.model !== expectedModel.model || response.modelProvider !== expectedModel.provider)
-    )
-      throw new Error('Native admission changed the selected provider or model');
     const session = SessionSchema.parse({ ...this.initial, uuid: response.thread.id });
-    if (session.delegation !== undefined)
+    if (session.delegation !== undefined) {
       await registerRuntimeOwnership(this.m, session, this.providerPid);
+    } else if (session.registrationGeneration !== undefined) {
+      await registerRuntimeOwnership(this.m, session, this.providerPid).catch((error) => {
+        log.warn({
+          msg: 'native codex ownership registration skipped',
+          name: session.name,
+          err: String(error),
+        });
+      });
+    }
     await recordDelegationApplied(this.m, session);
     const projection = new OwnedCodexProjection(this.m, session, this.providerPid);
     if (response.model !== undefined && response.modelProvider !== undefined)
@@ -218,7 +232,7 @@ export class OwnedCodexConnection {
     // status callbacks; native events remain buffered while the baseline write is pending.
     await this.content.writer.flushPending();
     signal.throwIfAborted();
-    this.liveRpc();
+    this.liveExecutor();
     this.projection = projection;
     this.content.buffer.noteOmitted(this.backlog.omitted);
     // Events were registered before thread/start or resume. Replay before applying the response;
@@ -237,13 +251,13 @@ export class OwnedCodexConnection {
     projection.reconcile(response.thread.status, 0);
     if (fresh && fork === null)
       await bootstrapOwnedThread({
-        rpc,
+        executor,
         m: this.m,
         session,
         clientId: this.initial.uuid,
         response,
         signal,
-        alive: () => this.liveRpc(),
+        alive: () => this.liveExecutor(),
         started: () => {
           if (application !== null)
             projection.policyEvidence(applicationPolicyEvidence(application, 'applied'));
@@ -252,7 +266,7 @@ export class OwnedCodexConnection {
     // A newly created thread has no historical turn to restore. Its bootstrap is already observed
     // on this connection. Asking the experimental history reader here can race native thread-store
     // materialization (some installed stores refuse list_turns before it is available).
-    if (!fresh || fork !== null) await restoreOwnedTurn(rpc, projection, session.uuid);
+    if (!fresh || fork !== null) await restoreOwnedTurn(executor, projection, session.uuid);
     await this.refresh(session);
     await seedNativeSelection(
       this.m,
@@ -293,16 +307,13 @@ export class OwnedCodexConnection {
     if (projection === null) return;
     this.lastLimitsAt = now;
     try {
+      const executor = this.liveExecutor();
       const [account, limits] = await Promise.all([
-        this.bounded(this.liveRpc().request('account/read', { refreshToken: false })),
-        this.bounded(this.liveRpc().request('account/rateLimits/read', {})),
+        this.bounded(executor.readAccount({ refreshToken: false })),
+        this.bounded(executor.readRateLimits()),
       ]);
       projection.accountLimits(codexAccount(account), codexPlanLimits(limits, now), now);
     } catch (error) {
-      // Enrichment, never a precondition: a session whose account cannot be read still runs, and
-      // the previous measurement stays standing rather than being replaced by a zero. It does not
-      // stand SILENTLY, though — an unrefreshed sample and an unspent window look identical from
-      // outside, and only one of them is a reason to go and look.
       projection.accountLimits(
         null,
         planLimitsReadFailed(projection.snapshot().planLimits, now, String(error)),
@@ -312,18 +323,14 @@ export class OwnedCodexConnection {
   }
 
   async refresh(session: Session): Promise<void> {
-    const rpc = this.liveRpc();
+    const executor = this.liveExecutor();
     const projection = this.projection;
     if (projection === null) throw new Error('Native connection has not been admitted');
     const revision = projection.revision;
-    const thread = await readCodexAppThread(rpc, session.uuid);
-    this.liveRpc();
+    const thread = await readCodexAppThread(executor, session.uuid);
+    this.liveExecutor();
     projection.reconcile(thread.status, revision);
     const now = Date.now();
-    // Never awaited: how full the plan is is enrichment, and a runtime slow to answer it must not
-    // hold up the status a supervisor reconnects to publish. Due, not merely old: a window that has
-    // reached its own `resetsAt` is describing an interval that has ended, and the throttle below
-    // would otherwise serve it for another minute as if it were current.
     if (
       now - this.lastLimitsAt >= LIMITS_REFRESH_MS ||
       planLimitsDue(projection.snapshot().planLimits, now)
@@ -334,10 +341,6 @@ export class OwnedCodexConnection {
 
   activateEvents(session: Session): void {
     this.feedSession = session;
-    // The cursor starts at what has ALREADY happened, so activation announces nothing about the past.
-    // A turn that was running at admission is state, not news: reconciliation establishes where the
-    // session is, and replaying its boundary would tell a reader that work began the moment someone
-    // started listening.
     this.emittedBoundary = this.projection?.snapshot().events.at(-1)?.sequence ?? 0;
   }
 
@@ -345,7 +348,7 @@ export class OwnedCodexConnection {
     if (this.projection === null) throw new Error('Native connection has not been admitted');
     const generation = this.projection.snapshot().generation;
     this.contextPump.start(signal, async (contextSignal) => {
-      const api = codexContextApi(this.m, session, this.liveRpc());
+      const api = codexContextApi(this.m, session, this.liveExecutor());
       const completion = this.contextCompletionSeen;
       if (completion !== this.contextCompletionApplied) {
         const marker = await api.compactionMarker(contextSignal);
@@ -374,18 +377,17 @@ export class OwnedCodexConnection {
       generation: projection?.snapshot().generation,
       pending: (requestId) => projection?.pendingRequest(requestId) ?? null,
       submit: async (command, pending) => {
-        const rpc = this.liveRpc();
-        if (rpc.respond === undefined) throw new Error('Native response channel is unavailable');
-        await rpc.respond(
-          pending.rpcId,
+        const executor = this.liveExecutor();
+        const reply: InteractionReply['reply'] =
           command.kind === 'approval'
-            ? { decision: command.decision }
+            ? approvalReply(command.decision)
             : {
-                answers: Object.fromEntries(
+                kind: 'input',
+                value: Object.fromEntries(
                   Object.entries(command.answers ?? {}).map(([id, answers]) => [id, { answers }]),
                 ),
-              },
-        );
+              };
+        await executor.respond(String(pending.rpcId), reply);
         projection?.submitRequest(command.requestId);
         this.publish();
       },
@@ -396,7 +398,9 @@ export class OwnedCodexConnection {
   async applyInput(session: Session): Promise<void> {
     const projection = this.projection;
     if (projection === null) return;
-    if (await applyOwnedCodexInput(this.m, session, this.liveRpc(), () => projection.snapshot()))
+    if (
+      await applyOwnedCodexInput(this.m, session, this.liveExecutor(), () => projection.snapshot())
+    )
       this.publish();
   }
 
@@ -404,15 +408,18 @@ export class OwnedCodexConnection {
   async applyInterrupt(session: Session): Promise<void> {
     const projection = this.projection;
     if (projection === null) return;
-    await applyOwnedCodexInterrupt(this.m, session, this.liveRpc(), () => projection.snapshot());
+    await applyOwnedCodexInterrupt(this.m, session, this.liveExecutor(), () =>
+      projection.snapshot(),
+    );
   }
 
   async close(reason: string): Promise<void> {
     if (!this.active) return;
     this.active = false;
     await this.contextPump.close();
-    this.rpc?.close();
-    this.rpc = null;
+    const executor = this.executor;
+    this.executor = null;
+    if (executor !== null) await executor.close().catch(() => {});
     if (this.projection !== null) {
       this.projection.unavailable(reason);
       await this.writer.write(this.projection.snapshot());
@@ -420,10 +427,10 @@ export class OwnedCodexConnection {
     await this.content?.close();
   }
 
-  private liveRpc(): CodexAppRpc {
+  private liveExecutor(): CodexSession {
     if (this.failure !== null) throw this.failure;
-    if (!this.active || this.rpc === null) throw new Error('Native connection is closed');
-    return this.rpc;
+    if (!this.active || this.executor === null) throw new Error('Native connection is closed');
+    return this.executor;
   }
 
   private observePolicy(event: CodexRpcEvent): void {

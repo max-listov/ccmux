@@ -1,5 +1,5 @@
+import type { CodexControlConnection } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
-import type { CodexAppRpc } from '../agent/codex/rpc.ts';
 import { supportsNativeTurnMetadata } from './nativeList.ts';
 import type { ExternalTurnState } from './turnSchema.ts';
 
@@ -36,12 +36,12 @@ export function withNativeTurn(state: ExternalTurnState, turn?: NativeTurn): Ext
 
 /** A bounded metadata page, never thread/read(includeTurns) or a history walk. */
 export async function readNativeTurns(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlConnection, 'userAgent' | 'listTurns'>,
   activeIds: string[],
   signal: AbortSignal,
 ): Promise<Map<string, NativeTurn>> {
   const result = new Map<string, NativeTurn>();
-  if (!supportsNativeTurnMetadata(rpc.userAgent)) return result;
+  if (!supportsNativeTurnMetadata(controls.userAgent)) return result;
   const ids = activeIds.slice(0, MAX_NATIVE_TURN_READS);
   let next = 0;
   await Promise.all(
@@ -52,7 +52,7 @@ export async function readNativeTurns(
         if (id === undefined) return;
         try {
           const page = PageSchema.parse(
-            await rpc.request('thread/turns/list', {
+            await controls.listTurns({
               threadId: id,
               cursor: null,
               limit: 1,

@@ -1,10 +1,11 @@
+import { JsonRpcError } from 'stitchkit/agent-executor';
+import { CodexProtocolError } from 'stitchkit/agent-executor/codex';
 import { redact, secretValuesFromEnv } from 'stitchkit/observability';
 import { z } from 'zod';
-import { CodexAppIdentityMismatch, connectCodexAppServer } from '../agent/codex/appServer.ts';
-import { type CodexAppRpc, CodexAppRpcRefusal } from '../agent/codex/rpc.ts';
-import { CodexAppUnavailable } from '../agent/codex/socket.ts';
+import { CodexAppIdentityMismatch } from '../agent/codex/appServer.ts';
+import { codexFailureKindOf, connectCodexAppServerControl } from '../agent/codex/owned/rpc.ts';
 import type { MachineConfig } from '../types.ts';
-import { resolveCodexAppPeer } from './codexApp.ts';
+import { type CodexAppResolveClient, resolveCodexAppPeer } from './codexApp.ts';
 import { CodexAppPeerSchema } from './identitySchema.ts';
 
 export const AppResolveFailureSchema = z.strictObject({
@@ -49,7 +50,9 @@ export function appResolveFailureText(failure: AppResolveFailure): string {
 export async function resolveAppOutcome(
   machine: MachineConfig,
   threadId: string,
-  connect: (machine: MachineConfig) => Promise<CodexAppRpc> = connectCodexAppServer,
+  connect: (
+    machine: MachineConfig,
+  ) => Promise<CodexAppResolveClient> = connectCodexAppServerControl,
 ): Promise<AppResolveOutcome> {
   if (!z.uuid().safeParse(threadId).success)
     return {
@@ -68,33 +71,35 @@ export async function resolveAppOutcome(
   let phase: AppResolveFailure['phase'] = 'connect';
   try {
     const peer = await resolveCodexAppPeer(machine, threadId, async (config) => {
-      const rpc = await connect(config);
+      const controls = await connect(config);
       phase = 'thread/read';
-      return rpc;
+      return controls;
     });
     return { ok: true, peer };
   } catch (error) {
+    const socketKind = codexFailureKindOf(error);
     const kind: AppResolveFailure['kind'] =
-      error instanceof CodexAppUnavailable
-        ? error.kind
-        : error instanceof CodexAppRpcRefusal
-          ? 'provider-refused'
-          : error instanceof CodexAppIdentityMismatch
-            ? 'identity-mismatch'
-            : error instanceof z.ZodError
-              ? 'invalid-provider-response'
-              : 'unexpected-failure';
+      socketKind ??
+      (error instanceof JsonRpcError
+        ? 'provider-refused'
+        : error instanceof CodexAppIdentityMismatch
+          ? 'identity-mismatch'
+          : error instanceof CodexProtocolError || error instanceof z.ZodError
+            ? 'invalid-provider-response'
+            : 'unexpected-failure');
+    const rawMessage =
+      error instanceof JsonRpcError
+        ? `App Server RPC failed: ${error.message}`
+        : error instanceof Error
+          ? error.message || error.name
+          : String(error);
     return {
       ok: false,
       failure: {
         phase,
         kind,
-        message: appResolveDiagnostic(
-          error instanceof Error ? error.message || error.name : String(error),
-        ),
-        ...(error instanceof CodexAppRpcRefusal && error.code !== undefined
-          ? { providerCode: error.code }
-          : {}),
+        message: appResolveDiagnostic(rawMessage),
+        ...(error instanceof JsonRpcError ? { providerCode: error.code } : {}),
       },
     };
   }

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { verifySessionProfile } from '../agent/claude/namedProfiles.ts';
 import { sessionsPath } from '../config/paths.ts';
 import type { MachineConfig, PermissionMode, Session } from '../types.ts';
 import { loadPendingRows } from './pendingStore.ts';
@@ -144,7 +146,11 @@ export async function setSessionEnvFile(
   name: string,
   envFile: string | undefined,
 ): Promise<boolean> {
-  return updateSession(m, name, (s) => withField(s, 'envFile', envFile));
+  return updateSession(m, name, (s) => {
+    const next = withField(s, 'envFile', envFile);
+    verifySessionProfile(m, next);
+    return next;
+  });
 }
 
 /**
@@ -163,6 +169,64 @@ export async function setSessionRole(
   role: string | undefined,
 ): Promise<boolean> {
   return updateSession(m, name, (s) => withField(s, 'role', role));
+}
+
+/**
+ * Pin or unpin a session against sleep (`pinned: true` keeps it awake; `false` clears the flag).
+ *
+ * Policy metadata like `role`, never a launch flag — takes effect immediately with no restart.
+ * Returns false if the name wasn't present.
+ */
+export async function setSessionPinned(
+  m: MachineConfig,
+  name: string,
+  pinned: boolean,
+): Promise<boolean> {
+  return updateSession(m, name, (s) => withField(s, 'pinned', pinned ? true : undefined));
+}
+
+/**
+ * Ensure one named ready session has a durable `registrationGeneration` UUID.
+ *
+ * Older interactive sessions were created without one; backfilling does not affect the launch stamp
+ * and never triggers a restart. Returns the updated session or null when absent.
+ */
+export async function ensureRegistrationGeneration(
+  m: MachineConfig,
+  name: string,
+): Promise<Session | null> {
+  return withSessionRegistryLock(m, async () => {
+    await recoverPromotionsUnlocked(m);
+    const current = loadSessions(m);
+    const target = findSession(current, name);
+    if (!target) return null;
+    if (target.registrationGeneration !== undefined) return target;
+    const updated: Session = { ...target, registrationGeneration: randomUUID() };
+    await writeSessionsUnlocked(
+      m,
+      current.map((s) => (s.name === name ? updated : s)),
+    );
+    return updated;
+  });
+}
+
+/**
+ * Idempotently backfill `registrationGeneration` on every ready session that lacks one.
+ * Returns the count of backfilled rows. Does not touch running sessions or launch stamps.
+ */
+export async function backfillRegistrationGenerations(m: MachineConfig): Promise<number> {
+  return withSessionRegistryLock(m, async () => {
+    await recoverPromotionsUnlocked(m);
+    const current = loadSessions(m);
+    let count = 0;
+    const next = current.map((s) => {
+      if (s.registrationGeneration !== undefined) return s;
+      count++;
+      return { ...s, registrationGeneration: randomUUID() };
+    });
+    if (count > 0) await writeSessionsUnlocked(m, next);
+    return count;
+  });
 }
 
 /** Enable/disable ROUTER mode on a session: add/remove the "router" prompt module, and — since a

@@ -3,11 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { connectCodexAppServer } from '../src/agent/codex/appServer.ts';
-import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
+import { connectCodexAppServerControl } from '../src/agent/codex/owned/rpc.ts';
 import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
 import { ExternalTurnStateSchema, unknownTurnState } from '../src/external/turnSchema.ts';
 import {
+  type ExternalTurnControlClient,
   nativeTurnState,
   observeExternalTurns,
   TURN_OBSERVATION_TTL_MS,
@@ -49,11 +49,12 @@ const row = (id = UUID) =>
     usedTokens: null,
     lastMessage: null,
   });
-const active = { type: 'active', activeFlags: [] };
-const rpc = (handler: (method: string, params: unknown) => unknown): CodexAppRpc => ({
+const active = { type: 'active' as const, activeFlags: [] };
+const rpc = (handler: (method: string, params: unknown) => unknown): ExternalTurnControlClient => ({
   userAgent: 'Codex Desktop/0.149.0 (test)',
-  request: async (method, params) => handler(method, params),
-  close() {},
+  listThreads: async (params) => handler('thread/list', params) as never,
+  listTurns: async (params) => handler('thread/turns/list', params) as never,
+  close: async () => {},
 });
 
 describe('independent native external turn evidence', () => {
@@ -148,13 +149,15 @@ describe('independent native external turn evidence', () => {
     for (let i = 0; i < 100; i++)
       await observeExternalTurns(machine, [row()], async () => ({
         userAgent: 'Codex Desktop/0.149.0 (test)',
-        request: async (method, params) => {
-          expect(method).toBe('thread/list');
+        listThreads: async (params) => {
           expect(params).toMatchObject({ useStateDbOnly: true });
           requests++;
           return { data: [{ id: UUID, status: active }], nextCursor: null };
         },
-        close: () => {
+        listTurns: async () => {
+          throw new Error('must not list turns');
+        },
+        close: async () => {
           closed++;
         },
       }));
@@ -204,10 +207,13 @@ describe('independent native external turn evidence', () => {
     ]) {
       const result = await observeExternalTurns(machine, [row()], async () => ({
         userAgent,
-        request: async () => {
+        listThreads: async () => {
           throw new Error('must not request');
         },
-        close() {},
+        listTurns: async () => {
+          throw new Error('must not request');
+        },
+        close: async () => {},
       }));
       expect(result[0]?.turnState.reason).toBe('unsupported-runtime');
     }
@@ -222,13 +228,15 @@ describe('independent native external turn evidence', () => {
       let requests = 0;
       const result = await observeExternalTurns(machine, [row()], async () => ({
         userAgent,
-        request: async (method, params) => {
+        listThreads: async (params) => {
           requests++;
-          expect(method).toBe('thread/list');
           expect(params).toMatchObject({ useStateDbOnly: true });
           return { data: [{ id: UUID, status: active }], nextCursor: null };
         },
-        close() {},
+        listTurns: async () => {
+          throw new Error('must not list turns');
+        },
+        close: async () => {},
       }));
       expect(requests).toBe(1);
       expect(result[0]?.turnState.state).toBe('working');
@@ -321,7 +329,7 @@ describe('bounded real control-socket transport', () => {
       const controller = new AbortController();
       controller.abort();
       await expect(
-        connectCodexAppServer(f.machine, { signal: controller.signal }),
+        connectCodexAppServerControl(f.machine, { signal: controller.signal }),
       ).rejects.toThrow();
     } finally {
       f.close();

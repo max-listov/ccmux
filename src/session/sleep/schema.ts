@@ -24,12 +24,27 @@ export type IdleProof = z.infer<typeof IdleProofSchema>;
 export const SleepRequestSchema = SleepTargetSchema.extend({
   operationId: z.uuid(),
   revision: z.string().regex(/^[a-f0-9]{64}$/),
+  /** Bypass `pinned` and `minAwakePerProfile` policy checks while keeping idle/safety guards. */
+  forcePolicy: z.boolean().optional(),
 }).strict();
 export const WakeRequestSchema = SleepTargetSchema.extend({ operationId: z.uuid() }).strict();
+export const PinRequestSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    pinned: z.boolean(),
+  })
+  .strict();
+export const PinReceiptSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    pinned: z.boolean(),
+  })
+  .strict();
 export const SleepRecordSchema = SleepTargetSchema.extend({
   operationId: z.uuid(),
   proof: IdleProofSchema,
   phase: z.enum(['requested', 'sleeping', 'waking', 'awake']),
+  forcePolicy: z.boolean().optional(),
   updatedAt: z.iso.datetime(),
 }).strict();
 export type SleepRecord = z.infer<typeof SleepRecordSchema>;

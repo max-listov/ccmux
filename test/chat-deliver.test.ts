@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test';
+import { CodexUnixSocketError } from 'stitchkit/agent-executor/codex';
 import { atInteractiveMenu, chatDeliverable } from '../src/agent/claude/pane.ts';
-import { CodexAppUnavailable } from '../src/agent/codex/socket.ts';
 import {
   appFailureDetails,
   holdChanged,
@@ -27,7 +27,9 @@ test('a held App delivery exposes the connector cause and transport remedy in it
       'App task',
       'unavailable — barrier retained',
       'warn',
-      appFailureDetails(new CodexAppUnavailable('endpoint-not-listening', 'connection refused')),
+      appFailureDetails(
+        new CodexUnixSocketError('endpoint-not-listening', '/tmp/test.sock', 'connection refused'),
+      ),
     );
     expect(records).toHaveLength(1);
     expect(records[0]?.cause).toBe('endpoint-not-listening');

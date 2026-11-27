@@ -4,7 +4,7 @@ import { ManagedPeerSchema } from './identitySchema.ts';
 
 const NativeMessageSessionSchema = z
   .object({
-    runtime: z.enum(['codex', 'opencode', 'custom', 'claude']),
+    runtime: z.enum(['codex', 'opencode', 'custom', 'claude', 'antigravity']),
     id: z.string().min(1).max(256),
   })
   .strict();

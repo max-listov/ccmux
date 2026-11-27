@@ -9,6 +9,7 @@ import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
+import { sleepUnsettled } from '../session/sleep/store.ts';
 import { readChatHold } from '../session/status.ts';
 import { listSessionNames } from '../tmux/tmux.ts';
 import { parseFlags } from './flags.ts';
@@ -74,6 +75,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
       recipient,
       chatEnabled: chatEnabledFor(recipient, m),
       running,
+      sleeping: !recipient.archived && sleepUnsettled(m, recipient),
       nowMs: now,
       isOwner: name === OWNER,
       chatDeliverable: providerFor(recipient).inspectChatPane !== undefined,

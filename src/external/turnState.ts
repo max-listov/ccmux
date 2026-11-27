@@ -1,7 +1,7 @@
+import type { CodexControlConnection } from 'stitchkit/agent-executor/codex';
+import { CODEX_THREAD_SOURCE_KINDS } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
-import { connectCodexAppServer } from '../agent/codex/appServer.ts';
-import type { CodexAppRpc } from '../agent/codex/rpc.ts';
-import { CodexAppUnavailable } from '../agent/codex/socket.ts';
+import { codexFailureKindOf, connectCodexAppServerControl } from '../agent/codex/owned/rpc.ts';
 import type { ExternalSession, MachineConfig } from '../types.ts';
 import { supportsNativeStatus } from './nativeList.ts';
 import { readNativeTurns, withNativeTurn } from './nativeTurn.ts';
@@ -24,6 +24,11 @@ const StatusSchema = z.discriminatedUnion('type', [
     activeFlags: z.array(z.enum(['waitingOnApproval', 'waitingOnUserInput'])).max(2),
   }),
 ]);
+
+export type ExternalTurnControlClient = Pick<
+  CodexControlConnection,
+  'userAgent' | 'listThreads' | 'listTurns' | 'close'
+>;
 
 export function nativeTurnState(status: unknown, now: number): ExternalTurnState {
   const parsed = StatusSchema.safeParse(status);
@@ -62,8 +67,7 @@ export function nativeTurnState(status: unknown, now: number): ExternalTurnState
  * endpoint it reached successfully.
  */
 export function reasonFor(error: unknown): ConnectionReason {
-  if (!(error instanceof CodexAppUnavailable)) return 'connection-unavailable';
-  return error.kind;
+  return codexFailureKindOf(error) ?? 'connection-unavailable';
 }
 
 /** No cached working state survives a failed read. Ownership and admission are never inputs. */
@@ -72,8 +76,8 @@ export async function observeExternalTurns(
   sessions: ExternalSession[],
   connect: (
     machine: MachineConfig,
-    options: { signal: AbortSignal; maxMessageBytes: number },
-  ) => Promise<CodexAppRpc> = connectCodexAppServer,
+    options: { signal: AbortSignal; maxFrameBytes: number },
+  ) => Promise<ExternalTurnControlClient> = connectCodexAppServerControl,
 ): Promise<ExternalSession[]> {
   const wanted = new Set(
     sessions.filter((row) => row.provider === 'codex').map((row) => row.threadId),
@@ -87,12 +91,12 @@ export async function observeExternalTurns(
   const timer = setTimeout(() => abort.abort(), TURN_OBSERVATION_DEADLINE_MS);
   const observed = new Map<string, ExternalTurnState>();
   let missing = unknownTurnState('codex-app-server', 'not-reported');
-  let rpc: CodexAppRpc | undefined;
+  let controls: ExternalTurnControlClient | undefined;
   try {
-    rpc = await connect(machine, { signal: abort.signal, maxMessageBytes: 2 * 1024 * 1024 });
+    controls = await connect(machine, { signal: abort.signal, maxFrameBytes: 2 * 1024 * 1024 });
     // Older servers may silently ignore unknown request fields. Never risk their JSONL
     // repair fallback: this floor was verified against the installed provider protocol.
-    if (!supportsNativeStatus(rpc.userAgent)) {
+    if (!supportsNativeStatus(controls.userAgent)) {
       return sessions.map((row) => ({
         ...row,
         turnState:
@@ -106,23 +110,12 @@ export async function observeExternalTurns(
     for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex++) {
       abort.signal.throwIfAborted();
       const page = PageSchema.parse(
-        await rpc.request('thread/list', {
+        await controls.listThreads({
           cursor,
           limit: PAGE_SIZE,
           sortKey: 'updated_at',
           useStateDbOnly: true,
-          sourceKinds: [
-            'cli',
-            'vscode',
-            'exec',
-            'appServer',
-            'subAgent',
-            'subAgentReview',
-            'subAgentCompact',
-            'subAgentThreadSpawn',
-            'subAgentOther',
-            'unknown',
-          ],
+          sourceKinds: CODEX_THREAD_SOURCE_KINDS,
         }),
       );
       abort.signal.throwIfAborted();
@@ -141,7 +134,7 @@ export async function observeExternalTurns(
       cursor = page.nextCursor;
     }
     const turns = await readNativeTurns(
-      rpc,
+      controls,
       [...observed]
         .filter(([, state]) => state.state !== 'idle' && state.state !== 'unknown')
         .map(([id]) => id),
@@ -155,7 +148,7 @@ export async function observeExternalTurns(
       : unknownTurnState('codex-app-server', reasonFor(error), 'unavailable');
   } finally {
     clearTimeout(timer);
-    rpc?.close();
+    await controls?.close().catch(() => {});
   }
   return sessions.map((row) => ({
     ...row,

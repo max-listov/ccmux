@@ -6,15 +6,21 @@ const home = process.env.CODEX_HOME;
 const address = process.argv[process.argv.indexOf('--listen') + 1];
 if (!home || !address?.startsWith('unix://')) throw new Error('fixture configuration missing');
 writeFileSync(join(home, 'fixture.pid'), String(process.pid));
-// `late-listen` in the home: the socket path exists for a while before anything listens on it.
-// A real server's path appears at bind() and listen() follows; a loaded machine can hold that
-// window open, and a reader that takes the path for readiness is refused inside it. A plain file
-// stands in for the bound socket: the connect is refused (ENOTSOCK rather than ECONNREFUSED), and
-// the reader classifies both as `endpoint-not-listening`.
+// `late-listen` in the home: the socket path exists as a real Unix socket inode before anything
+// accepts on it. A real server's path appears at bind() and listen() follows; a loaded machine can
+// hold that window open, and a reader that takes the path for readiness is refused with
+// ECONNREFUSED inside it. Exiting right after bind() leaves a real S_IFSOCK inode with no listener
+// so `stitchkit/agent-executor/codex`'s socket-type check passes and its retry loop is exercised.
 if (existsSync(join(home, 'late-listen'))) {
-  writeFileSync(address.slice(7), '');
+  const sockPath = address.slice(7);
+  Bun.spawnSync([
+    process.execPath,
+    '-e',
+    'Bun.listen({ unix: process.argv[1], socket: { data() {} } }); process.exit(0);',
+    sockPath,
+  ]);
   await Bun.sleep(300);
-  unlinkSync(address.slice(7));
+  unlinkSync(sockPath);
 }
 const server = Bun.serve({
   unix: address.slice(7),

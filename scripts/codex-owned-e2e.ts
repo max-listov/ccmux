@@ -1,11 +1,16 @@
 #!/usr/bin/env bun
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { startCodexAppTurn } from '../src/agent/codex/appServer.ts';
+import { findCodexTurnByClientId } from 'stitchkit/agent-executor/codex';
+import { ownedCodexSocket } from '../src/agent/codex/owned/paths.ts';
 import { readCodexRuntime } from '../src/agent/codex/owned/read.ts';
-import { findOwnedCodexReceipt } from '../src/agent/codex/owned/receipt.ts';
-import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
+import {
+  codexExecutorProfile,
+  createCodexSocketDriver,
+  OWNED_CODEX_MAX_FRAME_BYTES,
+} from '../src/agent/codex/owned/rpc.ts';
 import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
+import { startOwnedCodexTurn } from '../src/agent/codex/owned/thread.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
 import { chatPrincipalKey, chatTargetKey, managedPeer } from '../src/chat/identity.ts';
 import { loadLedger } from '../src/chat/ledger.ts';
@@ -130,11 +135,16 @@ progress(
     .map((msg) => (msg === null ? null : { id: msg.id, from: msg.from, to: msg.to })),
 );
 
-const rpc = await connectOwnedCodex(m, a);
+const rpc = await createCodexSocketDriver(ownedCodexSocket(m, a.name), {
+  maxFrameBytes: OWNED_CODEX_MAX_FRAME_BYTES,
+}).open({
+  profile: codexExecutorProfile(m, a),
+  cwd: a.dir,
+  nativeThreadId: a.uuid,
+});
 try {
-  const busyId = await startCodexAppTurn(
+  const busyId = await startOwnedCodexTurn(
     rpc,
-    a.uuid,
     crypto.randomUUID(),
     codexTextInput(
       'Run the shell command sleep 15, then reply BUSY_TEST_DONE. This is a timing test. Do not message anyone or do other work.',
@@ -156,11 +166,11 @@ try {
   await command(['wait', a.name, '--timeout', '120']);
   const deferred = loadLedger(m).find((msg) => msg?.defer && msg.body.includes(token));
   check(deferred !== null && deferred !== undefined, 'Deferred ledger record missing');
-  const receipt = await findOwnedCodexReceipt(rpc, a.uuid, deferred.id);
+  const receipt = await findCodexTurnByClientId(rpc, { threadId: a.uuid, clientId: deferred.id });
   check(receipt?.status === 'completed', 'Native receipt did not prove deferred completion');
   progress('busy-defer-wait', { busyTurn: busyId, deferredMessage: deferred.id, receipt });
 } finally {
-  rpc.close();
+  await rpc.close();
 }
 
 process.env.CCMUX_CONFIG = config;

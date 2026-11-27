@@ -1,5 +1,6 @@
 import { STATE_DIR } from '../config/paths.ts';
-import { type PlanLimits, planWindowExpired } from '../runtime/planLimits.ts';
+import { planWindowExpired } from '../runtime/planLimits.ts';
+import type { PlanLimits } from '../runtime/planLimitsSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { withLock } from '../util/lock.ts';
 import { log } from '../util/log.ts';

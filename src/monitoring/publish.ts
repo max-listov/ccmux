@@ -40,12 +40,15 @@ export class MonitoringPublisher {
     startedAt: number | undefined,
     pane: string | null,
     seen: Observed,
+    memoryBytes?: number | null,
   ): MonitoringRow | null => {
     if (this.rows.length >= STATUS_MAX_ITEMS) {
       this.omitted++;
       return null;
     }
-    const parsed = MonitoringRowSchema.safeParse(projectMonitoringRow(m, s, startedAt, pane, seen));
+    const parsed = MonitoringRowSchema.safeParse(
+      projectMonitoringRow(m, s, startedAt, pane, seen, Date.now(), memoryBytes),
+    );
     if (!parsed.success) {
       this.omitted++;
       return null;

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AgentKindSchema, SESSION_NAME_RE } from '../chat/identitySchema.ts';
+import { ClaudeProfileBindingSchema } from '../config/claudeProfileSchema.ts';
 import {
   LaunchRecipeMetadataSchema,
   ModelSelectionSchema,
@@ -46,6 +47,9 @@ export const SessionSchema = z.object({
   // Parked but kept: stays in the file (history preserved), skipped by ensure/daemon.
   // Lets you stop healing a session without removing it.
   archived: z.boolean().default(false),
+  /** Keep this session awake: auto-sleep skips it and manual `sleep` requires `--force`.
+   *  Addressing/policy metadata (like `role`), never a launch flag — changing it requires no restart. */
+  pinned: z.boolean().optional(),
   // Rate-limit auto-resume: the text steered to a parked session at reset.
   resumeText: z.string().default('continue'),
   // Which agent CLI backs this session. It is authoritative routing identity, so it is
@@ -90,6 +94,8 @@ export const SessionSchema = z.object({
    * to be answerable without launching it.
    */
   envFile: z.string().min(1).optional(),
+  /** Host-resolved account context, pinned once at create and used by every continuation. */
+  profile: ClaudeProfileBindingSchema.optional(),
   /** Safe immutable identity of the host recipe that produced `flags` and `envFile`. The resolved
    * definition is deliberately not stored here: the existing session fields remain launch truth. */
   launchRecipe: LaunchRecipeMetadataSchema.optional(),

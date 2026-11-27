@@ -163,10 +163,13 @@ test('a loaded provider mismatch is refused before collaboration discovery or tu
   const session = makeSession({ modelSelection: { provider: 'openai', model: 'model-a' } });
   let reads = 0;
   const rpc = {
-    close() {},
-    async request() {
+    async listSkills() {
       reads++;
-      return {};
+      throw new Error('unexpected capability read');
+    },
+    async listCollaborationModes() {
+      reads++;
+      throw new Error('unexpected capability read');
     },
   };
   await expect(

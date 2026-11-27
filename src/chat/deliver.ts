@@ -1,7 +1,11 @@
 import { type AgentProvider, type ChatPaneState, providerFor } from '../agent/index.ts';
 import { chatEnabledFor } from '../config/chat.ts';
+import { delegationStopped } from '../delegation/cancel.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
+import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
 import { loadSessions } from '../session/registry.ts';
+import { wakeSleepingSession } from '../session/sleep/operations.ts';
+import { readSleepSafe } from '../session/sleep/store.ts';
 import { type ChatHoldKind, clearChatHold, writeChatHold } from '../session/status.ts';
 import {
   capturePaneStyled,
@@ -13,7 +17,7 @@ import {
   submitPasteBuffer,
   submittedChatId,
 } from '../tmux/tmux.ts';
-import type { ChatMessage, MachineConfig } from '../types.ts';
+import type { ChatMessage, MachineConfig, Session } from '../types.ts';
 import { promptInvocation } from '../util/env.ts';
 import { log } from '../util/log.ts';
 import { appendAck, loadAckedIds } from './ackLog.ts';
@@ -26,7 +30,7 @@ import { loadLedger } from './ledger.ts';
 import { deliverNativeRuntimePending } from './nativeRuntime.ts';
 import { RATE_MAX_INBOUND, recentInboundCount } from './rateGuard.ts';
 import { replyRouteToSender } from './replyRoute.ts';
-import { isConditional, nextDelivery } from './settlement.ts';
+import { isConditional, nextDelivery, pickPendingDelivery } from './settlement.ts';
 import {
   armPickup,
   chatTurnProgress,
@@ -127,7 +131,106 @@ const TYPING_WINDOW_SEC = 3;
  * one delivery per recipient per pass.
  * Cheap when idle: only recipients with something to deliver ever capture a pane.
  */
-export async function deliverPending(m: MachineConfig): Promise<void> {
+const WAKE_BACKOFF_BASE_MS = 5_000;
+const WAKE_BACKOFF_MAX_MS = 60_000;
+
+const inFlightWakes = new Map<string, Promise<void>>();
+const wakeBackoff = new Map<string, { attempts: number; nextAt: number; lastError: string }>();
+
+const wakeKey = (m: MachineConfig, s: Pick<Session, 'name' | 'uuid'>) =>
+  `${m.stateDir}\u0000${s.name}:${s.uuid}`;
+
+/** Clear in-memory single-flight/backoff wake state (tests only). */
+export function resetWakeCoordinator(): void {
+  inFlightWakes.clear();
+  wakeBackoff.clear();
+}
+
+/** Pure decision: should `deliverPending` trigger wake-on-demand for a non-running session? */
+export function selectSleepingWakeMessage(input: {
+  readonly session: Session;
+  readonly chatEnabled: boolean;
+  readonly supportsManagedInput: boolean;
+  readonly delegationEnded: boolean;
+  readonly blocked: boolean;
+  readonly sleepPhase: 'requested' | 'sleeping' | 'waking' | 'awake' | null;
+  readonly rateLimited: boolean;
+  readonly duePick: { readonly msg: ChatMessage } | null;
+}):
+  | { readonly action: 'wake'; readonly msg: ChatMessage }
+  | { readonly action: 'hold-rate-limit'; readonly msg: ChatMessage }
+  | { readonly action: 'skip' } {
+  if (
+    input.session.archived ||
+    (input.session.agent !== 'claude' && input.session.agent !== 'codex') ||
+    !input.chatEnabled ||
+    !input.supportsManagedInput ||
+    input.delegationEnded ||
+    input.blocked ||
+    input.sleepPhase === null ||
+    input.sleepPhase === 'awake' ||
+    input.duePick === null
+  ) {
+    return { action: 'skip' };
+  }
+  if (input.rateLimited) return { action: 'hold-rate-limit', msg: input.duePick.msg };
+  return { action: 'wake', msg: input.duePick.msg };
+}
+
+async function triggerSleepingWake(
+  m: MachineConfig,
+  s: Session,
+  msgId: string,
+  now: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const key = wakeKey(m, s);
+  if (inFlightWakes.has(key)) return;
+  const backoff = wakeBackoff.get(key);
+  if (backoff !== undefined && now < backoff.nextAt) {
+    const retrySec = Math.max(1, Math.ceil((backoff.nextAt - now) / 1000));
+    await writeChatHold(
+      s.name,
+      msgId,
+      `wake failed (retry in ${retrySec}s): ${backoff.lastError}`,
+      'other',
+    );
+    return;
+  }
+  await writeChatHold(s.name, msgId, 'waking sleeping session…', 'other');
+  if (signal?.aborted) return;
+  const wakeSignal = signal ?? AbortSignal.timeout(30_000);
+  const task = wakeSleepingSession(m, s, wakeSignal)
+    .then(() => {
+      wakeBackoff.delete(key);
+      log.info({ msg: 'wake-on-demand: session awake for pending chat', name: s.name });
+    })
+    .catch(async (error: unknown) => {
+      // Shutdown abort is not a wake failure: do not taint backoff or chatHold on disk.
+      if (signal?.aborted) return;
+      const attempts = (wakeBackoff.get(key)?.attempts ?? 0) + 1;
+      const delay = Math.min(WAKE_BACKOFF_BASE_MS * 2 ** (attempts - 1), WAKE_BACKOFF_MAX_MS);
+      const reason = error instanceof Error ? error.message : String(error);
+      wakeBackoff.set(key, { attempts, nextAt: Date.now() + delay, lastError: reason });
+      await writeChatHold(
+        s.name,
+        msgId,
+        `wake failed (retry in ${Math.round(delay / 1000)}s): ${reason}`,
+        'other',
+      );
+      log.warn({
+        msg: 'wake-on-demand: failed to wake sleeping session',
+        name: s.name,
+        err: reason,
+      });
+    })
+    .finally(() => {
+      inFlightWakes.delete(key);
+    });
+  inFlightWakes.set(key, task);
+}
+
+export async function deliverPending(m: MachineConfig, signal?: AbortSignal): Promise<void> {
   const ledger = loadLedger(m);
   if (ledger.length === 0) return;
   const sessions = loadSessions(m);
@@ -140,10 +243,43 @@ export async function deliverPending(m: MachineConfig): Promise<void> {
 
   for (const s of sessions) {
     if (deliveries >= MAX_PER_PASS) break;
-    if (!chatEnabledFor(s, m) || !running.has(s.name)) continue;
     const provider = providerFor(s);
     const recipient = managedPeer(m.rcPrefix, s);
     const recipientKey = managedPeerKey(recipient);
+    if (!running.has(s.name)) {
+      const sleep = readSleepSafe(m, s);
+      // Pure peek (never mutates cursors.delivered) so future `notBefore` or acked mail never wakes.
+      const due = pickPendingDelivery(
+        ledger,
+        recipientKey,
+        cursors.delivered[recipientKey] ?? 0,
+        acked,
+        now,
+      ).pick;
+      const decision = selectSleepingWakeMessage({
+        session: s,
+        chatEnabled: chatEnabledFor(s, m),
+        supportsManagedInput: hasNativeRuntime(s) || provider.inspectChatPane !== undefined,
+        delegationEnded: delegationStopped(m, s),
+        blocked: readLifecycleBlockForSession(m, s) !== null,
+        sleepPhase: sleep?.phase ?? null,
+        rateLimited: due !== null && recentInboundCount(recipient, ledger, now) > RATE_MAX_INBOUND,
+        duePick: due,
+      });
+      if (decision.action === 'hold-rate-limit') {
+        await writeChatHold(
+          s.name,
+          decision.msg.id,
+          `rate limit — this recipient got more than ${RATE_MAX_INBOUND} messages in the last minute, delivery resumes as the burst subsides`,
+          'rate-limited',
+        );
+      } else if (decision.action === 'wake') {
+        await triggerSleepingWake(m, s, decision.msg.id, now, signal);
+      }
+      continue;
+    }
+    wakeBackoff.delete(wakeKey(m, s));
+    if (!chatEnabledFor(s, m)) continue;
     if (hasNativeRuntime(s)) {
       try {
         deliveries += await deliverNativeRuntimePending(

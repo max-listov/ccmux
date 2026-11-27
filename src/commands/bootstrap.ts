@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { forkRolloutIdsForMarker, rolloutIdsForMarker } from '../agent/codex/correlation.ts';
 import { buildAdoptArgv, buildForkArgv, CODEX_LAUNCH_MARKER_ENV } from '../agent/codex/launch.ts';
+import { codexProfile } from '../agent/codex/profileRoot.ts';
 import { getProvider } from '../agent/index.ts';
 import { grantIdentity } from '../agent/launch/identityEnv.ts';
 import { loadMachineConfig } from '../config/machine.ts';
@@ -160,9 +161,10 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
   });
   const deadline = Date.now() + m.codexCorrelationTimeoutMs;
   let readyUuid: string | null = null;
+  const profile = codexProfile(provisional, m);
   while (Date.now() < deadline) {
     if (operation.kind === 'adopt') {
-      if (codexLockHeldByDescendant(m, operation.sourceThreadId, proc.pid)) {
+      if (codexLockHeldByDescendant(m, operation.sourceThreadId, proc.pid, profile.codexHome)) {
         readyUuid = operation.sourceThreadId;
         break;
       }
@@ -176,8 +178,8 @@ export async function cmdBootstrap(rawGeneration: string | undefined): Promise<n
     }
     const ids =
       operation.kind === 'fork'
-        ? forkRolloutIdsForMarker(m, pending.marker, operation.sourceThreadId)
-        : rolloutIdsForMarker(m, pending.marker);
+        ? forkRolloutIdsForMarker(m, pending.marker, operation.sourceThreadId, profile.sessionsDir)
+        : rolloutIdsForMarker(m, pending.marker, profile.sessionsDir);
     if (ids.length > 1) {
       proc.kill();
       return block(

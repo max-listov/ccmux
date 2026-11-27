@@ -7,6 +7,7 @@ import { providerFor } from '../agent/index.ts';
 import { envFilePath, envInput, inheritedEnvInput } from '../agent/launch/launchInputs.ts';
 import { launchInputsFor } from '../agent/launch/launchStamp.ts';
 import { inheritsUndeclaredEnv } from '../agent/launch/sessionEnv.ts';
+import { type MacosRuntimeDoctor, macosRuntimeState } from '../boot/macos/doctor.ts';
 import { loadAckedIds } from '../chat/ackLog.ts';
 import { CursorsUnreadableError, loadCursors } from '../chat/cursors.ts';
 import { holdReason, STALLED_HOLD_MS } from '../chat/holdReason.ts';
@@ -16,7 +17,7 @@ import { pendingMessage } from '../chat/settlement.ts';
 import { unreadFor } from '../chat/store.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { APP_BUNDLE, CACHE_DIR, chatAuthPath, DATA_DIR } from '../config/paths.ts';
-import { remoteAdapterSocketPath } from '../fleet/remoteAdapter.ts';
+import { remoteSocketPath } from '../fleet/remoteTransport.ts';
 import { checkFleet, peersOf } from '../fleet/transport.ts';
 import { collectRows } from '../inventory/rows.ts';
 import { runtimeJournalPath } from '../runtime/journal.ts';
@@ -94,6 +95,7 @@ export interface DoctorReport {
   sessionEnvMigrationPending: number;
   launchInputs: InputOrigin[];
   daemon: { manager: string | null; state: string };
+  macos: MacosRuntimeDoctor | null;
   chat: {
     /** Mail held past the stall threshold; null when it could not be determined (see `problem`). */
     stalled: { session: string; reason: string }[] | null;
@@ -107,7 +109,10 @@ export interface DoctorReport {
 }
 
 export async function buildDoctorReport(m: MachineConfig): Promise<DoctorReport> {
-  const daemon = await daemonState(PLATFORM, m.bootLabel);
+  const [daemon, macos] = await Promise.all([
+    daemonState(PLATFORM, m.bootLabel),
+    macosRuntimeState(m),
+  ]);
   // The fleet map is verified for both outputs: a mis-mapped alias is the single failure that
   // silently delivers mail to the wrong machine, and the reader least able to eyeball a warning is
   // the agent reading JSON.
@@ -117,7 +122,7 @@ export async function buildDoctorReport(m: MachineConfig): Promise<DoctorReport>
   // A label equal to OUR OWN prefix can never be reached: `routeFor` resolves it locally first.
   const selfLabelled = Object.keys(fleet).includes(m.rcPrefix);
   // The wire has one prerequisite ssh does not: a LOCAL agent holding this machine's connection.
-  const remoteSocket = remoteAdapterSocketPath(m);
+  const remoteSocket = remoteSocketPath(m);
   const remoteExpected = peers.some((p) => p.via === 'remote');
   const inherited = envOrigins(m);
   const problems: string[] = [];
@@ -179,6 +184,7 @@ export async function buildDoctorReport(m: MachineConfig): Promise<DoctorReport>
     sessionEnvMigrationPending: inherited.filter((o) => o.kind === 'inherited').length,
     launchInputs: externalInputOrigins(m),
     daemon,
+    macos,
     chat: { stalled, unreadableRecords, problems },
     atPrompt,
   };

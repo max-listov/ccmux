@@ -1,5 +1,5 @@
+import type { CodexControlClient } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
-import type { CodexAppRpc } from '../rpc.ts';
 import type { OwnedCodexProjection } from './projection.ts';
 
 const TurnsPage = z.object({
@@ -15,13 +15,13 @@ const TurnsPage = z.object({
 
 /** Native resume reconciles the last turn once; steady-state reads contain no transcript items. */
 export async function restoreOwnedTurn(
-  rpc: CodexAppRpc,
+  controls: Pick<CodexControlClient, 'listTurns'>,
   projection: OwnedCodexProjection,
   threadId: string,
 ): Promise<void> {
   const revision = projection.revision;
   const page = TurnsPage.parse(
-    await rpc.request('thread/turns/list', {
+    await controls.listTurns({
       threadId,
       limit: 1,
       sortDirection: 'desc',

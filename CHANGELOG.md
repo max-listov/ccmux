@@ -16,6 +16,15 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Expose `ccmux.control` on the daemon's existing Unix socket and route peer commands directly through the public Stitchwire SDK when enabled in machine configuration.
+- Reversible sleep and wake for interactive TUI and non-delegated native Claude and Codex sessions: `ccmux sleep <name> [-f|--force]`, `ccmux wake <name>`, `ccmux pin|unpin <name>`, `ccmux attach <name>`, and control operations `session.idle`, `session.sleep` (`forcePolicy`), `session.wake`, and `session.pin` (forwarded across fleet peers).
+- Opt-in automatic idle sleep (`idleSleep` in `machine.json`, disabled by default) with per-profile keepalive (`minAwakePerProfile`), `pinned` protection, fail-closed process-tree checks (allowing declared stdio MCP servers while refusing shells, builds and unknown background processes), and automatic wake-on-demand when due mail arrives or when attaching.
+- Additive `sleeping`, `pinned`, `memoryBytes` (zero-subprocess process-tree `phys_footprint` on macOS and `Pss + SwapPss` on Linux) and `registrationGeneration` fields in `ccmux/monitoring-reader` (protocol-1 compatible), matching fields on strict `ControlRowSchema` (rebuild `@ccmux/control-service-client` consumers to read them), plus sleeping and pinned display across `list`, `fleet`, `whois` and the TUI.
+- Read the installed Antigravity CLI's model catalog before creating a managed session.
+- Select a Claude account with `new --profile NAME`. Discover local profiles with `profiles list` and check each login with `profiles doctor --profile NAME`. Restarts and forks use the selected account.
+- Require Stitchkit 0.132.0. The native Claude driver uses the default Claude login, and quota reports include Claude model scopes and Codex account windows alongside model limits. External Codex chat uses the typed App Server connection, including macOS socket symlinks. Interrupted native turns wait for a provider receipt before another delivery can proceed.
+- Daemon configuration rejects invalid UTF-8 and repeated background failures are counted in the log.
+
 ## [0.93.1] — 2026-11-12
 
 First published build of the 0.93.0 changes, whose tag was cut but whose CI build failed on a test.

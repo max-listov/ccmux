@@ -1,6 +1,7 @@
+import { createClaudeSdkDriver } from 'stitchkit/agent-executor/claude-sdk';
 import { admitNativeFork } from '../../../context/fork.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
-import type { AgentSdk } from './sdk.ts';
+import type { AgentSdk } from './driver.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -17,7 +18,11 @@ export async function adoptNativeFork(
   sdk: AgentSdk,
 ): Promise<Session> {
   if (!sdk.forkSession) throw new Error('This runtime build cannot fork a conversation');
-  const forkSession = sdk.forkSession;
+  const driver = createClaudeSdkDriver({
+    query: sdk.query,
+    sdkVersion: session.nativeSession?.version ?? 'unknown',
+    forkSession: sdk.forkSession,
+  });
   const result = await admitNativeFork(
     m,
     session,
@@ -27,7 +32,7 @@ export async function adoptNativeFork(
         // message id or a mailbox id this project minted, and neither is one — passing it made
         // the runtime refuse the fork outright. Anything else means the whole conversation, which
         // is what a fork with no chosen point is.
-        forkSession(
+        driver.forkSession(
           source.nativeId,
           source.turnId !== null && UUID.test(source.turnId)
             ? { upToMessageId: source.turnId }

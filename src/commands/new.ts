@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { selectClaudeProfile } from '../agent/claude/namedProfiles.ts';
 import { providerFor } from '../agent/index.ts';
 import { AgentKindSchema } from '../chat/identitySchema.ts';
 import { loadMachineConfig } from '../config/machine.ts';
@@ -27,13 +28,14 @@ export async function cmdNew(
     router?: boolean;
     agent?: string;
     envFile?: string;
+    profile?: string;
     runtime?: string;
     timeoutSec?: number;
   } = {},
 ): Promise<number> {
   if (!name || !dir) {
     console.log(
-      'usage: ccmux new <name> <dir> [--agent claude|codex|opencode] [--runtime tui|app-server|native] [--router] [--env-file <path>] [--timeout N] [-- provider flags...]',
+      'usage: ccmux new <name> <dir> [--agent AGENT] [--runtime MODE] [--router] [--profile NAME] [--env-file <path>] [--timeout N] [-- provider flags...]',
     );
     return 1;
   }
@@ -60,9 +62,14 @@ export async function cmdNew(
       router,
       ...(opts.runtime === undefined ? {} : { runtime: opts.runtime }),
       ...(opts.envFile === undefined ? {} : { envFile: opts.envFile }),
+      ...(opts.profile === undefined
+        ? {}
+        : { profile: selectClaudeProfile(m, agent, opts.profile) }),
     });
     log.info({ msg: 'session registered', name, dir: abs, uuid: session.uuid });
-    console.log(`added: ${JSON.stringify(session)}`);
+    const display =
+      session.profile === undefined ? session : { ...session, profile: session.profile.name };
+    console.log(`added: ${JSON.stringify(display)}`);
     // Registered and started is not ready: a fresh interactive Claude asks whether it may trust the
     // folder before it can take a message. The creator asked for a session to work with, so the
     // command returns when that is true — and says why when it is not, rather than leaving a

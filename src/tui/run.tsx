@@ -1,62 +1,14 @@
 import { render } from 'ink';
 import { loadMachineConfig } from '../config/machine.ts';
-import { tmuxArgv } from '../tmux/argv.ts';
-import type { MachineConfig } from '../types.ts';
+import { findSession, loadSessions } from '../session/registry.ts';
+import { wakeSessionByName } from '../session/sleep/operations.ts';
+import { sleepUnsettled } from '../session/sleep/store.ts';
+import { attachTmux, cleanTerminalForAttach, insideTmux } from '../tmux/attach.ts';
 import { LOG_FILE, log, setStderrLogging } from '../util/log.ts';
 import type { Intent } from './App.tsx';
 import { App } from './App.tsx';
 import { createSession, waitReady } from './actions.ts';
 import { ignoreTerminalStops } from './terminalStops.ts';
-
-function insideTmux(): boolean {
-  return process.env.TMUX !== undefined && process.env.TMUX !== '';
-}
-
-/** Hand the terminal cleanly to tmux before attaching. The REAL fix is releasing stdin:
- *  Ink may leave it flowing after unmount, and a still-reading parent steals bytes from the
- *  inherited fd → tmux attach can't get exclusive control → broken render + exit 1.
- *  We do NOT re-send alt-screen/mouse resets — the App's own effects tear those down per-mode
- *  on unmount; re-sending `?1049l` in inline mode (never in alt-screen) garbles the buffer
- *  with stray chars. Only ensure raw mode is off and the cursor is visible. */
-function cleanTerminalForAttach(): void {
-  try {
-    if (process.stdin.isTTY) process.stdin.setRawMode?.(false);
-    process.stdin.pause();
-  } catch {
-    /* best effort */
-  }
-  process.stdout.write('\x1b[?25h'); // restore cursor (Ink hides it)
-}
-
-/** Hand the terminal to tmux for the session, block until detach, then return so the
- *  menu can re-render. Inside tmux we switch-client (returns at once) instead of nesting.
- *
- *  Uses Bun.spawnSync (NOT async spawn) on purpose. Root cause of the intermittent
- *  "attach then instantly exits (code 1)" / "breaks the moment you type" bug: with async
- *  spawn the parent's event loop keeps running while tmux is attached, and Bun/libuv still
- *  holds fd 0 (the terminal) — so the parent and the tmux client both poll the same tty and
- *  fight over input bytes and terminal setup. A plain shell `tmux attach` never hits this
- *  because the shell is blocked in waitpid for the whole attach, touching nothing. spawnSync
- *  reproduces exactly that: it freezes our event loop until tmux exits, so the tmux client is
- *  the sole owner of the terminal. Inherited fd 0/1/2 (not /dev/tty — VS Code's pty has no
- *  usable controlling terminal, so `open /dev/tty` fails there). */
-function attachTmux(m: MachineConfig, name: string): void {
-  const args = insideTmux() ? ['switch-client', '-t', `=${name}`] : ['attach', '-t', `=${name}`];
-  log.info({
-    msg: 'attach',
-    name,
-    mode: args[0],
-    tty: process.stdout.isTTY,
-    term: process.env.TERM,
-  });
-  const r = Bun.spawnSync(tmuxArgv(m, ...args), {
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr: 'pipe',
-  });
-  const err = r.stderr ? r.stderr.toString().trim() : '';
-  log.info({ msg: 'attach exited', name, code: r.exitCode, stderr: err.slice(0, 300) });
-}
 
 /** Last-resort crash trail: the TUI owns the terminal, so an uncaught throw would vanish.
  *  Log it to the file (always tailable) and restore the terminal so the shell isn't wedged. */
@@ -147,6 +99,14 @@ export async function runTui(fullscreen: boolean): Promise<number> {
         const t0 = Date.now();
         await waitReady(m, created); // attach to a drawn agent, not a half-booted blank pane
         log.info({ msg: 'waitReady done', name: created.name, ms: Date.now() - t0 });
+      } else if (intent.type === 'attach') {
+        const existing = findSession(loadSessions(m), intent.name);
+        if (existing !== undefined && !existing.archived && sleepUnsettled(m, existing)) {
+          process.stderr.write(`waking ${existing.name}…\n`);
+          const t0 = Date.now();
+          await wakeSessionByName(m, existing.name);
+          log.info({ msg: 'wake on attach done', name: existing.name, ms: Date.now() - t0 });
+        }
       }
       attachTmux(m, intent.name);
       if (insideTmux()) return 0; // switch-client doesn't block — no menu to come back to

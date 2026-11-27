@@ -3,11 +3,10 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { z } from 'zod';
-import { connectCodexAppServer } from '../src/agent/codex/appServer.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { ExternalInventoryJsonSchema } from '../src/external/sessionSchema.ts';
 import { VERSION } from '../src/util/version.ts';
+import { externalProbeThreads } from './externalProbeServer.ts';
 
 if (Bun.argv[2] !== '--run') {
   console.error(
@@ -16,24 +15,19 @@ if (Bun.argv[2] !== '--run') {
   process.exit(2);
 }
 
-const rpc = await connectCodexAppServer(loadMachineConfig());
 const ids: string[] = [];
 let cleanupFailed = false;
 const turns = new Map<string, string>();
-const ThreadResponse = z.object({
-  thread: z.object({ id: z.uuid(), status: z.object({ type: z.string() }) }),
-});
-const TurnResponse = z.object({ turn: z.object({ id: z.string().min(1) }) });
 const root = mkdtempSync(join(tmpdir(), 'ccmux-turn-e2e-'));
+const probes = externalProbeThreads(loadMachineConfig(), root);
 
 async function start(threadId: string, text: string): Promise<void> {
-  const response = TurnResponse.parse(
-    await rpc.request('turn/start', {
-      threadId,
-      input: [{ type: 'text', text, text_elements: [] }],
-    }),
-  );
-  turns.set(threadId, response.turn.id);
+  const { turnId } = await probes.get(threadId).startThreadTurn({
+    threadId,
+    clientId: crypto.randomUUID(),
+    input: [{ type: 'text', text }],
+  });
+  turns.set(threadId, turnId);
 }
 
 async function snapshot(label: string) {
@@ -83,18 +77,10 @@ function sharedWriter(rows: Awaited<ReturnType<typeof snapshot>>): boolean {
 
 try {
   for (let i = 0; i < 2; i++) {
-    const response = ThreadResponse.parse(
-      await rpc.request('thread/start', {
-        cwd: root,
-        approvalPolicy: 'never',
-        sandbox: 'read-only',
-        baseInstructions:
-          'You are a lifecycle test agent. Follow the explicit instruction. Do not modify files.',
-        developerInstructions: 'No other tasks. No network calls. Return a short final answer.',
-      }),
-    );
-    ids.push(response.thread.id);
-    if (response.thread.status.type !== 'idle') throw new Error('new test thread was not idle');
+    const session = await probes.open();
+    ids.push(session.nativeThreadId);
+    if (session.threadContext.thread?.status?.type !== 'idle')
+      throw new Error('new test thread was not idle');
   }
   const a = ids[0];
   const b = ids[1];
@@ -121,7 +107,9 @@ try {
     await Bun.sleep(1000);
   }
   if (!split) throw new Error('independent active/completed states not observed');
-  await rpc.request('turn/interrupt', { threadId: a, turnId: turns.get(a) });
+  const firstTurnId = turns.get(a);
+  if (!firstTurnId) throw new Error('test turn missing');
+  await probes.get(a).interruptTurn({ threadId: a, turnId: firstTurnId });
   let idle = false;
   for (let i = 0; i < 15; i++) {
     const rows = await snapshot('interrupted');
@@ -139,12 +127,19 @@ try {
 } finally {
   for (const threadId of ids) {
     const turnId = turns.get(threadId);
-    if (turnId) await rpc.request('turn/interrupt', { threadId, turnId }).catch(() => {});
-    await rpc.request('thread/archive', { threadId }).catch(() => {
-      cleanupFailed = true;
-    });
+    if (turnId)
+      await probes
+        .get(threadId)
+        .interruptTurn({ threadId, turnId })
+        .catch(() => {});
+    await probes
+      .get(threadId)
+      .archiveThread({ threadId })
+      .catch(() => {
+        cleanupFailed = true;
+      });
   }
-  rpc.close();
+  await probes.close();
 }
 if (cleanupFailed)
   throw new Error('test thread archive failed; inspect provider test threads before rerunning');

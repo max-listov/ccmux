@@ -3,11 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { observeCodexContent } from '../src/agent/codex/content.ts';
-import { applyOwnedCodexInput } from '../src/agent/codex/owned/input.ts';
+import {
+  applyOwnedCodexInput,
+  type OwnedCodexInputClient,
+} from '../src/agent/codex/owned/input.ts';
 import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
+import type { CodexRpcEvent } from '../src/agent/codex/owned/rpc.ts';
 import { OwnedCodexStatusWriter } from '../src/agent/codex/owned/status.ts';
 import { inspectNativeCodexInput } from '../src/agent/codex/pane.ts';
-import type { CodexAppRpc, CodexRpcEvent } from '../src/agent/codex/rpc.ts';
 import { rotateChatCredential } from '../src/chat/auth.ts';
 import { deliverPending } from '../src/chat/deliver.ts';
 import { managedPeer } from '../src/chat/identity.ts';
@@ -85,27 +88,37 @@ test('controlled managed delivery: real menu hold, one provider admission, termi
   let starts = 0;
   // Only the external provider is simulated. Admission, hold, mailbox, receipt and control
   // transport are production code; this fixture never writes a hold or operation record.
-  const rpc: CodexAppRpc = {
-    close() {},
-    async request(method, params) {
-      if (method === 'collaborationMode/list')
-        return {
-          data: [{ name: 'Default', mode: 'default', model: null, reasoning_effort: 'medium' }],
-        };
-      if (method === 'thread/resume' || method === 'thread/read')
-        return {
-          thread: {
-            id: s.uuid,
-            name: s.name,
-            source: 'appServer',
-            status: { type: 'idle' },
-            canAcceptDirectInput: true,
-          },
-          model: 'model-a',
-          reasoningEffort: 'medium',
-        };
-      if (method !== 'turn/start') throw new Error(`Unexpected provider RPC: ${method}`);
-      expect(params).toMatchObject({ threadId: s.uuid, clientUserMessageId: input.messageId });
+  const threadContext = () => ({
+    thread: {
+      id: s.uuid,
+      name: s.name,
+      source: 'appServer',
+      status: { type: 'idle' },
+      canAcceptDirectInput: true,
+    },
+    model: 'model-a',
+    reasoningEffort: 'medium',
+  });
+  const rpc: OwnedCodexInputClient = {
+    async listCollaborationModes() {
+      return {
+        data: [{ name: 'Default', mode: 'default', model: null, reasoning_effort: 'medium' }],
+      };
+    },
+    async listSkills() {
+      return { data: [] };
+    },
+    async readThread() {
+      return threadContext() as never;
+    },
+    async resumeThread() {
+      return threadContext() as never;
+    },
+    async listTurns() {
+      return { data: [] };
+    },
+    async startTurn(turnInput) {
+      expect(turnInput).toMatchObject({ clientId: input.messageId });
       expect(readRuntimeInput(m, s)?.phase).toBe('dispatching');
       starts++;
       await providerEvent({
@@ -115,7 +128,12 @@ test('controlled managed delivery: real menu hold, one provider admission, termi
           turn: { id: turnId, status: 'inProgress' },
         },
       });
-      return { turn: { id: turnId } };
+      return {
+        nativeTurnId: turnId,
+        deltas: (async function* () {})(),
+        interrupt: async () => {},
+        respond: async () => {},
+      };
     },
   };
   async function pane(next: 'menu' | 'idle') {

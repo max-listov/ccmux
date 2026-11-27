@@ -31,6 +31,7 @@ function row(
       promptModules: [],
     },
     running: true,
+    sleeping: false,
     lifecycleError: null,
     stale: [],
     staleUnknown: null,

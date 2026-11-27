@@ -18,6 +18,7 @@ import { codexProvider } from './codex/index.ts';
 import type { HistorySearch } from './historySearch.ts';
 import type { LaunchInput } from './launch/launchInputs.ts';
 import type { MenuSettleState, MenuSettleStep } from './menuSettle.ts';
+import { readTailActivity, type TailActivity } from './transcript/activity.ts';
 import {
   readTranscriptFile,
   type TranscriptRead,
@@ -148,6 +149,7 @@ const REGISTRY: Record<AgentKind, AgentProvider> = {
   codex: codexProvider,
   opencode: nativeProvider('opencode'),
   custom: nativeProvider('custom'),
+  antigravity: nativeProvider('antigravity'),
 };
 
 export function getProvider(agent: AgentKind): AgentProvider {
@@ -176,9 +178,6 @@ export function supportsManagedInput(session: Session): boolean {
 }
 
 // ── IO + windowing (shared; adapters stay pure transforms) ───────────────────
-
-const LAST_MESSAGE_WINDOW = 120;
-const LAST_MESSAGE_TEXT_LIMIT = 280;
 
 /** Resolve managed storage through its runtime provider, then use the shared line reader. */
 export function readTranscript(
@@ -214,29 +213,28 @@ export function readTranscript(
 // mtime-keyed caches: skip the tail-read + JSON parse when the transcript hasn't moved, and (just
 // as important) return a STABLE message reference so SessionCard's memo can bail out. An idle
 // fleet thus does ZERO transcript reads/parses per poll — only a statSync per file.
-const lastMsgCache = new MtimeCache<TranscriptMessage | null>();
+const lastTailCache = new MtimeCache<TailActivity>();
 const usedTokensCache = new MtimeCache<number | null>();
 
-/** The single most-recent message — for `list --json` lastMessage ("where it stopped").
- *  Tail-read: seq is window-relative here (display value, not a cursor). */
 /** Where this session's conversation is written, or null for a runtime that keeps none on disk. */
 export function transcriptPath(session: Session, m: MachineConfig): string | null {
   return providerFor(session).historyFile(session, m);
 }
 
+function lastTail(session: Session, m: MachineConfig): TailActivity | null {
+  const provider = providerFor(session);
+  const path = provider.historyFile(session, m);
+  if (!path) return null;
+  return lastTailCache.get(path, () => readTailActivity(path, provider.parse));
+}
+
+/** The single most-recent parsed message — for `list --json` lastMessage, step, and turn state.
+ *  Tail-read: seq is window-relative here (display value, not a cursor). */
 export function lastTranscriptMessage(
   session: Session,
   m: MachineConfig,
 ): TranscriptMessage | null {
-  const provider = providerFor(session);
-  const path = provider.historyFile(session, m);
-  if (!path) return null;
-  return lastMsgCache.get(path, () => {
-    const lines = readTailLines(path, LAST_MESSAGE_WINDOW);
-    if (lines.length === 0) return null;
-    const msgs = provider.parse(lines, 1, LAST_MESSAGE_TEXT_LIMIT);
-    return msgs.length > 0 ? (msgs[msgs.length - 1] ?? null) : null;
-  });
+  return lastTail(session, m)?.lastMessage ?? null;
 }
 
 /** Tail window for live rendering (TUI transcript pane) — no absolute line numbers,
@@ -252,10 +250,17 @@ export function tailTranscript(
   return provider.parse(readTailLines(path, tail, TRANSCRIPT_PANE_BYTES), 1);
 }
 
-/** When the transcript file was last written (epoch ms) — a "the conversation moved" signal
- *  that catches activity from ANY instance driving this uuid (e.g. an adopted session whose
- *  pane is a parallel idle resume). null if there's no transcript yet. */
+/** When the conversation last had a real message/step (epoch ms from the transcript's own record
+ *  timestamp, never bare file mtime). Unaffected by provider bookkeeping lines appended on resume,
+ *  reconnect or background sync. null when there is no dated conversation message yet. */
 export function lastActivityMs(session: Session, m: MachineConfig): number | null {
+  return lastTail(session, m)?.lastActivityMs ?? null;
+}
+
+/** When the transcript file itself was last modified on disk (epoch ms) — internal filesystem
+ *  freshness signal for active-turn liveness (`lastSignOfLife` / `turnState`), kept strictly
+ *  separate from user-facing conversation activity (`lastActivityMs`). */
+export function transcriptMtimeMs(session: Session, m: MachineConfig): number | null {
   const provider = providerFor(session);
   const path = provider.historyFile(session, m);
   if (!path || !existsSync(path)) return null;

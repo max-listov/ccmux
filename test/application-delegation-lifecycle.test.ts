@@ -24,7 +24,7 @@ test('revoking a real owned authority releases its provider; foreign identical e
     foreign.kill();
     await foreign.exited;
   });
-  expect(idleProof(f.m, f.s).eligible).toBe(true);
+  expect((await idleProof(f.m, f.s)).eligible).toBe(true);
   await updateApplicationAuthority(
     f.m,
     f.principal,
@@ -53,7 +53,7 @@ test('revoking a real owned authority releases its provider; foreign identical e
 
 test('application children sleep with measured process release and cannot wake after their run closes', async () => {
   const f = await ownedFixture();
-  const proof = idleProof(f.m, f.s);
+  const proof = await idleProof(f.m, f.s);
   const receipt = await sleepSession(
     f.m,
     {

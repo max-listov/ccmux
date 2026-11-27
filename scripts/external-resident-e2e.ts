@@ -2,8 +2,6 @@
 // Opt-in provider-usage test. Only the two threads created here may be interrupted or archived.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { z } from 'zod';
-import { connectCodexAppServer } from '../src/agent/codex/appServer.ts';
 import { loadMachineConfig } from '../src/config/machine.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
 import { createControlClient } from '../src/control/transport/client.ts';
@@ -13,6 +11,7 @@ import { ExternalStatusObserver } from '../src/external/residentObserver.ts';
 import { ExternalStatusPublisher } from '../src/external/residentPublisher.ts';
 import { currentExternalStatus } from '../src/external/residentSchema.ts';
 import { VERSION } from '../src/util/version.ts';
+import { externalProbeThreads } from './externalProbeServer.ts';
 
 if (!Bun.argv.includes('--run')) {
   console.error(
@@ -31,15 +30,13 @@ const owned = source
   ? createControlServer(ipc, managed, undefined, () => ipc, external)
   : undefined;
 const client = createControlClient(source ? { socket: controlSocket(ipc) } : {});
-const rpc = await connectCodexAppServer(machine);
+const probes = externalProbeThreads(machine, root);
 const threads: string[] = [],
   turns = new Map<string, string>();
 const abort = new AbortController();
 let timer: ReturnType<typeof setInterval> | undefined, streamTask: Promise<void> | undefined;
 let cleanupFailed = false;
 const observed = new Map<string, Set<string>>();
-const Thread = z.object({ thread: z.object({ id: z.uuid() }) });
-const Turn = z.object({ turn: z.object({ id: z.string().min(1) }) });
 let frames = 0;
 
 async function matches(states: string[]): Promise<void> {
@@ -83,16 +80,8 @@ try {
     }
   })();
   for (let n = 0; n < 2; n++) {
-    const response = Thread.parse(
-      await rpc.request('thread/start', {
-        cwd: root,
-        approvalPolicy: 'never',
-        sandbox: 'read-only',
-        baseInstructions: 'You are a lifecycle test agent. Do not modify files or use the network.',
-        developerInstructions: 'Only follow the test prompt; return a short final answer.',
-      }),
-    );
-    threads.push(response.thread.id);
+    const session = await probes.open();
+    threads.push(session.nativeThreadId);
   }
   writeFileSync(join(root, 'test-threads.json'), JSON.stringify(threads));
   console.log(JSON.stringify({ phase: 'created', threads: threads.length }));
@@ -101,13 +90,12 @@ try {
       index === 0
         ? 'Run the shell command sleep 20 exactly once, wait, then reply DONE. Do not modify files.'
         : 'Reply exactly DONE without using tools.';
-    const result = Turn.parse(
-      await rpc.request('turn/start', {
-        threadId: id,
-        input: [{ type: 'text', text, text_elements: [] }],
-      }),
-    );
-    turns.set(id, result.turn.id);
+    const { turnId } = await probes.get(id).startThreadTurn({
+      threadId: id,
+      clientId: crypto.randomUUID(),
+      input: [{ type: 'text', text }],
+    });
+    turns.set(id, turnId);
   }
   console.log(JSON.stringify({ phase: 'started' }));
   // New empty threads need not have a database row until their first turn is persisted.
@@ -116,7 +104,9 @@ try {
   console.log(JSON.stringify({ phase: 'working-idle' }));
   const firstId = threads[0];
   if (!firstId) throw new Error('test identity missing');
-  await rpc.request('turn/interrupt', { threadId: firstId, turnId: turns.get(firstId) });
+  const firstTurnId = turns.get(firstId);
+  if (!firstTurnId) throw new Error('test turn missing');
+  await probes.get(firstId).interruptTurn({ threadId: firstId, turnId: firstTurnId });
   await matches(['idle', 'idle']);
   // A separate consumer must see the same current identities without another provider writer.
   const reconnect = createControlClient(source ? { socket: controlSocket(ipc) } : {});
@@ -165,20 +155,27 @@ try {
   await streamTask;
   for (const threadId of threads) {
     const turnId = turns.get(threadId);
-    if (turnId) await rpc.request('turn/interrupt', { threadId, turnId }).catch(() => {});
-    await rpc.request('thread/archive', { threadId }).catch((error) => {
-      cleanupFailed = true;
-      console.error(
-        JSON.stringify({
-          phase: 'archive-failed',
-          threadId,
-          error: String(error),
-          testDirectory: root,
-        }),
-      );
-    });
+    if (turnId)
+      await probes
+        .get(threadId)
+        .interruptTurn({ threadId, turnId })
+        .catch(() => {});
+    await probes
+      .get(threadId)
+      .archiveThread({ threadId })
+      .catch((error) => {
+        cleanupFailed = true;
+        console.error(
+          JSON.stringify({
+            phase: 'archive-failed',
+            threadId,
+            error: String(error),
+            testDirectory: root,
+          }),
+        );
+      });
   }
-  rpc.close();
+  await probes.close();
   await client.close();
   await observer.close();
   managed.close();

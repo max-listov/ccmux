@@ -246,6 +246,12 @@ export async function superviseReady(
         return 1;
       }
     }
+    let env: Record<string, string>;
+    try {
+      env = provider.launchEnv(m, s);
+    } catch (error) {
+      return refuse(m, s, String(error));
+    }
     const hf = provider.historyFile(s, m);
     // Re-checked every loop. A Codex thread may be split or compressed by Codex itself, with no
     // plain file left; it is still the conversation.
@@ -270,7 +276,6 @@ export async function superviseReady(
     // every stop) is not consulted. A conversation found under another root is evidence by itself.
     const refusal = missingConversation(m, s, provider, present, hf);
     if (refusal !== null) return refuse(m, s, refusal);
-    let env = provider.launchEnv(m, s);
     // A session outlives the login that created it; that login's agent socket does not. A DEAD
     // socket left in the environment makes ssh wait on it instead of trying what the config points
     // at. A live one is never touched — it may be the only credential this machine has.
@@ -288,6 +293,11 @@ export async function superviseReady(
       if (provider.id === 'claude') argv.push('--fork-session'); // wedge recovery (Claude only)
       forkNext = false;
     }
+    // Re-check sleep/delegation immediately before spawn so a sleep request admitted after the top
+    // of the loop cannot race a fresh child launch.
+    const beforeSpawn = findSession(loadSessions(m), name);
+    if (!beforeSpawn || delegationStopped(m, beforeSpawn) || sleepBlocksStart(m, beforeSpawn))
+      return 0;
     // Stamp BEFORE spawning, with the very argv about to be used: that is what makes "does this
     // session still need a restart?" a readable fact instead of something to remember.
     writeLaunchStamp(name, computeStamp(s, m, promptInvocation()));
@@ -321,6 +331,11 @@ export async function superviseReady(
       agentGone.abort();
     }
 
+    // Re-check before fast-fail classification and backoff sleep: an intentional sleep/stop exit
+    // (even within the first 5s on Codex) must exit cleanly with 0 and never write a LifecycleBlock.
+    const afterExit = findSession(loadSessions(m), name);
+    if (!afterExit || delegationStopped(m, afterExit) || sleepBlocksStart(m, afterExit)) return 0;
+
     // An exit judged by the code of an older version is not judged at all: the daemon starts the
     // session again under the installed one.
     if (supervisorIsStale()) return handOver(name);
@@ -346,9 +361,9 @@ export async function superviseReady(
           writerConflict = false;
         }
         const error = writerConflict
-          ? `Codex thread ${s.uuid} already has an active writer; lifecycle blocked`
+          ? `Codex thread ${afterExit.uuid} already has an active writer; lifecycle blocked`
           : `Codex resume exited before admission for ${name}; lifecycle blocked to prevent a retry storm or second writer`;
-        return refuse(m, s, error);
+        return refuse(m, afterExit, error);
       }
       if (fastFails >= FAST_FAILS_BEFORE_FORK) {
         forkNext = true;

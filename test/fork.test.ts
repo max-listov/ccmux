@@ -155,4 +155,26 @@ describe('lastMessageMs', () => {
     expect(lastMessageMs(join(projDir, `${FORK}.jsonl`))).toBeNull();
     expect(lastMessageMs(join(projDir, 'missing.jsonl'))).toBeNull();
   });
+
+  test('finds real message timestamps past >120 bookkeeping lines and ignores resume notifications and queue-operation', () => {
+    const { projDir } = setup();
+    writeJsonl(projDir, PINNED, [
+      title(RC),
+      msg('2026-07-02T00:00:00.000Z'),
+      JSON.stringify({
+        type: 'user',
+        timestamp: '2026-07-05T10:00:00.000Z',
+        message: {
+          role: 'user',
+          content:
+            '<task-notification>\n<task-id>__orphan_summary__:shell</task-id>\n</task-notification>',
+        },
+      }),
+      JSON.stringify({ type: 'queue-operation', timestamp: '2026-07-06T00:00:00.000Z' }),
+      ...Array.from({ length: 160 }, (_, i) => JSON.stringify({ type: 'bridge-session', seq: i })),
+    ]);
+    expect(lastMessageMs(join(projDir, `${PINNED}.jsonl`))).toBe(
+      Date.parse('2026-07-02T00:00:00.000Z'),
+    );
+  });
 });

@@ -4,7 +4,7 @@
  * here (`sendLetter.ts`), so a name cannot resolve to two different sessions on the two roads.
  */
 import { z } from 'zod';
-import { CodexAppUnavailable } from '../agent/codex/socket.ts';
+import { codexFailureKindOf } from '../agent/codex/owned/rpc.ts';
 import { lastTranscriptMessage } from '../agent/index.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
@@ -73,9 +73,10 @@ export async function senderFor(
       return await resolveCodexAppPeer(m, appThreadId);
     }
   } catch (error) {
+    const kind = codexFailureKindOf(error);
     const capability =
-      error instanceof CodexAppUnavailable
-        ? ` [${error.kind}]. Required: a reachable provider-owned App Server control endpoint with exact thread/read; native Desktop tools are a separate transport. No message was sent`
+      kind !== null
+        ? ` [${kind}]. Required: a reachable provider-owned App Server control endpoint with exact thread/read; native Desktop tools are a separate transport. No message was sent`
         : '';
     return {
       error: `msg: Codex App sender identity could not be verified (${error instanceof Error ? error.message : String(error)})${capability}`,

@@ -1,23 +1,24 @@
 import { expect, test } from 'bun:test';
+import { claudeUsagePlanLimits } from 'stitchkit/agent-executor/claude';
 import {
-  claudePlanLimits,
   codexPlanLimits,
   formatPlanLimits,
   mergeRateLimitEvent,
   PLAN_LIMITS_MAX_AGE_MS,
-  type PlanLimits,
   planLimitsDue,
   planLimitsReadFailed,
   planWindowExpired,
   planWindowLabel,
+  projectExecutorPlanLimits,
 } from '../src/runtime/planLimits.ts';
+import type { PlanLimits } from '../src/runtime/planLimitsSchema.ts';
 
 const NOW = Date.parse('2026-09-01T10:00:00.000Z');
 
-/**
- * Both fixtures are the shapes the live runtimes actually returned, reduced but never rearranged —
- * including the buckets the published types do not declare, which is the point of two of these.
- */
+const claudePlanLimits = (raw: unknown, now: number) =>
+  projectExecutorPlanLimits(claudeUsagePlanLimits(raw, new Date(now)));
+
+/** The two live responses, reduced with their original provider shapes. */
 const CLAUDE_LIVE = {
   subscription_type: 'max',
   rate_limits_available: true,
@@ -66,6 +67,55 @@ test('a Claude read carries the windows it named and the ones it invented', () =
   expect(keys).not.toContain('limits');
   const scoped = limits.windows.find((window) => window.scope === 'Fable');
   expect(scoped?.percent).toBe(49);
+});
+
+test('scoped Claude windows retain the model, unnamed zero, distinct long keys and UTC reset', () => {
+  const shared = 'x'.repeat(96);
+  const limits = claudePlanLimits(
+    {
+      rate_limits: {
+        model_scoped: [
+          { display_name: 'Fable', utilization: 49, resets_at: '2026-09-07T17:59:59+08:00' },
+          { utilization: 0 },
+          { utilization: null },
+          { display_name: `${shared}A`, utilization: 1 },
+          { display_name: `${shared}B`, utilization: 2 },
+          { display_name: 'unknown', utilization: 3 },
+        ],
+      },
+    },
+    NOW,
+  );
+  expect(limits.windows).toHaveLength(5);
+  expect(limits.windows[0]).toMatchObject({
+    key: 'model_scoped:Fable',
+    scope: 'Fable',
+    label: 'Fable',
+    resetsAt: '2026-09-07T09:59:59.000Z',
+  });
+  expect(limits.windows[1]).toMatchObject({ key: 'model_scoped:unknown', scope: null, percent: 0 });
+  expect(new Set(limits.windows.map((w) => w.key)).size).toBe(5);
+  expect(
+    claudePlanLimits({ rate_limits_available: false, subscription_type: 'max' }, NOW).answer,
+  ).toBe('unpublished');
+});
+
+test('Codex nested and flat limits preserve the account plan and deduplicate the same account bucket', () => {
+  const primary = { limitId: 'codex', planType: 'pro', primary: CODEX_LIVE.primary };
+  const byId = { codex: primary, ...CODEX_LIVE.rateLimitsByLimitId };
+  const expected = codexPlanLimits({ ...primary, rateLimitsByLimitId: byId }, NOW);
+  expect(codexPlanLimits({ rateLimits: primary, rateLimitsByLimitId: byId }, NOW)).toEqual(
+    expected,
+  );
+  expect(expected.plan).toBe('pro');
+  expect(expected.windows.map((w) => [w.key, w.percent])).toEqual([
+    ['codex:10080m', 91],
+    ['codex_model:300m', 6],
+    ['codex_model:10080m', 3],
+  ]);
+  expect(
+    codexPlanLimits({ rateLimits: primary, rateLimitsByLimitId: { codex: primary } }, NOW).windows,
+  ).toHaveLength(1);
 });
 
 test('no plan limit is its own answer, never an empty window list', () => {
@@ -193,6 +243,9 @@ test('an old sample is due, and an answer that cannot change is not', () => {
   expect(planLimitsDue(sample({ answer: 'no-plan-limit', windows: [] }), NOW + 86_400_000)).toBe(
     false,
   );
+  const failed = planLimitsReadFailed(null, NOW, 'unavailable');
+  expect(planLimitsDue(failed, NOW + 1_000)).toBe(false);
+  expect(planLimitsDue(failed, NOW + PLAN_LIMITS_MAX_AGE_MS)).toBe(true);
 });
 
 test('a failed read keeps the measurement and says the read failed', () => {

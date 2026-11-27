@@ -66,6 +66,10 @@ export const SessionIdentitySchema = z.object({
   archived: z.boolean(),
   /** Whether the agent is running, as the machine's daemon last observed; null without a daemon. */
   running: z.boolean().nullable(),
+  /** True when the session is reversibly sleeping (not running and held off by its sleep receipt). */
+  sleeping: z.boolean().optional(),
+  /** True when the session is marked pinned against automatic and unforced sleep. */
+  pinned: z.boolean().optional(),
   /** The provider id the session reads now. */
   conversation: z.string().min(1),
   /** Every provider id this session has lived under on its machine, oldest first. Only a Claude

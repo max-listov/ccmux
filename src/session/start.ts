@@ -1,6 +1,6 @@
 import { rcName } from '../config/machine.ts';
 import { hasSession, newSession, setOption, setPaneOption } from '../tmux/tmux.ts';
-import type { MachineConfig } from '../types.ts';
+import type { MachineConfig, PendingSession } from '../types.ts';
 import { SELF_ARGV_NO_ENV_FILE } from '../util/env.ts';
 import { log } from '../util/log.ts';
 
@@ -21,15 +21,26 @@ export async function startSession(
   console.log(`started ${name} (${rcName(m, name)})`);
 }
 
-/** Start the pending Codex bootstrap transaction. It is not a registry Session yet. */
+/** Start the provider's pending transaction in its own tmux pane. */
 export async function startBootstrapSession(
   m: MachineConfig,
-  name: string,
-  dir: string,
-  generation: string,
+  pending: PendingSession,
 ): Promise<void> {
+  const { session, operation, generation } = pending;
+  const { name, dir } = session;
   if (await hasSession(m, name)) throw new Error(`${name} already running`);
-  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, '_bootstrap', generation], {
+  const command = [...SELF_ARGV_NO_ENV_FILE, '_bootstrap', generation];
+  // The SDK's standalone forkSession reads the owning process environment, before a query exists.
+  if (session.agent === 'claude' && operation.kind === 'fork') {
+    const profile = claudeExecutorProfile(m, session);
+    command.unshift(
+      '/usr/bin/env',
+      ...(profile.claudeConfigDir === 'default'
+        ? ['-u', 'CLAUDE_CONFIG_DIR']
+        : [`CLAUDE_CONFIG_DIR=${profile.home}`]),
+    );
+  }
+  await newSession(m, name, dir, command, {
     CCMUX_BOOTSTRAP_GENERATION: generation,
   });
   await applySessionOptions(m, name);
@@ -58,3 +69,5 @@ async function applySessionOptions(
   // to your ~/.tmux.conf — see README.)
   await setPaneOption(m, name, 'allow-passthrough', 'on', signal);
 }
+
+import { claudeExecutorProfile } from '../agent/claude/native/driver.ts';

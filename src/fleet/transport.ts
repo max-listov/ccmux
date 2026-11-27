@@ -4,7 +4,7 @@ import { log } from '../util/log.ts';
 import { shellJoin } from '../util/shellQuote.ts';
 import { run } from '../util/spawn.ts';
 import { writeErr, writeOut } from '../util/stdout.ts';
-import { isRemotePeer, remotePeers, runRemoteAdapter } from './remoteAdapter.ts';
+import { isRemotePeer, remotePeers, runRemoteTransport } from './remoteTransport.ts';
 import { fallbackIsNew, routeRecovered } from './routeState.ts';
 
 /**
@@ -214,12 +214,18 @@ export async function runPeer(
   opts?: PeerRunOpts,
 ): Promise<RemoteResult> {
   if (isRemotePeer(m, machine)) {
-    const remote = await runRemoteAdapter(m, machine, argv, opts);
+    const remote = await runRemoteTransport(m, machine, argv, opts);
     // ssh stays the fallback where the remote route is down, and only for a call that route never
     // dispatched: `unknown` may already have run on the far side, and a second path would run it
     // twice. The fallback is logged and carried on the answer, because a route that quietly became
     // ssh again is exactly how a fleet ends up logging into its servers on every call.
-    if (!remote.transportFailed || remote.delivery !== 'not-sent' || alias === null) {
+    if (
+      !remote.transportFailed ||
+      remote.permanent ||
+      opts?.signal?.aborted ||
+      remote.delivery !== 'not-sent' ||
+      alias === null
+    ) {
       // Coming back is news too, and the log never said it: a reader who saw the route go down had
       // no line telling them it returned, only the absence of more warnings.
       if (!remote.transportFailed && (await routeRecovered(m, machine)))

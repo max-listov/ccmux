@@ -38,7 +38,7 @@ export function doctorText(r: DoctorReport): string[] {
     say('fleet:');
     for (const c of r.fleet) {
       const mark = c.ok ? 'ok' : c.reachable ? 'PROBLEM' : 'unreachable';
-      const route = c.via === 'remote' ? 'via remote adapter' : `→ ${c.alias}`;
+      const route = c.via === 'remote' ? 'via remote transport' : `→ ${c.alias}`;
       say(`  ${c.machine} ${route} (${mark})${c.ok ? '' : ` — ${c.detail}`}`);
     }
     if (r.fleetSelfLabelled)
@@ -48,7 +48,7 @@ export function doctorText(r: DoctorReport): string[] {
   }
   if (r.remoteTransport !== null)
     say(
-      `remote: ${r.remoteTransport.ready ? `adapter socket ${r.remoteTransport.socket}` : `PROBLEM — no adapter socket at ${r.remoteTransport.socket}`}`,
+      `remote: ${r.remoteTransport.ready ? `socket ${r.remoteTransport.socket}` : `PROBLEM — no socket at ${r.remoteTransport.socket}`}`,
     );
   if (r.unhonourableModes.length > 0) {
     say(`perms:  PROBLEM — configured but impossible here: ${r.unhonourableModes.join(', ')}`);
@@ -147,6 +147,35 @@ export function doctorText(r: DoctorReport): string[] {
     say(
       '        fix: ccmux update   (restores it), or reinstall: curl -fsSL <releaseUrl>/../install.sh | bash',
     );
+  }
+  if (r.macos !== null) {
+    const app = r.macos.appBundle;
+    if (app.valid) {
+      say(`macos app: ${app.path} (ok, ${app.bundleId ?? 'verified'})`);
+    } else {
+      say(`macos app: PROBLEM — ${app.path} (${app.error ?? 'unverified'})`);
+    }
+    const ta = r.macos.tmuxAgent;
+    if (ta !== null) {
+      if (ta.state === 'active' && ta.responsibleMatchesApp !== false) {
+        const pidPart = ta.serverPid !== null ? `, tmux pid ${ta.serverPid}` : '';
+        say(`tmux agent: ${ta.label} (active${pidPart})`);
+      } else if (!ta.plistPresent) {
+        say(
+          `tmux agent: PROBLEM — ${ta.label} plist missing (${ta.plistPath}); run 'ccmux install'`,
+        );
+      } else if (ta.state !== 'active' && ta.serverPid !== null) {
+        say(
+          `tmux agent: PROBLEM — ${ta.label} is ${ta.state} while unmanaged tmux pid ${ta.serverPid} holds the socket (cut over via planned tmux restart or reboot)`,
+        );
+      } else if (ta.responsibleMatchesApp === false) {
+        say(
+          `tmux agent: PROBLEM — tmux pid ${ta.serverPid} is attributed to pid ${ta.responsiblePid}, not ccmux.app`,
+        );
+      } else {
+        say(`tmux agent: PROBLEM — ${ta.label} is ${ta.state}`);
+      }
+    }
   }
   say(`daemon: ${r.daemon.state}${r.daemon.manager ? ` (${r.daemon.manager})` : ''}`);
   return out;

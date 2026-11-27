@@ -159,6 +159,12 @@ test('config parsing is quiet, another writer is immediately visible, env remain
     expect(loadMachineConfig().rcPrefix).toBe('host-b');
     writeFileSync(path, '{broken');
     expect(() => loadMachineConfig()).toThrow();
+    // Replacing an invalid byte with U+FFFD would turn this into valid config.
+    writeFileSync(
+      path,
+      Buffer.concat([Buffer.from('{"projectsDir":"'), Buffer.from([0xff]), Buffer.from('"}')]),
+    );
+    expect(() => loadMachineConfig()).toThrow(/UTF-8/i);
     writeFileSync(path, JSON.stringify(config));
     expect(loadMachineConfig().ensureInterval).toBe(config.ensureInterval);
   } finally {

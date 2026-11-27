@@ -31,6 +31,8 @@ export const RuntimeInputSchema = z
      * words sent twice make the older turn look like a receipt for the newer one.
      */
     dispatchedAt: z.string().optional(),
+    /** Claude uses the mailbox messageId as the provider's user-message UUID on these dispatches. */
+    receiptKind: z.literal('client-id').optional(),
     /**
      * A message is framed for its recipient; a command is delivered verbatim.
      *
@@ -83,7 +85,9 @@ export function openCodeMessageId(messageId: string, timestamp: number): string 
  * lost; the others need an id shaped the way their runtime orders messages.
  */
 export const runtimeInputId = (s: Pick<Session, 'agent'>, messageId: string, timestamp: number) =>
-  s.agent === 'custom' || s.agent === 'codex' ? messageId : openCodeMessageId(messageId, timestamp);
+  s.agent === 'custom' || s.agent === 'codex' || s.agent === 'antigravity'
+    ? messageId
+    : openCodeMessageId(messageId, timestamp);
 
 /** The native turn an accepted input started. */
 export const inputTurnId = (input: Pick<RuntimeInput, 'nativeId' | 'turnId'>): string =>

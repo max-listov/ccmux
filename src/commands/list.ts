@@ -24,7 +24,7 @@ function printTable(m: MachineConfig, rows: ListRow[]): void {
       r.session.agent,
       `${vendorGlyph(r.modelId ?? r.model)} ${r.model ?? '-'}`,
       r.contextLabel,
-      stateCell(rowStateLabel(r.state, r.running, r.session.archived), r.atPrompt),
+      `${stateCell(rowStateLabel(r.state, r.running, r.session.archived, r.sleeping), r.atPrompt)}${r.session.pinned === true ? ' [pinned]' : ''}`,
       r.uptimeText,
       r.stale.length > 0 ? r.stale.join(',') : r.staleUnknown !== null ? '?' : '-',
       rcName(m, r.session.name),
@@ -34,6 +34,7 @@ function printTable(m: MachineConfig, rows: ListRow[]): void {
   console.log(lines[0]);
   rows.forEach((r, index) => {
     console.log(lines[index + 1]);
+    if (r.session.profile) console.log(`  Claude profile: ${r.session.profile.name}`);
     if (r.lifecycleError !== null) console.log(`  blocked: ${r.lifecycleError}`);
     // A declared env file that is not on disk. The session still starts — that was the deliberate
     // choice, since a supervisor whose sessions refuse to boot is worse than one variable short — so

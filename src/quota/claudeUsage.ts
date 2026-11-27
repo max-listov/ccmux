@@ -1,4 +1,4 @@
-import type { PlanLimits, PlanWindow } from '../runtime/planLimits.ts';
+import type { PlanLimits, PlanWindow } from '../runtime/planLimitsSchema.ts';
 
 /**
  * What `claude -p "/usage"` prints, read into plan windows.

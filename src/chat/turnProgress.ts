@@ -1,8 +1,8 @@
 import {
   type AgentProvider,
-  lastActivityMs,
   lastTranscriptMessage,
   readTranscript,
+  transcriptMtimeMs,
 } from '../agent/index.ts';
 import { lastSignOfLife } from '../events/observe.ts';
 import { paneWorkingSince } from '../events/paneActivity.ts';
@@ -44,12 +44,12 @@ export function readTurnState(
   const scan = provider.scanPane(plain);
   const inspection = provider.inspectChatPane?.(pane);
   const lm = lastTranscriptMessage(s, m);
-  const activity = lastActivityMs(s, m);
+  const fileMtime = transcriptMtimeMs(s, m);
   const lifecycle = readLifecycle(s.name);
   const turnStartedMs =
     injected?.turnStartedMs ?? (lifecycle?.state === 'working' ? lifecycle.ts : null);
   const mt = lastSignOfLife(
-    activity,
+    fileMtime,
     scan.state === 'working' ? nowMs : paneWorkingSince(m, s.name),
     turnStartedMs,
   );
@@ -68,7 +68,7 @@ export function readTurnState(
           ? 'unknown-pane'
           : null,
     endedOnAssistantText:
-      injected?.assistantAnswered ?? assistantEndedCurrentTurn(lm, activity, turnStartedMs),
+      injected?.assistantAnswered ?? assistantEndedCurrentTurn(lm, fileMtime, turnStartedMs),
     msSinceActivity: mt === null ? null : nowMs - mt,
   });
 }

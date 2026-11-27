@@ -50,6 +50,17 @@ export const CREDENTIAL_KEYS = [
   'ANTHROPIC_BASE_URL',
 ] as const;
 
+/** Overrides that can redirect an explicit account selection away from the profile's own login. */
+export const CLAUDE_PROFILE_AUTH_ENV = [
+  ...CREDENTIAL_KEYS,
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_SECURESTORAGE_CONFIG_DIR',
+  'ANTHROPIC_PROFILE',
+  'ANTHROPIC_FEDERATION_RULE_ID',
+  'ANTHROPIC_ORGANIZATION_ID',
+  'ANTHROPIC_IDENTITY_TOKEN_FILE',
+] as const;
+
 interface Declared {
   configDir: string | null;
   ownCredentials: boolean;
@@ -90,15 +101,21 @@ function declaredProfile(path: string): Declared {
 }
 
 export function claudeProfile(
-  session: Pick<Session, 'dir' | 'envFile'>,
+  session: Pick<Session, 'dir' | 'envFile' | 'profile'>,
   m: Pick<MachineConfig, 'projectsDir'>,
 ): ClaudeProfile {
   const path = envFilePath(session);
-  const { configDir, ownCredentials } = path === null ? NONE : declaredProfile(path);
+  const { configDir, ownCredentials } =
+    session.profile === undefined
+      ? path === null
+        ? NONE
+        : declaredProfile(path)
+      : { configDir: session.profile.configDir, ownCredentials: false };
   if (configDir === null)
     return {
       configDir: null,
-      projectsDir: m.projectsDir,
+      projectsDir:
+        session.profile?.source === 'default' ? join(HOME, '.claude', 'projects') : m.projectsDir,
       globalConfigFile: `${HOME}/.claude.json`,
       userDir: `${HOME}/.claude`,
       ownCredentials,
@@ -115,7 +132,7 @@ export function claudeProfile(
 /** Every projects root this machine's sessions write to: the machine's own plus one per distinct
  *  declared profile. Where a conversation that is not at its expected path can still be found. */
 export function knownProjectsDirs(
-  sessions: readonly Pick<Session, 'dir' | 'envFile'>[],
+  sessions: readonly Pick<Session, 'dir' | 'envFile' | 'profile'>[],
   m: Pick<MachineConfig, 'projectsDir'>,
 ): string[] {
   return [...new Set([m.projectsDir, ...sessions.map((s) => claudeProfile(s, m).projectsDir)])];

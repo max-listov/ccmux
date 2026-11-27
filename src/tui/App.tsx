@@ -355,8 +355,8 @@ export function App({
       setExternalOn((v) => !v);
       return;
     }
-    // compose a chat message (fullscreen, managed session only — external is read-only)
-    if (fullscreen && input === 'i' && selected && !isExternal) {
+    // compose a chat message (fullscreen, live managed session only — external is read-only and sleeping needs wake first)
+    if (fullscreen && input === 'i' && selected && !isExternal && !selected.sleeping) {
       setMode('compose');
       setComposeDraft('');
       setFocus('transcript');
@@ -457,7 +457,7 @@ export function App({
       composing={mode === 'compose'}
       composeDraft={composeDraft}
       sending={sending}
-      canCompose={!!selected && !isExternal}
+      canCompose={!!selected && !isExternal && !selected.sleeping}
       load={load}
     />
   ) : (

@@ -12,6 +12,7 @@ import { promptInvocation } from '../../../util/env.ts';
 import { withLock } from '../../../util/lock.ts';
 import { log } from '../../../util/log.ts';
 import { computeStamp } from '../../launch/launchStamp.ts';
+import { verifySessionProfile } from '../namedProfiles.ts';
 import { ClaudeNativeOwner } from './owner.ts';
 import { resolveAgentSdk } from './resolve.ts';
 
@@ -30,6 +31,7 @@ export async function runClaudeNativeProcess(
   promote?: (session: Session) => Promise<Session>,
 ): Promise<void> {
   if (delegationStopped(m, initial)) throw new Error('Delegated work has ended');
+  verifySessionProfile(m, initial);
   const resolved = resolveAgentSdk(m);
   if ('unavailable' in resolved) throw new Error(resolved.detail);
   const root = managedRuntimeRoot(m, initial);

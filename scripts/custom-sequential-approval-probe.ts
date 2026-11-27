@@ -95,7 +95,7 @@ const harness = createHeadlessAgentHarness({
       runtimeTools: createAgentCodingTools({ root, authorize: () => true }).filter(
         (tool) => tool.name === 'write_file',
       ),
-      lifecycle: context.toolFenceLifecycle,
+      access: { gate: context.toolFenceLifecycle },
     }),
   loop: {
     maxSteps: 8,

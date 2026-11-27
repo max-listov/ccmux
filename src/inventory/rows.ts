@@ -6,6 +6,7 @@ import {
   providerFor,
   sessionModel,
   sessionUsedTokens,
+  transcriptMtimeMs,
 } from '../agent/index.ts';
 import { envFilePath } from '../agent/launch/launchInputs.ts';
 import { launchStaleReasons } from '../agent/launch/launchStamp.ts';
@@ -20,11 +21,12 @@ import { loadOutboxAcked } from '../fleet/flush.ts';
 import { loadOutbox } from '../fleet/outbox.ts';
 import { freshestLimits, type ProfileView, profileViews, viewsBySession } from '../quota/view.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
-import type { PlanLimits } from '../runtime/planLimits.ts';
+import type { PlanLimits } from '../runtime/planLimitsSchema.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
-import { managedRuntimeView } from '../runtime/view.ts';
+import { latestActivityMs, managedRuntimeView } from '../runtime/view.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
 import { loadSessions } from '../session/registry.ts';
+import { sleepBlocksStart } from '../session/sleep/store.ts';
 import {
   type LifecycleStatus,
   readLaunchStamp,
@@ -58,6 +60,7 @@ const scanCache = new Map<string, PaneScan>();
 export interface ListRow {
   session: Session;
   running: boolean;
+  sleeping: boolean;
   state: SessionState;
   lifecycleError: string | null;
   model: string | null;
@@ -79,7 +82,7 @@ export interface ListRow {
   lastMessage: TranscriptMessage | null;
   /** How many letters this session has exchanged, over the machine's whole record. */
   letters: SessionLetters;
-  lastActivityMs: number | null; // transcript file mtime — "conversation moved" (any instance)
+  lastActivityMs: number | null; // timestamp of the last real conversation message/step (never bare file mtime)
   // What a restart WOULD change for this session ("chat" / "mode" / "modules" / "config").
   // Empty = up to date, or launched before stamping existed (unknown is never shown as stale).
   stale: string[];
@@ -109,14 +112,17 @@ async function buildRow(
   observation?: { pane: string | null },
 ): Promise<ListRow> {
   const lastMessage = lastTranscriptMessage(s, m); // works running or stopped
-  const activity = lastActivityMs(s, m);
   const native = hasNativeRuntime(s) ? managedRuntimeView(m, s) : null;
+  const activity = latestActivityMs(lastActivityMs(s, m), native?.activity.atMs ?? null);
+  const fileMtime = transcriptMtimeMs(s, m);
   if (startedAt === undefined && native?.read.status !== 'live') {
     scanCache.delete(s.name); // stopped → drop stale scan so a restart re-captures
     const block = readLifecycleBlockForSession(m, s);
+    const sleeping = !s.archived && sleepBlocksStart(m, s);
     return {
       session: s,
       running: false,
+      sleeping,
       atPrompt: null, // a stopped session is not sitting at anything
       waitingFor: null, // nor waiting for anyone
       state: block ? 'blocked' : 'stopped',
@@ -171,7 +177,7 @@ async function buildRow(
   const turnStartedMs = lifecycle?.state === 'working' ? lifecycle.ts : null;
   const paneWorking = scan.state === 'working';
   const aliveMs = lastSignOfLife(
-    activity,
+    fileMtime,
     paneWorking ? nowSec * 1000 : paneWorkingSince(m, s.name),
     turnStartedMs,
   );
@@ -179,7 +185,7 @@ async function buildRow(
     paneWorking,
     paneReady: provider.inspectChatPane === undefined ? true : scan.ready,
     atMenu: scan.atPrompt !== null,
-    endedOnAssistantText: assistantEndedCurrentTurn(lastMessage, activity, turnStartedMs),
+    endedOnAssistantText: assistantEndedCurrentTurn(lastMessage, fileMtime, turnStartedMs),
     msSinceActivity: aliveMs === null ? null : nowSec * 1000 - aliveMs,
   });
   const state: SessionState = native?.state ?? resolveLiveState(scan.state, lifecycle, evidence);
@@ -219,6 +225,7 @@ async function buildRow(
   return {
     session: s,
     running: true,
+    sleeping: false,
     state,
     atPrompt: scan.atPrompt,
     waitingFor: readWaiting(s.name)?.target ?? null,
@@ -287,8 +294,15 @@ export function turnStartedAt(
  * which reads as a live session that is down and wants restarting. Fifty-five parked rows presented
  * that way is the difference between a map and a mess.
  */
-export function rowStateLabel(state: string, running: boolean, archived: boolean): string {
-  return archived && !running ? 'archived' : state;
+export function rowStateLabel(
+  state: string,
+  running: boolean,
+  archived: boolean,
+  sleeping = false,
+): string {
+  if (archived && !running) return 'archived';
+  if (sleeping && !running && state === 'stopped') return 'sleeping';
+  return state;
 }
 
 /**
@@ -331,6 +345,8 @@ export function toListItem(m: MachineConfig, r: ListRow): ListItem {
     rc: rcName(m, r.session.name),
     running: r.running,
     archived: r.session.archived,
+    sleeping: r.sleeping,
+    pinned: r.session.pinned === true,
     state: r.state,
     atPrompt: r.atPrompt,
     waitingFor: r.waitingFor,
@@ -347,6 +363,7 @@ export function toListItem(m: MachineConfig, r: ListRow): ListItem {
     role: r.session.role ?? null,
     turnStartedAt: r.turnStartedAt,
     envFile: envFileEntry(r.session),
+    ...(r.session.profile === undefined ? {} : { profile: r.session.profile.name }),
     createdAt: r.createdAt,
     lastMessage: r.lastMessage,
   };

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { copyFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { describeWriter, liveWriters, type Writer } from '../agent/claude/writers.ts';
@@ -75,7 +76,13 @@ async function register(
   uuid: string,
   name: string,
 ): Promise<string> {
-  const s = SessionSchema.parse({ name, dir, uuid, agent: 'claude' });
+  const s = SessionSchema.parse({
+    name,
+    dir,
+    uuid,
+    registrationGeneration: randomUUID(),
+    agent: 'claude',
+  });
   await appendSession(m, s);
   await startSession(m, name, dir);
   return name;

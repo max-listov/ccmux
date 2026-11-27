@@ -41,6 +41,11 @@ const ABSENT = 'zzz-not-a-session';
 const VERBS: string[][] = [
   ['stop', ABSENT],
   ['start', ABSENT],
+  ['sleep', ABSENT],
+  ['wake', ABSENT],
+  ['pin', ABSENT],
+  ['unpin', ABSENT],
+  ['attach', ABSENT],
   ['restart', ABSENT],
   ['rm', ABSENT],
   ['renew', ABSENT],

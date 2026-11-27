@@ -23,8 +23,8 @@ test('explicit steering persists intent then supplies exact active turn and clie
     {
       threadId: f.session.uuid,
       expectedTurnId: f.input.expectedTurnId,
-      clientUserMessageId: `steer:${f.input.operationId}`,
-      input: [{ type: 'text', text: f.input.body, text_elements: [] }],
+      clientId: `steer:${f.input.operationId}`,
+      input: [{ type: 'text', text: f.input.body }],
     },
   ]);
   expect(f.calls).toEqual(['connect', 'gate', 'thread/read', 'turn/steer', 'ungate', 'close']);

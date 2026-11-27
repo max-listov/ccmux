@@ -356,17 +356,17 @@ optional, and it is the same one the event feed already follows: the consumer's 
 
 ## Two transports, one address
 
-`<machine>:<session>` never says how a call travels. Two transports carry it, chosen per direction in
-`machine.json`:
+`machine.json` selects how to reach each `<machine>:<session>` in each direction.
 
 | Transport | Reaches | Requires | Configured by |
 |---|---|---|---|
 | ssh | a machine with an address and a key | the receiver to be reachable | `fleet: { <machine>: <alias> }` |
-| injected remote adapter | any machine running the agent | nothing inbound at all | `remoteTransport: { peers: [<machine>] }` |
+| Stitchwire | a peer connected to the broker | a local Wire agent | `remoteTransport: { kind: "stitchwire", peers: [<machine>] }` |
+| external adapter | a peer supported by the operator's transport | a local adapter socket | `remoteTransport: { peers: [<machine>], socket: <path> }` |
 
 ssh cannot address a roaming laptop, and never will: it has no stable address, and giving it an
-inbound port plus a server-held key would invert the trust model to buy one direction. injected remote adapter
-inverts the *connection* instead — every node dials out to a broker and keeps that link — so
+inbound port plus a server-held key would change the trust model. With Stitchwire,
+every node dials out to a broker and keeps that link, so
 `dev:<session>` reaching `host-C:<session>` becomes possible while no node holds a credential to another
 node.
 
@@ -557,10 +557,9 @@ A machine listed in `remoteTransport.peers` is reached over the remote transport
 what makes the remote transport adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.
 
-When such a machine also has an ssh alias, ssh is its fallback — for a call the remote route never
-dispatched (`delivery: not-sent`: no local adapter, no route, a refusal before sending), and for no
-other. A call the route may already have delivered (`unknown`) is not repeated over ssh, because a
-second path would run it twice. The fallback is logged as `remote route fell back to ssh` with the
+When that machine has an SSH alias and the primary route is temporarily unavailable, CCMux
+can use SSH only with confirmed `not-sent` delivery. A permanent policy refusal, cancellation
+or uncertain delivery ends the call. The fallback is logged as `remote route fell back to ssh` with the
 machine and the route's reason, and `fleet` names it on that machine's row: `→ <alias> (ssh fallback:
 <reason>)`, and `fallback` in `--json`. A route that silently became ssh again is how a fan-out ends
 up opening a login on every server for every call, so the fallback is never quiet.

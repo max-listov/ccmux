@@ -246,19 +246,70 @@ test("a human's message reaches an ordinary session, which has no generation to 
   );
   expect(accepted.accepted).toBe(true);
   expect(loadLedger(f.m)).toHaveLength(1);
+
+  // Backfilled registrationGeneration on an ordinary TUI pane keeps human input working without
+  // pinning, while still refusing an explicit mismatched registrationGeneration.
+  const backfilled = makeSession({
+    name: 'agent-c',
+    chat: true,
+    dir: f.m.stateDir,
+    registrationGeneration: crypto.randomUUID(),
+  });
+  await writeSessionsUnlocked(f.m, [plain, backfilled]);
+  const acceptedBackfilled = await acceptControlMessage(
+    f.m,
+    service,
+    {
+      target: managedPeer(f.m.rcPrefix, backfilled),
+      messageId: crypto.randomUUID(),
+      body: "a person's message to backfilled TUI",
+      communicationAuthorization: null,
+      origin: { applicationId: 'app', channelId: 'chat', actor: 'human' },
+    },
+    f.signal,
+  );
+  expect(acceptedBackfilled.accepted).toBe(true);
+  await expect(
+    acceptControlMessage(
+      f.m,
+      service,
+      {
+        target: managedPeer(f.m.rcPrefix, backfilled),
+        registrationGeneration: crypto.randomUUID(),
+        messageId: crypto.randomUUID(),
+        body: 'wrong pin',
+        communicationAuthorization: null,
+        origin: { applicationId: 'app', channelId: 'chat', actor: 'human' },
+      },
+      f.signal,
+    ),
+  ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
 });
 
-test('a session that HAS a generation still refuses attributed input that does not pin it', async () => {
-  // The other half: where the pin is possible it stays mandatory, so a person's message cannot land
-  // on a registration that was replaced underneath it.
+test('a native session with a generation still refuses attributed input that does not pin it', async () => {
+  // The other half: native sessions with an owned registration must still be pinned explicitly so
+  // a person's message cannot land on a replaced native runtime, while plain TUI panes (which now
+  // receive backfilled registrationGeneration for sleep/wake) remain reachable without pinning
+  // and still reject an explicit mismatched generation.
   const f = await fixture();
   const service = servicePrincipal('host-b', 'declared-service');
+  const nativeGen = crypto.randomUUID();
+  const nativeSession = makeSession({
+    name: 'agent-native',
+    agent: 'codex',
+    runtime: 'app-server',
+    chat: true,
+    dir: f.m.stateDir,
+    registrationGeneration: nativeGen,
+  });
+  await writeSessionsUnlocked(f.m, [nativeSession]);
   await expect(
     acceptControlMessage(
       f.m,
       service,
       {
         ...f.input,
+        target: managedPeer(f.m.rcPrefix, nativeSession),
         registrationGeneration: undefined,
         communicationAuthorization: null,
         origin: { applicationId: 'app', channelId: 'chat', actor: 'human' },

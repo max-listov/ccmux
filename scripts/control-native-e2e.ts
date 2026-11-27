@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { findOwnedCodexReceipt } from '../src/agent/codex/owned/receipt.ts';
+import { findCodexTurnByClientId } from 'stitchkit/agent-executor/codex';
 import { connectOwnedCodex } from '../src/agent/codex/owned/rpc.ts';
 import { readOwnedCodexStatus } from '../src/agent/codex/owned/status.ts';
 import { managedPeer, samePrincipal, sameTarget } from '../src/chat/identity.ts';
@@ -188,7 +188,8 @@ try {
     const deferredRpc = await connectOwnedCodex(m, a);
     try {
       check(
-        (await findOwnedCodexReceipt(deferredRpc, a.uuid, deferredId))?.status === 'completed',
+        (await findCodexTurnByClientId(deferredRpc, { threadId: a.uuid, clientId: deferredId }))
+          ?.status === 'completed',
         'Deferred control message has no completed native receipt',
       );
     } finally {
@@ -230,7 +231,8 @@ try {
     const rpc = await connectOwnedCodex(m, a);
     try {
       check(
-        (await findOwnedCodexReceipt(rpc, a.uuid, recoveryId))?.status === 'completed',
+        (await findCodexTurnByClientId(rpc, { threadId: a.uuid, clientId: recoveryId }))?.status ===
+          'completed',
         'Recovery has no completed native receipt',
       );
     } finally {

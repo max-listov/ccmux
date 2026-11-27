@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-11-11 15:17 +07:00
+updated: 2026-11-27 14:23 +08:00
 ---
 
 # Terminal-меню
@@ -110,6 +110,7 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `history` | POST `/control/history` | Bounded provider-owned history page |
 | `compact` / `contextOperation` | POST `/control/context/compact` / `/control/context/operation` | Native compaction admission and completion evidence |
 | `fork` | POST `/control/fork` | Same-workspace native fork with a new managed identity |
+| `session.idle` / `session.sleep` / `session.wake` / `session.pin` | POST `/control/session/{idle,sleep,wake,pin}` | Idle proof (`read`), reversible sleep with optional `forcePolicy`, wake, and pinned flag (`write`); all four forward across fleet peers |
 
 The service uses the unversioned prefix `/ccmux/control`, envelope revision **current** and sole
 native stream profile **ccmux-native**. There is no numbered dispatcher, compatibility client or
@@ -142,6 +143,12 @@ verified. Native OpenCode stores its native continuation separately from the man
 existing exact target fields remain required. Runtime/selection changes conflict with the original
 request ID. See [managed runtime drivers](managed-runtime-drivers.md) for capabilities, native
 protocol budgets and the supported host configuration boundary.
+
+A Claude create can select a named host profile with `profile: "work"`. The host resolves it
+before registration and returns the name in the receipt. A retry keeps its original account
+binding and a native fork inherits its source's binding. A delegated create cannot select another
+account. For host-scoped `model.list` requests the same field selects the profile whose offerings
+are requested. Session-scoped model reads use the session's own profile.
 
 An optional `launchRecipe: { id, revision }` selects an execution-host definition. In that form
 caller flags must be empty: native flags, an optional existing session `envFile`, required
@@ -228,6 +235,11 @@ needed for informed authorization; this explicit scope is separate from raw tool
 Generation/sequence cursors return `records` for retained replay
 or a bounded `baseline` with `reset=initial|generation|gap|context`. There is no old `items` field.
 
+`models({ runtime: 'antigravity' })` discovers the host's model choices over ACP. The daemon
+opens a temporary metadata session, reads its model and thought-level options, and closes it
+without submitting a prompt. Effort choices describe the active model only. The result is
+cached separately from Codex; discovery does not create a managed session.
+
 `models({})` reads the native App Server catalog before the first conversation, with no managed
 target or registry row. An optional `launchRecipe: { id, revision }` selects host-owned configuration;
 a host-catalog env source must be absolute or home-relative, not workspace-relative. CCMux starts
@@ -259,7 +271,7 @@ cached: they answer from a runtime that is already running.
 
 An optional exact `target` instead connects to that session's own socket; target and launch recipe
 are mutually exclusive. There is no fallback to a machine socket or another session. The returned
-`source: { kind: "host" | "session", machine, provider, launchRecipe? }` names the actual scope;
+`source: { kind: "host" | "session", machine, provider, launchRecipe?, profile? }` names the actual scope;
 `target` is echoed only for a session read. Unsupported custom-provider catalogs are refused, never
 relabeled from OpenAI picker metadata. The caller supplies no credentials, paths, argv or executable.
 Every read uses the existing global read admission and deadline. Other inputs are
@@ -379,8 +391,9 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 Ответы по флоту (`identity.*`, `search`, `fleet.list`, `chat.log` с `fleet`) опрашивают
 остальные машины сами и называют каждую, которая не ответила.
 
-**Операцию с сессией другой машины исполняет демон той машины.** `message.read`, `session.start`,
-`session.stop`, `session.restart`, `session.remove` и `session.keys` с целью на другой машине
+**Операцию с сессией другой машины исполняет демон той машины.** `message.read`, `session.idle`,
+`session.sleep`, `session.wake`, `session.pin`, `session.start`, `session.stop`, `session.restart`,
+`session.remove` и `session.keys` с целью на другой машине
 демон не исполняет и не отклоняет: он передаёт тот же вызов — имя операции и проверенный вход —
 машине цели (`src/control/peerOperation.ts`). Та запускает `ccmux _peer-operation <операция>` со
 входом на stdin; программа спрашивает свой демон через локальный сокет и печатает одну строку —
@@ -503,16 +516,24 @@ install an MCP server into existing provider sessions or change Desktop configur
 
 # Declared service and native stream binding
 
-The local control routes remain a same-user API and are never exposed directly as a remote
-service. A transport that already authenticates nodes and grants declared operations runs beside
-the daemon as the same user and delivers each call to that operation's own route on the local
-socket, naming the authenticated node in `x-ccmux-caller`. The daemon reads that caller as a
-`declared-service` principal — a session credential beside it is refused — and runs the same
-handlers, mutation admission, wait admission, registry, chat ledger and native provider adapter as
-for a local caller. It is not an HTTP-to-CLI proxy and cannot create another provider writer.
+When the Stitchwire route has a `serviceDirectory`, the CCMux daemon serves
+`ccmux.control` at `POST /invoke` on its existing, same-user control socket. The local Wire
+agent authenticates the calling node. The public SDK validates the envelope and attaches
+the caller to the request. CCMux checks the local grant and dispatches as a
+`declared-service` principal through the ordinary control handlers and mutation admission.
+A custom same-user transport can also forward the authenticated node in `x-ccmux-caller`.
+
+Configure the agent's `services.descriptors` with the absolute path to
+`ccmux.control.declaration.json` inside the private service directory. CCMux writes the
+declaration and the sibling `ccmux.control.json` from its running version and contract.
+The operator owns the sibling `ccmux.control.callers.json`. For example,
+`[{"caller":"host-a","scope":{"kind":"service-read"}}]` grants reads. A write requires
+an entry with `"scope":{"kind":"operation","operation":"letter.send"}`. CCMux rereads the
+file every five seconds. A missing or invalid policy withdraws the grants. Stopping the daemon
+withdraws its declaration. Outbound command routing works independently of this service.
 
 **The service is the contract, and each operation says what it does.** The declared service carries
-every operation of `controlContract`, and each one declares in `meta.service` whether it is a `read`
+every operation of `controlContract`, and each one declares in `effect` whether it is a `read`
 or a `write` (`src/control/schema/serviceEffect.ts`). There is no default — an operation that says
 nothing does not compile — because the failure this replaced was a silent one: a transport kept its
 own list of reads beside the contract, written at one release, which called every later operation a
@@ -640,11 +661,10 @@ fetches the same line again.
   call retains its admission lease until its underlying operation really settles; retries must
   reconcile an immutable message ID. Capacity refusal is `BUSY`/429; draining is 503.
 
-The optional remote fleet boundary is a public Stitchkit contract over an injected local Unix
-transport. CCMux submits a peer, argv, stdin and deadline and consumes a normalized command result.
-Provider framing, credentials, node bindings and broker behavior remain outside this repository.
-There is no provider SDK, copied protocol, descriptor or fallback implementation in the public
-install. A configured remote peer never silently falls back to SSH.
+With `remoteTransport.kind` set to `stitchwire`, CCMux sends the peer, argv, stdin and
+deadline directly to the local Wire agent through `@stitchwire/client`. The agent owns the
+broker connection, credentials and node policy. A custom command transport can implement the
+public Stitchkit Unix adapter contract. Both return the same delivery and refusal information.
 
 `RemoteResult.delivery` is independent of command exit: `not-sent` requires local pre-dispatch
 evidence or a structured pre-execution refusal; timeout, malformed reply and after-dispatch loss

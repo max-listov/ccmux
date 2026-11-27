@@ -92,10 +92,10 @@ test('Codex live/history separate native tool lifecycle from exact known or unkn
       params: { threadId: f.s.uuid, turnId: 'turn-a', item },
     });
   const history = await codexContextApi(f.m, f.s, {
-    close() {},
-    async request() {
+    async listItems() {
       return { data: items.map((item) => ({ turnId: 'turn-a', item })), nextCursor: null };
     },
+    async compactThread() {},
   }).history({ limit: 64 }, AbortSignal.timeout(1_000));
   const frame = contentFrame(ContentSnapshotSchema.parse(f.buffer.snapshot()), null);
   expect(frame.baseline).toHaveLength(items.length);

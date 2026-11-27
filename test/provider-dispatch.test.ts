@@ -132,6 +132,7 @@ test('declaring the Claude row for the native mode leaves the interactive row un
     compaction: false,
     rollback: false,
     applicationPolicy: false,
+    sleep: true,
   });
   // A Claude session with no runtime recorded at all is the same interactive answer.
   expect(runtimeCapabilities({ agent: 'claude' })).toEqual(tui);

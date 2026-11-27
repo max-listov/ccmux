@@ -15,6 +15,7 @@ export type StatusKey =
   | 'tool'
   | 'waiting'
   | 'idle'
+  | 'sleeping'
   | 'stopped'
   | 'blocked'
   | 'prompt';
@@ -36,6 +37,7 @@ const ICON: Record<StatusKey, string> = {
   tool: '✱',
   waiting: '◔',
   idle: '○',
+  sleeping: '◌',
   stopped: '▪',
   blocked: '!',
   prompt: '?',
@@ -69,6 +71,7 @@ export function deriveStatus(opts: {
   isWorking: boolean;
   lastMessage: TranscriptMessage | null;
   blocked?: boolean;
+  sleeping?: boolean;
   atPrompt?: string | null;
 }): AgentStatus {
   if (opts.blocked === true) return st('blocked', 'blocked', 'red', false);
@@ -77,6 +80,7 @@ export function deriveStatus(opts: {
   // needs rather than only that it needs something.
   if (opts.atPrompt != null && opts.atPrompt !== '')
     return st('prompt', `needs answer: ${opts.atPrompt}`, 'yellow', false);
+  if (!opts.running && opts.sleeping === true) return st('sleeping', 'sleeping', 'blue', false);
   if (!opts.running) return st('stopped', 'stopped', 'gray', false);
   if (opts.isWorking) return working(opts.lastMessage);
   // not actively working → waiting for our input if the assistant finished its turn, else idle

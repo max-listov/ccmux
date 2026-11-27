@@ -9,7 +9,7 @@ import { hasNativeRuntime, runtimeModes } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { loadSessions } from '../session/registry.ts';
-import { readSleep } from '../session/sleep/store.ts';
+import { readSleepSafe } from '../session/sleep/store.ts';
 import type { MachineConfig } from '../types.ts';
 import { SnapshotPublisher } from '../util/snapshotPublisher.ts';
 import { VERSION } from '../util/version.ts';
@@ -59,9 +59,16 @@ export class ControlPublisher extends SnapshotPublisher<ControlSnapshot> {
         continue;
       }
       const owned = hasNativeRuntime(session);
-      const sleep = readSleep(m, session);
+      const sleep = readSleepSafe(m, session);
       const stopped = delegationStopped(m, session);
-      const sleeping = sleep !== null && ['requested', 'sleeping'].includes(sleep.phase);
+      // Archived always takes precedence over any historical sleep receipt; while the process is
+      // still tearing down (`item.running`), keep reporting live state rather than premature stopped.
+      const sleeping =
+        !session.archived &&
+        !item.running &&
+        sleep !== null &&
+        sleep.phase !== 'awake' &&
+        sleep.phase !== 'waking';
       const native = owned ? readManagedRuntimeStatus(m, session) : null;
       const expiry = new Date(Date.parse(item.observedAt) + source.maxAgeMs).toISOString();
       const row: ControlRow = {
@@ -69,9 +76,12 @@ export class ControlPublisher extends SnapshotPublisher<ControlSnapshot> {
           ? {}
           : { delegation: readDelegationEvidence(m, session) }),
         identity: managedPeer(m.rcPrefix, session),
+        registrationGeneration: session.registrationGeneration ?? null,
         // The mode the session runs in, from the one table that knows them; `cli` is what the
         // control row calls an interactive mode.
         runtime: owned ? runtimeModes[session.agent].native : 'cli',
+        pinned: session.pinned === true,
+        ...(item.memoryBytes === undefined ? {} : { memoryBytes: item.memoryBytes }),
         state:
           sleeping || stopped
             ? 'stopped'
@@ -82,7 +92,7 @@ export class ControlPublisher extends SnapshotPublisher<ControlSnapshot> {
                 : 'unknown',
         availability: native?.status ?? 'live',
         reason: sleeping ? 'sleeping' : stopped ? 'delegation-ended' : (native?.reason ?? null),
-        ...(sleep === null
+        ...(sleep === null || session.archived
           ? {}
           : {
               sleep: {

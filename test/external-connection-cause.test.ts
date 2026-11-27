@@ -2,8 +2,13 @@ import { afterEach, expect, test } from 'bun:test';
 import { linkSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { CodexAppUnavailable, connectCodexSocket } from '../src/agent/codex/socket.ts';
+import { dirname, join } from 'node:path';
+import { CodexUnixSocketError } from 'stitchkit/agent-executor/codex';
+import {
+  codexExecutorProfile,
+  codexFailureKindOf,
+  connectCodexSocketControl,
+} from '../src/agent/codex/owned/rpc.ts';
 import { ExternalSessionSchema } from '../src/external/sessionSchema.ts';
 import { remedyFor, unknownTurnState } from '../src/external/turnSchema.ts';
 import { observeExternalTurns, reasonFor } from '../src/external/turnState.ts';
@@ -37,11 +42,16 @@ function root() {
 
 async function kindOf(path: string): Promise<string> {
   try {
-    const rpc = await connectCodexSocket(path, { maxMessageBytes: 1024 });
-    rpc.close();
+    const rpc = await connectCodexSocketControl(
+      path,
+      codexExecutorProfile(makeMachine()),
+      dirname(path),
+      { maxFrameBytes: 1024 },
+    );
+    await rpc.close();
     return 'connected';
   } catch (error) {
-    return error instanceof CodexAppUnavailable ? error.kind : `other: ${String(error)}`;
+    return codexFailureKindOf(error) ?? `other: ${String(error)}`;
   }
 }
 
@@ -142,7 +152,7 @@ test('every outage reaches the consumer with a cause AND something a person can 
     'connection-lost',
   ] as const) {
     const [session] = await observeExternalTurns(makeMachine(), [row()], async () => {
-      throw new CodexAppUnavailable(kind, 'synthetic');
+      throw new CodexUnixSocketError(kind, '/tmp/codex.sock', 'synthetic');
     });
     expect(session?.turnState.reason).toBe(kind);
     expect(session?.turnState.remedy).toMatch(/\S/);

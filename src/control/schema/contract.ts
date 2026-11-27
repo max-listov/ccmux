@@ -1,4 +1,5 @@
 import { defineContract } from 'stitchkit';
+import type { OperationEffect } from 'stitchkit/contract';
 import { z } from 'zod';
 import { AttachmentReferenceSchema } from '../../attachments/reference.ts';
 import {
@@ -41,6 +42,8 @@ import { RuntimeCatalogInputSchema, RuntimeCatalogSchema } from '../../runtime/c
 import { WhoisAnswerSchema, WhoisListSchema } from '../../session/identitySchema.ts';
 import {
   IdleProofSchema,
+  PinReceiptSchema,
+  PinRequestSchema,
   SleepReceiptSchema,
   SleepRequestSchema,
   SleepTargetSchema,
@@ -115,7 +118,6 @@ import {
   ControlWaitSchema,
 } from './runtimeOps.ts';
 import { SelectionReadSchema, SelectionResultSchema, SelectionUpdateSchema } from './selection.ts';
-import { type ControlEndpointMeta, SERVICE_READ, SERVICE_WRITE } from './serviceEffect.ts';
 import {
   ControlArchiveReceiptSchema,
   ControlCreateReceiptSchema,
@@ -139,7 +141,7 @@ export const controlContract = defineContract(
     'terminal.prompt': {
       method: 'POST',
       path: '/terminal/prompt',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Observe a supported interactive terminal menu before choosing an option',
       input: TerminalPromptReadSchema,
       output: TerminalPromptResultSchema,
@@ -150,7 +152,7 @@ export const controlContract = defineContract(
     'terminal.respond': {
       method: 'POST',
       path: '/terminal/respond',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Submit one option from an unexpired single-use terminal observation',
       input: TerminalPromptRespondSchema,
       output: TerminalPromptReceiptSchema,
@@ -161,7 +163,7 @@ export const controlContract = defineContract(
     'usage.read': {
       method: 'POST',
       path: '/usage',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read measured usage without conversation content',
       input: UsageReadSchema,
       output: UsageSummarySchema,
@@ -173,7 +175,7 @@ export const controlContract = defineContract(
     'usage.list': {
       method: 'POST',
       path: '/usage/list',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read a bounded page of local session usage',
       input: UsageListSchema,
       output: UsageListResultSchema,
@@ -185,7 +187,7 @@ export const controlContract = defineContract(
     'identity.whois': {
       method: 'POST',
       path: '/identity/whois',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Which session a window title, an address or a provider conversation id is, asked of every fleet machine; a machine that was not asked is named',
       input: IdentityWhoisReadSchema,
       output: WhoisAnswerSchema,
@@ -197,7 +199,7 @@ export const controlContract = defineContract(
     'identity.list': {
       method: 'POST',
       path: '/identity/list',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Every session of the fleet with its directory, repository, project, checkouts and conversation ids',
       input: IdentityListReadSchema,
       output: WhoisListSchema,
@@ -209,7 +211,7 @@ export const controlContract = defineContract(
     'chat.log': {
       method: 'POST',
       path: '/chat/log',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'The newest letters received and sent, of this machine or merged across the fleet in time order; a machine that did not answer is named',
       input: ChatLogReadSchema,
       output: LogPayloadSchema,
@@ -221,7 +223,7 @@ export const controlContract = defineContract(
     'fleet.list': {
       method: 'POST',
       path: '/fleet/list',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Every session on every fleet machine with its state, the release each machine runs and the accounts they spend on; a machine that did not answer is a row that says why',
       input: z.object({}).strict(),
       output: FleetAnswerSchema,
@@ -233,7 +235,7 @@ export const controlContract = defineContract(
     'message.read': {
       method: 'POST',
       path: '/message/read',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: "One user message of a fleet session, whole, by its id, with who sent it; another machine's session is read by that machine's daemon",
       input: ExactMessageReadSchema,
       output: ExactMessageResultSchema,
@@ -246,7 +248,7 @@ export const controlContract = defineContract(
     'letter.list': {
       method: 'POST',
       path: '/letter/list',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'The letters the caller sent, each with its state and the reference a continuation cites',
       input: SentLettersReadSchema,
       output: SentListSchema,
@@ -258,7 +260,7 @@ export const controlContract = defineContract(
     'letter.send': {
       method: 'POST',
       path: '/letter/send',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: "A letter from the caller to a fleet session, an App thread or the owner, with the receipt ccmux msg --json prints; another machine's recipient is resolved and handed the letter there",
       input: LetterRequestSchema,
       output: SendReceiptSchema,
@@ -270,7 +272,7 @@ export const controlContract = defineContract(
     'external.history': {
       method: 'POST',
       path: '/external/history',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read bounded external authored text without writer mutation',
       input: ExternalContentReadSchema,
       output: ExternalContentResultSchema,
@@ -280,7 +282,7 @@ export const controlContract = defineContract(
     'external.message': {
       method: 'POST',
       path: '/external/message',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Resolve one exact native message of an external thread with its recorded submitter',
       input: ExternalMessageReadSchema,
       output: ExternalMessageResultSchema,
@@ -290,7 +292,7 @@ export const controlContract = defineContract(
     'external.capabilities': {
       method: 'POST',
       path: '/external/capabilities',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read exact external content and control eligibility',
       input: ExternalContentSelectorSchema,
       output: ExternalContentCapabilitiesSchema,
@@ -300,7 +302,7 @@ export const controlContract = defineContract(
     'message.cancel': {
       method: 'POST',
       path: '/message/cancel',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Withdraw one accepted letter of the caller that has not been delivered',
       input: ControlMessageCancelSchema,
       output: ControlMessageCancelReceiptSchema,
@@ -309,7 +311,7 @@ export const controlContract = defineContract(
     'message.operation': {
       method: 'POST',
       path: '/message/operation',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read retained exact message-to-native-turn evidence without resubmission',
       input: MessageOperationReadSchema,
       output: MessageOperationResultSchema,
@@ -318,7 +320,7 @@ export const controlContract = defineContract(
     'transcript.read': {
       method: 'POST',
       path: '/transcript',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read a bounded transcript window with the cursor a caller pages by',
       input: ControlTranscriptReadSchema,
       output: ControlTranscriptResultSchema,
@@ -328,7 +330,7 @@ export const controlContract = defineContract(
     'history.read': {
       method: 'POST',
       path: '/history',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read a bounded native history page through its existing owner',
       input: ControlHistoryReadSchema,
       output: ControlHistoryResultSchema,
@@ -338,7 +340,7 @@ export const controlContract = defineContract(
     'context.compact': {
       method: 'POST',
       path: '/context/compact',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Accept an exact idle native compaction operation',
       input: ControlCompactSchema,
       output: ControlContextOperationResultSchema,
@@ -347,7 +349,7 @@ export const controlContract = defineContract(
     'context.operation': {
       method: 'POST',
       path: '/context/operation',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read durable native compaction completion evidence',
       input: ControlContextOperationReadSchema,
       output: ControlContextOperationResultSchema,
@@ -356,7 +358,7 @@ export const controlContract = defineContract(
     'delegation.application.capabilities': {
       method: 'POST',
       path: '/delegation/application/capabilities',
-      meta: SERVICE_READ,
+      effect: 'read',
       input: z.object({}).strict(),
       output: ApplicationAuthorityCapabilitiesSchema,
       idempotent: true,
@@ -367,7 +369,7 @@ export const controlContract = defineContract(
     'delegation.application.open': {
       method: 'POST',
       path: '/delegation/application/open',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       input: ApplicationAuthorityOpenSchema,
       output: ApplicationAuthoritySchema,
       idempotent: true,
@@ -378,7 +380,7 @@ export const controlContract = defineContract(
     'delegation.application.renew': {
       method: 'POST',
       path: '/delegation/application/renew',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       input: ApplicationAuthorityUpdateSchema,
       output: ApplicationAuthoritySchema,
       idempotent: true,
@@ -389,7 +391,7 @@ export const controlContract = defineContract(
     'delegation.application.close': {
       method: 'POST',
       path: '/delegation/application/close',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       input: ApplicationAuthorityUpdateSchema,
       output: ApplicationAuthoritySchema,
       idempotent: true,
@@ -400,7 +402,7 @@ export const controlContract = defineContract(
     'delegation.cancel': {
       method: 'POST',
       path: '/delegation/cancel',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       input: DelegationCancelSchema,
       output: DelegationCancelReceiptSchema,
       idempotent: true,
@@ -411,39 +413,50 @@ export const controlContract = defineContract(
     'session.idle': {
       method: 'POST',
       path: '/session/idle',
-      meta: SERVICE_READ,
+      effect: 'read',
       input: SleepTargetSchema,
       output: IdleProofSchema,
       idempotent: true,
-      desc: 'Measure an exact owned session idle proof',
+      desc: 'Measure an exact managed session idle proof',
       expose: ['HTTP', 'CLI', 'MCP'],
     },
     'session.sleep': {
       method: 'POST',
       path: '/session/sleep',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       input: SleepRequestSchema,
       output: SleepReceiptSchema,
       idempotent: true,
-      timeout: 15000,
-      desc: 'Release one idle owned executor using revision CAS',
+      timeout: 30000,
+      desc: 'Put one idle managed session to sleep using revision CAS',
       expose: ['HTTP', 'CLI', 'MCP'],
     },
     'session.wake': {
       method: 'POST',
       path: '/session/wake',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       input: WakeRequestSchema,
       output: SleepReceiptSchema,
       idempotent: true,
       timeout: 30000,
-      desc: 'Resume a sleeping native identity',
+      desc: 'Wake a sleeping managed session',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'session.pin': {
+      method: 'POST',
+      path: '/session/pin',
+      effect: 'write',
+      input: PinRequestSchema,
+      output: PinReceiptSchema,
+      idempotent: true,
+      timeout: 15000,
+      desc: 'Pin or unpin a managed session against sleep without restarting it',
       expose: ['HTTP', 'CLI', 'MCP'],
     },
     'session.fork': {
       method: 'POST',
       path: '/fork',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Fork one idle native conversation without changing its source',
       input: NativeForkRequestSchema,
       output: ControlCreateReceiptSchema,
@@ -453,7 +466,7 @@ export const controlContract = defineContract(
     'turn.steer': {
       method: 'POST',
       path: '/turn/steer',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Submit content to an exact active native turn',
       input: SteeringInputSchema,
       output: SteeringReceiptSchema,
@@ -463,7 +476,7 @@ export const controlContract = defineContract(
     'turn.steering-operation': {
       method: 'POST',
       path: '/turn/steering-operation',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read exact steering acceptance without resubmission',
       input: SteeringSelectorSchema,
       output: SteeringReadResultSchema,
@@ -472,7 +485,7 @@ export const controlContract = defineContract(
     'selection.read': {
       method: 'POST',
       path: '/selection',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: "Read the exact session's revisioned native turn defaults",
       input: SelectionReadSchema,
       output: SelectionResultSchema,
@@ -481,7 +494,7 @@ export const controlContract = defineContract(
     'selection.update': {
       method: 'POST',
       path: '/selection/update',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Change native turn defaults between turns with revision CAS',
       input: SelectionUpdateSchema,
       output: SelectionResultSchema,
@@ -490,7 +503,7 @@ export const controlContract = defineContract(
     'attachment.begin': {
       method: 'POST',
       path: '/attachment/begin',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Reserve one bounded image upload for an exact target',
       input: AttachmentBeginSchema,
       output: AttachmentUploadReceiptSchema,
@@ -499,7 +512,7 @@ export const controlContract = defineContract(
     'attachment.chunk': {
       method: 'POST',
       path: '/attachment/chunk',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Append one authenticated bounded image chunk',
       input: AttachmentChunkSchema,
       output: AttachmentUploadReceiptSchema,
@@ -508,7 +521,7 @@ export const controlContract = defineContract(
     'attachment.finalize': {
       method: 'POST',
       path: '/attachment/finalize',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Verify complete image bytes and return an immutable reference',
       input: AttachmentUploadSelectorSchema,
       output: AttachmentReferenceSchema,
@@ -517,7 +530,7 @@ export const controlContract = defineContract(
     'attachment.cancel': {
       method: 'POST',
       path: '/attachment/cancel',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Cancel an unretained image upload',
       input: AttachmentUploadSelectorSchema,
       output: AttachmentCancelReceiptSchema,
@@ -526,7 +539,7 @@ export const controlContract = defineContract(
     'attachment.read': {
       method: 'POST',
       path: '/attachment/read',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read one authorized preview chunk; never expose owner paths',
       input: AttachmentReadSchema,
       output: AttachmentReadReceiptSchema,
@@ -535,7 +548,7 @@ export const controlContract = defineContract(
     'runtime.list': {
       method: 'POST',
       path: '/runtimes',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Discover configured execution runtimes and explicit capabilities',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -546,7 +559,7 @@ export const controlContract = defineContract(
     'directory.list': {
       method: 'POST',
       path: '/directories',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'List directory names without following symlinks',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -557,7 +570,7 @@ export const controlContract = defineContract(
     'session.list': {
       method: 'POST',
       path: '/sessions',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read the prepared managed-session snapshot',
       expose: ['HTTP', 'CLI', 'MCP'],
       output: ControlSnapshotSchema,
@@ -566,7 +579,7 @@ export const controlContract = defineContract(
     'session.get': {
       method: 'POST',
       path: '/session',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read one exact managed session',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -577,7 +590,7 @@ export const controlContract = defineContract(
     'session.create': {
       method: 'POST',
       path: '/create',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Idempotently create one workspace-scoped managed runtime session',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -589,7 +602,7 @@ export const controlContract = defineContract(
     'session.archive': {
       method: 'POST',
       path: '/archive',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Archive and stop one exact managed identity without deleting provider history',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -600,7 +613,7 @@ export const controlContract = defineContract(
     'message.send': {
       method: 'POST',
       path: '/message',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Accept an identity-pinned message into durable chat; acceptance is not completion',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -611,7 +624,7 @@ export const controlContract = defineContract(
     'session.start': {
       method: 'POST',
       path: '/start',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Start an existing registered session without changing its identity',
       expose: ['HTTP', 'CLI', 'MCP'],
       input: ControlTargetSchema,
@@ -621,7 +634,7 @@ export const controlContract = defineContract(
     'session.stop': {
       method: 'POST',
       path: '/stop',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Stop one registered session; it stays registered and can be started again',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -632,7 +645,7 @@ export const controlContract = defineContract(
     'session.restart': {
       method: 'POST',
       path: '/restart',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Stop one registered session and start it again under the same identity; the relaunch continues after this answer',
       expose: ['HTTP', 'CLI', 'MCP'],
       input: ControlTargetSchema,
@@ -642,7 +655,7 @@ export const controlContract = defineContract(
     'session.remove': {
       method: 'POST',
       path: '/remove',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Stop one session and take it out of the registry; the provider history stays on disk',
       expose: ['HTTP', 'CLI', 'MCP'],
       input: ControlTargetSchema,
@@ -652,7 +665,7 @@ export const controlContract = defineContract(
     'session.keys': {
       method: 'POST',
       path: '/keys',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Type text and Enter into a session terminal composer — a slash command or a numbered menu answer — and record that ccmux typed it; a message to an agent is message.send',
       expose: ['HTTP', 'CLI', 'MCP'],
       input: ControlKeysSchema,
@@ -662,7 +675,7 @@ export const controlContract = defineContract(
     'turn.interrupt': {
       method: 'POST',
       path: '/interrupt',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Interrupt the exact active native turn; never answer an approval or input request',
       expose: ['HTTP', 'CLI', 'MCP'],
       input: ControlInterruptSchema,
@@ -672,7 +685,7 @@ export const controlContract = defineContract(
     'native.read': {
       method: 'POST',
       path: '/native',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read a bounded native item snapshot after an optional cursor',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -683,7 +696,7 @@ export const controlContract = defineContract(
     'model.list': {
       method: 'POST',
       path: '/models',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read the connected App Server model catalog after an optional cursor; provider-owned and read-only',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -695,7 +708,7 @@ export const controlContract = defineContract(
     'command.list': {
       method: 'POST',
       path: '/commands',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read the slash commands this session runtime offers',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -706,7 +719,7 @@ export const controlContract = defineContract(
     'command.run': {
       method: 'POST',
       path: '/command',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Run one slash command the runtime offers, as a turn of its own',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -717,7 +730,7 @@ export const controlContract = defineContract(
     'permission.mode': {
       method: 'POST',
       path: '/permission-mode',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Set the permission mode the session runs its next turns under',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -728,7 +741,7 @@ export const controlContract = defineContract(
     'permission.read': {
       method: 'POST',
       path: '/permission',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read the permission mode accepted for future turns and the one observed natively',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -739,7 +752,7 @@ export const controlContract = defineContract(
     'permission.update': {
       method: 'POST',
       path: '/permission/update',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Replace the accepted permission mode, refusing a stale expected revision',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -750,7 +763,7 @@ export const controlContract = defineContract(
     'mcp.list': {
       method: 'POST',
       path: '/mcp',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Read the MCP servers of a session and each one connection status',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -761,7 +774,7 @@ export const controlContract = defineContract(
     'mcp.control': {
       method: 'POST',
       path: '/mcp/control',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Enable, disable or reconnect one MCP server of a session',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -773,7 +786,7 @@ export const controlContract = defineContract(
     'session.rewind': {
       method: 'POST',
       path: '/rewind',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Preview or perform a rewind of the files a session modified',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -785,7 +798,7 @@ export const controlContract = defineContract(
     'native.respond': {
       method: 'POST',
       path: '/native/respond',
-      meta: SERVICE_WRITE,
+      effect: 'write',
       desc: 'Answer one exact current native approval or input request',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -796,7 +809,7 @@ export const controlContract = defineContract(
     'session.wait': {
       method: 'POST',
       path: '/wait',
-      meta: SERVICE_READ,
+      effect: 'read',
       desc: 'Wait for a native session between turns, including pending chat pickup',
       expose: ['HTTP', 'CLI', 'MCP'],
       idempotent: true,
@@ -810,12 +823,12 @@ export const controlContract = defineContract(
 /** The operations that do not say whether they read or write — none, or this fails. */
 type UndeclaredEffect = {
   [K in keyof typeof controlContract.endpoints]: (typeof controlContract.endpoints)[K] extends {
-    meta: ControlEndpointMeta;
+    effect: OperationEffect;
   }
     ? never
     : K;
 }[keyof typeof controlContract.endpoints];
-// Every operation says whether it reads or writes (`serviceEffect.ts`): one that says nothing is
+// Every operation says whether it reads or writes: one that says nothing is
 // named by the compiler here, instead of a transport guessing.
 export const everyOperationDeclaresItsEffect: [UndeclaredEffect] extends [never]
   ? true

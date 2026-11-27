@@ -9,9 +9,15 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { claudeProvider } from '../src/agent/claude/index.ts';
+import { histFile } from '../src/agent/claude/resume.ts';
+import { lastActivityMs, lastTranscriptMessage, transcriptMtimeMs } from '../src/agent/index.ts';
+import { readTurnState } from '../src/chat/turnProgress.ts';
 import { monitoringStatusPath } from '../src/config/paths.ts';
-import { UNSEEN } from '../src/events/observe.ts';
+import { inventoryRow } from '../src/events/inventory.ts';
+import { observe, UNSEEN } from '../src/events/observe.ts';
+import { collectRows } from '../src/inventory/rows.ts';
 import { projectMonitoringRow } from '../src/monitoring/project.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { readMonitoringStatus } from '../src/monitoring/read.ts';
@@ -21,6 +27,9 @@ import {
   STATUS_MAX_ITEMS,
 } from '../src/monitoring/schema.ts';
 import { observedPane, observedSessionInventory } from '../src/monitoring/tmux.ts';
+import { ManagedRuntimeStatusWriter } from '../src/runtime/status.ts';
+import { writeSessionsUnlocked } from '../src/session/registry.ts';
+import { clearWaiting, writeLifecycle, writeWaiting } from '../src/session/status.ts';
 import { MtimeCache } from '../src/util/mtimeCache.ts';
 import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
@@ -92,11 +101,111 @@ test('managed status distinguishes work, idle, prompt, unknown and stopped', () 
     model: null,
     contextPercent: null,
     uptimeSeconds: null,
+    startedAt: null,
     lastActivityAt: null,
   });
   expect(
     row('Do you trust the files in this folder?\n❯ 1. Yes, I trust this folder\n2. No, exit').state,
   ).toBe('prompt');
+});
+
+test('monitoring rows expose structural step matching inventory and waitingFor without message text', async () => {
+  const m = fixture();
+  const s = makeSession({ name: `step-${crypto.randomUUID()}`, dir: m.stateDir });
+  const history = histFile(s.dir, s.uuid, m.projectsDir);
+  mkdirSync(dirname(history), { recursive: true });
+  const stepAt = '2026-11-25T04:40:00.000Z';
+  writeFileSync(
+    history,
+    `${JSON.stringify({
+      type: 'assistant',
+      timestamp: stepAt,
+      message: {
+        role: 'assistant',
+        model: 'claude-opus-5-5',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'Bash',
+            input: { command: 'echo secret-payload-never-in-monitoring' },
+          },
+        ],
+      },
+    })}\n`,
+  );
+
+  // Working Claude session: structural step matches inventoryRow and omits all message/tool text.
+  const working = projectMonitoringRow(m, s, 1, '✳ Computing…\nesc to interrupt', UNSEEN);
+  const inv = inventoryRow(working, 1, lastTranscriptMessage(s, m));
+  expect(working.step).toEqual({
+    kind: 'tool_call',
+    role: 'assistant',
+    toolName: 'Bash',
+    at: stepAt,
+  });
+  expect(working.step).toEqual(inv.step);
+  expect(working.atPrompt).toBeNull();
+  expect(working.waitingFor).toBeNull();
+  expect(JSON.stringify(working)).not.toContain('secret-payload-never-in-monitoring');
+
+  // Idle session (transcript aged past the turn quiet window): retains last structural step and clears waits.
+  const idle = projectMonitoringRow(
+    m,
+    s,
+    1,
+    '❯\n? for shortcuts',
+    UNSEEN,
+    Date.now() + 10 * 60_000,
+  );
+  expect(idle.state).toBe('idle');
+  expect(idle.step).toEqual(working.step);
+  expect(idle.atPrompt).toBeNull();
+  expect(idle.waitingFor).toBeNull();
+
+  const fresh = makeSession({
+    name: `fresh-${crypto.randomUUID()}`,
+    uuid: '33333333-3333-4333-8333-333333333333',
+    dir: m.stateDir,
+  });
+  const idleEmpty = projectMonitoringRow(m, fresh, 1, '❯\n? for shortcuts', UNSEEN);
+  expect(idleEmpty.step).toBeNull();
+  expect(idleEmpty.atPrompt).toBeNull();
+  expect(idleEmpty.waitingFor).toBeNull();
+
+  // Stopped session: step, atPrompt and waitingFor are null.
+  const stopped = projectMonitoringRow(m, s, undefined, null, UNSEEN);
+  expect(stopped.step).toBeNull();
+  expect(stopped.atPrompt).toBeNull();
+  expect(stopped.waitingFor).toBeNull();
+
+  // Selection menu: state is prompt and atPrompt names the blocking menu (distinct from waitingFor).
+  const atMenu = projectMonitoringRow(
+    m,
+    s,
+    1,
+    'Do you trust the files in this folder?\n❯ 1. Yes, I trust this folder\n2. No, exit',
+    UNSEEN,
+  );
+  expect(atMenu.state).toBe('prompt');
+  expect(atMenu.atPrompt).toBe('trust this folder');
+  expect(atMenu.waitingFor).toBeNull();
+
+  // Declared session wait populates waitingFor without conflating it with atPrompt.
+  const now = Date.now();
+  await writeWaiting(s.name, {
+    target: 'host-b:agent-b',
+    since: now,
+    pid: process.pid,
+    expiresAt: now + 60_000,
+  });
+  try {
+    const waiting = projectMonitoringRow(m, s, 1, '❯\n? for shortcuts', UNSEEN, now);
+    expect(waiting.atPrompt).toBeNull();
+    expect(waiting.waitingFor).toBe('host-b:agent-b');
+  } finally {
+    clearWaiting(s.name);
+  }
 });
 
 test('metadata cache bounds retained bytes and invalidates inode replacement', () => {
@@ -249,4 +358,295 @@ test('new, removed and restarted identities replace the complete bounded snapsho
   const restarted = new MonitoringPublisher();
   restarted.begin(m);
   expect((await restarted.publish(m)).generation).not.toBe(first.generation);
+});
+
+test('lastActivityAt tracks last real conversation message past >120 bookkeeping lines and resume notices, separate from startedAt and file mtime', async () => {
+  const m = fixture();
+  const s = makeSession({ name: `bookkeeping-${crypto.randomUUID()}`, dir: m.stateDir });
+  const history = histFile(s.dir, s.uuid, m.projectsDir);
+  mkdirSync(dirname(history), { recursive: true });
+  const replyAt = '2026-10-13T12:11:11.000Z';
+  const resumeAt = '2026-11-25T17:34:29.000Z';
+  const mtimeAt = new Date('2026-11-26T10:00:00.000Z');
+  const bookkeeping = [
+    'bridge-session',
+    'cost-state',
+    'atis-latch',
+    'data-flow-records',
+    'derived-from',
+    'tools-used',
+  ];
+  const lines = [
+    JSON.stringify({
+      type: 'assistant',
+      timestamp: replyAt,
+      message: {
+        role: 'assistant',
+        model: 'claude-sonnet-5-5',
+        content: [{ type: 'text', text: 'real conversation reply' }],
+      },
+    }),
+    // Batched orphan-shell notification emitted on SessionStart:resume (no <tool-use-id>).
+    JSON.stringify({
+      type: 'user',
+      timestamp: resumeAt,
+      message: {
+        role: 'user',
+        content:
+          '<task-notification>\n<task-id>__orphan_summary__:shell</task-id>\n<status>stopped</status>\n<summary>2 background shell tasks stopped</summary>\n</task-notification>',
+      },
+    }),
+    ...Array.from({ length: 180 }, (_, index) =>
+      JSON.stringify({ type: bookkeeping[index % bookkeeping.length], seq: index }),
+    ),
+  ];
+  writeFileSync(history, `${lines.join('\n')}\n`);
+  utimesSync(history, mtimeAt, mtimeAt);
+
+  const startedSec = Math.floor(Date.parse('2026-11-25T17:34:05.000Z') / 1000);
+  const now = Date.parse('2026-11-26T14:00:00.000Z');
+  const row = projectMonitoringRow(m, s, startedSec, '❯\n? for shortcuts', UNSEEN, now);
+  expect(row.lastActivityAt).toBe(replyAt);
+  expect(row.startedAt).toBe('2026-11-25T17:34:05.000Z');
+  expect(row.uptimeSeconds).toBe(Math.floor(now / 1000 - startedSec));
+  expect(lastActivityMs(s, m)).toBe(Date.parse(replyAt));
+  expect(transcriptMtimeMs(s, m)).toBe(mtimeAt.getTime());
+
+  // Stopped sessions retain their real conversation lastActivityAt with null startedAt/step.
+  const stopped = projectMonitoringRow(m, s, undefined, null, UNSEEN, now);
+  expect(stopped.lastActivityAt).toBe(replyAt);
+  expect(stopped.startedAt).toBeNull();
+  expect(stopped.uptimeSeconds).toBeNull();
+  expect(stopped.step).toBeNull();
+
+  // Inventory rows use the same real conversation timestamp rather than file mtime.
+  await writeSessionsUnlocked(m, [s]);
+  const [invRow] = await collectRows(m, {
+    only: s.name,
+    observation: {
+      created: new Map([[s.name, startedSec]]),
+      agentPanes: new Map(),
+      panes: new Map([[s.name, '❯\n? for shortcuts']]),
+    },
+  });
+  expect(invRow?.lastActivityMs).toBe(Date.parse(replyAt));
+
+  // A session whose transcript holds only bookkeeping lines reports null lastActivityAt (never mtime).
+  const silent = makeSession({
+    name: `silent-${crypto.randomUUID()}`,
+    uuid: '44444444-4444-4444-8444-444444444444',
+    dir: m.stateDir,
+  });
+  const silentPath = histFile(silent.dir, silent.uuid, m.projectsDir);
+  writeFileSync(
+    silentPath,
+    `${JSON.stringify({ type: 'custom-title', customTitle: 'host-a-silent' })}\n${JSON.stringify({ type: 'bridge-session' })}\n`,
+  );
+  const silentRow = projectMonitoringRow(m, silent, startedSec, '❯\n? for shortcuts', UNSEEN, now);
+  expect(silentRow.lastActivityAt).toBeNull();
+  expect(silentRow.startedAt).toBe('2026-11-25T17:34:05.000Z');
+
+  // Folded tool_call uses the later tool_result completion time (doneAt) as lastActivityAt.
+  const folded = makeSession({
+    name: `folded-${crypto.randomUUID()}`,
+    uuid: '55555555-5555-4555-8555-555555555555',
+    dir: m.stateDir,
+  });
+  const foldedPath = histFile(folded.dir, folded.uuid, m.projectsDir);
+  writeFileSync(
+    foldedPath,
+    `${[
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-11-25T01:00:00.000Z',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'toolu_9', name: 'Bash', input: { command: 'true' } }],
+        },
+      }),
+      JSON.stringify({
+        type: 'user',
+        timestamp: '2026-11-25T01:04:30.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'toolu_9', content: 'ok' }],
+        },
+      }),
+    ].join('\n')}\n`,
+  );
+  expect(
+    projectMonitoringRow(m, folded, startedSec, '❯\n? for shortcuts', UNSEEN, now).lastActivityAt,
+  ).toBe('2026-11-25T01:04:30.000Z');
+});
+
+test('active turn liveness in observe and readTurnState still uses file mtime independently of old message timestamps', async () => {
+  const m = fixture();
+  const s = makeSession({ name: `turn-${crypto.randomUUID()}`, dir: m.stateDir });
+  const history = histFile(s.dir, s.uuid, m.projectsDir);
+  mkdirSync(dirname(history), { recursive: true });
+  const turnStart = Date.parse('2026-11-26T12:00:00.000Z');
+  // 50s into the turn the file was written, so 20s later (70s past turnStart, > 60s threshold)
+  // ONLY file mtime proves the turn is still alive — an old message timestamp would prematurely close it.
+  const fileWrite = turnStart + 50_000;
+  writeFileSync(
+    history,
+    `${[
+      JSON.stringify({
+        type: 'user',
+        timestamp: '2026-11-26T11:00:00.000Z',
+        message: { role: 'user', content: 'earlier turn' },
+      }),
+      JSON.stringify({ type: 'bridge-session' }),
+    ].join('\n')}\n`,
+  );
+  utimesSync(history, new Date(fileWrite), new Date(fileWrite));
+  await writeLifecycle(s.name, { state: 'working', ts: turnStart, event: 'UserPromptSubmit' });
+
+  // 20s after a fresh transcript write (70s past turnStart): turn stays live despite old message.
+  const freshNow = fileWrite + 20_000;
+  const liveObserved = observe(m, s, true, '❯\n? for shortcuts', freshNow);
+  expect(liveObserved.turnOverMs).toBeNull();
+  expect(readTurnState(m, s, claudeProvider, '❯\n? for shortcuts', freshNow)).toEqual({
+    settled: false,
+    why: 'quiet-unproven',
+  });
+  expect(projectMonitoringRow(m, s, 1, '❯\n? for shortcuts', liveObserved, freshNow)).toMatchObject(
+    {
+      state: 'working',
+      lastActivityAt: '2026-11-26T11:00:00.000Z',
+    },
+  );
+
+  // Past the 60s interrupted threshold: turn settles cleanly and dates turnOverMs to the last write.
+  const quietNow = fileWrite + 61_000;
+  const closedObserved = observe(m, s, true, '❯\n? for shortcuts', quietNow);
+  expect(closedObserved.turnOverMs).toBe(fileWrite);
+  expect(closedObserved.turnInterrupted).toBe(true);
+  expect(readTurnState(m, s, claudeProvider, '❯\n? for shortcuts', quietNow)).toEqual({
+    settled: true,
+    why: 'idle-after-interrupt',
+  });
+});
+
+test('codex lastActivityAt ignores trailing non-message event_msg timestamps and file mtime', () => {
+  const base = fixture();
+  const codexSessionsDir = join(base.stateDir, 'codex-sessions');
+  const m = { ...base, codexSessionsDir };
+  const s = makeSession({
+    name: `codex-${crypto.randomUUID()}`,
+    agent: 'codex',
+    uuid: '66666666-6666-4666-8666-666666666666',
+    dir: m.stateDir,
+  });
+  const rolloutDir = join(codexSessionsDir, '2026', '11', '21');
+  mkdirSync(rolloutDir, { recursive: true });
+  const rollout = join(rolloutDir, `rollout-2026-11-21T03-00-00-${s.uuid}.jsonl`);
+  const replyAt = '2026-11-21T03:26:03.966Z';
+  writeFileSync(
+    rollout,
+    `${[
+      JSON.stringify({
+        type: 'response_item',
+        timestamp: replyAt,
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'codex reply' }],
+        },
+      }),
+      JSON.stringify({
+        type: 'event_msg',
+        timestamp: '2026-11-22T04:26:13.617Z',
+        payload: { type: 'token_count' },
+      }),
+    ].join('\n')}\n`,
+  );
+  const laterMtime = new Date('2026-11-26T10:00:00.000Z');
+  utimesSync(rollout, laterMtime, laterMtime);
+
+  const row = projectMonitoringRow(m, s, 1, '› ', UNSEEN, Date.parse('2026-11-26T14:00:00.000Z'));
+  expect(row.lastActivityAt).toBe(replyAt);
+  expect(lastActivityMs(s, m)).toBe(Date.parse(replyAt));
+  expect(transcriptMtimeMs(s, m)).toBe(laterMtime.getTime());
+});
+
+test('native sessions without a JSONL transcript derive lastActivityAt and step from live nativeItems', async () => {
+  const m = fixture();
+  const now = Date.now();
+  const regGen = crypto.randomUUID();
+  const s = makeSession({
+    name: `native-${crypto.randomUUID()}`,
+    agent: 'claude',
+    uuid: '77777777-7777-4777-8777-777777777777',
+    dir: m.stateDir,
+    runtime: 'native',
+    registrationGeneration: regGen,
+    nativeSession: {
+      runtime: 'claude',
+      id: '77777777-7777-4777-8777-777777777777',
+      version: '1.0.0',
+    },
+  });
+  const toolAt = '2026-11-26T08:00:00.000Z';
+  const usageAt = '2026-11-26T08:05:00.000Z';
+  await new ManagedRuntimeStatusWriter(m, s).write({
+    protocol: 1,
+    provider: 'claude',
+    machine: m.rcPrefix,
+    session: s.name,
+    threadId: s.uuid,
+    generation: crypto.randomUUID(),
+    sequence: 2,
+    pid: process.pid,
+    providerPid: process.pid,
+    version: '1.0.0',
+    connected: true,
+    state: 'idle',
+    reason: null,
+    observedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 5_000).toISOString(),
+    turn: null,
+    events: [],
+    nativeSequence: 2,
+    nativeItems: [
+      {
+        sequence: 1,
+        at: toolAt,
+        kind: 'tool',
+        stage: 'completed',
+        nativeId: 'call-1',
+        turnId: 'turn-1',
+        requestId: null,
+        status: 'completed',
+        text: 'echo hi',
+        tool: 'Bash',
+        usage: null,
+      },
+      {
+        sequence: 2,
+        at: usageAt,
+        kind: 'usage',
+        stage: 'updated',
+        nativeId: 'turn-1:usage',
+        turnId: 'turn-1',
+        requestId: null,
+        status: null,
+        text: null,
+        tool: null,
+        usage: null,
+      },
+    ],
+    pendingRequests: [],
+    nativeSelection: null,
+    registrationGeneration: regGen,
+    nativeSession: s.nativeSession,
+  });
+
+  const row = projectMonitoringRow(m, s, undefined, null, UNSEEN, now);
+  expect(row.running).toBe(true);
+  expect(row.state).toBe('idle');
+  expect(row.startedAt).toBeNull();
+  expect(row.lastActivityAt).toBe(toolAt);
+  expect(row.step).toEqual({ kind: 'tool_call', role: 'assistant', toolName: 'Bash', at: toolAt });
+  expect(inventoryRow(row, undefined, null).step).toEqual(row.step ?? null);
 });

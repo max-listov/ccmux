@@ -4,7 +4,7 @@ import {
   type NativeSelectionEvidence,
   NativeTurnOptionsSchema,
 } from '../../runtime/selectionSchema.ts';
-import type { CodexRpcEvent } from './rpc.ts';
+import type { CodexRpcEvent } from './owned/rpc.ts';
 
 const Settings = z.object({
   threadId: z.string(),

@@ -40,7 +40,7 @@ export function SessionRow({
       ) : null}
       <Txt
         dim
-      >{`${pad(row.contextLabel, 9)} ${pad(row.uptimeText, 7)} ${item.activityText ?? ''}`}</Txt>
+      >{`${pad(row.contextLabel, 9)} ${pad(row.uptimeText, 7)} ${item.activityText ?? ''}${s.pinned === true ? ' [pin]' : ''}`}</Txt>
     </Box>
   );
 }

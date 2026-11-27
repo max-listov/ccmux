@@ -4,7 +4,7 @@ description: A bounded local snapshot from the daemon observation loop, with no 
 type: architecture
 status: active
 created: 2026-08-27
-updated: 2026-09-30 17:24 +07:00
+updated: 2026-11-27 09:30 +08:00
 ---
 
 # Monitoring status
@@ -150,13 +150,21 @@ Each row carries:
 | rc | Remote-control display label, not a routing selector |
 | dir | Declared launch directory from the registry, not a measured current process cwd |
 | archived, running | Registry lifecycle intent and observed agent-pane presence |
-| state | working, idle, prompt, stopped, blocked, or unknown |
+| state | working, idle, prompt, stopped, blocked, or unknown (sleeping sessions publish `state: "stopped"` beside `sleeping: true` for protocol-1 compatibility) |
+| sleeping | Optional boolean: true when non-archived, not running, and held off by an active sleep receipt |
+| pinned | Optional boolean: true when marked pinned against automatic and unforced sleep |
+| memoryBytes | Optional measured process-tree memory in bytes (`0` when stopped or sleeping; `null` when unavailable for a live session — never `0`). Sampled every 20 s without subprocesses (`bun:ffi` `libproc` `ri_phys_footprint` on macOS, `/proc/<pid>/smaps_rollup` `Pss + SwapPss` on Linux) using observed tmux pane PIDs and native runtime PIDs. Deliberately omitted from `InventoryRow` so memory fluctuations do not flood `events.jsonl` |
+| registrationGeneration | Optional UUID identifying the active session registration required by exact lifecycle controls (`session.idle`/`sleep`/`wake`) |
 | model | Raw provider transcript model ID, or null |
 | contextPercent | Hook metrics, then pane context; unknown is null, never invented zero |
 | statusLineRendersPerMinute | How often the agent asks this session's status line to render, over a rolling five-minute window; null until a window exists. Counted where the tee already writes, because the process is too short-lived for a sampler to count |
 | uptimeSeconds | Age of the observed tmux session at observation, or null |
-| lastActivityAt | Transcript file modification time, or null |
+| startedAt | Optional start/restart instant of the observed running session process (ISO), or null when stopped or unknown |
+| lastActivityAt | Timestamp of the last real conversation message or step (from the transcript or live native items, excluding provider bookkeeping and runtime task-notification notices), or null when none exists yet — never bare file mtime |
 | turnStartedAt | Lifecycle start of the current working turn, or null |
+| step | Optional structural shape of the last transcript or live native entry (`kind`, `role`, `toolName`, `at` — never message text), or null |
+| atPrompt | Optional title of an active blocking prompt the session is sitting at, or null |
+| waitingFor | Optional fleet address of the session this one is waiting for, or null |
 | observedAt | Time this row was projected |
 
 No transcript message, prompt text, environment value or launch configuration is returned.
@@ -175,10 +183,17 @@ a managed lifecycle promise and is never relabelled as one in this snapshot.
   64 KiB per-output-stream cap. A slow pass expires honestly rather than promising fresh data.
 - Each transcript metadata cache has a 1 MiB accounted payload/key budget and 512-entry cap.
   Accounting includes UTF-16 serialized payload, keys and fixed per-entry overhead; it is not a
-  promise about total JS heap/RSS. The monitoring path uses the last-message and model caches.
-  File device/inode, size, mtime and ctime invalidate replacement, rotation and truncation.
-- Transient transcript reads retain the existing bounded windows: 512 KiB for last-message
-  evidence, up to 4 MiB for model metadata. Raw history is not retained in the snapshot.
+  promise about total JS heap/RSS. The monitoring path uses the last-tail (message + conversation
+  activity timestamp) and model caches. File device/inode, size, mtime and ctime invalidate
+  replacement, rotation and truncation; active-turn liveness (`lastSignOfLife` / `turnState`)
+  reads raw transcript file mtime separately from user-facing `lastActivityAt`.
+- Transient transcript reads retain bounded windows: a 120-line / 512 KiB fast tail for
+  last-message and conversation activity that widens via `readTailUntil` up to 2000 lines / 4 MiB
+  when trailing bookkeeping exceeds the fast window, and up to 4 MiB for model metadata. Raw
+  history is not retained in the snapshot.
+- Protocol-1 snapshot and row schemas tolerate additive fields from newer producers while strictly
+  validating declared identities, enums, timestamps and byte/item limits; caller read options remain
+  strictly validated.
 - The producer has zero in-flight reader requests: readers open an atomic file independently.
   Each snapshot read opens one nonblocking, nonsymlink regular file and reads at most 512 KiB plus one
   overflow-detection byte. Cancelling a reader cannot cancel the producer or a supervised session.

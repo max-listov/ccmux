@@ -1,9 +1,11 @@
 import { readdirSync, statSync } from 'node:fs';
 import type { MachineConfig, Session } from '../../types.ts';
-import { readHeadLines, readTailLines } from '../../util/readLines.ts';
+import { readHeadLines } from '../../util/readLines.ts';
+import { readTailActivity } from '../transcript/activity.ts';
 import { rec, str } from '../transcript/normalize.ts';
 import { claudeProfile } from './profileRoot.ts';
 import { encodeDir, histFile } from './resume.ts';
+import { parse as parseClaude } from './transcript.ts';
 
 // ── follow the fork ─────────────────────────────────────────────────────────────
 // ccmux pins one uuid per session, but Claude Code does NOT keep that uuid forever:
@@ -22,10 +24,6 @@ import { encodeDir, histFile } from './resume.ts';
 // carries X's rc title and whose last message is the newest.
 
 const HEAD_BYTES = 16 * 1024; // the custom-title event sits in a fork's first lines
-const TAIL_LINES = 50; // enough to find the newest timestamped record
-// Fork detection PICKS a conversation, so its window must not shrink under the records it needs;
-// this ceiling only ever binds on a pathological file, where reading on would be the worse answer.
-const TAIL_BYTES = 4 * 1024 * 1024;
 
 /**
  * The title a conversation file opens with — the `-n <title>` its session was launched under.
@@ -54,26 +52,11 @@ function headTitle(lines: string[]): string | null {
   return null;
 }
 
-/** Newest `timestamp` in the file's tail (epoch ms), or null if none. Timestamps — not
- *  mtime: a desktop-app open bumps mtime without the conversation actually moving. */
+/** Newest conversation message timestamp in the file's tail (epoch ms), or null if none.
+ *  Uses the shared bounded tail reader so trailing bookkeeping lines (`bridge-session`,
+ *  `cost-state`, resume notifications) cannot push the last real message out of view or shift it. */
 export function lastMessageMs(path: string): number | null {
-  const lines = readTailLines(path, TAIL_LINES, TAIL_BYTES);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const raw = lines[i];
-    if (!raw) continue;
-    let entry: Record<string, unknown> | null = null;
-    try {
-      entry = rec(JSON.parse(raw));
-    } catch {
-      continue;
-    }
-    if (!entry) continue;
-    const ts = str(entry.timestamp);
-    if (ts === null) continue;
-    const ms = Date.parse(ts);
-    if (Number.isFinite(ms)) return ms;
-  }
-  return null;
+  return readTailActivity(path, parseClaude).lastActivityMs;
 }
 
 const UUID_JSONL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/;

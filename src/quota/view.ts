@@ -1,11 +1,11 @@
 import { profileAccount } from '../agent/claude/account.ts';
 import { claudeProfile } from '../agent/claude/profileRoot.ts';
 import {
-  type PlanLimits,
   planLimitsStaleAfterMs,
   planWindowExpired,
   statusLinePlanLimits,
 } from '../runtime/planLimits.ts';
+import type { PlanLimits } from '../runtime/planLimitsSchema.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
 import { readMetricsFile } from '../session/metricsFile.ts';
 import type { MachineConfig, Session } from '../types.ts';

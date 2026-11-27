@@ -1,5 +1,10 @@
+import {
+  antigravityTranscriptPath,
+  parseAntigravityTranscript,
+} from '../agent/antigravity/transcript.ts';
 import { claudeProvider } from '../agent/claude/index.ts';
 import { subagentFile } from '../agent/claude/subagent.ts';
+import { codexProfile } from '../agent/codex/profileRoot.ts';
 import { codexRolloutFiles } from '../agent/codex/rolloutFiles.ts';
 import { providerFor, readTranscript } from '../agent/index.ts';
 import { clip, DEFAULT_TEXT_LIMIT } from '../agent/transcript/normalize.ts';
@@ -57,13 +62,14 @@ export async function readTranscriptWindow(
     const read = readTranscript(session, m, window);
     if (session.agent !== 'codex') return read;
     // historyFile is the file Codex writes now; a split thread has older ones before it.
-    const files = codexRolloutFiles(m.codexSessionsDir, session.uuid).length;
+    const files = codexRolloutFiles(codexProfile(session, m).sessionsDir, session.uuid).length;
     return files > 1 ? { ...read, earlierFiles: files - 1 } : read;
   }
   // Claude's native SDK writes its own jsonl, just not at the registry uuid the interactive provider
   // points at. Its own file is the source of truth and carries absolute lines, so it answers here.
   if (session.agent === 'claude' && hasNativeRuntime(session))
     return readClaudeNative(m, session, window);
+  if (session.agent === 'antigravity') return readAntigravityNative(m, session, window);
   if (window.agent !== undefined)
     return unavailableTranscript(
       session.agent,
@@ -88,6 +94,29 @@ function readClaudeNative(
   return agentPath === null
     ? unavailableTranscript('claude', path, 'agent id is not one this runtime issues', 'native')
     : readTranscriptFile(agentPath, claudeProvider, window);
+}
+
+function readAntigravityNative(
+  m: MachineConfig,
+  session: Session,
+  window: TranscriptWindowOptions,
+): TranscriptRead {
+  if (window.agent !== undefined)
+    return unavailableTranscript(
+      'antigravity',
+      '',
+      'this runtime keeps no agent transcripts',
+      'native',
+    );
+  const path = antigravityTranscriptPath(session, m);
+  if (path === null)
+    return unavailableTranscript(
+      'antigravity',
+      '',
+      'native transcript identity is absent',
+      'native',
+    );
+  return readTranscriptFile(path, { id: 'antigravity', parse: parseAntigravityTranscript }, window);
 }
 
 /**

@@ -64,6 +64,7 @@ try {
   }
 
   const tools = mountAgent([], {
+    access: { open: 'local-operator' },
     runtimeTools: createAgentCodingTools({ root, authorize: () => true }),
   });
   const TextSchema = z.object({ text: z.string() });

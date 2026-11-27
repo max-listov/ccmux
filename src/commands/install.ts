@@ -90,7 +90,7 @@ export async function cmdInstall(args: string[]): Promise<number> {
   }
   const m = loadMachineConfig();
   console.log(`detected: claude=${m.claudeBin} tmux=${m.tmuxBin} projects=${m.projectsDir}`);
-  await installBoot(m);
+  await installBoot(m, { force: flags.bool('force') });
   console.log(
     `install complete (${PLATFORM === 'darwin' ? 'launchd' : 'systemd'}). daemon running.`,
   );

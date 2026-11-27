@@ -8,6 +8,7 @@ import { forwardIfRemote } from '../fleet/forward.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
+import { readSleepSafe } from '../session/sleep/store.ts';
 import { clearWaiting, writeWaiting } from '../session/status.ts';
 import { capturePaneStyled, hasSession } from '../tmux/tmux.ts';
 import { parseFlags } from './flags.ts';
@@ -136,12 +137,25 @@ async function runWait(name: string, opts: WaitOpts & { flagArgs: string[] }): P
     console.error(`unknown session: ${name}`);
     return 1;
   }
+  let waitingOnWake = false;
   if (
     !(hasNativeRuntime(s) && readManagedRuntimeStatus(m, s).status === 'live') &&
     !(await hasSession(m, name))
   ) {
-    console.error(`${name} is not running — start it first: ccmux start ${name}`);
-    return 1;
+    const sleep = s.archived ? null : readSleepSafe(m, s);
+    const awaitingWake =
+      sleep !== null &&
+      sleep.phase !== 'awake' &&
+      (sleep.phase === 'waking' || blockingInbound(m, s, Date.now()).length > 0);
+    if (!awaitingWake) {
+      console.error(
+        sleep !== null && sleep.phase !== 'awake'
+          ? `${name} is sleeping — wake it first: ccmux wake ${name}`
+          : `${name} is not running — start it first: ccmux start ${name}`,
+      );
+      return 1;
+    }
+    waitingOnWake = true;
   }
   const provider = providerFor(s);
   const deadline = Date.now() + opts.timeoutSec * 1000;
@@ -257,9 +271,11 @@ async function runWait(name: string, opts: WaitOpts & { flagArgs: string[] }): P
     const why =
       lastWhy !== null
         ? WHY_TEXT[lastWhy]
-        : mailWhy === null
-          ? 'waiting on undelivered mail'
-          : `waiting on undelivered mail — ${mailWhy}`;
+        : mailWhy !== null
+          ? `waiting on undelivered mail — ${mailWhy}`
+          : waitingOnWake
+            ? 'waiting for sleeping session to wake'
+            : 'waiting on undelivered mail';
     console.error(`${name}: timed out after ${opts.timeoutSec}s — ${why}`);
   }
   return 2;

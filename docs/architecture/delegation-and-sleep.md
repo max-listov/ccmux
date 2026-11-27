@@ -4,7 +4,7 @@ description: Create-time authority, native policy evidence, idle CAS и прод
 type: architecture
 status: active
 created: 2026-10-15 08:00 +07:00
-updated: 2026-10-15 09:59 +07:00
+updated: 2026-11-27 09:30 +08:00
 ---
 
 ## Authority до первого prompt
@@ -87,42 +87,91 @@ acknowledgement: lease/open/create receipt сам по себе не доказ�
 
 ## Idle proof и sleep
 
-`session.idle` возвращает revision, runtime generation, run state, queue, approvals,
-children, background и process identities. Источники — fresh native snapshot, durable
-message ledger/cursors/input, registry lineage, context operations и ownership baseline,
-который записал сам spawning owner до первого prompt. Future queued input тоже блокирует
-sleep. Missing/stale facts, approvals, дети и дополнительные процессы отказывают.
+`session.idle` (`async idleProof`) возвращает revision, runtime generation, run state, queue,
+approvals, children, background и process identities. Источники — fresh native snapshot или живая
+tmux-панель TUI, durable message ledger/cursors/input, registry lineage, context operations,
+состояние `readWaiting` и дерево процессов. Будущие `notBefore`-письма не блокируют сон
+(учитываются только due-сообщения `isDue(msg, now)` и активные `pickups`). Missing/stale facts,
+approvals, активный turn, черновик, открытые меню, дети и необъявленные фоновые процессы отказывают.
 
-Поддержка process release ограничена делегированными native Codex/Claude: их инструменты
-и ownership ограничены до prompt. У остальных сессий `capabilities.sleep: false`;
-idle proof объясняет unsupported/unbounded-native-background-state, sleep возвращает
-`release: unsupported, state: unchanged`. Он не убивает чужой executor и не архивирует
-сессию. `handles-only` — отдельное значение wire contract; эти native adapters никогда
-не выдают его за processReleased.
+Поддержка process release охватывает интерактивные TUI- и native-сессии `claude` и `codex`
+(делегированные и неделегированные; для неделегированных native-сессий `registerRuntimeOwnership`
+регистрируется при наличии `registrationGeneration`, а для `codex` дополнительно проверяются
+`inspectNativeCodexInput` и `clientTypingRecently`). Провайдеры `opencode`, `custom` и
+`antigravity` сохраняют `capabilities.sleep: false` и возвращают `release: unsupported,
+state: unchanged`. `handles-only` — отдельное значение wire contract; адаптеры никогда не выдают
+его за `processReleased`.
 
-`session.sleep` принимает exact target/registration, operationId и revision. Он сверяет
-proof под тем же native admission lock, который принимает input, и атомарно пишет
-requested. Owner сам закрывает свои handles/provider. Receipt processReleased выдаётся
-только после исчезновения всех измеренных PID+startTime; timeout оставляет durable intent
-для повтора. Heal и supervisor не запускают sleeping session. Повреждённый journal
-отказывает; missing отличается внутри одного чтения, без exists-after-read race.
+Для интерактивных TUI-сессий (`claude`, `codex`) `idleProof` проверяет ровно одну панель в
+tmux-сессии (отказ `auxiliary-panes` при открытых дополнительных окнах), `inspectChatPane ===
+'deliverable'`, `readTurnState.settled === true`, `resolveLiveState === 'idle'`, отсутствие
+`readWaiting`, 60-секундное окно `clientTypingRecently`, отсутствие индикатора фоновых задач в
+футере Claude и fail-closed классификацию дерева процессов (`classifyTuiProcessTree`). Допускаются
+только `panePid`, ровно один прямой дочерний процесс провайдера, объявленные stdio MCP-серверы
+сессии (`loadDeclaredMcpSpecs` — `command` и `args` без секретов, включая launcher-индирекцию
+`bunx`/`npx`/`pnpx`/`uvx`) и `caffeinate` (macOS). Любые шеллы, `pgid`-сироты и необъявленные
+процессы отказывают с `background-processes`.
+
+`session.sleep` принимает exact target/registration, `operationId`, `revision` и опциональный
+`forcePolicy`. Иерархия локов: `profile-policy.lock` → `admission.lock` (per-session) →
+`registry.lock`. Для legacy TUI-сессий идемпотентный backfill `registrationGeneration` выполняется
+в `healOnce` и `sleepSessionByName` (не затрагивает `LaunchStamp`; `LifecycleBlock` без
+`generation` симметрично матчится по `uuid`); `sleepSessionByName` предварительно делает
+`followFork`, а прямой `session.sleep` отказывает `REVISION_CONFLICT`, если диалог Claude форкнулся
+до перечитывания `uuid` (в `healOnce` сам `followFork` берёт `withNativeAdmission` и не обгоняет
+`sleepSession`). Политика профиля (`evaluateSleepPolicy`) запрещает сон для `pinned: true`
+(`PINNED_SESSION`), нечитаемого или не-файлового `envFile` (`PROFILE_UNAVAILABLE`, в том числе при
+`minAwakePerProfile: 0`) и при падении числа здоровых живых сессий того же профиля ниже
+`idleSleep.minAwakePerProfile` (`MIN_AWAKE_PER_PROFILE`). Канонический ключ `sessionProfileKey`
+различает дефолтный профиль Claude (`default`) и явный `CLAUDE_CONFIG_DIR`, изолирует
+`ownCredentials` в отдельный ключ `custom-auth` по хэшу и нормализует `CODEX_HOME` по `realpath`.
+Делегированные сессии не ограничиваются `minAwakePerProfile` и не засчитываются в его квоту.
+Флаг `--force` (`forcePolicy: true`) обходит только политику (`pinned`/`minAwakePerProfile`),
+не отменяя проверки `idleProof`.
+
+После записи `phase: requested` native owner закрывает свои handles/provider, а для TUI
+отправляется `SIGTERM` процессу агента (`_run` повторно проверяет `sleepBlocksStart` перед
+`Bun.spawn` и сразу после завершения агента до `FAST_FAIL_MS` и `backoff`), при необходимости
+вызывается `killSession` и сигналинг подтверждённых `(pid, startTime)`, затем `clearStatus` и
+`forgetAgentPane`. Receipt `processReleased` выдаётся после асинхронного подтверждения ухода всех
+`(pid, startTime)`. Heal, supervisor и `restart --all` не запускают sleeping-сессии. Чтение
+`sleep.json` в общих циклах демона изолировано через `readSleepSafe` (один повреждённый файл не
+роняет остальные сессии), а строгое `readSleep` на всех путях мутаций (`session.sleep`,
+`session.wake`, `wakeSessionByName`) отказывает fail-first.
+
+Опциональный авто-сон (`machine.json.idleSleep`, по умолчанию `enabled: false`) запускается в
+цикле демона раз в `checkIntervalSeconds`, берёт якорь `computeIdleAnchorMs` (максимум из
+`lastActivityMs`, `transcriptMtimeMs`, `startedAtMs`, `awakeAtMs`, `paneWorkingMs`, `lifecycleTs`,
+`clientActivityMs`; fail-closed при всех `null`) и усыпляет кандидатов от самых старых к свежим с
+пересчётом `minAwakePerProfile` после каждой сессии.
 
 ## Wake и idempotency
 
-`session.wake` и новый `message.send` пробуждают прежний registered/native context.
-Wake ждёт release вне admission lock: native resume использует этот же lock для selection.
-Фазы requested → sleeping → waking → awake durable. Wake operation связан с конкретным
-sleep operation и registration; проверки identity повторяются перед start и acknowledgement.
-Старый completed wake возвращает свой receipt, pending wake не будит следующий sleep.
+`session.wake`, `ccmux wake`, `ccmux start`, `ccmux attach`, Enter в TUI и due-письмо в
+`deliverPending` пробуждают прежний registered/native context с тем же `uuid`. Wake ждёт release
+вне admission lock: native resume использует этот же lock для selection. Фазы
+`requested → sleeping → waking → awake` durable; `reconcileSleepRecord` при старте и в цикле
+`healOnce` переводит `requested` с уже ушедшими процессами в `sleeping` (с очисткой `clearStatus`/
+`forgetAgentPane`), откатывает устаревший (`> 30 с`) TUI `requested` с живой панелью обратно в
+`awake`, а устаревший `waking` без tmux — обратно в `sleeping`. Доказательство пробуждения
+проверяет свежую пару `(pid, startTime)` (защита от PID reuse), а для TUI — живого дочернего
+провайдера и отрисованный экран (`scan.ready || scan.atPrompt !== null` по тексту со снятым ANSI)
+с откатом `waking → sleeping` и fail-fast при `LifecycleBlock` или падении tmux.
 
-Новый input сначала проходит admission; sleeping target пробуждается вне lock, после чего
-admission повторяется. Проверка sleep находится внутри lock после duplicate lookup:
-повтор уже принятого сообщения не будит последующий sleep и не исполняет работу заново.
-Регистрация, native history, request/message IDs и settled operation records сохраняются.
-Wake использует один deadline от начала вызова, включая ожидание release: до 25 секунд
-внутри endpoint с transport timeout 30 секунд. Медленный cold start возвращает WAKE_PENDING;
-повтор продолжает тот же durable wake operation. Cancel/deadline отказывает последующему wake. Контракт доступен через HTTP, CLI и MCP,
-схемы и typed service client строятся из одного control contract.
+Журнал `wake-operations.json` ограничен 256 записями и при заполнении вытесняет сначала
+незавершённые (`result: null`) записи прошлых циклов сна, а затем старейшие завершённые записи
+прошлых циклов (FIFO), предотвращая постоянный `WAKE_CAPACITY`. Старый completed wake возвращает
+свой receipt, pending wake не будит следующий sleep.
+
+В `deliverPending` спящие сессии проверяются чистым `pickPendingDelivery` без мутации курсоров:
+будущие `notBefore`, `acked`, `archived`, `chatEnabled: false`, `blocked`, `delegationStopped`,
+rate-limit и неподдерживаемые провайдеры не вызывают пробуждения. Активный wake координируется
+single-flight с экспоненциальным backoff и честным `writeChatHold`. Для спящих TUI-сессий
+`message.send` принимает письмо в ledger без 409 `SESSION_SLEEPING`, чтобы его разбудил
+`deliverPending` в срок. Wake использует один deadline от начала вызова (до 25 секунд внутри
+endpoint с transport timeout 30 секунд); медленный cold start возвращает `WAKE_PENDING`. Cancel и
+deadline отказывают последующему wake. Операции `session.idle`, `session.sleep`, `session.wake` и
+`session.pin` доступны через HTTP, CLI, MCP и peer forwarding (`FORWARDED_OPERATIONS`).
 
 ## Публикуемые bytes
 

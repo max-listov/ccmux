@@ -167,7 +167,7 @@ test('App sender pins the provider response and refuses a different thread befor
   const requestSchema = z.object({
     id: z.number().optional(),
     method: z.string(),
-    params: z.unknown(),
+    params: z.unknown().optional(),
   });
   const server = Bun.serve({
     unix: join(socketDir, 'app-server-control.sock'),

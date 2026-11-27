@@ -4,14 +4,15 @@ description: Capability-aware native session supervision with exact continuation
 type: architecture
 status: active
 created: 2026-08-30
-updated: 2026-10-05 06:46 +07:00
+updated: 2026-11-27 14:41 +08:00
 ---
 
 # Managed runtime drivers
 
 The managed registry owns a session's address, workspace, registration generation and UUID.
 A driver owns its protocol and continuation evidence. Codex uses its native UUID; OpenCode keeps
-its `ses_…` identifier separately. Runtime identity is not an inference provider or a model.
+its `ses_…` identifier separately; Antigravity keeps its ACP session UUID separately. Runtime
+identity is not an inference provider or a model.
 
 ## Ownership and state
 
@@ -34,7 +35,12 @@ archived registrations are excluded from healing and retain their history.
 
 Claude has two execution modes. The default keeps its interactive provider and truthful pane-based
 capabilities; an opt-in native mode drives the same installed binary through the published agent SDK
-and reports the structured surface the other native runtimes report. Codex uses App Server.
+and reports the structured surface the other native runtimes report. Codex uses App Server through
+`stitchkit/agent-executor/codex` (`createCodexDriver` over `unix-listen` and `unix-connect`
+transports for owned sessions, steering, context controls, external turn observation, model catalog
+reads and plan limits). A Desktop delivery checks the exact thread and its idle status, then calls
+`CodexControlClient.startThreadTurn` with the ledger message ID on the same control connection.
+Owned delivery uses `findCodexTurnByClientId` to recover the native turn ID after a lost reply.
 OpenCode uses the native SDK/API and SSE. A custom driver composes a published optional harness;
 it does not implement an inference loop, tool scheduler, product prompts or credential routing.
 Capabilities are explicit per driver. An unavailable driver or unsupported operation is rejected
@@ -90,6 +96,36 @@ provider resume. It requires existing native account access; it does not install
 modify a production registration. `scripts/custom-managed-acceptance.ts` runs the built Custom
 entrypoint through the same public service with existing operator-owned credentials and private
 fixtures. Its optional coexistence, coding and resident lanes report independent outcomes.
+
+## Antigravity ACP runtime
+
+`src/agent/antigravity/` implements the fifth managed runtime (`runtime: 'antigravity'`,
+`mode: 'native'`) on top of `stitchkit/agent-executor/acp` (`agy acp --stdio --process-per-session
+--sandbox`). CCMux does not duplicate ACP v1 JSON-RPC framing or delta classification.
+
+- **Preflight and availability (`preflight.ts`):** `antigravityBin` (auto-detected via `agy` or
+  pinned in `machine.json`), minimum version `1.5.14`, and cached host auth state under
+  `antigravityDataDir` (default `~/.gemini/antigravity-cli`) are checked fail-closed without
+  triggering interactive OAuth. Missing binary, unsupported version or absent cached auth report
+  `availability: 'unavailable'` with explicit reasons (`runtime-not-configured`,
+  `runtime-version-unsupported`, `runtime-auth-unavailable`).
+- **Model catalog (`catalog.ts`):** Host `models.read({ runtime: 'antigravity' })` opens an
+  ephemeral private workspace session (`session/new` → `configOptions` → `session/close`) with zero
+  inference and is cached in `HostCatalogCache`. Live sessions write `models.json` beside their
+  status file and refresh it on `setConfigOption` updates. Unknown model IDs are rejected before
+  session creation (`MODEL_UNAVAILABLE`).
+- **Owner and mailboxes (`owner.ts`, `projection.ts`, `process.ts`):** `AntigravityOwner` maps
+  `ExecutorDelta` streams (`text`, `reasoning`, `tool-call`, `tool-result`, `request`,
+  `request-resolved`, `usage`, `context-usage`, `turn-end`, `error`) onto `ManagedRuntimeSnapshot`
+  and `ContentBuffer`, supports `selection.update` (`model` + `effort` → `thought_level`),
+  `permissionModes` (`default` ↔ `default`, `acceptEdits` ↔ `accept-edits`, `bypassPermissions` ↔
+  `auto`, `plan` ↔ `plan`), pinned `imageInput`, `approval` (`approvalEnforcement:
+  'agent-initiated'`), `interrupt` (`session/cancel`), host `antigravityMcpServers` forwarding, and
+  process restart resume via `session/resume` / `session/load` preserving `threadId` and
+  `nativeSession.id`. Because ACP declares `reconcile: 'none'`, an interrupted `dispatching`
+  receipt settles as `uncertain` on startup rather than re-sending automatically.
+- **Transcript and history (`transcript.ts`):** Reads `brain/<nativeSession.id>/.system_generated/logs/transcript.jsonl`
+  with monotonic line cursors for both `transcript.read` and `context.history`.
 
 ## Custom execution owner
 
@@ -313,7 +349,11 @@ prove that a particular prompt completed. Native session deletion is not CCMux a
 Opt-in and off unless the host enables it, because the mode changes which authentication a
 deployment leans on and that decision is the operator's. `claudeNativeRuntime` permits it and
 `claudeNativeSdk` names the package root of the agent SDK to run it with — a path on the host, like
-`codexBin` and `opencodeBin`, since only this project's own harness is embedded. `runtime.list`
+`codexBin` and `opencodeBin`, since only this project's own harness is embedded. `src/agent/claude/native/`
+drives that SDK exclusively through `stitchkit/agent-executor/claude-sdk` (`createClaudeSdkDriver`,
+`probeCapabilities`, `forkSession`, `findInput`, `readUsage`, `onPermissionRequest`, `onTurnUsage`,
+`onEvent`, `onQueryExit`, `verifyDelegation`), without maintaining a duplicate SDK classifier,
+prompt queue, permission mapper or cumulative usage differencer in CCMux. `runtime.list`
 reports both Claude modes and separates three answers that call for three different actions:
 the CLI is not configured, the mode is not enabled here, or no SDK is present at the configured path.
 
@@ -396,6 +436,11 @@ name and anything else shaped like a window is carried under its own. Claude's p
 both consumed: the pull answers "how full is it now" and the push — including the refusal itself —
 names one window and merges onto the reading rather than replacing it. Codex is asked on the account,
 not on the thread, so a session that has taken no turn can still answer.
+
+Stitchkit normalizes the native usage response. CCMux stores each window's label, model scope,
+percentage and UTC reset time. The Codex account plan and its windows can accompany per-model
+limits in the same sample. Claude model windows with a measured zero keep that value even when
+the provider omits the display name.
 
 Three answers stay distinct, because collapsing any two of them tells an operator the plan is fine
 when it may be exhausted: a filled window; no plan limit at all (an API key, Bedrock, Vertex); and a

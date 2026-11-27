@@ -2,11 +2,13 @@ import { AppError } from 'stitchkit';
 import type { ApplicationAdmission } from 'stitchkit/application';
 import { createObservability } from 'stitchkit/observability';
 import { createServer, withContractIdentity } from 'stitchkit/server';
+import { stitchwireRoute } from '../../config/remoteTransport.ts';
 import { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
 import type { MachineConfig } from '../../types.ts';
 import { log } from '../../util/log.ts';
 import type { ControlOperationDependencies } from '../operations/context.ts';
 import type { ControlPublisher } from '../publisher.ts';
+import { WireControlService } from '../wire/service.ts';
 import { controlAuth, refuseOutsideService } from './auth.ts';
 import { controlServices } from './service.ts';
 import { controlSocket, prepareControlDirectory } from './socketPath.ts';
@@ -38,6 +40,8 @@ export function createControlServer(
     },
   });
   const authorize = controlAuth(m);
+  const directory = stitchwireRoute(m.remoteTransport)?.serviceDirectory;
+  const wire = directory ? new WireControlService(directory, controlSocket(m)) : undefined;
   const observability = createObservability({
     request: {
       includePayload: false,
@@ -60,6 +64,16 @@ export function createControlServer(
   });
   const server = createServer({
     unix: { path: controlSocket(m), mode: 0o600 },
+    ...(wire
+      ? {
+          wrapFetch: (dispatch) =>
+            wire.wrap(
+              dispatch,
+              () =>
+                stitchwireRoute(currentMachine().remoteTransport)?.serviceDirectory === directory,
+            ),
+        }
+      : {}),
     // Answered beside the operations themselves: a client reads which of them this daemon has and
     // whether their schemas are its own, before a call tells it by failing.
     services: withContractIdentity(controls.services),
@@ -81,9 +95,9 @@ export function createControlServer(
             status: 403,
           });
         await authorize(ctx, endpoint);
-        refuseOutsideService(ctx.principal, endpoint.meta);
+        refuseOutsideService(ctx.principal, endpoint.effect);
       },
     },
   });
-  return { server, controls, observability, external };
+  return { server, controls, observability, external, wire };
 }

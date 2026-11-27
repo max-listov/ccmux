@@ -17,7 +17,8 @@ export function pageModelCatalog(
   target?: ControlModelCatalog['target'],
 ): ControlModelCatalog {
   const visible = input.includeHidden ? models : models.filter((model) => !model.hidden);
-  const digest = createHash('sha256').update(JSON.stringify(visible)).digest('hex').slice(0, 16);
+  const content = source.profile === undefined ? visible : [source.profile, visible];
+  const digest = createHash('sha256').update(JSON.stringify(content)).digest('hex').slice(0, 16);
   let offset = 0;
   if (input.cursor) {
     const [revision, start] = input.cursor.split(':');

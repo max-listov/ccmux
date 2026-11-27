@@ -1,4 +1,6 @@
+import { serviceCaller } from '@stitchwire/client';
 import { AppError } from 'stitchkit';
+import { OperationEffectSchema } from 'stitchkit/contract';
 import { setRequestDimensions } from 'stitchkit/observability';
 import { createAuthHook } from 'stitchkit/server';
 import { hasChatCredential } from '../../chat/auth.ts';
@@ -7,7 +9,6 @@ import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
 import { chatEnabledFor } from '../../config/chat.ts';
 import { findSession, loadSessions } from '../../session/registry.ts';
 import type { ChatPrincipal, MachineConfig } from '../../types.ts';
-import { ServiceEffectSchema } from '../schema/serviceEffect.ts';
 import { CCMUX_CONTROL_CALLER_HEADER, ControlTransportCallerSchema } from './boundary.ts';
 
 /** The socket authenticates the local OS user; a managed claim additionally needs its capability. */
@@ -52,19 +53,16 @@ export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrinci
 
 /**
  * A caller of the declared service reaches the control operations — each declares its effect in
- * `meta.service` (`serviceEffect.ts`), the same word a transport's descriptor is projected from —
+ * `effect`, the same word a transport's descriptor is projected from —
  * and nothing else on this socket: not the contract identity, the event streams or the peer reads,
  * whatever a transport forwards.
  */
-export function refuseOutsideService(principal: unknown, meta: unknown): void {
+export function refuseOutsideService(principal: unknown, effect: unknown): void {
   const parsed = ChatPrincipalSchema.safeParse(principal);
   if (!parsed.success) return;
   const caller = parsed.data;
   if (caller.kind !== 'service' || caller.transport !== 'declared-service') return;
-  const effect = ServiceEffectSchema.safeParse(
-    typeof meta === 'object' && meta !== null ? Reflect.get(meta, 'service') : undefined,
-  );
-  if (effect.success) return;
+  if (OperationEffectSchema.safeParse(effect).success) return;
   throw new AppError('FORBIDDEN', {
     message: 'This operation is not part of the declared service',
     status: 403,
@@ -76,7 +74,10 @@ export function controlAuth(m: MachineConfig) {
     resolve: async (ctx) => {
       if (!ctx.req)
         throw new AppError('UNAUTHORIZED', { message: 'Local request required', status: 401 });
-      return controlPrincipal(m, ctx.req.headers);
+      const caller = serviceCaller(ctx);
+      return caller
+        ? servicePrincipal(ControlTransportCallerSchema.parse(caller.caller), 'declared-service')
+        : controlPrincipal(m, ctx.req.headers);
     },
     resolveFromContext: async (ctx) => ChatPrincipalSchema.parse(ctx.principal),
     // `public` is the scope of the contract identity the framework mounts; on this socket it is

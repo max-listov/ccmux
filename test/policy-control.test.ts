@@ -12,11 +12,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import { z } from 'zod';
-import { prepareManagedCodexTurn, startCodexAppTurn } from '../src/agent/codex/appServer.ts';
+import { prepareManagedCodexTurn } from '../src/agent/codex/appServer.ts';
 import { ownedCodexArgv, ownedCodexThreadParams } from '../src/agent/codex/owned/launch.ts';
 import { runOwnedCodexProcess } from '../src/agent/codex/owned/process.ts';
 import { OwnedCodexProjection } from '../src/agent/codex/owned/projection.ts';
-import type { CodexAppRpc } from '../src/agent/codex/rpc.ts';
+import { startOwnedCodexTurn } from '../src/agent/codex/owned/thread.ts';
 import { codexTextInput } from '../src/agent/codex/turnInput.ts';
 import { computeStamp, staleReasons } from '../src/agent/launch/launchStamp.ts';
 import { admitOpenCode } from '../src/agent/opencode/admission.ts';
@@ -155,28 +155,33 @@ test('public create pins one immutable policy and same-ID retry cannot create a 
 test('Codex applies private thread instructions plus native skills and preserves native Plan settings', async () => {
   const f = fixture();
   const calls: { method: string; params: unknown }[] = [];
-  const rpc: CodexAppRpc = {
-    close() {},
-    request: async (method, params) => {
-      calls.push({ method, params });
-      if (method === 'skills/list')
-        return {
-          data: [
-            {
-              cwd: f.dir,
-              errors: [],
-              skills: [{ name: f.skill.name, path: f.skill.path, enabled: true }],
-            },
-          ],
-        };
-      if (method === 'collaborationMode/list')
-        return {
-          data: [
-            { name: 'Plan', mode: 'plan', model: 'native-default', reasoning_effort: 'medium' },
-          ],
-        };
-      if (method === 'turn/start') return { turn: { id: 'turn-a' } };
-      throw new Error('Unexpected native method');
+  const rpc = {
+    listSkills: async (params?: unknown) => {
+      calls.push({ method: 'skills/list', params });
+      return {
+        data: [
+          {
+            cwd: f.dir,
+            errors: [],
+            skills: [{ name: f.skill.name, path: f.skill.path, enabled: true }],
+          },
+        ],
+      };
+    },
+    listCollaborationModes: async (params?: unknown) => {
+      calls.push({ method: 'collaborationMode/list', params });
+      return {
+        data: [{ name: 'Plan', mode: 'plan', model: 'native-default', reasoning_effort: 'medium' }],
+      };
+    },
+    startTurn: async (params: unknown) => {
+      calls.push({ method: 'turn/start', params });
+      return {
+        nativeTurnId: 'turn-a',
+        deltas: (async function* () {})(),
+        interrupt: async () => {},
+        respond: async () => {},
+      };
     },
   };
   const policy = await prepareManagedCodexTurn(
@@ -210,9 +215,9 @@ test('Codex applies private thread instructions plus native skills and preserves
   expect(ownedCodexThreadParams(f.s, f.m).developerInstructions).toContain(f.body);
   expect(JSON.stringify(ownedCodexArgv(f.s, f.m))).not.toContain(f.body);
   expect(JSON.stringify(ownedCodexArgv(f.s, f.m))).not.toContain(f.skill.path);
-  expect(
-    await startCodexAppTurn(rpc, f.s.uuid, crypto.randomUUID(), codexTextInput('hello'), policy),
-  ).toBe('turn-a');
+  expect(await startOwnedCodexTurn(rpc, crypto.randomUUID(), codexTextInput('hello'), policy)).toBe(
+    'turn-a',
+  );
   const sent = z
     .object({ input: z.array(z.unknown()), collaborationMode: z.unknown() })
     .parse(calls.find((call) => call.method === 'turn/start')?.params);

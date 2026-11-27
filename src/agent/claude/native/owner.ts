@@ -1,9 +1,14 @@
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { unlinkSync } from 'node:fs';
-import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { PermissionResult, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { AgentEngineTurn } from 'stitchkit/agent-executor';
+import {
+  type ClaudeSdkDriver,
+  type ClaudeSdkPermissionRequestMeta,
+  type ClaudeSdkSession,
+  type ClaudeSdkTurnUsage,
+  createClaudeSdkDriver,
+} from 'stitchkit/agent-executor/claude-sdk';
+import type { AgentMessagePart } from 'stitchkit/agent-runtime';
 import { ContentProducer } from '../../../content/producer.ts';
 import { claudeContextApi } from '../../../context/claude.ts';
 import { readNativeForkIntent } from '../../../context/fork.ts';
@@ -15,15 +20,14 @@ import { assertInferenceFreeCreate } from '../../../runtime/creation.ts';
 import { readRuntimeInput } from '../../../runtime/input.ts';
 import { registerRuntimeOwnership } from '../../../runtime/ownership.ts';
 import { planLimitsDue } from '../../../runtime/planLimits.ts';
-import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../../../runtime/status.ts';
+import { ManagedRuntimeStatusWriter } from '../../../runtime/status.ts';
 import { nativeContextWake } from '../../../runtime/wake.ts';
 import { sleepBlocksStart } from '../../../session/sleep/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { recordClaudeSdkUsage } from '../../../usage/claudeSdk.ts';
-import { atomicWrite } from '../../../util/atomic.ts';
+import { log } from '../../../util/log.ts';
 import { grantIdentity } from '../../launch/identityEnv.ts';
 import { launchEnv } from '../launch.ts';
-import { classifySdkMessage, isFailureResult } from './content.ts';
 import {
   type Discovery,
   loadAccount,
@@ -33,6 +37,7 @@ import {
   refreshMcpServers,
   refreshPlanLimits,
 } from './discovery.ts';
+import { claudeExecutorProfile, claudeSdkDriverConfig, loadAgentSdk } from './driver.ts';
 import { adoptNativeFork } from './fork.ts';
 import {
   applyInterrupt,
@@ -43,67 +48,57 @@ import {
   type Mailboxes,
   restoreMode,
 } from './mailboxes.ts';
-import { approvalRequest, type PendingApproval, permissionResult } from './permission.ts';
+import { approvalRequest, type PendingApproval } from './permission.ts';
 import { TurnPickup } from './pickup.ts';
 import { NativeProjection } from './projection.ts';
-import { PromptQueue } from './promptQueue.ts';
-import { resumesConversation } from './resume.ts';
-import { loadAgentSdk, sdkOptions } from './sdk.ts';
 import { advanceTurn } from './turn.ts';
-
-/**
- * The writer for one native Claude conversation.
- *
- * Everything that decides anything lives in the pure modules beside this file; what is here is the
- * I/O around them. Two invariants govern the whole class, because breaking either produces the lie
- * this execution mode exists to remove:
- *
- * - **A dead runtime never reports itself alive.** The stream ending is a fact about the runtime, so
- *   it always reaches `connected` and always reaches the supervisor as a failure, whether the stream
- *   ended by throwing or by simply finishing.
- * - **Nothing waits on a promise nobody will settle.** Every permission callback held here is
- *   settled on every exit — answered, interrupted, or closed.
- */
 
 /** How often the sample is CHECKED, not how often it is read: `planLimitsDue` decides the read. */
 const PLAN_LIMITS_TICK_MS = 15_000;
 
+/**
+ * The single-writer owner for one native Claude conversation, driven through
+ * `stitchkit/agent-executor/claude-sdk`.
+ */
 export class ClaudeNativeOwner {
   private writer: ManagedRuntimeStatusWriter;
-  private queue = new PromptQueue();
-  private query: Query | null = null;
+  private driver: ClaudeSdkDriver | null = null;
+  private sdkSession: ClaudeSdkSession | null = null;
+  private activeTurn: AgentEngineTurn | null = null;
   private pickup = new TurnPickup();
-  private started = false;
   private failure: unknown = null;
   private pending = new Map<string, PendingApproval>();
-  /** Everything this session publishes about itself, and the only thing that changes it. */
+  private resolvedFiles = new Map<string, Uint8Array>();
   private projection = new NativeProjection();
   private providerPid = process.pid;
   private providerDiagnostic = '';
   private usageEpoch = crypto.randomUUID();
   private pendingInput = true;
+  private sessionAbort = new AbortController();
+  private contextAbort = new AbortController();
+  private contextPump: NativeContextPump = new NativeContextPump((error) => {
+    void this.report(error);
+  });
 
-  /** What the six requests need. Assembled rather than passed piecemeal, so adding one is one line. */
   private get mailboxes(): Mailboxes {
     return {
       m: this.m,
       session: this.session,
-      query: this.query,
+      sdkSession: this.sdkSession,
+      activeTurn: () => this.activeTurn,
       projection: this.projection,
       discovery: this.discovery,
       pending: this.pending,
       publish: () => this.publish(),
       report: this.report,
-      settleAll: (decision) => this.settleAll(decision),
     };
   }
 
-  /** What the five description reads need, and nothing else this owner holds. */
   private get discovery(): Discovery {
     return {
       m: this.m,
       session: this.session,
-      query: this.query,
+      sdkSession: this.sdkSession,
       projection: this.projection,
       report: this.report,
     };
@@ -116,16 +111,6 @@ export class ClaudeNativeOwner {
   ) {
     this.writer = new ManagedRuntimeStatusWriter(m, session);
   }
-
-  private get startedFile(): string {
-    return join(managedRuntimeRoot(this.m, this.session), 'conversation.started');
-  }
-
-  private contextAbort = new AbortController();
-
-  private contextPump: NativeContextPump = new NativeContextPump((error) => {
-    void this.report(error);
-  });
 
   /** The session as this owner resolved it — a fork changes the conversation it points at. */
   get identity(): Session {
@@ -143,50 +128,70 @@ export class ClaudeNativeOwner {
     if (!generation || !this.session.nativeSession)
       throw new Error('Native Claude requires a managed registration');
     this.projection.content = new ContentProducer(this.m, this.session, generation);
-    this.started = resumesConversation(this.m, this.session, this.startedFile);
+    const env = launchEnv(this.m, this.session);
     const sdk = await loadAgentSdk(this.m);
-    // A fork destination continues a conversation the runtime created for it, so its identity is
-    // whatever `forkSession` returned — not the pinned generation a first-start session uses.
     if (readNativeForkIntent(this.m, this.session) !== null) {
       this.session = await adoptNativeFork(this.m, this.session, sdk);
-      this.started = true;
-      await atomicWrite(this.startedFile, 'started', 0o600);
     }
-    const env = launchEnv(this.m, this.session);
     grantIdentity(env, this.m, this.session);
-    const options = sdkOptions({
-      m: this.m,
-      session: this.session,
-      env,
-      started: this.started,
-      canUseTool: (toolName, input) => this.decide(toolName, input),
-    });
-    options.spawnClaudeCodeProcess = (input) => {
-      const child = spawn(input.command, input.args, {
-        cwd: input.cwd,
-        env: input.env,
-        signal: input.signal,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      if (child.pid === undefined) throw new Error('Native Claude process was not created');
-      this.providerPid = child.pid;
-      child.stderr.on('data', (bytes: Buffer) => {
-        this.providerDiagnostic = (this.providerDiagnostic + bytes.toString()).slice(-8192);
-      });
-      return child;
-    };
+    const profile = claudeExecutorProfile(this.m, this.session, env);
     this.usageEpoch = crypto.randomUUID();
-    this.query = sdk.query({ prompt: this.queue.iterable(), options });
-    if (this.session.delegation !== undefined) {
-      const initialized = await this.query.initializationResult();
-      if (initialized.hooks_applied !== true)
-        throw new Error('Native Claude did not acknowledge immutable delegation hooks');
-      const servers = await this.query.mcpServerStatus();
-      if (servers.length)
-        throw new Error('Native Claude exposed MCP servers under delegated policy');
+
+    this.driver = createClaudeSdkDriver(
+      claudeSdkDriverConfig({
+        m: this.m,
+        session: this.session,
+        sdk,
+        onProviderPid: (pid) => {
+          this.providerPid = pid;
+        },
+        stderr: (chunk) => {
+          this.providerDiagnostic = (this.providerDiagnostic + chunk).slice(-8192);
+        },
+        onQueryExit: (error) => {
+          this.handleQueryExit(error);
+        },
+        onPermissionRequest: (meta) => {
+          this.handlePermissionRequest(meta);
+        },
+        onTurnUsage: (usage) => {
+          this.handleTurnUsage(usage);
+        },
+        onEvent: (event) => {
+          this.projection.applyRuntimeEvent(event);
+          void this.publish().catch(() => undefined);
+        },
+        resolveFile: async (reference) => {
+          const bytes = this.resolvedFiles.get(reference);
+          if (bytes === undefined)
+            throw new Error(`Attached image ${reference} is not retained for this turn`);
+          return bytes;
+        },
+      }),
+    );
+
+    const nativeId = this.session.nativeSession?.id;
+    if (!nativeId) throw new Error('Native Claude requires a managed registration');
+    this.sdkSession = await this.driver.open({
+      profile,
+      cwd: this.session.dir,
+      nativeThreadId: nativeId,
+      signal: this.sessionAbort.signal,
+    });
+    // Ensure the underlying query process spawns eagerly at open (verifyDelegation already starts
+    // it for delegated sessions; for ordinary sessions initializationResult starts the loop now).
+    if (this.session.delegation === undefined) {
+      try {
+        await this.sdkSession.initializationResult();
+      } catch (error) {
+        if (
+          !(error instanceof Error && /does not support initializationResult/i.test(error.message))
+        )
+          throw error;
+      }
     }
+    if (this.sdkSession.providerPid !== undefined) this.providerPid = this.sdkSession.providerPid;
     this.projection.connected = true;
-    void this.drain();
     await restoreMode(this.mailboxes);
     await loadCatalog(this.discovery);
     await loadCommands(this.discovery);
@@ -195,24 +200,61 @@ export class ClaudeNativeOwner {
     await refreshMcpServers(this.discovery);
     this.serveContext(this.contextAbort.signal);
     this.serveLimits(this.contextAbort.signal);
-    if (this.session.delegation !== undefined)
+    if (this.session.delegation !== undefined) {
       await registerRuntimeOwnership(this.m, this.session, this.providerPid);
+    } else if (this.session.registrationGeneration !== undefined) {
+      await registerRuntimeOwnership(this.m, this.session, this.providerPid).catch((error) => {
+        log.warn({
+          msg: 'native claude ownership registration skipped',
+          name: this.session.name,
+          err: String(error),
+        });
+      });
+    }
     await recordDelegationApplied(this.m, this.session);
     await this.publish();
   }
 
-  /**
-   * Ask again when the sample has stopped describing the present.
-   *
-   * The end of a turn is not the only moment the answer can change, which is what the refresh at
-   * the end of `drain` assumed. A window RESETS on a clock, and a sibling session on the same
-   * account spends against the same window — so between two turns of this session the number can
-   * move both ways. Measured: a five-hour window that reset at 06:29Z was served as 100 % full at
-   * 08:05Z while the runtime's own display read 36 %, and the session had been working throughout.
-   *
-   * The check is cheap and the read is not, so the tick is frequent and `planLimitsDue` decides:
-   * an unexpired sample younger than its maximum age costs one comparison.
-   */
+  private handleQueryExit(error: unknown): void {
+    this.failure ??= new Error('Native Claude stream failed', {
+      cause: { error, stderr: this.providerDiagnostic },
+    });
+    this.projection.connected = false;
+    this.pending.clear();
+    if (this.projection.turn.status === 'inProgress') {
+      this.projection.turn = advanceTurn(this.projection.turn, {
+        step: 'failed',
+        error: String(error),
+      });
+    }
+    void this.report(error);
+    void this.publish().catch(() => undefined);
+  }
+
+  private handlePermissionRequest(meta: ClaudeSdkPermissionRequestMeta): void {
+    const request = approvalRequest(
+      meta.interactionId,
+      meta.toolName,
+      meta.input,
+      this.projection.turnId ?? meta.turnId,
+    );
+    this.pending.set(meta.interactionId, { request, toolName: meta.toolName });
+    this.projection.content?.buffer.lifecycle(
+      'request',
+      request.turnId,
+      meta.interactionId,
+      'requested',
+      request.reason,
+    );
+    this.projection.content?.publish();
+    void this.publish().catch(() => undefined);
+  }
+
+  private handleTurnUsage(usage: ClaudeSdkTurnUsage): void {
+    recordClaudeSdkUsage(this.m, this.session.uuid, this.usageEpoch, usage);
+    this.projection.applyTurnUsage(usage);
+  }
+
   private serveLimits(signal: AbortSignal): void {
     void (async () => {
       while (!signal.aborted) {
@@ -232,7 +274,7 @@ export class ClaudeNativeOwner {
 
   /** Change the model for subsequent turns, keeping the published evidence in step. */
   async selectModel(model: string, turnId: string | null): Promise<void> {
-    await this.query?.setModel?.(model);
+    await this.sdkSession?.setModel(model);
     this.projection.selection = {
       model: { provider: 'claude', model },
       options: { runtime: 'claude', model: { provider: 'claude', model } },
@@ -242,133 +284,56 @@ export class ClaudeNativeOwner {
     await this.publish();
   }
 
-  /**
-   * Consume the runtime's stream for the life of the session.
-   *
-   * The `finally` is the point. A stream that simply ENDS — the child exited, the transport closed —
-   * is exactly as fatal as one that throws, and handling only the throwing case left a session
-   * publishing `connected: true` with a fresh lease every 200 ms over a runtime that was gone.
-   */
-  private async drain(): Promise<void> {
-    const query = this.query;
-    if (!query) return;
+  private async startAndDrainTurn(input: {
+    turnId: string;
+    clientId: string;
+    parts: AgentMessagePart[];
+  }): Promise<void> {
+    const sdkSession = this.sdkSession;
+    if (sdkSession === null) throw new Error('Native Claude session is not open');
+    const turn = await sdkSession.startTurn({
+      turnId: input.turnId,
+      clientId: input.clientId,
+      input: input.parts,
+    });
+    this.activeTurn = turn;
+    void this.drainTurn(turn);
+  }
+
+  private async drainTurn(turn: AgentEngineTurn): Promise<void> {
     try {
-      for await (const message of query) {
-        await this.rememberConversation();
-        recordClaudeSdkUsage(this.m, this.session.uuid, this.usageEpoch, message);
-        const failed = isFailureResult(message);
-        const classified = classifySdkMessage(message.type);
-        this.projection.turn = advanceTurn(this.projection.turn, {
-          step: 'message',
-          message: classified,
-          kind: null,
-          failed,
-        });
-        if ('kind' in classified) this.projection.record(message, classified.kind, failed);
-        this.projection.takeSpend(message);
-        this.projection.takeRateLimit(message);
-        // Measured when a turn ends, not on every frame: this is a round trip to the runtime, and
-        // the answer only changes when the conversation does.
+      for await (const delta of turn.deltas) {
+        if (delta.type === 'request-resolved') {
+          this.pending.delete(delta.interactionId);
+        }
+        this.projection.applyDelta(delta);
         if (this.projection.turn.status !== null && this.projection.turn.status !== 'inProgress') {
           await refreshContextUsage(this.discovery);
-          // A turn is one of the moments the answer can have changed; the other is the clock, and
-          // a sibling session on the same account. `serveLimits` covers those.
           await refreshPlanLimits(this.discovery);
         }
         await this.publish();
       }
-      this.failure ??= new Error('Native Claude stream ended while the session was alive');
     } catch (error) {
-      this.failure = new Error('Native Claude stream failed', {
-        cause: { error, stderr: this.providerDiagnostic },
-      });
-      this.projection.turn = advanceTurn(this.projection.turn, {
-        step: 'failed',
-        error: String(error),
-      });
-      await this.report(error);
+      if (!this.sessionAbort.signal.aborted) {
+        this.failure ??= new Error('Native Claude stream failed', {
+          cause: { error, stderr: this.providerDiagnostic },
+        });
+        this.projection.turn = advanceTurn(this.projection.turn, {
+          step: 'failed',
+          error: String(error),
+        });
+        await this.report(error);
+      }
     } finally {
-      this.projection.connected = false;
-      // Nothing will answer these now; leaving them unsettled holds the runtime's own callbacks.
-      this.settleAll('cancel');
+      if (this.activeTurn === turn) {
+        this.activeTurn = null;
+      }
+      this.resolvedFiles.clear();
+      this.pending.clear();
       await this.publish().catch(() => undefined);
-      await this.recoverStaleConversation();
     }
   }
 
-  /**
-   * A resume that names a conversation the runtime does not have is not recoverable by retrying —
-   * it fails identically forever. Clearing the marker turns the next start back into a first start,
-   * which is the only state the runtime will accept.
-   */
-  private async recoverStaleConversation(): Promise<void> {
-    if (!/No conversation found/i.test(String(this.failure ?? ''))) return;
-    try {
-      unlinkSync(this.startedFile);
-      await this.report(
-        new Error('Cleared a stale conversation marker; the next start creates one'),
-      );
-    } catch {
-      // Already gone; the next start creates the conversation anyway.
-    }
-  }
-
-  private settleAll(decision: 'cancel' | 'decline'): void {
-    for (const [id, entry] of this.pending) {
-      entry.settle(permissionResult(decision, { toolName: entry.toolName }));
-      this.pending.delete(id);
-    }
-  }
-
-  /** The first message proves the conversation now exists, so the next start must resume it. */
-  private async rememberConversation(): Promise<void> {
-    if (this.started) return;
-    this.started = true;
-    await atomicWrite(this.startedFile, 'created\n', 0o600);
-  }
-
-  /**
-   * Ask the operator, and wait for their answer.
-   *
-   * In the terminal mode this same request is a drawn menu nothing can answer through the control
-   * plane, so the session strands while every other signal calls it idle. There is deliberately no
-   * timeout: an unanswered request leaves the session visibly `waiting-approval`, which a person can
-   * act on, whereas a timeout that declined on its own would make a decision nobody made.
-   */
-  private async decide(toolName: string, input: unknown): Promise<PermissionResult> {
-    const requestId = randomUUID();
-    const request = approvalRequest(
-      requestId,
-      toolName,
-      input,
-      this.projection.turnId ?? 'unknown',
-    );
-    const settled = new Promise<PermissionResult>((resolve) => {
-      this.pending.set(requestId, { request, toolName, settle: resolve });
-    });
-    this.projection.turn = advanceTurn(this.projection.turn, {
-      step: 'message',
-      message: { kind: 'request' },
-      kind: 'approval',
-    });
-    this.projection.content?.buffer.lifecycle(
-      'request',
-      request.turnId,
-      requestId,
-      'requested',
-      request.reason,
-    );
-    this.projection.content?.publish();
-    await this.publish();
-    return settled;
-  }
-
-  /**
-   * Serve the context operations from inside the process that holds the connection.
-   *
-   * One task, not one per tick: history reads and compaction are serialized by the pump, and a
-   * second concurrent pass would answer a mailbox request the first one is already answering.
-   */
   private serveContext(signal: AbortSignal): void {
     const generation = this.session.registrationGeneration;
     if (!generation) return;
@@ -392,23 +357,17 @@ export class ClaudeNativeOwner {
     });
   }
 
-  /**
-   * Compaction is the runtime's own command, delivered on the path phase 1 already built.
-   *
-   * A second mechanism for it would be a second way to reach the same conversation, which is the
-   * one thing this runtime's single-writer rule exists to prevent.
-   */
   private async compactTurn(signal: AbortSignal): Promise<void> {
     const nativeId = `compact-${Date.now()}`;
     this.projection.turnId = nativeId;
     this.projection.turnStartedAt = new Date().toISOString();
     this.projection.turn = { ...this.projection.turn, status: 'inProgress', state: 'working' };
-    this.queue.push({
-      type: 'user',
-      session_id: this.session.nativeSession?.id ?? '',
-      parent_tool_use_id: null,
-      message: { role: 'user', content: '/compact' },
-    } as SDKUserMessage);
+    this.resolvedFiles.clear();
+    await this.startAndDrainTurn({
+      turnId: nativeId,
+      clientId: randomUUID(),
+      parts: [{ type: 'text', text: '/compact' }],
+    });
     await this.publish();
     signal.throwIfAborted();
   }
@@ -428,11 +387,6 @@ export class ClaudeNativeOwner {
       await applyResponse(this.mailboxes);
       this.pendingInput = true;
     }
-    // Pickup under the same lock the writers take, so a write cannot interleave with the
-    // read-then-write that moves a turn between phases. Attempted rather than awaited to the
-    // timeout: this process also serves the session's context operations under that same lock, and
-    // a pickup that insisted would eventually throw and take the runtime down with it. A busy tick
-    // simply leaves the turn where it is.
     const input = this.pendingInput ? readRuntimeInput(this.m, this.session) : null;
     this.pendingInput = input !== null && input.phase !== 'accepted';
     if (
@@ -446,9 +400,12 @@ export class ClaudeNativeOwner {
           m: this.m,
           session: this.session,
           projection: this.projection,
-          queue: this.queue,
-          query: this.query,
+          sdkSession: this.sdkSession,
           selectModel: (model, turnId) => this.selectModel(model, turnId),
+          setResolvedFiles: (files) => {
+            this.resolvedFiles = files;
+          },
+          startTurn: (turnInput) => this.startAndDrainTurn(turnInput),
         });
       });
     await this.publish();
@@ -479,17 +436,18 @@ export class ClaudeNativeOwner {
 
   async close(): Promise<void> {
     this.contextAbort.abort();
+    this.sessionAbort.abort();
     await this.contextPump.close();
-    this.settleAll('decline');
-    this.queue.close();
-    this.query?.close();
+    this.pending.clear();
+    this.resolvedFiles.clear();
     this.projection.connected = false;
     try {
-      // Bounded: shutdown must not hang inside the owner lock waiting on a runtime that is gone.
-      await Promise.race([this.query?.interrupt?.() ?? Promise.resolve(), Bun.sleep(2_000)]);
+      await Promise.race([this.sdkSession?.close() ?? Promise.resolve(), Bun.sleep(2_000)]);
     } catch {
       // Best effort at shutdown; the session is going away either way.
     }
+    this.activeTurn = null;
+    this.sdkSession = null;
     await this.publish().catch(() => undefined);
     await this.projection.content?.close().catch(() => undefined);
   }
