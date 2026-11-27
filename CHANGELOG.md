@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.96.1] — 2026-11-27
+
+Machines on 0.95.0 can take the Stitchmux release: the previous updater accepts the renamed bundle's version answer.
+
 - A machine on 0.95.0 can take this release: its updater accepts the new bundle's version answer, which the renamed 0.96.0 bundle failed.
 
 ## [0.96.0] — 2026-11-27

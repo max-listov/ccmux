@@ -1,7 +1,7 @@
 {
   "name": "stitchmux",
   "private": true,
-  "version": "0.96.0",
+  "version": "0.96.1",
   "description": "Persistent, self-healing Claude and Codex tmux sessions with deterministic resume across a fleet of machines.",
   "type": "module",
   "license": "MIT",
