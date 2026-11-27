@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.96.2] — 2026-11-27
+
+Moving from the previous name rewrites session records inside the state directory and every machine.json path, including the Claude SDK.
+
 - Moving a machine from the previous name rewrites the session records inside the state directory and every path in `machine.json`, including `claudeNativeSdk`; before, a sleep record and native content snapshots kept the previous name and were refused, and the Claude SDK path pointed at the removed directory.
 
 ## [0.96.1] — 2026-11-27
