@@ -27,7 +27,9 @@ export function createControlClient(options: ControlClientOptions = {}) {
 }
 
 /** CLI, MCP and agent adapters invoke this proxy; authorization stays in the daemon. */
-export function createControlProxy(options: ControlClientOptions = {}) {
+export function createControlProxy(
+  options: ControlClientOptions = {},
+): ReturnType<typeof implementRemote> & { close: () => Promise<void> } {
   const transport = createControlConnection(options);
   return { ...implementRemote(controlContract, transport.http), close: transport.close };
 }

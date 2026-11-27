@@ -16,6 +16,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Install typed control clients from the public npm package `@ccmux/control-service-client`. The package includes the injected service client and the resident Unix client with ESM declarations for Bundler and NodeNext.
+- Read and stream native items immediately after creating or resuming a managed Antigravity session. The first content snapshot uses the conversation ID confirmed by ACP.
+- Use Stitchkit 0.132.2 for ACP teardown so stopped sessions reject pending approvals and suppress late updates.
+
 ## [0.94.1] — 2026-11-27
 
 Serve peer control directly from the daemon with the public Stitchwire SDK, select account profiles, and manage session sleep and wake. Includes the changes tagged in 0.94.0 and Stitchkit 0.132.1.

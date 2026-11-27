@@ -1,31 +1,45 @@
 #!/usr/bin/env bun
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import compiler from 'typescript/package.json' with { type: 'json' };
 import manifest from '../package.json' with { type: 'json' };
 import { VERSION } from '../src/util/version.ts';
+import { serveClientCandidate } from './client-consumer-registry.ts';
+import { CLIENT_NAME, inspectClientArchive, NPM_REGISTRY } from './control-client-archive.ts';
 import { packageControlServiceClient } from './package-control-service.ts';
 
 const directory = mkdtempSync('/tmp/ccmux-packed-service-');
 const packageDir = join(directory, 'package');
 const consumer = join(directory, 'consumer');
 
-function run(command: string, args: string[]): boolean {
-  const result = Bun.spawnSync([command, ...args], {
+async function run(command: string, args: string[]): Promise<void> {
+  const child = Bun.spawn([command, ...args], {
     cwd: consumer,
     stdout: 'inherit',
     stderr: 'inherit',
-    env: process.env,
+    env: { ...process.env, BUN_INSTALL_CACHE_DIR: join(directory, 'cache') },
   });
-  return result.exitCode === 0;
+  const code = await child.exited;
+  if (code !== 0)
+    throw new Error(`Installed consumer: ${command} ${args.join(' ')} exited ${code}`);
 }
 
+let candidate: ReturnType<typeof serveClientCandidate> | undefined;
 try {
-  const suppliedArtifact = process.env.CCMUX_PACKED_CLIENT_ARTIFACT;
-  const packed =
-    suppliedArtifact === undefined
-      ? await packageControlServiceClient(packageDir)
-      : { artifact: resolve(suppliedArtifact) };
+  const args = Bun.argv.slice(2);
+  if (args.length && (args.length !== 1 || args[0] !== '--from-npm'))
+    throw new Error('Usage: verify-control-service-client.ts [--from-npm]');
+  if (!args.length) {
+    const path =
+      process.env.CCMUX_PACKED_CLIENT_ARTIFACT ??
+      (await packageControlServiceClient(packageDir)).artifact;
+    candidate = serveClientCandidate(await inspectClientArchive(resolve(path), VERSION));
+  }
   mkdirSync(consumer, { recursive: true });
+  await Bun.write(
+    join(consumer, '.npmrc'),
+    `registry=${NPM_REGISTRY}/\n@ccmux:registry=${candidate?.url.origin ?? NPM_REGISTRY}/\n`,
+  );
   await Bun.write(
     join(consumer, 'package.json'),
     `${JSON.stringify({
@@ -33,17 +47,31 @@ try {
       private: true,
       type: 'module',
       dependencies: {
-        '@ccmux/control-service-client': `file:${resolve(packed.artifact)}`,
+        [CLIENT_NAME]: VERSION,
         stitchkit: manifest.devDependencies.stitchkit,
         '@stitchwire/client': manifest.dependencies['@stitchwire/client'],
       },
-      devDependencies: { typescript: '7.0.2' },
+      devDependencies: { typescript: compiler.version },
     })}\n`,
   );
   await Bun.write(
     join(consumer, 'check.ts'),
     `import { controlContract, controlServiceEffects, createInjectedControlClient, type OperationEffect, type UsageSummary } from '@ccmux/control-service-client';
-import { version as packageVersion } from '@ccmux/control-service-client/package.json';
+import packageManifest from '@ccmux/control-service-client/package.json' with { type: 'json' };
+import { createControlClient, createExternalStatusEncoder, currentExternalStatus, ExternalStatusSnapshotSchema, FleetAnswerSchema, LogPayloadSchema } from '@ccmux/control-service-client/control-client';
+const offline = ExternalStatusSnapshotSchema.parse({
+  protocol: 1, version: '1.0.0', machine: 'consumer', generation: '33333333-3333-4333-8333-333333333333', sequence: 0,
+  source: 'codex-app-server', status: 'unavailable', reason: 'endpoint-absent', observedAt: null,
+  expiresAt: null, truncated: false, omitted: 0, sessions: []
+});
+if (currentExternalStatus(offline).reason !== 'endpoint-absent' || createExternalStatusEncoder()(offline).frame !== 'snapshot')
+  throw new Error('resident status contract failed');
+if (FleetAnswerSchema.safeParse({}).success || LogPayloadSchema.safeParse({rows: 'invalid'}).success)
+  throw new Error('resident schema accepted an invalid payload');
+const resident = createControlClient({socket: '/unused-consumer-test.sock'});
+const readStatus: () => Promise<typeof offline> = resident['external.list'];
+if (typeof readStatus !== 'function') throw new Error('typed resident operation missing');
+await resident.close();
 const aggregate: UsageSummary['self'] = {
   values:{inputTokens:10,outputTokens:5,cacheReadTokens:null,cacheCreationTokens:null,reasoningTokens:null,totalTokens:null},
   measured:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheCreationTokens:0,reasoningTokens:0,totalTokens:0},
@@ -79,28 +107,34 @@ if (usage.self.values.inputTokens !== 10 || usage.self.values.outputTokens !== 5
 if (Object.keys(controlServiceEffects).length !== Object.keys(controlContract.endpoints).length) throw new Error('effects incomplete');
 const stop: OperationEffect = controlServiceEffects['session.stop'];
 if (stop !== 'write' || controlServiceEffects['fleet.list'] !== 'read') throw new Error('service effects lost');
-if (packageVersion !== ${JSON.stringify(VERSION)}) throw new Error('package version not readable');
+// @ts-expect-error An unknown operation effect must be rejected by the published types.
+const invalidEffect: OperationEffect = 'not-a-control-effect';
+if (packageManifest.version !== ${JSON.stringify(VERSION)}) throw new Error('package version not readable');
 `,
   );
-  if (!run('bun', ['install', '--ignore-scripts'])) throw new Error('consumer install failed');
-  if (
-    !run('bun', [
-      'x',
-      'tsc',
+  await run('bun', ['install', '--ignore-scripts']);
+  if (candidate && candidate.downloads() === 0)
+    throw new Error('Client archive was not downloaded');
+  for (const [resolution, module] of [
+    ['Bundler', 'ESNext'],
+    ['NodeNext', 'NodeNext'],
+  ] as const) {
+    await run(join(consumer, 'node_modules/.bin/tsc'), [
       '--noEmit',
       '--strict',
+      '--skipLibCheck',
+      'false',
       '--moduleResolution',
-      'bundler',
+      resolution,
       '--module',
-      'esnext',
+      module,
       '--target',
       'es2022',
       '--resolveJsonModule',
       'check.ts',
-    ])
-  )
-    throw new Error('consumer typecheck failed');
-  if (!run('bun', ['check.ts'])) throw new Error('consumer runtime failed');
+    ]);
+  }
+  await run('bun', ['check.ts']);
   await Bun.write(
     join(consumer, 'wire.ts'),
     `
@@ -132,13 +166,22 @@ assert.throws(
 );
 `,
   );
-  if (!run('bun', ['wire.ts'])) throw new Error('packed Wire descriptor failed');
+  await run('bun', ['wire.ts']);
   const copies = [...new Bun.Glob('**/node_modules/stitchkit/package.json').scanSync(consumer)];
   if (copies.length !== 1)
     throw new Error(
       `consumer holds ${copies.length} physical stitchkit copies: ${copies.join(', ')}`,
     );
-  console.log(JSON.stringify({ artifact: packed.artifact, status: 'ok' }));
+  console.log(
+    JSON.stringify({
+      package: CLIENT_NAME,
+      version: VERSION,
+      registry: candidate ? 'candidate' : NPM_REGISTRY,
+      typechecks: ['Bundler', 'NodeNext'],
+      status: 'ok',
+    }),
+  );
 } finally {
+  if (candidate) await candidate.close();
   rmSync(directory, { recursive: true, force: true });
 }

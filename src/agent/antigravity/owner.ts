@@ -42,8 +42,7 @@ import { antigravityContextApi } from './transcript.ts';
  * onto that driver without duplicating any ACP transport code.
  */
 export class AntigravityOwner {
-  readonly content: ContentProducer;
-  readonly projection: AntigravityProjection;
+  private admitted: { content: ContentProducer; projection: AntigravityProjection } | null = null;
   private writer: ManagedRuntimeStatusWriter;
   private driver: AcpDriver | null = null;
   private acpSession: AcpSession | null = null;
@@ -64,12 +63,15 @@ export class AntigravityOwner {
     private driverFactory: typeof createAcpDriver = createAcpDriver,
   ) {
     this.generation = session.registrationGeneration ?? crypto.randomUUID();
-    this.content = new ContentProducer(m, session, this.generation);
-    this.projection = new AntigravityProjection(m, session, this.content.buffer, this.generation);
     this.writer = new ManagedRuntimeStatusWriter(m, session);
     this.contextPump = new NativeContextPump((error) => {
       void this.report(error);
     });
+  }
+
+  private get observation() {
+    if (!this.admitted) throw new Error('Antigravity content requires an admitted ACP session');
+    return this.admitted;
   }
 
   /** The session after ACP admission — carries the real `nativeSession.id` from `session/new`. */
@@ -130,14 +132,23 @@ export class AntigravityOwner {
       signal: this.abort.signal,
     });
     this.acpSession = acpSession;
+    if (resumedId !== undefined && acpSession.nativeThreadId !== resumedId)
+      throw new Error('Antigravity resumed a different ACP conversation');
 
     const nativeSession = {
       runtime: 'antigravity' as const,
       id: acpSession.nativeThreadId,
       version,
     };
-    this.session = { ...this.session, nativeSession };
-    this.projection.setNativeSession(nativeSession);
+    const admitted = { ...this.session, nativeSession };
+    this.session = admitted;
+    const content = new ContentProducer(this.m, admitted, this.generation);
+    this.admitted = {
+      content,
+      projection: new AntigravityProjection(this.m, admitted, content.buffer, this.generation),
+    };
+    // Clients may read native items immediately on observing ready.
+    await content.writer.flushPending();
 
     await this.syncConfigState(acpSession.configOptions, 'admission', null);
     await this.seedInitialSelection(acpSession.configOptions);
@@ -149,7 +160,7 @@ export class AntigravityOwner {
       await writeRuntimeInput(this.m, this.session, { ...priorInput, phase: 'uncertain' });
     }
 
-    this.projection.ready();
+    this.observation.projection.ready();
     await this.publishNow();
     this.startContextPump();
   }
@@ -162,12 +173,12 @@ export class AntigravityOwner {
       await this.applyInterrupt();
       await this.applyInput();
     });
-    const snap = this.projection.snapshot();
+    const snap = this.observation.projection.snapshot();
     if (Date.now() - this.lastPublished >= 1_000 || snap.sequence !== this.lastSequence) {
-      this.projection.touch();
+      this.observation.projection.touch();
       await this.publishNow();
     }
-    this.content.publish();
+    this.observation.content.publish();
   }
 
   async close(): Promise<void> {
@@ -182,18 +193,22 @@ export class AntigravityOwner {
       this.acpSession = null;
       this.activeTurn = null;
       this.resolvedFiles.clear();
-      this.projection.unavailable('stopped');
-      await this.writer.write(this.projection.snapshot()).catch(() => undefined);
-      await this.content.close().catch(() => undefined);
+      if (this.admitted) {
+        const { projection, content } = this.admitted;
+        this.admitted = null;
+        projection.unavailable('stopped');
+        await this.writer.write(projection.snapshot()).catch(() => undefined);
+        await content.close().catch(() => undefined);
+      }
     }
   }
 
   private async publishNow(): Promise<void> {
-    const snap = this.projection.snapshot();
+    const snap = this.observation.projection.snapshot();
     this.lastPublished = Date.now();
     this.lastSequence = snap.sequence;
     await this.writer.write(snap);
-    this.content.publish();
+    this.observation.content.publish();
   }
 
   private startContextPump(): void {
@@ -218,14 +233,14 @@ export class AntigravityOwner {
     const effortOpt = configOptions.find((option) => option.category === 'thought_level');
     const modeOpt = configOptions.find((option) => option.category === 'mode');
     if (modelOpt?.currentValue) {
-      this.projection.setSelection(
+      this.observation.projection.setSelection(
         { provider: 'antigravity', model: modelOpt.currentValue },
         effortOpt?.currentValue,
         source,
         turnId,
       );
     }
-    this.projection.setPermissionMode(fromAcpMode(modeOpt?.currentValue));
+    this.observation.projection.setPermissionMode(fromAcpMode(modeOpt?.currentValue));
   }
 
   private async seedInitialSelection(configOptions: readonly AcpConfigOption[]): Promise<void> {
@@ -249,7 +264,7 @@ export class AntigravityOwner {
     try {
       const updated = await session.setConfigOption('mode', toAcpMode(request.mode));
       await this.syncConfigState(updated, 'settings', null);
-      this.projection.setPermissionMode(request.mode);
+      this.observation.projection.setPermissionMode(request.mode);
       await writeRuntimeMode(this.m, this.session, { ...request, phase: 'complete', reason: null });
       await this.publishNow();
     } catch (error) {
@@ -265,7 +280,7 @@ export class AntigravityOwner {
   private async applyResponse(): Promise<void> {
     await answerNativeCommand(this.m, this.session.name, {
       generation: this.generation,
-      pending: (requestId) => this.projection.pendingRequest(requestId),
+      pending: (requestId) => this.observation.projection.pendingRequest(requestId),
       submit: async (command) => {
         const turn = this.activeTurn;
         if (turn === null || command.decision === null)
@@ -275,7 +290,7 @@ export class AntigravityOwner {
             ? ({ kind: 'approve' } as const)
             : ({ kind: 'deny', message: 'Denied by operator' } as const);
         await turn.respond(command.requestId, reply);
-        this.projection.resolvePending(command.requestId, command.decision);
+        this.observation.projection.resolvePending(command.requestId, command.decision);
         await this.publishNow();
       },
     });
@@ -285,7 +300,7 @@ export class AntigravityOwner {
     const command = readRuntimeInterrupt(this.m, this.session);
     if (command === null || !['queued', 'uncertain'].includes(command.phase)) return;
     const cancellable = () =>
-      isCancellableTurn(this.projection.snapshot(), command.generation, command.turnId);
+      isCancellableTurn(this.observation.projection.snapshot(), command.generation, command.turnId);
     if (!cancellable() || this.activeTurn === null) {
       await writeRuntimeInterrupt(this.m, this.session, { ...command, phase: 'rejected' });
       return;
@@ -355,7 +370,7 @@ export class AntigravityOwner {
     if (!session || this.activeTurn !== null) return;
     const input = readRuntimeInput(this.m, this.session);
     if (input?.phase !== 'queued' || input.nativeId === this.dispatched) return;
-    if (this.projection.snapshot().state !== 'idle') return;
+    if (this.observation.projection.snapshot().state !== 'idle') return;
 
     this.dispatched = input.nativeId;
     const startedAt = new Date().toISOString();
@@ -367,7 +382,7 @@ export class AntigravityOwner {
       phase: 'dispatching',
       dispatchedAt: startedAt,
     });
-    this.projection.startTurn(input.nativeId, startedAt);
+    this.observation.projection.startTurn(input.nativeId, startedAt);
     await this.publishNow();
 
     const turn = await session.startTurn({
@@ -388,23 +403,23 @@ export class AntigravityOwner {
     let sawTerminal = false;
     try {
       for await (const delta of turn.deltas) {
+        if (this.abort.signal.aborted) return;
         if (delta.type === 'turn-end') sawTerminal = true;
-        this.projection.applyDelta(delta);
+        this.observation.projection.applyDelta(delta);
         await this.publishNow();
       }
-      if (!sawTerminal) {
-        this.projection.failTurn(turnId, 'failed');
+      if (!sawTerminal && !this.abort.signal.aborted) {
+        this.observation.projection.failTurn(turnId, 'failed');
         await this.publishNow();
       }
     } catch (error) {
+      if (this.abort.signal.aborted) return;
       if (!sawTerminal) {
-        this.projection.failTurn(turnId, 'failed');
+        this.observation.projection.failTurn(turnId, 'failed');
         await this.publishNow().catch(() => undefined);
       }
-      if (!this.abort.signal.aborted) {
-        this.failure = error;
-        await this.report(error);
-      }
+      this.failure = error;
+      await this.report(error);
     } finally {
       if (this.activeTurn === turn) {
         this.activeTurn = null;

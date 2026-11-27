@@ -123,8 +123,8 @@ async function doStage(): Promise<number> {
   return 0;
 }
 
-/** CI-only: build the two fleet assets with the manifest pointing at the VERSIONED
- *  GitHub asset url (atomic manifest+bundle pair). Publishing itself is the workflow's job. */
+/** Build CI's fleet assets and npm candidate from the tagged checkout.
+ * The workflow installs the exact SDK archive before publishing it and opening the GitHub release. */
 async function doCiAssets(url: string): Promise<number> {
   if (!url.startsWith('https://')) return fail('--ci-assets needs the versioned https bundle url');
   mkdirSync(RELEASES_DIR, { recursive: true });

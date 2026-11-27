@@ -4,7 +4,7 @@ description: Как устроен терминальный UI (Ink) и как �
 type: architecture
 status: active
 created: 2026-06-09
-updated: 2026-11-27 09:30 +08:00
+updated: 2026-11-27 18:09 +08:00
 ---
 
 # TUI (Ink) и dev-флоу
@@ -64,19 +64,18 @@ list aggregation. It is produced by the existing daemon observation loop.
   проводника, который гоняет check между ними и сообщает каждый шаг: `--commit X.Y.Z "notes"`
   (бамп + CHANGELOG → локальный коммит) и `--tag X.Y.Z` (HEAD объявляет версию и несёт её
   секцию CHANGELOG → тег → push). Одноразовая команда — их композиция вокруг check. `--tag` (а значит и церемония) отказывает без `CCMUX_RELEASE_RECORDED=1`: эту переменную ставит только проводник, записывающий каждый выпуск в журнал публикаций; тег, отправленный вручную, выпустил бы релиз без записи.
-- **Публикация** — `.github/workflows/ci.yml`: job `ci` (Biome + typecheck + тесты + packed clients) гоняется на
-  КАЖДЫЙ push/PR; job `smoke` собирает бандл и ЗАПУСКАЕТ его (`version` == package.json,
-  `list --json` на чистой машине) — CI-двойник fleet-preflight, кривой бандл умирает до
-  публикации; job `release` (только тег `v*`, needs ci+smoke) — guard «тег == версия
-  package.json» → `--ci-assets` (build → sha256 → манифест `release.json`
-  `{version,notes,sha256,url}`) → `gh release create --draft` с тремя ассетами (`ccmux.js`,
-  `release.json`, `install.sh`) → `--draft=false`. Draft→upload→publish = релиз появляется
-  **атомарно** (полу-залитого флот не видит); notes достаются из CHANGELOG-секции версии.
-  Токен — стандартный `GITHUB_TOKEN` workflow (ноль хранимых секретов). Манифест `url`
-  указывает на **версионный** ассет (`releases/download/vX.Y.Z/ccmux.js`) → пара
-  манифест+бандл неразрывна, latest-гонок нет. Версии иммутабельны (существующий тег —
-  отказ ещё в церемонии). Пре-пуш локально страхует хук `.githooks/pre-push`
-  (= `bun run check`, включается `core.hooksPath` через `prepare`-скрипт).
+- **Проверки тега.** В `.github/workflows/ci.yml` задачи `ci`, `smoke` и `darwin-native`
+  проверяют исходники, установленный SDK, запуск бандла и нативный компонент. Версия тега
+  должна совпасть с `package.json`. Команда `--ci-assets` подписывает манифест с версионным URL.
+- **Публикация SDK.** Job `release` устанавливает собранный архив в чистый проект и прикладывает
+  его к черновику GitHub. Job `publish-sdk` получает этот же архив по ID артефакта и SHA-256.
+  В настройках npm доверенный издатель пакета `@ccmux/control-service-client` соответствует
+  репозиторию `max-listov/ccmux`, workflow `ci.yml` и окружению `npm-production`.
+  Официальный npm CLI публикует архив через OIDC с provenance. Повтор сверяет уже доступные
+  байты этой версии. Установка по версии из публичного npm проходит оба typecheck и runtime-проверку.
+- **Публикация на флот.** Job `activate` сверяет commit черновика и SHA-256 его SDK с проверенным
+  архивом, затем открывает GitHub Release. При повторе можно продолжить черновик того же commit.
+  Опубликованная версия иммутабельна.
 - **Подписка флота**: машины ставят `releaseUrl = .../releases/latest/download/release.json` +
   `autoUpdate:true`. Демон каждые `updateCheckInterval` (деф. 300с; серверам ставим 60с) сравнивает
   semver, тянет, **sha256-verify → preflight → swap**. Анонимный HTTPS + CDN GitHub, токены не нужны.

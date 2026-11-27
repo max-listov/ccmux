@@ -23,7 +23,7 @@ export class AntigravityProjection {
 
   constructor(
     m: MachineConfig,
-    session: Session,
+    session: Session & { nativeSession: NonNullable<Session['nativeSession']> },
     private content: ContentBuffer,
     generation: string,
     providerPid = process.pid,
@@ -59,10 +59,6 @@ export class AntigravityProjection {
 
   snapshot(): ManagedRuntimeSnapshot {
     return ManagedRuntimeSnapshotSchema.parse(structuredClone(this.value));
-  }
-
-  setNativeSession(nativeSession: NonNullable<Session['nativeSession']>): void {
-    this.value.nativeSession = nativeSession;
   }
 
   setSelection(

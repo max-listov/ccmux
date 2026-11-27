@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { z } from 'zod';
 import {
@@ -10,6 +10,9 @@ import {
   CCMUX_NATIVE_STREAM_PROFILE,
 } from '../src/control/schema/nativeStreamContract.ts';
 import { VERSION } from '../src/util/version.ts';
+import { bundleControlClient } from './build-control-client.ts';
+import { normalizeClientDeclarations } from './client-declarations.ts';
+import { CLIENT_NAME, NPM_REGISTRY } from './control-client-archive.ts';
 
 const ROOT = resolve(import.meta.dir, '..');
 const PackageSchema = z.looseObject({
@@ -21,7 +24,7 @@ function sha256(bytes: Uint8Array): string {
   return new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
 }
 
-/** Build a public, transport-injected consumer package; it has no socket or provider runtime. */
+/** The default export accepts injected transport. The resident subpath uses a local Unix socket. */
 export async function packageControlServiceClient(directory: string): Promise<{
   artifact: string;
   sha256: string;
@@ -44,6 +47,10 @@ export async function packageControlServiceClient(directory: string): Promise<{
   });
   if (!build.success)
     throw new Error(`Control service client build failed: ${build.logs.join('\n')}`);
+  await writeFile(
+    join(stage, 'dist/control-client.js'),
+    new Uint8Array(await bundleControlClient(['stitchkit', 'stitchkit/*', 'zod'])),
+  );
 
   const types = Bun.spawn(
     [
@@ -55,44 +62,44 @@ export async function packageControlServiceClient(directory: string): Promise<{
       'false',
       '--outDir',
       join(stage, 'types'),
+      '--rootDir',
+      ROOT,
       '--module',
       'esnext',
       '--moduleResolution',
       'bundler',
       '--target',
       'es2022',
+      '--strict',
       '--allowImportingTsExtensions',
-      'true',
       '--skipLibCheck',
       'false',
       join(ROOT, 'src/control-service-client.ts'),
+      join(ROOT, 'src/control-client.ts'),
     ],
     { cwd: ROOT, stdout: 'inherit', stderr: 'inherit' },
   );
   if ((await types.exited) !== 0) throw new Error('Control service client declarations failed');
-  for (const file of await readdir(join(stage, 'types'), { recursive: true })) {
-    if (!file.endsWith('.d.ts')) continue;
-    const path = join(stage, 'types', file);
-    const content = await readFile(path, 'utf8');
-    await writeFile(
-      path,
-      content.replace(
-        /from (["'])(\.[^"']+)\.ts\1/g,
-        (_match, quote: string, name: string) => `from ${quote}${name}.js${quote}`,
-      ),
-    );
-  }
-
+  await normalizeClientDeclarations(join(stage, 'types'));
+  await copyFile(join(ROOT, 'LICENSE'), join(stage, 'LICENSE'));
   await writeFile(
     join(stage, 'package.json'),
     `${JSON.stringify(
       {
-        name: '@ccmux/control-service-client',
+        name: CLIENT_NAME,
         version: VERSION,
+        description: 'Typed CCMux control clients for injected transports and local Unix sockets.',
+        license: 'MIT',
+        repository: { type: 'git', url: 'git+https://github.com/max-listov/ccmux.git' },
+        publishConfig: { access: 'public', registry: NPM_REGISTRY },
         type: 'module',
-        files: ['dist', 'types', 'native-stream.json', 'README.md'],
+        files: ['dist', 'types', 'native-stream.json', 'README.md', 'LICENSE'],
         exports: {
-          '.': { types: './types/control-service-client.d.ts', import: './dist/index.js' },
+          '.': { types: './types/src/control-service-client.d.ts', import: './dist/index.js' },
+          './control-client': {
+            types: './types/src/control-client.d.ts',
+            import: './dist/control-client.js',
+          },
           './native-stream.json': './native-stream.json',
           // A descriptor projected from this package names its version as the service revision.
           './package.json': './package.json',
@@ -121,10 +128,9 @@ export async function packageControlServiceClient(directory: string): Promise<{
   );
   await writeFile(
     join(stage, 'README.md'),
-    'Typed CCMux declared-service client and native stream profile. Inject transport delivery explicitly; the package opens no socket, starts no provider and performs no retry. Operator configuration owns executable/socket paths, credentials, grants and node bindings.\n',
+    'The default CCMux service client accepts an injected transport. Import the resident Unix socket client and observation schemas from `@ccmux/control-service-client/control-client`. Both entry points include ESM and TypeScript declarations.\n',
   );
 
-  const before = new Set(await readdir(destination));
   const pack = Bun.spawn(['bun', 'pm', 'pack', '--quiet', '--destination', destination], {
     cwd: stage,
     stdout: 'pipe',
@@ -132,9 +138,9 @@ export async function packageControlServiceClient(directory: string): Promise<{
   });
   const packedName = (await new Response(pack.stdout).text()).trim();
   if ((await pack.exited) !== 0) throw new Error('Control service client packing failed');
-  const after = await readdir(destination);
-  const created = after.find((file) => file.endsWith('.tgz') && !before.has(file));
-  const artifact = join(destination, created ?? basename(packedName));
+  const name = `ccmux-control-service-client-${VERSION}.tgz`;
+  if (basename(packedName) !== name) throw new Error(`Unexpected client archive: ${packedName}`);
+  const artifact = join(destination, name);
   const bytes = new Uint8Array(await Bun.file(artifact).arrayBuffer());
   const hash = sha256(bytes);
   await writeFile(

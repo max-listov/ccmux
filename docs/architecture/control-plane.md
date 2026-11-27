@@ -4,7 +4,7 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-11-27 14:23 +08:00
+updated: 2026-11-27 18:09 +08:00
 ---
 
 # Terminal-меню
@@ -239,6 +239,11 @@ or a bounded `baseline` with `reset=initial|generation|gap|context`. There is no
 opens a temporary metadata session, reads its model and thought-level options, and closes it
 without submitting a prompt. Effort choices describe the active model only. The result is
 cached separately from Codex; discovery does not create a managed session.
+
+On managed Antigravity creation and resume, the ACP driver supplies the native conversation ID.
+The owner builds both the runtime projection and the content buffer from this admitted session and
+flushes the initial content snapshot before advertising readiness. `native_items` can then read the
+first frame immediately after `create_session`. A different native conversation ID is refused.
 
 `models({})` reads the native App Server catalog before the first conversation, with no managed
 target or registry row. An optional `launchRecipe: { id, revision }` selects host-owned configuration;
@@ -550,10 +555,12 @@ absent from the service on every machine, with nothing saying so.
   descriptor carries (`test/control-service.test.ts`); a parameterised route or a stream would make
   the projection refuse the whole service.
 
-The release asset `ccmux-control-service-client-<version>.tgz` contains the typed injected-fetch
-client, `native-stream.json` and declarations. Its adjacent `control-service-client.sha256`
-authenticates the artifact. The same surface is available from `ccmux/control-service-client` in a
-source checkout. For a transport projecting its descriptor it exports `controlServiceEffects`, and
+The npm package `@ccmux/control-service-client` ships two ESM entry points with
+TypeScript declarations. The package root exports the injected-fetch client. Its `./control-client`
+subpath exports the resident Unix client and observation schemas. The declaration build resolves
+relative source imports to ESM paths. The GitHub release carries the same npm archive and
+`control-service-client.sha256`. The package includes `native-stream.json`.
+For a transport projecting its descriptor the package exports `controlServiceEffects`, and
 its own `package.json`: the package version is the service revision, so a node serving a descriptor
 from an older client says which release that is. The package grants nothing and opens no connection. The operator owns the
 transport's socket path, node binding, credentials and exact service/revision/operation/effect
@@ -748,8 +755,9 @@ daemon regression in `test/daemon-update.test.ts` verifies install, clean shutdo
 
 Tests: `test/control.test.ts`, `test/control-lifecycle.test.ts`, `test/control-models.test.ts`, `test/codex-owned-connection.test.ts`,
 `test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
-and `test/bundle-selfcontained.test.ts`. `scripts/verify-control-service-client.ts` installs the
-fresh tarball outside the checkout and runs Bun, Node, NodeNext and bundler gates. Explicit provider E2E: run
+and `test/bundle-selfcontained.test.ts`. `scripts/verify-control-service-client.ts` installs the SDK
+by version into an empty consumer, runs Bun and checks both TypeScript resolution modes without
+`allowImportingTsExtensions`. CI repeats this check against public npm. Explicit provider E2E: run
 `scripts/codex-owned-runtime-probe.ts`, then
 `scripts/codex-control-lifecycle-probe.ts <isolated-config>`,
 `scripts/control-native-e2e.ts <isolated-config>`, `scripts/control-models-e2e.ts` and the native

@@ -82,11 +82,12 @@ Typed `usage.read` / `usage.list` operations provide usage without polling trans
 See [usage accounting](docs/architecture/usage.md) for coverage, cursors and self/pipeline scopes.
 
 For live control, `ccmux control sessions` reads the prepared inventory and `ccmux control watch`
-streams bounded full snapshots. `ccmux/control-client` provides the same typed local Unix API
-for idempotent owned-session create/archive, messages, bounded native item streams, exact
-approval/input responses, native turn interruption and between-turn waits; the release includes a
-self-contained `control-client.js` and SHA-256 asset. Commands retain exact provider/machine/session
-identity and existing delivery gates. See the [resident control contract](docs/architecture/control-plane.md).
+streams bounded full snapshots. Install the SDK with `bun add @ccmux/control-service-client`.
+Import `createControlClient` from `@ccmux/control-service-client/control-client` for the resident
+Unix API, or `createInjectedControlClient` from the package root for an injected transport.
+Both entry points ship compiled ESM and declarations for strict TypeScript in Bundler and NodeNext.
+Releases also include a self-contained `control-client.js` and its SHA-256 checksum.
+See the [resident control contract](docs/architecture/control-plane.md).
 
 The current native control contract supports PNG/JPEG attachments, incremental assistant/Plan
 content with bounded replay, revisioned model/mode defaults and per-message options. It also exposes
