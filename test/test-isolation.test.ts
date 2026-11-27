@@ -4,6 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { machineConfigPath } from '../src/config/location.ts';
 import { CACHE_DIR, DATA_DIR, STATE_DIR } from '../src/config/paths.ts';
+import { makeMachine } from './helpers.ts';
 
 /**
  * The guard for `test/preload.ts`: if the preload stops running, every root below falls back to the
@@ -13,7 +14,13 @@ import { CACHE_DIR, DATA_DIR, STATE_DIR } from '../src/config/paths.ts';
 test('every ccmux root resolves inside the private test home, none inside the real one', () => {
   const home = process.env.CCMUX_TEST_HOME;
   expect(home).toBeDefined();
-  for (const root of [STATE_DIR, CACHE_DIR, DATA_DIR, machineConfigPath()]) {
+  for (const root of [
+    STATE_DIR,
+    CACHE_DIR,
+    DATA_DIR,
+    machineConfigPath(),
+    makeMachine().projectsDir,
+  ]) {
     expect(root.startsWith(`${home}/`)).toBe(true);
     expect(root.startsWith(`${homedir()}/`)).toBe(false);
   }

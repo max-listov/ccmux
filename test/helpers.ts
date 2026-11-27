@@ -1,8 +1,10 @@
 import { onTestFinished } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { CHAT_GENERATION } from '../src/chat/messageSchema.ts';
 import { principalOrigin } from '../src/chat/origin.ts';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
+import { DATA_DIR } from '../src/config/paths.ts';
 import { SessionSchema } from '../src/session/schema.ts';
 import type {
   ChatMessage,
@@ -22,7 +24,7 @@ export function makeMachine(over: Record<string, unknown> = {}): MachineConfig {
   return MachineConfigSchema.parse({
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',
-    projectsDir: '/root/.claude/projects',
+    projectsDir: join(DATA_DIR, 'claude', 'projects'),
     rcPrefix: 'prod',
     stateDir: '/tmp/ccmux-test-state',
     bootLabel: 'ccmux-test.service',

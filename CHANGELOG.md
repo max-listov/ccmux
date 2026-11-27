@@ -16,6 +16,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Use Stitchkit 0.132.1 for Codex turn teardown, merging partially reported quota windows and cancellation of Antigravity capability probes.
+
 ## [0.94.0] — 2026-11-27
 
 Serve peer control directly from the daemon, select account profiles, and sleep or wake managed sessions.

@@ -118,6 +118,26 @@ test('Codex nested and flat limits preserve the account plan and deduplicate the
   ).toHaveLength(1);
 });
 
+test('a partial Codex bucket refresh preserves the weekly label, duration and reset time', () => {
+  const limits = codexPlanLimits(
+    {
+      rateLimits: { limitId: 'codex', limitName: 'Account', primary: CODEX_LIVE.primary },
+      rateLimitsByLimitId: { codex: { limitId: 'codex', primary: { usedPercent: 0 } } },
+    },
+    NOW,
+  );
+  expect(limits.windows).toEqual([
+    {
+      key: 'codex:10080m',
+      label: 'Account',
+      percent: 0,
+      windowMinutes: 10_080,
+      resetsAt: new Date(CODEX_LIVE.primary.resetsAt * 1000).toISOString(),
+      scope: null,
+    },
+  ]);
+});
+
 test('no plan limit is its own answer, never an empty window list', () => {
   // An API-key session reports no windows AND no limit; a fresh subscription reports windows at
   // zero. Both have nothing to draw, and they are opposite facts.
