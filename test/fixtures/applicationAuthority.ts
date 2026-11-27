@@ -13,7 +13,7 @@ import { makeMachine, makeSession } from '../helpers.ts';
 export const cleanup: (() => Promise<void>)[] = [];
 export const signal = () => new AbortController().signal;
 export function fixture(leaseMs = 60_000) {
-  const root = realpathSync(mkdtempSync('/tmp/ccmux-application-test-'));
+  const root = realpathSync(mkdtempSync('/tmp/stitchmux-application-test-'));
   cleanup.push(async () => rmSync(root, { recursive: true, force: true }));
   const binding = {
     applicationId: 'native-agent',

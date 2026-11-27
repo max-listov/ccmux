@@ -17,16 +17,16 @@ import { makeMachine } from './helpers.ts';
  * decides to answer a miss with zero has to argue with this test rather than pass unnoticed.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'ccmux-unknown-session-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-unknown-session-'));
 const configPath = join(root, 'machine.json');
 writeFileSync(`${configPath}`, `${JSON.stringify(makeMachine({ stateDir: root }))}\n`);
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const env: Record<string, string> = {};
 for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-env.CCMUX_CONFIG = configPath;
-env.CCMUX_STATE_DIR = root;
-env.CCMUX_CACHE_DIR = join(root, 'cache');
+env.STITCHMUX_CONFIG = configPath;
+env.STITCHMUX_STATE_DIR = root;
+env.STITCHMUX_CACHE_DIR = join(root, 'cache');
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 const ABSENT = 'zzz-not-a-session';
@@ -61,7 +61,7 @@ const VERBS: string[][] = [
 ];
 
 test.each(VERBS)(
-  'ccmux %s refuses a session this machine does not have',
+  'stitchmux %s refuses a session this machine does not have',
   async (...argv) => {
     const proc = Bun.spawn(['bun', CLI, ...argv], {
       env,

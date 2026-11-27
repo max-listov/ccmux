@@ -13,7 +13,7 @@ import { accountLines } from './accounts.ts';
 import { COMMAND_SCHEMAS } from './answerSchemas.ts';
 import { parseFlags } from './flags.ts';
 
-/** `ccmux fleet` — prints what `fleet/fleetList.ts` answers. */
+/** `stitchmux fleet` — prints what `fleet/fleetList.ts` answers. */
 
 /** One session's cells on the fleet map. The role and the restart mark ride on the last cell, not in
  *  columns of their own: they belong to the answer "which of these do I write to", read on the line
@@ -126,7 +126,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
   }
   if (view.latest !== null)
     console.log(
-      `latest release: ccmux ${view.latest}${view.latestAt === null ? '' : ` (${view.latestAt.slice(0, 10)})`}`,
+      `latest release: stitchmux ${view.latest}${view.latestAt === null ? '' : ` (${view.latestAt.slice(0, 10)})`}`,
     );
   for (const fm of view.machines) {
     const label =
@@ -142,9 +142,9 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
       continue;
     }
     const standing = machineStanding(fm);
-    console.log(`${label}  [ccmux ${fm.version}]${standing}`);
+    console.log(`${label}  [stitchmux ${fm.version}]${standing}`);
     const { shown, parked } = partitionParked(fm.sessions, flags.bool('all'));
-    // Full address on every line — the thing you copy into `ccmux msg` without guessing. A session
+    // Full address on every line — the thing you copy into `stitchmux msg` without guessing. A session
     // that a restart would change is flagged right here, so "who is still on the old prompt" is
     // readable across the fleet instead of remembered.
     const lines = fleetSessionLines(fm.machine, shown);
@@ -153,7 +153,7 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
       const detail = fleetSessionDetail(s);
       if (detail !== null) await printLine(detail);
     }
-    if (parked > 0) console.log(`  … ${parked} archived (ccmux fleet --all)`);
+    if (parked > 0) console.log(`  … ${parked} archived (stitchmux fleet --all)`);
   }
   for (const line of accountLines(view.machines, Date.now(), machineProfiles(m, loadSessions(m))))
     console.log(line);

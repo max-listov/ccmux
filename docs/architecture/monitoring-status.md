@@ -4,7 +4,7 @@ description: A bounded local snapshot from the daemon observation loop, with no 
 type: architecture
 status: active
 created: 2026-08-27
-updated: 2026-11-27 09:30 +08:00
+updated: 2026-11-27 22:59 +08:00
 ---
 
 # Monitoring status
@@ -28,7 +28,7 @@ For pushed snapshots and exact-session commands, use the separate [local control
 It consumes this same observation pass and preserves native approval/input distinctions. File-reader
 protocol, bounds and discovery below are unchanged.
 
-Import `readMonitoringStatus` from **ccmux/monitoring-reader** in a Bun application. Pin the
+Import `readMonitoringStatus` from **stitchmux/monitoring-reader** in a Bun application. Pin the
 package to a release tag and bundle this library into the consumer; no CLI or installation
 checkout is imported. GitHub releases also publish a self-contained `monitoring-reader.js`
 ESM library and `monitoring-reader.sha256`. Download both from the same immutable versioned
@@ -37,7 +37,7 @@ the library; `snapshot.version` independently identifies the running producer. T
 a consumer dependency, not another service and not something the daemon updater executes.
 
 ```ts
-import { readMonitoringStatus } from "ccmux/monitoring-reader";
+import { readMonitoringStatus } from "stitchmux/monitoring-reader";
 
 const result = await readMonitoringStatus({ timeoutMs: 250, signal: stop.signal });
 if (result.status === "live" && result.snapshot) {
@@ -54,11 +54,11 @@ There is no registry read, tmux call, transcript read, shell or expensive fallba
 
 ### Discovery, authorization and reconfiguration
 
-The owner library, not the consumer, resolves the location. It reads the same `CCMUX_CONFIG`
-selection as the daemon (default `~/.config/ccmux/machine.json`), taking only stateDir and
+The owner library, not the consumer, resolves the location. It reads the same `STITCHMUX_CONFIG`
+selection as the daemon (default `~/.config/stitchmux/machine.json`), taking only stateDir and
 rcPrefix through the shared owner schema/resolver. With no config file, defaults apply:
-stateDir comes from `CCMUX_STATE_DIR`, otherwise absolute `XDG_STATE_HOME` plus `ccmux`,
-otherwise `~/.local/state/ccmux`; rcPrefix is `local`. A nonempty `CCMUX_RC_PREFIX` overrides
+stateDir comes from `STITCHMUX_STATE_DIR`, otherwise absolute `XDG_STATE_HOME` plus `stitchmux`,
+otherwise `~/.local/state/stitchmux`; rcPrefix is `local`. A nonempty `STITCHMUX_RC_PREFIX` overrides
 the configured prefix. No provider executable detection or full launch configuration is needed.
 These are launch environment settings, never request options or returned environment values.
 Daemon and consumer must run with the same selected configuration and OS user.
@@ -103,7 +103,7 @@ configuration contents, arbitrary paths or transcript bodies are returned.
 
 ## CLI reader contract
 
-Run **ccmux status --json**. No selector, path, shell, refresh or mutation flag is accepted.
+Run **stitchmux status --json**. No selector, path, shell, refresh or mutation flag is accepted.
 The command reads the fixed monitoring-status.json under the configured state root. The reader
 does not start the daemon, launch a session, read the registry, open transcripts or invoke tmux.
 Existing list, fleet, external and transcript commands retain their contracts.
@@ -191,9 +191,17 @@ a managed lifecycle promise and is never relabelled as one in this snapshot.
   last-message and conversation activity that widens via `readTailUntil` up to 2000 lines / 4 MiB
   when trailing bookkeeping exceeds the fast window, and up to 4 MiB for model metadata. Raw
   history is not retained in the snapshot.
-- Protocol-1 snapshot and row schemas tolerate additive fields from newer producers while strictly
-  validating declared identities, enums, timestamps and byte/item limits; caller read options remain
-  strictly validated.
+- A running session's row carries `boundary` (`src/session/boundary.ts`): `unit` is the cgroup unit
+  of its root processes on Linux — each session is launched in its own transient scope
+  `stitchmux-session-<uuid>-<start>.scope` where systemd can create one (probed once per process) — and
+  `null` on macOS; `roots` are the session's pane and native owner/provider PIDs, each with its
+  `ProcessInstance` from `stitchkit/process`, at most four. It is sampled with memory and follows the
+  same freshness rule; a stopped session's `boundary` is `null`.
+- The snapshot has two schemas (ADR `docs/decisions/2026-11-27-monitoring-snapshot-read-tolerance.md`):
+  the producer's requires every field the daemon writes; the reader's (`MonitoringSnapshotReadSchema`,
+  used by `readMonitoringStatus`) reads an unknown `state` or `agent` as `unknown`, drops unknown
+  fields and accepts rows without the fields added after protocol 1, while identities, timestamps
+  and byte/item limits stay strict. Caller read options remain strictly validated.
 - The producer has zero in-flight reader requests: readers open an atomic file independently.
   Each snapshot read opens one nonblocking, nonsymlink regular file and reads at most 512 KiB plus one
   overflow-detection byte. Cancelling a reader cannot cancel the producer or a supervised session.
@@ -225,7 +233,7 @@ The real isolated daemon test reads through the native API, survives graceful re
 and proves cancellation/restart leave the supervised pane alive. The release-asset test loads the
 self-contained library offline outside the checkout and performs 100 concurrent native reads.
 
-Rollback uses ccmux update --rollback. Existing managed sessions outlive the daemon bounce.
+Rollback uses stitchmux update --rollback. Existing managed sessions outlive the daemon bounce.
 Bundle replacement and rollback share an owner-aware filesystem lock. Reinstalling identical
 bytes does not replace the predecessor backup; backup failure aborts installation.
 An older producer does not publish this surface; callers receive unavailable/stale rather than
@@ -234,7 +242,7 @@ falling back to an expensive scan. There is no implicit consumer-side fallback.
 
 ## Account quota: every signed-in account, from every source
 
-`ccmux accounts [--json] [--refresh] [--local]` is the one request that answers "which accounts do we
+`stitchmux accounts [--json] [--refresh] [--local]` is the one request that answers "which accounts do we
 have and how full are they": every Claude and Codex account — those with sessions on any fleet
 machine, and the profiles on this machine that no session runs under — with the plan windows, where
 each number came from and how old it is. `fleet --json` carries the same `accounts[]`, and every
@@ -266,7 +274,7 @@ every few minutes and is stale after five.
   --settings '{"disableAllHooks":true}'` runs in a scratch directory under the state root: without the
   profile's tool chain it costs a quarter less, and if a build ever stopped handling `/usage` itself the
   text would go to a small model, not a large one. No conversation file is left behind. The environment
-  is the profile's, not the caller's: tokens, keys, cloud switches, gateways and `CCMUX_*` are removed
+  is the profile's, not the caller's: tokens, keys, cloud switches, gateways and `STITCHMUX_*` are removed
   from what the daemon or a shell carries, then the profile's declared env file is applied — and only a
   session that is signed in on the profile's own login lends its env file. Its text
   is read strictly into `five_hour`, `seven_day` and `model_scoped:<model>` windows: the reset time has
@@ -274,7 +282,7 @@ every few minutes and is stale after five.
   does not know spoils the whole report (an error naming the line) instead of being skipped. Measured
   cost: 4 to 12 s of CPU per call, which is why it runs rarely.
 - A stopped daemon stops the program a probe is waiting on, and a killed program's pipes are released
-  after a second even if a grandchild still holds them. A pass and a `ccmux accounts --refresh` that
+  after a second even if a grandchild still holds them. A pass and a `stitchmux accounts --refresh` that
   ask the same profile together make one call (a lock per profile; the second reads the first's answer).
 - Codex: a short `codex app-server` with `CODEX_HOME` answers `account/read` (`email`, `planType`, `type`)
   and `account/rateLimits/read`, mapped by the same reader the native Codex runtime uses.
@@ -291,7 +299,7 @@ only); a failed profile backs off 5 minutes, doubling to an hour, and keeps its 
 reason shown (`probe failed: …`). A profile that is now signed in as a different account than its record
 was taken for is asked at once, and the old record is not used meanwhile. `refreshMinutes` is capped at 25,
 below the thirty minutes after which a status-line or probe reading is called stale. Profiles are asked one at a
-time. `quota.probe: "off"` stops the pass; `ccmux accounts --refresh` asks now regardless.
+time. `quota.probe: "off"` stops the pass; `stitchmux accounts --refresh` asks now regardless.
 
 **Store.** One file per profile in `<state>/quota/` (atomic writes): who was signed in, the plan, the
 last good windows, the newest error and the failure count. Keyed by the profile, not the account in it,
@@ -331,9 +339,9 @@ benchmark-only channel. It is reachable through `control performance` and the sa
 client; the monitoring file (protocol 1) keeps its schema.
 
 ```sh
-ccmux control performance_configure --enabled --json
-ccmux control performance --json
-ccmux control performance_configure --no-enabled --json
+stitchmux control performance_configure --enabled --json
+stitchmux control performance --json
+stitchmux control performance_configure --no-enabled --json
 ```
 
 Reading changes neither the mode nor the windows. `daemon.performance.configure` goes through the

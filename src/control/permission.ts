@@ -1,10 +1,10 @@
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { PermissionModeSchema } from '../runtime/projectionSchema.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig } from '../types.ts';
 import { setControlPermissionMode } from './command.ts';
+import { refusals } from './schema/refusals.ts';
 import type {
   ControlPermissionReadSchema,
   ControlPermissionResultSchema,
@@ -30,9 +30,8 @@ function observed(
 ) {
   const session = controlTarget(m, target);
   if (!runtimeCapabilities(session).permissionModes)
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'This runtime does not expose a permission mode',
-      status: 409,
     });
   const read = readManagedRuntimeStatus(m, session);
   const mode = read.snapshot?.permissionMode;
@@ -69,14 +68,10 @@ export async function updateControlPermission(
 ): Promise<z.output<typeof ControlPermissionResultSchema>> {
   const { native } = observed(m, input.target);
   if (native === null)
-    throw new AppError('UNAVAILABLE', {
-      message: 'The native runtime is unavailable',
-      status: 503,
-    });
+    throw refusals.errors.UNAVAILABLE({ message: 'The native runtime is unavailable' });
   if (native.mode !== input.expectedMode)
-    throw new AppError('STALE_REQUEST', {
+    throw refusals.errors.STALE_REQUEST({
       message: `Session permission mode is ${native.mode}, not ${input.expectedMode}`,
-      status: 409,
     });
   await setControlPermissionMode(
     m,

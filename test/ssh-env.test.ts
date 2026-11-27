@@ -9,7 +9,7 @@ import {
 } from '../src/agent/launch/sshEnv.ts';
 
 const liveSocket = (): string => {
-  const p = join(mkdtempSync(join(tmpdir(), 'ccmux-sock-')), 'agent.sock');
+  const p = join(mkdtempSync(join(tmpdir(), 'stitchmux-sock-')), 'agent.sock');
   writeFileSync(p, '');
   return p;
 };

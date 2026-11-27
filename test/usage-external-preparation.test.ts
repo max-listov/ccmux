@@ -31,7 +31,7 @@ const record = (n: number) =>
   })}\n`;
 
 test('external source skips prepared work, catches append/archive, and never bypasses permissions or identity', async () => {
-  const root = mkdtempSync('/tmp/ccmux-external-usage-gate-');
+  const root = mkdtempSync('/tmp/stitchmux-external-usage-gate-');
   try {
     const sessions = join(root, 'sessions');
     mkdirSync(sessions);

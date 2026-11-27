@@ -2,15 +2,15 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { scanPublicationText } from './publication-privacy.ts';
 
-export const CLIENT_NAME = '@ccmux/control-service-client';
+export const CLIENT_NAME = '@stitchmux/client';
 export const NPM_REGISTRY = 'https://registry.npmjs.org';
 const clientFiles =
-  /^package\/(?:package\.json|README\.md|LICENSE|native-stream\.json|dist\/(?:index|control-client)\.js|types\/src\/(?:[\w-]+\/)*[\w-]+\.d\.ts)$/;
+  /^package\/(?:package\.json|README\.md|LICENSE|native-stream\.json|dist\/(?:index|monitoring|chunk-[a-z0-9]+)\.js|types\/src\/(?:[\w-]+\/)*[\w-]+\.d\.ts)$/;
 const clientManifest = z.looseObject({
   name: z.literal(CLIENT_NAME),
   version: z.string(),
   type: z.literal('module'),
-  repository: z.object({ url: z.literal('git+https://github.com/max-listov/ccmux.git') }),
+  repository: z.object({ url: z.literal('git+https://github.com/max-listov/stitchmux.git') }),
   publishConfig: z.object({ access: z.literal('public'), registry: z.literal(NPM_REGISTRY) }),
 });
 

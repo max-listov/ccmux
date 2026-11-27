@@ -12,7 +12,7 @@ const gate = new Promise<void>((resolve) => {
   resume = resolve;
 });
 const mode = Bun.argv[2];
-const config = process.env.CCMUX_CONFIG;
+const config = process.env.STITCHMUX_CONFIG;
 if (!config) throw new Error('isolated config required');
 mock.module('node:fs/promises', () => ({
   ...fs,

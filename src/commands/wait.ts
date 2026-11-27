@@ -14,8 +14,8 @@ import { capturePaneStyled, hasSession } from '../tmux/tmux.ts';
 import { parseFlags } from './flags.ts';
 
 /**
- * `ccmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
- * The point is to replace "poll `ccmux list` in a loop and eyeball it": a script (or a person, or an
+ * `stitchmux wait <name>` — block until the session is BETWEEN TURNS, then exit 0.
+ * The point is to replace "poll `stitchmux list` in a loop and eyeball it": a script (or a person, or an
  * orchestrating agent) can just wait for the agent to be done.
  *
  * "Done" is the one condition deferred-chat delivery uses (`turnState`), so `wait` and chat delivery
@@ -72,7 +72,7 @@ export async function cmdWait(args: string[] = []): Promise<number> {
   // known only here, from the environment of the session that invoked the command — the same
   // identity the stop hook, the status line and the inbox read. A `wait` typed by a person outside
   // a managed pane declares nothing rather than guessing whose wait it is.
-  const waiter = process.env.CCMUX_SESSION;
+  const waiter = process.env.STITCHMUX_SESSION;
   const waiting = waiter === undefined ? null : { name: waiter, target: name, since: Date.now() };
   if (waiting) await refreshWaiting(waiting);
   // Refreshed on a timer rather than inside the poll loop, because a cross-machine wait forwards
@@ -150,8 +150,8 @@ async function runWait(name: string, opts: WaitOpts & { flagArgs: string[] }): P
     if (!awaitingWake) {
       console.error(
         sleep !== null && sleep.phase !== 'awake'
-          ? `${name} is sleeping — wake it first: ccmux wake ${name}`
-          : `${name} is not running — start it first: ccmux start ${name}`,
+          ? `${name} is sleeping — wake it first: stitchmux wake ${name}`
+          : `${name} is not running — start it first: stitchmux start ${name}`,
       );
       return 1;
     }

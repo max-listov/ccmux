@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { readProcTable } from '../runtime/procTable.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
+import { observeSessionBoundary, type SessionBoundary } from '../session/boundary.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { measured } from '../util/cpuScope.ts';
 
@@ -222,8 +223,13 @@ export async function measureTreeMemory(rootPids: readonly number[]): Promise<nu
 }
 
 /** Cached daemon memory sampler: runs on a 20s schedule, read in O(1) on every 2s monitoring pass. */
+/** A sample older than this is not reported: a refresh that keeps failing must not freeze memory. */
+export const MEMORY_SAMPLE_MAX_AGE_MS = 3 * MEMORY_SAMPLE_INTERVAL_MS;
+
 export class MemorySampler {
   private values = new Map<string, number | null>();
+  private boundaries = new Map<string, SessionBoundary | null>();
+  private sampledAt: number | null = null;
 
   readonly refresh = measured(
     async (
@@ -260,18 +266,28 @@ export class MemorySampler {
           next.set(name, await measureTreeMemory(roots));
         }
       }
+      const boundaries = new Map<string, SessionBoundary | null>();
+      for (const [name, roots] of rootsBySession)
+        boundaries.set(name, await observeSessionBoundary(roots));
       this.values = next;
+      this.boundaries = boundaries;
+      this.sampledAt = Date.now();
     },
   );
 
-  /** Raw cached bytes for a session (`null` before first sample or when measurement failed). */
-  rawMemoryFor(name: string): number | null {
+  /**
+   * Cached bytes of a session's process tree: `null` before the first sample, when measurement
+   * failed, or when the last successful sample is older than `MEMORY_SAMPLE_MAX_AGE_MS`. A stopped or
+   * sleeping session's `0` is the monitoring row's decision, not the sampler's.
+   */
+  memoryFor(name: string, now = Date.now()): number | null {
+    if (this.sampledAt === null || now - this.sampledAt > MEMORY_SAMPLE_MAX_AGE_MS) return null;
     return this.values.get(name) ?? null;
   }
 
-  /** Returns `0` for stopped/sleeping sessions, cached bytes for live ones, or `null` if unavailable. */
-  memoryFor(name: string, running: boolean): number | null {
-    if (!running) return 0;
-    return this.values.get(name) ?? null;
+  /** The session's process boundary from the same sample, under the same freshness rule. */
+  boundaryFor(name: string, now = Date.now()): SessionBoundary | null {
+    if (this.sampledAt === null || now - this.sampledAt > MEMORY_SAMPLE_MAX_AGE_MS) return null;
+    return this.boundaries.get(name) ?? null;
   }
 }

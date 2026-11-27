@@ -24,7 +24,7 @@ afterEach(() => {
   for (const path of indexes.splice(0)) fs.rmSync(path, { force: true });
 });
 function fixture() {
-  const root = fs.mkdtempSync('/tmp/ccmux-usage-bounds-');
+  const root = fs.mkdtempSync('/tmp/stitchmux-usage-bounds-');
   roots.push(root);
   return root;
 }

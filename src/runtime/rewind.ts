@@ -1,5 +1,5 @@
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { defineMailbox } from './mailbox.ts';
 import { type RewindResult, RewindResultSchema } from './rewindSchema.ts';
@@ -36,25 +36,18 @@ const mailbox = defineMailbox<RuntimeRewindRequest, RewindResult>({
   deadlineMs: 60_000,
   precondition: (snapshot) => {
     if (snapshot.fileCheckpoints !== true)
-      throw new AppError('UNSUPPORTED', {
-        message: 'This session does not keep file checkpoints',
-        status: 409,
-      });
+      throw refusals.errors.UNSUPPORTED({ message: 'This session does not keep file checkpoints' });
   },
   // Answered from the receipt, unlike the mailboxes that re-read the snapshot: what a rewind did
   // exists nowhere else. There is nothing in a published snapshot to check it against.
   settle: (receipt) => {
     if (receipt.phase === 'failed')
-      throw new AppError('UNAVAILABLE', {
-        message: receipt.reason ?? 'The rewind failed',
-        status: 503,
-      });
+      throw refusals.errors.UNAVAILABLE({ message: receipt.reason ?? 'The rewind failed' });
     // Both halves, not just the result: a result present under any other phase would be a
     // half-written record, and answering from it would report a rewind that had not finished.
     return receipt.phase === 'complete' ? (receipt.result ?? undefined) : undefined;
   },
-  mismatch: () =>
-    new AppError('IDENTITY_MISMATCH', { message: 'The rewind request was replaced', status: 409 }),
+  mismatch: () => refusals.errors.IDENTITY_MISMATCH({ message: 'The rewind request was replaced' }),
 });
 
 export const readRuntimeRewind = (m: MachineConfig, s: Session) => mailbox.read(m, s);

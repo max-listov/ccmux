@@ -47,7 +47,7 @@ test('a rollout name gives the thread, the segment and whether it is compressed'
 });
 
 function storage(files: string[]): string {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-rollouts-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-rollouts-'));
   for (const [i, name] of files.entries()) {
     const dir = join(root, '2026', '10', String(14 + i));
     mkdirSync(dir, { recursive: true });
@@ -90,7 +90,7 @@ test('a thread Codex compressed whole has no current file but is still a convers
 
 /** The supervisor itself: does it launch the agent, or block the session as "missing rollout"? */
 async function supervise(rollouts: string[]) {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-supervise-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-supervise-'));
   const stateDir = join(root, 'state');
   mkdirSync(stateDir);
   const dir = join(root, 'project');
@@ -115,7 +115,7 @@ async function supervise(rollouts: string[]) {
     projectsDir: join(root, 'projects'),
     rcPrefix: 'host-a',
     stateDir,
-    bootLabel: 'ccmux.service',
+    bootLabel: 'stitchmux.service',
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));
@@ -125,8 +125,8 @@ async function supervise(rollouts: string[]) {
   );
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = config;
-  env.CCMUX_STATE_DIR = stateDir;
+  env.STITCHMUX_CONFIG = config;
+  env.STITCHMUX_STATE_DIR = stateDir;
   env.HOME = root;
   const cli = join(import.meta.dir, '..', 'src', 'cli.ts');
   const proc = Bun.spawn([process.execPath, '--no-env-file', cli, '_run', 'agent-a'], {
@@ -157,7 +157,7 @@ test('control: with no file at all the same supervisor blocks the session as mis
 }, 60_000);
 
 test('discovery lists a split thread once, at its current file; transcript counts the earlier one', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-split-discovery-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-split-discovery-'));
   const sessions = join(root, 'sessions');
   mkdirSync(join(sessions, 'a'), { recursive: true });
   mkdirSync(join(sessions, 'b'), { recursive: true });

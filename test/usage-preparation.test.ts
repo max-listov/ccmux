@@ -42,7 +42,7 @@ async function fixture(run: (f: Awaited<ReturnType<typeof setup>>) => Promise<vo
   }
 }
 async function setup() {
-  const root = mkdtempSync('/tmp/ccmux-usage-prepared-');
+  const root = mkdtempSync('/tmp/stitchmux-usage-prepared-');
   const machine = makeMachine({
     stateDir: root,
     projectsDir: join(root, 'projects'),
@@ -198,7 +198,7 @@ test('live ledger writes and busy SQLite rearm preparation without losing totals
 });
 
 test('a failed UsageStore constructor closes its SQLite connection', () => {
-  const root = mkdtempSync('/tmp/ccmux-usage-open-failure-');
+  const root = mkdtempSync('/tmp/stitchmux-usage-open-failure-');
   const path = join(root, 'locked.sqlite');
   const writer = new Database(path, { create: true });
   try {

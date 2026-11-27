@@ -123,8 +123,8 @@ test('identity and invalid response fail separately and close the provider conne
 
 test('diagnostics mask secret shapes and exact environment secrets while retaining the reason', async () => {
   const secret = 'synthetic-private-key-value';
-  const prior = process.env.CCMUX_TEST_API_KEY;
-  process.env.CCMUX_TEST_API_KEY = secret;
+  const prior = process.env.STITCHMUX_TEST_API_KEY;
+  process.env.STITCHMUX_TEST_API_KEY = secret;
   try {
     const outcome = await resolveAppOutcome(machine(), UUID, async () =>
       rpc(() => {
@@ -139,8 +139,8 @@ test('diagnostics mask secret shapes and exact environment secrets while retaini
     expect(outcome.failure.message).not.toContain('opaque-secret');
     expect(outcome.failure.message).toContain('reason stays');
   } finally {
-    if (prior === undefined) delete process.env.CCMUX_TEST_API_KEY;
-    else process.env.CCMUX_TEST_API_KEY = prior;
+    if (prior === undefined) delete process.env.STITCHMUX_TEST_API_KEY;
+    else process.env.STITCHMUX_TEST_API_KEY = prior;
   }
 });
 
@@ -163,7 +163,7 @@ const remote = async (result: RemoteResult) => {
       calls++;
       expect(target).toBe('host-b');
       expect(alias).toBeNull();
-      expect(argv).toEqual(['ccmux', '_codex-app-resolve', UUID]);
+      expect(argv).toEqual(['stitchmux', '_codex-app-resolve', UUID]);
       return result;
     },
   );

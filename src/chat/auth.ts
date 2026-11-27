@@ -3,13 +3,13 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { chatAuthPath } from '../config/paths.ts';
 import type { MachineConfig, Session } from '../types.ts';
-import { PLATFORM } from '../util/env.ts';
+import { PLATFORM } from '../util/home.ts';
 import { parseProcessStat } from '../util/procStat.ts';
 
-export const CHAT_CREDENTIAL_ENV = 'CCMUX_CHAT_CREDENTIAL';
+export const CHAT_CREDENTIAL_ENV = 'STITCHMUX_CHAT_CREDENTIAL';
 
 /** Rotate the capability every time the managed runtime starts. Descendants inherit it; a shell
- * that merely self-sets CCMUX_SESSION does not become that runtime. This authenticates ccmux
+ * that merely self-sets STITCHMUX_SESSION does not become that runtime. This authenticates stitchmux
  * process provenance, not a hostile process running as the same OS user (which can read state). */
 export function rotateChatCredential(m: MachineConfig, session: Session): string {
   const credential = randomUUID();

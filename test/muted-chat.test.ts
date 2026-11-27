@@ -12,7 +12,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 // one-way traffic reads as working from the outside. This asks the machine a FACT instead.
 
 function machineWith(sessions: Session[], withCredential: string[]) {
-  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'ccmux-muted-')) });
+  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-muted-')) });
   writeFileSync(sessionsPath(m), `${sessions.map((s) => JSON.stringify(s)).join('\n')}\n`);
   for (const name of withCredential) {
     const p = chatAuthPath(m, name);

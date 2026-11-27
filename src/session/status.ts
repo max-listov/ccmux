@@ -7,10 +7,10 @@ import type { TurnState } from '../chat/turnState.ts';
 import { STATUS_DIR } from '../config/paths.ts';
 import { atomicWrite } from '../util/atomic.ts';
 
-// Per-session structured status, written by the Claude hooks (`ccmux hook-status`) and the statusLine
-// tee (`ccmux status-line`), read by `list`/TUI. TWO files per session, one topic each, so a write
+// Per-session structured status, written by the Claude hooks (`stitchmux hook-status`) and the statusLine
+// tee (`stitchmux status-line`), read by `list`/TUI. TWO files per session, one topic each, so a write
 // about the turn can never clobber a write about the context window (lifecycle = turn boundaries,
-// metrics = statusLine only). Keyed by the ccmux session NAME (stable — CCMUX_SESSION env), not the
+// metrics = statusLine only). Keyed by the stitchmux session NAME (stable — STITCHMUX_SESSION env), not the
 // agent's own uuid.
 //
 // The lifecycle file has a second writer, and it is there by necessity: the supervisor closes a turn
@@ -24,12 +24,12 @@ import { atomicWrite } from '../util/atomic.ts';
 /** The `event` the supervisor stamps when it closes a turn the hook abandoned. Not a Claude hook
  *  name, and deliberately shaped so it cannot collide with one: a late `Stop` reads it and stays
  *  quiet rather than announcing the same turn's end a second time. */
-export const SUPERVISOR_CLOSED_EVENT = 'ccmux:turn-closed';
+export const SUPERVISOR_CLOSED_EVENT = 'stitchmux:turn-closed';
 
 export const LifecycleStatusSchema = z.object({
   state: z.enum(['working', 'idle']),
   ts: z.number(),
-  /** What set it: a Claude hook (UserPromptSubmit/Stop/SessionStart), or `ccmux:turn-closed` when
+  /** What set it: a Claude hook (UserPromptSubmit/Stop/SessionStart), or `stitchmux:turn-closed` when
    *  the supervisor closed a turn no hook ever ended. */
   event: z.string(),
   permissionMode: z.string().optional(),

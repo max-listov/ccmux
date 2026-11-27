@@ -17,7 +17,7 @@ import { COMMAND_SCHEMAS } from './answerSchemas.ts';
 import { parseFlags, UsageError } from './flags.ts';
 import { usageLine } from './help.ts';
 
-/** `ccmux whois` — reads the command line and prints what `session/whoisFleet.ts` answers. */
+/** `stitchmux whois` — reads the command line and prints what `session/whoisFleet.ts` answers. */
 
 const ago = (at: string | null, now: number): string =>
   at === null ? '-' : `${humanizeDuration(Math.max(0, now - Date.parse(at)) / 1000)} ago`;
@@ -71,7 +71,7 @@ export function answerLines(answer: WhoisAnswer, now: number): string[] {
     lines.push(
       `no managed session reads ${stray.id}; the conversation is kept on ${stray.machine}`,
       ...alignedLines([
-        ['  open with', `ccmux transcript ${stray.address} --json`],
+        ['  open with', `stitchmux transcript ${stray.address} --json`],
         ['  title', stray.title ?? '-'],
         ['  dir', stray.dir ?? '-'],
         ['  repository', stray.repository ?? '-'],
@@ -83,7 +83,7 @@ export function answerLines(answer: WhoisAnswer, now: number): string[] {
       `'${answer.query}' fits ${answer.candidates.length} sessions; none is chosen:`,
       ...answer.candidates.map((row) => `  ${row.session.address}  (by ${row.by})`),
     );
-  else lines.push(`'${answer.query}' is not a ccmux session`);
+  else lines.push(`'${answer.query}' is not a stitchmux session`);
   return [...lines, ...machineLines(answer.machines)];
 }
 

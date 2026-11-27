@@ -10,7 +10,7 @@ import { loadSessions } from '../src/session/registry.ts';
 import { hasSession } from '../src/tmux/tmux.ts';
 
 const config = process.argv[2];
-if (!config || !basename(dirname(config)).startsWith('ccmux-owned-probe-')) {
+if (!config || !basename(dirname(config)).startsWith('stitchmux-owned-probe-')) {
   throw new Error('Pass an isolated owned-runtime probe config');
 }
 const root = dirname(config);
@@ -19,7 +19,7 @@ if (
   m.stateDir !== join(root, 'state') ||
   m.telegram ||
   Object.keys(m.fleet ?? {}).length ||
-  !m.tmuxSocket?.startsWith('ccmux-owned-')
+  !m.tmuxSocket?.startsWith('stitchmux-owned-')
 )
   throw new Error('Probe is not isolated');
 

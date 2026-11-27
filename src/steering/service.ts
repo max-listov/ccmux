@@ -4,6 +4,7 @@ import { type CodexControlConnectOptions, connectOwnedCodex } from '../agent/cod
 import { inspectNativeCodexInput } from '../agent/codex/pane.ts';
 import { resolveMessageAttachments, withPinnedAttachments } from '../attachments/pins.ts';
 import { chatPrincipalKey } from '../chat/identity.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { withSessionRegistryLock } from '../session/registryLock.ts';
@@ -65,7 +66,7 @@ async function safeSteering<T>(run: () => Promise<T>): Promise<T> {
     return await run();
   } catch (error) {
     if (error instanceof AppError) throw error;
-    return steeringFailure('STEERING_UNAVAILABLE', 503);
+    return steeringFailure('STEERING_UNAVAILABLE');
   }
 }
 
@@ -78,13 +79,12 @@ export async function steerNativeTurn(
 ): Promise<SteeringReceipt> {
   const input = SteeringInputSchema.parse(raw);
   if (Buffer.byteLength(JSON.stringify(input)) > STEERING_LIMITS.requestBytes)
-    return steeringFailure('CAPACITY');
+    return steeringFailure('TOO_LARGE');
   const signal = AbortSignal.any([callerSignal, AbortSignal.timeout(STEERING_LIMITS.deadlineMs)]);
   const session = steeringTarget(m, input, false);
   if (session.delegation?.applicationAuthority !== undefined)
-    throw new AppError('DELEGATION_REFUSED', {
+    throw refusals.errors.DELEGATION_REFUSED({
       message: 'Application child input requires its attested message route',
-      status: 409,
     });
   return safeSteering(() =>
     withNativeAdmission(m, session, () =>
@@ -99,10 +99,10 @@ export async function steerNativeTurn(
             deps.connect(m, session, { signal }),
           );
         if (journal.operations.length >= STEERING_LIMITS.operations)
-          return steeringFailure('CAPACITY');
+          return steeringFailure('JOURNAL_CAPACITY');
         requireSteeringTurn(m, session, input, deps.readStatus);
         await deps.images(m, session, input, signal);
-        if (await deps.typing(m, session.name, 3)) return steeringFailure('BUSY');
+        if (await deps.typing(m, session.name, 3)) return steeringFailure('NOT_IDLE');
         return submit(m, session, principal, input, signal, deps, journal, fingerprint);
       }),
     ),
@@ -127,7 +127,7 @@ async function submit(
       !gated ||
       inspectNativeCodexInput(await deps.capture(m, session.name, 40)).state !== 'deliverable'
     )
-      return steeringFailure('BUSY');
+      return steeringFailure('NOT_IDLE');
     await requireNativeSteeringTurn(controls, input);
     await withPinnedAttachments(
       m,
@@ -192,7 +192,7 @@ async function submit(
     return operation.receipt;
   } catch (error) {
     if (error instanceof AppError) throw error;
-    return steeringFailure('STEERING_UNAVAILABLE', 503);
+    return steeringFailure('STEERING_UNAVAILABLE');
   } finally {
     try {
       if (gated) await deps.gate(m, session.name, true);

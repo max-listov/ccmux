@@ -13,7 +13,7 @@ import type { CustomService } from './config.ts';
  * it could neither take a task, nor report on it, nor read a registry. The seam was never missing:
  * what was missing is where the operation SHAPES come from, because the service runs elsewhere.
  *
- * They arrive by handshake. The recipe names an executable on the host, ccmux spawns it and speaks
+ * They arrive by handshake. The recipe names an executable on the host, stitchmux spawns it and speaks
  * MCP over its stdio, and the tool list with its JSON Schemas comes back over that. Two properties
  * of this were the reason to choose it over reading a document or importing a module: no
  * third-party code enters the supervisor process, which holds every session's approval secret and
@@ -141,7 +141,7 @@ export async function mountCustomService(
         ? {}
         : { [service.credentialEnv]: credential },
   });
-  const client = new Client({ name: 'ccmux', version: VERSION });
+  const client = new Client({ name: 'stitchmux', version: VERSION });
   await client.connect(transport);
   try {
     const admitted = new Set(service.tools);

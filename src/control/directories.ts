@@ -3,13 +3,14 @@ import { lstat, opendir } from 'node:fs/promises';
 import { dirname, join, parse, resolve } from 'node:path';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
-import { HOME } from '../util/env.ts';
+import { HOME } from '../util/home.ts';
 import { log } from '../util/log.ts';
 import {
   type ControlDirectoryReadSchema,
   type ControlDirectoryResult,
   ControlDirectoryResultSchema,
 } from './schema/directory.ts';
+import { refusals } from './schema/refusals.ts';
 
 const CursorSchema = z
   .object({ path: z.string(), version: z.string(), after: z.string(), hidden: z.boolean() })
@@ -30,15 +31,9 @@ async function directoryStat(path: string) {
     current = join(current, part);
     const stat = await lstat(current);
     if (stat.isSymbolicLink())
-      throw new AppError('SYMLINK_REFUSED', {
-        message: 'Directory symlinks are not followed',
-        status: 409,
-      });
+      throw refusals.errors.SYMLINK_REFUSED({ message: 'Directory symlinks are not followed' });
     if (!stat.isDirectory())
-      throw new AppError('NOT_A_DIRECTORY', {
-        message: 'Requested entry is not a directory',
-        status: 400,
-      });
+      throw refusals.errors.NOT_A_DIRECTORY({ message: 'Requested entry is not a directory' });
   }
   return lstat(path);
 }
@@ -59,10 +54,7 @@ export async function readControlDirectory(
           JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')),
         );
       } catch {
-        throw new AppError('INVALID_CURSOR', {
-          message: 'Directory cursor is invalid',
-          status: 400,
-        });
+        throw refusals.errors.INVALID_CURSOR({ message: 'Directory cursor is invalid' });
       }
     }
     const after = cursor?.after ?? '';
@@ -73,10 +65,7 @@ export async function readControlDirectory(
     for await (const item of directory) {
       signal.throwIfAborted();
       if (++scanned > 20_000)
-        throw new AppError('DIRECTORY_TOO_LARGE', {
-          message: 'Directory exceeds listing budget',
-          status: 413,
-        });
+        throw refusals.errors.DIRECTORY_TOO_LARGE({ message: 'Directory exceeds listing budget' });
       const kind = item.isSymbolicLink()
         ? 'symlink'
         : item.isDirectory()
@@ -94,10 +83,7 @@ export async function readControlDirectory(
       (cursor !== null &&
         (cursor.path !== path || cursor.hidden !== input.includeHidden || cursor.version !== stamp))
     )
-      throw new AppError('STALE_CURSOR', {
-        message: 'Directory changed; restart listing',
-        status: 409,
-      });
+      throw refusals.errors.STALE_CURSOR({ message: 'Directory changed; restart listing' });
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const page: ControlDirectoryResult['entries'] = [];
     let bytes = 0;
@@ -127,18 +113,11 @@ export async function readControlDirectory(
     if (error instanceof AppError || signal.aborted) throw error;
     log.error({ msg: 'directory listing failed', path, reason: String(error) });
     const code = error instanceof Error && 'code' in error ? error.code : null;
-    if (code === 'ENOENT')
-      throw new AppError('NOT_FOUND', { message: 'Directory was not found', status: 404 });
+    if (code === 'ENOENT') throw refusals.errors.NOT_FOUND({ message: 'Directory was not found' });
     if (code === 'ENOTDIR')
-      throw new AppError('NOT_A_DIRECTORY', {
-        message: 'Requested entry is not a directory',
-        status: 400,
-      });
+      throw refusals.errors.NOT_A_DIRECTORY({ message: 'Requested entry is not a directory' });
     if (code === 'EACCES' || code === 'EPERM')
-      throw new AppError('PERMISSION_DENIED', {
-        message: 'Directory is not accessible',
-        status: 403,
-      });
-    throw new AppError('UNAVAILABLE', { message: 'Directory listing is unavailable', status: 503 });
+      throw refusals.errors.PERMISSION_DENIED({ message: 'Directory is not accessible' });
+    throw refusals.errors.UNAVAILABLE({ message: 'Directory listing is unavailable' });
   }
 }

@@ -1,6 +1,7 @@
 import { rmSync } from 'node:fs';
 import { monitoringStatusPath } from '../config/paths.ts';
 import type { Observed } from '../events/observe.ts';
+import type { SessionBoundary } from '../session/boundary.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { writeEphemeralSnapshot } from '../util/atomic.ts';
 import { VERSION } from '../util/version.ts';
@@ -41,13 +42,14 @@ export class MonitoringPublisher {
     pane: string | null,
     seen: Observed,
     memoryBytes?: number | null,
+    boundary?: SessionBoundary | null,
   ): MonitoringRow | null => {
     if (this.rows.length >= STATUS_MAX_ITEMS) {
       this.omitted++;
       return null;
     }
     const parsed = MonitoringRowSchema.safeParse(
-      projectMonitoringRow(m, s, startedAt, pane, seen, Date.now(), memoryBytes),
+      projectMonitoringRow(m, s, startedAt, pane, seen, Date.now(), memoryBytes, boundary),
     );
     if (!parsed.success) {
       this.omitted++;

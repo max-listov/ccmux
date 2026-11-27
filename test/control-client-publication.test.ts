@@ -19,13 +19,13 @@ const candidate: ClientArchive = {
     name: CLIENT_NAME,
     version: '1.2.3',
     type: 'module',
-    repository: { url: 'git+https://github.com/max-listov/ccmux.git' },
+    repository: { url: 'git+https://github.com/max-listov/stitchmux.git' },
     publishConfig: { access: 'public', registry: NPM_REGISTRY },
   },
   sha256: createHash('sha256').update(bytes).digest('hex'),
   integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
 };
-const tarball = `${NPM_REGISTRY}/${CLIENT_NAME}/-/ccmux-control-service-client-1.2.3.tgz`;
+const tarball = `${NPM_REGISTRY}/${CLIENT_NAME}/-/stitchmux-client-1.2.3.tgz`;
 const meta = {
   name: CLIENT_NAME,
   version: candidate.manifest.version,
@@ -97,7 +97,7 @@ test('a rerun accepts the exact existing version and reconciles a lost publish r
 
 test('provenance must bind the package bytes, tag, commit and CI workflow', async () => {
   const commit = 'a'.repeat(40);
-  const repository = 'https://github.com/max-listov/ccmux';
+  const repository = 'https://github.com/max-listov/stitchmux';
   const ref = 'refs/tags/v1.2.3';
   const predicateType = 'https://slsa.dev/provenance/v1';
   const statement = {
@@ -105,7 +105,7 @@ test('provenance must bind the package bytes, tag, commit and CI workflow', asyn
     predicateType,
     subject: [
       {
-        name: 'pkg:npm/%40ccmux/control-service-client@1.2.3',
+        name: 'pkg:npm/%40stitchmux/client@1.2.3',
         digest: { sha512: createHash('sha512').update(bytes).digest('hex') },
       },
     ],

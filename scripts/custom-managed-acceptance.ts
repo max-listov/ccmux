@@ -283,7 +283,7 @@ try {
     !outward.includes(auth.openrouter.key) && !outward.includes(approvalSecret),
     'Secret reached public metadata',
   );
-  const log = await readFile(join(p.machine.stateDir, 'ccmux.log'), 'utf8');
+  const log = await readFile(join(p.machine.stateDir, 'stitchmux.log'), 'utf8');
   check(
     !log.includes(auth.openrouter.key) && !log.includes(approvalSecret),
     'Secret reached service log',

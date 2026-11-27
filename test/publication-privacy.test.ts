@@ -44,20 +44,20 @@ describe('public publication boundary', () => {
 
     // The two anchors. A command is how an address is written to be RUN; code is how it is written
     // to be READ, and the leak that prompted this rule was the first of those.
-    expect(caught(`ccmux wait ${real} --timeout 600`)).toBe(true);
+    expect(caught(`stitchmux wait ${real} --timeout 600`)).toBe(true);
     expect(caught(`| build | \`${real}\` | idle |`)).toBe(true);
 
     // Every placeholder this repository actually uses. A rule that failed on these would be turned
     // off within a day, and the hyphen is not what makes them safe — real session names have
     // hyphens too. The vocabulary is.
     for (const safe of [
-      'ccmux msg host-b:api "text"',
-      'ccmux restart host-b:api',
-      'ccmux msg host-a:agent-a "x"',
-      'ccmux send host-a:router /compact',
-      'ccmux msg machine:session "x"',
-      'ccmux msg machine:name "x"',
-      'ccmux wait <machine>:<session>',
+      'stitchmux msg host-b:api "text"',
+      'stitchmux restart host-b:api',
+      'stitchmux msg host-a:agent-a "x"',
+      'stitchmux send host-a:router /compact',
+      'stitchmux msg machine:session "x"',
+      'stitchmux msg machine:name "x"',
+      'stitchmux wait <machine>:<session>',
       '`host-a:agent-b`',
     ])
       expect(caught(safe)).toBe(false);
@@ -66,7 +66,7 @@ describe('public publication boundary', () => {
     for (const other of [
       '`node:fs`',
       '`bun:sqlite`',
-      '`ccmux:turn-closed`',
+      '`stitchmux:turn-closed`',
       'https://example.com/x',
     ])
       expect(caught(other)).toBe(false);
@@ -78,7 +78,7 @@ describe('public publication boundary', () => {
   });
 
   test('the companion is forbidden by its address, not by its name', () => {
-    // The name alone is PUBLIC in this project — `ccmux-dev` is the launcher that runs the CLI
+    // The name alone is PUBLIC in this project — `stitchmux-dev` is the launcher that runs the CLI
     // from source, and it appears in the README and the architecture notes. Only the repository
     // address means the private companion, and a rule that failed on the launcher would be
     // switched off within a day for being wrong about correct documentation.
@@ -88,9 +88,9 @@ describe('public publication boundary', () => {
     // reads every file type rather than Markdown alone, would then fail on its own test.
     const address = `max-listov/${'ccmu'}${'x'}-dev`;
     expect(rules(`the queue lives in ${address}`)).toContain('private-companion-repository');
-    expect(rules('run ccmux-dev to start from source')).toEqual([]);
-    expect(rules('`~/.local/bin/ccmux-dev` → source launcher')).toEqual([]);
-    expect(rules("mkdtempSync(join(tmpdir(), 'ccmux-dev-'))")).toEqual([]);
+    expect(rules('run stitchmux-dev to start from source')).toEqual([]);
+    expect(rules('`~/.local/bin/stitchmux-dev` → source launcher')).toEqual([]);
+    expect(rules("mkdtempSync(join(tmpdir(), 'stitchmux-dev-'))")).toEqual([]);
   });
 
   test('deleting private text is allowed; added text is reported at its source line', () => {
@@ -102,7 +102,7 @@ describe('public publication boundary', () => {
   });
 
   test('real staged gate reads reviewed bytes, does not mutate index, and does not echo protected text', () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-publication-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-publication-'));
     const git = (args: string[]) => {
       const result = Bun.spawnSync(['git', ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
       expect(result.exitCode).toBe(0);

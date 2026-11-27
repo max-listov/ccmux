@@ -11,13 +11,13 @@ import { promptInvocation } from '../util/env.ts';
 import { writeOut } from '../util/stdout.ts';
 
 /**
- * `ccmux stop-hook` — the Claude Code **Stop hook** for a managed session. It fires ONLY when the
+ * `stitchmux stop-hook` — the Claude Code **Stop hook** for a managed session. It fires ONLY when the
  * agent VOLUNTARILY finishes a turn (never mid-turn, never on interrupt — verified). It drains this
  * session's undelivered DEFERRED chat mail and injects it as the agent's next turn via
  * `{decision:"block","reason":…}`, so a follow-up arrives exactly at end-of-turn, human-weighted,
  * without the steering that would interrupt mid-work.
  *
- * Identity is the env `CCMUX_SESSION` (set at launch, inherited by the hook subprocess) — NOT the
+ * Identity is the env `STITCHMUX_SESSION` (set at launch, inherited by the hook subprocess) — NOT the
  * payload `session_id`, which diverges from the registry uuid after Claude forks a conversation.
  *
  * Coordination with the daemon (R5): delivery is tracked in the append-only ack-log (by message id),
@@ -38,10 +38,10 @@ import { writeOut } from '../util/stdout.ts';
 export async function cmdStopHook(): Promise<number> {
   try {
     // Drain stdin (the Stop payload) so the hook never blocks on an unread pipe. We don't need its
-    // fields: identity is CCMUX_SESSION, and there is no `stop_reason` in the payload to gate on.
+    // fields: identity is STITCHMUX_SESSION, and there is no `stop_reason` in the payload to gate on.
     await Bun.stdin.text().catch(() => '');
 
-    const self = process.env.CCMUX_SESSION;
+    const self = process.env.STITCHMUX_SESSION;
     if (self === undefined || self === '') return 0; // not a managed session → nothing to do
 
     const m = loadMachineConfig();

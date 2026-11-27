@@ -11,7 +11,7 @@ import type { TranscriptMessage } from '../types.ts';
  * "is a turn RUNNING". Those coincide until a turn is killed — a restart or an interrupt mid-work
  * leaves the conversation ending on a tool result that no assistant line will ever follow. The
  * session then looks perfectly idle to a human, accepts typing, answers — while deferred mail waits
- * for an event that cannot occur, and `ccmux wait` runs to its timeout reporting "still working".
+ * for an event that cannot occur, and `stitchmux wait` runs to its timeout reporting "still working".
  *
  * The fix does NOT drop that signal, and does not bolt an alternative beside it. It DEMOTES it from
  * a veto to a measure of confidence: a turn that ended in words is strong evidence, so a short

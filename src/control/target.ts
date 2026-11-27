@@ -1,6 +1,6 @@
-import { AppError } from 'stitchkit';
 import { findSession, loadSessions } from '../session/registry.ts';
 import type { MachineConfig, ManagedPeer, Session } from '../types.ts';
+import { refusals } from './schema/refusals.ts';
 
 export function controlTarget(m: MachineConfig, target: ManagedPeer): Session {
   const session = findSession(loadSessions(m), target.session);
@@ -10,9 +10,8 @@ export function controlTarget(m: MachineConfig, target: ManagedPeer): Session {
     session.uuid !== target.threadId ||
     session.agent !== target.agent
   ) {
-    throw new AppError('IDENTITY_MISMATCH', {
+    throw refusals.errors.IDENTITY_MISMATCH({
       message: 'The exact managed session is unavailable',
-      status: 409,
     });
   }
   return session;

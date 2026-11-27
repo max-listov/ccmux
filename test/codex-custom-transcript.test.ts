@@ -85,7 +85,7 @@ test('a derived index from the preceding parser is rebuilt rather than keeping i
     '../src/agent/transcript/transcriptIndex.ts'
   );
   const { UsageStore } = await import('../src/usage/store.ts');
-  const root = mkdtempSync('/tmp/ccmux-custom-index-');
+  const root = mkdtempSync('/tmp/stitchmux-custom-index-');
   const path = join(root, 'rollout.jsonl');
   const accumulate = (lines: string[]) => ({
     messages: 0,

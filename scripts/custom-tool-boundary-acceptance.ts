@@ -27,7 +27,7 @@ const mountVersion = versionSchema.parse(
 if (factoryVersion !== mountVersion) throw new Error('Qualification package versions differ');
 
 /** Dependency qualification, not a managed-session/model E2E or a substitute tool implementation. */
-const root = await mkdtemp(join(tmpdir(), 'ccmux-custom-tool-boundary-'));
+const root = await mkdtemp(join(tmpdir(), 'stitchmux-custom-tool-boundary-'));
 const observations: { probe: string; passed: boolean; evidence: unknown }[] = [];
 const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 function record(probe: string, passed: boolean, evidence: unknown) {

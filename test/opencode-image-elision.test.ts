@@ -32,7 +32,7 @@ test('native image elision preserves JSON byte boundaries and unrelated strings'
   };
   const expected = structuredClone(original);
   assert(expected.parts[0]);
-  expected.parts[0].url = 'ccmux-inline-image:omitted';
+  expected.parts[0].url = 'stitchmux-inline-image:omitted';
   for (const chunk of [1, 2, 7, 31, 1024])
     expect(JSON.parse(project(JSON.stringify(original), chunk))).toEqual(expected);
   for (const value of ['url', '', 'data:', 'data:image/webp;base64,AA', 'url\\"🙂'])
@@ -60,7 +60,11 @@ test('large native image echo is bounded before SDK JSON without widening non-im
   });
   try {
     const result = await (await boundedOpenCodeFetch(server.url)).json();
-    expect(result).toEqual({ type: 'file', url: 'ccmux-inline-image:omitted', mime: 'image/png' });
+    expect(result).toEqual({
+      type: 'file',
+      url: 'stitchmux-inline-image:omitted',
+      mime: 'image/png',
+    });
     expect(JSON.stringify(result).length).toBeLessThan(OPENCODE_HTTP_MAX_BYTES);
     await expect((await boundedOpenCodeFetch(new URL('/text', server.url))).text()).rejects.toThrow(
       'bounded frame',

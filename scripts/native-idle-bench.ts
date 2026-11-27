@@ -9,7 +9,7 @@ const duration = Number(Bun.argv[2] ?? 600),
   worker = Bun.argv[4];
 if (!output || !worker || !Number.isFinite(duration) || duration < 1)
   throw new Error('usage: native-idle-bench seconds output.json worker.js');
-const root = mkdtempSync('/tmp/ccmux-native-idle-');
+const root = mkdtempSync('/tmp/stitchmux-native-idle-');
 const uuid = crypto.randomUUID();
 const m = MachineConfigSchema.parse({
   stateDir: root,
@@ -17,7 +17,7 @@ const m = MachineConfigSchema.parse({
   bootLabel: 'isolated-bench',
   claudeBin: '/usr/bin/false',
   tmuxBin: Bun.which('tmux') ?? '/usr/bin/false',
-  tmuxSocket: `ccmux-native-bench-${uuid}`,
+  tmuxSocket: `stitchmux-native-bench-${uuid}`,
   codexHome: join(root, 'codex'),
   codexSessionsDir: join(root, 'codex', 'sessions'),
   projectsDir: join(root, 'transcripts'),
@@ -87,10 +87,10 @@ try {
         {
           env: {
             ...process.env,
-            CCMUX_CONFIG: config,
-            CCMUX_STATE_DIR: root,
-            CCMUX_CACHE_DIR: join(root, 'cache'),
-            CCMUX_DATA_DIR: join(root, 'data'),
+            STITCHMUX_CONFIG: config,
+            STITCHMUX_STATE_DIR: root,
+            STITCHMUX_CACHE_DIR: join(root, 'cache'),
+            STITCHMUX_DATA_DIR: join(root, 'data'),
           },
           stdin: 'ignore',
           stdout: 'pipe',

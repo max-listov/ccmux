@@ -12,7 +12,7 @@ import { appendOutbound, loadOutbox, outboundId, outboundTimestamp } from '../sr
 import type { ChatMessage, ManagedPeer } from '../src/types.ts';
 
 function tempConfig() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-outbox-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-outbox-'));
   return MachineConfigSchema.parse({
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',
@@ -25,7 +25,7 @@ function tempConfig() {
 
 const from: ManagedPeer = {
   kind: 'managed',
-  source: 'ccmux',
+  source: 'stitchmux',
   machine: 'host-a',
   agent: 'claude',
   session: 'agent-a',
@@ -33,7 +33,7 @@ const from: ManagedPeer = {
 };
 const to: ManagedPeer = {
   kind: 'managed',
-  source: 'ccmux',
+  source: 'stitchmux',
   machine: 'host-b',
   agent: 'codex',
   session: 'agent-b',

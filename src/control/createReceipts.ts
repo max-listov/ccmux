@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { stableJson } from '../agent/launch/launchInputs.ts';
 import { AgentKindSchema } from '../chat/identitySchema.ts';
@@ -18,6 +17,7 @@ import { privateRuntimeDirectory } from '../runtime/store.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
+import { refusals } from './schema/refusals.ts';
 import type { ControlCreateSchema } from './schema/session.ts';
 
 export type CreateInput = z.input<typeof ControlCreateSchema>;
@@ -91,10 +91,7 @@ export function loadCreateReceipts(m: MachineConfig): CreateRow[] {
     }
     return StoreSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
   } catch {
-    throw new AppError('CORRUPT_STATE', {
-      message: 'Create receipt store is unavailable',
-      status: 503,
-    });
+    throw refusals.errors.CORRUPT_STATE({ message: 'Create receipt store is unavailable' });
   }
 }
 
@@ -116,14 +113,11 @@ export function normalizeWorkspace(path: string): string {
   try {
     resolved = realpathSync(path);
   } catch {
-    throw new AppError('INVALID_WORKSPACE', { message: 'Workspace does not exist', status: 400 });
+    throw refusals.errors.INVALID_WORKSPACE({ message: 'Workspace does not exist' });
   }
   const stat = lstatSync(resolved);
   if (!stat.isDirectory())
-    throw new AppError('INVALID_WORKSPACE', {
-      message: 'Workspace is not a directory',
-      status: 400,
-    });
+    throw refusals.errors.INVALID_WORKSPACE({ message: 'Workspace is not a directory' });
   return resolved;
 }
 

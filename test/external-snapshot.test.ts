@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 async function source(text: string) {
-  const root = await mkdtemp('/tmp/ccmux-snapshot-');
+  const root = await mkdtemp('/tmp/stitchmux-snapshot-');
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   const path = join(root, 'history.jsonl');
   await writeFile(path, text, { mode: 0o600 });
@@ -89,7 +89,7 @@ test('snapshot expiry is absolute and missing snapshots cannot be resumed', asyn
 test('projection and cancellation budgets fail explicitly', async () => {
   const p = await source('');
   await writeFile(p.path, message('x'.repeat(4096)).repeat(2100));
-  await expect(p.build()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED', status: 413 });
+  await expect(p.build()).rejects.toMatchObject({ code: 'TOO_LARGE', status: 413 });
   await expect(
     buildContentSnapshot(
       p.file,
@@ -153,6 +153,29 @@ test('a window boundary inside an oversized native record never projects a fragm
   const snapshot = await p.build();
   expect(snapshot?.entries.map((entry) => entry.text)).toEqual(['retained']);
   expect(snapshot?.omitted).toBe(1);
+});
+
+test('a window that starts exactly on a valid record inside a longer line still skips that line', async () => {
+  // The bytes from the window start to the end of the first line parse as a whole record, so only
+  // the boundary guard keeps that fragment out; a malformed fragment would be omitted anyway.
+  const fragment = message('FRAGMENT');
+  const retained = message('retained');
+  const fillerLine = (bytes: number) =>
+    `${JSON.stringify({ type: 'tool', data: 'x'.repeat(bytes - 26) })}\n`;
+  let remaining = limits.sourceBytes - fragment.length - retained.length;
+  const filler: string[] = [];
+  const step = 200 * 1024;
+  while (remaining > 0) {
+    const bytes =
+      remaining - step >= 26 || remaining <= step ? Math.min(step, remaining) : step / 2;
+    filler.push(fillerLine(bytes));
+    remaining -= bytes;
+  }
+  const prefix = 'P'.repeat(1000);
+  const p = await source(prefix + fragment + filler.join('') + retained);
+  const snapshot = await p.build();
+  expect(snapshot?.start).toBe(prefix.length);
+  expect(snapshot?.entries.map((entry) => entry.text)).toEqual(['retained']);
 });
 
 test('cancellation during a scan releases its reader slot', async () => {

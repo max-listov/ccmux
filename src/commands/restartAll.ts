@@ -18,8 +18,8 @@ import { log } from '../util/log.ts';
 import { runDetached } from '../util/spawn.ts';
 
 /**
- * `ccmux restart --all` — bounce the WHOLE fleet on this machine with one command, so a changed
- * global rule set / MCP config / ccmux release lands everywhere without pressing `r` N times.
+ * `stitchmux restart --all` — bounce the WHOLE fleet on this machine with one command, so a changed
+ * global rule set / MCP config / stitchmux release lands everywhere without pressing `r` N times.
  *
  * THE INVARIANT: at most ONE session is down at any instant. We kill a session and start it again
  * before touching the next one. That matters for two independent reasons:
@@ -37,7 +37,7 @@ export interface RestartAllDeps {
   sessions: () => Session[];
   /** Optional predicate for intentionally sleeping sessions skipped by fleet-wide restart. */
   isSleeping?: (s: Session) => boolean;
-  /** This ccmux's own session name (CCMUX_SESSION), or undefined when run outside a managed pane. */
+  /** This stitchmux's own session name (STITCHMUX_SESSION), or undefined when run outside a managed pane. */
   self: string | undefined;
   /** Re-pin the registry if the conversation forked to a new uuid; returns the current session. */
   followFork: (s: Session) => Promise<Session>;
@@ -97,8 +97,8 @@ export function sweepSummary(
 ): string {
   const head =
     failure === null
-      ? `ccmux restart --all finished on ${machine}: ${done.length} session(s) restarted`
-      : `ccmux restart --all FAILED on ${machine} after ${done.length} session(s): ${failure}`;
+      ? `stitchmux restart --all finished on ${machine}: ${done.length} session(s) restarted`
+      : `stitchmux restart --all FAILED on ${machine} after ${done.length} session(s): ${failure}`;
   const names = done.length === 0 ? '' : ` — ${done.join(', ')}`;
   // Named explicitly, because the alternative is an agent wondering why a report arrived for
   // something it does not remember starting: its own restart is why the answer came this way.
@@ -202,10 +202,10 @@ export async function cmdRestartAll(): Promise<number> {
     return 0;
   }
   // Detached: the sweep must survive killing the very session it was launched from (an agent can run
-  // `ccmux restart --all` from inside a managed pane), and must not block the caller/TUI.
+  // `stitchmux restart --all` from inside a managed pane), and must not block the caller/TUI.
   runDetached([...SELF_ARGV, '_restart-all-worker']);
   console.log(
-    `restarting ${targets.length} session${targets.length === 1 ? '' : 's'}, one at a time — watch: ccmux list`,
+    `restarting ${targets.length} session${targets.length === 1 ? '' : 's'}, one at a time — watch: stitchmux list`,
   );
   return 0;
 }
@@ -215,7 +215,7 @@ export async function cmdRestartAllWorker(): Promise<number> {
   if (sweepRunning()) return 0;
   await atomicWrite(SWEEP_LOCK, `${process.pid}\n`);
   const m: MachineConfig = loadMachineConfig();
-  const self = process.env.CCMUX_SESSION;
+  const self = process.env.STITCHMUX_SESSION;
   log.info({ msg: 'restart --all: sweep started', self: self ?? null });
   let done: string[] = [];
   let failure: string | null = null;

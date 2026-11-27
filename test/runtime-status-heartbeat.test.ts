@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { RuntimeStatusWriter } from '../src/runtime/statusFile.ts';
 
 test('every heartbeat remains fresh; state changes and disconnect publish immediately', async () => {
-  const root = mkdtempSync('/tmp/ccmux-heartbeat-');
+  const root = mkdtempSync('/tmp/stitchmux-heartbeat-');
   const path = join(root, 'status.json');
   const schema = z.object({
     pid: z.number(),

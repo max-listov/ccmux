@@ -2,7 +2,7 @@ import { accessSync, constants } from 'node:fs';
 import { dirname } from 'node:path';
 import { chatEnabledFor } from '../../config/chat.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { UID } from '../../util/env.ts';
+import { UID } from '../../util/home.ts';
 import { IDENTITY_ENV_KEYS, pinIdentity } from '../launch/identityEnv.ts';
 import {
   fileSetDigest,
@@ -35,7 +35,7 @@ export function preflight(m: MachineConfig): void {
  * Codex argv. Codex has no `--session-id` (it mints its OWN rollout id on a fresh session) and no
  * `--append-system-prompt`, so the launch shape differs from Claude:
  *
- *  - FIRST launch: `codex [flags] "<prompt>"` — inject the ccmux management instructions as the
+ *  - FIRST launch: `codex [flags] "<prompt>"` — inject the stitchmux management instructions as the
  *    leading positional PROMPT (Codex's only injection point). A pending bootstrap stamps a unique
  *    originator marker into `session_meta` and promotes only that exact rollout into the registry.
  *  - RESUME: `codex resume <uuid> [flags]` (Codex resumes by UUID; ids take precedence over names).
@@ -61,7 +61,7 @@ export function buildArgv(
     s.name,
     cli,
     s.agent,
-    'ccmux',
+    'stitchmux',
     chatEnabledFor(s, m),
     s.promptModules,
     m.ownerLang,
@@ -84,7 +84,7 @@ export function buildAdoptArgv(s: Session, m: MachineConfig, sourceThreadId: str
 }
 
 /** Provider-native fork. The management prompt is an explicit first turn of the NEW identity; the
- * source rollout is read by Codex and never copied or renamed by ccmux. */
+ * source rollout is read by Codex and never copied or renamed by stitchmux. */
 export function buildForkArgv(
   s: Session,
   m: MachineConfig,
@@ -95,7 +95,7 @@ export function buildForkArgv(
   const bin = m.codexBin;
   if (!bin)
     throw new Error('codexBin not configured — set it in machine.json for agent=codex sessions');
-  const prompt = `${buildPrompt(s.name, cli, s.agent, 'ccmux', false, [], m.ownerLang, m.rcPrefix)}\n\nccmux launch correlation: ${launchMarker}`;
+  const prompt = `${buildPrompt(s.name, cli, s.agent, 'stitchmux', false, [], m.ownerLang, m.rcPrefix)}\n\nstitchmux launch correlation: ${launchMarker}`;
   return [bin, 'fork', sourceThreadId, ...managedFlags(s, m), prompt];
 }
 

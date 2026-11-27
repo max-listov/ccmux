@@ -1,15 +1,15 @@
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { transcriptJson } from '../context/transcriptJson.ts';
 import type { TranscriptWindowOptions } from '../context/transcriptWindow.ts';
 import type { MachineConfig } from '../types.ts';
 import type { ControlTranscriptReadSchema } from './schema/native.ts';
+import { refusals } from './schema/refusals.ts';
 import { controlTarget } from './target.ts';
 
 /**
  * One session's transcript window, answered without a process start.
  *
- * A consumer watching eight conversations asked by spawning `ccmux transcript` eight times, and
+ * A consumer watching eight conversations asked by spawning `stitchmux transcript` eight times, and
  * paid a runtime launch for every question. The read itself is now cheap; the launch is what is
  * left, and it is the one cost a resident service removes. Same answer, same cursor, same builder
  * as the command — the window is not a second view of the conversation.
@@ -30,9 +30,6 @@ export async function readControlTranscript(
   // A runtime that keeps no transcript on disk is not an error to retry: it is an answer, and it
   // says which runtime it is. Refusing here instead would send a caller looking for a fault.
   if (!answer.source.available && answer.source.error === null)
-    throw new AppError('UNSUPPORTED', {
-      message: 'This runtime keeps no transcript file',
-      status: 409,
-    });
+    throw refusals.errors.UNSUPPORTED({ message: 'This runtime keeps no transcript file' });
   return { ...answer, target: input.target };
 }

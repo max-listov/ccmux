@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 // A caller that stops reading leaves a pipe that fails the first write with EPIPE and never drains
 // again. A writer that waited for `drain` there waited forever while the runtime retried the queued
-// bytes: `ccmux fleet` whose caller had finished spun a core for hours.
+// bytes: `stitchmux fleet` whose caller had finished spun a core for hours.
 const writer = `
 import { printLine } from ${JSON.stringify(join(import.meta.dir, '..', 'src', 'util', 'stdout.ts'))};
 await Bun.sleep(300);

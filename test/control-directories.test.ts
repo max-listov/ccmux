@@ -9,7 +9,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const root = realpathSync(mkdtempSync('/tmp/ccmux-directory-test-'));
+  const root = realpathSync(mkdtempSync('/tmp/stitchmux-directory-test-'));
   roots.push(root);
   mkdirSync(join(root, 'a'));
   writeFileSync(join(root, 'b'), 'not returned');

@@ -59,13 +59,13 @@ test('rc name and ordering: -n <prefix>-<name>, extraFlags after session flags',
 });
 
 test('settings ALWAYS inject status hooks + statusLine; chat stop-hook coexists on Stop', () => {
-  const off = buildArgv(makeSession(), makeMachine(), 'ccmux', true);
+  const off = buildArgv(makeSession(), makeMachine(), 'stitchmux', true);
   const offSettings = off[off.indexOf('--settings') + 1] ?? '';
   for (const t of ['hook-status', 'status-line', 'UserPromptSubmit', 'SessionStart', 'Stop']) {
     expect(offSettings).toContain(t);
   }
   expect(offSettings).not.toContain('stop-hook'); // chat off → no chat hook
-  const on = buildArgv(makeSession({ chatEnabled: true }), makeMachine(), 'ccmux', true);
+  const on = buildArgv(makeSession({ chatEnabled: true }), makeMachine(), 'stitchmux', true);
   const onSettings = on[on.indexOf('--settings') + 1] ?? '';
   expect(onSettings).toContain('stop-hook'); // chat on → chat hook…
   expect(onSettings).toContain('hook-status'); // …coexists with the status hook (both on Stop)
@@ -79,10 +79,10 @@ test('launchEnv guarantees a usable PATH + tags the session for the self-guard',
   expect(env.PATH).toContain('/opt/x');
   expect(env.PATH).toContain('/usr/bin');
   expect(env.CLAUDECODE).toBeUndefined();
-  expect(env.CCMUX_SESSION).toBe('cc-x');
+  expect(env.STITCHMUX_SESSION).toBe('cc-x');
 });
 
-// Escalated modes under a root daemon are not a policy ccmux chose — the agent itself refuses them
+// Escalated modes under a root daemon are not a policy stitchmux chose — the agent itself refuses them
 // there. Learned by shipping the opposite: an explicit per-machine opt-out was released, deployed,
 // and undone within the hour, because lifting our guard did not grant the capability. It put every
 // session on that box into a crash loop with
@@ -90,7 +90,7 @@ test('launchEnv guarantees a usable PATH + tags the session for the self-guard',
 // So the refusal belongs where the mode is SET; the launcher keeps the downgrade as a last line.
 
 test('the refusal names the AGENT as the reason, not us', () => {
-  // If it read as a ccmux policy, the next person would go looking for our switch to flip. There
+  // If it read as a stitchmux policy, the next person would go looking for our switch to flip. There
   // isn't one, and there cannot be.
   const why = escalationRefusal('bypassPermissions', true) ?? '';
   expect(why).toContain('the agent itself refuses');
@@ -119,7 +119,7 @@ test('the launcher still downgrades — defence in depth for a hand-edited confi
   expect(resolvePermissionMode('plan', true)).toBe('plan');
 });
 
-// Declared machines get BOTH halves — and that is the whole lesson. Lifting only ccmux's guard was
+// Declared machines get BOTH halves — and that is the whole lesson. Lifting only stitchmux's guard was
 // released and undone within the hour: the agent's own root refusal was still there, and every
 // session on a live server crash-looped. The agent's escape is an env var declaring a sandbox, so
 // the declaration must carry it, or it repeats the same failure.

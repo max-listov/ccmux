@@ -1,4 +1,4 @@
-import { AppError } from 'stitchkit';
+import { refusals } from '../control/schema/refusals.ts';
 import type { ChatMessage } from '../types.ts';
 import type { CommunicationAuthorization } from './communicationAuthorizationSchema.ts';
 import { parseLedgerMessageRef } from './communicationAuthorizationSchema.ts';
@@ -19,7 +19,7 @@ export type LocalMessageRecord = { message: ChatMessage; reachedRecipient: boole
 export type LocalMessageLookup = (id: string) => LocalMessageRecord | null;
 
 function refuse(message: string): never {
-  throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', { message, status: 403 });
+  throw refusals.errors.COMMUNICATION_AUTHORIZATION_UNVERIFIED({ message });
 }
 
 function threadOf(party: ChatPrincipal | ChatTarget): string | null {

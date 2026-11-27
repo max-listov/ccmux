@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { chatPrincipalKey } from '../../chat/identity.ts';
 import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
@@ -10,6 +9,7 @@ import { removeRegisteredSession, restartSession, stopSession } from '../../sess
 import { clearLifecycleBlock } from '../../session/lifecycleBlocks.ts';
 import { setSessionPinned } from '../../session/registry.ts';
 import { withSessionRegistryLock } from '../../session/registryLock.ts';
+import { sleepIdleSessions } from '../../session/sleep/autoSleep.ts';
 import {
   assertSleepTarget,
   sleepSession,
@@ -19,6 +19,7 @@ import {
 import { idleProof } from '../../session/sleep/proof.ts';
 import type {
   PinRequestSchema,
+  SleepIdleRequestSchema,
   SleepRequestSchema,
   SleepTargetSchema,
   WakeRequestSchema,
@@ -51,6 +52,7 @@ import type {
 } from '../schema/message.ts';
 import type { ControlModelsReadSchema } from '../schema/model.ts';
 import type { ControlNativeReadSchema, ControlNativeResponseSchema } from '../schema/native.ts';
+import { refusals } from '../schema/refusals.ts';
 import type {
   ControlCommandsReadSchema,
   ControlMcpControlSchema,
@@ -101,6 +103,14 @@ export function sessionOperations(context: OperationContext) {
           timeoutMs: 30_000,
         })
         .catch(controlRefusal),
+    sleepIdle: (input: z.output<typeof SleepIdleRequestSchema>, signal?: AbortSignal) =>
+      sleepIdleSessions(m, {
+        idleAfterMs: input.idleAfterMinutes * 60_000,
+        dryRun: input.dryRun,
+        // Answer inside the 30 s call budget with room for the receipts to travel back.
+        deadlineMs: Date.now() + 22_000,
+        ...(signal === undefined ? {} : { signal }),
+      }).then((receipts) => ({ machine: m.rcPrefix, dryRun: input.dryRun, receipts })),
     wake: (input: z.output<typeof WakeRequestSchema>, signal?: AbortSignal) =>
       mutations
         .run(input.target.session, ({ signal: admitted }) => wakeSession(m, input, admitted), {
@@ -115,10 +125,7 @@ export function sessionOperations(context: OperationContext) {
           async () => {
             const session = controlTarget(m, input.target);
             if (session.archived)
-              throw new AppError('ARCHIVED', {
-                message: 'Archived sessions cannot be pinned',
-                status: 409,
-              });
+              throw refusals.errors.ARCHIVED({ message: 'Archived sessions cannot be pinned' });
             await setSessionPinned(m, session.name, input.pinned);
             return { target: input.target, pinned: input.pinned };
           },
@@ -138,10 +145,7 @@ export function sessionOperations(context: OperationContext) {
             session.identity.threadId === input.target.threadId,
         );
       if (!row)
-        throw new AppError('UNAVAILABLE', {
-          message: 'Session has no prepared observation',
-          status: 503,
-        });
+        throw refusals.errors.UNAVAILABLE({ message: 'Session has no prepared observation' });
       return row;
     },
     create: (input: CreateInput, signal?: AbortSignal, principal?: ChatPrincipal) =>
@@ -224,10 +228,7 @@ export function sessionOperations(context: OperationContext) {
             // hierarchy (`profile-policy.lock -> admission.lock -> registry.lock`).
             const candidate = controlTarget(m, input.target);
             if (candidate.archived)
-              throw new AppError('ARCHIVED', {
-                message: 'Archived sessions cannot be started',
-                status: 409,
-              });
+              throw refusals.errors.ARCHIVED({ message: 'Archived sessions cannot be started' });
             if (sleepUnsettled(m, candidate)) {
               clearLifecycleBlock(m, candidate.name);
               await wakeSleepingSession(m, candidate, admitted);
@@ -237,10 +238,7 @@ export function sessionOperations(context: OperationContext) {
               admitted.throwIfAborted();
               const session = controlTarget(m, input.target);
               if (session.archived)
-                throw new AppError('ARCHIVED', {
-                  message: 'Archived sessions cannot be started',
-                  status: 409,
-                });
+                throw refusals.errors.ARCHIVED({ message: 'Archived sessions cannot be started' });
               clearLifecycleBlock(m, session.name);
               await startSession(m, session.name, session.dir);
               return { target: input.target, accepted: true as const };
@@ -271,9 +269,8 @@ export function sessionOperations(context: OperationContext) {
               await restartSession(m, session);
             } catch (error) {
               // Refused while the existing owner is still alive: nothing was stopped.
-              throw new AppError('UNAVAILABLE', {
+              throw refusals.errors.PRECONDITION_FAILED({
                 message: `Cannot restart: ${error instanceof Error ? error.message : String(error)}`,
-                status: 409,
               });
             }
             return { target: input.target, accepted: true as const };
@@ -289,10 +286,7 @@ export function sessionOperations(context: OperationContext) {
             const session = controlTarget(m, input.target);
             const removed = await removeRegisteredSession(m, session.name);
             if (removed === null)
-              throw new AppError('NOT_FOUND', {
-                message: 'Session is not registered',
-                status: 404,
-              });
+              throw refusals.errors.NOT_FOUND({ message: 'Session is not registered' });
             return { target: input.target, accepted: true as const, stopped: true, ...removed };
           },
           { ...(signal ? { signal } : {}), timeoutMs: 15_000 },
@@ -306,14 +300,13 @@ export function sessionOperations(context: OperationContext) {
             const session = controlTarget(m, input.target);
             const refused = await typeKeys(m, session, input.text, chatPrincipalKey(principal));
             if (refused !== null)
-              throw new AppError(
+              throw refusals.errors[
                 refused.reason === 'menu'
                   ? 'MENU_OPEN'
                   : refused.reason === 'no-composer'
                     ? 'UNSUPPORTED'
-                    : 'NOT_RUNNING',
-                { message: refused.message, status: 409 },
-              );
+                    : 'NOT_RUNNING'
+              ]({ message: refused.message });
             return { target: input.target, accepted: true as const };
           },
           { ...(signal ? { signal } : {}), timeoutMs: 15_000 },

@@ -26,7 +26,7 @@ import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 const roots: string[] = [];
 const tmp = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-profile-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-profile-'));
   roots.push(dir);
   return dir;
 };
@@ -180,7 +180,7 @@ test('a conversation that was seen and is gone blocks the launch, naming where i
   expect(refusal).toContain(
     `Searched projects roots: ${m.projectsDir}, ${join(profile, 'projects')}`,
   );
-  expect(refusal).toContain(`ccmux renew ${name}`);
+  expect(refusal).toContain(`stitchmux renew ${name}`);
   clearConversationSeen(name);
   // A renewed session (new uuid, same name) is not held by the conversation it replaced.
   markConversationSeen(name, UUID);

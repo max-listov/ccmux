@@ -21,7 +21,7 @@ import { makeMachine } from './helpers.ts';
 const UUID = '33333333-3333-4333-8333-333333333333';
 
 async function world() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-supervisor-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-supervisor-'));
   const stateDir = join(root, 'state');
   mkdirSync(stateDir);
   const m = makeMachine({ stateDir });

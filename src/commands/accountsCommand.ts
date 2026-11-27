@@ -38,7 +38,7 @@ function problemsOf(machine: string, views: readonly ProfileView[]): AccountProb
 }
 
 /**
- * `ccmux accounts` — every signed-in account in one answer.
+ * `stitchmux accounts` — every signed-in account in one answer.
  *
  * The same grouping `fleet` prints under its sessions, asked for on its own: Claude and Codex
  * accounts across the fleet, each with its plan windows, the source of every number and its age,

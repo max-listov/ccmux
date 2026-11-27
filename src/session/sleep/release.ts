@@ -1,4 +1,4 @@
-import { AppError } from 'stitchkit';
+import { type RefusalCode, refusals } from '../../control/schema/refusals.ts';
 import {
   isDescendantProcess,
   processSnapshot,
@@ -14,8 +14,8 @@ import { isProviderExecutable } from './processTree.ts';
 import { listSessionPanes } from './proof.ts';
 import type { SleepRecord } from './schema.ts';
 
-function refuse(code: string, message: string): never {
-  throw new AppError(code, { message, status: 409 });
+function refuse(code: RefusalCode, message: string): never {
+  throw refusals.errors[code]({ message });
 }
 
 function pidExists(pid: number): boolean {

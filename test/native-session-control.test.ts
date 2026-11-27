@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStubClaudeSdkSession } from 'stitchkit/agent-executor/testing';
+import { createStubClaudeSdkSession } from 'stitchkit/agent-executor/testing/claude-sdk';
 import {
   claudeCommands,
   commandText,
@@ -20,7 +20,7 @@ import { managedRuntimeRoot } from '../src/runtime/status.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('Claude publishes the effective mode and retains the SDK acknowledgement for hosts without a payload', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-effective-mode-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-effective-mode-'));
   try {
     const m = makeMachine({ stateDir: root });
     const generation = crypto.randomUUID();
@@ -140,7 +140,7 @@ test('a mode a session was given is restored on restart, and only that one', () 
 });
 
 test('saved modes use the current schema and invalid records fail closed', () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-mode-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-mode-'));
   const m = makeMachine({ stateDir: join(root, 'state') });
   const generation = '33333333-3333-4333-8333-333333333333';
   const s = makeSession({

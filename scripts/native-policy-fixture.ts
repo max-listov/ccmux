@@ -15,7 +15,7 @@ import type { AgentPolicies } from '../src/policy/schema.ts';
 import { policySha256 } from '../src/policy/sources.ts';
 import type { MachineConfig } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 
 export function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -59,7 +59,7 @@ async function tracedBinary(root: string, runtime: string, binary: string) {
 }
 
 export async function createPolicyFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-policy-e2e-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-policy-e2e-')));
   chmodSync(root, 0o700);
   const source = loadMachineConfig();
   check(source.codexBin && source.opencodeBin, 'Both native runtimes must already be configured');
@@ -115,7 +115,7 @@ export async function createPolicyFixture() {
       stateDir: join(root, 'state'),
       codexBin: await tracedBinary(root, 'codex', source.codexBin),
       opencodeBin: await tracedBinary(root, 'opencode', source.opencodeBin),
-      tmuxSocket: `ccmux-policy-${crypto.randomUUID().slice(0, 8)}`,
+      tmuxSocket: `stitchmux-policy-${crypto.randomUUID().slice(0, 8)}`,
       fleet: {},
       launchRecipes: {},
       agentPolicies,
@@ -134,16 +134,18 @@ export async function createPolicyFixture() {
     root,
     env: {
       ...process.env,
-      CCMUX_CONFIG: config,
-      CCMUX_STATE_DIR: join(root, 'state'),
-      CCMUX_CACHE_DIR: join(root, 'cache'),
-      CCMUX_DATA_DIR: join(root, 'data'),
+      STITCHMUX_CONFIG: config,
+      STITCHMUX_STATE_DIR: join(root, 'state'),
+      STITCHMUX_CACHE_DIR: join(root, 'cache'),
+      STITCHMUX_DATA_DIR: join(root, 'data'),
     },
   };
 }
 
 export function policyService(m: MachineConfig, inspect: (value: unknown) => void) {
-  return createInjectedControlClient(localControlFetch(controlSocket(m), 'policy-client', inspect));
+  return createInjectedControlClient(
+    declaredServiceFetch(controlSocket(m), 'policy-client', inspect),
+  );
 }
 
 export function spawnCount(root: string, runtime: 'codex' | 'opencode') {

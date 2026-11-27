@@ -11,7 +11,7 @@ import { makeMachine, makeSession, UUID } from './helpers.ts';
 // cost of not looking: a month-old conversation had a blank one written on top of it, same uuid.
 
 function projects(): string {
-  return mkdtempSync(join(tmpdir(), 'ccmux-hist-'));
+  return mkdtempSync(join(tmpdir(), 'stitchmux-hist-'));
 }
 
 function put(root: string, encodedDir: string, uuid: string, bytes: number): string {

@@ -32,7 +32,7 @@ import { parseFlags } from './flags.ts';
 import { usageLine } from './help.ts';
 
 /**
- * `ccmux relay owner/<name> "<their answer>"` — bring an answer back from outside the fleet.
+ * `stitchmux relay owner/<name> "<their answer>"` — bring an answer back from outside the fleet.
  *
  * This is the half that makes the outward address more than a note to self. Without a way to record
  * what came back, "awaiting a reply" is a list that only grows, and a list that only grows is one
@@ -41,7 +41,7 @@ import { usageLine } from './help.ts';
  * The answer is recorded as a RELAY, not as the external party speaking. `onBehalfOf` already exists
  * for exactly this shape — "who the instruction truly came from when `from` is only the courier" —
  * so the sender sees *on behalf of owner/<name>* while `from` stays whoever actually typed it.
- * Nothing gains the ability to impersonate a party ccmux cannot authenticate, which it could never
+ * Nothing gains the ability to impersonate a party stitchmux cannot authenticate, which it could never
  * do honestly: the evidence that these words are theirs is a person's word, and the record says so.
  */
 export async function cmdRelay(args: string[]): Promise<number> {
@@ -71,7 +71,7 @@ export async function cmdRelay(args: string[]): Promise<number> {
   }
   if (!isExternalToken(token)) {
     console.error(
-      `relay: '${token}' is not an owner outside the fleet — those are addressed as owner/<name>. A managed session answers for itself with: ccmux msg <machine>:<session>`,
+      `relay: '${token}' is not an owner outside the fleet — those are addressed as owner/<name>. A managed session answers for itself with: stitchmux msg <machine>:<session>`,
     );
     return 1;
   }
@@ -173,7 +173,7 @@ export function outstandingLines(m: ReturnType<typeof loadMachineConfig>): strin
       const task = l.msg.task === null ? '' : ` (task ${l.msg.task})`;
       return `  ${externalAddress(l.name)}${task} — ${age}m, from ${principalLabel(l.msg.from)}: ${preview(l.msg.body, 60)}`;
     }),
-    `  record an answer: ccmux relay owner/<name> "<what they said>"`,
+    `  record an answer: stitchmux relay owner/<name> "<what they said>"`,
   ];
 }
 

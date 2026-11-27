@@ -8,7 +8,7 @@ import { VERSION } from '../src/util/version.ts';
 import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 test('released ESM reader works offline, coalesces 100 callers and never starts CLI/RPC processes', async () => {
-  const root = shortTempDir('ccmux-codex-reader-test-');
+  const root = shortTempDir('stitchmux-codex-reader-test-');
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const s = makeSession({ agent: 'codex', runtime: 'app-server' });
   const config = join(root, 'machine.json');
@@ -65,9 +65,9 @@ test('released ESM reader works offline, coalesces 100 callers and never starts 
     if(saturated.filter(r=>r.reason==="busy").length !== 1 || saturated.filter(r=>r.status==="live").length !== 128) throw Error("unbounded waiters");
     let migrated = false;
     beforeOpen = async(path)=>{
-      if(!migrated && String(path).endsWith(".json") && String(path)!==process.env.CCMUX_CONFIG){
+      if(!migrated && String(path).endsWith(".json") && String(path)!==process.env.STITCHMUX_CONFIG){
         migrated = true;
-        await fs.writeFile(process.env.CCMUX_CONFIG,JSON.stringify({stateDir:${JSON.stringify(join(root, 'missing'))},rcPrefix:${JSON.stringify(m.rcPrefix)}}));
+        await fs.writeFile(process.env.STITCHMUX_CONFIG,JSON.stringify({stateDir:${JSON.stringify(join(root, 'missing'))},rcPrefix:${JSON.stringify(m.rcPrefix)}}));
       }
     };
     if((await api.readCodexRuntime(options)).reason !== "config-changed") throw Error("root migration raced into live");
@@ -77,7 +77,7 @@ test('released ESM reader works offline, coalesces 100 callers and never starts 
   `;
   const child = Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--eval', source], {
     cwd: root,
-    env: { ...process.env, CCMUX_CONFIG: config, CCMUX_RC_PREFIX: m.rcPrefix },
+    env: { ...process.env, STITCHMUX_CONFIG: config, STITCHMUX_RC_PREFIX: m.rcPrefix },
     stdout: 'pipe',
     stderr: 'pipe',
   });

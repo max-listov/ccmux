@@ -9,7 +9,7 @@ import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
-import { sleepUnsettled } from '../session/sleep/store.ts';
+import { showsAsSleeping } from '../session/sleep/store.ts';
 import { readChatHold } from '../session/status.ts';
 import { listSessionNames } from '../tmux/tmux.ts';
 import { parseFlags } from './flags.ts';
@@ -24,10 +24,10 @@ import { outstandingLines } from './relay.ts';
  *
  * Marking read is deliberately limited to YOUR OWN session: reading someone else's inbox is a
  * diagnostic act, and advancing their cursor would hide the mail from the agent that must receive it.
- *   ccmux inbox [name] [--peek]
+ *   stitchmux inbox [name] [--peek]
  */
 export async function cmdInbox(args: string[]): Promise<number> {
-  const self = process.env.CCMUX_SESSION;
+  const self = process.env.STITCHMUX_SESSION;
   const flags = parseFlags('inbox', args, [0, 1]);
   const peek = flags.bool('peek');
   let name = flags.positionals[0] ?? self;
@@ -38,7 +38,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
     const outstanding = outstandingLines(loadMachineConfig());
     for (const line of outstanding) console.log(line);
     if (outstanding.length > 0) console.log('');
-    console.log('usage: ccmux inbox <name> [--peek]   (name defaults to CCMUX_SESSION)');
+    console.log('usage: stitchmux inbox <name> [--peek]   (name defaults to STITCHMUX_SESSION)');
     return outstanding.length > 0 ? 0 : 1;
   }
   const fwd = await forwardIfRemote(name, 'inbox', peek ? ['--peek'] : []);
@@ -62,7 +62,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
   const unreadable = unreadableCount(ledger);
   if (unreadable > 0) {
     console.log(
-      `(${unreadable} record(s) in the ledger were written by a newer ccmux and cannot be read here — upgrade this machine to see them)`,
+      `(${unreadable} record(s) in the ledger were written by a newer stitchmux and cannot be read here — upgrade this machine to see them)`,
     );
   }
   if (unread.length === 0) {
@@ -75,7 +75,7 @@ export async function cmdInbox(args: string[]): Promise<number> {
       recipient,
       chatEnabled: chatEnabledFor(recipient, m),
       running,
-      sleeping: !recipient.archived && sleepUnsettled(m, recipient),
+      sleeping: showsAsSleeping(m, recipient, running),
       nowMs: now,
       isOwner: name === OWNER,
       chatDeliverable: providerFor(recipient).inspectChatPane !== undefined,

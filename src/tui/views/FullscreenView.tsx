@@ -82,7 +82,7 @@ export function FullscreenView({
         flexShrink={0}
       >
         <Box>
-          <Text color="black" bold>{` ccmux v${VERSION} `}</Text>
+          <Text color="black" bold>{` stitchmux v${VERSION} `}</Text>
           {IS_DEV ? (
             <Text color="red" bold>
               {'DEV '}
@@ -121,7 +121,7 @@ export function FullscreenView({
                   >
                     {i === externalStart ? (
                       <Text color="magenta" dimColor>
-                        ── external · local inventory outside ccmux ──
+                        ── external · local inventory outside stitchmux ──
                       </Text>
                     ) : null}
                     <SessionCard

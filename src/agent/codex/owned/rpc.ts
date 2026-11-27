@@ -11,7 +11,7 @@ import {
   createCodexDriver,
 } from 'stitchkit/agent-executor/codex';
 import type { MachineConfig, Session } from '../../../types.ts';
-import { HOME } from '../../../util/env.ts';
+import { HOME } from '../../../util/home.ts';
 import { codexProfile } from '../profileRoot.ts';
 import { ownedCodexSocket } from './paths.ts';
 
@@ -30,7 +30,7 @@ export type CodexAppFailureKind =
   | 'upgrade-refused'
   | 'connection-lost';
 
-/** Map Stitchkit's Unix socket error kinds to ccmux's public diagnostic classification. */
+/** Map Stitchkit's Unix socket error kinds to stitchmux's public diagnostic classification. */
 export function codexFailureKind(kind: CodexUnixSocketErrorKind): CodexAppFailureKind {
   return kind === 'target-refused' ? 'endpoint-not-listening' : kind;
 }

@@ -5,12 +5,12 @@ import { humanizeDuration } from '../util/duration.ts';
 import { parseFlags } from './flags.ts';
 
 /**
- * `ccmux events` — the contract an outside surface reads the feed through.
+ * `stitchmux events` — the contract an outside surface reads the feed through.
  *
  * The file format is deliberately NOT the contract. A consumer that parsed `events.jsonl` itself
  * would have to know about rotation, about partially-written last lines, and about where the state
  * directory is on that machine — three things that are ours to change and none of which it should
- * ever have to learn. It also could not be run over a transport: `ccmux events --follow` works the
+ * ever have to learn. It also could not be run over a transport: `stitchmux events --follow` works the
  * same locally and through whatever runs a command on another machine, which is what makes one
  * consumer able to watch a whole fleet.
  *

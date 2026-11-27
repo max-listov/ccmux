@@ -4,7 +4,7 @@ description: Create-time authority, native policy evidence, idle CAS и прод
 type: architecture
 status: active
 created: 2026-10-15 08:00 +07:00
-updated: 2026-11-27 09:30 +08:00
+updated: 2026-11-27 22:52 +08:00
 ---
 
 ## Authority до первого prompt
@@ -57,7 +57,7 @@ binding (`applicationId/channelId/actor: agent/revision`), максимальн�
 Trusted backend приложения вызывает `delegation.application.open` после проверки active
 аутентифицированного run и реальной цитаты human input в своём журнале. Эти поля не
 должны приходить из model tool arguments. Запрос несёт conversationId, runId,
-sourceMessageRef, authorizationQuote и operationId. CCMux хранит их с явным assurance
+sourceMessageRef, authorizationQuote и operationId. Stitchmux хранит их с явным assurance
 `application-attested`: он доверяет объявленному service backend, не утверждает, что
 сам проверил чужой журнал или владеет процессом native parent. Same-user IPC и
 аутентифицированный caller узла — граница доверия; поля application не отдельные credentials.
@@ -97,10 +97,11 @@ approvals, активный turn, черновик, открытые меню, �
 Поддержка process release охватывает интерактивные TUI- и native-сессии `claude` и `codex`
 (делегированные и неделегированные; для неделегированных native-сессий `registerRuntimeOwnership`
 регистрируется при наличии `registrationGeneration`, а для `codex` дополнительно проверяются
-`inspectNativeCodexInput` и `clientTypingRecently`). Провайдеры `opencode`, `custom` и
+`inspectNativeCodexInput` и `clientTypingRecently` на терминальной панели; панель, которую tmux не
+перечисляет или не снимает, отказывает `terminal-unavailable`, как и в TUI-ветке). Провайдеры `opencode`, `custom` и
 `antigravity` сохраняют `capabilities.sleep: false` и возвращают `release: unsupported,
-state: unchanged`. `handles-only` — отдельное значение wire contract; адаптеры никогда не выдают
-его за `processReleased`.
+state: unchanged`. Других значений `release` нет: сон, который не освободил процессы, не
+получает квитанции вовсе.
 
 Для интерактивных TUI-сессий (`claude`, `codex`) `idleProof` проверяет ровно одну панель в
 tmux-сессии (отказ `auxiliary-panes` при открытых дополнительных окнах), `inspectChatPane ===
@@ -114,7 +115,10 @@ tmux-сессии (отказ `auxiliary-panes` при открытых допо
 
 `session.sleep` принимает exact target/registration, `operationId`, `revision` и опциональный
 `forcePolicy`. Иерархия локов: `profile-policy.lock` → `admission.lock` (per-session) →
-`registry.lock`. Для legacy TUI-сессий идемпотентный backfill `registrationGeneration` выполняется
+`registry.lock`. Решение под локами читает собственный снимок таблицы процессов: снимок вызывающего
+(проход автосна снимает его один раз на всех кандидатов) служит только для отбора, потому что к
+моменту решения ему могут быть десятки секунд, а процесс, запущенный за это время, иначе убил бы
+последующий release; изменившееся дерево даёт `REVISION_CONFLICT`. Для legacy TUI-сессий идемпотентный backfill `registrationGeneration` выполняется
 в `healOnce` и `sleepSessionByName` (не затрагивает `LaunchStamp`; `LifecycleBlock` без
 `generation` симметрично матчится по `uuid`); `sleepSessionByName` предварительно делает
 `followFork`, а прямой `session.sleep` отказывает `REVISION_CONFLICT`, если диалог Claude форкнулся
@@ -139,6 +143,13 @@ tmux-сессии (отказ `auxiliary-panes` при открытых допо
 роняет остальные сессии), а строгое `readSleep` на всех путях мутаций (`session.sleep`,
 `session.wake`, `wakeSessionByName`) отказывает fail-first.
 
+`session.sleep-idle` (`idleAfterMinutes`, `dryRun`) — тот же проход, что и авто-сон, по запросу
+(`sleepIdleSessions`, `src/session/sleep/autoSleep.ts`): возвращает квитанцию по каждой
+рассмотренной сессии — `slept`, `would-sleep`, `skipped` (закреплена, занята, последняя бодрствующая
+в профиле, заблокирована, простой не измерить), `refused` или `not-attempted` (не дошли за 22 с
+бюджета вызова) — с кодом из таблицы отказов. `dryRun` проходит кандидатов через `previewSleep`
+в том же порядке и считает уже «усыплённых» им спящими, ничего не записывая.
+
 Опциональный авто-сон (`machine.json.idleSleep`, по умолчанию `enabled: false`) запускается в
 цикле демона раз в `checkIntervalSeconds`, берёт якорь `computeIdleAnchorMs` (максимум из
 `lastActivityMs`, `transcriptMtimeMs`, `startedAtMs`, `awakeAtMs`, `paneWorkingMs`, `lifecycleTs`,
@@ -147,7 +158,7 @@ tmux-сессии (отказ `auxiliary-panes` при открытых допо
 
 ## Wake и idempotency
 
-`session.wake`, `ccmux wake`, `ccmux start`, `ccmux attach`, Enter в TUI и due-письмо в
+`session.wake`, `stitchmux wake`, `stitchmux start`, `stitchmux attach`, Enter в TUI и due-письмо в
 `deliverPending` пробуждают прежний registered/native context с тем же `uuid`. Wake ждёт release
 вне admission lock: native resume использует этот же lock для selection. Фазы
 `requested → sleeping → waking → awake` durable; `reconcileSleepRecord` при старте и в цикле
@@ -163,6 +174,13 @@ tmux-сессии (отказ `auxiliary-panes` при открытых допо
 прошлых циклов (FIFO), предотвращая постоянный `WAKE_CAPACITY`. Старый completed wake возвращает
 свой receipt, pending wake не будит следующий sleep.
 
+Доставка письма в живую TUI-панель идёт под тем же `admission.lock`, под которым решение о сне
+записывает `requested`: пока фаза сна не `awake` (`requested`, `sleeping`, `waking`), письмо
+держится с видом `sleeping` и уходит ровно один раз после пробуждения. Успешный Enter оставляет
+под этим локом отметку `pane-submission.json` (`src/chat/paneSubmission.ts`); `idleProof` TUI
+отказывает `queued-input`, пока ей меньше `SETTLE_MS` (6 с), — это окно между Enter и первым
+признаком хода, когда панель ещё выглядит свободной, а у Claude нет подтверждения по транскрипту.
+
 В `deliverPending` спящие сессии проверяются чистым `pickPendingDelivery` без мутации курсоров:
 будущие `notBefore`, `acked`, `archived`, `chatEnabled: false`, `blocked`, `delegationStopped`,
 rate-limit и неподдерживаемые провайдеры не вызывают пробуждения. Активный wake координируется
@@ -175,7 +193,7 @@ deadline отказывают последующему wake. Операции `s
 
 ## Публикуемые bytes
 
-Release содержит typed control-service-client и `ccmux-X.Y.Z.tgz` — детерминированный
+Release содержит архив клиента `@stitchmux/client` и `stitchmux-X.Y.Z.tgz` — детерминированный
 `git archive` точного release commit с native source. CI загружает оба до публикации draft.
 Source archive позволяет проверить включение реализации вместе с public contract.
 

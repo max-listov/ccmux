@@ -17,7 +17,7 @@ import { loadSessions } from '../src/session/registry.ts';
 import { killSession, listSessionNames } from '../src/tmux/tmux.ts';
 import type { ManagedPeer } from '../src/types.ts';
 import { atomicWrite } from '../src/util/atomic.ts';
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 import { hasExited } from './process-state.ts';
 
 export function check(value: unknown, message: string): asserts value {
@@ -102,7 +102,7 @@ export async function nativeImageProbe(
     configure?: (root: string, machine: ReturnType<typeof loadMachineConfig>) => Promise<void>;
   } = {},
 ) {
-  const root = realpathSync(mkdtempSync('/tmp/ccmux-image-steering-'));
+  const root = realpathSync(mkdtempSync('/tmp/stitchmux-image-steering-'));
   chmodSync(root, 0o700);
   evidencePath = join(root, 'evidence.ndjson');
   const config = join(root, 'machine.json'),
@@ -111,7 +111,7 @@ export async function nativeImageProbe(
     ...loadMachineConfig(),
     stateDir: join(root, 'state'),
     rcPrefix: 'probe',
-    tmuxSocket: `ccmux-image-${crypto.randomUUID().slice(0, 8)}`,
+    tmuxSocket: `stitchmux-image-${crypto.randomUUID().slice(0, 8)}`,
     fleet: {},
     remoteTransport: { peers: [] },
     telegram: undefined,
@@ -143,14 +143,14 @@ export async function nativeImageProbe(
   await atomicWrite(config, JSON.stringify(machine), 0o600);
   const env: Record<string, string | undefined> = {
     ...process.env,
-    CCMUX_CONFIG: config,
-    CCMUX_STATE_DIR: machine.stateDir,
-    CCMUX_CACHE_DIR: join(root, 'cache'),
-    CCMUX_DATA_DIR: join(root, 'data'),
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_STATE_DIR: machine.stateDir,
+    STITCHMUX_CACHE_DIR: join(root, 'cache'),
+    STITCHMUX_DATA_DIR: join(root, 'data'),
   };
   for (const key of [
-    'CCMUX_SESSION',
-    'CCMUX_CHAT_CREDENTIAL',
+    'STITCHMUX_SESSION',
+    'STITCHMUX_CHAT_CREDENTIAL',
     'CODEX_THREAD_ID',
     'CODEX_APP_TOOLS_PIPE_PATH',
     'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
@@ -166,7 +166,7 @@ export async function nativeImageProbe(
   let daemon = spawn();
   const client = (caller: string) =>
     (options.makeClient ?? createInjectedControlClient)(
-      localControlFetch(controlSocket(machine), caller),
+      declaredServiceFetch(controlSocket(machine), caller),
     );
   const service = client('probe-client');
   const ready = () =>

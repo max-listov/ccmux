@@ -7,9 +7,9 @@ updated: 2026-10-05 21:30 +07:00
 type: architecture
 ---
 
-ccmux can hand finite processes to an installed workload launcher that speaks
+stitchmux can hand finite processes to an installed workload launcher that speaks
 `node-workload-protocol/v1`. The launcher owns admission, the node budget and cleanup of the
-process tree; ccmux does not keep a second resource registry. The machine config enables it with
+process tree; stitchmux does not keep a second resource registry. The machine config enables it with
 one optional field:
 
 ```json
@@ -39,7 +39,7 @@ the profile, the deadline and IO bounds. Binary stdin/stdout stay apart from the
 when the launcher's exit code agrees with it (`launcherExitCode` in `workloadContract.ts`): refused
 125, failed 126, completed the payload's code — and a payload ended by a signal, which has no code,
 is reported by the launcher as 1. A payload that itself exits 125 stays completed. A missing or
-malformed outcome is an exact internal error. ccmux removes only its own request directory after
+malformed outcome is an exact internal error. stitchmux removes only its own request directory after
 the launcher has finished; it never erases the admission registry or SDK manifests.
 
 The request holds the declared environment, which for a custom session includes its chat
@@ -54,7 +54,7 @@ the launcher can take the payload tree down, and escalates to SIGKILL after
 `WORKLOAD_CANCEL_GRACE_MS`. The same escalation bounds the launcher itself at its deadline plus the
 grace. An escalated cancel settles as `failed` / `workload-cancel-timeout`: bounded beats complete
 when the launcher does not answer. The installed launcher guards against its caller dying through
-its own process-instance identity; ccmux does not reproduce that mechanism.
+its own process-instance identity; stitchmux does not reproduce that mechanism.
 
 ## Connected paths
 

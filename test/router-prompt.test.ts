@@ -5,22 +5,26 @@ import { knownPromptModules, resolvePromptModules } from '../src/agent/prompt/pr
 test('router is a known module; unknown keys fail loud', () => {
   expect(knownPromptModules()).toContain('router');
   expect(() =>
-    resolvePromptModules(['router'], { name: 'cc-r', cli: 'ccmux', selfAddress: 'm:' + 'cc-r' }),
+    resolvePromptModules(['router'], {
+      name: 'cc-r',
+      cli: 'stitchmux',
+      selfAddress: 'm:' + 'cc-r',
+    }),
   ).not.toThrow();
   expect(() =>
-    resolvePromptModules(['nope'], { name: 'cc-r', cli: 'ccmux', selfAddress: 'm:' + 'cc-r' }),
+    resolvePromptModules(['nope'], { name: 'cc-r', cli: 'stitchmux', selfAddress: 'm:' + 'cc-r' }),
   ).toThrow(/unknown prompt module 'nope'/);
 });
 
 test('the router protocol pins its load-bearing clauses (versioned + testable)', () => {
   const [proto] = resolvePromptModules(['router'], {
     name: 'cc-r',
-    cli: 'ccmux',
+    cli: 'stitchmux',
     selfAddress: 'm:' + 'cc-r',
   });
   const p = proto ?? '';
   expect(p).toContain('ROUTER MODE');
-  expect(p).toContain('ccmux msg <target> --on-behalf-of owner'); // the ONLY delivery path
+  expect(p).toContain('stitchmux msg <target> --on-behalf-of owner'); // the ONLY delivery path
   // Arrival at the turn boundary is the default now, so the router must not be taught a flag for it
   // — a prompt naming a flag that no longer exists teaches an error and gets one back.
   expect(p).not.toContain('--defer');
@@ -29,18 +33,18 @@ test('the router protocol pins its load-bearing clauses (versioned + testable)',
   expect(p).toMatch(/at most twice/i); // retry cap
   expect(p).toMatch(/ESCALATE/); // escalation
   expect(p).toMatch(/NEVER message the owner/i); // anti-nag (the whole reason it exists)
-  expect(p).toContain('NEVER use `ccmux send`'); // must forbid the interrupting delivery path
+  expect(p).toContain('NEVER use `stitchmux send`'); // must forbid the interrupting delivery path
 });
 
 test('the router protocol teaches the self-watchdog liveness loop', () => {
   const [proto] = resolvePromptModules(['router'], {
     name: 'cc-r',
-    cli: 'ccmux',
+    cli: 'stitchmux',
     selfAddress: 'm:' + 'cc-r',
   });
   const p = proto ?? '';
   expect(p).toContain('ARM A WATCHDOG'); // the timer that makes it self-driving
-  expect(p).toContain('ccmux msg cc-r --after'); // self-ping via time-delayed delivery
+  expect(p).toContain('stitchmux msg cc-r --after'); // self-ping via time-delayed delivery
   expect(p).toMatch(/re-arm/i); // still-working → re-arm
   expect(p).toMatch(/cap of 3/i); // bounded re-arms, not infinite waiting
   expect(p).toMatch(/idempotent no-op/i); // early report → late watchdog is harmless
@@ -48,22 +52,22 @@ test('the router protocol teaches the self-watchdog liveness loop', () => {
 });
 
 test('buildPrompt composes the router module INTO one string only when requested', () => {
-  const withRouter = buildPrompt('cc-r', 'ccmux', 'claude', 'ccmux', true, ['router']);
-  const plain = buildPrompt('cc-r', 'ccmux', 'claude', 'ccmux', true, []);
+  const withRouter = buildPrompt('cc-r', 'stitchmux', 'claude', 'stitchmux', true, ['router']);
+  const plain = buildPrompt('cc-r', 'stitchmux', 'claude', 'stitchmux', true, []);
   expect(withRouter).toContain('ROUTER MODE');
   expect(plain).not.toContain('ROUTER MODE');
   // still the base management prompt in both (single injected string, never a competing flag)
-  expect(withRouter).toContain('managed by ccmux');
-  expect(plain).toContain('managed by ccmux');
+  expect(withRouter).toContain('managed by stitchmux');
+  expect(plain).toContain('managed by stitchmux');
 });
 
 test('owner-language guidance: mirror by default, explicit override when ownerLang set', () => {
-  const mirror = buildPrompt('cc-a', 'ccmux', 'claude', 'ccmux', true, []);
+  const mirror = buildPrompt('cc-a', 'stitchmux', 'claude', 'stitchmux', true, []);
   expect(mirror).toContain('Reply to the owner in the same language the owner used.');
-  const forced = buildPrompt('cc-a', 'ccmux', 'claude', 'ccmux', true, [], 'Russian');
+  const forced = buildPrompt('cc-a', 'stitchmux', 'claude', 'stitchmux', true, [], 'Russian');
   expect(forced).toContain('Reply to the owner in Russian.');
   // language guidance is chat-scoped — absent when chat is off
-  expect(buildPrompt('cc-a', 'ccmux', 'claude', 'ccmux', false, [])).not.toContain(
+  expect(buildPrompt('cc-a', 'stitchmux', 'claude', 'stitchmux', false, [])).not.toContain(
     'Reply to the owner',
   );
 });

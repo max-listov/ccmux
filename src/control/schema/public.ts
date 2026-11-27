@@ -71,7 +71,7 @@ export {
   type NotificationAudience,
   NotificationAudienceSchema,
 } from '../../chat/originSchema.ts';
-// Who a session is, what was said and who sent it, and what was sent: the answers of `ccmux whois`,
+// Who a session is, what was said and who sent it, and what was sent: the answers of `stitchmux whois`,
 // `search`, `transcript --message` and `msg sent`, read here as operations of this contract.
 export {
   type SendReceipt,
@@ -257,10 +257,7 @@ export {
   type UsageSummary,
   UsageSummarySchema,
 } from '../../usage/schema.ts';
-export {
-  CCMUX_CONTROL_CALLER_HEADER,
-  ControlTransportCallerSchema,
-} from '../transport/boundary.ts';
+export { ControlTransportCallerSchema } from '../transport/boundary.ts';
 export {
   ControlCompactSchema,
   ControlContextOperationReadSchema,
@@ -305,6 +302,8 @@ export {
   IdentityWhoisReadSchema,
   SentLettersReadSchema,
 } from './reading.ts';
+// The refusal table: every code a call can be refused with, its status, `retryable` and default text.
+export { type RefusalCode, refusals } from './refusals.ts';
 export {
   SelectionReadSchema,
   SelectionResultSchema,

@@ -38,7 +38,7 @@ import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 function owner() {
   const m = makeMachine({
     rcPrefix: 'host-a',
-    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-owned-input-')),
+    stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-owned-input-')),
   });
   const s = makeSession({
     agent: 'codex',
@@ -390,7 +390,7 @@ test('an interrupt stops the named running turn through the owner, and refuses a
 async function daemon() {
   const m = makeMachine({
     rcPrefix: 'host-a',
-    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-owned-daemon-')),
+    stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-owned-daemon-')),
   });
   const s = makeSession({
     name: 'owned',
@@ -479,7 +479,7 @@ test('a letter an owner leaves untaken beside an idle runtime says to restart th
   // Half a minute later, still queued, runtime idle, and the owner has said nothing about it.
   pickup.injectedAt = new Date(Date.now() - 60_000).toISOString();
   await f.run();
-  expect(readChatHold(f.s.name)?.reason).toContain(`ccmux restart ${f.s.name}`);
+  expect(readChatHold(f.s.name)?.reason).toContain(`stitchmux restart ${f.s.name}`);
   // An owner that is held by something says so, and that reason is not overwritten.
   await writeChatHold(f.s.name, f.msg.id, 'a human typed in that pane a moment ago');
   await f.run();

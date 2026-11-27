@@ -5,9 +5,9 @@ import { join } from 'node:path';
 
 // A fresh process resolves the real logger's state path before any module can cache it.
 // Changing an environment variable around a cached dynamic import cannot isolate filesystem IO.
-const sandbox = mkdtempSync(join(tmpdir(), 'ccmux-log-'));
+const sandbox = mkdtempSync(join(tmpdir(), 'stitchmux-log-'));
 // Asked of the logger rather than guessed. This file used to carry its own copy of the naming rule
-// — `join(sandbox, 'ccmux.log')` — and the day the product started separating a checkout's record
+// — `join(sandbox, 'stitchmux.log')` — and the day the product started separating a checkout's record
 // from the machine's, five tests failed on a second copy of a fact that had exactly one owner. The
 // subject here is thresholds, format and rotation; where the file is belongs to the logger.
 const LOG_FILE = logFilePath();
@@ -16,10 +16,13 @@ const setLogLevel = (level: string) => {
   threshold = level;
 };
 function emit(level: string, fields: Record<string, unknown>): void {
-  emitScript('log[process.env.CCMUX_TEST_METHOD](JSON.parse(process.env.CCMUX_TEST_FIELDS));', {
-    CCMUX_TEST_METHOD: level,
-    CCMUX_TEST_FIELDS: JSON.stringify(fields),
-  });
+  emitScript(
+    'log[process.env.STITCHMUX_TEST_METHOD](JSON.parse(process.env.STITCHMUX_TEST_FIELDS));',
+    {
+      STITCHMUX_TEST_METHOD: level,
+      STITCHMUX_TEST_FIELDS: JSON.stringify(fields),
+    },
+  );
 }
 
 function emitScript(script: string, env: Record<string, string> = {}): void {
@@ -28,8 +31,8 @@ function emitScript(script: string, env: Record<string, string> = {}): void {
       process.execPath,
       '-e',
       [
-        'const { log, setLogLevel, LOG_FILE } = await import(process.env.CCMUX_TEST_LOGGER);',
-        'setLogLevel(process.env.CCMUX_TEST_LEVEL);',
+        'const { log, setLogLevel, LOG_FILE } = await import(process.env.STITCHMUX_TEST_LOGGER);',
+        'setLogLevel(process.env.STITCHMUX_TEST_LEVEL);',
         script,
         'console.log(LOG_FILE);',
       ].join('\n'),
@@ -37,9 +40,9 @@ function emitScript(script: string, env: Record<string, string> = {}): void {
     {
       env: {
         ...process.env,
-        CCMUX_STATE_DIR: sandbox,
-        CCMUX_TEST_LOGGER: new URL('../src/util/log.ts', import.meta.url).href,
-        CCMUX_TEST_LEVEL: threshold,
+        STITCHMUX_STATE_DIR: sandbox,
+        STITCHMUX_TEST_LOGGER: new URL('../src/util/log.ts', import.meta.url).href,
+        STITCHMUX_TEST_LEVEL: threshold,
         ...env,
       },
       stdout: 'pipe',
@@ -60,15 +63,15 @@ function logFilePath(): string {
       process.execPath,
       '-e',
       [
-        'const { LOG_FILE } = await import(process.env.CCMUX_TEST_LOGGER);',
+        'const { LOG_FILE } = await import(process.env.STITCHMUX_TEST_LOGGER);',
         'console.log(LOG_FILE);',
       ].join('\n'),
     ],
     {
       env: {
         ...process.env,
-        CCMUX_STATE_DIR: sandbox,
-        CCMUX_TEST_LOGGER: new URL('../src/util/log.ts', import.meta.url).href,
+        STITCHMUX_STATE_DIR: sandbox,
+        STITCHMUX_TEST_LOGGER: new URL('../src/util/log.ts', import.meta.url).href,
       },
       stdout: 'pipe',
       stderr: 'pipe',
@@ -152,7 +155,7 @@ test('the real log sink redacts nested credentials and retains useful diagnostic
   log.error({
     msg: 'request failed',
     status: 503,
-    nested: { token: 'synthetic-token', CCMUX_CHAT_CREDENTIAL: 'synthetic-capability' },
+    nested: { token: 'synthetic-token', STITCHMUX_CHAT_CREDENTIAL: 'synthetic-capability' },
     apiKey: 'synthetic-key',
     url: 'https://example.com/resource?token=synthetic-query',
   });

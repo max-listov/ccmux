@@ -36,17 +36,17 @@ test('changing the MACHINE default marks sessions for restart', () => {
   // default would flag nothing, and the column would stay silent exactly where a restart is needed —
   // while chat framing and the Stop hook are launch-time and would not be live.
   const s = makeSession();
-  const before = { ...computeStamp(s, makeMachine({ chatEnabled: false }), 'ccmux'), ts: 0 };
+  const before = { ...computeStamp(s, makeMachine({ chatEnabled: false }), 'stitchmux'), ts: 0 };
   expect(
-    staleReasons(before, computeStamp(s, makeMachine({ chatEnabled: true }), 'ccmux')),
+    staleReasons(before, computeStamp(s, makeMachine({ chatEnabled: true }), 'stitchmux')),
   ).toContain('chat');
 });
 
 test('a session that overrides is NOT disturbed by the machine flipping', () => {
   const s = makeSession({ chatEnabled: false });
-  const before = { ...computeStamp(s, makeMachine({ chatEnabled: false }), 'ccmux'), ts: 0 };
+  const before = { ...computeStamp(s, makeMachine({ chatEnabled: false }), 'stitchmux'), ts: 0 };
   expect(
-    staleReasons(before, computeStamp(s, makeMachine({ chatEnabled: true }), 'ccmux')),
+    staleReasons(before, computeStamp(s, makeMachine({ chatEnabled: true }), 'stitchmux')),
   ).not.toContain('chat');
 });
 

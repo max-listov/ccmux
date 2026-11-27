@@ -4,11 +4,11 @@ import { installBoot, uninstallBoot } from '../boot/install.ts';
 import { RC_PREFIX_RE } from '../chat/identitySchema.ts';
 import { loadMachineConfig, scaffoldMachineConfig } from '../config/machine.ts';
 import { atomicWrite } from '../util/atomic.ts';
-import { HOME, PLATFORM } from '../util/env.ts';
+import { HOME, PLATFORM } from '../util/home.ts';
 import { parseFlags } from './flags.ts';
 
 function configPath(): string {
-  return process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`;
+  return process.env.STITCHMUX_CONFIG ?? `${HOME}/.config/stitchmux/machine.json`;
 }
 
 function isRcPrefix(v: string | undefined): v is string {
@@ -50,7 +50,7 @@ export async function cmdInstall(args: string[]): Promise<number> {
     if (!existsSync(cfg)) {
       if (!isRcPrefix(rc)) {
         console.log(
-          'no machine.json yet — run: ccmux install --rc-prefix <name> (lowercase slug, e.g. local, dev, prod)',
+          'no machine.json yet — run: stitchmux install --rc-prefix <name> (lowercase slug, e.g. local, dev, prod)',
         );
         return 1;
       }
@@ -88,6 +88,10 @@ export async function cmdInstall(args: string[]): Promise<number> {
     console.log(e instanceof Error ? e.message : String(e));
     return 1;
   }
+  // Rename window: the previous release's default labels give way to this release's, in the same
+  // step that retires the previous units (`installBoot`). REMOVE with the migration module.
+  const { adoptNewBootLabels } = await import('../migration/renameFromCcmux.ts');
+  if (adoptNewBootLabels(cfg)) console.log(`${cfg}: boot labels moved to this release's names`);
   const m = loadMachineConfig();
   console.log(`detected: claude=${m.claudeBin} tmux=${m.tmuxBin} projects=${m.projectsDir}`);
   await installBoot(m, { force: flags.bool('force') });

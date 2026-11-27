@@ -85,7 +85,7 @@ export async function clearLifecycleBlockIfGeneration(
 }
 
 /** Explicit user start/restart is the recovery action; the daemon heal clears only a block written
- *  by another ccmux version (`clearBlockOfOlderVersion`), never one of its own version. */
+ *  by another stitchmux version (`clearBlockOfOlderVersion`), never one of its own version. */
 export function clearLifecycleBlock(m: MachineConfig, name: string): void {
   const path = lifecycleBlockPath(m, name);
   if (existsSync(path)) unlinkSync(path);

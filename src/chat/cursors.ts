@@ -23,8 +23,8 @@ export class CursorsUnreadableError extends Error {
   ) {
     super(
       `chat cursors unreadable (${path}: ${reason}) — delivery is held. Repair the file, or move it ` +
-        'aside: ccmux then resumes from the present, and mail queued at that moment stays in the ' +
-        'ledger (ccmux chat log) instead of being delivered',
+        'aside: stitchmux then resumes from the present, and mail queued at that moment stays in the ' +
+        'ledger (stitchmux chat log) instead of being delivered',
     );
   }
 }

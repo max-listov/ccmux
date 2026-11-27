@@ -23,7 +23,7 @@ async function take(frames: AsyncIterator<LogFrame>, count: number): Promise<Log
 }
 
 test('a program follows the chat log through the client, from the frames the command prints', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-chat-stream-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-chat-stream-')));
   const m = makeMachine({ rcPrefix: 'host-a', stateDir: join(root, 'state') });
   const publisher = new ControlPublisher(m);
   const server = createControlServer(m, publisher);

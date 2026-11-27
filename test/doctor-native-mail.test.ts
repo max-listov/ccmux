@@ -18,7 +18,7 @@ import { clearChatHold, writeChatHold } from '../src/session/status.ts';
 import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
 
 test('doctor follows a native pickup after cursor advance and inbox read, until it settles', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-doctor-native-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-doctor-native-'));
   const m = makeMachine({ stateDir: root });
   const s = makeSession({
     name: `doctor-native-${crypto.randomUUID()}`,
@@ -70,7 +70,7 @@ test('doctor follows a native pickup after cursor advance and inbox read, until 
 });
 
 test('a pane this version cannot read is reported at once, not after the stall interval', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-doctor-shape-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-doctor-shape-'));
   const m = makeMachine({ stateDir: root });
   const s = makeSession({
     name: `doctor-shape-${crypto.randomUUID()}`,
@@ -105,7 +105,7 @@ test('a pane this version cannot read is reported at once, not after the stall i
 });
 
 test('doctor names the records the diagnostic journal skipped when it opened', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-doctor-journal-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-doctor-journal-'));
   const m = makeMachine({ stateDir: root });
   try {
     expect(journalRecoveryProblem(m)).toBeNull();

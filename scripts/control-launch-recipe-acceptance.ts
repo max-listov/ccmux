@@ -8,12 +8,12 @@ import { createInjectedControlClient } from '../src/control/transport/boundary.t
 import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { loadSessions } from '../src/session/registry.ts';
 import { hasSession, killSession, newSession } from '../src/tmux/tmux.ts';
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 
 const configArgument = process.argv[2];
 if (
   configArgument === undefined ||
-  !basename(dirname(configArgument)).startsWith('ccmux-owned-probe-')
+  !basename(dirname(configArgument)).startsWith('stitchmux-owned-probe-')
 )
   throw new Error('Pass an isolated owned-runtime probe machine.json');
 const config = configArgument;
@@ -34,7 +34,7 @@ function check(value: unknown, message: string): asserts value {
 
 const base = MachineConfigSchema.parse(JSON.parse(readFileSync(config, 'utf8')));
 check(
-  base.stateDir === join(root, 'state') && base.tmuxSocket?.startsWith('ccmux-owned-'),
+  base.stateDir === join(root, 'state') && base.tmuxSocket?.startsWith('stitchmux-owned-'),
   'probe is not isolated',
 );
 check(
@@ -61,16 +61,16 @@ const definition = {
 };
 
 const environment: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: base.stateDir,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
-  CCMUX_DATA_DIR: join(root, 'data'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: base.stateDir,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_DATA_DIR: join(root, 'data'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && environment[key] === undefined) environment[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
@@ -130,7 +130,7 @@ async function restartDaemon(machine: typeof base): Promise<void> {
   );
   await waitFor('control service restarted', async () => {
     try {
-      const response = await fetch('http://ccmux.local/control/sessions', {
+      const response = await fetch('http://stitchmux.local/control/sessions', {
         unix: controlSocket(machine),
       });
       return response.ok;
@@ -150,7 +150,7 @@ await restartDaemon(activeMachine);
 
 const payloads: string[] = [];
 const remote = createInjectedControlClient(
-  localControlFetch(controlSocket(activeMachine), activeMachine.rcPrefix, (value) => {
+  declaredServiceFetch(controlSocket(activeMachine), activeMachine.rcPrefix, (value) => {
     if (typeof value === 'string') payloads.push(value);
   }),
 );
@@ -321,7 +321,7 @@ try {
   archived = archive.archived;
   check(archived, 'recipe session archive failed');
   check(
-    !readFileSync(join(activeMachine.stateDir, 'ccmux.log'), 'utf8').includes(secret),
+    !readFileSync(join(activeMachine.stateDir, 'stitchmux.log'), 'utf8').includes(secret),
     'secret value reached owner service logs',
   );
 

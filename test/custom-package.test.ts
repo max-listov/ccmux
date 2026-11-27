@@ -14,7 +14,7 @@ afterEach(async () => {
 const sha = (text: string) => createHash('sha256').update(text).digest('hex');
 const entry = (text: string) => ({ sha256: sha(text), data: gzipSync(text).toString('base64') });
 test('offline Custom package has one concurrent materialization and refuses retained-byte tampering', async () => {
-  const stateDir = await mkdtemp(join(tmpdir(), 'ccmux-custom-package-'));
+  const stateDir = await mkdtemp(join(tmpdir(), 'stitchmux-custom-package-'));
   roots.push(stateDir);
   const module = entry('export const value = 71;');
   const darwinArm64 = entry('arm64-fixture'),

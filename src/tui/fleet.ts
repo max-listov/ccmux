@@ -137,14 +137,14 @@ export function externalToRow(ext: DiscoveredSession): ListRow {
     uptimeText: '—',
     uptimeSeconds: null,
     createdAt: null,
-    tmux: null, // observed, not ccmux's: no tmux target of ours to declare
+    tmux: null, // observed, not stitchmux's: no tmux target of ours to declare
     lastMessage: ext.lastMessage,
     // A discovered session is read-only: nothing here hooks its turns, so when its current one
     // began is simply not knowable. Null is that answer, and `state` keeps saying whether it is
     // working.
     turnStartedAt: null,
     stale: [],
-    // A thread ccmux does not manage exchanges no letters through it, which is a fact rather
+    // A thread stitchmux does not manage exchanges no letters through it, which is a fact rather
     // than a gap: zero here means none, and it is the same shape a managed row carries.
     letters: NO_LETTERS,
     lastActivityMs: ext.lastActivityMs,

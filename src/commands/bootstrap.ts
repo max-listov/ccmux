@@ -84,7 +84,7 @@ async function block(generation: string, error: string): Promise<number> {
         at: new Date().toISOString(),
       });
   }
-  console.error(`ccmux: ${error}`);
+  console.error(`stitchmux: ${error}`);
   return 1;
 }
 

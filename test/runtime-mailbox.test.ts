@@ -21,7 +21,7 @@ afterEach(() => {
 const operationId = '77777777-7777-4777-8777-777777777777';
 
 async function fixture() {
-  const stateDir = mkdtempSync('/tmp/ccmux-mailbox-');
+  const stateDir = mkdtempSync('/tmp/stitchmux-mailbox-');
   roots.push(stateDir);
   const m = makeMachine({ stateDir });
   const generation = crypto.randomUUID();

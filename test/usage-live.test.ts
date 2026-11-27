@@ -19,7 +19,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-usage-live-');
+  const root = mkdtempSync('/tmp/stitchmux-usage-live-');
   roots.push(root);
   return {
     root,

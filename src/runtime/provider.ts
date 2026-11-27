@@ -22,8 +22,8 @@ export function nativeProvider(
       if (id === 'custom') return ['stitchkit/agent-runtime/harness'];
       // Deliberately fictional but STABLE, like the Custom runtime's: the launch stamp compares
       // argv across restarts, and a native mode whose stamp drifts would demand restarts for
-      // changes its runtime cannot act on. The real process is the ccmux-owned SDK bridge.
-      if (id === 'claude') return ['ccmux/claude-native-bridge'];
+      // changes its runtime cannot act on. The real process is the stitchmux-owned SDK bridge.
+      if (id === 'claude') return ['stitchmux/claude-native-bridge'];
       if (id === 'antigravity') {
         const bin = preflightAntigravity(m);
         return [bin, 'acp', '--stdio', '--process-per-session', '--sandbox'];

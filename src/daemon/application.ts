@@ -16,7 +16,6 @@ import { mirrorPending } from '../chat/telegram.ts';
 import { settleUndeliverable } from '../chat/undeliverable.ts';
 import { loadMachineConfig } from '../config/machine.ts';
 import { BOOT_ATTEMPTS } from '../config/paths.ts';
-import { stitchwireRoute } from '../config/remoteTransport.ts';
 import { ControlPublisher } from '../control/publisher.ts';
 import { ControlModelsReadSchema } from '../control/schema/model.ts';
 import { createControlServer } from '../control/transport/server.ts';
@@ -49,7 +48,8 @@ import { runAutoSleepPass } from '../session/sleep/autoSleep.ts';
 import type { MachineConfig } from '../types.ts';
 import { createUsageObservation } from '../usage/observation.ts';
 import { proveBootBundle } from '../util/bootGuard.ts';
-import { IS_DEV, PLATFORM } from '../util/env.ts';
+import { IS_DEV } from '../util/env.ts';
+import { PLATFORM } from '../util/home.ts';
 import { log, setLogLevel } from '../util/log.ts';
 import { VERSION } from '../util/version.ts';
 import { createDaemonLifecycle } from './lifecycle.ts';
@@ -227,7 +227,8 @@ export function createDaemonApplication(
             startedAt,
             pane,
             seen,
-            memorySampler.rawMemoryFor(s.name),
+            memorySampler.memoryFor(s.name),
+            memorySampler.boundaryFor(s.name),
           );
           if (row !== null) inventory.sample(m, s, row, startedAt);
         },
@@ -466,7 +467,7 @@ export function createDaemonApplication(
     onError: (error) => scheduleLog.warn('auto-sleep pass failed', { err: String(error) }),
   });
   const application: ApplicationHandle = createApplication({
-    id: 'ccmux-daemon',
+    id: 'stitchmux-daemon',
     resources: [
       loopStalls,
       chronology,
@@ -475,7 +476,7 @@ export function createDaemonApplication(
       externalOwner,
       controlOwner,
       control,
-      ...(stitchwireRoute(initial.remoteTransport)?.serviceDirectory ? [wireDeclaration] : []),
+      ...(initial.remoteTransport?.serviceDirectory ? [wireDeclaration] : []),
       observation,
       memorySample,
       usageObservation,

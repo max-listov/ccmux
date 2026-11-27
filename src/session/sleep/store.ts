@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
+import { refusals } from '../../control/schema/refusals.ts';
 import { managedRuntimeRoot } from '../../runtime/status.ts';
 import { privateRuntimeDirectory, readPrivateJournal } from '../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -18,7 +18,7 @@ export function readSleep(m: MachineConfig, s: Session): SleepRecord | null {
       (s.registrationGeneration !== undefined &&
         row.registrationGeneration !== s.registrationGeneration))
   )
-    throw new AppError('IDENTITY_MISMATCH', { message: 'Sleep registration changed', status: 409 });
+    throw refusals.errors.IDENTITY_MISMATCH({ message: 'Sleep registration changed' });
   return row;
 }
 
@@ -40,6 +40,17 @@ export async function writeSleep(m: MachineConfig, s: Session, row: SleepRecord)
 export function sleepBlocksStart(m: MachineConfig, s: Session): boolean {
   const row = readSleepSafe(m, s);
   return row !== null && row.phase !== 'awake' && row.phase !== 'waking';
+}
+
+/**
+ * Whether a session is shown as sleeping — the one answer `list`, `fleet`, `whois`, monitoring, the
+ * control rows and `inbox` give. A sleep that is requested or done, on a session that is not
+ * archived and not running. `waking` is not sleeping: the session is coming up, and a letter to it
+ * is held under its own kind until it is awake. A process still tearing down keeps reporting live
+ * state rather than a premature sleep.
+ */
+export function showsAsSleeping(m: MachineConfig, s: Session, running: boolean | null): boolean {
+  return !s.archived && running !== true && sleepBlocksStart(m, s);
 }
 
 /** True whenever a sleep record is not settled awake (`requested`, `sleeping`, or `waking`). */

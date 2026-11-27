@@ -11,7 +11,7 @@ import { parsePaneInventory } from '../src/tmux/paneInventory.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('performance read cannot configure or reset collection; configuration is admitted and idempotent', async () => {
-  const root = mkdtempSync('/tmp/ccmux-profile-read-');
+  const root = mkdtempSync('/tmp/stitchmux-profile-read-');
   const m = makeMachine({ stateDir: root });
   const publisher = new ControlPublisher(m);
   const profile = new DaemonPerformance();
@@ -72,12 +72,12 @@ test('performance read cannot configure or reset collection; configuration is ad
 });
 
 test('peer CLI lists every registered row before observation and after its freshness deadline', async () => {
-  const root = mkdtempSync('/tmp/ccmux-peer-gap-');
+  const root = mkdtempSync('/tmp/stitchmux-peer-gap-');
   const m = makeMachine({
     stateDir: root,
     rcPrefix: 'host-a',
     tmuxBin: Bun.which('tmux') ?? '/usr/bin/tmux',
-    tmuxSocket: `ccmux-gap-${crypto.randomUUID()}`,
+    tmuxSocket: `stitchmux-gap-${crypto.randomUUID()}`,
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(m));
@@ -93,7 +93,7 @@ test('peer CLI lists every registered row before observation and after its fresh
   const read = async () => {
     const child = Bun.spawn(
       [process.execPath, join(import.meta.dir, '../src/cli.ts'), '_peer-read', 'list'],
-      { env: { ...process.env, CCMUX_CONFIG: config }, stdout: 'pipe', stderr: 'pipe' },
+      { env: { ...process.env, STITCHMUX_CONFIG: config }, stdout: 'pipe', stderr: 'pipe' },
     );
     const [out, err, code] = await Promise.all([
       new Response(child.stdout).text(),

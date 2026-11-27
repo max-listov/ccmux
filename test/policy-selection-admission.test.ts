@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 async function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-policy-selection-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-policy-selection-')));
   roots.push(root);
   const workspace = join(root, 'workspace');
   mkdirSync(workspace, { mode: 0o700 });

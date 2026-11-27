@@ -246,7 +246,7 @@ describe('independent native external turn evidence', () => {
 
 describe('bounded real control-socket transport', () => {
   async function fixture(mode: 'status' | 'hang' | 'oversize') {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-turn-socket-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-turn-socket-'));
     const dir = join(root, 'app-server-control');
     mkdirSync(dir);
     const requests: string[] = [];

@@ -137,7 +137,7 @@ test('registration replacement cannot consume old receipts; archive preserves ac
       f.signal,
       f.deps,
     ),
-  ).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+  ).rejects.toMatchObject({ code: 'ARCHIVED' });
   await writeSessionsUnlocked(f.machine, [
     { ...f.session, registrationGeneration: crypto.randomUUID() },
   ]);

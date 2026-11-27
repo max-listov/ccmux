@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 function machine() {
-  const root = mkdtempSync('/tmp/ccmux-route-state-');
+  const root = mkdtempSync('/tmp/stitchmux-route-state-');
   roots.push(root);
   return makeMachine({ stateDir: root, rcPrefix: 'host-a' });
 }

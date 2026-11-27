@@ -101,17 +101,17 @@ jobs:
 
       # Run the BUILT artifact, not the source: `version` proves it loads at all,
       # `list --json` proves the command path works end-to-end. The runner has no claude
-      # or tmux, so a stub machine.json (CCMUX_CONFIG) stands in for `ccmux install` —
+      # or tmux, so a stub machine.json (STITCHMUX_CONFIG) stands in for `stitchmux install` —
       # /bin/false binaries exercise the "nothing running" path with an empty registry.
       # CI twin of the fleet-side preflight.
       - name: Smoke the bundle
         run: |
-          BUNDLE="${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/staged/ccmux.js"
+          BUNDLE="${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/staged/stitchmux.js"
           test -f "$BUNDLE"
           PKG="$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
           OUT="$(bun "$BUNDLE" version)"
           echo "bundle reports: $OUT (package.json: $PKG)"
-          [ "$OUT" = "ccmux $PKG" ]
+          [ "$OUT" = "stitchmux $PKG" ]
           FALSE_BIN="/bin/false"
           [ -x "$FALSE_BIN" ] || FALSE_BIN="/usr/bin/false"
           cat > "$RUNNER_TEMP/machine.json" <<EOF
@@ -121,10 +121,10 @@ jobs:
             "projectsDir": "$RUNNER_TEMP/projects",
             "rcPrefix": "ci",
             "stateDir": "$RUNNER_TEMP/state",
-            "bootLabel": "ccmux.ci"
+            "bootLabel": "stitchmux.ci"
           }
           EOF
-          CCMUX_CONFIG="$RUNNER_TEMP/machine.json" bun "$BUNDLE" list --json | bun -e 'const d = await new Response(Bun.stdin.stream()).json(); if (!Array.isArray(d.sessions)) { console.error("bad list --json shape"); process.exit(1); }'
+          STITCHMUX_CONFIG="$RUNNER_TEMP/machine.json" bun "$BUNDLE" list --json | bun -e 'const d = await new Response(Bun.stdin.stream()).json(); if (!Array.isArray(d.sessions)) { console.error("bad list --json shape"); process.exit(1); }'
           echo "list --json OK"
 
   release:
@@ -183,16 +183,18 @@ jobs:
         if: steps.fresh.outputs.exists != 'true'
         env:
           # Signs release.json; a release the fleet cannot verify is not published (src/release/trust.ts).
-          CCMUX_RELEASE_SIGNING_KEY: ${{ secrets.CCMUX_RELEASE_SIGNING_KEY }}
-        run: bun scripts/release.ts --ci-assets "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/ccmux.js"
+          # The repository secret keeps the name it was created under; its value cannot be read back
+          # to store it under another, and the key id it signs with is fixed (`src/release/trust.ts`).
+          STITCHMUX_RELEASE_SIGNING_KEY: ${{ secrets.CCMUX_RELEASE_SIGNING_KEY }}
+        run: bun scripts/release.ts --ci-assets "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/stitchmux.js"
 
       - name: Test the exact SDK candidate
         id: test-sdk
         if: steps.fresh.outputs.exists != 'true'
         run: |
-          releases="${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases"
-          archive="ccmux-control-service-client-${GITHUB_REF_NAME#v}.tgz"
-          CCMUX_PACKED_CLIENT_ARTIFACT="$releases/$archive" bun scripts/verify-control-service-client.ts
+          releases="${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases"
+          archive="stitchmux-client-${GITHUB_REF_NAME#v}.tgz"
+          STITCHMUX_PACKED_CLIENT_ARTIFACT="$releases/$archive" bun scripts/verify-client.ts
           mkdir "$RUNNER_TEMP/sdk"
           cp "$releases/$archive" "$RUNNER_TEMP/sdk/$archive"
           echo "sha256=$(shasum -a 256 "$RUNNER_TEMP/sdk/$archive" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -202,7 +204,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BODY=$(awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
-          if [ -z "$BODY" ]; then BODY="ccmux $GITHUB_REF_NAME"; fi
+          if [ -z "$BODY" ]; then BODY="stitchmux $GITHUB_REF_NAME"; fi
           echo "$BODY" > /tmp/release-notes.md
 
       - name: Prepare GitHub draft
@@ -212,19 +214,19 @@ jobs:
         run: |
           if [ "${{ steps.fresh.outputs.draft }}" != 'true' ]; then
             gh release create "$GITHUB_REF_NAME" --verify-tag --target "$GITHUB_SHA" \
-              --title "ccmux $GITHUB_REF_NAME" --notes-file /tmp/release-notes.md --draft
+              --title "stitchmux $GITHUB_REF_NAME" --notes-file /tmp/release-notes.md --draft
           fi
           gh release upload "$GITHUB_REF_NAME" --clobber \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux.js" "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/release.json" scripts/install.sh \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/monitoring-reader.js" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/monitoring-reader.sha256" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/codex-runtime-reader.js" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/codex-runtime-reader.sha256" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-client.js" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-client.sha256" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux-control-service-client-${GITHUB_REF_NAME#v}.tgz" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/control-service-client.sha256" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/ccmux/releases/ccmux-${GITHUB_REF_NAME#v}.tgz"
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/stitchmux.js" "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/release.json" scripts/install.sh \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/monitoring-reader.js" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/monitoring-reader.sha256" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/codex-runtime-reader.js" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/codex-runtime-reader.sha256" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/control-client.js" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/control-client.sha256" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/stitchmux-client-${GITHUB_REF_NAME#v}.tgz" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/client.sha256" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/stitchmux/releases/stitchmux-${GITHUB_REF_NAME#v}.tgz"
 
       - name: Seal the tested SDK for npm
         id: sdk
@@ -263,9 +265,9 @@ jobs:
       - name: Publish with OIDC and verify the publicly served archive
         env:
           EXPECTED_SHA256: ${{ needs.release.outputs.sdk-sha256 }}
-        run: bun scripts/publish-control-client.ts "$RUNNER_TEMP/sdk/ccmux-control-service-client-${GITHUB_REF_NAME#v}.tgz" "$EXPECTED_SHA256"
+        run: bun scripts/publish-control-client.ts "$RUNNER_TEMP/sdk/stitchmux-client-${GITHUB_REF_NAME#v}.tgz" "$EXPECTED_SHA256"
       - name: Install by version from public npm
-        run: bun scripts/verify-control-service-client.ts --from-npm
+        run: bun scripts/verify-client.ts --from-npm
 
   activate:
     needs: [release, publish-sdk]
@@ -278,7 +280,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA256: ${{ needs.release.outputs.sdk-sha256 }}
         run: |
-          sdk="ccmux-control-service-client-${GITHUB_REF_NAME#v}.tgz"
+          sdk="stitchmux-client-${GITHUB_REF_NAME#v}.tgz"
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets |
             jq -e --arg sha "$GITHUB_SHA" --arg file "$sdk" --arg digest "sha256:$EXPECTED_SHA256" \
               '.isDraft and .targetCommitish == $sha and any(.assets[]; .name == $file and .digest == $digest)'

@@ -4,7 +4,7 @@ import { humanizeDuration } from '../util/duration.ts';
 import { printLine } from '../util/stdout.ts';
 import { tableLines } from '../util/table.ts';
 
-/** `ccmux msg sent` — prints what `chat/sentLetters.ts` answers. */
+/** `stitchmux msg sent` — prints what `chat/sentLetters.ts` answers. */
 export async function msgSent(
   machine: MachineConfig,
   from: ChatPrincipal,

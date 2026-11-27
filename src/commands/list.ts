@@ -66,7 +66,7 @@ export async function cmdList(args: string[] = []): Promise<number> {
   const shown = all ? rows : rows.filter((r) => !(r.session.archived && !r.running));
   printTable(m, shown);
   const parked = rows.length - shown.length;
-  if (parked > 0) console.log(`… ${parked} archived (ccmux list --all)`);
+  if (parked > 0) console.log(`… ${parked} archived (stitchmux list --all)`);
   // Printed after the table rather than as a column: the plan window belongs to the account, so it
   // is one fact about several rows, and a per-row column would repeat one budget as many.
   for (const line of accountLines(

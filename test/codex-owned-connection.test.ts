@@ -25,9 +25,9 @@ function fixture(
   collaboration = false,
   threadStartDelayMs = 0,
 ) {
-  const codexSessionsDir = mkdtempSync(join(tmpdir(), 'ccmux-native-rollouts-'));
+  const codexSessionsDir = mkdtempSync(join(tmpdir(), 'stitchmux-native-rollouts-'));
   const m = makeMachine({
-    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-native-connection-')),
+    stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-native-connection-')),
     codexSessionsDir,
     codexCorrelationTimeoutMs: 150,
     sessionEvents: true,

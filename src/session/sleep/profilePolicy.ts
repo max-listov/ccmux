@@ -5,7 +5,7 @@ import { claudeProfile } from '../../agent/claude/profileRoot.ts';
 import { codexProfile } from '../../agent/codex/profileRoot.ts';
 import { envFilePath, expandHome } from '../../agent/launch/launchInputs.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { LOCK_TIMEOUT_MS, withLock } from '../../util/lock.ts';
 
 /**

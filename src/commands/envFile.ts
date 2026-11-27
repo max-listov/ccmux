@@ -13,7 +13,7 @@ import { log } from '../util/log.ts';
 import { parseFlags } from './flags.ts';
 
 const USAGE =
-  'usage: ccmux env-file <name> <path>  ·  ccmux env-file <name> --none  ·  ccmux env-file --adopt [--dry-run]\n' +
+  'usage: stitchmux env-file <name> <path>  ·  stitchmux env-file <name> --none  ·  stitchmux env-file --adopt [--dry-run]\n' +
   '       <machine>:<name> for another fleet machine';
 
 /**
@@ -74,7 +74,7 @@ async function adopt(m: MachineConfig, dryRun: boolean): Promise<number> {
     );
     return 0;
   }
-  console.log(`\napply: ccmux restart --all   (the env recipe is read at launch)`);
+  console.log(`\napply: stitchmux restart --all   (the env recipe is read at launch)`);
   console.log('Until then those sessions keep the variables they were started with.');
   return 0;
 }
@@ -105,7 +105,7 @@ export async function cmdEnvFile(args: string[]): Promise<number> {
     // short, and the file may legitimately appear later. Said out loud, and repeated by `doctor`.
     if (resolved !== null && !existsSync(resolved)) {
       console.log(
-        `warning: ${resolved} does not exist yet — the session will still start, and ccmux will keep saying so.`,
+        `warning: ${resolved} does not exist yet — the session will still start, and stitchmux will keep saying so.`,
       );
     }
   }
@@ -122,7 +122,7 @@ export async function cmdEnvFile(args: string[]): Promise<number> {
       markConversationSeen(local, current.uuid);
       console.log(
         `warning: ${local} keeps its conversation under ${before}; the new profile looks under ${after}, ` +
-          'so a restart will be blocked rather than start a new conversation. Move the conversation, or `ccmux renew` to begin a fresh one.',
+          'so a restart will be blocked rather than start a new conversation. Move the conversation, or `stitchmux renew` to begin a fresh one.',
       );
     }
   }
@@ -135,6 +135,6 @@ export async function cmdEnvFile(args: string[]): Promise<number> {
   console.log(
     `${local}: env file → ${clear ? 'none (only the declared base environment)' : value}`,
   );
-  console.log(`apply: ccmux restart ${local}   (the env recipe is read at launch)`);
+  console.log(`apply: stitchmux restart ${local}   (the env recipe is read at launch)`);
   return 0;
 }

@@ -1,19 +1,19 @@
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type { MachineConfig } from '../types.ts';
-import { HOME, IS_DEV, SELF_ARGV } from '../util/env.ts';
+import { HOME } from '../util/home.ts';
 
 /**
- * Where ccmux keeps everything — ONE module that knows the whole layout.
+ * Where stitchmux keeps everything — ONE module that knows the whole layout.
  *
  * Split by LIFETIME, not by topic, because the question people actually ask is "can I delete this?"
  * and the path should answer it by itself:
  *
- *   <config>/ccmux/   machine.json                      a human edits this
- *   <state>/ccmux/    sessions.jsonl, chat*, outbox*,   losing it costs real work
- *                     status/, ccmux.log, boot-attempts
- *   <data>/ccmux/     app/                              the running code; deleting it is not
+ *   <config>/stitchmux/   machine.json                      a human edits this
+ *   <state>/stitchmux/    sessions.jsonl, chat*, outbox*,   losing it costs real work
+ *                     status/, stitchmux.log, boot-attempts
+ *   <data>/stitchmux/     app/                              the running code; deleting it is not
  *                                                       recoverable BY this tool
- *   <cache>/ccmux/    staged/, releases/                one update command rebuilds it
+ *   <cache>/stitchmux/    staged/, releases/                one update command rebuilds it
  *
  * This replaces a layout where half the state sat as bare dotfiles in the home directory while the
  * rest lived under a private directory — and where the location was decided by a REQUIRED config
@@ -27,12 +27,12 @@ import { HOME, IS_DEV, SELF_ARGV } from '../util/env.ts';
  * A test run resolves these roots like any other process — and some tests delete what they find
  * there. `test/preload.ts` points every root at a private temporary home, but only when `bunfig.toml`
  * loads it, and a `bun test` started from another directory does not. That run once deleted the
- * operator's installed app. `bun test` sets `NODE_ENV=test`; the preload sets `CCMUX_TEST_HOME`.
+ * operator's installed app. `bun test` sets `NODE_ENV=test`; the preload sets `STITCHMUX_TEST_HOME`.
  * One without the other is a test run aimed at the real directories: refuse before any path exists.
  */
-if (process.env.NODE_ENV === 'test' && process.env.CCMUX_TEST_HOME === undefined)
+if (process.env.NODE_ENV === 'test' && process.env.STITCHMUX_TEST_HOME === undefined)
   throw new Error(
-    'ccmux paths were loaded by a test run without test/preload.ts — run `bun test` from the repository root',
+    'stitchmux paths were loaded by a test run without test/preload.ts — run `bun test` from the repository root',
   );
 
 /** An XDG root, or the platform default when the variable is unset or not absolute. */
@@ -41,45 +41,45 @@ function xdgRoot(envValue: string | undefined, fallback: string): string {
 }
 
 /** Durable: the registry, the chat ledger and its cursors, the outbox, per-session status, the log.
- *  `CCMUX_STATE_DIR` is the single knob an isolated instance flips to get its own. */
+ *  `STITCHMUX_STATE_DIR` is the single knob an isolated instance flips to get its own. */
 export const STATE_DIR: string =
-  process.env.CCMUX_STATE_DIR ??
-  join(xdgRoot(process.env.XDG_STATE_HOME, join(HOME, '.local', 'state')), 'ccmux');
+  process.env.STITCHMUX_STATE_DIR ??
+  join(xdgRoot(process.env.XDG_STATE_HOME, join(HOME, '.local', 'state')), 'stitchmux');
 
 /** Durable: the code itself. The bundle used to live in the cache root under the reasoning that
- *  losing it "costs exactly one `ccmux update`". That reasoning was wrong in a way only an incident
- *  makes obvious: `ccmux update` IS the deleted file, and the boot unit's ExecStart points at it too,
+ *  losing it "costs exactly one `stitchmux update`". That reasoning was wrong in a way only an incident
+ *  makes obvious: `stitchmux update` IS the deleted file, and the boot unit's ExecStart points at it too,
  *  so a wiped cache left a machine whose CLI could not run and whose daemon could not be restarted —
  *  alive only as an already-loaded process. A directory whose contract invites deletion must not hold
  *  the one artifact that deletion makes unrecoverable. */
 export const DEFAULT_DATA_DIR = join(
   xdgRoot(process.env.XDG_DATA_HOME, join(HOME, '.local', 'share')),
-  'ccmux',
+  'stitchmux',
 );
-export const DATA_DIR: string = process.env.CCMUX_DATA_DIR ?? DEFAULT_DATA_DIR;
+export const DATA_DIR: string = process.env.STITCHMUX_DATA_DIR ?? DEFAULT_DATA_DIR;
 
 /** Disposable: a locally staged build and downloaded releases. Both are re-derivable WITHOUT the
  *  tool being intact — a stage command or a fresh download — so deleting them really does cost
  *  nothing but time. */
 export const CACHE_DIR: string =
-  process.env.CCMUX_CACHE_DIR ??
-  join(xdgRoot(process.env.XDG_CACHE_HOME, join(HOME, '.cache')), 'ccmux');
+  process.env.STITCHMUX_CACHE_DIR ??
+  join(xdgRoot(process.env.XDG_CACHE_HOME, join(HOME, '.cache')), 'stitchmux');
 
 // ── data: the artifact ───────────────────────────────────────────────────────────────────────────
 
 /** The bundle and the routed programs laid down beside it (`boot/routedPrograms.ts`). */
 export const APP_DIR = join(DATA_DIR, 'app');
-/** The bundle the boot daemon and the `ccmux` command run; `ccmux update` swaps it atomically. */
-export const APP_BUNDLE = join(APP_DIR, 'ccmux.js');
+/** The bundle the boot daemon and the `stitchmux` command run; `stitchmux update` swaps it atomically. */
+export const APP_BUNDLE = join(APP_DIR, 'stitchmux.js');
 /** Stitchkit's Darwin native backend, where its loader looks relative to the bundle (`app/../native`). */
 export const NATIVE_BACKEND_DIR = join(DATA_DIR, 'native');
 
 // ── cache: what a download or a build can rebuild ────────────────────────────────────────────────
-/** A local dev build; `ccmux update` prefers it over a remote release ("test before publishing"). */
-export const STAGED_BUNDLE = join(CACHE_DIR, 'staged', 'ccmux.js');
+/** A local dev build; `stitchmux update` prefers it over a remote release ("test before publishing"). */
+export const STAGED_BUNDLE = join(CACHE_DIR, 'staged', 'stitchmux.js');
 /** A published release (bundle + manifest) the daemon pulls from the configured release URL. */
 export const RELEASES_DIR = join(CACHE_DIR, 'releases');
-export const RELEASE_BUNDLE = join(RELEASES_DIR, 'ccmux.js');
+export const RELEASE_BUNDLE = join(RELEASES_DIR, 'stitchmux.js');
 export const RELEASE_MANIFEST = join(RELEASES_DIR, 'release.json');
 
 // ── state: what must survive ─────────────────────────────────────────────────────────────────────
@@ -89,19 +89,6 @@ export const BOOT_ATTEMPTS = join(STATE_DIR, 'boot-attempts');
 /** Per-session structured status (agent hooks + statusLine tee): lifecycle, metrics, chat holds and
  *  launch stamps — so `list`/TUI read authoritative state instead of scraping the pane. */
 export const STATUS_DIR = join(STATE_DIR, 'status');
-/**
- * The machine's own record, and a run from a source checkout does not belong in it.
- *
- * State stays shared — a checkout run must see the real registry, sessions and locks — but the LOG
- * is a narrative of what happened on this machine, and a test suite is a different narrative.
- * Measured on a developer's machine: 16_199 of 18_724 records came from checkout runs, 86.5% of the
- * file. Every question answered from that log was answered about the wrong population, and counting
- * anything in it silently mixed a suite's fixtures with the daemon's history — the same defect as
- * any other quantity that answers about something other than what was asked.
- *
- * `ccmux logs` and `doctor` resolve this same constant, so a checkout reads what a checkout wrote.
- */
-export const LOG_FILE = join(STATE_DIR, IS_DEV ? 'ccmux.dev.log' : 'ccmux.log');
 
 /**
  * The state files a given MachineConfig points at.
@@ -135,7 +122,7 @@ export const routeStatePath = (m: MachineConfig): string => join(m.stateDir, 'ro
 export const outboxAckPath = (m: MachineConfig): string => join(m.stateDir, 'outbox-ack.jsonl');
 /** The session event feed — what HAPPENED, as opposed to what IS. Rotated like the log, because it
  *  is a stream with no natural end, and read by outside surfaces that must not have to know the
- *  file layout (that is what `ccmux events` is for). */
+ *  file layout (that is what `stitchmux events` is for). */
 export const eventsPath = (m: MachineConfig): string => join(m.stateDir, 'events.jsonl');
 /** Every `search` asked on this machine, who asked it and what came of it (`context/searchJournal.ts`). */
 export const searchJournalPath = (m: Pick<MachineConfig, 'stateDir'>): string =>
@@ -154,7 +141,7 @@ export const inventoryPath = (m: Pick<MachineConfig, 'stateDir'>): string =>
  *
  * It is here, on disk, because the fact it records is the one thing a single glance cannot supply.
  * A transcript's mtime is persisted, so any process can ask how long a session has been quiet; a
- * spinner is instantaneous, so a process that looks once sees only this moment. `ccmux wait` is a
+ * spinner is instantaneous, so a process that looks once sees only this moment. `stitchmux wait` is a
  * fresh process every time and its FIRST look is the dangerous one — no memory of its own can help
  * there, which is what makes this a written fact rather than a variable.
  */
@@ -178,16 +165,3 @@ export const archiveDir = (m: MachineConfig): string => join(m.stateDir, 'archiv
 
 export const chatAuthPath = (m: MachineConfig, sessionName: string): string =>
   join(m.stateDir, 'chat-auth', sessionName);
-
-// ── how this tool re-execs itself ────────────────────────────────────────────────────────────────
-
-/**
- * Installed boot units and PATH commands use the durable application root.
- * A source checkout keeps re-executing its source.
- */
-export function bootArgv(): readonly string[] {
-  if (IS_DEV) return SELF_ARGV;
-  const exec = process.execPath;
-  // A compiled single-file binary IS the thing to launch; under bun, the bundle is.
-  return basename(exec).toLowerCase() === 'bun' ? [exec, APP_BUNDLE] : [exec];
-}

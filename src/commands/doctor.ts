@@ -5,7 +5,7 @@ import { printLine } from '../util/stdout.ts';
 import { buildDoctorReport, type DoctorReport, sampleNames } from './doctorChecks.ts';
 import { parseFlags } from './flags.ts';
 
-/** `ccmux doctor`: one report, rendered as JSON or as text — never two sets of checks. */
+/** `stitchmux doctor`: one report, rendered as JSON or as text — never two sets of checks. */
 export async function cmdDoctor(args: string[]): Promise<number> {
   const flags = parseFlags('doctor', args, [0, 0]);
   const report = await buildDoctorReport(loadMachineConfig());
@@ -18,7 +18,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
 export function doctorText(r: DoctorReport): string[] {
   const out: string[] = [];
   const say = (line: string) => out.push(line);
-  say(`ccmux ${r.version}`);
+  say(`stitchmux ${r.version}`);
   say(`self:       ${r.self}`);
   say(`agent cli:  ${r.promptInvocation}`);
   // The three roots, named, because "where does this thing keep its files" used to be answerable
@@ -58,7 +58,9 @@ export function doctorText(r: DoctorReport): string[] {
     say(
       `chat:   PROBLEM — ${r.mutedChat.length} session(s) can receive but NOT send (started before the send capability existed): ${r.mutedChat.join(', ')}`,
     );
-    say(`        fix: ccmux restart ${r.mutedChat[0]}   (the capability is handed out at launch)`);
+    say(
+      `        fix: stitchmux restart ${r.mutedChat[0]}   (the capability is handed out at launch)`,
+    );
   }
   // Mail that is held rather than delivered is invisible from the sending side by construction: the
   // send succeeded, and everything after that happens on this machine. A stall therefore has to be
@@ -70,7 +72,7 @@ export function doctorText(r: DoctorReport): string[] {
     );
     for (const s of stuck) say(`        ${s.session} — ${s.reason}`);
     say(
-      '        the mail is not lost; nothing will move it until that condition clears. See: ccmux inbox <session>',
+      '        the mail is not lost; nothing will move it until that condition clears. See: stitchmux inbox <session>',
     );
   }
   for (const problem of r.chat.problems) say(`chat:   PROBLEM — ${problem}`);
@@ -78,7 +80,7 @@ export function doctorText(r: DoctorReport): string[] {
   // shorter than it is has stopped being one.
   if ((r.chat.unreadableRecords ?? 0) > 0) {
     say(
-      `chat:   ${r.chat.unreadableRecords} ledger record(s) this ccmux cannot read — written by a newer build.`,
+      `chat:   ${r.chat.unreadableRecords} ledger record(s) this stitchmux cannot read — written by a newer build.`,
     );
     say(
       '        Not an error and nothing is lost: they are stepped over, their positions kept, and this machine reads them once it is upgraded.',
@@ -123,7 +125,9 @@ export function doctorText(r: DoctorReport): string[] {
       '        into the supervisor and the launcher passed them to the agent — and to every process it spawns.',
     );
     say('        A restart now would take them away, so declare them first if they are needed:');
-    say('        fix: ccmux env-file --adopt --dry-run   (then without --dry-run, then restart)');
+    say(
+      '        fix: stitchmux env-file --adopt --dry-run   (then without --dry-run, then restart)',
+    );
     say('        Names only are shown here; values are never read into any diagnostic.');
   }
   if (r.atPrompt === null)
@@ -139,13 +143,13 @@ export function doctorText(r: DoctorReport): string[] {
   }
   if (!r.bundle.present) {
     say(
-      `bundle: PROBLEM — nothing at ${r.bundle.path}, which is what the boot unit and the 'ccmux' shim both launch.`,
+      `bundle: PROBLEM — nothing at ${r.bundle.path}, which is what the boot unit and the 'stitchmux' shim both launch.`,
     );
     say(
       '        A running daemon serves from memory, so the fleet looks healthy until something restarts it.',
     );
     say(
-      '        fix: ccmux update   (restores it), or reinstall: curl -fsSL <releaseUrl>/../install.sh | bash',
+      '        fix: stitchmux update   (restores it), or reinstall: curl -fsSL <releaseUrl>/../install.sh | bash',
     );
   }
   if (r.macos !== null) {
@@ -162,7 +166,7 @@ export function doctorText(r: DoctorReport): string[] {
         say(`tmux agent: ${ta.label} (active${pidPart})`);
       } else if (!ta.plistPresent) {
         say(
-          `tmux agent: PROBLEM — ${ta.label} plist missing (${ta.plistPath}); run 'ccmux install'`,
+          `tmux agent: PROBLEM — ${ta.label} plist missing (${ta.plistPath}); run 'stitchmux install'`,
         );
       } else if (ta.state !== 'active' && ta.serverPid !== null) {
         say(
@@ -170,7 +174,7 @@ export function doctorText(r: DoctorReport): string[] {
         );
       } else if (ta.responsibleMatchesApp === false) {
         say(
-          `tmux agent: PROBLEM — tmux pid ${ta.serverPid} is attributed to pid ${ta.responsiblePid}, not ccmux.app`,
+          `tmux agent: PROBLEM — tmux pid ${ta.serverPid} is attributed to pid ${ta.responsiblePid}, not stitchmux.app`,
         );
       } else {
         say(`tmux agent: PROBLEM — ${ta.label} is ${ta.state}`);

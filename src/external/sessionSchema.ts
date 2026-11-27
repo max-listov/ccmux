@@ -8,7 +8,7 @@ import { ExternalTurnStateSchema } from './turnSchema.ts';
  * has one schema; its type is `z.infer` of it.
  */
 
-// Provider-neutral inventory row for a conversation that exists outside ccmux's registry.
+// Provider-neutral inventory row for a conversation that exists outside stitchmux's registry.
 // Discovery reports evidence and capabilities separately: a stored rollout is not proof that a
 // writer is live, and a writer lock is not proof that a transcript has been persisted yet.
 export const ExternalOriginSchema = z.enum([

@@ -1,7 +1,7 @@
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import type { OpenCodeClient } from '../agent/opencode/server.ts';
 import { OpenCodeToolFieldsSchema } from '../agent/opencode/toolObservation.ts';
+import { refusals } from '../control/schema/refusals.ts';
 
 const Id = z.string().min(1).max(256);
 const MessageSchema = z.object({
@@ -36,10 +36,7 @@ const CursorSchema = z
 type Message = z.infer<typeof MessageSchema>;
 
 function invalidCursor(): never {
-  throw new AppError('HISTORY_CURSOR', {
-    message: 'Native history cursor is no longer current',
-    status: 409,
-  });
+  throw refusals.errors.HISTORY_CURSOR({ message: 'Native history cursor is no longer current' });
 }
 
 function parseCursor(value: string): z.infer<typeof CursorSchema> {

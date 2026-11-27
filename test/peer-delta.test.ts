@@ -33,7 +33,7 @@ function answer(seconds: number, step = 'idle'): ListJson {
     version: '1.0.0',
     generatedAt: new Date(seconds * 1000).toISOString(),
     rcPrefix: 'host-b',
-    stateDir: '~/.local/state/ccmux',
+    stateDir: '~/.local/state/stitchmux',
     release: null,
     sessions: ['agent-a', 'agent-b', 'agent-c'].map((name, index) =>
       session(name, seconds + index, name === 'agent-b' ? step : 'idle'),
@@ -74,7 +74,7 @@ test('an answer naming a row the reader never held is refused, not filled in', (
   expect(expandPeerList(lying, {})).toBeNull();
   expect(peerListMachine('host-b', 'remote', received(JSON.stringify(lying)))).toMatchObject({
     ok: false,
-    error: 'unreadable list output (older ccmux?)',
+    error: 'unreadable list output (older stitchmux?)',
   });
 });
 

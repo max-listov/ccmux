@@ -9,7 +9,7 @@ import type { PlanLimits } from '../runtime/planLimitsSchema.ts';
 import type { NativeAccount } from '../runtime/projectionSchema.ts';
 import { readMetricsFile } from '../session/metricsFile.ts';
 import type { MachineConfig, Session } from '../types.ts';
-import { HOME } from '../util/env.ts';
+import { HOME } from '../util/home.ts';
 import { discoverTargets, type QuotaTarget } from './discover.ts';
 import { type QuotaRecord, readQuotaRecord } from './store.ts';
 

@@ -13,7 +13,7 @@ test('pane input cannot interleave with the classified chat paste+Enter queue', 
   const tmuxBin = Bun.which('tmux');
   if (tmuxBin === null)
     throw new Error('tmux is required for the chat input-gate integration test');
-  const m = makeMachine({ tmuxBin, tmuxSocket: `ccmux-chat-gate-${process.pid}` });
+  const m = makeMachine({ tmuxBin, tmuxSocket: `stitchmux-chat-gate-${process.pid}` });
   const name = 'agent-b';
   Bun.spawnSync(tmuxArgv(m, 'new-session', '-d', '-s', name, 'sh'));
   try {

@@ -27,6 +27,7 @@ import { wakeSleepingSession } from '../session/sleep/operations.ts';
 import { readSleep } from '../session/sleep/store.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { type ControlMessage, ControlMessageSchema } from './schema/message.ts';
+import { refusals } from './schema/refusals.ts';
 import { currentSelection, validateTurnOptions } from './selection.ts';
 import { controlTarget } from './target.ts';
 
@@ -63,9 +64,8 @@ export async function acceptControlMessage(
           input.registrationGeneration !== undefined &&
           input.registrationGeneration !== session.registrationGeneration
         )
-          throw new AppError('IDENTITY_MISMATCH', {
+          throw refusals.errors.IDENTITY_MISMATCH({
             message: 'The exact managed registration is unavailable',
-            status: 409,
           });
         // Attributed input pins the registration it addresses for native sessions so a human's
         // message cannot land on a replaced native runtime. Ordinary TUI panes now receive
@@ -78,16 +78,14 @@ export async function acceptControlMessage(
           session.registrationGeneration !== undefined &&
           input.registrationGeneration === undefined
         )
-          throw new AppError('VALIDATION_ERROR', {
+          throw refusals.errors.VALIDATION_ERROR({
             message: 'Attributed input requires registration generation',
-            status: 400,
           });
         const notification = input.notification ?? 'conversation';
         const origin = admitMessageOrigin(m, from, input.origin, notification);
         if (!chatEnabledFor(session, m) || !supportsManagedInput(session)) {
-          throw new AppError('CHAT_DISABLED', {
+          throw refusals.errors.CHAT_DISABLED({
             message: 'Target cannot receive managed messages',
-            status: 409,
           });
         }
         const fingerprint = createHash('sha256').update(stableJson(input)).digest('hex');
@@ -109,9 +107,8 @@ export async function acceptControlMessage(
               ? prior.controlFingerprint !== fingerprint
               : input.images.length > 0 || input.options !== undefined)
           ) {
-            throw new AppError('IDEMPOTENCY_CONFLICT', {
+            throw refusals.errors.IDEMPOTENCY_CONFLICT({
               message: 'Message ID already belongs to a different request',
-              status: 409,
             });
           }
           if (hasNativeRuntime(session)) advanceMessageOperation(m, session, prior.id, 'queued');
@@ -152,24 +149,19 @@ export async function acceptControlMessage(
         if (hasNativeRuntime(session)) {
           const sleeping = readSleep(m, session);
           if (sleeping !== null && sleeping.phase !== 'awake')
-            throw new AppError('SESSION_SLEEPING', {
+            throw refusals.errors.SESSION_SLEEPING({
               message: 'Session must wake before input admission',
-              status: 409,
             });
         }
         if (!hasNativeRuntime(session) && (input.images.length > 0 || input.options !== undefined))
-          throw new AppError('UNSUPPORTED', {
+          throw refusals.errors.UNSUPPORTED({
             message: 'This runtime cannot accept structured turn input',
-            status: 409,
           });
         // A declared capability nobody checks is worse than no capability: images were admitted for
         // every native runtime, pinned, receipted as accepted, and then dropped by a runtime that
         // never reads them. The caller saw success and the model never saw the image.
         if (input.images.length > 0 && !runtimeCapabilities(session).imageInput)
-          throw new AppError('UNSUPPORTED', {
-            message: 'This runtime cannot accept image input',
-            status: 409,
-          });
+          throw refusals.errors.UNSUPPORTED({ message: 'This runtime cannot accept image input' });
         if (delegationStopped(m, session)) delegationRefused('Delegated work has ended');
         if (hasNativeRuntime(session)) assertNoContextMutation(m, session);
         const selection = hasNativeRuntime(session)
@@ -234,9 +226,8 @@ export async function acceptControlMessage(
                 signal,
               );
         if (!appended)
-          throw new AppError('IDEMPOTENCY_CONFLICT', {
+          throw refusals.errors.IDEMPOTENCY_CONFLICT({
             message: 'Message identity changed during acceptance; reconcile before retry',
-            status: 409,
           });
         return {
           messageId: envelope.id,

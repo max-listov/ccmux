@@ -102,7 +102,7 @@ test('a spine process protected further on purpose keeps its value; a lack of pr
   expect(() => applyOomPriority(oomPlan(table, 100), -300, refused)).toThrow('denied');
 });
 
-const root = mkdtempSync(join(tmpdir(), 'ccmux-proc-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-proc-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 test('the table is read from /proc: parent links, and the pane runners among interpreters', () => {
@@ -120,11 +120,11 @@ test('the table is read from /proc: parent links, and the pane runners among int
   proc(210, 'bun', 200, [
     '/b/bun',
     '--no-env-file',
-    '/h/.local/share/ccmux/app/ccmux.js',
+    '/h/.local/share/stitchmux/app/stitchmux.js',
     '_run',
     'agent-a',
   ]);
-  proc(211, 'bun', 1, ['/b/bun', '/h/.local/share/ccmux/app/ccmux.js', 'daemon']);
+  proc(211, 'bun', 1, ['/b/bun', '/h/.local/share/stitchmux/app/stitchmux.js', 'daemon']);
   proc(220, 'claude', 210, ['claude', '--resume', 'x']);
   mkdirSync(join(root, 'self'));
   const read = readProcTable([200, 211], root);
@@ -144,7 +144,7 @@ test('the table is read from /proc: parent links, and the pane runners among int
 });
 
 test('task children include forks from worker threads; host entries outside roots are excluded', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-scoped-proc-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-scoped-proc-'));
   try {
     for (const [pid, parent] of [
       [100, 1],

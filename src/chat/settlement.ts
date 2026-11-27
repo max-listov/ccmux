@@ -144,7 +144,7 @@ export function pendingMessage(
 /**
  * One sentence for a delivery pass that threw, in the recipient's hold.
  *
- * A pass that fails is a hold like any other, and recording it is what keeps `ccmux inbox` honest:
+ * A pass that fails is a hold like any other, and recording it is what keeps `stitchmux inbox` honest:
  * with no live reason on record it falls back to "queued — the daemon delivers it (check the daemon
  * is running)", sending whoever waits on the mail to inspect the one component that is healthy. A
  * repeating failure is the case that most needs a name, because it is the one that never clears on

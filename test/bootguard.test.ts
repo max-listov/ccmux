@@ -10,8 +10,8 @@ import {
 } from '../src/util/bootGuard.ts';
 
 function sandbox(): { counter: string; app: string; bak: string } {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-guard-'));
-  const app = join(dir, 'ccmux.js');
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-guard-'));
+  const app = join(dir, 'stitchmux.js');
   writeFileSync(app, 'BAD-CURRENT'); // pretend the live bundle is the crash-looping one
   writeFileSync(`${app}.bak`, 'GOOD-PREVIOUS');
   return { counter: join(dir, 'boot-attempts'), app, bak: `${app}.bak` };
@@ -44,8 +44,8 @@ test('a successful pass clears the counter — the crash budget resets', () => {
 });
 
 test("no .bak → does NOT revert (can't make things worse), clears to avoid a dead loop", () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-guard-nobak-'));
-  const app = join(dir, 'ccmux.js');
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-guard-nobak-'));
+  const app = join(dir, 'stitchmux.js');
   writeFileSync(app, 'CURRENT');
   const counter = join(dir, 'boot-attempts');
   let r: 'ok' | 'revert' = 'ok';

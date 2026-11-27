@@ -22,7 +22,7 @@ const { mountAgent }: typeof import('stitchkit/tools/agent') = await import(
 const version = z
   .object({ version: z.string() })
   .parse(JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'))).version;
-const root = await mkdtemp(join(tmpdir(), 'ccmux-file-platform-'));
+const root = await mkdtemp(join(tmpdir(), 'stitchmux-file-platform-'));
 const observations: { probe: string; passed: boolean; evidence: unknown }[] = [];
 const diagnostics: { probe: string; supported: boolean; evidence: unknown }[] = [];
 function record(probe: string, passed: boolean, evidence: unknown) {

@@ -1,8 +1,7 @@
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../../../control/schema/refusals.ts';
 import { hasNativeRuntime } from '../../../runtime/modes.ts';
-
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../../runtime/status.ts';
 import { privateRuntimeDirectory, readPrivateJson } from '../../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
@@ -63,9 +62,8 @@ export async function writeClaudeCommands(
 
 export function readClaudeCommands(m: MachineConfig, session: Session): ControlCommand[] {
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'This runtime does not expose a command catalog',
-      status: 409,
     });
   const prepared = readPrivateJson(path(m, session), PreparedSchema, MAX_BYTES);
   if (
@@ -73,10 +71,7 @@ export function readClaudeCommands(m: MachineConfig, session: Session): ControlC
     prepared.registrationGeneration !== session.registrationGeneration ||
     readManagedRuntimeStatus(m, session).status !== 'live'
   )
-    throw new AppError('UNAVAILABLE', {
-      message: 'Native runtime command catalog is unavailable',
-      status: 503,
-    });
+    throw refusals.errors.UNAVAILABLE({ message: 'Native runtime command catalog is unavailable' });
   return prepared.commands;
 }
 

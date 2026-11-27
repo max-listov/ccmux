@@ -2,7 +2,7 @@
  * Writing to a component owner who is not on this fleet.
  *
  * The route is a person, and that is the design rather than a shortcoming: one hop through a human
- * is cheaper than integrating with somebody else's product, and ccmux is not that product's
+ * is cheaper than integrating with somebody else's product, and stitchmux is not that product's
  * transport. What was missing is that the hop was **unwritten** — no record, no reply address, and
  * no way to ask what has not come back. So the hop stays, and everything around it is made real:
  *
@@ -119,6 +119,6 @@ export function courierNote(
   return (
     `To ${name} — outside the fleet, reached through you.\nwhere: ${where}${forTask}\n\n${body}\n\n` +
     `When they answer, record it so the sender is told and the letter stops waiting:\n` +
-    `  ccmux relay ${externalAddress(name)}${task === null ? '' : ` --task ${task}`} "<their answer>"`
+    `  stitchmux relay ${externalAddress(name)}${task === null ? '' : ` --task ${task}`} "<their answer>"`
   );
 }

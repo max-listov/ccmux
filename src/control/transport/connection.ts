@@ -24,7 +24,7 @@ export function createControlConnection(options: ControlClientOptions) {
   const config = ControlClientOptionsSchema.parse(options);
   const headers: Record<string, string> = {};
   if (config.session && config.credential) {
-    headers['x-ccmux-session'] = config.session;
+    headers['x-stitchmux-session'] = config.session;
     headers.authorization = `Bearer ${config.credential}`;
   }
   const path = machineConfigPath();
@@ -48,7 +48,7 @@ export function createControlConnection(options: ControlClientOptions) {
   let stream: ReturnType<typeof createHttpClient> | undefined;
   return {
     http: createHttpClient({
-      baseUrl: 'http://ccmux.local',
+      baseUrl: 'http://stitchmux.local',
       fetch: unary.fetch,
       timeout: config.timeoutMs,
       retry: { limit: 0 },
@@ -61,7 +61,7 @@ export function createControlConnection(options: ControlClientOptions) {
         responseBodyMode: 'streaming',
       });
       stream ??= createHttpClient({
-        baseUrl: 'http://ccmux.local',
+        baseUrl: 'http://stitchmux.local',
         fetch: streaming.fetch,
         timeout: config.timeoutMs,
         retry: { limit: 0 },

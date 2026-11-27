@@ -21,8 +21,8 @@ const baselineBundle = Bun.argv
   ?.slice(11);
 if (!Number.isFinite(duration) || duration < 1 || !output)
   throw new Error('usage: bun scripts/daemon-idle-bench.ts <seconds> <output.json>');
-const root = mkdtempSync(join(tmpdir(), 'ccmux-daemon-bench-'));
-const socket = `ccmux-bench-${crypto.randomUUID()}`;
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-daemon-bench-'));
+const socket = `stitchmux-bench-${crypto.randomUUID()}`;
 const tmux = Bun.which('tmux');
 if (!tmux) throw new Error('tmux required');
 const machine = MachineConfigSchema.parse({
@@ -104,11 +104,11 @@ for (const id of externalIds) {
 const provider = createDaemonBenchProvider(machine.codexHome ?? '', externalIds);
 const env = {
   ...process.env,
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: root,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
-  CCMUX_DATA_DIR: join(root, 'data'),
-  CCMUX_RC_PREFIX: machine.rcPrefix,
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: root,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_DATA_DIR: join(root, 'data'),
+  STITCHMUX_RC_PREFIX: machine.rcPrefix,
 };
 const invoke = (...args: string[]) => {
   const result = Bun.spawnSync([tmux, '-L', socket, ...args], {

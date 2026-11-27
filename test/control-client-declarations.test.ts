@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { normalizeClientDeclarations } from '../scripts/client-declarations.ts';
 
 test('packed ESM types resolve file and directory imports and preserve literal types', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'ccmux-client-types-'));
+  const root = await mkdtemp(join(tmpdir(), 'stitchmux-client-types-'));
   try {
     const path = join(root, 'client.d.ts');
     await mkdir(join(root, 'dir'));
@@ -29,7 +29,7 @@ test('packed ESM types resolve file and directory imports and preserve literal t
 });
 
 test('an unresolved relative type prevents publication', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'ccmux-missing-types-'));
+  const root = await mkdtemp(join(tmpdir(), 'stitchmux-missing-types-'));
   try {
     await Bun.write(join(root, 'client.d.ts'), "export type { Unknown } from './missing.ts';");
     await expect(normalizeClientDeclarations(root)).rejects.toThrow(

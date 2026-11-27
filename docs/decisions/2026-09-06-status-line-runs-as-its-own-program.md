@@ -9,9 +9,9 @@ updated: 2026-09-29 07:40 +0700
 
 # Decision
 
-`ccmux status-line` is compiled from the same source into a separate small program, carried inside
+`stitchmux status-line` is compiled from the same source into a separate small program, carried inside
 the bundle, written beside it on the same convergence that writes the PATH shim, and reached by a
-route in that shim. `ccmux _peer-read` — the relay another machine runs on every fleet read — is
+route in that shim. `stitchmux _peer-read` — the relay another machine runs on every fleet read — is
 routed the same way. The routed verbs are one table, `src/boot/routedPrograms.ts`, from which the
 build, the installation and the shim are all derived; a verb earns a row only by the measurement
 below. The program is required: its absence fails the command, never routes it through the bundle. Installation materializes the embedded program
@@ -48,13 +48,13 @@ between the relay and the parse of a bundle it never uses.
 ours, needed on every machine, and an asset is one more thing to download, verify, version and be
 missing. It travels in the bundle, so a machine that has the bundle has the program.
 
-**Not a bytecode build of the whole bundle.** That would have made every ccmux invocation cheaper
+**Not a bytecode build of the whole bundle.** That would have made every stitchmux invocation cheaper
 with no new file and no routing at all, which is strictly better if it works. It does not: bytecode
 requires a CommonJS build, and `yoga-layout` — Ink's layout engine, reached through the TUI — does
 not survive that transform. Ruled out by building it, not by argument.
 
 **Not a change to what each session is told.** The command injected into a managed session's
-settings is `ccmux status-line`, where `ccmux` is the PATH shim. Teaching the shim reaches every
+settings is `stitchmux status-line`, where `stitchmux` is the PATH shim. Teaching the shim reaches every
 existing session at once, rewrites no session's settings, and needs no migration.
 
 # Boundaries

@@ -106,7 +106,7 @@ export async function whoisFleet(
         await ask(
           m,
           peer,
-          ['ccmux', 'whois', '--local', '--json', '--', query],
+          ['stitchmux', 'whois', '--local', '--json', '--', query],
           (stdout): MachineWhois => {
             const answer = WhoisAnswerSchema.parse(JSON.parse(stdout));
             return { candidates: answer.candidates, conversation: answer.conversation };
@@ -148,7 +148,7 @@ export async function whoisAll(
         await ask(
           m,
           peer,
-          ['ccmux', 'whois', '--local', '--all', '--json'],
+          ['stitchmux', 'whois', '--local', '--all', '--json'],
           (stdout) => WhoisListSchema.parse(JSON.parse(stdout)).sessions,
           opts.runPeer,
         ),
@@ -177,7 +177,7 @@ async function peerIdentities(
     await ask(
       m,
       peer,
-      ['ccmux', '_peer-read', 'identities', ...held.knownArgs],
+      ['stitchmux', '_peer-read', 'identities', ...held.knownArgs],
       (stdout) => {
         const answer = PeerIdentitiesSchema.parse(JSON.parse(stdout));
         const rows = unpack(answer.sessions, held.rows);

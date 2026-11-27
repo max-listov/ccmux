@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { AppError } from 'stitchkit';
 import { inspectNativeCodexInput } from '../../agent/codex/pane.ts';
 import { providerFor } from '../../agent/index.ts';
 import { stableJson } from '../../agent/launch/launchInputs.ts';
@@ -7,9 +6,12 @@ import { loadAcks } from '../../chat/ackLog.ts';
 import { loadCursors } from '../../chat/cursors.ts';
 import { managedPeer, managedPeerKey, sameTarget } from '../../chat/identity.ts';
 import { loadLedger } from '../../chat/ledger.ts';
+import { recentPaneSubmission } from '../../chat/paneSubmission.ts';
 import { isDue, letterState } from '../../chat/settlement.ts';
 import { readTurnState } from '../../chat/turnProgress.ts';
+import { SETTLE_MS } from '../../chat/turnState.ts';
 import { contextMutationPending } from '../../context/store.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import { delegationStopped } from '../../delegation/cancel.ts';
 import {
   isDescendantProcess,
@@ -175,9 +177,8 @@ export async function idleProof(
   options: IdleProofOptions = {},
 ): Promise<IdleProof> {
   if (s.registrationGeneration === undefined) {
-    throw new AppError('REGISTRATION_UNAVAILABLE', {
+    throw refusals.errors.REGISTRATION_UNAVAILABLE({
       message: `Session '${s.name}' has no registrationGeneration; backfill before sleep`,
-      status: 409,
     });
   }
   const now = options.now ?? Date.now();
@@ -295,17 +296,26 @@ export async function idleProof(
     }
 
     // Non-delegated Codex app-server keeps an interactive terminal pane (`codex resume --remote`).
-    let terminalIssue: 'auxiliary-panes' | 'pane-busy' | 'client-typing' | null = null;
+    // Fail-closed like the TUI branch: a terminal tmux cannot list or capture is not proven idle.
+    let terminalIssue:
+      | 'auxiliary-panes'
+      | 'pane-busy'
+      | 'client-typing'
+      | 'terminal-unavailable'
+      | null = null;
     if (s.delegation === undefined && s.agent === 'codex') {
       const panes = await listSessionPanes(m, s.name, options.signal);
-      if (panes !== null && panes.length > 0) {
-        if (panes.length > 1) {
-          terminalIssue = 'auxiliary-panes';
-        } else if (await clientTypingRecently(m, s.name, typingWindowSec)) {
+      if (panes === null) {
+        terminalIssue = 'terminal-unavailable';
+      } else if (panes.length > 1) {
+        terminalIssue = 'auxiliary-panes';
+      } else if (panes.length === 1) {
+        if (await clientTypingRecently(m, s.name, typingWindowSec)) {
           terminalIssue = 'client-typing';
         } else {
           const styled = await capturePaneStyled(m, s.name, 40);
-          if (styled !== '' && inspectNativeCodexInput(styled).state !== 'deliverable') {
+          if (styled === '') terminalIssue = 'terminal-unavailable';
+          else if (inspectNativeCodexInput(styled).state !== 'deliverable') {
             terminalIssue = 'pane-busy';
           }
         }
@@ -372,7 +382,7 @@ export async function idleProof(
       reason: 'owner-unavailable',
       pending,
       runtimeInput: null,
-      approvals: 0,
+      approvals: null,
       children,
       background: null,
       processes: [],
@@ -391,7 +401,7 @@ export async function idleProof(
       reason: 'owner-unavailable',
       pending,
       runtimeInput: null,
-      approvals: 0,
+      approvals: null,
       children,
       background: null,
       processes: [],
@@ -454,7 +464,9 @@ export async function idleProof(
               ? 'waiting-on-peer'
               : typing
                 ? 'client-typing'
-                : pending.length > 0 || pickupActive
+                : pending.length > 0 ||
+                    pickupActive ||
+                    recentPaneSubmission(m, s, SETTLE_MS, now) !== null
                   ? 'queued-input'
                   : children.length > 0
                     ? 'owned-children'

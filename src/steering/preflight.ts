@@ -19,7 +19,7 @@ export function steeringTarget(m: MachineConfig, input: SteeringSelector, mutate
   if (session.registrationGeneration !== input.registrationGeneration)
     return steeringFailure('IDENTITY_MISMATCH');
   if (!isOwnedCodex(session)) return steeringFailure('UNSUPPORTED');
-  if (mutate && session.archived) return steeringFailure('UNAVAILABLE');
+  if (mutate && session.archived) return steeringFailure('ARCHIVED');
   return session;
 }
 
@@ -44,7 +44,7 @@ export function requireSteeringTurn(
     state.snapshot.turn.status !== 'inProgress' ||
     state.snapshot.pendingRequests.length > 0
   )
-    steeringFailure('BUSY');
+    steeringFailure('NOT_IDLE');
 }
 
 /** A direct read narrows the projection race; expectedTurnId remains the actual atomic precondition. */
@@ -62,7 +62,7 @@ export async function requireNativeSteeringTurn(
     );
   if (response.thread.id !== input.target.threadId) return steeringFailure('IDENTITY_MISMATCH');
   if (response.thread.status.type !== 'active' || response.thread.status.activeFlags.length !== 0)
-    return steeringFailure('BUSY');
+    return steeringFailure('NOT_IDLE');
 }
 
 /** Future defaults cannot establish the active turn's modality, including an interactive override. */

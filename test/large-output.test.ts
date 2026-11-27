@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
  * that asserted the loss passed where the bug lives and failed where it does not, which is exactly
  * backwards.
  *
- * This is the shape of the defect it exists against: `ccmux transcript --json` returned exactly
+ * This is the shape of the defect it exists against: `stitchmux transcript --json` returned exactly
  * 65536 bytes of a longer document, with exit 0 and an empty stderr, so the only way to learn the
  * answer was cut was to fail parsing it. The cause is not in the command — it is that the writer
  * ends while bytes are still queued, and whether that happens depends on the process's module

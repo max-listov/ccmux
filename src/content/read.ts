@@ -1,8 +1,8 @@
 import { type FSWatcher, watch } from 'node:fs';
 import { basename, dirname } from 'node:path';
-import { AppError } from 'stitchkit';
 import { type BoundedChannel, createBoundedChannel } from 'stitchkit/application';
 import { ownedCodexStatusPath } from '../agent/codex/owned/paths.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { readPrivateJson } from '../runtime/store.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -58,7 +58,7 @@ export function readContent(
     snapshot.registrationGeneration !== (session.registrationGeneration ?? null) ||
     snapshot.nativeId !== (session.nativeSession?.id ?? session.uuid)
   )
-    throw new AppError('UNAVAILABLE', { message: 'Native content is unavailable', status: 503 });
+    throw refusals.errors.UNAVAILABLE({ message: 'Native content is unavailable' });
   const runtime = readManagedRuntimeStatus(m, session);
   const live = runtime.status === 'live' && runtime.snapshot?.generation === snapshot.generation;
   const frame = contentFrame(snapshot, cursor);
@@ -82,7 +82,7 @@ export async function* subscribeContent(
 ): AsyncIterable<ContentRead> {
   signal.throwIfAborted();
   if (readers >= CONTENT_MAX_READERS)
-    throw new AppError('BUSY', { message: 'Native content subscriber limit reached', status: 429 });
+    throw refusals.errors.BUSY({ message: 'Native content subscriber limit reached' });
   const path = contentPath(m, session);
   let group = groups.get(path);
   if (group === undefined) {
@@ -116,10 +116,7 @@ export async function* subscribeContent(
       }
     } catch {
       for (const watcher of watchers) watcher.close();
-      throw new AppError('UNAVAILABLE', {
-        message: 'Native content notifications unavailable',
-        status: 503,
-      });
+      throw refusals.errors.UNAVAILABLE({ message: 'Native content notifications unavailable' });
     }
     group = { watchers, readers: peers, expiry: setInterval(notify, 1_000) };
     groups.set(path, group);

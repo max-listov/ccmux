@@ -2,25 +2,15 @@ import { z } from 'zod';
 import { RC_PREFIX_RE } from '../chat/identitySchema.ts';
 
 const path = z.string().startsWith('/');
-const route = {
+
+/** The machine's route to its peers: the Stitchwire agent on this machine. */
+export const RemoteTransportSchema = z.strictObject({
+  kind: z.literal('stitchwire'),
   peers: z.array(z.string().regex(RC_PREFIX_RE)).default([]),
   trustedAncestor: z
     .strictObject({ executable: path, argument: z.string().min(1).max(128) })
     .optional(),
-};
-
-export const RemoteTransportSchema = z.union([
-  z.strictObject({
-    ...route,
-    kind: z.literal('stitchwire'),
-    agentSocket: path.optional(),
-    /** Directory for ccmux.control's descriptor, declaration and operator-supplied callers. */
-    serviceDirectory: path.optional(),
-  }),
-  // A separately supplied implementation of the public generic adapter contract.
-  z.strictObject({ ...route, socket: path.optional() }),
-]);
-
-export function stitchwireRoute(config: z.output<typeof RemoteTransportSchema> | undefined) {
-  return config && 'kind' in config ? config : undefined;
-}
+  agentSocket: path.optional(),
+  /** Directory for stitchmux.control's descriptor, declaration and operator-supplied callers. */
+  serviceDirectory: path.optional(),
+});

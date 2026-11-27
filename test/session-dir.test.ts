@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-session-dir-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-session-dir-'));
   roots.push(root);
   const m = makeMachine({ stateDir: join(root, 'state'), projectsDir: join(root, 'projects') });
   const before = join(root, 'project');

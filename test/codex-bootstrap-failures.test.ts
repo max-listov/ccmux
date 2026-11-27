@@ -60,7 +60,7 @@ function fakeCodex(
 }
 
 async function runFailure(mode: FailureMode): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), `ccmux-codex-${mode}-`));
+  const root = mkdtempSync(join(tmpdir(), `stitchmux-codex-${mode}-`));
   const work = join(root, 'work');
   const stateDir = join(root, 'state');
   const codexHome = join(root, 'codex-home');
@@ -76,13 +76,13 @@ async function runFailure(mode: FailureMode): Promise<void> {
     claudeBin: '/bin/sh',
     codexBin: fake,
     tmuxBin,
-    tmuxSocket: `ccmux-codex-${mode}-${process.pid}`,
+    tmuxSocket: `stitchmux-codex-${mode}-${process.pid}`,
     projectsDir: join(root, 'claude-projects'),
     codexHome,
     codexSessionsDir,
     stateDir,
     rcPrefix: 'host-a',
-    bootLabel: 'ccmux-probe.service',
+    bootLabel: 'stitchmux-probe.service',
     remoteControl: false,
     autoUpdate: false,
     // Short only where the timeout IS the subject. The other two modes stage a specific failure —
@@ -94,9 +94,9 @@ async function runFailure(mode: FailureMode): Promise<void> {
   writeFileSync(configPath, `${JSON.stringify(machine)}\n`);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = configPath;
-  env.CCMUX_STATE_DIR = stateDir;
-  env.CCMUX_CACHE_DIR = join(root, 'cache');
+  env.STITCHMUX_CONFIG = configPath;
+  env.STITCHMUX_STATE_DIR = stateDir;
+  env.STITCHMUX_CACHE_DIR = join(root, 'cache');
   env.CODEX_HOME = codexHome;
 
   try {
@@ -109,7 +109,7 @@ async function runFailure(mode: FailureMode): Promise<void> {
     const stdout = new Response(proc.stdout).text();
     const stderr = new Response(proc.stderr).text();
     expect(await proc.exited).toBe(1);
-    const logPath = join(stateDir, 'ccmux.log');
+    const logPath = join(stateDir, 'stitchmux.log');
     const stateLog = existsSync(logPath) ? readFileSync(logPath, 'utf8') : '';
     const output = `${await stdout}\n${await stderr}\n${stateLog}`;
     expect(output).toContain(
@@ -176,7 +176,7 @@ test(
 test(
   'bootstrap performs exact-generation cleanup even when no initiating CLI is alive',
   async () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-orphan-bootstrap-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-orphan-bootstrap-'));
     const work = join(root, 'work');
     const stateDir = join(root, 'state');
     const codexHome = join(root, 'codex-home');
@@ -193,13 +193,13 @@ test(
       claudeBin: '/bin/sh',
       codexBin: fake,
       tmuxBin,
-      tmuxSocket: `ccmux-codex-orphan-${process.pid}`,
+      tmuxSocket: `stitchmux-codex-orphan-${process.pid}`,
       projectsDir: join(root, 'claude-projects'),
       codexHome,
       codexSessionsDir,
       stateDir,
       rcPrefix: 'host-a',
-      bootLabel: 'ccmux-probe.service',
+      bootLabel: 'stitchmux-probe.service',
       remoteControl: false,
       autoUpdate: false,
       // The child crashes; the budget is not the subject, for the reason `runFailure` gives. This
@@ -213,7 +213,7 @@ test(
       machine,
       PendingSessionSchema.parse({
         generation,
-        marker: `ccmux_${generation}`,
+        marker: `stitchmux_${generation}`,
         operation: { kind: 'create' },
         session: { name: 'agent-a', dir: work, agent: 'codex', flags: [] },
         createdAt: '2026-08-10T00:00:00.000Z',
@@ -223,9 +223,9 @@ test(
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env))
       if (value !== undefined) env[key] = value;
-    env.CCMUX_CONFIG = configPath;
-    env.CCMUX_STATE_DIR = stateDir;
-    env.CCMUX_CACHE_DIR = join(root, 'cache');
+    env.STITCHMUX_CONFIG = configPath;
+    env.STITCHMUX_STATE_DIR = stateDir;
+    env.STITCHMUX_CACHE_DIR = join(root, 'cache');
     env.CODEX_HOME = codexHome;
 
     try {

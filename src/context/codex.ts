@@ -1,9 +1,9 @@
-import { AppError } from 'stitchkit';
 import type { CodexControlClient } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
 import type { CodexRpcEvent } from '../agent/codex/owned/rpc.ts';
 import { CodexToolFieldsSchema, codexToolObservation } from '../agent/codex/toolObservation.ts';
 import { toolHistoryStatus } from '../content/toolSchema.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { boundedHistoryPage, historyCursor, historyImageReferences } from './history.ts';
 import type { NativeContextApi } from './pump.ts';
@@ -22,9 +22,8 @@ async function contextRequest<T>(
 ): Promise<T> {
   signal.throwIfAborted();
   if (pendingRequests.has(controls))
-    throw new AppError('CONTEXT_RPC_PENDING', {
+    throw refusals.errors.CONTEXT_RPC_PENDING({
       message: 'A native context request is still pending',
-      status: 409,
     });
   const reply = run();
   pendingRequests.set(controls, reply);

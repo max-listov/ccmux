@@ -80,7 +80,7 @@ export function resolveRole(
     // reader back to guessing from the same names that misled them.
     const known =
       declared.length === 0
-        ? `nothing there declares a role yet; declare one with: ccmux role ${label}<session> ${want}`
+        ? `nothing there declares a role yet; declare one with: stitchmux role ${label}<session> ${want}`
         : `roles declared there: ${declared.map((r) => `${ROLE_SIGIL}${r}`).join(', ')}`;
     return { error: `no session matches role '${ROLE_SIGIL}${want}' on ${where} — ${known}` };
   }
@@ -89,6 +89,6 @@ export function resolveRole(
   return {
     error:
       `role '${ROLE_SIGIL}${want}' matches ${matches.length} sessions — refusing to choose one.\n${lines}\n` +
-      `Address the one you mean by name, or give them distinct roles: ccmux role <session> <role>`,
+      `Address the one you mean by name, or give them distinct roles: stitchmux role <session> <role>`,
   };
 }

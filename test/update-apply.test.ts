@@ -40,7 +40,7 @@ afterAll(() => server.stop(true));
 
 const m = {} as MachineConfig;
 const sha256 = (text: string) => new Bun.CryptoHasher('sha256').update(text).digest('hex');
-const bundleFor = (version: string) => `console.log('ccmux ${version}');\n`;
+const bundleFor = (version: string) => `console.log('stitchmux ${version}');\n`;
 
 function release(
   path: string,
@@ -125,7 +125,7 @@ test('a bundle that does not report its version never replaces the live one', as
   expect(existsSync(`${APP_BUNDLE}.bak`)).toBe(false);
   // Nothing of the candidate is left beside the live bundle.
   expect(readdirSync(dirname(APP_BUNDLE)).filter((f) => !f.endsWith('.update-lock'))).toEqual([
-    'ccmux.js',
+    'stitchmux.js',
   ]);
 });
 

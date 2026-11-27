@@ -23,7 +23,7 @@ import { finiteWorkloadSandbox } from '../src/runtime/workloadSandbox.ts';
 
 // A launcher speaking protocol v1, steered by the request's label. It records what it saw so the
 // test can check the request layout without trusting the adapter's own description of it.
-const root = mkdtempSync(join(tmpdir(), 'ccmux-fake-launcher-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-fake-launcher-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const launcherBin = join(root, 'node-workload-run');
 const seen = join(root, 'seen.json');
@@ -64,7 +64,7 @@ const run = (label: string, bin = launcherBin) =>
       executable: '/bin/true',
       args: [],
       cwd: root,
-      environment: { CCMUX_CHAT_CREDENTIAL: 'secret' },
+      environment: { STITCHMUX_CHAT_CREDENTIAL: 'secret' },
       timeoutMs: 30_000,
       maxOutputBytes: 1024,
       maxStdinBytes: 1,
@@ -138,7 +138,7 @@ test.skipIf(process.platform !== 'linux')(
 test('abandoned request directories of this user are swept once past every deadline', () => {
   const old = mkdtempSync(join(tmpdir(), WORKLOAD_DIRECTORY_PREFIX));
   const fresh = mkdtempSync(join(tmpdir(), WORKLOAD_DIRECTORY_PREFIX));
-  const other = join(tmpdir(), `ccmux-other-${crypto.randomUUID()}`);
+  const other = join(tmpdir(), `stitchmux-other-${crypto.randomUUID()}`);
   mkdirSync(other);
   try {
     writeFileSync(join(old, 'request.json'), '{}', { mode: 0o600 });

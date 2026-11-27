@@ -11,12 +11,14 @@ import { appendMessageOnce } from '../src/chat/ledger.ts';
 import { controlContract } from '../src/control/schema/contract.ts';
 import { cancelDelegation, delegationStopped } from '../src/delegation/cancel.ts';
 import { type DelegatedPolicy, DelegationSchema } from '../src/delegation/schema.ts';
+import { processSnapshotAsync } from '../src/external/processes.ts';
 import { withNativeAdmission } from '../src/runtime/admission.ts';
 import { seedNativeSelection } from '../src/runtime/selection.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import {
   processesReleased,
   sleepSession,
+  sleepSessionByName,
   wakeSession,
   wakeSleepingSession,
 } from '../src/session/sleep/operations.ts';
@@ -24,6 +26,8 @@ import { idleProof } from '../src/session/sleep/proof.ts';
 import { SleepReceiptSchema } from '../src/session/sleep/schema.ts';
 import { readSleep, sleepBlocksStart, writeSleep } from '../src/session/sleep/store.ts';
 import { writeWakeOperations } from '../src/session/sleep/wakeStore.ts';
+import { tmuxArgv } from '../src/tmux/argv.ts';
+import codexFrames from './fixtures/codex-pane/v0.159.1.json';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const resources: Array<{ root: string; child: ReturnType<typeof Bun.spawn> }> = [];
@@ -35,7 +39,7 @@ afterEach(async () => {
   }
 });
 async function fixture(deadlineMs?: number) {
-  const root = realpathSync(mkdtempSync('/tmp/ccmux-sleep-test-'));
+  const root = realpathSync(mkdtempSync('/tmp/stitchmux-sleep-test-'));
   const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
   const parent = makeSession({
     name: 'parent',
@@ -350,26 +354,67 @@ test('an unsupported provider returns unsupported without changing its lifecycle
   expect(f.child.exitCode).toBeNull();
 });
 
+/** A private tmux server whose session `name` shows `frame`, as the Codex terminal client would. */
+function codexTerminal(m: ReturnType<typeof makeMachine>, name: string, frame: string) {
+  const tmuxBin = Bun.which('tmux');
+  if (tmuxBin === null) throw Error('tmux is required for the native Codex terminal tests');
+  const tm = { ...m, tmuxBin, tmuxSocket: `stitchmux-sleep-${process.pid}-${crypto.randomUUID()}` };
+  const file = join(realpathSync(mkdtempSync('/tmp/stitchmux-codex-frame-')), 'frame');
+  writeFileSync(file, frame);
+  Bun.spawnSync(
+    tmuxArgv(
+      tm,
+      'new-session',
+      '-d',
+      '-x',
+      '120',
+      '-y',
+      '40',
+      '-s',
+      name,
+      `cat ${file}; exec sleep 600`,
+    ),
+  );
+  return { m: tm, close: () => Bun.spawnSync(tmuxArgv(tm, 'kill-server')) };
+}
+
+test('a non-delegated native codex session without a readable terminal is not proven idle', async () => {
+  const f = await fixture();
+  const ordinary = { ...f.s, delegation: undefined };
+  await writeSessionsUnlocked(f.m, [ordinary]);
+  const tmuxBin = Bun.which('tmux');
+  if (tmuxBin === null) throw Error('tmux is required for the native Codex terminal tests');
+  const noServer = { ...f.m, tmuxBin, tmuxSocket: `stitchmux-sleep-none-${process.pid}` };
+  const proof = await idleProof(noServer, ordinary);
+  expect(proof).toMatchObject({ eligible: false, reason: 'terminal-unavailable' });
+});
+
 test('a non-delegated native codex session sleeps cleanly when idle and policy allows', async () => {
   const f = await fixture();
   const ordinary = { ...f.s, delegation: undefined };
   await writeSessionsUnlocked(f.m, [ordinary]);
-  const proof = await idleProof(f.m, ordinary);
-  expect(proof.eligible).toBe(true);
-  const result = await sleepSession(
-    f.m,
-    {
-      target: managedPeer('host-a', ordinary),
-      registrationGeneration: ordinary.registrationGeneration ?? '',
-      operationId: crypto.randomUUID(),
-      revision: proof.revision,
-      forcePolicy: true,
-    },
-    new AbortController().signal,
-  );
-  expect(result).toMatchObject({ release: 'processReleased', state: 'sleeping' });
-  expect(await f.child.exited).toBe(0);
-  expect(readSleep(f.m, ordinary)?.phase).toBe('sleeping');
+  const terminal = codexTerminal(f.m, ordinary.name, codexFrames.idle);
+  try {
+    await Bun.sleep(300);
+    const proof = await idleProof(terminal.m, ordinary);
+    expect(proof.eligible).toBe(true);
+    const result = await sleepSession(
+      terminal.m,
+      {
+        target: managedPeer('host-a', ordinary),
+        registrationGeneration: ordinary.registrationGeneration ?? '',
+        operationId: crypto.randomUUID(),
+        revision: proof.revision,
+        forcePolicy: true,
+      },
+      new AbortController().signal,
+    );
+    expect(result).toMatchObject({ release: 'processReleased', state: 'sleeping' });
+    expect(await f.child.exited).toBe(0);
+    expect(readSleep(f.m, ordinary)?.phase).toBe('sleeping');
+  } finally {
+    terminal.close();
+  }
 });
 
 test('active cancellation releases its owned provider and leaves an unrelated identical executable alive', async () => {
@@ -445,4 +490,28 @@ test('all public control operation waits fit the service transport budget', () =
   for (const endpoint of Object.values(controlContract.endpoints)) {
     expect('timeout' in endpoint ? endpoint.timeout : 30000).toBeLessThanOrEqual(30000);
   }
+});
+
+test('sleep re-reads the process table under its lock instead of trusting a caller snapshot', async () => {
+  const f = await fixture();
+  // The auto-sleep pass snapshots the process table once and hands it to every candidate.
+  const stale = await processSnapshotAsync();
+  if (stale === null) throw Error('process table unavailable');
+  expect((await idleProof(f.m, f.s, { rows: stale })).eligible).toBe(true);
+
+  // Work starts under the owner after that snapshot was taken.
+  const reader = f.child.stdout.getReader();
+  f.child.kill('SIGUSR1');
+  const line = await reader.read();
+  reader.releaseLock();
+  if (line.done) throw Error('owner fixture exited before starting work');
+  const { workPid } = JSON.parse(new TextDecoder().decode(line.value)) as { workPid: number };
+  expect((await idleProof(f.m, f.s)).reason).toBe('background-processes');
+
+  await expect(sleepSessionByName(f.m, f.s.name, { rows: stale })).rejects.toMatchObject({
+    code: 'REVISION_CONFLICT',
+  });
+  expect(readSleep(f.m, f.s)).toBeNull();
+  expect(f.child.exitCode).toBeNull();
+  expect(() => process.kill(workPid, 0)).not.toThrow();
 });

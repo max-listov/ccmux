@@ -52,11 +52,11 @@ async function until(what: string, ready: () => boolean, deadlineMs = 10_000): P
 function fixture(label: string) {
   const tmuxBin = Bun.which('tmux');
   if (!tmuxBin) throw new Error('tmux is required for the removal verdict tests');
-  const dir = mkdtempSync(join(tmpdir(), `ccmux-${label}-`));
+  const dir = mkdtempSync(join(tmpdir(), `stitchmux-${label}-`));
   const m = makeMachine({
     stateDir: dir,
     tmuxBin,
-    tmuxSocket: `ccmux-${label}-${process.pid}`,
+    tmuxSocket: `stitchmux-${label}-${process.pid}`,
   });
   return {
     m,
@@ -119,9 +119,9 @@ test(
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env))
       if (value !== undefined) env[key] = value;
-    env.CCMUX_CONFIG = configPath;
-    env.CCMUX_STATE_DIR = f.dir;
-    env.CCMUX_CACHE_DIR = join(f.dir, 'cache');
+    env.STITCHMUX_CONFIG = configPath;
+    env.STITCHMUX_STATE_DIR = f.dir;
+    env.STITCHMUX_CACHE_DIR = join(f.dir, 'cache');
     const rm = async (name: string) => {
       const proc = Bun.spawn(['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'rm', name], {
         env,
@@ -143,7 +143,7 @@ test(
       ]).finally(() => clearTimeout(guard));
       if (hung)
         throw new Error(
-          `ccmux rm ${name} did not exit within ${RM_HANG_MS} ms; it printed: ${out}${err}`,
+          `stitchmux rm ${name} did not exit within ${RM_HANG_MS} ms; it printed: ${out}${err}`,
         );
       return { out, err, code };
     };

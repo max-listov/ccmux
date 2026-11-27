@@ -36,7 +36,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function root() {
-  const path = mkdtempSync('/tmp/ccmux-consent-');
+  const path = mkdtempSync('/tmp/stitchmux-consent-');
   roots.push(path);
   return path;
 }

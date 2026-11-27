@@ -8,7 +8,7 @@ import { loadSessions } from '../src/session/registry.ts';
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-new-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-new-'));
   const project = join(root, 'project');
   mkdirSync(project);
   const tmux = join(root, 'tmux');
@@ -22,7 +22,7 @@ function setup() {
     codexSessionsDir: join(root, 'codex'),
     rcPrefix: 'host-a',
     stateDir: join(root, 'state'),
-    bootLabel: 'ccmux-test.service',
+    bootLabel: 'stitchmux-test.service',
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));
@@ -32,7 +32,7 @@ function setup() {
 async function run(config: string, args: string[]): Promise<number> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = config;
+  env.STITCHMUX_CONFIG = config;
   const proc = Bun.spawn(['bun', CLI, ...args], { env, stdout: 'pipe', stderr: 'pipe' });
   await new Response(proc.stdout).text();
   return proc.exited;

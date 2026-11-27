@@ -8,7 +8,7 @@ import { chatAuthPath } from '../src/config/paths.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('native Claude SDK and its child receive the pinned identity and a fresh chat capability', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-native-chat-env-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-native-chat-env-'));
   try {
     const sdk = join(root, 'sdk');
     mkdirSync(sdk);
@@ -26,9 +26,9 @@ test('native Claude SDK and its child receive the pinned identity and a fresh ch
     // A missing env option must fail even if a credential file happens to exist on disk.
     const child = `
       import { readFileSync } from 'node:fs';
-      if (process.env.CCMUX_SESSION !== 'agent-a') process.exit(2);
-      if (!process.env.CCMUX_CHAT_CREDENTIAL) process.exit(3);
-      if (process.env.CCMUX_CHAT_CREDENTIAL !== readFileSync(${JSON.stringify(chatAuthPath(m, s.name))}, 'utf8').trim()) process.exit(4);
+      if (process.env.STITCHMUX_SESSION !== 'agent-a') process.exit(2);
+      if (!process.env.STITCHMUX_CHAT_CREDENTIAL) process.exit(3);
+      if (process.env.STITCHMUX_CHAT_CREDENTIAL !== readFileSync(${JSON.stringify(chatAuthPath(m, s.name))}, 'utf8').trim()) process.exit(4);
     `;
     writeFileSync(
       join(sdk, 'sdk.mjs'),

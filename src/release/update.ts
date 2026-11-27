@@ -35,7 +35,7 @@ export async function bundleVersion(path: string): Promise<string> {
       new Response(proc.stderr).text(),
     ]);
     const code = await proc.exited;
-    const version = out.trim().replace(/^ccmux\s+/, '');
+    const version = out.trim().replace(/^stitchmux\s+/, '');
     if (version === '' && (code !== 0 || err.trim() !== '')) {
       log.warn({
         msg: 'bundleVersion: candidate failed to report version',
@@ -85,7 +85,7 @@ export async function replaceBundle(from: string, target: string): Promise<void>
 }
 
 /** Put `${target}.bak` back over `target`, whole or not at all, and only if it is the backup that
- *  was taken. A backup taken by a ccmux older than its recorded digest has none: it is restored as
+ *  was taken. A backup taken by a stitchmux older than its recorded digest has none: it is restored as
  *  it is, and that branch ends once every machine has been updated by a version that records it. */
 export async function restoreBackup(target: string): Promise<boolean> {
   const bak = `${target}.bak`;
@@ -124,7 +124,7 @@ export async function applyLocal(m: MachineConfig): Promise<number> {
   await replaceBundle(STAGED_BUNDLE, APP_BUNDLE); // the staged build is consumed
   await restartBoot(m);
   console.log(
-    `updated to ${ver}. daemon bounced; sessions pick up new code on next restart (all at once: ccmux restart --all). rollback: ccmux update --rollback`,
+    `updated to ${ver}. daemon bounced; sessions pick up new code on next restart (all at once: stitchmux restart --all). rollback: stitchmux update --rollback`,
   );
   return 0;
 }
@@ -138,11 +138,11 @@ export async function applyLocal(m: MachineConfig): Promise<number> {
  *  cache key unique and sidesteps it. Without this the whole fleet lags a release behind for as long
  *  as the edge decides to hold, which is precisely what auto-update exists to avoid. */
 export function cacheBusted(url: string, nonce: number): string {
-  return `${url}${url.includes('?') ? '&' : '?'}ccmux=${nonce}`;
+  return `${url}${url.includes('?') ? '&' : '?'}stitchmux=${nonce}`;
 }
 
-/** A release as published: the fields every ccmux reads, and the signed build manifest the same
- *  document is — `null` for a release published before ccmux signed them. */
+/** A release as published: the fields every stitchmux reads, and the signed build manifest the same
+ *  document is — `null` for a release published before stitchmux signed them. */
 export type FetchedRelease = Release & { manifest: CliBuildManifest | null };
 
 export async function fetchRelease(url: string): Promise<FetchedRelease | string> {
@@ -169,7 +169,7 @@ export type UpdateDecision =
   | { kind: 'print'; code: number; text: string };
 
 /**
- * Decide what `ccmux update` should do — PURE (no fs, no network, no side effects), so it's fully
+ * Decide what `stitchmux update` should do — PURE (no fs, no network, no side effects), so it's fully
  * testable and `--check` can never mutate by construction. Inputs are already-resolved versions:
  * `staged` = the local staged bundle's version ("?" if present-but-unreadable, null if absent),
  * `release` = the fetched release version (null if no releaseUrl / not fetched).
@@ -203,15 +203,15 @@ export function decideUpdate(i: {
         kind: 'print',
         code: 0,
         text: notNewer
-          ? `staged local build ${i.staged} present but NOT newer than current ${i.current} — 'ccmux update' would refuse it as a downgrade (a forgotten 'bun run stage'?). remove: rm ${stagedPath}  ·  or force: ccmux update --force`
-          : `staged local build ${i.staged} present — 'ccmux update' would apply it (local test build), NOT the release. remove to track releases again: rm ${stagedPath}`,
+          ? `staged local build ${i.staged} present but NOT newer than current ${i.current} — 'stitchmux update' would refuse it as a downgrade (a forgotten 'bun run stage'?). remove: rm ${stagedPath}  ·  or force: stitchmux update --force`
+          : `staged local build ${i.staged} present — 'stitchmux update' would apply it (local test build), NOT the release. remove to track releases again: rm ${stagedPath}`,
       };
     }
     if (notNewer && !i.force) {
       return {
         kind: 'print',
         code: 1,
-        text: `update: staged local build ${i.staged} is not newer than current ${i.current} — refusing to downgrade (usually a forgotten 'bun run stage'). remove it: rm ${stagedPath}  ·  or force: ccmux update --force`,
+        text: `update: staged local build ${i.staged} is not newer than current ${i.current} — refusing to downgrade (usually a forgotten 'bun run stage'). remove it: rm ${stagedPath}  ·  or force: stitchmux update --force`,
       };
     }
     return { kind: 'apply-staged' };
@@ -222,7 +222,7 @@ export function decideUpdate(i: {
     return {
       kind: 'print',
       code: i.check ? 0 : 1,
-      text: 'update: nothing staged (no staged/ccmux.js in the cache) and no releaseUrl. Stage one (dev checkout): bun run stage',
+      text: 'update: nothing staged (no staged/stitchmux.js in the cache) and no releaseUrl. Stage one (dev checkout): bun run stage',
     };
   }
   const cmp = compareSemver(i.current, i.release);
@@ -231,7 +231,7 @@ export function decideUpdate(i: {
     return {
       kind: 'print',
       code: 0,
-      text: `bundle missing from ${APP_BUNDLE} — 'ccmux update' would restore ${i.release} (the running process is serving from memory)`,
+      text: `bundle missing from ${APP_BUNDLE} — 'stitchmux update' would restore ${i.release} (the running process is serving from memory)`,
     };
   }
   if (!i.force && cmp >= 0) {
@@ -248,7 +248,7 @@ export function decideUpdate(i: {
     return {
       kind: 'print',
       code: 0,
-      text: `update available: ${i.current} → ${i.release}${i.releaseNotes ? ` — ${i.releaseNotes}` : ''}\nrun: ccmux update`,
+      text: `update available: ${i.current} → ${i.release}${i.releaseNotes ? ` — ${i.releaseNotes}` : ''}\nrun: stitchmux update`,
     };
   }
   return { kind: 'apply-remote' };
@@ -272,7 +272,7 @@ const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 
 /** Download, verify and install a release through stitchkit's `applyCliUpdate`: the manifest's
- *  signature checked against the keys compiled into this ccmux BEFORE anything is fetched, size and
+ *  signature checked against the keys compiled into this stitchmux BEFORE anything is fetched, size and
  *  time bounds, the SSRF boundary, the digest over the bytes that will run, a backup with its
  *  digest, and — before anything is replaced — the candidate started with `bun <candidate>
  *  version`, which must report the release's version. A bundle that does not load never replaces
@@ -333,7 +333,7 @@ export async function downloadVerifyApply(
  * A release reaches one machine first and is watched there before the others get it; a daemon that
  * takes whatever is newest the moment it is published ends that window from the outside. So an
  * unattended update waits until the release is `settleSeconds` old by its own `releasedAt`, and a
- * person who runs `ccmux update` is not asked to wait. A release that does not say when it was cut
+ * person who runs `stitchmux update` is not asked to wait. A release that does not say when it was cut
  * cannot be aged and is taken as before.
  */
 export function releaseSettled(

@@ -17,7 +17,7 @@ import { appendOutbound, outboundId } from '../src/fleet/outbox.ts';
 import { makeChatMessage, makePeer } from './helpers.ts';
 
 function tempConfig() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-flush-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-flush-'));
   return MachineConfigSchema.parse({
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',

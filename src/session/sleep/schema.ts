@@ -51,7 +51,39 @@ export type SleepRecord = z.infer<typeof SleepRecordSchema>;
 export const SleepReceiptSchema = SleepTargetSchema.extend({
   operationId: z.uuid(),
   state: z.enum(['sleeping', 'awake', 'unchanged']),
-  release: z.enum(['processReleased', 'handles-only', 'unsupported']),
+  release: z.enum(['processReleased', 'unsupported']),
   nativeId: z.string().nullable(),
   duplicate: z.boolean(),
 }).strict();
+
+/** `session.sleep-idle`: put to sleep every session idle at least this long, or say which would be. */
+export const SleepIdleRequestSchema = z
+  .object({
+    idleAfterMinutes: z.number().int().min(1).max(43_200),
+    dryRun: z.boolean().default(false),
+  })
+  .strict();
+
+/**
+ * One session's answer in a `session.sleep-idle` pass. `skipped` is policy or state that keeps it
+ * awake by design (pinned, busy, the profile's last awake session); `refused` is a failure;
+ * `not-attempted` is a candidate the pass did not reach within its budget. `code` is from the refusal
+ * table whenever there is one.
+ */
+export const SleepIdleReceiptSchema = z
+  .object({
+    target: ManagedPeerSchema,
+    outcome: z.enum(['slept', 'would-sleep', 'skipped', 'refused', 'not-attempted']),
+    code: z.string().min(1).max(64).nullable(),
+    reason: z.string().max(1024).nullable(),
+  })
+  .strict();
+export type SleepIdleReceipt = z.infer<typeof SleepIdleReceiptSchema>;
+
+export const SleepIdleResultSchema = z
+  .object({
+    machine: z.string().min(1).max(128),
+    dryRun: z.boolean(),
+    receipts: z.array(SleepIdleReceiptSchema).max(256),
+  })
+  .strict();

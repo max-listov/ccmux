@@ -7,7 +7,7 @@ import { probeClaudeModels } from '../src/agent/claude/native/hostProbe.ts';
 import { ControlModelsReadSchema } from '../src/control/schema/model.ts';
 import { managedRuntimeRoot } from '../src/runtime/status.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
-import { HOME } from '../src/util/env.ts';
+import { HOME } from '../src/util/home.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**
@@ -64,7 +64,7 @@ async function host(options: {
   observedAt?: string;
   sdkSource?: string;
 }) {
-  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-host-catalog-'));
+  const stateDir = mkdtempSync(join(tmpdir(), 'stitchmux-host-catalog-'));
   roots.push(stateDir);
   const sdk = join(stateDir, 'sdk');
   mkdirSync(sdk, { recursive: true });
@@ -197,7 +197,9 @@ test('a host whose runtime cannot be asked names the action, not just the state'
   // machine to type a command nobody had told them.
   const failure = readClaudeModels(m, read, undefined, signal());
   await expect(failure).rejects.toThrow('No session on this host has published its catalog');
-  await expect(failure).rejects.toThrow('ccmux new <name> <dir> --agent claude --runtime native');
+  await expect(failure).rejects.toThrow(
+    'stitchmux new <name> <dir> --agent claude --runtime native',
+  );
 });
 
 test('two reads of the same host start one child, not one each', async () => {

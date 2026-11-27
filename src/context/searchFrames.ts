@@ -64,7 +64,7 @@ export class SearchStreamCutError extends Error {
   }
 }
 
-/** The whole answer from its frames — the object `ccmux search --json` prints. */
+/** The whole answer from its frames — the object `stitchmux search --json` prints. */
 export async function collectSearch(
   frames: AsyncIterable<SearchFrame> | Iterable<SearchFrame>,
 ): Promise<CorpusSearchJson> {

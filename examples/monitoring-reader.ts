@@ -1,4 +1,4 @@
-// In a consuming package: import { readMonitoringStatus } from "ccmux/monitoring-reader";
+// In a consuming package: import { readMonitoringStatus } from "@stitchmux/client/monitoring";
 import { readMonitoringStatus } from '../src/monitoring-reader.ts';
 
 const stop = new AbortController();

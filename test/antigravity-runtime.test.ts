@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  antigravityModelsFromConfigOptions,
+  freshHostCatalog,
+  HOST_CATALOG_TTL_MS,
   readAntigravityModels,
   validateAntigravitySelection,
 } from '../src/agent/antigravity/catalog.ts';
@@ -92,6 +95,88 @@ test('antigravity preflight & negative controls: missing binary, old version, mi
   }
 });
 
+test('a fresh host catalog answers the next host read without starting the CLI again', async () => {
+  const f = antigravityFixture();
+  const spawns = () => {
+    try {
+      return readFileSync(join(f.dir, 'acp-spawns.log'), 'utf8').trim().split('\n').length;
+    } catch {
+      return 0;
+    }
+  };
+  const read = () =>
+    readAntigravityModels(
+      f.m,
+      { runtime: 'antigravity', cursor: null, limit: 64, includeHidden: false },
+      undefined,
+      AbortSignal.timeout(10_000),
+    );
+  try {
+    const first = await read();
+    const afterFirst = spawns();
+    expect(afterFirst).toBeGreaterThan(0);
+    const second = await read();
+    expect(spawns()).toBe(afterFirst);
+    expect(second.data.map((m) => m.id)).toEqual(first.data.map((m) => m.id));
+    expect(freshHostCatalog(f.m, Date.now() + HOST_CATALOG_TTL_MS + 1_000)).toBeNull();
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('catalog rows carry the image modality only when the agent declared it', () => {
+  const options = [
+    {
+      id: 'model',
+      name: 'Model',
+      category: 'model',
+      type: 'select',
+      currentValue: 'a',
+      options: [{ value: 'a', name: 'A' }],
+    },
+  ] as Parameters<typeof antigravityModelsFromConfigOptions>[0];
+  expect(antigravityModelsFromConfigOptions(options, true)[0]?.inputModalities).toEqual([
+    'text',
+    'image',
+  ]);
+  expect(antigravityModelsFromConfigOptions(options, false)[0]?.inputModalities).toEqual(['text']);
+});
+
+test('a live session catalog gives reasoning efforts to the active model only', () => {
+  const options = [
+    {
+      id: 'model',
+      name: 'Model',
+      category: 'model',
+      type: 'select',
+      currentValue: 'a',
+      options: [
+        { value: 'a', name: 'A' },
+        { value: 'b', name: 'B' },
+      ],
+    },
+    {
+      id: 'thought_level',
+      name: 'Thinking Level',
+      category: 'thought_level',
+      type: 'select',
+      currentValue: 'low',
+      options: [{ value: 'low', name: 'Low' }],
+    },
+  ] as Parameters<typeof antigravityModelsFromConfigOptions>[0];
+  // Without each model's own answer, the active model's levels say nothing about another model.
+  expect(
+    antigravityModelsFromConfigOptions(options, false).map((m) => m.supportedReasoningEfforts),
+  ).toEqual([[{ reasoningEffort: 'low', description: 'Low' }], undefined]);
+  // With them, a model answered without thought_level gets none, even the active one.
+  expect(
+    antigravityModelsFromConfigOptions(options, false, {
+      a: options.slice(0, 1),
+      b: options,
+    }).map((m) => m.supportedReasoningEfforts?.length),
+  ).toEqual([undefined, 1]);
+});
+
 test('antigravity host catalog & unknown model refusal before session creation', async () => {
   const f = antigravityFixture();
   try {
@@ -102,13 +187,23 @@ test('antigravity host catalog & unknown model refusal before session creation',
       AbortSignal.timeout(10_000),
     );
     expect(catalog.source.runtime).toBe('antigravity');
-    expect(catalog.data.map((m) => m.id)).toEqual(['gemini-4-neon', 'claude-opus-5-5']);
+    expect(catalog.data.map((m) => m.id)).toEqual([
+      'gemini-4-neon',
+      'claude-opus-5-5',
+      'gpt-oss-120b-medium',
+    ]);
     expect(catalog.data[0]?.provider).toBe('antigravity');
     expect(catalog.data[0]?.inputModalities).toEqual(['text', 'image']);
-    expect(catalog.data[0]?.supportedReasoningEfforts?.map((e) => e.reasoningEffort)).toEqual([
-      'low',
-      'high',
+    // Each model's own levels, read with that model selected; none for a model without them.
+    expect(
+      catalog.data.map((m) => [m.id, m.supportedReasoningEfforts?.map((e) => e.reasoningEffort)]),
+    ).toEqual([
+      ['gemini-4-neon', ['low', 'high']],
+      ['claude-opus-5-5', ['low', 'medium', 'high']],
+      ['gpt-oss-120b-medium', undefined],
     ]);
+    expect(catalog.data[1]?.defaultReasoningEffort).toBe('high');
+    expect(catalog.data[2]?.defaultReasoningEffort).toBeUndefined();
 
     // Known model passes, unknown model is refused before launch
     await validateAntigravitySelection(

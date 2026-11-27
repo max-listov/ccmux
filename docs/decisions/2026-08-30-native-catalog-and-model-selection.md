@@ -22,7 +22,7 @@ catalog validates OpenAI choices before writer creation; native admission verifi
 selected provider/model and every restart keeps the same identity and selection.
 
 Collaboration presets do not own model choice. The loaded thread model wins; missing capability,
-missing model or disagreement with a pinned selection refuses the turn. CCMux uses native built-in
+missing model or disagreement with a pinned selection refuses the turn. Stitchmux uses native built-in
 mode instructions, not copied application prompts or a new agent/tool loop.
 
 # Alternatives rejected
@@ -36,6 +36,6 @@ mode instructions, not copied application prompts or a new agent/tool loop.
 # Consequences
 
 Cold reads launch a bounded metadata process; native catalog refresh/cache semantics remain native.
-One call is one page, not a new CCMux model cache. Consumers reuse the published typed client and
+One call is one page, not a new Stitchmux model cache. Consumers reuse the published typed client and
 unchanged transport envelope. Workspace discovery is separately authorized `directory.list`, not
 shell execution or a mutation. Existing recipe-less/default creation remains supported.

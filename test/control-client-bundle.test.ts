@@ -9,7 +9,7 @@ import { VERSION } from '../src/util/version.ts';
 import { makeMachine } from './helpers.ts';
 
 test('published control asset discovers IPC without provider binaries and streams offline with no process spawn', async () => {
-  const root = mkdtempSync('/tmp/ccmux-control-asset-');
+  const root = mkdtempSync('/tmp/stitchmux-control-asset-');
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const p = new ControlPublisher(m),
     owned = createControlServer(m, p);
@@ -53,7 +53,7 @@ test('published control asset discovers IPC without provider binaries and stream
       cwd: root,
       env: {
         ...process.env,
-        CCMUX_CONFIG: config,
+        STITCHMUX_CONFIG: config,
         BUN_INSTALL_CACHE_DIR: join(root, 'empty-cache'),
         BUN_CONFIG_REGISTRY: 'http://127.0.0.1:1',
       },

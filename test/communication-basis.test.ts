@@ -20,7 +20,7 @@ import { makeSession } from './helpers.ts';
 // The case this file exists for. A person gave two sessions leave to correspond and said it to ONE
 // of them; the other holds no such line in its own conversation. Quoting a neighbour is prose, so
 // the receipt could not be produced at all and the person had to repeat the words a second time,
-// for the protocol. Referenced as a ccmux record the same permission is checkable — which is what
+// for the protocol. Referenced as a stitchmux record the same permission is checkable — which is what
 // every test below actually exercises.
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 function setup() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-basis-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-basis-'));
   roots.push(dir);
   const cfg = {
     claudeBin: '/bin/claude',
@@ -82,8 +82,8 @@ function arrival(m: MachineConfig, from: Session, to: Session, body: string): Ch
 async function runMsg(cfgPath: string, sender: string, args: string[]) {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = cfgPath;
-  env.CCMUX_SESSION = sender;
+  env.STITCHMUX_CONFIG = cfgPath;
+  env.STITCHMUX_SESSION = sender;
   const m = MachineConfigSchema.parse(JSON.parse(await Bun.file(cfgPath).text()));
   const session = loadSessions(m).find((item) => item.name === sender);
   if (session !== undefined)
@@ -299,7 +299,7 @@ test('a receipt written before the basis was named stays readable and claims not
       basis: 'peer-letter',
       whyThisCommunicationIsNecessaryAndWithinTheUserAuthorizedScope: RATIONALE,
       userAuthorizationQuote: 'quoted',
-      sourceMessageRef: 'not a ccmux record',
+      sourceMessageRef: 'not a stitchmux record',
     },
     {
       basis: 'thread-continuation',

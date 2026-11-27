@@ -16,7 +16,7 @@ import { ApplicationPolicyMetadataSchema } from '../policy/schema.ts';
  */
 
 /**
- * One ccmux-managed agent conversation.
+ * One stitchmux-managed agent conversation.
  *
  * The sessions FILE is JSONL — one of these per line. `uuid` is the authoritative READY
  * conversation identity and drives deterministic resume. Codex fresh launch is correlated in a
@@ -127,7 +127,7 @@ export const SessionSchema = z.object({
    * project's own vocabulary, and an enum would force every new kind of work through a schema
    * change. Absent is the ordinary state — a session without one is addressed by name, as before.
    *
-   * It must stay CHEAP to change (`ccmux role`, no restart). A second name that is expensive to
+   * It must stay CHEAP to change (`stitchmux role`, no restart). A second name that is expensive to
    * update is worse than no second name: within a week it lies, and by then people trust it.
    */
   role: z
@@ -141,7 +141,7 @@ export const SessionSchema = z.object({
 export const PendingSessionSchema = z
   .object({
     generation: z.uuid(),
-    marker: z.string().regex(/^ccmux_[0-9a-f-]{36}$/),
+    marker: z.string().regex(/^stitchmux_[0-9a-f-]{36}$/),
     operation: z.discriminatedUnion('kind', [
       z.object({ kind: z.literal('create') }),
       z.object({ kind: z.literal('adopt'), sourceThreadId: z.uuid() }),
@@ -171,6 +171,6 @@ export const LifecycleBlockSchema = z.object({
   generation: z.uuid().optional(),
   error: z.string().min(1),
   at: z.iso.datetime(),
-  /** The ccmux version that wrote the block. A block is final for that version only. */
+  /** The stitchmux version that wrote the block. A block is final for that version only. */
   version: z.string().min(1).optional(),
 });

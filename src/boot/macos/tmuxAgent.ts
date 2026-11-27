@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmuxArgv } from '../../tmux/argv.ts';
 import type { MachineConfig } from '../../types.ts';
-import { HOME, PLATFORM, UID } from '../../util/env.ts';
+import { HOME, PLATFORM, UID } from '../../util/home.ts';
 import { type RunResult, run } from '../../util/spawn.ts';
 
 export type SpawnRunner = (argv: string[], opts?: { signal?: AbortSignal }) => Promise<RunResult>;
@@ -31,7 +31,7 @@ export function tmuxBootLabel(m: Pick<MachineConfig, 'bootLabel' | 'tmuxBootLabe
  * Whether this instance uses a dedicated macOS LaunchAgent for its tmux server.
  *
  * Dev/isolated instances that set a custom `tmuxSocket` without an explicit `tmuxBootLabel`
- * never touch the production `com.ccmux.tmux` LaunchAgent. Linux uses systemd and never uses one.
+ * never touch the production `com.stitchmux.tmux` LaunchAgent. Linux uses systemd and never uses one.
  */
 export function usesManagedTmuxAgent(
   m: Pick<MachineConfig, 'tmuxSocket' | 'tmuxBootLabel'>,
@@ -78,9 +78,9 @@ export async function tmuxServerPid(
 }
 
 /**
- * Wait until the managed macOS `com.ccmux.tmux` server has bound its socket before any
- * `new-session` runs. Prevents the login startup race where `com.ccmux.daemon` spawns an
- * unmanaged rogue tmux server while `com.ccmux.tmux` is still starting.
+ * Wait until the managed macOS `com.stitchmux.tmux` server has bound its socket before any
+ * `new-session` runs. Prevents the login startup race where `com.stitchmux.daemon` spawns an
+ * unmanaged rogue tmux server while `com.stitchmux.tmux` is still starting.
  *
  * Returns `null` immediately when no managed tmux LaunchAgent applies (Linux, dev instances with
  * their own `tmuxSocket`, or machines without a managed tmux plist). Throws fail-closed on timeout.

@@ -36,10 +36,10 @@ const machine = (externals: Record<string, string> = {}) =>
     externals,
   });
 
-const cli: ChatPrincipal = { kind: 'cli', source: 'ccmux', machine: 'host-a' };
+const cli: ChatPrincipal = { kind: 'cli', source: 'stitchmux', machine: 'host-a' };
 const peer = (session: string): ChatPrincipal => ({
   kind: 'managed',
-  source: 'ccmux',
+  source: 'stitchmux',
   machine: 'host-a',
   agent: 'claude',
   session,
@@ -120,7 +120,7 @@ test('a recorded answer closes it, and only it', () => {
     letter(
       {
         kind: 'managed',
-        source: 'ccmux',
+        source: 'stitchmux',
         machine: 'host-a',
         agent: 'claude',
         session: 'agent-a',
@@ -140,7 +140,7 @@ test('two letters want two answers — one reply must not close both', () => {
   const to = externalTarget('contract-owner');
   const back: ChatTarget = {
     kind: 'managed',
-    source: 'ccmux',
+    source: 'stitchmux',
     machine: 'host-a',
     agent: 'claude',
     session: 'agent-a',
@@ -160,7 +160,7 @@ test('answers are matched per task, so two errands do not answer each other', ()
   const to = externalTarget('contract-owner');
   const back: ChatTarget = {
     kind: 'managed',
-    source: 'ccmux',
+    source: 'stitchmux',
     machine: 'host-a',
     agent: 'claude',
     session: 'agent-a',
@@ -186,7 +186,7 @@ test('what the courier is handed carries the route and the way back', () => {
   expect(note).toContain('task: release');
   expect(note).toContain('please cut a release');
   // Without this line an answer has nowhere to be recorded, and the letter waits forever.
-  expect(note).toContain('ccmux relay owner/contract-owner --task release "<their answer>"');
+  expect(note).toContain('stitchmux relay owner/contract-owner --task release "<their answer>"');
 });
 
 test('the mirror renders an errand, not a notification', () => {
@@ -197,7 +197,7 @@ test('the mirror renders an errand, not a notification', () => {
   });
   expect(tg).toContain('outside the fleet');
   expect(tg).toContain('another product');
-  expect(tg).toContain('ccmux relay owner/contract-owner');
+  expect(tg).toContain('stitchmux relay owner/contract-owner');
 });
 
 test('an external letter with no recorded route still says so instead of pretending', () => {

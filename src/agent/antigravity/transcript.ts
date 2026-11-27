@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { boundedHistoryPage, historyCursor } from '../../context/history.ts';
 import type { NativeContextApi } from '../../context/pump.ts';
 import type { NativeHistoryEntry } from '../../context/schema.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../../types.ts';
 import { clip, DEFAULT_TEXT_LIMIT, isRecord, num, str } from '../transcript/normalize.ts';
 import { antigravityDataDir } from './preflight.ts';
@@ -40,7 +40,7 @@ function toolCallId(call: Record<string, unknown>, fallback: string): string {
 }
 
 /**
- * Parse Antigravity CLI `transcript.jsonl` lines into CCMux's unified `TranscriptMessage[]`.
+ * Parse Antigravity CLI `transcript.jsonl` lines into Stitchmux's unified `TranscriptMessage[]`.
  *
  * Keeps line-based `seq` monotonic so cursor/before pagination never drops or duplicates entries.
  */
@@ -243,10 +243,7 @@ const offsetOf = (cursor: string | undefined): number => {
   if (cursor === undefined) return 0;
   const value = Number.parseInt(cursor, 10);
   if (!Number.isInteger(value) || value < 0)
-    throw new AppError('HISTORY_CURSOR', {
-      message: 'Native history cursor is invalid',
-      status: 409,
-    });
+    throw refusals.errors.HISTORY_CURSOR({ message: 'Native history cursor is invalid' });
   return value;
 };
 
@@ -278,9 +275,8 @@ export function antigravityContextApi(m: MachineConfig, s: Session): NativeConte
       return null;
     },
     async compact() {
-      throw new AppError('UNSUPPORTED', {
+      throw refusals.errors.UNSUPPORTED({
         message: 'Antigravity runtime does not support manual compaction',
-        status: 409,
       });
     },
   };

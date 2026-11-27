@@ -11,9 +11,9 @@ import { NOT_FOUND } from './state.ts';
  * A window beside a session's agent, opened by the owner of the session's tmux tree.
  *
  * A consumer that wants a terminal next to an agent used to create it itself — guessing the tmux
- * server and session name, and writing into a tree ccmux owns without its knowledge. That window was
+ * server and session name, and writing into a tree stitchmux owns without its knowledge. That window was
  * also what let a dead agent go unhealed: the session outlived its agent's pane, and the agent's index
- * address resolved to the consumer's pane. The window is now ccmux's to open, and its lifetime is
+ * address resolved to the consumer's pane. The window is now stitchmux's to open, and its lifetime is
  * declared: it lives and dies with the session.
  */
 export async function cmdWindow(args: string[]): Promise<number> {
@@ -45,7 +45,7 @@ export async function cmdWindow(args: string[]): Promise<number> {
     `${address}  window ${window.windowId} (index ${window.windowIndex}), pane ${window.paneId}`,
   );
   await printLine(
-    `tmux ${tmux.socket === null ? '' : `-L ${tmux.socket} `}attach -t '=${tmux.session}:' — it lives and dies with the session (stop, restart and heal take it down); ccmux never types into it`,
+    `tmux ${tmux.socket === null ? '' : `-L ${tmux.socket} `}attach -t '=${tmux.session}:' — it lives and dies with the session (stop, restart and heal take it down); stitchmux never types into it`,
   );
   return 0;
 }

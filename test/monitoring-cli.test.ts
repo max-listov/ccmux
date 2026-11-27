@@ -14,7 +14,7 @@ const BUILD_TEST_MS = 60_000;
 test(
   'bundled CLI concurrent reads, large output and cancellation never touch a pane',
   async () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-status-cli-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-status-cli-'));
     const marker = join(root, 'called');
     const bin = join(root, 'tmux');
     writeFileSync(bin, `#!/bin/sh\ntouch '${marker}'\nexit 1\n`, { mode: 0o700 });
@@ -26,8 +26,8 @@ test(
     });
     const config = join(root, 'machine.json');
     writeFileSync(config, JSON.stringify(m));
-    const bundle = join(root, 'ccmux.js');
-    const env = { ...process.env, CCMUX_CONFIG: config };
+    const bundle = join(root, 'stitchmux.js');
+    const env = { ...process.env, STITCHMUX_CONFIG: config };
     const p = new MonitoringPublisher();
     try {
       expect(await buildBundle(bundle)).toBe(true);

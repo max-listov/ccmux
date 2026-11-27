@@ -41,7 +41,7 @@ export function missingConversation(
     : `${s.name} has a conversation ${s.uuid}, but it is missing at ${expected ?? 'its expected path'}${where}`;
   return (
     `${reason}.${scope}${failures} Refusing to start a NEW conversation on top of it. ` +
-    `If it can be recovered (the project directory or the session's profile moved?), put it where this session now points, then: ccmux start ${s.name}   ·   ` +
-    `If it is gone for good: ccmux renew ${s.name}   — a fresh conversation for this session, keeping its dir, mode, chat and prompt modules`
+    `If it can be recovered (the project directory or the session's profile moved?), put it where this session now points, then: stitchmux start ${s.name}   ·   ` +
+    `If it is gone for good: stitchmux renew ${s.name}   — a fresh conversation for this session, keeping its dir, mode, chat and prompt modules`
   );
 }

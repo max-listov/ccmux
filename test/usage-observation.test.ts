@@ -12,7 +12,7 @@ import { UsageQuerySchema } from '../src/usage/schema.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('daemon observation yields between sources and cancels its timer at lifecycle shutdown', async () => {
-  const root = mkdtempSync('/tmp/ccmux-usage-observer-');
+  const root = mkdtempSync('/tmp/stitchmux-usage-observer-');
   const m = makeMachine({
     stateDir: root,
     projectsDir: join(root, 'projects'),

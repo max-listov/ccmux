@@ -26,7 +26,7 @@ import { startOpenCodeServer } from './server.ts';
  */
 export function nativeRuntimeFailure(error: unknown, name: string): Error {
   if (error instanceof Error && policyUnavailableReason(error.message) !== undefined) return error;
-  return new Error(`Native runtime failed; run \`ccmux logs ${name}\` for the cause`);
+  return new Error(`Native runtime failed; run \`stitchmux logs ${name}\` for the cause`);
 }
 
 export async function runOpenCodeProcess(

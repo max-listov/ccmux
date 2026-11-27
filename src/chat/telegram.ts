@@ -20,7 +20,7 @@ function escapeHtml(s: string): string {
  *
  * The route is written for a PERSON — `machine:session`, both sides. It used to carry the full agent
  * address, provider and thread uuid included, on the reasoning that every line should be copyable
- * into `ccmux msg`. On a phone that reasoning does not survive contact: the two uuids were 55% of a
+ * into `stitchmux msg`. On a phone that reasoning does not survive contact: the two uuids were 55% of a
  * 130-character header, and nobody types one, because this mirror is one-way — there is nothing to
  * reply to from Telegram. `machine:session` is already unique across the fleet, which is the whole
  * point of fleet addressing, and a managed session pins one thread at creation, so the uuid

@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { AppError } from 'stitchkit';
 import { writeFileAtomicSync } from 'stitchkit/files';
 import { z } from 'zod';
 import { stableJson } from '../agent/launch/launchInputs.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { loadSessions } from '../session/registry.ts';
@@ -194,9 +194,8 @@ export function admitOnce(m: MachineConfig, msg: ChatMessage): boolean {
       (requestedOptions !== undefined &&
         stableJson(acceptedOptions) !== stableJson(requestedOptions))
     )
-      throw new AppError('IDEMPOTENCY_CONFLICT', {
+      throw refusals.errors.IDEMPOTENCY_CONFLICT({
         message: 'Message ID already belongs to a different request',
-        status: 409,
       });
     return false;
   }

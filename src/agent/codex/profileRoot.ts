@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MachineConfig, Session } from '../../types.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { envFilePath } from '../launch/launchInputs.ts';
 import { parseEnvFile } from '../launch/sessionEnv.ts';
 

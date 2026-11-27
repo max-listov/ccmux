@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { defineMailbox } from './mailbox.ts';
 import { type PermissionMode, PermissionModeSchema } from './projectionSchema.ts';
@@ -38,27 +38,24 @@ const mailbox = defineMailbox<RuntimeModeRequest, PermissionMode>({
   deadlineMs: 10_000,
   settle: (receipt, snapshot) => {
     if (receipt.phase === 'failed')
-      throw new AppError('UNSUPPORTED', {
+      throw refusals.errors.UNSUPPORTED({
         message: receipt.reason ?? 'The runtime refused this mode',
-        status: 409,
       });
     if (receipt.phase !== 'complete') return undefined;
     // The runtime's own published mode, not the request: only that proves it took.
     return snapshot()?.permissionMode === receipt.mode ? receipt.mode : undefined;
   },
   mismatch: () =>
-    new AppError('IDENTITY_MISMATCH', {
+    refusals.errors.IDENTITY_MISMATCH({
       message: 'The conversation changed while setting its mode',
-      status: 409,
     }),
 });
 
 export function readRuntimeMode(m: MachineConfig, s: Session): RuntimeModeRequest | null {
   const receipt = mailbox.read(m, s);
   if (receipt === null && existsSync(join(managedRuntimeRoot(m, s), 'permission-mode.json')))
-    throw new AppError('PERMISSION_MODE_UNAVAILABLE', {
+    throw refusals.errors.PERMISSION_MODE_UNAVAILABLE({
       message: 'Saved permission mode is invalid',
-      status: 409,
     });
   return receipt;
 }

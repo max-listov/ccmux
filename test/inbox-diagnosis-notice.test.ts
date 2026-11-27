@@ -12,7 +12,7 @@ import { makeChatMessage, makeMachine, makeSession } from './helpers.ts';
  * handled it. It is not handled: the letters are still queued, and the sender who "closed" them this
  * way keeps reporting an empty queue while two letters wait on a delivery that is not coming.
  */
-const root = mkdtempSync(join(tmpdir(), 'ccmux-inbox-notice-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-inbox-notice-'));
 // The listing asks tmux whether the recipient is running, which only colours the hold sentence.
 // A stub that lists nothing keeps the test about the read cursor and off the machine's tmux.
 const tmuxBin = join(root, 'tmux');
@@ -36,10 +36,10 @@ async function inbox(env: Record<string, string>): Promise<string> {
   const base: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env))
     if (value !== undefined) base[key] = value;
-  base.CCMUX_CONFIG = configPath;
-  base.CCMUX_STATE_DIR = root;
-  base.CCMUX_CACHE_DIR = join(root, 'cache');
-  delete base.CCMUX_SESSION;
+  base.STITCHMUX_CONFIG = configPath;
+  base.STITCHMUX_STATE_DIR = root;
+  base.STITCHMUX_CACHE_DIR = join(root, 'cache');
+  delete base.STITCHMUX_SESSION;
   const proc = Bun.spawn(['bun', CLI, 'inbox', session.name], {
     env: { ...base, ...env },
     stdout: 'pipe',
@@ -67,7 +67,7 @@ test('another session’s inbox is a diagnosis, and the listing says nothing was
 });
 
 test('your own inbox marks read and does not claim otherwise', async () => {
-  const out = await inbox({ CCMUX_SESSION: session.name });
+  const out = await inbox({ STITCHMUX_SESSION: session.name });
   expect(out).toContain('a letter');
   expect(out).not.toContain(NOTICE);
   expect(cursors()).toContain('"read"');

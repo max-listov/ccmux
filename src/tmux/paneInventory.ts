@@ -1,7 +1,7 @@
 import { measured } from '../util/cpuScope.ts';
 import { log } from '../util/log.ts';
 /** The session option records the immutable agent pane id, independently of other windows. */
-export const AGENT_PANE_OPTION = '@ccmux-agent-pane';
+export const AGENT_PANE_OPTION = '@stitchmux-agent-pane';
 export const PANE_INVENTORY_FORMAT = `#{session_name}|#{pane_id}|#{${AGENT_PANE_OPTION}}|#{session_created}`;
 
 /** Shared by healing and monitoring: a surviving auxiliary pane never proves agent liveness. */

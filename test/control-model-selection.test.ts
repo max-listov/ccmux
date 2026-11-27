@@ -15,7 +15,7 @@ import { withLock } from '../src/util/lock.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('one profile serves two model selections; retries and restart preserve one writer and selection', async () => {
-  const root = mkdtempSync('/tmp/ccmux-selection-test-');
+  const root = mkdtempSync('/tmp/stitchmux-selection-test-');
   const machine = makeMachine({
     stateDir: join(root, 'state'),
     codexBin: '/bin/codex',
@@ -190,7 +190,7 @@ test('a loaded provider mismatch is refused before collaboration discovery or tu
 });
 
 test("a create waiting for a held request lock ends at the caller's deadline, not the lock's", async () => {
-  const root = mkdtempSync('/tmp/ccmux-selection-lock-');
+  const root = mkdtempSync('/tmp/stitchmux-selection-lock-');
   const machine = makeMachine({ stateDir: join(root, 'state'), codexBin: '/bin/codex' });
   const requestId = crypto.randomUUID();
   privateRuntimeDirectory(dirname(storeLockPath(machine)));

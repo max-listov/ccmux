@@ -125,7 +125,7 @@ function startClient(codexHome: string) {
 
   async function initialize(): Promise<void> {
     await request('initialize', {
-      clientInfo: { name: 'ccmux_probe', title: 'ccmux probe', version: '1' },
+      clientInfo: { name: 'stitchmux_probe', title: 'stitchmux probe', version: '1' },
     });
     send({ method: 'initialized', params: {} });
   }
@@ -195,7 +195,7 @@ async function rejectedMessage(operation: Promise<unknown>): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-app-server-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-app-server-'));
   const codexHome = join(root, 'codex-home');
   const workspace = join(root, 'workspace');
   mkdirSync(codexHome);

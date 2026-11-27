@@ -113,7 +113,7 @@ const say = (role: 'user' | 'assistant', text: string) =>
   });
 
 function transcript(lines: string[]) {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-chat-pickup-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-chat-pickup-'));
   const dir = join(root, 'proj');
   // The session directory first: its encoded name resolves the real path, which differs from the
   // temporary one on macOS until the directory exists.

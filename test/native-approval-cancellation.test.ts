@@ -19,7 +19,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const stateDir = mkdtempSync('/tmp/ccmux-cancel-');
+  const stateDir = mkdtempSync('/tmp/stitchmux-cancel-');
   roots.push(stateDir);
   const m = makeMachine({ stateDir });
   const s = makeSession({

@@ -30,7 +30,7 @@ async function buildBundle(out: string): Promise<boolean> {
 // full isolation. It catches react-devtools-core AND any future hoisted external ink (or a dep) adds.
 
 test('the shipped bundle carries no react-devtools-core import (the specific regression)', async () => {
-  const out = join(mkdtempSync(join(tmpdir(), 'ccmux-bundle-')), 'ccmux.js');
+  const out = join(mkdtempSync(join(tmpdir(), 'stitchmux-bundle-')), 'stitchmux.js');
   expect(await buildBundle(out)).toBe(true);
   expect(readFileSync(out, 'utf8')).not.toContain('from "react-devtools-core"');
 }, 60_000);
@@ -39,14 +39,14 @@ test('the shipped bundle carries no react-devtools-core import (the specific reg
 // the daemon has no exclusive lock and no process identity on macOS. The classification reads the
 // marker the plugin's loader carries, so it answers without running the bundle.
 test('the shipped bundle carries the packaged native loader, not the refusing default', async () => {
-  const out = join(mkdtempSync(join(tmpdir(), 'ccmux-bundle-native-')), 'ccmux.js');
+  const out = join(mkdtempSync(join(tmpdir(), 'stitchmux-bundle-native-')), 'stitchmux.js');
   expect(await buildBundle(out)).toBe(true);
   expect(inspectNativeArtifact(readFileSync(out))).toBe('packaged');
 }, 60_000);
 
 test('the shipped bundle starts with an EMPTY bun cache and NO network (the real invariant)', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-bundle-iso-'));
-  const out = join(dir, 'ccmux.js');
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-bundle-iso-'));
+  const out = join(dir, 'stitchmux.js');
   expect(await buildBundle(out)).toBe(true);
 
   // Isolate resolution: a fresh empty HOME (⇒ empty ~/.bun cache), an empty cache dir, and a dead
@@ -67,12 +67,12 @@ test('the shipped bundle starts with an EMPTY bun cache and NO network (the real
   ]);
   expect(stderr).not.toContain('Cannot find package');
   expect(code).toBe(0);
-  expect(stdout).toContain('ccmux');
+  expect(stdout).toContain('stitchmux');
 }, 60_000);
 
 test('the shipped bundle carries the routed programs, and each runs on its own', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-bundle-sl-'));
-  const out = join(dir, 'ccmux.js');
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-bundle-sl-'));
+  const out = join(dir, 'stitchmux.js');
   expect(await buildBundle(out)).toBe(true);
   // The source module is null on purpose, so a build that failed to replace it would ship a bundle
   // whose required programs could never be installed.
@@ -88,7 +88,7 @@ test('the shipped bundle carries the routed programs, and each runs on its own',
   const installRoot = join(dir, 'installed');
   for (const expected of ['written', 'current']) {
     const install = Bun.spawn([process.execPath, out, 'install', '--artifacts-only'], {
-      env: { ...process.env, HOME: dir, CCMUX_DATA_DIR: installRoot },
+      env: { ...process.env, HOME: dir, STITCHMUX_DATA_DIR: installRoot },
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -106,13 +106,13 @@ test('the shipped bundle carries the routed programs, and each runs on its own',
       stderr: 'pipe',
     },
   );
-  expect(await new Response(relay.stderr).text()).toContain('usage: ccmux _peer-read');
+  expect(await new Response(relay.stderr).text()).toContain('usage: stitchmux _peer-read');
   expect(await relay.exited).toBe(2);
   const proc = Bun.spawn([process.execPath, app], {
     stdin: new Response('{"model":{"display_name":"M"},"context_window":{"used_percentage":5}}'),
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, HOME: dir, CCMUX_SESSION: '' },
+    env: { ...process.env, HOME: dir, STITCHMUX_SESSION: '' },
   });
   expect(await proc.exited).toBe(0);
 }, 120_000);
@@ -125,8 +125,8 @@ test('the shipped bundle carries the routed programs, and each runs on its own',
 test.skipIf(process.platform !== 'darwin')(
   'an installed bundle records its process identity in the locks it takes',
   async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ccmux-bundle-native-'));
-    const out = join(dir, 'ccmux.js');
+    const dir = mkdtempSync(join(tmpdir(), 'stitchmux-bundle-native-'));
+    const out = join(dir, 'stitchmux.js');
     expect(await buildBundle(out)).toBe(true);
     expect(readFileSync(out, 'utf8')).not.toContain('NATIVE_BACKEND_ARTIFACT = null');
 
@@ -169,7 +169,7 @@ test.skipIf(process.platform !== 'darwin')(
 
     const installed = join(dir, 'installed');
     const install = Bun.spawn([process.execPath, out, 'install', '--artifacts-only'], {
-      env: { ...process.env, HOME: dir, CCMUX_DATA_DIR: installed },
+      env: { ...process.env, HOME: dir, STITCHMUX_DATA_DIR: installed },
       stdout: 'pipe',
       stderr: 'pipe',
     });

@@ -78,7 +78,7 @@ export function inspectChatPane(styledPaneText: string): ChatPaneInspection {
 /**
  * A pane drawn in a shape this version does not recognise. Unlike a menu or a typing human, waiting
  * does not clear it: the Codex TUI changed (0.76.1 was a footer that started printing its model in
- * capitals), and only a ccmux that knows the new shape delivers again.
+ * capitals), and only a stitchmux that knows the new shape delivers again.
  */
 export const UNKNOWN_CODEX_PANE =
   'the Codex pane is drawn in an unknown shape — delivery is held until a proven idle composer appears';

@@ -25,7 +25,7 @@ import { peersOf, type RemoteResult, remoteFailureCause, runPeer } from './trans
  * see at a glance that `api` lives on host-a while host-b has its own similarly-named session, which
  * is precisely the confusion that mis-delivered a report in the 2026-08-05 incident.
  *
- * Deliberately LENIENT about what a remote returns: another box may run an older ccmux whose
+ * Deliberately LENIENT about what a remote returns: another box may run an older stitchmux whose
  * `list --json` has a different shape, so we parse only the few fields we display. A missing agent
  * becomes explicit `unknown`; silently calling it Claude would turn version skew into misrouting.
  * And "unreachable" is a NORMAL result, not a failure — with no server-side keys, transit
@@ -115,7 +115,7 @@ function collectPeers(m: MachineConfig): Promise<FleetMachine[]> {
       // Asked by change: the rows this reader already holds come back as digests, which is what
       // keeps a fleet read every few seconds from being the largest flow off the servers.
       const held = loadPeerHeld(machine, 'list');
-      const argv = ['ccmux', '_peer-read', 'list', ...held.knownArgs];
+      const argv = ['stitchmux', '_peer-read', 'list', ...held.knownArgs];
       const r = await runPeer(m, machine, alias, argv, {
         // The execution budget stays generous — a busy machine listing many sessions is answering,
         // not absent. The DIAL is what gets cut: this view asks every machine at once and has a
@@ -160,7 +160,7 @@ export function peerListMachine(
   if (r.transportFailed) return failed(r.failureDetail ?? 'unreachable (no transit right now)');
   if (r.code !== 0)
     return failed(
-      `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
+      `remote stitchmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
     );
   let parsed: z.infer<typeof RemoteListSchema> | undefined;
   let expanded: ReturnType<typeof expandPeerList> = null;
@@ -171,7 +171,7 @@ export function peerListMachine(
     parsed = undefined;
   }
   if (expanded === null || parsed === undefined)
-    return failed('unreadable list output (older ccmux?)');
+    return failed('unreadable list output (older stitchmux?)');
   held?.save(expanded.packs);
   return {
     machine,

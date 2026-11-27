@@ -11,12 +11,12 @@ import { readAcceptanceCommunicationAuthorization } from './acceptance-communica
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 
 const configArgument = process.argv[2];
 if (
   configArgument === undefined ||
-  !basename(dirname(configArgument)).startsWith('ccmux-owned-probe-')
+  !basename(dirname(configArgument)).startsWith('stitchmux-owned-probe-')
 )
   throw new Error('Pass an isolated owned-runtime probe machine.json');
 const config = configArgument;
@@ -33,7 +33,7 @@ function check(value: unknown, message: string): asserts value {
 
 const base = MachineConfigSchema.parse(JSON.parse(readFileSync(config, 'utf8')));
 check(
-  base.stateDir === join(root, 'state') && base.tmuxSocket?.startsWith('ccmux-owned-'),
+  base.stateDir === join(root, 'state') && base.tmuxSocket?.startsWith('stitchmux-owned-'),
   'probe is not isolated',
 );
 check(
@@ -53,16 +53,16 @@ const activeMachine = MachineConfigSchema.parse({
 });
 
 const environment: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: activeMachine.stateDir,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
-  CCMUX_DATA_DIR: join(root, 'data'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: activeMachine.stateDir,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_DATA_DIR: join(root, 'data'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && environment[key] === undefined) environment[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
@@ -118,7 +118,7 @@ async function restartDaemon(): Promise<void> {
   );
   await waitFor('control service restarted', async () => {
     try {
-      const response = await fetch('http://ccmux.local/control/sessions', {
+      const response = await fetch('http://stitchmux.local/control/sessions', {
         unix: controlSocket(activeMachine),
       });
       return response.ok;
@@ -132,7 +132,7 @@ await Bun.write(config, `${JSON.stringify(activeMachine, null, 2)}\n`);
 await restartDaemon();
 
 const remote = createInjectedControlClient(
-  localControlFetch(controlSocket(activeMachine), activeMachine.rcPrefix),
+  declaredServiceFetch(controlSocket(activeMachine), activeMachine.rcPrefix),
 );
 
 async function expectCode(run: () => Promise<unknown>, code: string): Promise<void> {

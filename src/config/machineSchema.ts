@@ -20,7 +20,7 @@ import { RemoteTransportSchema } from './remoteTransport.ts';
  */
 
 /** Optional Telegram sink for explicit owner notices — a group, a
- *  DM, or a specific forum topic. Any ccmux user drops in their own @BotFather token + target;
+ *  DM, or a specific forum topic. Any stitchmux user drops in their own @BotFather token + target;
  *  absent → no mirroring (fail-soft). Set in machine.json. */
 export const TelegramConfigSchema = z.object({
   botToken: z.string().min(1), // @BotFather token (secret)
@@ -67,7 +67,7 @@ export const MachineConfigSchema = z.object({
   // Optional dedicated tmux SOCKET (`tmux -L <socket>`). Unset → the default socket (prod). Set →
   // every tmux call is scoped to this socket, so an ISOLATED instance gets its OWN tmux server:
   // own panes, no name collisions, and — key — that server inherits the launching env, so `_run`
-  // panes read THIS instance's CCMUX_CONFIG. This is how a dev instance runs beside prod cleanly.
+  // panes read THIS instance's STITCHMUX_CONFIG. This is how a dev instance runs beside prod cleanly.
   tmuxSocket: z.string().min(1).optional(),
   // Remote Control visibility. Default true = sessions show in the claude.ai app (drive from phone).
   // A dev/isolated instance sets false so its throwaway sessions don't clutter the app or get
@@ -98,9 +98,9 @@ export const MachineConfigSchema = z.object({
     .string()
     .regex(RC_PREFIX_RE, 'rcPrefix must be a lowercase slug (e.g. local, dev, prod, staging)'),
   // Fleet directory: machine label (another box's rcPrefix) → ssh alias. This is what makes
-  // `ccmux msg host-b:agent-b` possible; absent/empty = fleet addressing simply isn't available here and
+  // `stitchmux msg host-b:agent-b` possible; absent/empty = fleet addressing simply isn't available here and
   // everything behaves exactly as before. Keys are validated as rcPrefix slugs, so a machine label
-  // can never itself contain the ':' separator. Verified end-to-end by `ccmux doctor`, which checks
+  // can never itself contain the ':' separator. Verified end-to-end by `stitchmux doctor`, which checks
   // that each alias really reports the rcPrefix it is mapped to (a mis-mapped entry would deliver
   // correctly-addressed mail to the wrong machine — the exact failure this feature exists to kill).
   // The VALUE is an ssh alias we hand to `ssh` as its own argv element: a leading '-' would be read
@@ -128,7 +128,7 @@ export const MachineConfigSchema = z.object({
    * Component owners who work OUTSIDE this fleet, and how a person reaches them.
    *
    * The value is prose on purpose — it is read by a human, who is the transport. Anything more
-   * structured would be a promise ccmux cannot keep: it does not speak to that product, and
+   * structured would be a promise stitchmux cannot keep: it does not speak to that product, and
    * pretending to know the route would invite an automatic delivery that cannot exist.
    *
    * Declaring a name is what takes that party OUT of the session namespace. Undeclared, people
@@ -152,7 +152,7 @@ export const MachineConfigSchema = z.object({
   /**
    * Opt-in automatic sleep for idle sessions.
    *
-   * Disabled by default (`enabled: false`) so upgrading ccmux never changes existing host behavior
+   * Disabled by default (`enabled: false`) so upgrading stitchmux never changes existing host behavior
    * until an operator opts in explicitly. When enabled, the daemon puts stably idle sessions to
    * sleep after `idleAfterMinutes`, keeping pinned sessions and at least `minAwakePerProfile`
    * healthy awake sessions in each provider profile (preserving Remote Control entry points).
@@ -185,9 +185,9 @@ export const MachineConfigSchema = z.object({
   /**
    * This machine accepts agents running unrestricted under its root daemon.
    *
-   * Escalated modes are blocked twice over: ccmux downgrades them, and the agent itself refuses to
+   * Escalated modes are blocked twice over: stitchmux downgrades them, and the agent itself refuses to
    * start as root. The agent's own escape hatch is an environment variable that declares the process
-   * to be sandboxed — so honouring this flag means ccmux ASSERTS that to the agent on every launch.
+   * to be sandboxed — so honouring this flag means stitchmux ASSERTS that to the agent on every launch.
    *
    * Read that plainly before setting it: on a bare server the assertion is not true. What the flag
    * really says is "I accept an agent acting as root here with nothing to approve it". That is a
@@ -203,7 +203,7 @@ export const MachineConfigSchema = z.object({
   // performed ONCE per machine instead of once per session. A session may still override either way.
   chatEnabled: z.boolean().default(false),
   /**
-   * Whether the fleet view scans for agent threads running OUTSIDE ccmux. Off by default: the
+   * Whether the fleet view scans for agent threads running OUTSIDE stitchmux. Off by default: the
    * inventory is evidence gathered for a decision (adopt, fork, take over), and a machine that
    * is not making that decision should not pay for it on every launch. The scan walks every
    * stored transcript on the box, so its cost tracks accumulated history rather than fleet size.
@@ -212,23 +212,23 @@ export const MachineConfigSchema = z.object({
    */
   externalInventory: z.boolean().default(false),
   // Boot-unit label so install + update-bounce can target it.
-  // launchd: "com.ccmux.daemon"; systemd: "ccmux.service".
+  // launchd: "com.stitchmux.daemon"; systemd: "stitchmux.service".
   bootLabel: z.string().min(1),
   // Optional macOS LaunchAgent label for the managed tmux server (default derived from bootLabel,
-  // e.g. "com.ccmux.tmux"). Unused on Linux.
+  // e.g. "com.stitchmux.tmux"). Unused on Linux.
   tmuxBootLabel: z.string().min(1).optional(),
-  // Optional macOS CFBundleIdentifier override for the signed background ccmux.app bundle.
-  // Default is "com.ccmux.app". Unused on Linux.
+  // Optional macOS CFBundleIdentifier override for the signed background stitchmux.app bundle.
+  // Default is "com.stitchmux.app". Unused on Linux.
   macosBundleId: z.string().min(1).optional(),
   // Self-update source (where release.json lives). The bundle it names is downloaded over https
   // only — stitchkit's `applyCliUpdate` refuses any other scheme and private hosts; a local build is
-  // tested with `bun run stage` + `ccmux update`. Optional — `update` is a clear no-op when unset.
+  // tested with `bun run stage` + `stitchmux update`. Optional — `update` is a clear no-op when unset.
   releaseUrl: z.url().optional(),
   // A release feed on this machine's own network — a self-hosted mirror, a test — is refused by the
   // download's SSRF boundary unless stated here. Off by default: an asset URL arrives inside a
   // document, and a public feed has no reason to point into the local network.
   releaseAllowPrivateHosts: z.boolean().default(false),
-  // Signing keys accepted beside the ones compiled into ccmux (`src/release/trust.ts`), by key id →
+  // Signing keys accepted beside the ones compiled into stitchmux (`src/release/trust.ts`), by key id →
   // base64 of the raw Ed25519 public key — for a feed this machine's operator signs.
   releaseTrustKeys: z.record(z.string().min(1), z.string().min(1)).optional(),
   // Daemon self-update: when true + releaseUrl set, the daemon auto-checks every
@@ -236,11 +236,11 @@ export const MachineConfigSchema = z.object({
   autoUpdate: z.boolean().default(false),
   updateCheckInterval: z.number().int().positive().default(300),
   // How old a release must be, by its own releasedAt, before the daemon takes it unattended: the
-  // time a release runs on its first machine alone. `ccmux update` does not wait. 0 takes at once.
+  // time a release runs on its first machine alone. `stitchmux update` does not wait. 0 takes at once.
   autoUpdateSettleSeconds: z.number().int().nonnegative().default(600),
   // Fleet-wide extra flags appended to every session (after per-session flags).
   extraFlags: z.array(z.string()).default([]),
-  // System-log threshold (the state root's ccmux.log). Re-read live by the daemon each tick —
+  // System-log threshold (the state root's stitchmux.log). Re-read live by the daemon each tick —
   // flip to "debug" on a misbehaving box without restarting anything.
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   // Claude 2.1.x shows a BLOCKING "Resume from summary?" picker on `--resume` of a large/old
@@ -301,9 +301,9 @@ export const MachineConfigSchema = z.object({
  * Remote release descriptor for `update` — replaces a VERSION/NOTES text dance.
  * The version regex only VALIDATES a known shape; it never parses unknown data.
  *
- * These are the fields every ccmux reads, the install script and earlier daemons included. The same
+ * These are the fields every stitchmux reads, the install script and earlier daemons included. The same
  * `release.json` is also a signed stitchkit `CliBuildManifest` (`name`, `commit`, `builtAt`,
- * `assets`, `signature`), which is what a current ccmux installs from; `url` and `sha256` here name
+ * `assets`, `signature`), which is what a current stitchmux installs from; `url` and `sha256` here name
  * the same bundle as its assets do.
  */
 export const ReleaseSchema = z.object({

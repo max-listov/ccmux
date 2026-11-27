@@ -10,7 +10,7 @@ export const AgentKindSchema = z.enum(['claude', 'codex', 'opencode', 'custom', 
 export const ManagedPeerSchema = z
   .object({
     kind: z.literal('managed'),
-    source: z.literal('ccmux'),
+    source: z.literal('stitchmux'),
     machine: z.string().regex(RC_PREFIX_RE),
     agent: AgentKindSchema,
     session: z.string().min(1).regex(SESSION_NAME_RE),
@@ -20,14 +20,14 @@ export const ManagedPeerSchema = z
 export const CliPrincipalSchema = z
   .object({
     kind: z.literal('cli'),
-    source: z.literal('ccmux'),
+    source: z.literal('stitchmux'),
     machine: z.string().regex(RC_PREFIX_RE),
   })
   .strict();
 export const ServicePrincipalSchema = z
   .object({
     kind: z.literal('service'),
-    source: z.literal('ccmux'),
+    source: z.literal('stitchmux'),
     machine: z.string().regex(RC_PREFIX_RE),
     transport: z.enum(['local', 'declared-service']),
   })
@@ -54,7 +54,7 @@ export const OwnerTargetSchema = z.object({ kind: z.literal('owner') }).strict()
 export const ExternalTargetSchema = z
   .object({
     kind: z.literal('external'),
-    source: z.literal('ccmux'),
+    source: z.literal('stitchmux'),
     name: z.string().min(1).regex(SESSION_NAME_RE),
   })
   .strict();

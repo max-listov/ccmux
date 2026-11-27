@@ -4,7 +4,7 @@
  *
  * One process runs the files one after another, and these tests mostly WAIT — on child processes,
  * sockets, tmux, timers. Measured on the whole suite: 333 s of wall clock for 148 s of CPU, under
- * half of one core on a machine with eighteen. Each test process already has a private ccmux home
+ * half of one core on a machine with eighteen. Each test process already has a private stitchmux home
  * (`test/preload.ts`), so files in different processes share nothing; run side by side the suite
  * takes about as long as its slowest share.
  *
@@ -29,7 +29,7 @@ import { sharesFor } from './testShares.ts';
 const ROOT = resolve(import.meta.dir, '..');
 const args = process.argv.slice(2);
 const serial = args[0] === '--serial';
-enterCheckRunner(ROOT, serial ? 'ccmux-tests-serial' : 'ccmux-tests');
+enterCheckRunner(ROOT, serial ? 'stitchmux-tests-serial' : 'stitchmux-tests');
 if (serial) {
   const argv = [process.execPath, 'test', '--timeout', '20000', ...args.slice(1)];
   if (process.execve) process.execve(process.execPath, argv, process.env);
@@ -78,7 +78,7 @@ for (const file of [...together].sort((a, b) => cost(b) - cost(a))) {
 }
 
 const started = performance.now();
-const out = join(tmpdir(), `ccmux-test-shards-${process.pid}`);
+const out = join(tmpdir(), `stitchmux-test-shards-${process.pid}`);
 mkdirSync(out, { recursive: true });
 const runShare = async (share: { files: string[]; ms: number }, index: number) => {
   const junit = join(out, `${index}.xml`);

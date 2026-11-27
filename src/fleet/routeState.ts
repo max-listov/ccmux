@@ -11,8 +11,8 @@ import { atomicWrite } from '../util/atomic.ts';
  * become truer the second time. Written once per call it produced twelve thousand identical lines
  * in a week on one machine — a fan-out poller multiplied by every peer — and a log that says the
  * same thing twelve thousand times has taught its reader that the message means nothing. The
- * standing state belongs where it is already published: `ccmux fleet` names the path each answer
- * took, `ccmux doctor` names the missing prerequisite, and every answer carries `fallback`.
+ * standing state belongs where it is already published: `stitchmux fleet` names the path each answer
+ * took, `stitchmux doctor` names the missing prerequisite, and every answer carries `fallback`.
  *
  * Shared by the daemon and by every short-lived CLI process, which is why it is a file rather than
  * a variable. It is advisory ONLY: a lost write or a race between two processes costs one repeated

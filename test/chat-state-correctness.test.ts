@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 function machine() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-chat-state-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-chat-state-'));
   roots.push(root);
   return makeMachine({ stateDir: root, rcPrefix: 'host-a' });
 }
@@ -67,7 +67,7 @@ test("the daemon's save does not undo a read marked while it held stale cursors"
   for (const n of [1, 2, 3, 4, 5]) appendMessage(m, letter(n));
   const key = managedPeerKey(worker);
   const held = loadCursors(m); // the daemon starts its pass
-  await markRead(m, worker, 5); // `ccmux inbox` marks everything read meanwhile
+  await markRead(m, worker, 5); // `stitchmux inbox` marks everything read meanwhile
   held.delivered[key] = 2;
   await saveCursors(m, held); // the daemon saves at the end of its pass
   const now = loadCursors(m);

@@ -29,7 +29,7 @@ let dir: string;
 const machine = () => makeMachine({ rcPrefix: 'host-a', stateDir: dir });
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'ccmux-logfeed-'));
+  dir = mkdtempSync(join(tmpdir(), 'stitchmux-logfeed-'));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -42,7 +42,7 @@ function appendLedger(ts: string, body: string, id = randomUUID()): void {
       v: CHAT_GENERATION,
       id,
       ts,
-      from: { kind: 'cli', source: 'ccmux', machine: 'host-a' },
+      from: { kind: 'cli', source: 'stitchmux', machine: 'host-a' },
       to: { kind: 'owner' },
       body,
       task: null,
@@ -64,10 +64,10 @@ function appendOutbox(ts: string, body: string): void {
         v: CHAT_GENERATION,
         id: randomUUID(),
         ts,
-        from: { kind: 'cli', source: 'ccmux', machine: 'host-a' },
+        from: { kind: 'cli', source: 'stitchmux', machine: 'host-a' },
         to: {
           kind: 'managed',
-          source: 'ccmux',
+          source: 'stitchmux',
           machine: 'host-b',
           agent: 'claude',
           session: 'agent-b',
@@ -298,7 +298,7 @@ test('a line still being written is not emitted until its newline arrives', () =
 test('a CUT answer is named as cut, not blamed on an old build', () => {
   // The two produce the same JSON.parse failure and are nothing alike: one is fixed by asking for
   // less, the other by upgrading a machine. This snapshot serialises whole message bodies, so being
-  // cut is the failure that actually happens — and "older ccmux?" sends the reader to the wrong
+  // cut is the failure that actually happens — and "older stitchmux?" sends the reader to the wrong
   // machine entirely.
   const cut = unreadableReason(
     '{"rows":[{"body":"aaa',
@@ -306,7 +306,7 @@ test('a CUT answer is named as cut, not blamed on an old build', () => {
   );
   expect(cut).toContain("cut at the transport's cap");
   expect(cut).toContain('--follow');
-  expect(cut).not.toContain('older ccmux');
+  expect(cut).not.toContain('older stitchmux');
 });
 
 test('a large answer with no closing brace betrays itself even with no marker', () => {
@@ -314,10 +314,10 @@ test('a large answer with no closing brace betrays itself even with no marker', 
   // not an old build's output — old builds close their JSON.
   const reason = unreadableReason(`{"rows":[${'x'.repeat(70_000)}`, '');
   expect(reason).toContain('incomplete');
-  expect(reason).not.toContain('older ccmux');
+  expect(reason).not.toContain('older stitchmux');
 });
 
 test('a small unparseable answer IS the old-build case, and still says so', () => {
   // The original diagnosis is right for the original cause; it just was not the only one.
-  expect(unreadableReason('not json at all', '')).toContain('older ccmux');
+  expect(unreadableReason('not json at all', '')).toContain('older stitchmux');
 });

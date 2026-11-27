@@ -4,7 +4,7 @@ import { claudeProfile } from '../agent/claude/profileRoot.ts';
 import { codexProfile } from '../agent/codex/profileRoot.ts';
 import { envFilePath } from '../agent/launch/launchInputs.ts';
 import type { MachineConfig, Session } from '../types.ts';
-import { HOME } from '../util/env.ts';
+import { HOME } from '../util/home.ts';
 import type { ProbeTarget } from './probe.ts';
 
 /**

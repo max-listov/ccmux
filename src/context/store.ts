@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import { managedRuntimeRoot } from '../runtime/status.ts';
 import { privateRuntimeDirectory, readPrivateJson } from '../runtime/store.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -30,21 +30,14 @@ export function readContextJournal(m: MachineConfig, s: Session): ContextJournal
   const path = contextPath(m, s, 'context.json');
   const value = readPrivateJson(path, JournalSchema);
   if (value === null && existsSync(path))
-    throw new AppError('CONTEXT_UNAVAILABLE', {
-      message: 'Native context state is unavailable',
-      status: 503,
-    });
+    throw refusals.errors.CONTEXT_UNAVAILABLE({ message: 'Native context state is unavailable' });
   if (!s.registrationGeneration || !nativeId(s))
-    throw new AppError('CONTEXT_UNAVAILABLE', {
+    throw refusals.errors.CONTEXT_UNAVAILABLE({
       message: 'Native context identity is unavailable',
-      status: 503,
     });
   if (value !== null) {
     if (value.registration !== s.registrationGeneration || value.nativeId !== nativeId(s))
-      throw new AppError('CONTEXT_UNAVAILABLE', {
-        message: 'Native context identity changed',
-        status: 409,
-      });
+      throw refusals.errors.IDENTITY_MISMATCH({ message: 'Native context identity changed' });
     return value;
   }
   return JournalSchema.parse({
@@ -78,10 +71,7 @@ export async function withContextJournal<T>(
 }
 export function assertNoContextMutation(m: MachineConfig, s: Session): void {
   if (contextMutationPending(m, s))
-    throw new AppError('CONTEXT_BUSY', {
-      message: 'A native context operation is unresolved',
-      status: 409,
-    });
+    throw refusals.errors.CONTEXT_BUSY({ message: 'A native context operation is unresolved' });
 }
 export function contextMutationPending(m: MachineConfig, s: Session): boolean {
   return readContextJournal(m, s).operations.some(

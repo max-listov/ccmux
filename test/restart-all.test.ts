@@ -3,7 +3,7 @@ import { type RestartAllDeps, restartAllOnce } from '../src/commands/restartAll.
 import type { Session } from '../src/types.ts';
 import { makeSession } from './helpers.ts';
 
-// The fleet sweep behind `ccmux restart --all` / TUI `R`. The load-bearing property is ORDER: every
+// The fleet sweep behind `stitchmux restart --all` / TUI `R`. The load-bearing property is ORDER: every
 // session is killed AND started before the next one is touched, so at most one session is ever down —
 // that's what keeps the tmux server from emptying (it dies with its last session) and keeps the
 // daemon from seeing a fleet-wide outage.

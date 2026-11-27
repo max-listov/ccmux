@@ -101,11 +101,11 @@ function nativeBackendPlugin(packaging: UniversalNativePackaging): BunPlugin {
  *  ships. Returns false (and logs) on failure. */
 export async function buildBundle(outfile: string): Promise<boolean> {
   mkdirSync(dirname(outfile), { recursive: true });
-  const native = requireUniversalNativePackaging('app/ccmux.js');
+  const native = requireUniversalNativePackaging('app/stitchmux.js');
   const result = await Bun.build({
     entrypoints: [SRC_CLI],
     target: 'bun',
-    naming: { entry: 'app/ccmux.js' },
+    naming: { entry: 'app/stitchmux.js' },
     splitting: false,
     plugins: [
       native.plugin,

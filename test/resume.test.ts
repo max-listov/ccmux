@@ -47,8 +47,8 @@ test('tripwire: histFile encoding byte-matches the real ~/.claude/projects layou
 });
 
 test('resumeArgs flips on transcript existence — the whole resume contract', () => {
-  const projects = mkdtempSync(join(tmpdir(), 'ccmux-proj-'));
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-work-'));
+  const projects = mkdtempSync(join(tmpdir(), 'stitchmux-proj-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-work-'));
   // first launch: no jsonl → --session-id
   expect(resumeArgs(UUID, dir, projects)).toEqual(['--session-id', UUID]);
   // create the transcript at the realpath-encoded location

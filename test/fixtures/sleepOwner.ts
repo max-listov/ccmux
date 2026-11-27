@@ -18,8 +18,20 @@ const child = Bun.spawn([process.execPath, '-e', 'setInterval(()=>{},1000)'], {
   stderr: 'ignore',
   detached: true,
 });
+// SIGUSR1 starts unrelated work under the owner — a build begun after a caller snapshotted the
+// process table — and reports its pid on the next stdout line.
+let work: ReturnType<typeof Bun.spawn> | null = null;
+process.on('SIGUSR1', () => {
+  work ??= Bun.spawn([process.execPath, '-e', 'setInterval(()=>{},1000)'], {
+    stdin: 'ignore',
+    stdout: 'ignore',
+    stderr: 'ignore',
+  });
+  console.log(JSON.stringify({ workPid: work.pid }));
+});
 const end = () => {
   if (child.exitCode === null) child.kill('SIGTERM');
+  if (work !== null && work.exitCode === null) work.kill('SIGTERM');
 };
 process.on('SIGTERM', () => {
   end();

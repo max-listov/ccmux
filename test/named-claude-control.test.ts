@@ -8,7 +8,7 @@ import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 test('a control retry keeps the admitted account after registry drift and rejects a different requested profile', async () => {
-  const workspace = realpathSync(shortTempDir('ccmux-profile-control-'));
+  const workspace = realpathSync(shortTempDir('stitchmux-profile-control-'));
   const oldXdg = process.env.XDG_CONFIG_HOME;
   process.env.XDG_CONFIG_HOME = workspace;
   onTestFinished(() => {

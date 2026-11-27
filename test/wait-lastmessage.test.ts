@@ -3,7 +3,7 @@ import { lastAssistantText, parseOpts } from '../src/commands/transcript.ts';
 import { parseWaitOpts } from '../src/commands/wait.ts';
 import type { TranscriptMessage } from '../src/types.ts';
 
-// `ccmux wait` + `transcript --last-message`: the two gestures an orchestrator makes constantly —
+// `stitchmux wait` + `transcript --last-message`: the two gestures an orchestrator makes constantly —
 // "tell me when it's done" and "give me the answer" — so they must not need a polling loop or a
 // JSON window dug through by hand.
 

@@ -19,7 +19,7 @@ const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 
 // Two chat-enabled router sessions (each may relay / arm watchdogs) + a worker target.
 function setup() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-cancel-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-cancel-'));
   const cfg = {
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',
@@ -56,14 +56,14 @@ async function runMsg(
 ): Promise<{ code: number; out: string }> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  env.CCMUX_CONFIG = cfgPath;
+  env.STITCHMUX_CONFIG = cfgPath;
   if (session !== undefined) {
-    env.CCMUX_SESSION = session;
+    env.STITCHMUX_SESSION = session;
     const m = MachineConfigSchema.parse(JSON.parse(await Bun.file(cfgPath).text()));
     const managed = loadSessions(m).find((item) => item.name === session);
     if (managed !== undefined)
       env[CHAT_CREDENTIAL_ENV] = (await Bun.file(chatAuthPath(m, managed.name)).text()).trim();
-  } else delete env.CCMUX_SESSION;
+  } else delete env.STITCHMUX_SESSION;
   const proc = Bun.spawn(
     ['bun', CLI, 'msg', '--communication-authorization', communicationAuthorizationFile, ...args],
     {
@@ -124,7 +124,7 @@ test('cancel with no task → usage, exit 1', async () => {
   const { cfgPath } = setup();
   const { code, out } = await runMsg(cfgPath, 'router', ['cancel']);
   expect(code).toBe(1);
-  expect(out).toContain('usage: ccmux msg cancel');
+  expect(out).toContain('usage: stitchmux msg cancel');
 });
 
 test('dedup replace only fires with a --task — same target, no task, keeps both pending', async () => {
@@ -154,7 +154,7 @@ test('--after + --interrupt prints the trap note but still sends', async () => {
   expect(pendingConditional(loadLedger(m), loadAcks(m), { task: 't3' }).length).toBe(1);
 });
 
-test('stdin body: echo … | ccmux msg <to> reads the piped text', async () => {
+test('stdin body: echo … | stitchmux msg <to> reads the piped text', async () => {
   const { cfgPath, m } = setup();
   const { code } = await runMsg(cfgPath, 'router', ['worker'], 'piped body here');
   expect(code).toBe(0);
@@ -205,7 +205,7 @@ test('cancel says it cannot reach mail that went to another machine, instead of 
   expect(out).toContain("1 message(s) for 't5' went to another machine");
 });
 
-// A named session outlives its own lives. `ccmux renew`, a restart, a fresh conversation — the
+// A named session outlives its own lives. `stitchmux renew`, a restart, a fresh conversation — the
 // address `<machine>:<session>` stays, the conversation uuid does not. Matching a sender by that
 // uuid meant a letter could be retracted only until its sender next restarted, and after that by
 // nobody at all: the instance that sent it was gone, and the same session's new life was a stranger

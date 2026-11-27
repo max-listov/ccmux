@@ -91,11 +91,11 @@ export class CustomOwner {
       resolveFile: customImageResolver(this.m, this.session),
       commandIdentity: {
         ...Object.fromEntries(
-          ['CCMUX_CONFIG', 'CCMUX_CACHE_DIR', 'CCMUX_DATA_DIR'].flatMap((name) =>
+          ['STITCHMUX_CONFIG', 'STITCHMUX_CACHE_DIR', 'STITCHMUX_DATA_DIR'].flatMap((name) =>
             process.env[name] === undefined ? [] : [[name, process.env[name]]],
           ),
         ),
-        CCMUX_STATE_DIR: this.m.stateDir,
+        STITCHMUX_STATE_DIR: this.m.stateDir,
         ...grantIdentity({}, this.m, this.session),
       },
       ...(provider === undefined ? {} : { provider }),

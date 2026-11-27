@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { lstatExists, readPrivate, writePrivateJson } from '../attachments/files.ts';
 import { chatPrincipalKey } from '../chat/identity.ts';
+import { type RefusalCode, refusals } from '../control/schema/refusals.ts';
 import { managedRuntimeRoot } from '../runtime/status.ts';
 import { privateRuntimeDirectory } from '../runtime/store.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
@@ -13,8 +13,9 @@ import {
   SteeringJournalSchema,
 } from './schema.ts';
 
-export function steeringFailure(code: string, status = 409): never {
-  throw new AppError(code, { message: 'The native steering operation is unavailable', status });
+/** Refuse a steering call with a code from the refusal table and its default sentence. */
+export function steeringFailure(code: RefusalCode): never {
+  throw refusals.errors[code]();
 }
 
 /** Caller holds native admission. No body or provider message is retained in this journal. */
@@ -36,7 +37,7 @@ export function readSteeringJournal(m: MachineConfig, s: Session): SteeringJourn
       return steeringFailure('IDENTITY_MISMATCH');
     return value;
   } catch {
-    return steeringFailure('STEERING_UNAVAILABLE', 503);
+    return steeringFailure('STEERING_UNAVAILABLE');
   }
 }
 
@@ -44,10 +45,10 @@ export function writeSteeringJournal(m: MachineConfig, s: Session, journal: Stee
   try {
     const value = SteeringJournalSchema.parse(journal);
     if (Buffer.byteLength(JSON.stringify(value)) > STEERING_LIMITS.journalBytes)
-      steeringFailure('CAPACITY');
+      steeringFailure('JOURNAL_CAPACITY');
     writePrivateJson(managedRuntimeRoot(m, s), 'steering.json', value);
   } catch {
-    steeringFailure('STEERING_UNAVAILABLE', 503);
+    steeringFailure('STEERING_UNAVAILABLE');
   }
 }
 

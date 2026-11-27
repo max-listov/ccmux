@@ -2,7 +2,7 @@ import { sessionRegistryLockPath } from '../config/paths.ts';
 import type { MachineConfig } from '../types.ts';
 import { LOCK_TIMEOUT_MS, withLock } from '../util/lock.ts';
 
-/** Serialize every sessions/pending read-modify-write transaction across ccmux processes. */
+/** Serialize every sessions/pending read-modify-write transaction across stitchmux processes. */
 export async function withSessionRegistryLock<T>(
   m: MachineConfig,
   run: () => Promise<T>,

@@ -26,7 +26,7 @@ import type { NativeAccount } from '../runtime/projectionSchema.ts';
 import { latestActivityMs, managedRuntimeView } from '../runtime/view.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
 import { loadSessions } from '../session/registry.ts';
-import { sleepBlocksStart } from '../session/sleep/store.ts';
+import { showsAsSleeping } from '../session/sleep/store.ts';
 import {
   type LifecycleStatus,
   readLaunchStamp,
@@ -118,7 +118,7 @@ async function buildRow(
   if (startedAt === undefined && native?.read.status !== 'live') {
     scanCache.delete(s.name); // stopped → drop stale scan so a restart re-captures
     const block = readLifecycleBlockForSession(m, s);
-    const sleeping = !s.archived && sleepBlocksStart(m, s);
+    const sleeping = showsAsSleeping(m, s, false);
     return {
       session: s,
       running: false,
@@ -170,7 +170,7 @@ async function buildRow(
   }
   // Structured status (Claude hooks + statusLine tee) is authoritative when present; the pane is the
   // cold-start fallback. State: a positive pane "working" (esc to interrupt) always wins — it covers a
-  // session already mid-turn when ccmux (re)started, before a hook fired; else the hook lifecycle file;
+  // session already mid-turn when stitchmux (re)started, before a hook fired; else the hook lifecycle file;
   // else the pane. Context: prefer the statusLine-tee metrics (Claude's own %, no regex, no statusline-
   // format dependency), else the pane label, else the used-tokens count from the transcript.
   const lifecycle = readLifecycle(s.name);
@@ -273,7 +273,7 @@ async function buildRow(
  * spinner frame as an ending.
  *
  * Null is also the honest answer for a turn nothing recorded the start of: a provider without turn
- * hooks, or a turn already under way when ccmux started. `state` still says `working`, so "in a
+ * hooks, or a turn already under way when stitchmux started. `state` still says `working`, so "in a
  * turn, start unknown" stays distinguishable from "not in a turn".
  */
 export function turnStartedAt(

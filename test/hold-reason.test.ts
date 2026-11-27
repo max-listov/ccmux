@@ -38,10 +38,10 @@ test('chat-off and stopped are named with the exact command that fixes them', ()
       running: true,
       nowMs: 0,
     }).text,
-  ).toContain('ccmux chat on api');
+  ).toContain('stitchmux chat on api');
   expect(
     holdReason(msg(), { recipient: enabled, chatEnabled: true, running: false, nowMs: 0 }).text,
-  ).toContain('ccmux start api');
+  ).toContain('stitchmux start api');
 });
 
 test('a scheduled message reports the remaining wait, not a fault', () => {

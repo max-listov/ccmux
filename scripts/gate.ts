@@ -28,7 +28,7 @@ const git = (...args: string[]): string | null => {
 };
 const receiptDir = (): string | null => {
   const dir = git('rev-parse', '--absolute-git-dir');
-  return dir === null ? null : join(dir, 'ccmux-gate');
+  return dir === null ? null : join(dir, 'stitchmux-gate');
 };
 /** The tree of a commit, and only when the checkout holds nothing else: what a run would check. */
 const cleanTree = (commit = 'HEAD'): string | null =>
@@ -56,7 +56,7 @@ if (args[0] === '--if-needed') {
   }
 }
 
-enterCheckRunner(ROOT, 'ccmux-gate');
+enterCheckRunner(ROOT, 'stitchmux-gate');
 const before = cleanTree();
 const started = performance.now();
 const steps: [string, string[]][] = [
@@ -64,7 +64,7 @@ const steps: [string, string[]][] = [
   ['publication', [process.execPath, 'scripts/check-publication.ts']],
   ['types', ['bunx', 'tsc', '--noEmit']],
   ['tests', [process.execPath, 'scripts/test-shards.ts']],
-  ['packed client', [process.execPath, 'scripts/verify-control-service-client.ts']],
+  ['packed client', [process.execPath, 'scripts/verify-client.ts']],
 ];
 const results = await Promise.all(
   steps.map(async ([name, argv]) => {

@@ -7,11 +7,11 @@ import { log } from '../util/log.ts';
 import { parseFlags } from './flags.ts';
 
 const USAGE =
-  `usage: ccmux role <name> <role>  ·  ccmux role <name> --none  ·  ccmux role (list)\n` +
+  `usage: stitchmux role <name> <role>  ·  stitchmux role <name> --none  ·  stitchmux role (list)\n` +
   `       <machine>:<name> for another fleet machine`;
 
 /**
- * `ccmux role` — declare what a session is FOR, so an address can select on it.
+ * `stitchmux role` — declare what a session is FOR, so an address can select on it.
  *
  * It takes effect immediately and deliberately: unlike `mode`, `chat` and `env-file`, no launch
  * reads a role, so there is nothing to restart. That is the property that keeps the field honest.
@@ -72,7 +72,7 @@ export async function cmdRole(args: string[]): Promise<number> {
     return 0;
   }
   console.log(
-    `${name}: ${ROLE_SIGIL}${value}   ·   address it as: ccmux msg ${m.rcPrefix}:${ROLE_SIGIL}${value} "…"`,
+    `${name}: ${ROLE_SIGIL}${value}   ·   address it as: stitchmux msg ${m.rcPrefix}:${ROLE_SIGIL}${value} "…"`,
   );
   return 0;
 }
@@ -86,7 +86,7 @@ function listRoles(): number {
   if (sessions.length === 0) {
     console.log('no session on this machine declares a role.');
     console.log(
-      `declare one: ccmux role <name> <role>   — then address it as ${m.rcPrefix}:${ROLE_SIGIL}<role>`,
+      `declare one: stitchmux role <name> <role>   — then address it as ${m.rcPrefix}:${ROLE_SIGIL}<role>`,
     );
     return 0;
   }

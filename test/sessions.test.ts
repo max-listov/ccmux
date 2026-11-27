@@ -7,7 +7,7 @@ import { appendSession, loadSessions, removeSession } from '../src/session/regis
 import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 function tmpStateDir(): string {
-  return mkdtempSync(join(tmpdir(), 'ccmux-sess-'));
+  return mkdtempSync(join(tmpdir(), 'stitchmux-sess-'));
 }
 
 test('append → load round-trip (JSONL)', async () => {

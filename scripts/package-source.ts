@@ -6,7 +6,7 @@ export function packageSource(outputDirectory: string, version: string): string 
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw Error('Invalid source package version');
   const root = resolve(import.meta.dir, '..');
   mkdirSync(outputDirectory, { recursive: true });
-  const archive = join(outputDirectory, `ccmux-${version}.tgz`);
+  const archive = join(outputDirectory, `stitchmux-${version}.tgz`);
   const result = Bun.spawnSync(
     [
       'git',

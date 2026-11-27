@@ -67,4 +67,4 @@ export function launcherExitCode(outcome: WorkloadOutcome): number {
  */
 export const WORKLOAD_CANCEL_GRACE_MS = 5_000;
 /** Stale request directories older than any workload's deadline plus grace are swept at start. */
-export const WORKLOAD_DIRECTORY_PREFIX = 'ccmux-finite-';
+export const WORKLOAD_DIRECTORY_PREFIX = 'stitchmux-finite-';

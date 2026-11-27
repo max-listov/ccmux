@@ -8,7 +8,7 @@ import { z } from 'zod';
  * trust boundary says so. `peer-letter` is the case a permission actually arrives in: the user gives
  * a pair leave to correspond and says it to ONE of them, so the other has no such line in its own
  * conversation and can only quote a neighbour — which is unfalsifiable prose. Referenced as a
- * ccmux record instead, it becomes the one basis this transport can genuinely check: both ends hold
+ * stitchmux record instead, it becomes the one basis this transport can genuinely check: both ends hold
  * the letter, and the recipient's own ledger says who wrote it and to whom. `thread-continuation`
  * carries no rationale at all, on purpose — a permission belongs to the correspondence, and a field
  * that must be re-typed for every letter is filled ritually within a month and then means nothing.
@@ -22,7 +22,7 @@ export type CommunicationBasis = z.infer<typeof CommunicationBasisSchema>;
 
 /**
  * `<peer thread uuid>#<message uuid>` — both ids are already printed on every delivered chat line
- * (`[chat from ccmux/<agent>@<machine>:<session>#<thread> · id: <message>]`), so the sender copies
+ * (`[chat from stitchmux/<agent>@<machine>:<session>#<thread> · id: <message>]`), so the sender copies
  * a reference rather than composing one. The thread is always the PEER's: the neighbour who wrote
  * the letter, or the recipient whose correspondence is being continued.
  */
@@ -99,7 +99,7 @@ export const CommunicationAuthorizationSchema = z
       .min(1)
       .max(1000)
       .describe(
-        'Where the authorization lives: the source user message for `user-instruction`, or `<peer thread uuid>#<message uuid>` for `peer-letter` and `thread-continuation`. A ccmux reference is resolved against this machine’s own records; a prose reference is not automatically verified by the transport.',
+        'Where the authorization lives: the source user message for `user-instruction`, or `<peer thread uuid>#<message uuid>` for `peer-letter` and `thread-continuation`. A stitchmux reference is resolved against this machine’s own records; a prose reference is not automatically verified by the transport.',
       ),
   })
   .strict()
@@ -134,7 +134,7 @@ export const CommunicationAuthorizationSchema = z
     )
       named(
         'sourceMessageRef',
-        'This basis references a ccmux record: <peer thread uuid>#<message uuid>, both copied from the chat line',
+        'This basis references a stitchmux record: <peer thread uuid>#<message uuid>, both copied from the chat line',
       );
   });
 export type CommunicationAuthorization = z.infer<typeof CommunicationAuthorizationSchema>;

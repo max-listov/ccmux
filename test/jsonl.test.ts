@@ -13,7 +13,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 const file = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-jsonl-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-jsonl-'));
   dirs.push(dir);
   return join(dir, 'log.jsonl');
 };

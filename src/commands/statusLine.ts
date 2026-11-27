@@ -4,13 +4,13 @@ import type { RateLimitsReport, RateLimitWindow } from '../runtime/rateLimitsRep
 import { type MetricsStatus, readMetricsFile, writeMetricsFile } from '../session/metricsFile.ts';
 
 /**
- * `ccmux status-line` — the injected Claude Code statusLine command for a managed session. Claude
+ * `stitchmux status-line` — the injected Claude Code statusLine command for a managed session. Claude
  * feeds statusLine a STRUCTURED JSON on stdin (model, context_window.used_percentage/size, cost). We
  * TEE it: capture those metrics into the session's metrics file (so `list`/TUI read context% from
  * Claude's own numbers, no regex over rendered text, no dependency on the user's statusline FORMAT),
  * then run the user's ORIGINAL statusline with the SAME stdin so their visual bar is unchanged.
  *
- * Identity is `CCMUX_SESSION`. Fully fail-open: any error still tries to render the original (or
+ * Identity is `STITCHMUX_SESSION`. Fully fail-open: any error still tries to render the original (or
  * prints nothing) so the statusline never breaks. Kept dependency-light on purpose — this runs on
  * every statusline refresh (debounced, but hotter than end-of-turn hooks).
  */
@@ -149,7 +149,7 @@ export function minimalStatusline(m: MetricsStatus): string {
 export async function cmdStatusLine(): Promise<number> {
   try {
     const raw = await Bun.stdin.text().catch(() => '');
-    const self = process.env.CCMUX_SESSION;
+    const self = process.env.STITCHMUX_SESSION;
     let cwd = '.';
     try {
       cwd = process.cwd(); // can throw if the session's cwd was deleted — degrade, never break render

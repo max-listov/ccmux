@@ -5,7 +5,7 @@ import { loadMachineConfig } from '../src/config/machine.ts';
 import {
   ControlNativeStreamFrameSchema,
   type ControlNativeStreamRequest,
-  createCcmuxNativeStreamProfile,
+  createStitchmuxNativeStreamProfile,
 } from '../src/control/schema/nativeStreamContract.ts';
 import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import { createControlClient } from '../src/control/transport/client.ts';
@@ -15,27 +15,27 @@ import { readAcceptanceCommunicationAuthorization } from './acceptance-communica
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 
 const workspace = Bun.argv[2];
 if (!workspace?.startsWith('/'))
   throw new Error(
-    'usage: bun scripts/control-service-acceptance.ts <absolute-workspace> [ccmux-bin]',
+    'usage: bun scripts/control-service-acceptance.ts <absolute-workspace> [stitchmux-bin]',
   );
-const resolvedExecutable = Bun.argv[3] ?? Bun.which('ccmux');
-if (!resolvedExecutable) throw new Error('installed ccmux executable was not found');
+const resolvedExecutable = Bun.argv[3] ?? Bun.which('stitchmux');
+if (!resolvedExecutable) throw new Error('installed stitchmux executable was not found');
 const executable = resolvedExecutable;
 
 const machine = loadMachineConfig();
 const socket = controlSocket(machine);
 const local = createControlClient({ socket });
-const remote = createInjectedControlClient(localControlFetch(socket, machine.rcPrefix));
+const remote = createInjectedControlClient(declaredServiceFetch(socket, machine.rcPrefix));
 
 const hash = (value: string): string =>
   createHash('sha256').update(value).digest('hex').slice(0, 16);
 
 async function oneStreamFrame(request: ControlNativeStreamRequest) {
-  const profile = createCcmuxNativeStreamProfile(executable);
+  const profile = createStitchmuxNativeStreamProfile(executable);
   const command = profile.bin.endsWith('.ts')
     ? [process.execPath, '--no-env-file', profile.bin, ...profile.argv]
     : [profile.bin, ...profile.argv];
@@ -117,7 +117,7 @@ try {
     communicationAuthorization: acceptanceCommunicationAuthorization,
     target,
     messageId,
-    body: 'Reply exactly with CCMUX_SERVICE_READY and nothing else.',
+    body: 'Reply exactly with STITCHMUX_SERVICE_READY and nothing else.',
     defer: false,
     task: 'service-acceptance',
   });
@@ -127,14 +127,14 @@ try {
   let waitOutcome = 'timeout';
   let native = await remote['native.read']({ target, cursor: null });
   let responseSeen = native.baseline.some(
-    (item) => item.kind === 'assistant' && item.text?.includes('CCMUX_SERVICE_READY'),
+    (item) => item.kind === 'assistant' && item.text?.includes('STITCHMUX_SERVICE_READY'),
   );
   while (!responseSeen && Date.now() < deadline) {
     const waited = await remote['session.wait']({ target, timeoutMs: 25_000 });
     waitOutcome = waited.outcome;
     native = await remote['native.read']({ target, cursor: null });
     responseSeen = native.baseline.some(
-      (item) => item.kind === 'assistant' && item.text?.includes('CCMUX_SERVICE_READY'),
+      (item) => item.kind === 'assistant' && item.text?.includes('STITCHMUX_SERVICE_READY'),
     );
   }
   if (!responseSeen) throw new Error('managed session did not produce the exact acceptance reply');

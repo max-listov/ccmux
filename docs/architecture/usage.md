@@ -14,10 +14,10 @@ type: architecture
 Обе операции доступны через canonical control contract, Unix/injected client, contract CLI и MCP.
 
 ```sh
-ccmux usage host-a:agent-a --json
-ccmux usage host-a:app/11111111-1111-4111-8111-111111111111 --json
-ccmux usage host-a:agent-a#abc123 --json
-ccmux usage --fleet --since 2026-01-01T00:00:00Z --until 2026-02-01T00:00:00Z --timezone Europe/Berlin --json
+stitchmux usage host-a:agent-a --json
+stitchmux usage host-a:app/11111111-1111-4111-8111-111111111111 --json
+stitchmux usage host-a:agent-a#abc123 --json
+stitchmux usage --fleet --since 2026-01-01T00:00:00Z --until 2026-02-01T00:00:00Z --timezone Europe/Berlin --json
 ```
 
 Query: полуоткрытый UTC-интервал `[since, until)`, IANA `timezone` (default `UTC`, отражён в

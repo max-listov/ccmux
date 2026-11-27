@@ -1,5 +1,13 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ApiError } from 'stitchkit';
@@ -18,6 +26,7 @@ import type { RemoteResult, runPeer } from '../src/fleet/transport.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
 import { sentKeysOf } from '../src/session/sentKeys.ts';
 import type { MachineConfig, Session } from '../src/types.ts';
+import { LOG_FILE } from '../src/util/log.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const THREAD = '66666666-6666-4666-8666-666666666666';
@@ -45,7 +54,7 @@ async function machine(root: string, rcPrefix: string, fleet: Record<string, str
 }
 
 /**
- * How machine A reaches machine B here: what `ccmux _peer-operation` does on B — the same
+ * How machine A reaches machine B here: what `stitchmux _peer-operation` does on B — the same
  * function, asking B's daemon over B's socket — without the hop between them.
  */
 function peerOf(
@@ -72,7 +81,7 @@ function peerOf(
 }
 
 test("an operation on another machine's session is answered by that machine's daemon", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-peer-operation-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-peer-operation-')));
   const a = await machine(root, 'host-a', { 'host-b': 'alias-b' });
   const b = await machine(root, 'host-b', { 'host-a': 'alias-a' });
   const session: Session = makeSession({ name: 'agent-b', uuid: THREAD, dir: b.work });
@@ -90,10 +99,10 @@ test("an operation on another machine's session is answered by that machine's da
     })}\n`,
   );
   await writeSessionsUnlocked(b.m, [session]);
-  const before = process.env.CCMUX_CONFIG;
+  const before = process.env.STITCHMUX_CONFIG;
   const config = join(root, 'machine-b.json');
   writeFileSync(config, JSON.stringify(b.m));
-  process.env.CCMUX_CONFIG = config;
+  process.env.STITCHMUX_CONFIG = config;
   const publishers = [new ControlPublisher(a.m), new ControlPublisher(b.m)] as const;
   const serverB = createControlServer(b.m, publishers[1]);
   const clientB = createControlClient({ socket: controlSocket(b.m) });
@@ -111,13 +120,13 @@ test("an operation on another machine's session is answered by that machine's da
     expect(message.message?.text).toBe('deploy the kestrel');
     expect(message.message?.sender.verdict).toBe('person');
 
-    // Keys typed on B's session from A are recorded on B, as typed by ccmux — B's own command
+    // Keys typed on B's session from A are recorded on B, as typed by stitchmux — B's own command
     // line, the authority the call arrived under there.
     expect(await clientA['session.keys']({ target, text: '/compact' })).toEqual({
       target,
       accepted: true,
     });
-    expect(sentKeysOf(b.m, 'agent-b').map((row) => row.by)).toEqual(['ccmux:host-b:cli']);
+    expect(sentKeysOf(b.m, 'agent-b').map((row) => row.by)).toEqual(['stitchmux:host-b:cli']);
     expect(sentKeysOf(a.m, 'agent-b')).toEqual([]);
 
     // Stopped and removed on B; A's registry was never touched.
@@ -129,10 +138,10 @@ test("an operation on another machine's session is answered by that machine's da
     });
     expect(loadSessions(b.m)).toEqual([]);
     expect(calls.map((call) => call.slice(0, 4))).toEqual([
-      ['host-b', 'ccmux', '_peer-operation', 'message.read'],
-      ['host-b', 'ccmux', '_peer-operation', 'session.keys'],
-      ['host-b', 'ccmux', '_peer-operation', 'session.stop'],
-      ['host-b', 'ccmux', '_peer-operation', 'session.remove'],
+      ['host-b', 'stitchmux', '_peer-operation', 'message.read'],
+      ['host-b', 'stitchmux', '_peer-operation', 'session.keys'],
+      ['host-b', 'stitchmux', '_peer-operation', 'session.stop'],
+      ['host-b', 'stitchmux', '_peer-operation', 'session.remove'],
     ]);
 
     // B's refusal comes back under its own code: the session is no longer registered there.
@@ -147,21 +156,21 @@ test("an operation on another machine's session is answered by that machine's da
       await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
       await server.observability.close();
     }
-    if (before === undefined) delete process.env.CCMUX_CONFIG;
-    else process.env.CCMUX_CONFIG = before;
+    if (before === undefined) delete process.env.STITCHMUX_CONFIG;
+    else process.env.STITCHMUX_CONFIG = before;
     rmSync(root, { recursive: true, force: true });
   }
 });
 
 test('a machine that does not have the operation refuses it by name', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-peer-operation-old-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-peer-operation-old-')));
   const a = await machine(root, 'host-a', { 'host-b': 'alias-b', 'host-c': 'alias-c' });
   const publisher = new ControlPublisher(a.m);
   const answers: Record<string, RemoteResult> = {
     // A release before forwarding: the verb is unknown, so it prints its help and exits 1.
     'host-b': {
       code: 1,
-      stdout: 'ccmux — persistent agent sessions\n\nusage: ccmux <command>\n',
+      stdout: 'stitchmux — persistent agent sessions\n\nusage: stitchmux <command>\n',
       stderr: '',
       transportFailed: false,
       delivery: 'received',
@@ -216,7 +225,7 @@ function target(machine: string) {
 }
 
 test('the program another machine runs asks this machine’s daemon and prints one answer', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-peer-operation-cli-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-peer-operation-cli-')));
   const b = await machine(root, 'host-b', {});
   const session: Session = makeSession({ name: 'agent-b', uuid: THREAD, dir: b.work });
   await writeSessionsUnlocked(b.m, [session]);
@@ -228,7 +237,12 @@ test('the program another machine runs asks this machine’s daemon and prints o
     const child = Bun.spawn(
       [process.execPath, join(import.meta.dir, '../src/cli.ts'), '_peer-operation', key],
       {
-        env: { ...process.env, CCMUX_CONFIG: config, CCMUX_SESSION: '', CCMUX_CHAT_CREDENTIAL: '' },
+        env: {
+          ...process.env,
+          STITCHMUX_CONFIG: config,
+          STITCHMUX_SESSION: '',
+          STITCHMUX_CHAT_CREDENTIAL: '',
+        },
         stdin: new Blob([JSON.stringify(input)]),
         stdout: 'pipe',
         stderr: 'pipe',
@@ -263,7 +277,7 @@ test('the program another machine runs asks this machine’s daemon and prints o
 });
 
 test("a caller of this machine's declared service is not carried to another machine", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-peer-operation-service-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-peer-operation-service-')));
   const a = await machine(root, 'host-a', { 'host-b': 'alias-b' });
   let asked = 0;
   try {
@@ -273,7 +287,7 @@ test("a caller of this machine's declared service is not carried to another mach
         { kind: 'remote', alias: 'alias-b', machine: 'host-b', session: 'agent-x' },
         'session.stop',
         { target: target('host-b') },
-        { kind: 'service', source: 'ccmux', machine: 'host-a', transport: 'declared-service' },
+        { kind: 'service', source: 'stitchmux', machine: 'host-a', transport: 'declared-service' },
         undefined,
         async () => {
           asked++;
@@ -283,6 +297,52 @@ test("a caller of this machine's declared service is not carried to another mach
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(asked).toBe(0);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a refusal an operation does not declare reaches the caller as 500 and the log by its code', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-peer-operation-undeclared-')));
+  const a = await machine(root, 'host-a', { 'host-b': 'alias-b' });
+  const publisher = new ControlPublisher(a.m);
+  // Another release answers with a code this release's session.sleep does not declare.
+  const answer = {
+    code: 0,
+    stdout: `${JSON.stringify({ ok: false, code: 'WAKE_CAPACITY', status: 429, message: 'from a later release' })}\n`,
+    stderr: '',
+    transportFailed: false,
+    delivery: 'received',
+  } satisfies RemoteResult;
+  const server = createControlServer(a.m, publisher, undefined, undefined, undefined, {
+    runPeer: async () => answer,
+  });
+  const client = createControlClient({ socket: controlSocket(a.m) });
+  const logged = () =>
+    (existsSync(LOG_FILE) ? readFileSync(LOG_FILE, 'utf8') : '')
+      .split('\n')
+      .filter((line) => line.includes('a code it does not declare'));
+  const before = logged().length;
+  try {
+    const request = {
+      target: target('host-b'),
+      registrationGeneration: THREAD,
+      operationId: crypto.randomUUID(),
+      revision: '0'.repeat(64),
+    };
+    const refused = await client['session.sleep'](request).catch((error: unknown) => error);
+    expect(refused).toMatchObject({ code: 'INTERNAL_SERVER_ERROR', status: 500 });
+    expect(client['session.sleep'].refusal(refused)?.code).toBe('INTERNAL_SERVER_ERROR');
+    const lines = logged().slice(before);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] as string)).toMatchObject({
+      action: 'session.sleep',
+      code: 'WAKE_CAPACITY',
+    });
+  } finally {
+    await client.close();
+    publisher.close();
+    await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
+    await server.observability.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

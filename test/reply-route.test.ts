@@ -10,7 +10,7 @@ import { makeChatMessage, makeMachine, makePeer } from './helpers.ts';
 // The reply hint is PRESCRIPTIVE — the managed prompt tells the agent to use the pinned command
 // verbatim — so a wrong verdict does not look untidy, it silently sends the answer to the wrong
 // place. Incident 2026-08-25: a server with `remoteTransport.peers: [<hub>]` and a live agent was told "no route
-// back to <hub> from here" and answered the human, while `ccmux msg <hub>:<session>` from that same
+// back to <hub> from here" and answered the human, while `stitchmux msg <hub>:<session>` from that same
 // box delivered instantly the same minute. The verdict was read off the ssh map alone; the remote transport — the
 // transport that exists precisely for peers ssh cannot address — was never consulted.
 
@@ -18,14 +18,18 @@ let dir: string;
 let socket: string;
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'ccmux-reply-route-'));
+  dir = mkdtempSync(join(tmpdir(), 'stitchmux-reply-route-'));
   socket = join(dir, 'agent.sock');
   writeFileSync(socket, ''); // only its EXISTENCE is read — never opened, never probed
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const wireMachine = (over: Record<string, unknown> = {}) =>
-  makeMachine({ rcPrefix: 'host-a', remoteTransport: { peers: ['host-b'], socket }, ...over });
+  makeMachine({
+    rcPrefix: 'host-a',
+    remoteTransport: { kind: 'stitchwire', peers: ['host-b'], agentSocket: socket },
+    ...over,
+  });
 
 test('a remote peer with a live local agent is replyable — no ssh map required', () => {
   expect(replyRouteFor(wireMachine(), 'host-b', 'api')).toEqual({ replyable: true });
@@ -34,13 +38,16 @@ test('a remote peer with a live local agent is replyable — no ssh map required
 test('a remote peer whose local agent is down gets an honest fallback that NAMES the cause', () => {
   const dead = join(dir, 'not-here.sock');
   const route = replyRouteFor(
-    makeMachine({ rcPrefix: 'host-a', remoteTransport: { peers: ['host-b'], socket: dead } }),
+    makeMachine({
+      rcPrefix: 'host-a',
+      remoteTransport: { kind: 'stitchwire', peers: ['host-b'], agentSocket: dead },
+    }),
     'host-b',
     'api',
   );
   expect(route.replyable).toBe(false);
   if (!route.replyable) {
-    expect(route.reason).toContain('remote adapter is not running here');
+    expect(route.reason).toContain('Stitchwire agent is not running here');
     expect(route.reason).toContain(dead); // the exact thing to look at, not a verdict to believe
   }
 });
@@ -52,7 +59,7 @@ test('the remote transport wins where both transports are configured — so does
   const m = makeMachine({
     rcPrefix: 'host-a',
     fleet: { 'host-b': 'alias-b' },
-    remoteTransport: { peers: ['host-b'], socket: dead },
+    remoteTransport: { kind: 'stitchwire', peers: ['host-b'], agentSocket: dead },
   });
   expect(replyRouteFor(m, 'host-b', 'api').replyable).toBe(false);
 });
@@ -83,7 +90,10 @@ test('end to end: a remotely reachable sender is answered on the remote transpor
     to: makePeer({ machine: 'host-a', session: 'worker' }),
   });
   const m = wireMachine();
-  const out = formatChatInjection(msg, { cli: 'ccmux', reply: replyRouteToSender(m, msg.from) });
-  expect(out).toContain('reply: ccmux msg host-b:api --to-agent claude --to-thread');
+  const out = formatChatInjection(msg, {
+    cli: 'stitchmux',
+    reply: replyRouteToSender(m, msg.from),
+  });
+  expect(out).toContain('reply: stitchmux msg host-b:api --to-agent claude --to-thread');
   expect(out).not.toContain('msg owner');
 });

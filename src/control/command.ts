@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import {
   commandText,
   readClaudeCommands,
@@ -15,6 +14,7 @@ import { requestRuntimeRewind } from '../runtime/rewind.ts';
 import { requestRuntimeMode } from '../runtime/sessionMode.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig, ManagedPeer } from '../types.ts';
+import { refusals } from './schema/refusals.ts';
 import { requireNativeIdle } from './selection.ts';
 import { controlTarget } from './target.ts';
 
@@ -39,19 +39,13 @@ export async function runControlCommand(
   if (session.delegation !== undefined)
     delegationRefused('Delegated execution policy is immutable');
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', {
-      message: 'This runtime does not accept commands',
-      status: 409,
-    });
+    throw refusals.errors.UNSUPPORTED({ message: 'This runtime does not accept commands' });
   const commands = readClaudeCommands(m, session);
   const command = resolveCommand(commands, input.command);
   if (command === undefined)
     // Refused against what the runtime published, exactly as a model or an effort is: a command it
     // never named would be delivered as ordinary text and answered as if someone had asked about it.
-    throw new AppError('UNSUPPORTED', {
-      message: 'This runtime does not offer that command',
-      status: 409,
-    });
+    throw refusals.errors.UNSUPPORTED({ message: 'This runtime does not offer that command' });
   const text = commandText(command, input.args);
   return withNativeAdmission(m, session, async () => {
     signal.throwIfAborted();
@@ -67,10 +61,7 @@ export async function runControlCommand(
     requireNativeIdle(m, session);
     const read = readManagedRuntimeStatus(m, session);
     if (read.status !== 'live' || !read.snapshot)
-      throw new AppError('UNAVAILABLE', {
-        message: 'The native runtime is unavailable',
-        status: 503,
-      });
+      throw refusals.errors.UNAVAILABLE({ message: 'The native runtime is unavailable' });
     const nativeId = runtimeInputId(session, input.operationId, Date.now());
     await writeRuntimeInput(m, session, {
       messageId: input.operationId,
@@ -92,9 +83,8 @@ export async function setControlPermissionMode(
   if (session.delegation !== undefined)
     delegationRefused('Delegated execution policy is immutable');
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'This runtime does not expose its permission mode',
-      status: 409,
     });
   const mode = await requestRuntimeMode(m, session, input, signal);
   return { target: input.target, mode };
@@ -109,7 +99,7 @@ export async function rewindControlFiles(
   if (session.delegation !== undefined)
     delegationRefused('Delegated execution policy is immutable');
   if (!runtimeCapabilities(session).fileCheckpoints)
-    throw new AppError('UNSUPPORTED', { message: 'This runtime cannot rewind files', status: 409 });
+    throw refusals.errors.UNSUPPORTED({ message: 'This runtime cannot rewind files' });
   const result = await requestRuntimeRewind(m, session, input, signal);
   return { target: input.target, dryRun: input.dryRun, result };
 }
@@ -118,18 +108,12 @@ export function readControlMcpServers(m: MachineConfig, target: ManagedPeer) {
   const session = controlTarget(m, target);
   const read = readManagedRuntimeStatus(m, session);
   if (read.status !== 'live' || !read.snapshot)
-    throw new AppError('UNAVAILABLE', {
-      message: 'The native runtime is unavailable',
-      status: 503,
-    });
+    throw refusals.errors.UNAVAILABLE({ message: 'The native runtime is unavailable' });
   const servers = read.snapshot.mcpServers;
   if (servers === undefined)
     // Not the same as a session with no servers: one is a runtime that does not report them, and
     // an empty list would state a fact nobody established.
-    throw new AppError('UNSUPPORTED', {
-      message: 'This runtime does not report its MCP servers',
-      status: 409,
-    });
+    throw refusals.errors.UNSUPPORTED({ message: 'This runtime does not report its MCP servers' });
   return { target, data: servers };
 }
 
@@ -147,10 +131,7 @@ export async function controlMcpServer(
   if (session.delegation !== undefined)
     delegationRefused('Delegated execution policy is immutable');
   if (!runtimeCapabilities(session).mcpControl)
-    throw new AppError('UNSUPPORTED', {
-      message: 'This runtime does not expose its MCP servers',
-      status: 409,
-    });
+    throw refusals.errors.UNSUPPORTED({ message: 'This runtime does not expose its MCP servers' });
   const result = await requestRuntimeMcp(m, session, input, signal);
   return { target: input.target, ...result };
 }

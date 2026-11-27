@@ -16,8 +16,8 @@ test('the configured daemon serves its own control contract and revokes invalid 
   const root = shortTempDir('wire-');
   const directory = join(root, 'services');
   await mkdir(directory, { mode: 0o700 });
-  const callersPath = join(directory, 'ccmux.control.callers.json');
-  const declarationPath = join(directory, 'ccmux.control.declaration.json');
+  const callersPath = join(directory, 'stitchmux.control.callers.json');
+  const declarationPath = join(directory, 'stitchmux.control.declaration.json');
   const policy: ServiceDeclaration['callers'] = [
     { caller: 'reader', scope: { kind: 'service-read' } },
   ];
@@ -35,14 +35,14 @@ test('the configured daemon serves its own control contract and revokes invalid 
   const envelope = (operation: string, caller = 'reader', revision = VERSION) => ({
     v: 1,
     id: crypto.randomUUID(),
-    service: 'ccmux.control',
+    service: 'stitchmux.control',
     revision,
     operation,
     caller,
     payload: '{}',
   });
   const invoke = (operation: string, caller?: string, revision?: string) =>
-    http.fetch('http://ccmux.local/invoke', {
+    http.fetch('http://stitchmux.local/invoke', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(envelope(operation, caller, revision)),
@@ -54,7 +54,7 @@ test('the configured daemon serves its own control contract and revokes invalid 
     );
     expect(declared.callers).toEqual(policy);
     expect(declared.binding).toMatchObject({
-      service: 'ccmux.control',
+      service: 'stitchmux.control',
       socketPath: controlSocket(m),
       endpointPath: '/invoke',
     });
@@ -80,9 +80,9 @@ test('the configured daemon serves its own control contract and revokes invalid 
       async (req) => Response.json(serviceCaller({ req })),
       () => true,
     );
-    const request = new Request('http://ccmux.local/invoke', {
+    const request = new Request('http://stitchmux.local/invoke', {
       method: 'POST',
-      headers: { 'x-ccmux-caller': 'other' },
+      headers: { 'x-stitchmux-caller': 'other' },
       body: JSON.stringify(envelope('external.list')),
     });
     expect(await (await auth(request)).json()).toMatchObject({
@@ -126,11 +126,11 @@ test('a machine configured for SSH alone exposes its local control API and no Wi
   try {
     expect(owned.wire).toBeUndefined();
     expect(
-      (await http.fetch('http://ccmux.local/invoke', { method: 'POST', body: '{}' })).status,
+      (await http.fetch('http://stitchmux.local/invoke', { method: 'POST', body: '{}' })).status,
     ).toBe(404);
     expect(
       (
-        await http.fetch('http://ccmux.local/control/external', {
+        await http.fetch('http://stitchmux.local/control/external', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: '{}',
@@ -138,6 +138,61 @@ test('a machine configured for SSH alone exposes its local control API and no Wi
       ).status,
     ).toBe(200);
   } finally {
+    await http.close();
+    await owned.server.shutdown();
+    publisher.close();
+    await owned.observability.close();
+  }
+});
+
+test('the ingress refuses a call once the machine no longer declares this service, and any browser-origin call', async () => {
+  const root = shortTempDir('wire-guard-');
+  const directory = join(root, 'services');
+  await mkdir(directory, { mode: 0o700 });
+  await writeFile(
+    join(directory, 'stitchmux.control.callers.json'),
+    JSON.stringify([{ caller: 'reader', scope: { kind: 'service-read' } }]),
+  );
+  const m = makeMachine({
+    stateDir: root,
+    rcPrefix: 'host-a',
+    remoteTransport: { kind: 'stitchwire', serviceDirectory: directory },
+  });
+  let current = m;
+  const publisher = new ControlPublisher(m);
+  const owned = createControlServer(m, publisher, undefined, () => current);
+  const wire = owned.wire;
+  if (!wire) throw new Error('Missing configured Wire service');
+  const http = createUnixClientTransport({ socketPath: controlSocket(m) });
+  const invoke = (headers: Record<string, string> = {}) =>
+    http.fetch('http://stitchmux.local/invoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify({
+        v: 1,
+        id: crypto.randomUUID(),
+        service: 'stitchmux.control',
+        revision: VERSION,
+        operation: 'external.list',
+        caller: 'reader',
+        payload: '{}',
+      }),
+    });
+  try {
+    await wire.start();
+    expect((await invoke()).status).toBe(200);
+    expect((await invoke({ origin: 'http://example.invalid' })).status).toBe(403);
+    // The operator moved the service elsewhere: this daemon's grants no longer speak for it.
+    const moved = join(root, 'elsewhere');
+    current = {
+      ...m,
+      remoteTransport: { kind: 'stitchwire', peers: [], serviceDirectory: moved },
+    };
+    expect((await invoke()).status).toBe(403);
+    current = m;
+    expect((await invoke()).status).toBe(200);
+  } finally {
+    await wire.close();
     await http.close();
     await owned.server.shutdown();
     publisher.close();

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { bootstrapNativeCommandOwnerLoss } from 'stitchkit/process/owner-loss';
+import { bootstrapPackageProcess } from 'stitchkit/process/bootstrap';
 import { COMMANDS, cmdHelp } from './commands/help.ts';
 import { retiredNotice } from './commands/retired.ts';
 import { VERSION } from './util/version.ts';
@@ -37,7 +37,7 @@ function splitDashDash(rest: string[]): { positionals: string[]; flags: string[]
 const HELP_VERBS = new Set(['remove', ...COMMANDS.map((c) => c.verb)]);
 
 async function dispatch(verb: string | undefined, rest: string[]): Promise<number> {
-  // `ccmux <cmd> --help` → help for that command (before the command parses args).
+  // `stitchmux <cmd> --help` → help for that command (before the command parses args).
   if (
     verb !== undefined &&
     verb !== 'control' &&
@@ -228,7 +228,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     case 'version':
     case '-v':
     case '--version':
-      console.log(`ccmux ${VERSION}`);
+      console.log(`stitchmux ${VERSION}`);
       return 0;
     case 'help':
     case '-h':
@@ -240,7 +240,7 @@ async function dispatch(verb: string | undefined, rest: string[]): Promise<numbe
     case '--fullscreen':
       return launchTui(true);
     case undefined:
-      // bare `ccmux` → interactive TUI on a real terminal; piped/non-TTY → help.
+      // bare `stitchmux` → interactive TUI on a real terminal; piped/non-TTY → help.
       return process.stdout.isTTY ? launchTui(false) : cmdHelp();
     default:
       cmdHelp();
@@ -261,7 +261,16 @@ try {
   // Let Bun drain stdout/stderr before exiting. `process.exit()` can discard a large JSON response
   // while a pipeline is still reading it; assigning the code preserves command failures without
   // terminating the event loop ahead of its pending writes.
-  if (!bootstrapNativeCommandOwnerLoss())
+  // Rename window (one release): only the starting daemon and `install` move this machine's state
+  // from the previous product name, and every other command refuses until it has moved
+  // (`renameGate`). REMOVE with `src/migration/renameFromCcmux.ts`.
+  const { adoptPreviousEnv, renameGate } = await import('./migration/renameFromCcmux.ts');
+  adoptPreviousEnv();
+  const refusal = await renameGate(Bun.argv[2]);
+  if (refusal !== null) {
+    console.error(`stitchmux: ${refusal}`);
+    process.exitCode = 1;
+  } else if (!bootstrapPackageProcess())
     process.exitCode = await dispatch(Bun.argv[2], Bun.argv.slice(3));
 } catch (error) {
   // Loaded here and not at the top: this file evaluates nothing eagerly, because the two Claude

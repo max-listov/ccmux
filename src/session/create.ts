@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
-import { AppError } from 'stitchkit';
 import { verifySessionProfile } from '../agent/claude/namedProfiles.ts';
 import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
 import { getProvider } from '../agent/index.ts';
 import type { ModelSelection } from '../config/modelSelectionFlags.ts';
 import { readNativeForkIntent } from '../context/fork.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { verifyDelegatedSession } from '../delegation/resolve.ts';
 import type { Delegation } from '../delegation/schema.ts';
 import { policyUnavailable } from '../policy/errors.ts';
@@ -176,7 +176,7 @@ export async function createNativeBootstrap(
   const generation = input.registrationGeneration ?? randomUUID();
   const pending = PendingSessionSchema.parse({
     generation,
-    marker: `ccmux_${generation}`,
+    marker: `stitchmux_${generation}`,
     operation,
     session: sessionFields(input),
     createdAt: new Date().toISOString(),
@@ -299,9 +299,8 @@ export async function createManagedSession(
     fields.runtime !== undefined &&
     runtimeAvailability(m, fields.agent, fields.runtime).reason === 'runtime-not-enabled'
   )
-    throw new AppError('UNAVAILABLE', {
+    throw refusals.errors.PRECONDITION_FAILED({
       message: 'The native Claude runtime is not enabled on this host',
-      status: 409,
     });
   if (fields.runtime === undefined && runtimeModes[fields.agent].interactive === null)
     throw new Error('This provider requires a native runtime');

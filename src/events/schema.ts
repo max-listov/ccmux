@@ -114,9 +114,9 @@ export const SessionEventSchema = z
   })
   // NOT strict, and that is the point: this record is read by other machines and by outside
   // surfaces, which may be running an older build than the one that wrote it. Strict parsing would
-  // turn "a newer ccmux added a field" into "every event after the upgrade is unreadable here" —
+  // turn "a newer stitchmux added a field" into "every event after the upgrade is unreadable here" —
   // a fleet-wide silence produced by a version skew nobody would think to check. Unknown keys ride
-  // through untouched, so an old `ccmux events --json` still hands a consumer a field only the
+  // through untouched, so an old `stitchmux events --json` still hands a consumer a field only the
   // newer writer understands. Same leniency the fleet's own `list --json` adapter already applies
   // to a peer's answer.
   .loose();

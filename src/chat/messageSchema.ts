@@ -70,7 +70,7 @@ export const ChatMessageSchema = z
 export const ChatCursorsSchema = z.object({
   read: z.record(z.string(), z.number()).default({}),
   // per-recipient: ledger LENGTH the daemon has PUSH-delivered a session's inbox up to. Distinct
-  // from `read` (advanced by `ccmux inbox` too) so a push and a manual pull don't double-count.
+  // from `read` (advanced by `stitchmux inbox` too) so a push and a manual pull don't double-count.
   // The daemon is the sole writer; survives restarts so a bounce never re-pushes old messages.
   delivered: z.record(z.string(), z.number()).default({}),
   // A pane injection is not yet a turn. Hookless providers keep the exact message here until its

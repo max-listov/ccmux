@@ -27,14 +27,14 @@ function daemonStarted(log: string, pid: number): boolean {
     .slice(0, -1)
     .some((line) => {
       const entry = StartupLogSchema.parse(JSON.parse(line));
-      return entry.pid === pid && entry.msg === 'ccmux daemon up';
+      return entry.pid === pid && entry.msg === 'stitchmux daemon up';
     });
 }
 
 test('daemon readiness requires the current process completed-start fact', () => {
-  const previous = '{"pid":101,"msg":"ccmux daemon up"}\n';
+  const previous = '{"pid":101,"msg":"stitchmux daemon up"}\n';
   const starting = '{"pid":102,"msg":"daemon lifecycle","type":"started"}\n';
-  const current = '{"pid":102,"msg":"ccmux daemon up"}\n';
+  const current = '{"pid":102,"msg":"stitchmux daemon up"}\n';
   expect(daemonStarted('', 102)).toBe(false);
   expect(daemonStarted(previous + starting, 102)).toBe(false);
   expect(daemonStarted(previous + starting + current.trimEnd(), 102)).toBe(false);
@@ -42,8 +42,8 @@ test('daemon readiness requires the current process completed-start fact', () =>
 });
 
 test('bundled daemon self-update settles healing before clean SIGTERM and restored-bundle restart', async () => {
-  const root = mkdtempSync('/tmp/ccmux-self-update-');
-  const bundle = join(root, 'data/app/ccmux.js'),
+  const root = mkdtempSync('/tmp/stitchmux-self-update-');
+  const bundle = join(root, 'data/app/stitchmux.js'),
     bin = join(root, 'bin');
   mkdirSync(bin);
   for (const name of ['launchctl', 'systemctl'])
@@ -52,7 +52,7 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
       "#!/bin/sh\necho 'forbidden self service-manager restart' >&2\nexit 91\n",
       { mode: 0o755 },
     );
-  const released = process.env.CCMUX_TEST_RELEASE_BUNDLE;
+  const released = process.env.STITCHMUX_TEST_RELEASE_BUNDLE;
   if (released) {
     mkdirSync(join(root, 'data/app'), { recursive: true });
     copyFileSync(released, bundle);
@@ -90,7 +90,7 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
     codexHome: join(root, 'no-provider'),
     claudeBin: '/usr/bin/false',
     tmuxBin: Bun.which('tmux') ?? '/usr/bin/false',
-    tmuxSocket: `ccmux-self-update-${crypto.randomUUID()}`,
+    tmuxSocket: `stitchmux-self-update-${crypto.randomUUID()}`,
     autoUpdate: true,
     ensureInterval: 1,
     updateCheckInterval: 1,
@@ -104,11 +104,11 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
   writeFileSync(config, JSON.stringify(machine));
   const env = {
     ...process.env,
-    CCMUX_CONFIG: config,
-    CCMUX_RC_PREFIX: machine.rcPrefix,
-    CCMUX_STATE_DIR: machine.stateDir,
-    CCMUX_DATA_DIR: join(root, 'data'),
-    CCMUX_CACHE_DIR: join(root, 'cache'),
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_RC_PREFIX: machine.rcPrefix,
+    STITCHMUX_STATE_DIR: machine.stateDir,
+    STITCHMUX_DATA_DIR: join(root, 'data'),
+    STITCHMUX_CACHE_DIR: join(root, 'cache'),
     PATH: `${bin}:${process.env.PATH ?? ''}`,
   };
   const start = () =>
@@ -129,7 +129,7 @@ test('bundled daemon self-update settles healing before clean SIGTERM and restor
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         try {
-          const log = readFileSync(join(machine.stateDir, 'ccmux.log'), 'utf8');
+          const log = readFileSync(join(machine.stateDir, 'stitchmux.log'), 'utf8');
           if (daemonStarted(log, daemon.pid)) return await client['session.list']();
         } catch {}
         await Bun.sleep(20);

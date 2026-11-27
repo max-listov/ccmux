@@ -23,8 +23,8 @@ import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 // The shipped supervisor and its real registry, filesystem guard and launch recipe. The executable
 // records argv/env instead of calling a model; this tests resume admission without provider traffic.
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-stopped-profile-')));
-const bundle = join(root, 'ccmux.js');
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-stopped-profile-')));
+const bundle = join(root, 'stitchmux.js');
 beforeAll(async () => {
   expect(await buildBundle(bundle)).toBe(true);
 }, 60_000);
@@ -82,7 +82,7 @@ await Bun.sleep(15_000);
   const start = () => {
     const supervisor = Bun.spawn([process.execPath, '--no-env-file', bundle, '_run', s.name], {
       cwd: dir,
-      env: { ...process.env, HOME: dir, CCMUX_CONFIG: config, CCMUX_STATE_DIR: stateDir },
+      env: { ...process.env, HOME: dir, STITCHMUX_CONFIG: config, STITCHMUX_STATE_DIR: stateDir },
       stdout: 'ignore',
       stderr: 'pipe',
     });
@@ -191,7 +191,7 @@ for (const directory of invalidDirectories) {
       `working directory ${directory === 'missing' ? 'does not exist' : 'is not a directory'}`,
     );
     expect(reason).toContain(w.s.dir);
-    expect(reason).toContain('ccmux dir agent-a');
+    expect(reason).toContain('stitchmux dir agent-a');
     expect(w.launched()).toBeNull();
     expect(readFileSync(history, 'utf8')).toBe(original);
     expect(loadSessions(w.m)).toEqual(sessions);

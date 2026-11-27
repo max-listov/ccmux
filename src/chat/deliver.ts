@@ -1,6 +1,7 @@
 import { type AgentProvider, type ChatPaneState, providerFor } from '../agent/index.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { delegationStopped } from '../delegation/cancel.ts';
+import { withNativeAdmission } from '../runtime/admission.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
 import { loadSessions } from '../session/registry.ts';
@@ -28,6 +29,7 @@ import { formatChatInjection } from './format.ts';
 import { managedPeer, managedPeerKey, principalLabel } from './identity.ts';
 import { loadLedger } from './ledger.ts';
 import { deliverNativeRuntimePending } from './nativeRuntime.ts';
+import { recordPaneSubmission } from './paneSubmission.ts';
 import { RATE_MAX_INBOUND, recentInboundCount } from './rateGuard.ts';
 import { replyRouteToSender } from './replyRoute.ts';
 import { isConditional, nextDelivery, pickPendingDelivery } from './settlement.ts';
@@ -108,6 +110,41 @@ async function deliverToPane(
     if (inputDisabled) await setPaneInputEnabled(m, name, true);
     await deletePasteBuffer(m, buffer);
   }
+}
+
+/**
+ * Type a letter into a TUI pane under the session's admission lock — the lock a sleep decision
+ * takes to record its intent. A session whose sleep is requested, done or being undone is held, not
+ * typed into: its agent is about to be released, and a letter typed now would be marked delivered
+ * and never answered. A submission leaves its mark under the same lock, so a sleep decision that
+ * runs right after sees a letter whose turn has not shown yet (`recentPaneSubmission`).
+ */
+async function deliverUnlessSleeping(
+  m: MachineConfig,
+  s: Session,
+  batch: readonly ChatMessage[],
+  provider: AgentProvider,
+  beforeSubmit: () => Promise<void>,
+  signal?: AbortSignal,
+): Promise<{ submitted: boolean; hold: string | null; holdKind: ChatHoldKind }> {
+  return withNativeAdmission(
+    m,
+    s,
+    async () => {
+      const phase = readSleepSafe(m, s)?.phase;
+      if (phase !== undefined && phase !== 'awake') {
+        return {
+          submitted: false,
+          hold: `the session is ${phase === 'requested' ? 'being put to sleep' : phase}; delivery resumes once it is awake`,
+          holdKind: 'sleeping',
+        };
+      }
+      const delivery = await deliverToPane(m, s.name, batch, provider, beforeSubmit);
+      if (delivery.submitted) recordPaneSubmission(m, s, batch[0]?.id ?? s.name);
+      return delivery;
+    },
+    signal,
+  );
 }
 
 // The Stop hook delivers a deferred message the instant a turn ends; this daemon path is the
@@ -315,7 +352,14 @@ export async function deliverPending(m: MachineConfig, signal?: AbortSignal): Pr
           continue;
         const activeMessage = ledger.find((slot) => slot?.id === activePickup.messageId);
         if (activeMessage === null || activeMessage === undefined) continue;
-        const retry = await deliverToPane(m, s.name, [activeMessage], provider, async () => {});
+        const retry = await deliverUnlessSleeping(
+          m,
+          s,
+          [activeMessage],
+          provider,
+          async () => {},
+          signal,
+        );
         if (!retry.submitted) {
           if (retry.hold !== null)
             await writeChatHold(s.name, activeMessage.id, retry.hold, retry.holdKind);
@@ -407,15 +451,22 @@ export async function deliverPending(m: MachineConfig, signal?: AbortSignal): Pr
       isConditional(pick.msg) && !transcriptPickup
         ? coalesce(ledger, recipientKey, acked, now)
         : [pick.msg];
-    const delivery = await deliverToPane(m, s.name, batch, provider, async () => {
-      if (!transcriptPickup) return;
-      armPickup(cursors, recipientKey, pick, new Date(now).toISOString(), {
-        transcriptLine: transcriptLineCount(m, s),
-      });
-      await saveCursors(m, cursors);
-    });
+    const delivery = await deliverUnlessSleeping(
+      m,
+      s,
+      batch,
+      provider,
+      async () => {
+        if (!transcriptPickup) return;
+        armPickup(cursors, recipientKey, pick, new Date(now).toISOString(), {
+          transcriptLine: transcriptLineCount(m, s),
+        });
+        await saveCursors(m, cursors);
+      },
+      signal,
+    );
     if (delivery.hold !== null) {
-      await writeChatHold(s.name, pick.msg.id, delivery.hold);
+      await writeChatHold(s.name, pick.msg.id, delivery.hold, delivery.holdKind);
       continue;
     }
     if (!delivery.submitted) {
@@ -434,7 +485,7 @@ export async function deliverPending(m: MachineConfig, signal?: AbortSignal): Pr
       for (const msg of batch) appendAck(m, msg.id, 'daemon', recipient); // dedup vs the Stop hook
     } else {
       cursors.delivered[recipientKey] = pick.idx + 1;
-      // mark read so `ccmux inbox` won't re-show a pushed message
+      // mark read so `stitchmux inbox` won't re-show a pushed message
       cursors.read[recipientKey] = Math.max(cursors.read[recipientKey] ?? 0, pick.idx + 1);
     }
     changed = true;

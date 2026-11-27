@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = realpathSync(mkdtempSync('/tmp/ccmux-workspace-contract-'));
+  const root = realpathSync(mkdtempSync('/tmp/stitchmux-workspace-contract-'));
   roots.push(root);
   const workspace = join(root, 'workspace');
   mkdirSync(workspace);

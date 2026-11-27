@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
-import { AppError } from 'stitchkit';
 import { subagentFile, subagentsDir } from '../agent/claude/subagent.ts';
 import { providerFor } from '../agent/index.ts';
 import { codexAppThreadId, isCodexAppToken } from '../chat/identity.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { routeFor, selfAddress } from '../fleet/address.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import type { MachineConfig, Session } from '../types.ts';
@@ -33,9 +33,8 @@ export async function readSessionUsage(
   signal?.throwIfAborted();
   const route = routeFor(address, m);
   if (route.kind !== 'local')
-    throw new AppError('INVALID_TARGET', {
+    throw refusals.errors.INVALID_TARGET({
       message: 'Usage control requires an exact local address',
-      status: 400,
     });
   const exact = selfAddress(m, route.session);
   const token = route.session.split('#')[0] ?? route.session;

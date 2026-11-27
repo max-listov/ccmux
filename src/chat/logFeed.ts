@@ -105,7 +105,7 @@ export function boundFrame(frame: LogFrame): LogFrame {
     ...frame,
     row: {
       ...frame.row,
-      body: `(body omitted: ${bytes} bytes exceeds this feed's ${LOG_FRAME_MAX_BYTES}-byte record limit — read it with: ccmux chat log -n 1 --json)`,
+      body: `(body omitted: ${bytes} bytes exceeds this feed's ${LOG_FRAME_MAX_BYTES}-byte record limit — read it with: stitchmux chat log -n 1 --json)`,
       note: frame.row.note === '' ? 'oversized' : `${frame.row.note}; oversized`,
     },
   };
@@ -208,7 +208,7 @@ export function rowsAfter(
 /**
  * The follow every reader of this machine's log gets: the machine first — so a reader can attribute
  * every row that follows, and a stream alive but quiet is told from one that never opened — then
- * each row from `from` on. `ccmux chat log --follow` prints it; the `watchChatLog` stream yields it.
+ * each row from `from` on. `stitchmux chat log --follow` prints it; the `watchChatLog` stream yields it.
  */
 export function followLog(
   m: MachineConfig,

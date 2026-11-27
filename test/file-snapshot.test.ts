@@ -19,7 +19,7 @@ import { RACY_WINDOW_MS } from '../src/util/fileStamp.ts';
 import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
 test('unchanged file parses once; rewrite, atomic replacement, deletion, symlink target and errors invalidate', async () => {
-  const root = mkdtempSync('/tmp/ccmux-file-snapshot-');
+  const root = mkdtempSync('/tmp/stitchmux-file-snapshot-');
   // A file is cached only once its last change is older than any clock tick (RACY_WINDOW_MS).
   const settle = () => Bun.sleep(RACY_WINDOW_MS + 20);
   try {
@@ -60,7 +60,7 @@ test('unchanged file parses once; rewrite, atomic replacement, deletion, symlink
 });
 
 test('a write in the same clock tick as the cached one is never hidden', () => {
-  const root = mkdtempSync('/tmp/ccmux-file-racy-');
+  const root = mkdtempSync('/tmp/stitchmux-file-racy-');
   try {
     const path = join(root, 'data');
     const reader = new FileSnapshot<string>();
@@ -79,7 +79,7 @@ test('a write in the same clock tick as the cached one is never hidden', () => {
 });
 
 test('registry notices another writer and promoted journal, and returns owned objects', async () => {
-  const root = mkdtempSync('/tmp/ccmux-registry-snapshot-');
+  const root = mkdtempSync('/tmp/stitchmux-registry-snapshot-');
   try {
     const m = makeMachine({ stateDir: root });
     const s = makeSession();
@@ -107,7 +107,7 @@ test('registry notices another writer and promoted journal, and returns owned ob
       {
         session: pendingSession,
         generation: '11111111-1111-4111-8111-111111111112',
-        marker: 'ccmux_11111111-1111-4111-8111-111111111112',
+        marker: 'stitchmux_11111111-1111-4111-8111-111111111112',
         operation: { kind: 'create' },
         createdAt: '2026-01-01T00:00:00Z',
         status: 'promoted',
@@ -121,13 +121,13 @@ test('registry notices another writer and promoted journal, and returns owned ob
 });
 
 test('config parsing is quiet, another writer is immediately visible, env remains live and malformed replacement fails', async () => {
-  const root = mkdtempSync('/tmp/ccmux-config-snapshot-');
+  const root = mkdtempSync('/tmp/stitchmux-config-snapshot-');
   const path = join(root, 'machine.json');
-  const original = process.env.CCMUX_CONFIG,
-    prefix = process.env.CCMUX_RC_PREFIX;
+  const original = process.env.STITCHMUX_CONFIG,
+    prefix = process.env.STITCHMUX_RC_PREFIX;
   try {
-    process.env.CCMUX_CONFIG = path;
-    delete process.env.CCMUX_RC_PREFIX;
+    process.env.STITCHMUX_CONFIG = path;
+    delete process.env.STITCHMUX_RC_PREFIX;
     const config = makeMachine({
       claudeBin: '/usr/bin/false',
       tmuxBin: '/usr/bin/false',
@@ -155,7 +155,7 @@ test('config parsing is quiet, another writer is immediately visible, env remain
     );
     expect(await writer.exited).toBe(0);
     expect(loadMachineConfig().ensureInterval).toBe(99);
-    process.env.CCMUX_RC_PREFIX = 'host-b';
+    process.env.STITCHMUX_RC_PREFIX = 'host-b';
     expect(loadMachineConfig().rcPrefix).toBe('host-b');
     writeFileSync(path, '{broken');
     expect(() => loadMachineConfig()).toThrow();
@@ -168,10 +168,10 @@ test('config parsing is quiet, another writer is immediately visible, env remain
     writeFileSync(path, JSON.stringify(config));
     expect(loadMachineConfig().ensureInterval).toBe(config.ensureInterval);
   } finally {
-    if (original === undefined) delete process.env.CCMUX_CONFIG;
-    else process.env.CCMUX_CONFIG = original;
-    if (prefix === undefined) delete process.env.CCMUX_RC_PREFIX;
-    else process.env.CCMUX_RC_PREFIX = prefix;
+    if (original === undefined) delete process.env.STITCHMUX_CONFIG;
+    else process.env.STITCHMUX_CONFIG = original;
+    if (prefix === undefined) delete process.env.STITCHMUX_RC_PREFIX;
+    else process.env.STITCHMUX_RC_PREFIX = prefix;
     rmSync(root, { recursive: true, force: true });
   }
 });

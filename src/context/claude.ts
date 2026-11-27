@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { claudeProfile } from '../agent/claude/profileRoot.ts';
 import { encodeDir } from '../agent/claude/resume.ts';
 import { parse } from '../agent/claude/transcript.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../types.ts';
 import { boundedHistoryPage, historyCursor } from './history.ts';
 import type { NativeContextApi } from './pump.ts';
@@ -74,10 +74,7 @@ const offsetOf = (cursor: string | undefined): number => {
   if (cursor === undefined) return 0;
   const value = Number.parseInt(cursor, 10);
   if (!Number.isInteger(value) || value < 0)
-    throw new AppError('HISTORY_CURSOR', {
-      message: 'Native history cursor is invalid',
-      status: 409,
-    });
+    throw refusals.errors.HISTORY_CURSOR({ message: 'Native history cursor is invalid' });
   return value;
 };
 
@@ -91,10 +88,7 @@ export function claudeContextApi(
     if (!existsSync(path))
       // Said rather than answered with an empty page: a conversation whose transcript is not where
       // this build expects it is unknown, not empty, and the two call for different actions.
-      throw new AppError('HISTORY_UNAVAILABLE', {
-        message: 'Native transcript is unavailable',
-        status: 503,
-      });
+      throw refusals.errors.HISTORY_UNAVAILABLE({ message: 'Native transcript is unavailable' });
     return readFileSync(path, 'utf8').split('\n');
   };
   return {

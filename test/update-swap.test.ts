@@ -13,8 +13,8 @@ import { join } from 'node:path';
 import { replaceBundle, restoreBackup } from '../src/release/update.ts';
 
 test('concurrent duplicate release installs preserve the actual rollback predecessor', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-swap-'));
-  const app = join(root, 'ccmux.js');
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-swap-'));
+  const app = join(root, 'stitchmux.js');
   writeFileSync(app, 'previous-release');
   const module = new URL('../src/release/update.ts', import.meta.url).href;
   try {
@@ -25,14 +25,14 @@ test('concurrent duplicate release installs preserve the actual rollback predece
         [
           process.execPath,
           '-e',
-          'const {replaceBundle}=await import(process.env.CCMUX_TEST_MODULE);await replaceBundle(process.env.CCMUX_TEST_FROM,process.env.CCMUX_TEST_TARGET);',
+          'const {replaceBundle}=await import(process.env.STITCHMUX_TEST_MODULE);await replaceBundle(process.env.STITCHMUX_TEST_FROM,process.env.STITCHMUX_TEST_TARGET);',
         ],
         {
           env: {
             ...process.env,
-            CCMUX_TEST_MODULE: module,
-            CCMUX_TEST_FROM: from,
-            CCMUX_TEST_TARGET: app,
+            STITCHMUX_TEST_MODULE: module,
+            STITCHMUX_TEST_FROM: from,
+            STITCHMUX_TEST_TARGET: app,
           },
           stdout: 'ignore',
           stderr: 'pipe',
@@ -57,8 +57,8 @@ test('concurrent duplicate release installs preserve the actual rollback predece
 }, 15000);
 
 test('a failed rollback backup leaves the live bundle and candidate intact', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-swap-fail-'));
-  const app = join(root, 'ccmux.js');
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-swap-fail-'));
+  const app = join(root, 'stitchmux.js');
   const from = join(root, 'candidate');
   writeFileSync(app, 'previous-release');
   writeFileSync(from, 'next-release');
@@ -74,15 +74,15 @@ test('a failed rollback backup leaves the live bundle and candidate intact', asy
 });
 
 test('rollback restores the predecessor and reports a missing backup', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-rollback-ok-'));
-  const app = join(root, 'ccmux.js');
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-rollback-ok-'));
+  const app = join(root, 'stitchmux.js');
   writeFileSync(app, 'broken-release');
   try {
     expect(await restoreBackup(app)).toBe(false);
     writeFileSync(`${app}.bak`, 'previous-release');
     expect(await restoreBackup(app)).toBe(true);
     expect(readFileSync(app, 'utf8')).toBe('previous-release');
-    expect(readdirSync(root).sort()).toEqual(['ccmux.js', 'ccmux.js.bak']);
+    expect(readdirSync(root).sort()).toEqual(['stitchmux.js', 'stitchmux.js.bak']);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

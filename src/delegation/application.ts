@@ -233,7 +233,11 @@ export function applicationAuthorityEnded(m: MachineConfig, parent: Parent) {
   try {
     const row = read(m, parent.target.authorityId);
     if (row === null || stableJson(row.parent) !== stableJson(parent)) return true;
-    issuer(m, { kind: 'service', source: 'ccmux', machine: row.caller, transport: 'local' }, row);
+    issuer(
+      m,
+      { kind: 'service', source: 'stitchmux', machine: row.caller, transport: 'local' },
+      row,
+    );
     active(row);
     return false;
   } catch {

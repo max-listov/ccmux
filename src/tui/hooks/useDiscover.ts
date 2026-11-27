@@ -10,7 +10,7 @@ import { discoverActive } from '../discover.ts';
  *  terminal before the thread is busy. */
 const YIELD_MS = 50;
 
-/** Poll for agent threads running outside ccmux (read-only discovery). Slower interval than the
+/** Poll for agent threads running outside stitchmux (read-only discovery). Slower interval than the
  *  fleet poll — scanning transcripts is heavier than a pane capture. `scanning` is true from the
  *  moment a pass is announced until it returns, so the view can say what it is doing. */
 export function useDiscover(

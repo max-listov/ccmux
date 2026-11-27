@@ -8,7 +8,7 @@ import { peerReadContract } from '../fleet/peerReadContract.ts';
 import { writeOut } from '../util/stdout.ts';
 
 const USAGE =
-  'usage: ccmux _peer-read list [--known <digests>] | identities [--known <digests>] | chat-log -n <N> [--known <digests>]';
+  'usage: stitchmux _peer-read list [--known <digests>] | identities [--known <digests>] | chat-log -n <N> [--known <digests>]';
 
 type Request =
   | { kind: 'list' | 'identities'; known: string[] }
@@ -44,7 +44,7 @@ function neverDispatched(error: unknown): boolean {
 }
 
 /**
- * `ccmux _peer-read` — what a fleet reader on another machine runs here. It relays: the daemon
+ * `stitchmux _peer-read` — what a fleet reader on another machine runs here. It relays: the daemon
  * builds the answer with its caches warm (`fleet/peerRead.ts`), and this process only asks over the
  * local control socket and prints. Nothing heavier than that client is loaded.
  *
@@ -76,7 +76,7 @@ export async function cmdPeerRead(args: string[]): Promise<number> {
     const client = createClient(
       peerReadContract,
       createHttpClient({
-        baseUrl: 'http://ccmux.local',
+        baseUrl: 'http://stitchmux.local',
         fetch: transport.fetch,
         timeout: 20_000,
         retry: { limit: 0 },

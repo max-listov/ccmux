@@ -45,7 +45,7 @@ export type CodexAppDelivery =
   | { delivered: false; reason: string };
 
 /** Deliver one immutable ledger message to one exact App thread. Existing client-message evidence
- * closes the crash window between App Server acceptance and ccmux cursor persistence. */
+ * closes the crash window between App Server acceptance and stitchmux cursor persistence. */
 export async function deliverCodexAppMessage(
   m: MachineConfig,
   msg: ChatMessage,

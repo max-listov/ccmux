@@ -1,7 +1,7 @@
 import { ATTACHMENT_LIMITS } from '../../attachments/reference.ts';
 
 const PREFIXES = ['data:image/png;base64,', 'data:image/jpeg;base64,'];
-const MARKER = new TextEncoder().encode('ccmux-inline-image:omitted');
+const MARKER = new TextEncoder().encode('stitchmux-inline-image:omitted');
 const MAX_VALUE = Math.ceil(ATTACHMENT_LIMITS.imageBytes / 3) * 4;
 const MAX_DISCARDED = Math.ceil(ATTACHMENT_LIMITS.messageBytes / 3) * 4;
 

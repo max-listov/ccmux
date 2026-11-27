@@ -23,13 +23,13 @@ afterEach(() => {
 function server(): { m: MachineConfig; dir: string } {
   const tmuxBin = Bun.which('tmux');
   if (!tmuxBin) throw new Error('tmux is required for the agent pane tests');
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-agent-pane-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-agent-pane-'));
   const m = makeMachine({
     stateDir: dir,
     tmuxBin,
     // A socket of its own per server: `kill-server` from the previous test's cleanup returns before
     // that server is gone, and a reused name lets the next test reach the dying one.
-    tmuxSocket: `ccmux-agent-pane-${crypto.randomUUID()}`,
+    tmuxSocket: `stitchmux-agent-pane-${crypto.randomUUID()}`,
     rcPrefix: 'host-a',
   });
   cleanups.push(() => {
@@ -78,10 +78,10 @@ test('a session created before the id was recorded is given it when it has one p
   tmux(m, 'new-session', '-d', '-s', 'agent-old', '-c', dir, '--', 'sleep', '300');
   const only = tmux(m, 'list-panes', '-t', '=agent-old', '-F', '#{pane_id}');
   expect(await agentPaneTarget(m, 'agent-old')).toBe(only);
-  expect(tmux(m, 'show-options', '-v', '-t', '=agent-old:', '@ccmux-agent-pane')).toBe(only);
+  expect(tmux(m, 'show-options', '-v', '-t', '=agent-old:', '@stitchmux-agent-pane')).toBe(only);
 });
 
-test('ccmux window opens beside a registered running session and declares where', async () => {
+test('stitchmux window opens beside a registered running session and declares where', async () => {
   const { m, dir } = server();
   await newSession(m, 'agent-a', dir, ['sleep', '300']);
   const configPath = join(dir, 'machine.json');
@@ -92,7 +92,7 @@ test('ccmux window opens beside a registered running session and declares where'
   );
   const run = async (...args: string[]) => {
     const proc = Bun.spawn(['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), ...args], {
-      env: { ...process.env, CCMUX_CONFIG: configPath, CCMUX_STATE_DIR: dir },
+      env: { ...process.env, STITCHMUX_CONFIG: configPath, STITCHMUX_STATE_DIR: dir },
       stdout: 'pipe',
       stderr: 'pipe',
     });

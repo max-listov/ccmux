@@ -100,8 +100,8 @@ function readArgv(procRoot: string, pid: number): string[] {
   }
 }
 
-/** `bun … ccmux.js _run <name>` (or the source entry in a dev checkout). */
+/** `bun … stitchmux.js _run <name>` (or the source entry in a dev checkout). */
 export function isRunner(argv: readonly string[]): boolean {
   const run = argv.indexOf('_run');
-  return run > 0 && argv.slice(0, run).some((arg) => /(?:ccmux\.js|cli\.ts)$/.test(arg));
+  return run > 0 && argv.slice(0, run).some((arg) => /(?:stitchmux\.js|cli\.ts)$/.test(arg));
 }

@@ -4,7 +4,7 @@ export type PublicationFinding = { line: number; rule: string };
  * A reference to this project's private working repository.
  *
  * What is forbidden is the repository ADDRESS — `<owner>/<name>` — and not the name on its own,
- * because the name on its own is public here: `ccmux-dev` is the launcher that runs the CLI from
+ * because the name on its own is public here: `stitchmux-dev` is the launcher that runs the CLI from
  * source, and it appears legitimately in the README and the architecture notes. A rule that
  * forbade the bare name would fail on documentation that is correct, and a rule that fails on
  * correct documentation is switched off within a day.
@@ -14,8 +14,8 @@ export type PublicationFinding = { line: number; rule: string };
  */
 const companion = (): RegExp => {
   const self = 'ccmu' + 'x';
-  // The owner segment is what separates a repository address from a file path: `bin/ccmux-dev` is
-  // the launcher on disk and belongs here, `<owner>/ccmux-dev` is the companion and does not. The
+  // The owner segment is what separates a repository address from a file path: `bin/stitchmux-dev` is
+  // the launcher on disk and belongs here, `<owner>/stitchmux-dev` is the companion and does not. The
   // owner is this project's own, already public in the install URL.
   return new RegExp(`\\bmax-listov/${self}-dev(?![\\w-])`, 'i');
 };
@@ -28,10 +28,10 @@ const companion = (): RegExp => {
  * reached a committed document naming a real machine and a real project.
  *
  * Two anchors, because the leak arrives in two shapes and an unanchored rule would drown in
- * ordinary colons: an address handed to a `ccmux` command, and one written as code. What each
+ * ordinary colons: an address handed to a `stitchmux` command, and one written as code. What each
  * anchor does NOT see is recorded in the tests beside it, measured rather than assumed.
  */
-const COMMAND_ADDRESS = /\bccmux\s+[a-z][\w-]*\s+`?([a-z0-9][\w-]*):([a-z0-9][\w.-]*)`?/i;
+const COMMAND_ADDRESS = /\bstitchmux\s+[a-z][\w-]*\s+`?([a-z0-9][\w-]*):([a-z0-9][\w.-]*)`?/i;
 const CODE_ADDRESS = /`([a-z0-9][\w-]*):([a-z0-9][\w.-]*)`/i;
 
 /**
@@ -43,7 +43,7 @@ const CODE_ADDRESS = /`([a-z0-9][\w-]*):([a-z0-9][\w.-]*)`/i;
  * colon and mean something else entirely.
  */
 const PLACEHOLDER = /^(?:machine|session|name|target|peer|(?:host|agent|machine)-.*)$/i;
-const NOT_A_MACHINE = /^(?:node|bun|http|https|file|data|ccmux)$/i;
+const NOT_A_MACHINE = /^(?:node|bun|http|https|file|data|stitchmux)$/i;
 /** `remoteControl:false` is a setting, not an address: a machine name is lowercase on this fleet. */
 const SETTING_KEY = /[A-Z]/;
 /** `autoUpdate:true`, `retries:3` — the right half of an address is a session, never a literal. */

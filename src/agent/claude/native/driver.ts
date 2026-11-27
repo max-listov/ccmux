@@ -1,6 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import type { Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { type ExecutorProfileConfig, sanitizeProfileEnv } from 'stitchkit/agent-executor';
+import type { ExecutorProfileConfig } from 'stitchkit/agent-executor';
 import type {
   ClaudeRuntimeEvent,
   ClaudeSdkDriverConfig,
@@ -11,7 +11,8 @@ import type {
 } from 'stitchkit/agent-executor/claude-sdk';
 import { delegatedClaudeOptions } from '../../../delegation/claude.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
-import { HOME } from '../../../util/env.ts';
+import { HOME } from '../../../util/home.ts';
+import { executorProfileEnv } from '../../launch/sessionEnv.ts';
 import { claudeProfileId } from '../namedProfiles.ts';
 import { claudeProfile } from '../profileRoot.ts';
 import { declaresDialogs, SUPPORTED_DIALOG_KINDS } from './permission.ts';
@@ -53,7 +54,7 @@ export function claudeExecutorProfile(
     profileId: session.profile ? claudeProfileId(session.profile) : session.name,
     home,
     ...(implicit ? { claudeConfigDir: 'default' } : {}),
-    env: sanitizeProfileEnv(env),
+    env: executorProfileEnv(env),
   };
 }
 

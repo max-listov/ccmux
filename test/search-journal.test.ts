@@ -50,7 +50,7 @@ const searched = (machine: string, total: number) => ({
   total,
 });
 
-const stateRoot = () => ({ stateDir: mkdtempSync(join(tmpdir(), 'ccmux-search-journal-')) });
+const stateRoot = () => ({ stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-search-journal-')) });
 
 const line = (
   at: string,
@@ -76,7 +76,7 @@ const line = (
 test('the caller is the session the environment names, or nobody', () => {
   const thread = '11111111-1111-4111-8111-111111111111';
   expect(
-    commandCaller('host-a', { CCMUX_SESSION: 'agent-a', CLAUDE_CODE_SESSION_ID: thread }),
+    commandCaller('host-a', { STITCHMUX_SESSION: 'agent-a', CLAUDE_CODE_SESSION_ID: thread }),
   ).toBe('host-a:agent-a');
   expect(commandCaller('host-a', { CLAUDE_CODE_SESSION_ID: thread })).toBe(
     `external:claude:host-a#${thread}`,
@@ -137,7 +137,7 @@ test('the journal is read for a period across rotations, and a line it cannot re
 });
 
 test('a search asked here is written; one another machine asked for is not', async () => {
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-search-cli-')));
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-search-cli-')));
   const state = join(home, 'state');
   // The machine named in full: a config left to detection looks for an agent binary, and a host
   // without one (a CI runner) would fail the command before it searched anything.
@@ -150,7 +150,7 @@ test('a search asked here is written; one another machine asked for is not', asy
       projectsDir: join(home, 'projects'),
       rcPrefix: 'host-a',
       stateDir: state,
-      bootLabel: 'ccmux-test.service',
+      bootLabel: 'stitchmux-test.service',
     }),
   );
   const run = async (...args: string[]) => {
@@ -160,9 +160,9 @@ test('a search asked here is written; one another machine asked for is not', asy
         env: {
           ...process.env,
           HOME: home,
-          CCMUX_STATE_DIR: state,
-          CCMUX_SESSION: 'agent-a',
-          CCMUX_CONFIG: config,
+          STITCHMUX_STATE_DIR: state,
+          STITCHMUX_SESSION: 'agent-a',
+          STITCHMUX_CONFIG: config,
         },
         cwd: home,
         stdout: 'pipe',
@@ -199,7 +199,7 @@ test('a search asked here is written; one another machine asked for is not', asy
 test('a fleet search tells each machine it asks whose search it is', async () => {
   const m = makeMachine({
     rcPrefix: 'host-a',
-    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-search-asks-')),
+    stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-search-asks-')),
     projectsDir: '/nonexistent',
     fleet: { 'host-b': 'host-b' },
   });
@@ -219,7 +219,7 @@ test('a fleet search tells each machine it asks whose search it is', async () =>
     [],
   );
   expect(asked[0]?.slice(0, 6)).toEqual([
-    'ccmux',
+    'stitchmux',
     'search',
     '--local',
     '--json',
@@ -273,7 +273,7 @@ test('a control search is written when its last frame says what was searched, an
 test('the report reads every machine, counts what it could not read, and names a silent machine', async () => {
   const m = makeMachine({
     rcPrefix: 'host-a',
-    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-search-report-')),
+    stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-search-report-')),
     fleet: { 'host-b': 'host-b', 'host-c': 'host-c' },
   });
   journalSearch(m, line('2026-11-12T08:00:00.000Z'));

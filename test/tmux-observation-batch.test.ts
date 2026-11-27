@@ -21,13 +21,13 @@ import { makeMachine } from './helpers.ts';
 test.skipIf(!Bun.which('tmux'))(
   'batch captures exact panes, reduces forks, and preserves surviving evidence on pane death',
   async () => {
-    const root = mkdtempSync('/tmp/ccmux-batch-');
+    const root = mkdtempSync('/tmp/stitchmux-batch-');
     const tmux = Bun.which('tmux');
     if (!tmux) throw new Error('tmux');
     const m = makeMachine({
       stateDir: root,
       tmuxBin: tmux,
-      tmuxSocket: `ccmux-batch-${crypto.randomUUID()}`,
+      tmuxSocket: `stitchmux-batch-${crypto.randomUUID()}`,
     });
     const command = (...args: string[]) => {
       const r = Bun.spawnSync(tmuxArgv(m, ...args));
@@ -133,11 +133,11 @@ test.skipIf(!Bun.which('tmux'))(
 test.skipIf(!Bun.which('tmux'))(
   'peer scrollback equals capture -S -30 at different pane heights and excludes older working markers',
   async () => {
-    const root = mkdtempSync('/tmp/ccmux-peer-window-');
+    const root = mkdtempSync('/tmp/stitchmux-peer-window-');
     const m = makeMachine({
       stateDir: root,
       tmuxBin: Bun.which('tmux') ?? '/usr/bin/tmux',
-      tmuxSocket: `ccmux-window-${crypto.randomUUID()}`,
+      tmuxSocket: `stitchmux-window-${crypto.randomUUID()}`,
     });
     try {
       for (const height of [10, 24, 80]) {
@@ -192,11 +192,11 @@ test.skipIf(!Bun.which('tmux'))(
 test.skipIf(!Bun.which('tmux'))(
   'a session restarted by another process is captured on the next pass, with one child per chunk',
   async () => {
-    const root = mkdtempSync('/tmp/ccmux-restart-');
+    const root = mkdtempSync('/tmp/stitchmux-restart-');
     const m = makeMachine({
       stateDir: root,
       tmuxBin: Bun.which('tmux') ?? '/usr/bin/tmux',
-      tmuxSocket: `ccmux-restart-${crypto.randomUUID()}`,
+      tmuxSocket: `stitchmux-restart-${crypto.randomUUID()}`,
     });
     const command = (...args: string[]) => {
       const r = Bun.spawnSync(tmuxArgv(m, ...args));
@@ -217,7 +217,7 @@ test.skipIf(!Bun.which('tmux'))(
         '-c',
         `printf '${marker}\\n'; exec sleep 600`,
       );
-      command('set-option', '-t', name, '@ccmux-agent-pane', pane);
+      command('set-option', '-t', name, '@stitchmux-agent-pane', pane);
       return pane;
     };
     const until = async (name: string, marker: string) => {
@@ -257,14 +257,14 @@ test.skipIf(!Bun.which('tmux'))(
 test.skipIf(!Bun.which('tmux'))(
   'a batch that misses its deadline is one child, not a serial retry of every pane',
   async () => {
-    const root = mkdtempSync('/tmp/ccmux-deadline-');
+    const root = mkdtempSync('/tmp/stitchmux-deadline-');
     const m = makeMachine({
       stateDir: root,
       tmuxBin: Bun.which('tmux') ?? '/usr/bin/tmux',
-      tmuxSocket: `ccmux-deadline-${crypto.randomUUID()}`,
+      tmuxSocket: `stitchmux-deadline-${crypto.randomUUID()}`,
     });
     const names = Array.from({ length: 3 }, (_, i) => `agent-${i}`);
-    const previous = process.env.CCMUX_OBSERVE_DEADLINE_MS;
+    const previous = process.env.STITCHMUX_OBSERVE_DEADLINE_MS;
     const panesById = new Map<string, string>();
     try {
       for (const name of names) {
@@ -281,14 +281,14 @@ test.skipIf(!Bun.which('tmux'))(
       chmodSync(slowTmux, 0o755);
       const slow = { ...m, tmuxBin: slowTmux };
       for (const name of names) rememberAgentPane(slow, name, panesById.get(name) ?? '');
-      process.env.CCMUX_OBSERVE_DEADLINE_MS = '50';
+      process.env.STITCHMUX_OBSERVE_DEADLINE_MS = '50';
       const before = observationExecCount();
       const panes = await observedPanes(slow, names);
       expect(observationExecCount() - before).toBe(1);
       for (const name of names) expect(panes.get(name)).toBeNull();
     } finally {
-      if (previous === undefined) delete process.env.CCMUX_OBSERVE_DEADLINE_MS;
-      else process.env.CCMUX_OBSERVE_DEADLINE_MS = previous;
+      if (previous === undefined) delete process.env.STITCHMUX_OBSERVE_DEADLINE_MS;
+      else process.env.STITCHMUX_OBSERVE_DEADLINE_MS = previous;
       Bun.spawnSync(tmuxArgv(m, 'kill-server'));
       rmSync(root, { recursive: true, force: true });
     }

@@ -6,10 +6,10 @@ import { sessionRegistryLockPath } from '../src/config/paths.ts';
 import { withSessionRegistryLock } from '../src/session/registryLock.ts';
 import { makeMachine } from './helpers.ts';
 
-// The lock is stitchkit's `withExclusiveLock`; these hold what ccmux relies on through it.
+// The lock is stitchkit's `withExclusiveLock`; these hold what stitchmux relies on through it.
 
 async function withTempState<T>(run: (stateDir: string) => Promise<T>): Promise<T> {
-  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-registry-lock-'));
+  const stateDir = mkdtempSync(join(tmpdir(), 'stitchmux-registry-lock-'));
   try {
     return await run(stateDir);
   } finally {

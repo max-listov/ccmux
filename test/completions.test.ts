@@ -13,13 +13,13 @@ test("every shell script lists EVERY command verb — generated from one registr
 
 test('bash uses compgen -W with the verb list', () => {
   const s = completionsScript('bash');
-  expect(s).toContain('complete -F _ccmux ccmux');
+  expect(s).toContain('complete -F _stitchmux stitchmux');
   expect(s).toContain('compgen -W');
 });
 
 test('zsh is a #compdef with per-verb descriptions and no describe-breaking colons in them', () => {
   const s = completionsScript('zsh');
-  expect(s.startsWith('#compdef ccmux')).toBe(true);
+  expect(s.startsWith('#compdef stitchmux')).toBe(true);
   // each entry is 'verb:desc' — a stray colon inside desc would split it, so desc must be colon-free
   for (const line of s.split('\n').filter((l) => l.trim().startsWith("'"))) {
     const body = line.trim().replace(/^'/, '').replace(/'$/, '');

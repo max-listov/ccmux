@@ -23,7 +23,7 @@ let dir: string;
 const machine = () => makeMachine({ rcPrefix: 'host-a', stateDir: dir });
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'ccmux-pane-'));
+  dir = mkdtempSync(join(tmpdir(), 'stitchmux-pane-'));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -96,7 +96,7 @@ test('a stale record makes no reader MORE confident than it was', async () => {
 });
 
 test('a fresh record keeps a long tool call from reading as a turn nobody will finish', async () => {
-  // The reason the file exists. `ccmux wait` is a fresh process on every call, so no memory of its
+  // The reason the file exists. `stitchmux wait` is a fresh process on every call, so no memory of its
   // own can cover its FIRST look — and a false "done" there sends the caller to
   // `transcript --last-message`, which hands back what was said BEFORE the tool calls that had not
   // finished, as if it were the answer.

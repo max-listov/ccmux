@@ -7,7 +7,7 @@ import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 test('OpenCode persists its content baseline before enabling native callbacks', async () => {
   for (const failWrite of [false, true]) {
-    const m = makeMachine({ stateDir: shortTempDir('ccmux-content-ready-') });
+    const m = makeMachine({ stateDir: shortTempDir('stitchmux-content-ready-') });
     const session = makeSession({
       agent: 'opencode',
       runtime: 'native',

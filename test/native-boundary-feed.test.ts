@@ -24,7 +24,7 @@ const feed = (m: ReturnType<typeof makeMachine>): { event: string }[] =>
     .map((line) => JSON.parse(line) as { event: string });
 
 test('native turn boundaries reach the feed exactly once each', () => {
-  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'ccmux-boundary-')) });
+  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-boundary-')) });
   const s = makeSession({ agent: 'codex', runtime: 'app-server', eventsEnabled: true });
   const projection = new OwnedCodexProjection(m, s, process.pid);
   const snapshot = (kinds: OwnedCodexSnapshot['events'][number]['kind'][]): OwnedCodexSnapshot => ({
@@ -51,7 +51,7 @@ test('native turn boundaries reach the feed exactly once each', () => {
 });
 
 test('boundaries passed while the feed is off are not replayed when it is turned on', () => {
-  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'ccmux-boundary-off-')) });
+  const m = makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-boundary-off-')) });
   const off = makeSession({ agent: 'opencode', runtime: 'native', eventsEnabled: false });
   const events = (count: number) => ({
     events: Array.from({ length: count }, (_, index) => ({

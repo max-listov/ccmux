@@ -145,7 +145,7 @@ test('the publication date rides along, so lag can be read in time rather than i
 });
 
 test('a check that stopped happening is not the same as one that came back behind', async () => {
-  const stateDir = shortTempDir('ccmux-overdue-');
+  const stateDir = shortTempDir('stitchmux-overdue-');
   const m = makeMachine({ stateDir, autoUpdate: true, updateCheckInterval: 300 });
   const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
 

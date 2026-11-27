@@ -1,7 +1,7 @@
 import {
   type MonitoringRead,
-  type MonitoringSnapshot,
-  MonitoringSnapshotSchema,
+  type MonitoringSnapshotRead,
+  MonitoringSnapshotReadSchema,
   STATUS_MAX_AGE_MS,
 } from './schema.ts';
 
@@ -10,7 +10,10 @@ export function unavailable(reason: MonitoringRead['reason']): MonitoringRead {
 }
 
 /** Rechecked at delivery too: a shared read is never a lease on producer liveness. */
-export function validateLiveness(snapshot: MonitoringSnapshot, now = Date.now()): MonitoringRead {
+export function validateLiveness(
+  snapshot: MonitoringSnapshotRead,
+  now = Date.now(),
+): MonitoringRead {
   try {
     process.kill(snapshot.pid, 0);
   } catch {
@@ -29,7 +32,8 @@ export function validateSnapshot(
   now = Date.now(),
 ): MonitoringRead {
   try {
-    const parsed = MonitoringSnapshotSchema.safeParse(JSON.parse(bytes));
+    // The reader's schema: this snapshot may come from an installed daemon of another version.
+    const parsed = MonitoringSnapshotReadSchema.safeParse(JSON.parse(bytes));
     if (!parsed.success || parsed.data.rcPrefix !== rcPrefix) return unavailable('invalid');
     return validateLiveness(parsed.data, now);
   } catch {

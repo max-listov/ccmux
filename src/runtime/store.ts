@@ -8,8 +8,8 @@ import {
   openSync,
   readSync,
 } from 'node:fs';
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import { settled, statStamp } from '../util/fileStamp.ts';
 
 const snapshots = new Map<string, { stamp: string; value: unknown }>();
@@ -93,7 +93,7 @@ export function readPrivateJournal<T>(
 ): T | null {
   const result = readPrivateJsonState(path, schema, maxBytes);
   if (result.status === 'invalid')
-    throw new AppError('CORRUPT_STATE', { message: 'Private journal is unreadable', status: 503 });
+    throw refusals.errors.CORRUPT_STATE({ message: 'Private journal is unreadable' });
   return result.status === 'value' ? result.value : null;
 }
 

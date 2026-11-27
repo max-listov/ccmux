@@ -10,7 +10,7 @@ import { makeChatMessage, makeMachine } from './helpers.ts';
  * and returned before the chat and menu checks ran, so the machine reader was told nothing was wrong
  * exactly when the human reader was told something was.
  */
-const root = mkdtempSync(join(tmpdir(), 'ccmux-doctor-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-doctor-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 // tmux is named at a path that exists nowhere: `/bin/tmux` is missing on one machine and installed on
 // the next, and the report must not depend on which one runs the test.
@@ -28,7 +28,7 @@ writeFileSync(join(root, 'chat-cursors.json'), '{ "delivered": ');
 
 async function doctor(...args: string[]): Promise<string> {
   const proc = Bun.spawn(['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'doctor', ...args], {
-    env: { ...process.env, CCMUX_CONFIG: configPath, CCMUX_STATE_DIR: root },
+    env: { ...process.env, STITCHMUX_CONFIG: configPath, STITCHMUX_STATE_DIR: root },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -47,6 +47,6 @@ test('the chat checks reach the JSON, and the text says the same', async () => {
   const text = await doctor();
   expect(text).toBe(`${doctorText(report).join('\n')}\n`);
   expect(text).toContain('chat:   PROBLEM — chat cursors unreadable');
-  expect(text).toContain('1 ledger record(s) this ccmux cannot read');
+  expect(text).toContain('1 ledger record(s) this stitchmux cannot read');
   expect(text).toContain(`tmux:   ${noTmux} (missing)`);
 });

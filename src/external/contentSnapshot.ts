@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { createZstdDecompress } from 'node:zlib';
-import { AppError } from 'stitchkit';
+import { refusals } from '../control/schema/refusals.ts';
 import { projectContent } from './contentProjection.ts';
 import {
   type ExternalContentEntry,
@@ -80,9 +80,8 @@ export async function scan(
   start = 0,
 ) {
   if (scanning >= limits.concurrentBuilds)
-    throw new AppError('RESOURCE_EXHAUSTED', {
+    throw refusals.errors.RESOURCE_EXHAUSTED({
       message: 'External history reader capacity is busy',
-      status: 429,
     });
   scanning++;
   try {
@@ -120,9 +119,8 @@ export async function scanCompressed(
   consume: (chunk: Buffer) => void,
 ): Promise<string | null> {
   if (scanning >= limits.concurrentBuilds)
-    throw new AppError('RESOURCE_EXHAUSTED', {
+    throw refusals.errors.RESOURCE_EXHAUSTED({
       message: 'External history reader capacity is busy',
-      status: 429,
     });
   scanning++;
   const stream = file
@@ -156,9 +154,8 @@ export async function buildContentSnapshot(
   signal: AbortSignal,
 ) {
   if (building >= limits.concurrentBuilds)
-    throw new AppError('RESOURCE_EXHAUSTED', {
+    throw refusals.errors.RESOURCE_EXHAUSTED({
       message: 'External history snapshot capacity is busy',
-      status: 429,
     });
   building++;
   try {
@@ -191,9 +188,8 @@ export async function buildContentSnapshot(
           if (entry) {
             memory += entry.text.length * 2 + 256;
             if (memory > limits.snapshotBytes)
-              throw new AppError('RESOURCE_EXHAUSTED', {
+              throw refusals.errors.TOO_LARGE({
                 message: 'External history projection exceeds the snapshot budget',
-                status: 413,
               });
             entries.push(entry);
           } else omitted++;

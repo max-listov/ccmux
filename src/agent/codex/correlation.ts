@@ -23,7 +23,7 @@ const UserMessageEnvelopeSchema = z.looseObject({
 });
 
 function hasExactForkMarker(path: string, marker: string): boolean {
-  const expected = `ccmux launch correlation: ${marker}`;
+  const expected = `stitchmux launch correlation: ${marker}`;
   // Native fork copies the source's full initial history before appending this launch turn. The
   // unique marker is therefore near the live tail, not at any fixed head byte/record offset.
   // A launch-time question asked once, and the answer decides WHICH rollout is this session's —

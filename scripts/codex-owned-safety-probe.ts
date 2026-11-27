@@ -23,7 +23,7 @@ import { loadSessions } from '../src/session/registry.ts';
 import { capturePaneStyled, sendKeysLiteral, sendKeysNamed } from '../src/tmux/tmux.ts';
 
 const config = process.argv[2];
-if (config === undefined || !basename(dirname(config)).startsWith('ccmux-owned-probe-'))
+if (config === undefined || !basename(dirname(config)).startsWith('stitchmux-owned-probe-'))
   throw new Error("Pass the isolated probe's machine.json");
 const root = dirname(config),
   cli = process.argv[3] ?? join(process.cwd(), 'src/cli.ts');
@@ -37,15 +37,15 @@ if (
 const session = loadSessions(m).find((s) => s.name === 'agent-a');
 if (session === undefined) throw new Error('Missing probe session');
 const env: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: m.stateDir,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: m.stateDir,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && env[key] === undefined) env[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',

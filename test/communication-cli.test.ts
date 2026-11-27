@@ -40,7 +40,7 @@ afterEach(() => {
   for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-communication-cli-');
+  const root = mkdtempSync('/tmp/stitchmux-communication-cli-');
   roots.push(root);
   const machine = makeMachine({
     stateDir: root,
@@ -52,9 +52,9 @@ function fixture() {
   const path = join(root, 'machine.json');
   writeFileSync(path, JSON.stringify(machine));
   writeFileSync(sessionsPath(machine), `${JSON.stringify(session)}\n`);
-  const env: Record<string, string | undefined> = { ...process.env, CCMUX_CONFIG: path };
-  delete env.CCMUX_SESSION;
-  delete env.CCMUX_CHAT_CREDENTIAL;
+  const env: Record<string, string | undefined> = { ...process.env, STITCHMUX_CONFIG: path };
+  delete env.STITCHMUX_SESSION;
+  delete env.STITCHMUX_CHAT_CREDENTIAL;
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
   delete env.CODEX_APP_TOOLS_PIPE_PATH;
@@ -406,7 +406,7 @@ test('a program that sends a letter is answered with one line: the receipt of th
   expect(accepted.receipt).toMatchObject({
     state: 'accepted',
     id: inLedger?.id,
-    to: `ccmux/claude@host-a:worker#${inLedger?.to.kind === 'managed' ? inLedger.to.threadId : ''}`,
+    to: `stitchmux/claude@host-a:worker#${inLedger?.to.kind === 'managed' ? inLedger.to.threadId : ''}`,
     task: 'heron',
     notBefore: null,
     note: null,
@@ -418,10 +418,10 @@ test('a program that sends a letter is answered with one line: the receipt of th
   const { from: _from, notBefore: _notBefore, note: _note, ...letter } = accepted.receipt;
   expect(listed.sent).toEqual([letter]);
 
-  // Somewhere ccmux does not deliver: recorded, never reported as delivered, and no reference.
+  // Somewhere stitchmux does not deliver: recorded, never reported as delivered, and no reference.
   const recorded = await send(['owner/specialist', 'carry this']);
   expect(recorded.receipt).toMatchObject({ state: 'recorded', ref: null });
-  expect(recorded.receipt.note).toContain('ccmux does not deliver there');
+  expect(recorded.receipt.note).toContain('stitchmux does not deliver there');
   expect((await send(['owner', 'for you'])).receipt).toMatchObject({
     state: 'accepted',
     ref: null,
@@ -498,7 +498,7 @@ test('with no question, a session is told about itself', async () => {
       ],
       {
         cwd: f.root,
-        env: { ...process.env, CCMUX_CONFIG: join(f.root, 'machine.json'), ...env },
+        env: { ...process.env, STITCHMUX_CONFIG: join(f.root, 'machine.json'), ...env },
         stdout: 'pipe',
         stderr: 'pipe',
       },
@@ -510,7 +510,7 @@ test('with no question, a session is told about itself', async () => {
     ]);
     return { code, stdout, stderr };
   };
-  const self = await ask({ CCMUX_SESSION: 'worker' });
+  const self = await ask({ STITCHMUX_SESSION: 'worker' });
   expect(self.code).toBe(0);
   expect(JSON.parse(self.stdout)).toMatchObject({
     found: 'session',
@@ -520,19 +520,19 @@ test('with no question, a session is told about itself', async () => {
     machines: [{ machine: 'host-a', status: 'asked' }],
   });
   // Outside a session there is nobody to be told about.
-  const { CCMUX_SESSION: _session, ...outside } = process.env;
+  const { STITCHMUX_SESSION: _session, ...outside } = process.env;
   const child = Bun.spawnSync(
     [process.execPath, '--no-env-file', join(import.meta.dir, '../src/cli.ts'), 'whois'],
-    { cwd: f.root, env: { ...outside, CCMUX_CONFIG: join(f.root, 'machine.json') } },
+    { cwd: f.root, env: { ...outside, STITCHMUX_CONFIG: join(f.root, 'machine.json') } },
   );
   expect(child.exitCode).not.toBe(0);
   expect(child.stderr.toString()).toContain('ask about one thing');
 });
 
-test('a letter sent through the client is answered with the receipt ccmux msg --json prints', async () => {
+test('a letter sent through the client is answered with the receipt stitchmux msg --json prints', async () => {
   const f = fixture();
-  const before = process.env.CCMUX_CONFIG;
-  process.env.CCMUX_CONFIG = join(f.root, 'machine.json');
+  const before = process.env.STITCHMUX_CONFIG;
+  process.env.STITCHMUX_CONFIG = join(f.root, 'machine.json');
   const publisher = new ControlPublisher(f.machine);
   const server = createControlServer(f.machine, publisher);
   const client = createControlClient({ socket: controlSocket(f.machine) });
@@ -565,7 +565,10 @@ test('a letter sent through the client is answered with the receipt ccmux msg --
     // the same.
     const same = ({ id: _id, ref: _ref, ts: _ts, from: _from, ...rest }: typeof byClient) => rest;
     expect(same(byClient)).toEqual(same(byCommand));
-    expect([byClient.from, byCommand.from]).toEqual(['ccmux/service@host-a', 'ccmux/cli@host-a']);
+    expect([byClient.from, byCommand.from]).toEqual([
+      'stitchmux/service@host-a',
+      'stitchmux/cli@host-a',
+    ]);
     expect(byClient).toMatchObject({ state: 'accepted', task: 'kestrel', note: null });
     expect(loadLedger(f.machine).map((row) => row?.id)).toEqual([byClient.id, byCommand.id]);
 
@@ -592,13 +595,13 @@ test('a letter sent through the client is answered with the receipt ccmux msg --
     publisher.close();
     await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
     await server.observability.close();
-    if (before === undefined) delete process.env.CCMUX_CONFIG;
-    else process.env.CCMUX_CONFIG = before;
+    if (before === undefined) delete process.env.STITCHMUX_CONFIG;
+    else process.env.STITCHMUX_CONFIG = before;
   }
 });
 
 test("a letter to another machine spends the caller's time, not twenty seconds a hop", async () => {
-  const root = mkdtempSync('/tmp/ccmux-letter-budget-');
+  const root = mkdtempSync('/tmp/stitchmux-letter-budget-');
   roots.push(root);
   const machine = makeMachine({ stateDir: root, rcPrefix: 'host-a', fleet: { 'host-b': 'b' } });
   const asked: number[] = [];

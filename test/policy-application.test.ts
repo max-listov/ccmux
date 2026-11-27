@@ -39,7 +39,7 @@ afterEach(() => {
 afterAll(() => logged.mockRestore());
 
 function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-policy-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-policy-')));
   roots.push(root);
   const source = (id: string, body: string, filename = `${id}.md`) => {
     const path = join(root, filename);
@@ -340,7 +340,7 @@ test('a session blocked by its policy reports the condition, not the availabilit
   // there is no snapshot to carry the reason, and the availability word for a session that never
   // started is `unavailable` — a tautology in the one field a caller reads. What survives the dead
   // worker is the lifecycle block's message, and the code travels in it.
-  const stateDir = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-policy-block-')));
+  const stateDir = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-policy-block-')));
   roots.push(stateDir);
   const m = makeMachine({ stateDir });
   const session = makeSession({
@@ -367,7 +367,7 @@ test('a session blocked by its policy reports the condition, not the availabilit
     agent: 'opencode',
     uuid: session.uuid,
     generation: session.registrationGeneration,
-    error: 'Native runtime failed; run `ccmux logs agent-A` for the cause',
+    error: 'Native runtime failed; run `stitchmux logs agent-A` for the cause',
     at: new Date().toISOString(),
   });
   expect(blockedPolicyReason(m, session)).toBeUndefined();
@@ -381,7 +381,7 @@ test('a dead worker publishes a policy code and nothing else about why it died',
   expect(nativeRuntimeFailure(policy, 'agent-A')).toBe(policy);
   const native = new Error("ENOENT: no such file or directory, open '/Users/u/secret/agent.md'");
   const generic = nativeRuntimeFailure(native, 'agent-A');
-  expect(generic.message).toBe('Native runtime failed; run `ccmux logs agent-A` for the cause');
+  expect(generic.message).toBe('Native runtime failed; run `stitchmux logs agent-A` for the cause');
   expect(generic.message).not.toContain('/Users/u');
   // A message that only looks like one: the code must match the published charset, or it is text.
   expect(

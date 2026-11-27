@@ -1,5 +1,5 @@
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { defineMailbox } from './mailbox.ts';
 import type { NativeSnapshot } from './projectionSchema.ts';
@@ -48,13 +48,12 @@ const mailbox = defineMailbox<RuntimeInterrupt, true>({
   deadlineMs: 5_000,
   settle: (receipt) => {
     if (receipt.phase === 'rejected')
-      throw new AppError('TURN_MISMATCH', { message: 'Native turn changed', status: 409 });
+      throw refusals.errors.TURN_MISMATCH({ message: 'Native turn changed' });
     // `uncertain` deliberately keeps polling: the adapter said it does not know, and the deadline
     // below is what turns that into an honest 503 rather than a made-up answer.
     return receipt.phase === 'accepted' ? true : undefined;
   },
-  mismatch: () =>
-    new AppError('TURN_MISMATCH', { message: 'Interrupt identity changed', status: 409 }),
+  mismatch: () => refusals.errors.TURN_MISMATCH({ message: 'Interrupt identity changed' }),
 });
 
 export const readRuntimeInterrupt = (m: MachineConfig, s: Session) => mailbox.read(m, s);
@@ -86,9 +85,6 @@ export async function requestRuntimeInterrupt(
     !read.snapshot ||
     !isCancellableTurn(read.snapshot, generation, turnId)
   )
-    throw new AppError('TURN_MISMATCH', {
-      message: 'The exact active turn is unavailable',
-      status: 409,
-    });
+    throw refusals.errors.TURN_MISMATCH({ message: 'The exact active turn is unavailable' });
   await mailbox.request(m, s, turnId, () => ({ turnId, generation, phase: 'queued' }), signal);
 }

@@ -17,7 +17,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 
 // Availability is decided by the binary being present, so the fixture provides a real path rather
 // than a plausible one — a missing file answers "not configured" and would hide the flag's effect.
-const root = mkdtempSync(join(tmpdir(), 'ccmux-claude-mode-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-claude-mode-'));
 const claudeBin = join(root, 'claude');
 writeFileSync(claudeBin, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
 afterAll(() => rmSync(root, { recursive: true, force: true }));

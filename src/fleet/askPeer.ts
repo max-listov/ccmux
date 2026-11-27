@@ -6,7 +6,7 @@ import { type Peer, remoteFailureCause, runPeer } from './transport.ts';
  *
  * Every command that puts a fleet-wide answer together asks each machine the same way and has to
  * say the same three things apart: the machine was not reached, it was reached and did not answer
- * the question — usually because its ccmux is older than the command — or it answered. A machine
+ * the question — usually because its stitchmux is older than the command — or it answered. A machine
  * that did not answer is never read as one with nothing on it, so the reason travels with it.
  */
 
@@ -17,7 +17,7 @@ export type Asked<T> =
   | { machine: string; ok: true; answer: T }
   | { machine: string; ok: false; error: string };
 
-export const NOT_IN_FLEET = 'not a machine of this fleet (see ccmux fleet)';
+export const NOT_IN_FLEET = 'not a machine of this fleet (see stitchmux fleet)';
 
 export async function askPeer<T>(
   m: MachineConfig,
@@ -53,7 +53,7 @@ export async function askPeer<T>(
     return {
       machine: peer.machine,
       ok: false,
-      error: `no ${opts.what} answer (exit ${result.code}): ${cause ?? 'nothing reported'} — is ccmux there older than this command?`,
+      error: `no ${opts.what} answer (exit ${result.code}): ${cause ?? 'nothing reported'} — is stitchmux there older than this command?`,
     };
   }
 }

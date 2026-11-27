@@ -33,7 +33,7 @@ export const row = (id = UUID, type = 'active') => ({
 });
 
 export async function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-external-resident-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-external-resident-'));
   const dir = join(root, 'app-server-control');
   mkdirSync(dir);
   const machine = makeMachine({ stateDir: root, codexHome: root, rcPrefix: 'host-a' });

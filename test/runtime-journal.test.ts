@@ -26,7 +26,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 async function fixture() {
-  const stateDir = await mkdtemp(join(tmpdir(), 'ccmux-runtime-journal-'));
+  const stateDir = await mkdtemp(join(tmpdir(), 'stitchmux-runtime-journal-'));
   roots.push(stateDir);
   return { stateDir };
 }

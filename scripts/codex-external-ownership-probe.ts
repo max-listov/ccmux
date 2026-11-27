@@ -131,7 +131,9 @@ function startAppServer(codexBin: string, env: Record<string, string>) {
   }
 
   async function initialize(): Promise<void> {
-    await request('initialize', { clientInfo: { name: 'ccmux_ownership_probe', version: '1' } });
+    await request('initialize', {
+      clientInfo: { name: 'stitchmux_ownership_probe', version: '1' },
+    });
     child.stdin.write(`${JSON.stringify({ method: 'initialized', params: {} })}\n`);
   }
 
@@ -181,14 +183,14 @@ async function main(): Promise<void> {
   let output: Record<string, string | boolean> | null = null;
 
   try {
-    root = mkdtempSync(join(tmpdir(), 'ccmux-codex-ownership-'));
+    root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-ownership-'));
     const workspace = join(root, 'workspace');
     const codexHome = join(root, 'codex-home');
     const codexSessions = join(codexHome, 'sessions');
     const stateDir = join(root, 'state');
     const cacheDir = join(root, 'cache');
     const configPath = join(root, 'machine.json');
-    const tmuxSocket = `ccmux-ownership-${process.pid}`;
+    const tmuxSocket = `stitchmux-ownership-${process.pid}`;
     for (const path of [workspace, codexSessions, stateDir, cacheDir])
       mkdirSync(path, { recursive: true });
     copyFileSync(join(homedir(), '.codex', 'auth.json'), join(codexHome, 'auth.json'));
@@ -202,7 +204,7 @@ async function main(): Promise<void> {
       codexSessionsDir: codexSessions,
       stateDir,
       rcPrefix: 'probe-host',
-      bootLabel: 'ccmux-probe.service',
+      bootLabel: 'stitchmux-probe.service',
       remoteControl: false,
       autoUpdate: false,
       codexCorrelationTimeoutMs: COMMAND_TIMEOUT_MS,
@@ -211,9 +213,9 @@ async function main(): Promise<void> {
     await Bun.write(configPath, `${JSON.stringify(machine)}\n`);
     const env = cleanEnv({
       CODEX_HOME: codexHome,
-      CCMUX_CONFIG: configPath,
-      CCMUX_STATE_DIR: stateDir,
-      CCMUX_CACHE_DIR: cacheDir,
+      STITCHMUX_CONFIG: configPath,
+      STITCHMUX_STATE_DIR: stateDir,
+      STITCHMUX_CACHE_DIR: cacheDir,
     });
     tmux = (...args: string[]) => boundedRun([tmuxBin, '-L', tmuxSocket, ...args], env);
 
@@ -262,11 +264,11 @@ async function main(): Promise<void> {
         '-e',
         `CODEX_HOME=${codexHome}`,
         '-e',
-        `CCMUX_CONFIG=${configPath}`,
+        `STITCHMUX_CONFIG=${configPath}`,
         '-e',
-        `CCMUX_STATE_DIR=${stateDir}`,
+        `STITCHMUX_STATE_DIR=${stateDir}`,
         '-e',
-        `CCMUX_CACHE_DIR=${cacheDir}`,
+        `STITCHMUX_CACHE_DIR=${cacheDir}`,
         resolvedCodexBin,
         '-s',
         'read-only',
@@ -328,34 +330,36 @@ async function main(): Promise<void> {
       TURN_TIMEOUT_MS,
     );
     if (heldAdopt.code === 0)
-      throw new Error('ccmux adopted a thread whose writer was already held');
+      throw new Error('stitchmux adopted a thread whose writer was already held');
     if (loadSessions(machine).some((session) => session.name === 'managed-held'))
       throw new Error('held adopt left a ready registry row');
     if (loadPendingSessions(machine).some((pending) => pending.session.name === 'managed-held'))
       throw new Error('held adopt left a pending row');
     if (await hasTmuxSession('managed-held')) throw new Error('held adopt left a tmux pane');
 
-    const ccmuxFork = await boundedRun(
+    const stitchmuxFork = await boundedRun(
       ['bun', cli, 'adopt', 'codex', source.id, 'managed-fork', '--fork'],
       env,
       TURN_TIMEOUT_MS,
     );
-    if (ccmuxFork.code !== 0)
-      throw new Error(`ccmux native fork failed: ${ccmuxFork.stdout}${ccmuxFork.stderr}`);
+    if (stitchmuxFork.code !== 0)
+      throw new Error(
+        `stitchmux native fork failed: ${stitchmuxFork.stdout}${stitchmuxFork.stderr}`,
+      );
     await waitFor(
-      'ccmux native fork rollout',
+      'stitchmux native fork rollout',
       () => rollouts().some((rollout) => rollout.forkedFrom === source.id),
       COMMAND_TIMEOUT_MS,
     );
     const fork = rollouts().find((rollout) => rollout.forkedFrom === source.id);
     if (fork === undefined || fork.id === source.id)
-      throw new Error('ccmux native fork did not create a distinct thread');
+      throw new Error('stitchmux native fork did not create a distinct thread');
     const managedFork = loadSessions(machine).find((session) => session.name === 'managed-fork');
     if (managedFork?.uuid !== fork.id || managedFork.agent !== 'codex')
-      throw new Error('ccmux fork promotion did not pin the provider UUID');
+      throw new Error('stitchmux fork promotion did not pin the provider UUID');
     const sourceOwnerAliveDuringFork = await hasTmuxSession('source-owner');
     if (!sourceOwnerAliveDuringFork)
-      throw new Error('ccmux native fork displaced the source owner');
+      throw new Error('stitchmux native fork displaced the source owner');
     await waitFor(
       'managed fork ready for a follow-up turn',
       async () => {
@@ -379,7 +383,7 @@ async function main(): Promise<void> {
     );
     if (historyTurn.code !== 0)
       throw new Error(
-        `ccmux fork history check failed to send: ${historyTurn.stdout}${historyTurn.stderr}`,
+        `stitchmux fork history check failed to send: ${historyTurn.stdout}${historyTurn.stderr}`,
       );
     await waitFor(
       'fork inherited source history',
@@ -397,18 +401,18 @@ async function main(): Promise<void> {
     );
     await Bun.sleep(1_000);
     const forkTurn = await boundedRun(
-      ['bun', cli, 'send', 'managed-fork', 'Reply exactly CCMUX_FORK_READY. Do not use tools.'],
+      ['bun', cli, 'send', 'managed-fork', 'Reply exactly STITCHMUX_FORK_READY. Do not use tools.'],
       env,
       COMMAND_TIMEOUT_MS,
     );
     if (forkTurn.code !== 0)
-      throw new Error(`ccmux fork follow-up send failed: ${forkTurn.stdout}${forkTurn.stderr}`);
+      throw new Error(`stitchmux fork follow-up send failed: ${forkTurn.stdout}${forkTurn.stderr}`);
     await waitFor(
       'fork-only assistant turn',
-      () => hasExactAssistant(fork, 'CCMUX_FORK_READY'),
+      () => hasExactAssistant(fork, 'STITCHMUX_FORK_READY'),
       TURN_TIMEOUT_MS,
     );
-    if (hasExactAssistant(source, 'CCMUX_FORK_READY'))
+    if (hasExactAssistant(source, 'STITCHMUX_FORK_READY'))
       throw new Error('fork-only turn leaked into the source rollout');
     const sourceHashAfterFork = createHash('sha256')
       .update(readFileSync(source.path))
@@ -429,7 +433,8 @@ async function main(): Promise<void> {
       env,
       TURN_TIMEOUT_MS,
     );
-    if (appServerHeldAdopt.code === 0) throw new Error('ccmux adopted a thread held by App Server');
+    if (appServerHeldAdopt.code === 0)
+      throw new Error('stitchmux adopted a thread held by App Server');
     if (loadSessions(machine).some((session) => session.name === 'managed-appserver-held')) {
       throw new Error('App Server conflict left a ready registry row');
     }
@@ -450,7 +455,7 @@ async function main(): Promise<void> {
       TURN_TIMEOUT_MS,
     );
     if (coldAdopt.code !== 0)
-      throw new Error(`ccmux cold adopt failed: ${coldAdopt.stdout}${coldAdopt.stderr}`);
+      throw new Error(`stitchmux cold adopt failed: ${coldAdopt.stdout}${coldAdopt.stderr}`);
     const managedAdopt = loadSessions(machine).find((session) => session.name === 'managed-adopt');
     if (managedAdopt?.uuid !== source.id || managedAdopt.agent !== 'codex')
       throw new Error('cold adopt did not preserve the source UUID');
@@ -463,16 +468,16 @@ async function main(): Promise<void> {
       codexVersion: version.stdout.trim(),
       sourceOrdinaryTui: true,
       appServerConflictWhileHeld: true,
-      ccmuxHeldAdoptRolledBack: true,
-      ccmuxAppServerHeldAdoptRolledBack: true,
-      ccmuxNativeForkPromotedDistinctThread: true,
-      ccmuxForkInheritedHistory: true,
-      ccmuxForkTurnStayedInFork: true,
+      stitchmuxHeldAdoptRolledBack: true,
+      stitchmuxAppServerHeldAdoptRolledBack: true,
+      stitchmuxNativeForkPromotedDistinctThread: true,
+      stitchmuxForkInheritedHistory: true,
+      stitchmuxForkTurnStayedInFork: true,
       forkMetadataPinnedToSource: true,
       sourceOwnerAliveDuringFork: true,
       sourceUnchangedByFork: true,
-      ccmuxColdAdoptPreservedUuid: true,
-      filesKept: process.env.CCMUX_PROBE_KEEP === '1',
+      stitchmuxColdAdoptPreservedUuid: true,
+      filesKept: process.env.STITCHMUX_PROBE_KEEP === '1',
     };
   } catch (error) {
     primaryError = error;
@@ -515,7 +520,7 @@ async function main(): Promise<void> {
   }
   if (root !== null) {
     try {
-      if (process.env.CCMUX_PROBE_KEEP !== '1') rmSync(root, { recursive: true, force: true });
+      if (process.env.STITCHMUX_PROBE_KEEP !== '1') rmSync(root, { recursive: true, force: true });
       else if (!existsSync(root)) throw new Error('KEEP requested but probe files are missing');
     } catch (error) {
       cleanupErrors.push(error);

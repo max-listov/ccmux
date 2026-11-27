@@ -12,7 +12,7 @@ import { NativeAccountSchema } from '../runtime/projectionSchema.ts';
 
 /** Live state of a session. working/idle resolve pane, lifecycle and bounded turn evidence;
  *  stopped = not running;
- *  external = a live Claude session running OUTSIDE ccmux (discovered, read-only). */
+ *  external = a live Claude session running OUTSIDE stitchmux (discovered, read-only). */
 export const SessionStateSchema = z.enum(['working', 'idle', 'stopped', 'blocked', 'external']);
 
 /** Context-window fill. Tokens are null when claude surfaces no statusline AND no
@@ -96,7 +96,7 @@ export const ListItemSchema = z.object({
    * subscription, and nothing to keep in sync.
    *
    * Null means the session is not in a turn, or is in one whose start nobody recorded (a provider
-   * without turn hooks, or a turn already running when ccmux started). Those two are told apart by
+   * without turn hooks, or a turn already running when stitchmux started). Those two are told apart by
    * `state`: `working` with a null instant is "in a turn, start unknown", which a consumer should
    * show as working without a counter rather than as a turn that began just now.
    */
@@ -146,7 +146,7 @@ export const ListItemSchema = z.object({
   /**
    * Where this session lives in tmux, declared rather than guessed: the server (`socket` is the `-L`
    * name, null for the default server), the tmux session name, and the agent's pane by tmux's own id.
-   * A consumer that addresses the session derives nothing from its ccmux name, so a rename or a move to
+   * A consumer that addresses the session derives nothing from its stitchmux name, so a rename or a move to
    * a named socket changes this data instead of silently sending its commands elsewhere. `agentPane`
    * is null for a session created before the id was recorded. Null for a session that is not running,
    * and for a peer too old to report it.

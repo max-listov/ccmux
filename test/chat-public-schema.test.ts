@@ -8,7 +8,7 @@ import {
   ChatTargetSchema as configTarget,
 } from '../src/chat/identitySchema.ts';
 import { LogFrameSchema as runtimeFrame } from '../src/chat/logFeed.ts';
-import * as client from '../src/control-service-client.ts';
+import * as client from '../src/client.ts';
 
 test('runtime and public client share the same browser-safe feed and endpoint schemas', async () => {
   expect(configPrincipal).toBe(ChatPrincipalSchema);

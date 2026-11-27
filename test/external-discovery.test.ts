@@ -142,7 +142,7 @@ describe('writer lock evidence', () => {
   test('process parser and descendant admission use the real ancestor chain', () => {
     const rows = parseProcessSnapshot(
       [
-        '  10     1    10 Mon Aug 10 12:00:00 2026 ccmux bootstrap',
+        '  10     1    10 Mon Aug 10 12:00:00 2026 stitchmux bootstrap',
         '  20    10    10 Mon Aug 10 12:00:01 2026 codex',
         '  30    20    10 Mon Aug 10 12:00:02 2026 helper',
       ].join('\n'),
@@ -174,7 +174,7 @@ describe('writer lock evidence', () => {
   });
 
   test('canonicalizes an existing lock path to the spelling lsof reports', () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-lock-path-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-lock-path-'));
     const lockDir = join(root, 'thread-writer-locks');
     const path = join(lockDir, `${THREAD_A}.lock`);
     try {
@@ -191,9 +191,9 @@ describe('writer lock evidence', () => {
   test('shared tmux launch arguments do not make an unrelated pane managed', () => {
     const rows = parseProcessSnapshot(
       [
-        '  10     1    10 Mon Aug 10 12:00:00 2026 /opt/bin/tmux new-session bun /opt/ccmux.js _run agent-a',
+        '  10     1    10 Mon Aug 10 12:00:00 2026 /opt/bin/tmux new-session bun /opt/stitchmux.js _run agent-a',
         '  20    10    20 Mon Aug 10 12:00:01 2026 /opt/codex app-server --listen unix://',
-        '  30    10    30 Mon Aug 10 12:00:02 2026 bun /opt/ccmux.js _run agent-b',
+        '  30    10    30 Mon Aug 10 12:00:02 2026 bun /opt/stitchmux.js _run agent-b',
         '  40    30    30 Mon Aug 10 12:00:03 2026 /opt/codex resume thread',
         '  50    10    50 Mon Aug 10 12:00:04 2026 /Applications/ChatGPT.app/Contents/Resources/codex app-server --listen unix://',
         '  60     1    60 Mon Aug 10 12:00:05 2026 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT',
@@ -288,7 +288,7 @@ import { unknownTurnState } from '../src/external/turnSchema.ts';
 
 describe('external tail activity', () => {
   test('widens past 120 trailing bookkeeping lines instead of falling back to file mtime', () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-ext-tail-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-ext-tail-'));
     try {
       const path = join(root, 'session.jsonl');
       const replyAt = '2026-10-13T12:11:11.000Z';
@@ -390,7 +390,7 @@ describe('thread lock inspection cost', () => {
   test('a lock file that is not there is answered without a system scan', () => {
     // `lsof` walks every process before it looks at any path, so asking it about thousands of locks
     // that do not exist is most of what a discovery poll costs — for the same answer every time.
-    const home = mkdtempSync(join(tmpdir(), 'ccmux-locks-'));
+    const home = mkdtempSync(join(tmpdir(), 'stitchmux-locks-'));
     try {
       mkdirSync(join(home, 'thread-writer-locks'), { recursive: true });
       const m = makeMachine({ codexHome: home });
@@ -417,7 +417,7 @@ describe('thread lock inspection cost', () => {
     // The query is answered by a stand-in `lsof` that records what it was asked. The real one
     // walks every process on the machine before looking at a path — 27–40 s on a loaded host —
     // and this test is about WHICH paths are asked, not about how many processes the host runs.
-    const home = mkdtempSync(join(tmpdir(), 'ccmux-locks-'));
+    const home = mkdtempSync(join(tmpdir(), 'stitchmux-locks-'));
     const previousPath = process.env.PATH;
     try {
       const dir = join(home, 'thread-writer-locks');

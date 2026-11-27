@@ -22,7 +22,7 @@ export async function cmdSend(
 ): Promise<number> {
   if (!name || keys.length === 0) {
     console.log(
-      'usage: ccmux send <name> <keys...>   ·   <machine>:<name> for another fleet machine',
+      'usage: stitchmux send <name> <keys...>   ·   <machine>:<name> for another fleet machine',
     );
     return 1;
   }
@@ -57,7 +57,7 @@ export async function cmdSend(
   // nothing for a slash command and a lot for a long message.
   console.log(`sent to ${name}: ${preview(text)}`);
   // Not a refusal — pasting long text on purpose is legitimate. But say it once, here, where the
-  // choice was made; `internal` keeps ccmux-owned key injection from lecturing.
+  // choice was made; `internal` keeps stitchmux-owned key injection from lecturing.
   if (
     opts.internal !== true &&
     looksLikeMessage(
@@ -69,7 +69,7 @@ export async function cmdSend(
     )
   ) {
     console.log(
-      `  note: that reads like a message, not keystrokes — \`ccmux msg ${name} "…"\` tags you as the sender,`,
+      `  note: that reads like a message, not keystrokes — \`stitchmux msg ${name} "…"\` tags you as the sender,`,
     );
     console.log(
       '        gives them a reply address, records it, and waits for a safe moment to deliver.',

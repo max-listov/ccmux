@@ -24,7 +24,7 @@ function findRsvgConvert(): string | null {
 }
 
 /** Apple HIG macOS app icon SVG (824x824 squircle centered on a transparent 1024x1024 canvas). */
-export function ccmuxIconSvg(): string {
+export function stitchmuxIconSvg(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -125,7 +125,7 @@ function renderFallbackIconPng(size: number): Buffer {
 
 /** Build `AppIcon.icns` inside `resourcesDir` using `rsvg-convert` (or `pngjs`+`sips`) and `iconutil`. */
 export function buildMacosIcns(resourcesDir: string): void {
-  const work = mkdtempSync(join(tmpdir(), 'ccmux-icon-'));
+  const work = mkdtempSync(join(tmpdir(), 'stitchmux-icon-'));
   try {
     const iconset = join(work, 'AppIcon.iconset');
     mkdirSync(iconset);
@@ -133,7 +133,7 @@ export function buildMacosIcns(resourcesDir: string): void {
     const svgPath = join(work, 'AppIcon.svg');
     const masterPng = join(work, 'AppIcon-1024.png');
     if (rsvg !== null) {
-      writeFileSync(svgPath, ccmuxIconSvg());
+      writeFileSync(svgPath, stitchmuxIconSvg());
     } else {
       writeFileSync(masterPng, renderFallbackIconPng(1024));
     }

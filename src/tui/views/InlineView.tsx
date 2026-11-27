@@ -42,7 +42,7 @@ export function InlineView({
     <Box flexDirection="column" paddingY={1}>
       <Box justifyContent="space-between">
         <Box>
-          <Text bold>{`  ccmux v${VERSION} `}</Text>
+          <Text bold>{`  stitchmux v${VERSION} `}</Text>
           {IS_DEV ? (
             <Text color="yellow" bold>
               {'DEV '}
@@ -67,7 +67,7 @@ export function InlineView({
               {i === externalStart ? (
                 <Box paddingLeft={1}>
                   <Text color="magenta" dimColor>
-                    ── external · local inventory outside ccmux ──
+                    ── external · local inventory outside stitchmux ──
                   </Text>
                 </Box>
               ) : null}

@@ -27,6 +27,7 @@ import { restartAllOnce } from '../src/commands/restartAll.ts';
 import { cmdPin } from '../src/commands/sleep.ts';
 import { cmdWait } from '../src/commands/wait.ts';
 import { acceptControlMessage } from '../src/control/message.ts';
+import { withNativeAdmission } from '../src/runtime/admission.ts';
 import { ensureOnce } from '../src/session/heal.ts';
 import { readLifecycleBlockForSession } from '../src/session/lifecycleBlocks.ts';
 import { loadSessions, setSessionPinned, writeSessionsUnlocked } from '../src/session/registry.ts';
@@ -104,7 +105,7 @@ function fakeSleepRecord(
 
 describe('wake-on-demand selection, control/message, heal, restart --all, inbox holdReason', () => {
   test('selectSleepingWakeMessage wakes only on due mail and blocks every negative control', () => {
-    const root = mkRoot('ccmux-wake-select-');
+    const root = mkRoot('stitchmux-wake-select-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const s = makeSession({
       name: 'agent-a',
@@ -228,7 +229,7 @@ describe('wake-on-demand selection, control/message, heal, restart --all, inbox 
   });
 
   test('acceptControlMessage and sendLetter accept mail for a sleeping TUI session without 409', async () => {
-    const root = mkRoot('ccmux-sleep-msg-');
+    const root = mkRoot('stitchmux-sleep-msg-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const s = makeSession({
       name: 'agent-a',
@@ -351,8 +352,8 @@ describe('wake-on-demand selection, control/message, heal, restart --all, inbox 
   test('reconcileSleepRecord recovers crash-stuck requested and waking phases', async () => {
     const tmuxBin = Bun.which('tmux');
     if (!tmuxBin) return;
-    const root = mkRoot('ccmux-reconcile-');
-    const socket = `ccmux-reconcile-${process.pid}-${Date.now()}`;
+    const root = mkRoot('stitchmux-reconcile-');
+    const socket = `stitchmux-reconcile-${process.pid}-${Date.now()}`;
     socketsToKill.push({ tmuxBin, socket });
     const m = makeMachine({
       stateDir: join(root, 'state'),
@@ -429,8 +430,8 @@ setInterval(() => {}, 1000);
     const tmuxBin = Bun.which('tmux');
     if (!tmuxBin) throw new Error('tmux is required for TUI sleep/wake e2e test');
 
-    const root = mkRoot('ccmux-tui-sleep-e2e-');
-    const socket = `ccmux-sleep-e2e-${process.pid}-${Date.now()}`;
+    const root = mkRoot('stitchmux-tui-sleep-e2e-');
+    const socket = `stitchmux-sleep-e2e-${process.pid}-${Date.now()}`;
     socketsToKill.push({ tmuxBin, socket });
     const fakeClaude = writeFakeClaude(join(root, 'bin'));
 
@@ -443,10 +444,10 @@ setInterval(() => {}, 1000);
     });
     const configPath = join(root, 'machine.json');
     writeFileSync(configPath, `${JSON.stringify(m)}\n`);
-    const prevConfig = process.env.CCMUX_CONFIG;
-    const prevState = process.env.CCMUX_STATE_DIR;
-    process.env.CCMUX_CONFIG = configPath;
-    process.env.CCMUX_STATE_DIR = m.stateDir;
+    const prevConfig = process.env.STITCHMUX_CONFIG;
+    const prevState = process.env.STITCHMUX_STATE_DIR;
+    process.env.STITCHMUX_CONFIG = configPath;
+    process.env.STITCHMUX_STATE_DIR = m.stateDir;
     try {
       const session = makeSession({
         name: 'agent-e2e',
@@ -576,10 +577,10 @@ setInterval(() => {}, 1000);
         stderr: 'ignore',
       });
     } finally {
-      if (prevConfig === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = prevConfig;
-      if (prevState === undefined) delete process.env.CCMUX_STATE_DIR;
-      else process.env.CCMUX_STATE_DIR = prevState;
+      if (prevConfig === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = prevConfig;
+      if (prevState === undefined) delete process.env.STITCHMUX_STATE_DIR;
+      else process.env.STITCHMUX_STATE_DIR = prevState;
     }
   });
 
@@ -587,8 +588,8 @@ setInterval(() => {}, 1000);
     const tmuxBin = Bun.which('tmux');
     if (!tmuxBin) throw new Error('tmux is required');
 
-    const root = mkRoot('ccmux-tui-bgfooter-');
-    const socket = `ccmux-bgfooter-${process.pid}-${Date.now()}`;
+    const root = mkRoot('stitchmux-tui-bgfooter-');
+    const socket = `stitchmux-bgfooter-${process.pid}-${Date.now()}`;
     socketsToKill.push({ tmuxBin, socket });
     const fakeClaude = writeFakeClaude(join(root, 'bin'), {
       extraFooter: '  ? for shortcuts · 2 shells',
@@ -602,10 +603,10 @@ setInterval(() => {}, 1000);
     });
     const configPath = join(root, 'machine.json');
     writeFileSync(configPath, `${JSON.stringify(m)}\n`);
-    const prevConfig = process.env.CCMUX_CONFIG;
-    const prevState = process.env.CCMUX_STATE_DIR;
-    process.env.CCMUX_CONFIG = configPath;
-    process.env.CCMUX_STATE_DIR = m.stateDir;
+    const prevConfig = process.env.STITCHMUX_CONFIG;
+    const prevState = process.env.STITCHMUX_STATE_DIR;
+    process.env.STITCHMUX_CONFIG = configPath;
+    process.env.STITCHMUX_STATE_DIR = m.stateDir;
     try {
       const session = makeSession({
         name: 'agent-bg',
@@ -642,10 +643,10 @@ setInterval(() => {}, 1000);
       expect(draftProof.eligible).toBe(false);
       expect(draftProof.reason).toBe('pane-busy');
     } finally {
-      if (prevConfig === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = prevConfig;
-      if (prevState === undefined) delete process.env.CCMUX_STATE_DIR;
-      else process.env.CCMUX_STATE_DIR = prevState;
+      if (prevConfig === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = prevConfig;
+      if (prevState === undefined) delete process.env.STITCHMUX_STATE_DIR;
+      else process.env.STITCHMUX_STATE_DIR = prevState;
     }
   });
 
@@ -654,8 +655,8 @@ setInterval(() => {}, 1000);
     if (!tmuxBin) throw new Error('tmux is required');
 
     resetWakeCoordinator();
-    const root = mkRoot('ccmux-deliver-wake-');
-    const socket = `ccmux-deliver-wake-${process.pid}-${Date.now()}`;
+    const root = mkRoot('stitchmux-deliver-wake-');
+    const socket = `stitchmux-deliver-wake-${process.pid}-${Date.now()}`;
     socketsToKill.push({ tmuxBin, socket });
     const stdinLog = join(root, 'received.log');
     const fakeClaude = writeFakeClaude(join(root, 'bin'), { stdinLog });
@@ -668,10 +669,10 @@ setInterval(() => {}, 1000);
     });
     const configPath = join(root, 'machine.json');
     writeFileSync(configPath, `${JSON.stringify(m)}\n`);
-    const prevConfig = process.env.CCMUX_CONFIG;
-    const prevState = process.env.CCMUX_STATE_DIR;
-    process.env.CCMUX_CONFIG = configPath;
-    process.env.CCMUX_STATE_DIR = m.stateDir;
+    const prevConfig = process.env.STITCHMUX_CONFIG;
+    const prevState = process.env.STITCHMUX_STATE_DIR;
+    process.env.STITCHMUX_CONFIG = configPath;
+    process.env.STITCHMUX_STATE_DIR = m.stateDir;
     try {
       const session = makeSession({
         name: 'agent-wake',
@@ -746,10 +747,159 @@ setInterval(() => {}, 1000);
       expect(loadCursors(m).delivered[recipientKey]).toBe(2);
     } finally {
       resetWakeCoordinator();
-      if (prevConfig === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = prevConfig;
-      if (prevState === undefined) delete process.env.CCMUX_STATE_DIR;
-      else process.env.CCMUX_STATE_DIR = prevState;
+      if (prevConfig === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = prevConfig;
+      if (prevState === undefined) delete process.env.STITCHMUX_STATE_DIR;
+      else process.env.STITCHMUX_STATE_DIR = prevState;
+    }
+  });
+
+  /** A running fake Claude TUI with chat on, at its idle prompt, plus an env override for the CLI. */
+  async function runningTuiClaude(prefix: string) {
+    const tmuxBin = Bun.which('tmux');
+    if (!tmuxBin) throw new Error('tmux is required');
+    resetWakeCoordinator();
+    const root = mkRoot(prefix);
+    const socket = `${prefix}${process.pid}-${Date.now()}`;
+    socketsToKill.push({ tmuxBin, socket });
+    const stdinLog = join(root, 'received.log');
+    const m = makeMachine({
+      stateDir: join(root, 'state'),
+      rcPrefix: 'host-a',
+      tmuxBin,
+      tmuxSocket: socket,
+      claudeBin: writeFakeClaude(join(root, 'bin'), { stdinLog }),
+    });
+    const configPath = join(root, 'machine.json');
+    writeFileSync(configPath, `${JSON.stringify(m)}\n`);
+    const previous = {
+      config: process.env.STITCHMUX_CONFIG,
+      state: process.env.STITCHMUX_STATE_DIR,
+    };
+    process.env.STITCHMUX_CONFIG = configPath;
+    process.env.STITCHMUX_STATE_DIR = m.stateDir;
+    const restore = () => {
+      resetWakeCoordinator();
+      if (previous.config === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = previous.config;
+      if (previous.state === undefined) delete process.env.STITCHMUX_STATE_DIR;
+      else process.env.STITCHMUX_STATE_DIR = previous.state;
+    };
+    const session = makeSession({
+      name: 'agent-mail',
+      agent: 'claude',
+      dir: root,
+      chatEnabled: true,
+      registrationGeneration: crypto.randomUUID(),
+    });
+    await writeSessionsUnlocked(m, [session]);
+    await startSession(m, session.name, session.dir);
+    expect(await waitForPane(m, session.name, '? for shortcuts')).toBe(true);
+    writeLifecycle(session.name, { state: 'idle', ts: Date.now() - 10_000, event: 'Stop' });
+    const recipient = managedPeer(m.rcPrefix, session);
+    const send = (body: string) =>
+      appendMessage(
+        m,
+        buildEnvelope(cliPrincipal('host-a'), recipient, body, {
+          defer: false,
+          notBefore: null,
+          task: null,
+        }),
+      );
+    const received = () => (existsSync(stdinLog) ? readFileSync(stdinLog, 'utf8') : '');
+    return { m, session, recipientKey: managedPeerKey(recipient), send, received, restore };
+  }
+
+  test('a letter that arrives while the TUI session is being put to sleep is held, then delivered once after wake', async () => {
+    const t = await runningTuiClaude('stitchmux-mail-sleep-');
+    try {
+      // A sleep decision has recorded its intent; the release has not happened yet.
+      await writeSleep(t.m, t.session, fakeSleepRecord(t.m, t.session, 'requested'));
+      t.send('HELD_DURING_SLEEP');
+      await deliverPending(t.m);
+      await Bun.sleep(500);
+      expect(t.received()).not.toContain('HELD_DURING_SLEEP');
+      expect(loadCursors(t.m).delivered[t.recipientKey] ?? 0).toBe(0);
+      expect(readChatHold(t.session.name)?.reason ?? '').toContain('sleep');
+
+      for (const phase of ['sleeping', 'waking'] as const) {
+        await writeSleep(t.m, t.session, fakeSleepRecord(t.m, t.session, phase));
+        await deliverPending(t.m);
+        await Bun.sleep(300);
+        expect(t.received()).not.toContain('HELD_DURING_SLEEP');
+      }
+
+      await writeSleep(t.m, t.session, fakeSleepRecord(t.m, t.session, 'awake'));
+      await deliverPending(t.m);
+      await deliverPending(t.m);
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && !t.received().includes('HELD_DURING_SLEEP')) {
+        await Bun.sleep(100);
+      }
+      expect(t.received().match(/HELD_DURING_SLEEP/g) ?? []).toHaveLength(1);
+      expect(loadCursors(t.m).delivered[t.recipientKey]).toBe(1);
+    } finally {
+      t.restore();
+    }
+  });
+
+  test('TUI delivery waits for the admission lock a sleep decision holds', async () => {
+    const t = await runningTuiClaude('stitchmux-mail-lock-');
+    try {
+      t.send('AFTER_THE_DECISION');
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let entered = () => {};
+      const holding = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      // A sleep decision in flight holds the session's admission lock while it proves idleness.
+      const decision = withNativeAdmission(t.m, t.session, async () => {
+        entered();
+        await held;
+      });
+      await holding;
+      const pass = deliverPending(t.m);
+      await Bun.sleep(1_000);
+      expect(t.received()).not.toContain('AFTER_THE_DECISION');
+      release();
+      await decision;
+      await pass;
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && !t.received().includes('AFTER_THE_DECISION')) {
+        await Bun.sleep(100);
+      }
+      expect(t.received().match(/AFTER_THE_DECISION/g) ?? []).toHaveLength(1);
+    } finally {
+      t.restore();
+    }
+  });
+
+  test('a TUI session that was just handed a letter is not proven idle before its turn shows', async () => {
+    const t = await runningTuiClaude('stitchmux-mail-proof-');
+    try {
+      expect((await idleProof(t.m, t.session)).eligible).toBe(true);
+      t.send('JUST_DELIVERED');
+      await deliverPending(t.m);
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline && !t.received().includes('JUST_DELIVERED')) {
+        await Bun.sleep(100);
+      }
+      expect(t.received()).toContain('JUST_DELIVERED');
+      // The fake agent never paints a working turn or writes a transcript, which is exactly the
+      // window between Enter and the first sign of the turn.
+      expect(await idleProof(t.m, t.session)).toMatchObject({
+        eligible: false,
+        reason: 'queued-input',
+      });
+      await expect(
+        sleepSessionByName(t.m, t.session.name, { forcePolicy: true }),
+      ).rejects.toMatchObject({ code: 'NOT_IDLE' });
+      expect(readSleep(t.m, t.session)).toBeNull();
+    } finally {
+      t.restore();
     }
   });
 
@@ -757,8 +907,8 @@ setInterval(() => {}, 1000);
     const tmuxBin = Bun.which('tmux');
     if (!tmuxBin) throw new Error('tmux is required');
 
-    const root = mkRoot('ccmux-codex-fastfail-');
-    const socket = `ccmux-codex-ff-${process.pid}-${Date.now()}`;
+    const root = mkRoot('stitchmux-codex-fastfail-');
+    const socket = `stitchmux-codex-ff-${process.pid}-${Date.now()}`;
     socketsToKill.push({ tmuxBin, socket });
     const binDir = join(root, 'bin');
     const codexHome = join(root, 'codex-home');
@@ -788,10 +938,10 @@ setInterval(() => {}, 1000);
     });
     const configPath = join(root, 'machine.json');
     writeFileSync(configPath, `${JSON.stringify(m)}\n`);
-    const prevConfig = process.env.CCMUX_CONFIG;
-    const prevState = process.env.CCMUX_STATE_DIR;
-    process.env.CCMUX_CONFIG = configPath;
-    process.env.CCMUX_STATE_DIR = m.stateDir;
+    const prevConfig = process.env.STITCHMUX_CONFIG;
+    const prevState = process.env.STITCHMUX_STATE_DIR;
+    process.env.STITCHMUX_CONFIG = configPath;
+    process.env.STITCHMUX_STATE_DIR = m.stateDir;
     try {
       const session = makeSession({
         name: 'codex-tui',
@@ -820,10 +970,10 @@ setInterval(() => {}, 1000);
       // Must NOT record a Codex fast-fail LifecycleBlock even though elapsed < 5s!
       expect(readLifecycleBlockForSession(m, session)).toBeNull();
     } finally {
-      if (prevConfig === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = prevConfig;
-      if (prevState === undefined) delete process.env.CCMUX_STATE_DIR;
-      else process.env.CCMUX_STATE_DIR = prevState;
+      if (prevConfig === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = prevConfig;
+      if (prevState === undefined) delete process.env.STITCHMUX_STATE_DIR;
+      else process.env.STITCHMUX_STATE_DIR = prevState;
     }
   });
 
@@ -831,8 +981,8 @@ setInterval(() => {}, 1000);
     const tmuxBin = Bun.which('tmux');
     if (!tmuxBin) throw new Error('tmux is required');
 
-    const root = mkRoot('ccmux-autosleep-');
-    const socket = `ccmux-autosleep-${process.pid}-${Date.now()}`;
+    const root = mkRoot('stitchmux-autosleep-');
+    const socket = `stitchmux-autosleep-${process.pid}-${Date.now()}`;
     socketsToKill.push({ tmuxBin, socket });
     const fakeClaude = writeFakeClaude(join(root, 'bin'));
     const disabledMachine = makeMachine({
@@ -850,10 +1000,10 @@ setInterval(() => {}, 1000);
     });
     const configPath = join(root, 'machine.json');
     writeFileSync(configPath, `${JSON.stringify(disabledMachine)}\n`);
-    const prevConfig = process.env.CCMUX_CONFIG;
-    const prevState = process.env.CCMUX_STATE_DIR;
-    process.env.CCMUX_CONFIG = configPath;
-    process.env.CCMUX_STATE_DIR = disabledMachine.stateDir;
+    const prevConfig = process.env.STITCHMUX_CONFIG;
+    const prevState = process.env.STITCHMUX_STATE_DIR;
+    process.env.STITCHMUX_CONFIG = configPath;
+    process.env.STITCHMUX_STATE_DIR = disabledMachine.stateDir;
     try {
       const s1 = makeSession({
         name: 'agent-old',
@@ -896,10 +1046,10 @@ setInterval(() => {}, 1000);
       expect(await runAutoSleepPass(enabledMachine, { now: futureNow })).toEqual({ slept: [] });
       expect(await hasSession(enabledMachine, 'agent-keep')).toBe(true);
     } finally {
-      if (prevConfig === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = prevConfig;
-      if (prevState === undefined) delete process.env.CCMUX_STATE_DIR;
-      else process.env.CCMUX_STATE_DIR = prevState;
+      if (prevConfig === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = prevConfig;
+      if (prevState === undefined) delete process.env.STITCHMUX_STATE_DIR;
+      else process.env.STITCHMUX_STATE_DIR = prevState;
     }
   });
 });

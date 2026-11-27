@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { LOCAL_API_VERSION } from '@stitchwire/client';
+import { deliveryOf } from '../src/fleet/stitchwire.ts';
 import { runPeer } from '../src/fleet/transport.ts';
 import { makeMachine, shortTempDir } from './helpers.ts';
 
@@ -35,7 +36,7 @@ test('direct Wire command calls use the agent and do not switch to SSH after ref
     remoteTransport: { kind: 'stitchwire', agentSocket: socket, peers: ['host-b'] },
   });
   const call = () =>
-    runPeer(m, 'host-b', 'must-not-dial.invalid', ['ccmux', 'list', '--json'], {
+    runPeer(m, 'host-b', 'must-not-dial.invalid', ['stitchmux', 'list', '--json'], {
       timeoutMs: 2000,
       stdin: 'test input',
     });
@@ -48,7 +49,7 @@ test('direct Wire command calls use the agent and do not switch to SSH after ref
     });
     expect(received[0]).toMatchObject({
       to: 'host-b',
-      argv: ['ccmux', 'list', '--json'],
+      argv: ['stitchmux', 'list', '--json'],
       stdin: 'test input',
     });
     result = { failure: 'denied', refusal: 'policy', truncated: false };
@@ -69,4 +70,14 @@ test('direct Wire command calls use the agent and do not switch to SSH after ref
   } finally {
     door.stop(true);
   }
+});
+
+test('a Stitchwire failure counts as not sent only when it stopped before dispatch', () => {
+  expect(deliveryOf('exec')).toBe('received');
+  for (const failure of ['timeout', 'transport', 'cancelled'] as const)
+    expect([failure, deliveryOf(failure)]).toEqual([failure, 'unknown']);
+  for (const failure of ['offline', 'denied', 'rejected'] as const)
+    expect([failure, deliveryOf(failure)]).toEqual([failure, 'not-sent']);
+  // A kind a newer Stitchwire adds is not a licence to retry a mutation.
+  expect(deliveryOf('lane-migrated' as never)).toBe('unknown');
 });

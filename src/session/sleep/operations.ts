@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { forkedUuid, providerFor } from '../../agent/index.ts';
 import { managedPeer } from '../../chat/identity.ts';
+import { type RefusalCode, refusals } from '../../control/schema/refusals.ts';
 import { controlTarget } from '../../control/target.ts';
 import type { ProcessSnapshot } from '../../external/processes.ts';
 import { withNativeAdmission } from '../../runtime/admission.ts';
@@ -34,10 +34,15 @@ import { readSleep, sleepBlocksStart, writeSleep } from './store.ts';
 
 export { reconcileSleepRecord } from './reconcile.ts';
 export { processesReleased, processesReleasedAsync } from './release.ts';
-export { wakeSession, wakeSessionByName, wakeSleepingSession } from './wake.ts';
+export {
+  wakeBeforeAttach,
+  wakeSession,
+  wakeSessionByName,
+  wakeSleepingSession,
+} from './wake.ts';
 
-function refuse(code: string, message: string): never {
-  throw new AppError(code, { message, status: 409 });
+function refuse(code: RefusalCode, message: string): never {
+  throw refusals.errors[code]({ message });
 }
 
 export function assertSleepTarget(
@@ -71,6 +76,7 @@ async function gatherProfilePolicyState(
   m: MachineConfig,
   target: Session,
   sessions: readonly Session[],
+  assumeSleeping: ReadonlySet<string> = new Set(),
 ): Promise<{
   running: Set<string>;
   sleeping: Set<string>;
@@ -106,6 +112,11 @@ async function gatherProfilePolicyState(
   let confirmedHealthy = 0;
   for (const peer of sameProfilePeers) {
     if (confirmedHealthy >= m.idleSleep.minAwakePerProfile) break;
+    // A dry run's earlier candidates: a real pass would have put them to sleep by now.
+    if (assumeSleeping.has(peer.name)) {
+      sleeping.add(peer.name);
+      continue;
+    }
     if (readLifecycleBlockForSession(m, peer) !== null) {
       blocked.add(peer.name);
       continue;
@@ -163,10 +174,7 @@ export async function sleepSession(
   m: MachineConfig,
   input: z.infer<typeof SleepRequestSchema>,
   signal: AbortSignal,
-  options: {
-    readonly typingWindowSec?: number;
-    readonly rows?: readonly ProcessSnapshot[];
-  } = {},
+  options: { readonly typingWindowSec?: number } = {},
 ) {
   const s = assertSleepTarget(m, input);
   await reconcileSleepRecord(m, s, { signal });
@@ -197,12 +205,14 @@ export async function sleepSession(
             refuse('SLEEP_PENDING', 'A sleep operation is already pending');
           }
 
+          // The decision under the lock reads its own process snapshot. A caller's snapshot (the
+          // auto-sleep pass shares one across candidates) can be tens of seconds old by now and
+          // would miss a build or turn started since, which the release below would then kill.
           const proof = await idleProof(m, current, {
             signal,
             ...(options.typingWindowSec === undefined
               ? {}
               : { typingWindowSec: options.typingWindowSec }),
-            ...(options.rows === undefined ? {} : { rows: options.rows }),
           });
           if (proof.revision !== input.revision) refuse('REVISION_CONFLICT', 'Idle proof changed');
           if (proof.reason === 'unsupported') {
@@ -308,6 +318,47 @@ export async function sleepSession(
 }
 
 /**
+ * What `sleepSession` would decide for `s` now, without recording anything: the idle proof, the
+ * fork check and the profile policy, with `assumeSleeping` counted as already asleep. A dry run of
+ * `session.sleep-idle` walks its candidates through this in the order a real pass would sleep them.
+ */
+export async function previewSleep(
+  m: MachineConfig,
+  s: Session,
+  assumeSleeping: ReadonlySet<string>,
+  signal: AbortSignal,
+): Promise<{ readonly allowed: true } | { readonly code: RefusalCode; readonly reason: string }> {
+  if (s.archived) return { code: 'ARCHIVED', reason: `Session '${s.name}' is archived` };
+  const proof = await idleProof(m, s, { signal });
+  if (proof.reason === 'unsupported')
+    return {
+      code: 'UNSUPPORTED',
+      reason: `Session '${s.name}' (${s.agent}) does not support sleep`,
+    };
+  if (!proof.eligible)
+    return { code: 'NOT_IDLE', reason: proof.reason ?? 'Idle proof unavailable' };
+  const sessions = loadSessions(m);
+  const needsPeerScan =
+    s.pinned !== true && s.delegation === undefined && m.idleSleep.minAwakePerProfile > 0;
+  const policyState = needsPeerScan
+    ? await gatherProfilePolicyState(m, s, sessions, assumeSleeping)
+    : {
+        running: new Set<string>(),
+        sleeping: new Set<string>(),
+        blocked: new Set<string>(),
+        states: new Map<string, SessionHealthState>(),
+      };
+  const policy = evaluateSleepPolicy({
+    m,
+    session: s,
+    sessions,
+    ...policyState,
+    forcePolicy: false,
+  });
+  return policy.allowed ? { allowed: true } : { code: policy.code, reason: policy.reason };
+}
+
+/**
  * Convenience CLI/daemon sleep by session name: backfills `registrationGeneration`, re-pins any
  * TUI Claude fork before computing `idleProof`, and submits one idempotent `sleepSession`.
  */
@@ -324,7 +375,7 @@ export async function sleepSessionByName(
   const signal = options.signal ?? AbortSignal.timeout(30_000);
   let session = await ensureRegistrationGeneration(m, name);
   if (session === null) {
-    throw new AppError('NOT_FOUND', { message: `Unknown session '${name}'`, status: 404 });
+    throw refusals.errors.NOT_FOUND({ message: `Unknown session '${name}'` });
   }
   if (session.archived) {
     refuse('ARCHIVED', `Session '${name}' is archived`);
@@ -361,11 +412,6 @@ export async function sleepSessionByName(
       ...(options.forcePolicy === true ? { forcePolicy: true } : {}),
     },
     signal,
-    {
-      ...(options.typingWindowSec === undefined
-        ? {}
-        : { typingWindowSec: options.typingWindowSec }),
-      ...(options.rows === undefined ? {} : { rows: options.rows }),
-    },
+    options.typingWindowSec === undefined ? {} : { typingWindowSec: options.typingWindowSec },
   );
 }

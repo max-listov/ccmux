@@ -128,7 +128,7 @@ try {
         durationMs: z.number(),
       }),
     });
-    const stoppedLog = readFileSync(join(p.machine.stateDir, 'ccmux.log'), 'utf8')
+    const stoppedLog = readFileSync(join(p.machine.stateDir, 'stitchmux.log'), 'utf8')
       .trim()
       .split('\n')
       .map((line) => ShutdownLog.safeParse(JSON.parse(line)))
@@ -208,7 +208,7 @@ try {
     entries.some(
       (row) =>
         row.kind === 'user' &&
-        row.text?.startsWith('[application input via ccmux/service') &&
+        row.text?.startsWith('[application input via stitchmux/service') &&
         row.text.includes('not independently authenticated'),
     ),
     'Native provider did not receive honest application framing',
@@ -230,10 +230,10 @@ try {
   const accepted = ledger[0];
   check(accepted, 'Missing durable input');
   check(
-    formatChatInjection(accepted).startsWith('[application input via ccmux/service'),
+    formatChatInjection(accepted).startsWith('[application input via stitchmux/service'),
     'False native framing',
   );
-  const privateLog = () => readFileSync(join(p.machine.stateDir, 'ccmux.log'), 'utf8');
+  const privateLog = () => readFileSync(join(p.machine.stateDir, 'stitchmux.log'), 'utf8');
   if (telegram) {
     await until(
       'suppressed input observed',
@@ -251,7 +251,7 @@ try {
         p.cli,
         'msg',
         'owner',
-        'CCMux: проверка уведомлений пройдена. Ввод человека и межагентский чат больше не зеркалятся автоматически; это одно явное уведомление владельцу.',
+        'Stitchmux: проверка уведомлений пройдена. Ввод человека и межагентский чат больше не зеркалятся автоматически; это одно явное уведомление владельцу.',
       ],
       {
         env: p.env,

@@ -91,8 +91,7 @@ Snapshot/feed preserve `messageId`, structured `sender`/`target`, `origin`, `not
 Sent/received copies retain the same identity; consumers correlate by ID, not text or timestamps.
 The owner mirror reads only its destination ledger, never outbound copies.
 
-The published `@ccmux/control-service-client` package root (repository entrypoint
-`ccmux/control-service-client`) exports `LogRowSchema`, `LogPayloadSchema`, `LogFrameSchema`,
+The published `@stitchmux/client` package root (repository entrypoint `src/client.ts`) exports `LogRowSchema`, `LogPayloadSchema`, `LogFrameSchema`,
 `LogMachineSchema`, `ChatPrincipalSchema`, `ChatTargetSchema` and inferred types. These are the same
 definitions used by the runtime, extracted into `chat/feedSchema.ts` and `chat/identitySchema.ts`.
 Their dependency graph is browser-safe and has no filesystem, process, CLI or runtime startup.

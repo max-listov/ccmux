@@ -12,6 +12,8 @@ if (process.argv.includes('--version')) {
   console.log('1.5.14');
   process.exit(0);
 }
+// One line per ACP process, so a test can count how often the CLI was started.
+appendFileSync(join(import.meta.dir, 'acp-spawns.log'), process.argv.slice(2).join(' ') + '\\n');
 
 const dataDirMarker = join(process.cwd(), '.fake-data-dir');
 const dataDir = existsSync(dataDirMarker) ? readFileSync(dataDirMarker, 'utf8').trim() : undefined;
@@ -24,7 +26,14 @@ const state = {
   pendingReqId: 100,
 };
 
+// Like the real agent: thought_level is described for the selected model only, with that model's
+// own levels, and a model without levels has no such option at all.
+const LEVELS = {
+  'gemini-4-neon': ['low', 'high'],
+  'claude-opus-5-5': ['low', 'medium', 'high'],
+};
 function configOptions() {
+  const levels = LEVELS[state.model];
   return [
     {
       id: 'model',
@@ -35,19 +44,21 @@ function configOptions() {
       options: [
         { value: 'gemini-4-neon', name: 'Gemini 4 Neon' },
         { value: 'claude-opus-5-5', name: 'Claude Opus 5.5' },
+        { value: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B' },
       ],
     },
-    {
-      id: 'thought_level',
-      name: 'Thinking Level',
-      category: 'thought_level',
-      type: 'select',
-      currentValue: state.thought,
-      options: [
-        { value: 'low', name: 'Low' },
-        { value: 'high', name: 'High' },
-      ],
-    },
+    ...(levels
+      ? [
+          {
+            id: 'thought_level',
+            name: 'Thinking Level',
+            category: 'thought_level',
+            type: 'select',
+            currentValue: levels.includes(state.thought) ? state.thought : levels[0],
+            options: levels.map((value) => ({ value, name: value[0].toUpperCase() + value.slice(1) })),
+          },
+        ]
+      : []),
     {
       id: 'mode',
       name: 'Mode',
@@ -258,7 +269,7 @@ async function handle(msg) {
 `;
 
 export function antigravityFixture() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-agy-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-agy-test-'));
   const binPath = join(dir, 'agy');
   const dataDir = join(dir, 'agy-data');
   const stateDir = join(dir, 'state');

@@ -12,7 +12,7 @@ import { alignedLines } from '../util/table.ts';
 import { parseFlags } from './flags.ts';
 
 /**
- * `ccmux dir` — move a session's registered directory without losing its conversation.
+ * `stitchmux dir` — move a session's registered directory without losing its conversation.
  *
  * The directory was settable only at creation, so a checkout that moved left every session on it
  * registered against a path that is no longer the project — and the only way back was to recreate
@@ -51,7 +51,7 @@ export async function cmdDir(args: string[]): Promise<number> {
     return 1;
   }
   // Existence is checked, and deliberately nothing else: what the directory MEANS — a checkout, a
-  // project, a workspace — belongs to whoever keeps that catalogue, and ccmux only records what the
+  // project, a workspace — belongs to whoever keeps that catalogue, and stitchmux only records what the
   // session declared. A path that exists but points one level up from the sources is a directory
   // this cannot tell from the right one; the operator can, which is why this reports rather than
   // guesses.
@@ -100,7 +100,7 @@ export async function cmdDir(args: string[]): Promise<number> {
   await printLine(`${name}: ${previous} → ${path}`);
   if (carried?.moved) await printLine(`  conversation carried: ${carried.to}`);
   await printLine(
-    `  applies on the next start — a running agent's cwd belongs to its process: ccmux restart ${name}`,
+    `  applies on the next start — a running agent's cwd belongs to its process: stitchmux restart ${name}`,
   );
   // Said only when there is something to keep writing. A live agent goes on appending at the OLD
   // location until it restarts, which quietly arms the next move: the file it writes there is

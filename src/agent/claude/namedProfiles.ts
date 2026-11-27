@@ -8,7 +8,7 @@ import {
   ProfileNameSchema,
 } from '../../config/claudeProfileSchema.ts';
 import type { AgentKind, MachineConfig, Session } from '../../types.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { digestOf, envFilePath } from '../launch/launchInputs.ts';
 import { readEnvFile } from '../launch/sessionEnv.ts';
 import { CLAUDE_PROFILE_AUTH_ENV } from './profileRoot.ts';

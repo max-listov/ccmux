@@ -15,7 +15,7 @@ const key = (m: Pick<MachineConfig, 'stateDir'>, name: string): string =>
 
 /** Short Unix paths work on macOS too; instance identity prevents cross-checkout collisions. */
 export function ownedCodexSocket(m: Pick<MachineConfig, 'stateDir'>, name: string): string {
-  return join('/tmp', `ccmux-codex-${process.getuid?.() ?? 0}`, `${key(m, name)}.sock`);
+  return join('/tmp', `stitchmux-codex-${process.getuid?.() ?? 0}`, `${key(m, name)}.sock`);
 }
 
 export function ownedCodexStatusPath(m: Pick<MachineConfig, 'stateDir'>, name: string): string {

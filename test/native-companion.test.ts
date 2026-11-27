@@ -28,7 +28,7 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 
 test('the embedded native companion bytes are the ones the owner published', () => {
   expect(manifest.formatVersion).toBe(2);
-  const packaging = requireUniversalNativePackaging('app/ccmux.js');
+  const packaging = requireUniversalNativePackaging('app/stitchmux.js');
   for (const architecture of ['arm64', 'x64'] as const) {
     const published = manifest.assets[architecture];
     const asset = nativeCompanion(packaging, architecture);
@@ -40,7 +40,7 @@ test('the embedded native companion bytes are the ones the owner published', () 
 });
 
 test('a changed byte no longer matches the published digest', () => {
-  const asset = nativeCompanion(requireUniversalNativePackaging('app/ccmux.js'), 'arm64');
+  const asset = nativeCompanion(requireUniversalNativePackaging('app/stitchmux.js'), 'arm64');
   const changed = Uint8Array.from(asset.bytes);
   changed[0] = (changed[0] ?? 0) ^ 0xff;
   expect(sha256(changed)).not.toBe(asset.sha256);
@@ -56,7 +56,7 @@ afterAll(() => {
 function packagingOutcome(tamper: boolean) {
   const installed = dirname(Bun.resolveSync('stitchkit/package.json', import.meta.dir));
   const outer = join(installed, '..');
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-stitchkit-copy-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-stitchkit-copy-'));
   roots.push(root);
   const modules = join(root, 'node_modules');
   mkdirSync(modules);
@@ -84,7 +84,7 @@ function packagingOutcome(tamper: boolean) {
   const entry = join(copy, 'dist', 'entrypoints', 'files', 'packaging.js');
   const script = `import { createNativePackaging } from ${JSON.stringify(entry)};
     const r = createNativePackaging({ platform: 'darwin', architecture: ['arm64', 'x64'],
-      delivery: 'companion', entryPath: 'app/ccmux.js',
+      delivery: 'companion', entryPath: 'app/stitchmux.js',
       assetPath: { arm64: 'native/darwin-arm64.node', x64: 'native/darwin-x64.node' } });
     console.log(JSON.stringify({ state: r.state, code: r.code, architecture: r.architecture }));`;
   const out = Bun.spawnSync([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' });

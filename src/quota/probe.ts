@@ -12,7 +12,7 @@ import { parseClaudeUsage, usageLimits } from './claudeUsage.ts';
 /**
  * One account's quota, asked of the vendor's own command-line program.
  *
- * No token is read or sent by ccmux: the program authenticates itself, which is the point of asking
+ * No token is read or sent by stitchmux: the program authenticates itself, which is the point of asking
  * it. Both programs are asked about a PROFILE — a Claude config directory or a Codex home — and
  * answer for whoever is signed in there, so an account with no running session is as visible as one
  * with ten. The answer carries `source: 'probe'`; it is a measurement of the moment it was taken,
@@ -237,7 +237,7 @@ async function codexRpc(
     send({
       id: 1,
       method: 'initialize',
-      params: { clientInfo: { name: 'ccmux-quota', version: '0' }, capabilities: {} },
+      params: { clientInfo: { name: 'stitchmux-quota', version: '0' }, capabilities: {} },
     });
     await next(1);
     send({ method: 'initialized' });

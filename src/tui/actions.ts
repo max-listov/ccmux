@@ -54,7 +54,7 @@ export function restartAllSessions(): void {
 
 export async function restartSession(m: MachineConfig, name: string): Promise<void> {
   await killSession(m, name);
-  // detached worker outlives the kill, waits, relaunches (same path as `ccmux restart`)
+  // detached worker outlives the kill, waits, relaunches (same path as `stitchmux restart`)
   runDetached([...SELF_ARGV, '_restart-worker', name]);
 }
 
@@ -64,7 +64,7 @@ export async function removeSessionFully(m: MachineConfig, name: string): Promis
 }
 
 /** Send a chat message into a running session's pane — type the literal text, let readline
- *  drain it, then a separate Enter to submit (the same flow as `ccmux send`). Agent-neutral:
+ *  drain it, then a separate Enter to submit (the same flow as `stitchmux send`). Agent-neutral:
  *  Claude/Codex receive it as if typed (slash-commands work, queued if the agent is busy).
  *  Returns false when the pane isn't live (e.g. a stopped or external session). */
 export async function sendMessage(m: MachineConfig, name: string, text: string): Promise<boolean> {

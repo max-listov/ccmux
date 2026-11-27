@@ -88,7 +88,7 @@ while True:
 `;
 
 function world(): { env: Record<string, string>; out: string; harness: string } {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-tui-death-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-tui-death-'));
   const stateDir = join(root, 'state');
   mkdirSync(stateDir);
   const tmux = join(root, 'tmux');
@@ -104,7 +104,7 @@ function world(): { env: Record<string, string>; out: string; harness: string } 
         projectsDir: join(root, 'projects'),
         rcPrefix: 'host-a',
         stateDir,
-        bootLabel: 'ccmux.service',
+        bootLabel: 'stitchmux.service',
       }),
     ),
   );
@@ -112,8 +112,8 @@ function world(): { env: Record<string, string>; out: string; harness: string } 
   writeFileSync(harness, HARNESS);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = config;
-  env.CCMUX_STATE_DIR = stateDir;
+  env.STITCHMUX_CONFIG = config;
+  env.STITCHMUX_STATE_DIR = stateDir;
   env.HOME = root;
   env.TERM = 'xterm-256color';
   delete env.TMUX;

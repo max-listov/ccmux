@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';
-import { AppError } from 'stitchkit';
 import { stableJson } from '../agent/launch/launchInputs.ts';
 import { sameTarget } from '../chat/identity.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { controlTarget } from '../control/target.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
@@ -11,7 +11,7 @@ import { applicationAuthorityEnded, requireApplicationAuthority } from './applic
 import { type DelegatedPolicy, type DelegationRequest, DelegationSchema } from './schema.ts';
 
 export function delegationRefused(message: string): never {
-  throw new AppError('DELEGATION_REFUSED', { message, status: 409 });
+  throw refusals.errors.DELEGATION_REFUSED({ message });
 }
 export function withinWorkspace(root: string, path: string): boolean {
   const part = relative(root, path);

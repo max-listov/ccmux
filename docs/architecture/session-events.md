@@ -9,16 +9,16 @@ updated: 2026-08-26
 
 # Session events
 
-`ccmux list` answers **what is true now**. That is the wrong question for anything that wants to
+`stitchmux list` answers **what is true now**. That is the wrong question for anything that wants to
 react: a turn that starts and ends between two polls leaves no trace, and "this ran for thirty
 minutes" cannot be recovered from two snapshots, because the start may have fallen between them.
 
 The feed answers **what happened**. One append-only record per transition, in
-`<stateDir>/events.jsonl`, rotated like the log, read through `ccmux events`.
+`<stateDir>/events.jsonl`, rotated like the log, read through `stitchmux events`.
 
 ## What the polling it replaces actually cost
 
-Measured on a real consumer before this existed: a loop every 3 seconds, running `ccmux list --json`,
+Measured on a real consumer before this existed: a loop every 3 seconds, running `stitchmux list --json`,
 capped at 8 sessions, and seeing only the machine it ran on. Three costs, and the third is the one
 that cannot be tuned away:
 
@@ -29,7 +29,7 @@ that cannot be tuned away:
 
 ## Two writers, because one of them cannot see everything
 
-**The turn hook** (`ccmux hook-status`) writes `turn-start`, `turn-end` and `session-start`. It runs
+**The turn hook** (`stitchmux hook-status`) writes `turn-start`, `turn-end` and `session-start`. It runs
 inside the agent's own lifecycle, so its boundaries are exact, and `turn-end` carries the duration
 measured from the `working` stamp the previous hook left — nobody keeps a timer.
 
@@ -102,7 +102,7 @@ that hides:
 
 So the supervisor closes what the hook abandoned. Once the observation pass can prove a turn is over
 (`turnState().settled`, the same standard chat delivery uses to decide it is safe to type into a
-session), it writes `idle` with the event `ccmux:turn-closed`. Three consequences follow from that
+session), it writes `idle` with the event `stitchmux:turn-closed`. Three consequences follow from that
 one write, and each is deliberate:
 
 **The duration runs to when the transcript stopped, not to when we noticed.** Proof of a dead turn
@@ -152,7 +152,7 @@ A pane is instantaneous: a process that looks once learns about this moment and 
 A transcript has an mtime, so anyone can ask how long a session has been quiet — the pane has no
 equivalent, and the two readers who need it most cannot keep the memory themselves:
 
-- **`ccmux wait`** is the fleet's only correct "is the peer done" test, and a fresh process on every
+- **`stitchmux wait`** is the fleet's only correct "is the peer done" test, and a fresh process on every
   call. Its FIRST look is the dangerous one, and a false yes sends the caller to
   `transcript --last-message`, which hands back what was said BEFORE the tool calls that had not
   finished — a stale answer, reported as the result.
@@ -171,7 +171,7 @@ exists, and gating them on a publication toggle would let switching off a feed q
 delivery.
 
 **A late `Stop` on an already-closed turn says nothing.** Both writers would be describing the same
-ending, and the second one carries no duration. The hook recognises `ccmux:turn-closed` in the record
+ending, and the second one carries no duration. The hook recognises `stitchmux:turn-closed` in the record
 it is replacing and stays quiet.
 
 The events switch decides what is *published*, not what is looked at: closing an abandoned turn
@@ -196,7 +196,7 @@ usable:
   and no subscription for the counter.
 - **It is present only when there is a turn to be counting.** Null means either "not in a turn" or
   "in one whose start nobody recorded" — a provider without turn hooks, or a turn already running
-  when ccmux started. `state` separates those: `working` with a null instant is "working, start
+  when stitchmux started. `state` separates those: `working` with a null instant is "working, start
   unknown", which should draw as working *without* a counter rather than as a turn that just began.
 
 `fleet --json` carries it for remote machines too, from their own `list --json`. A peer on an older
@@ -255,7 +255,7 @@ already owns its stdout channel. Running a consumer's command there would put so
 the critical path of every turn on the machine, where one hung process stalls an agent. So the feed
 is written, never dispatched: an append is one syscall, and reacting is the reader's job.
 
-That is also why the file is not the contract. `ccmux events` is: a consumer parsing `events.jsonl`
+That is also why the file is not the contract. `stitchmux events` is: a consumer parsing `events.jsonl`
 itself would have to know about rotation, partially-written last lines, and where the state directory
 lives on that machine — three things that are ours to change. The command also works the same locally
 and through anything that can run a command on another machine, which is what lets one consumer watch
@@ -275,7 +275,7 @@ size it compares against is bytes, and so is the partial last line it holds (`ta
 character earlier in the file and drops the head of the next line, which is usually a `turn-end`.
 
 The record is parsed **leniently**: unknown keys ride through untouched. Strict parsing would turn "a
-newer ccmux added a field" into "every event after the upgrade is unreadable on this machine" — a
+newer stitchmux added a field" into "every event after the upgrade is unreadable on this machine" — a
 fleet-wide silence produced by version skew nobody would think to check.
 
 ## Two output shapes, and why they are not one
@@ -298,10 +298,10 @@ end is capped by a deadline, so a transport reopens it on a schedule — every f
 the profile this one runs behind — and on every lost lane, and hands the cursor to the producer as an
 environment variable, because the node profile deliberately refuses caller-supplied arguments. Which
 variable is the transport's choice, so the profile says it: its fixed argv carries
-`--cursor-env <NAME>`, and `ccmux events` (and `chat log --follow`) read that variable. An explicit
+`--cursor-env <NAME>`, and `stitchmux events` (and `chat log --follow`) read that variable. An explicit
 `--since` still wins: a person's deliberate question outranks a transport's mechanism.
 
-This was once a fixed name inside ccmux that the transport never set. Nothing failed: every reopen
+This was once a fixed name inside stitchmux that the transport never set. Nothing failed: every reopen
 started from "now", and whatever happened in the gap was simply absent — measured, an inventory
 change written three seconds before a reconnect never reached the consumer, and a probe that asked
 the stream for the last quarter hour received nothing. Naming the variable where the transport is
@@ -353,7 +353,7 @@ it is one specific machine**, the one with the speaker and the panel. Twice in a
 be last, which meant the fix was live everywhere except where anyone could hear it.
 
 So when the change is to the feed itself, pull it explicitly on the consumer's machine
-(`ccmux update`) rather than waiting for its window. It bounces that daemon and nothing else;
+(`stitchmux update`) rather than waiting for its window. It bounces that daemon and nothing else;
 sessions outlive it.
 
 The same asymmetry applies when verifying afterwards. A window that reaches back before the bounce
@@ -365,7 +365,7 @@ boundary, and if nothing has happened since, say that instead of concluding some
 
 - **A closed reader is noticed on the next write, not when it leaves.** A closed pipe is only
   observable by writing into it — `destroyed`, `writable` and the `close` event all stay quiet.
-  `ccmux events --follow` behaves like every other follow tool.
+  `stitchmux events --follow` behaves like every other follow tool.
 - **`console.log` swallows EPIPE.** The follower writes to stdout directly, which is what turns
   "reader went away" into a clean exit instead of a process that watches the feed forever.
 - **A daemon bounce re-observes rather than replays.** The previous observation lives in that process

@@ -11,7 +11,7 @@ import { appendSession } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('idle content does not rewrite files; omissions and closure still publish', async () => {
-  const root = mkdtempSync('/tmp/ccmux-content-idle-');
+  const root = mkdtempSync('/tmp/stitchmux-content-idle-');
   const m = makeMachine({ stateDir: root });
   const s = makeSession();
   const producer = new ContentProducer(m, s, crypto.randomUUID());
@@ -54,7 +54,7 @@ async function deadline<T>(promise: Promise<T>, label: string, boundMs = 1500): 
 }
 
 test('coalesced content publication, slow reader recovery and cancellation stay bounded', async () => {
-  const root = mkdtempSync('/tmp/ccmux-content-test-');
+  const root = mkdtempSync('/tmp/stitchmux-content-test-');
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const s = makeSession({
     agent: 'codex',
@@ -99,7 +99,7 @@ test('coalesced content publication, slow reader recovery and cancellation stay 
 });
 
 test('reader does not publish content from a retired observer generation', async () => {
-  const root = mkdtempSync('/tmp/ccmux-content-generation-');
+  const root = mkdtempSync('/tmp/stitchmux-content-generation-');
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const s = makeSession({
     agent: 'codex',
@@ -128,7 +128,7 @@ test('failed subscriber construction closes partially opened filesystem watchers
     import { makeMachine, makeSession } from "./test/helpers.ts";
     import { contentPath } from "./src/content/store.ts";
     import { subscribeContent } from "./src/content/read.ts";
-    const root = mkdtempSync("/tmp/ccmux-content-startup-");
+    const root = mkdtempSync("/tmp/stitchmux-content-startup-");
     const m = makeMachine({ stateDir: root });
     const s = makeSession({ agent: "codex", runtime: "app-server", registrationGeneration: crypto.randomUUID() });
     mkdirSync(dirname(contentPath(m, s)), { recursive: true, mode: 0o700 });
@@ -160,7 +160,7 @@ test('failed subscriber construction closes partially opened filesystem watchers
 });
 
 test('idle lease and native settings updates stream without inventing content sequence', async () => {
-  const root = mkdtempSync('/tmp/ccmux-content-metadata-');
+  const root = mkdtempSync('/tmp/stitchmux-content-metadata-');
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const s = makeSession({
     agent: 'codex',

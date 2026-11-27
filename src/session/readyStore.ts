@@ -7,7 +7,7 @@ import { FileSnapshot } from '../util/fileSnapshot.ts';
 import { producerMetrics } from '../util/producerMetrics.ts';
 import { SessionSchema } from './schema.ts';
 
-const HEADER = '# managed agent sessions — ccmux owns this file (JSONL v2)';
+const HEADER = '# managed agent sessions — stitchmux owns this file (JSONL v2)';
 const readyFile = new FileSnapshot<Session[]>();
 producerMetrics.register('readyFile', () => readyFile.metrics());
 

@@ -109,7 +109,7 @@ export async function listAgentLiveness(m: MachineConfig) {
 /**
  * Open a window beside the agent's, in the session's directory, and say where it is.
  *
- * The window is created detached, so the agent's window stays current and keeps its size, and ccmux
+ * The window is created detached, so the agent's window stays current and keeps its size, and stitchmux
  * never types into it: every chat and key goes to the recorded agent pane. It lives and dies with the
  * session — `stop`, `restart`, and the heal of an agent whose pane died take the whole session down,
  * this window included. The session environment tmux hands every window carries only the instance

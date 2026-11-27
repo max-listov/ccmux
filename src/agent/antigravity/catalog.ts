@@ -2,7 +2,6 @@ import { statSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import {
   type AcpConfigOption,
   acpOptionChoices,
@@ -15,6 +14,7 @@ import type {
   ControlModelCatalog,
   ControlModelsRead,
 } from '../../control/schema/model.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import { hasNativeRuntime } from '../../runtime/modes.ts';
 import { modelSelectionLabel, type NativeModelSelection } from '../../runtime/selectionSchema.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../runtime/status.ts';
@@ -22,7 +22,7 @@ import { privateRuntimeDirectory, readPrivateJson } from '../../runtime/store.ts
 import { loadSessions } from '../../session/registry.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { preflightAntigravity } from './preflight.ts';
 
 const ModelSchema = z
@@ -57,48 +57,99 @@ const PreparedSchema = z
 const MAX_BYTES = 512 * 1024;
 const catalogPath = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m, s), 'models.json');
 
-/** Project ACP `configOptions` (`model` + `thought_level`) into CCMux's unified model catalog rows. */
+/**
+ * How long a host probe answers later host reads. A probe spawns `agy acp` for seconds; the
+ * installed CLI's catalog changes with an upgrade, not between two reads.
+ */
+export const HOST_CATALOG_TTL_MS = 10 * 60_000;
+const HostCatalogSchema = z
+  .object({ observedAt: z.iso.datetime(), models: z.array(ModelSchema).max(128) })
+  .strict();
+const hostCatalogDir = (m: MachineConfig) => join(m.stateDir, 'native-runtime');
+const hostCatalogPath = (m: MachineConfig) =>
+  join(hostCatalogDir(m), 'antigravity-host-models.json');
+
+async function writeHostCatalog(
+  m: MachineConfig,
+  catalog: { models: ControlModel[]; observedAt: string },
+): Promise<void> {
+  privateRuntimeDirectory(hostCatalogDir(m));
+  await atomicWrite(hostCatalogPath(m), JSON.stringify(HostCatalogSchema.parse(catalog)), 0o600);
+}
+
+/** The last host probe while it is younger than `HOST_CATALOG_TTL_MS`, else null. */
+export function freshHostCatalog(
+  m: MachineConfig,
+  now = Date.now(),
+): { models: ControlModel[]; observedAt: string } | null {
+  const cached = readPrivateJson(hostCatalogPath(m), HostCatalogSchema, MAX_BYTES);
+  if (cached === null) return null;
+  const age = now - Date.parse(cached.observedAt);
+  return age >= 0 && age < HOST_CATALOG_TTL_MS ? cached : null;
+}
+
+/**
+ * Project ACP `configOptions` (`model` + `thought_level`) into Stitchmux's unified model catalog rows.
+ *
+ * `images` is the agent's own `promptCapabilities.image` from `initialize`. ACP declares input
+ * modalities for the agent, not per model, so every row carries what the agent declared — nothing
+ * more is known, and nothing more is claimed.
+ *
+ * The agent describes `thought_level` for the model that is selected. `optionsByModel` is what it
+ * answered with each model selected in turn (a host probe's `eachModel`): a model whose answer has no
+ * `thought_level` gets no reasoning efforts. Without it — a live session's options — only the active
+ * model's choices are known, and only that row carries them.
+ */
 export function antigravityModelsFromConfigOptions(
   configOptions: readonly AcpConfigOption[],
+  images: boolean,
+  optionsByModel?: Readonly<Record<string, readonly AcpConfigOption[]>>,
 ): ControlModel[] {
   const model = configOptions.find((option) => option.category === 'model');
   if (!model?.options) throw new Error('ACP returned no model choices');
-  const effort = configOptions.find((option) => option.category === 'thought_level');
+  const effortOf = (id: string) =>
+    (optionsByModel
+      ? optionsByModel[id]
+      : id === model.currentValue
+        ? configOptions
+        : undefined
+    )?.find((option) => option.category === 'thought_level');
   return acpOptionChoices(model)
     .slice(0, 128)
-    .map(({ value: id, name }) => ({
-      provider: 'antigravity',
-      id,
-      model: id,
-      displayName: (name ?? id).slice(0, 256),
-      description: '',
-      hidden: false,
-      isDefault: id === model.currentValue,
-      // Antigravity ACP declares `promptCapabilities.image: true`; carrying both modalities keeps
-      // control-plane image validation aligned with what the driver accepts.
-      inputModalities: ['text', 'image'],
-      serviceTiers: [],
-      // The active model owns these choices. Selecting another model may narrow its options.
-      ...(id === model.currentValue && effort
-        ? {
-            supportedReasoningEfforts: acpOptionChoices(effort)
-              .slice(0, 32)
-              .map(({ value, name }) => ({
-                reasoningEffort: value,
-                description: (name ?? value).slice(0, 1_024),
-              })),
-            ...(effort.currentValue ? { defaultReasoningEffort: effort.currentValue } : {}),
-          }
-        : {}),
-    }));
+    .map(({ value: id, name }) => {
+      const effort = effortOf(id);
+      return {
+        provider: 'antigravity',
+        id,
+        model: id,
+        displayName: (name ?? id).slice(0, 256),
+        description: '',
+        hidden: false,
+        isDefault: id === model.currentValue,
+        inputModalities: images ? ['text', 'image'] : ['text'],
+        serviceTiers: [],
+        ...(effort
+          ? {
+              supportedReasoningEfforts: acpOptionChoices(effort)
+                .slice(0, 32)
+                .map(({ value, name }) => ({
+                  reasoningEffort: value,
+                  description: (name ?? value).slice(0, 1_024),
+                })),
+              ...(effort.currentValue ? { defaultReasoningEffort: effort.currentValue } : {}),
+            }
+          : {}),
+      };
+    });
 }
 
 export async function writeAntigravityCatalog(
   m: MachineConfig,
   s: Session,
   configOptions: readonly AcpConfigOption[],
+  images: boolean,
 ): Promise<ControlModel[]> {
-  const models = antigravityModelsFromConfigOptions(configOptions);
+  const models = antigravityModelsFromConfigOptions(configOptions, images);
   const bytes = JSON.stringify(
     PreparedSchema.parse({
       registrationGeneration: s.registrationGeneration,
@@ -150,9 +201,8 @@ export async function probeAntigravityHostModels(
   try {
     executable = preflightAntigravity(machine);
   } catch (error) {
-    throw new AppError('UNAVAILABLE', {
+    throw refusals.errors.UNAVAILABLE({
       message: error instanceof Error ? error.message : 'Antigravity CLI is unavailable',
-      status: 503,
     });
   }
   const driver = createAcpDriver({
@@ -161,17 +211,24 @@ export async function probeAntigravityHostModels(
     requestTimeoutMs: 25_000,
   });
   // The metadata worker gets an empty workspace, never the whole shared temp directory.
-  const cwd = await mkdtemp(join(tmpdir(), 'ccmux-acp-'));
+  const cwd = await mkdtemp(join(tmpdir(), 'stitchmux-acp-'));
   try {
     const probe = await driver.probeCapabilities({
       profile: { engine: 'acp', profileId: 'local', home: HOME },
       cwd,
       signal,
+      eachModel: true,
     });
-    return {
-      models: antigravityModelsFromConfigOptions(probe.configOptions),
+    const probed = {
+      models: antigravityModelsFromConfigOptions(
+        probe.configOptions,
+        probe.initialized.agentCapabilities?.promptCapabilities?.image === true,
+        probe.optionsByModel,
+      ),
       observedAt: new Date().toISOString(),
     };
+    await writeHostCatalog(machine, probed);
+    return probed;
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
@@ -184,16 +241,14 @@ export async function validateAntigravitySelection(
   signal: AbortSignal,
 ): Promise<void> {
   if (selection.provider !== 'antigravity')
-    throw new AppError('MODEL_UNAVAILABLE', {
+    throw refusals.errors.MODEL_UNAVAILABLE({
       message: `Model ${modelSelectionLabel(selection)} is absent from this host's catalog`,
-      status: 409,
     });
-  const cached = cachedSessionCatalog(m);
+  const cached = cachedSessionCatalog(m) ?? freshHostCatalog(m);
   const models = cached ? cached.models : (await probeAntigravityHostModels(m, signal)).models;
   if (!models.some((row) => (row.model ?? row.id) === selection.model))
-    throw new AppError('MODEL_UNAVAILABLE', {
+    throw refusals.errors.MODEL_UNAVAILABLE({
       message: `Model ${modelSelectionLabel(selection)} is absent from this host's catalog`,
-      status: 409,
     });
 }
 
@@ -205,9 +260,8 @@ export async function readAntigravityModels(
   signal: AbortSignal,
 ): Promise<ControlModelCatalog> {
   if (input.launchRecipe !== undefined)
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'This runtime does not accept a Codex launch recipe',
-      status: 409,
     });
   if (session !== undefined) {
     const prepared = readPrivateJson(catalogPath(machine, session), PreparedSchema, MAX_BYTES);
@@ -216,10 +270,7 @@ export async function readAntigravityModels(
       prepared.registrationGeneration !== session.registrationGeneration ||
       readManagedRuntimeStatus(machine, session).status !== 'live'
     )
-      throw new AppError('UNAVAILABLE', {
-        message: 'Native runtime catalog is unavailable',
-        status: 503,
-      });
+      throw refusals.errors.UNAVAILABLE({ message: 'Native runtime catalog is unavailable' });
     return pageModelCatalog(
       prepared.models,
       input,
@@ -235,7 +286,7 @@ export async function readAntigravityModels(
       input.target,
     );
   }
-  const probed = await probeAntigravityHostModels(machine, signal);
+  const probed = freshHostCatalog(machine) ?? (await probeAntigravityHostModels(machine, signal));
   return pageModelCatalog(probed.models, input, {
     kind: 'host',
     machine: machine.rcPrefix,

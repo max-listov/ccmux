@@ -5,7 +5,7 @@ import { codexProfile } from '../../agent/codex/profileRoot.ts';
 import { expandHome } from '../../agent/launch/launchInputs.ts';
 import { isDescendantProcess, type ProcessSnapshot } from '../../external/processes.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 
 /**
  * Fail-closed TUI process-tree classifier for idle sleep.
@@ -389,7 +389,7 @@ export interface TuiProcessClassification {
  * Classify every process belonging to one interactive tmux pane.
  *
  * Allowed:
- * - `paneRow` (the tmux pane root, e.g. `ccmux _run`)
+ * - `paneRow` (the tmux pane root, e.g. `stitchmux _run`)
  * - transient non-interactive `tmux` probe children of `paneRow` (e.g. `_run` `settlePrompts`)
  * - exactly one direct child `agentRow` matching the session's provider (`claude` or `codex`)
  * - direct children of `agentRow` matching a declared stdio MCP spec (and their shell-free subtrees)

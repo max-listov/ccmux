@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import { createOperationProcesses } from 'stitchkit/process';
 import type { z } from 'zod';
 import { principalLabel } from '../../chat/identity.ts';
@@ -30,6 +29,7 @@ import type {
   IdentityWhoisReadSchema,
   SentLettersReadSchema,
 } from '../schema/reading.ts';
+import { refusals } from '../schema/refusals.ts';
 import { searchContract } from '../schema/searchContract.ts';
 import type { OperationContext } from './context.ts';
 import { controlRefusal } from './refusal.ts';
@@ -78,7 +78,7 @@ export function readingOperations(context: OperationContext) {
     chatLog: (input: z.output<typeof ChatLogReadSchema>, signal?: AbortSignal) =>
       fleetRead(() => chatLogAnswer(m, input), signal),
     fleet: (signal?: AbortSignal) => fleetRead(() => fleetAnswer(m), signal),
-    /** Every session's identity, then each change — the stream `ccmux whois --follow` prints. */
+    /** Every session's identity, then each change — the stream `stitchmux whois --follow` prints. */
     followIdentities: (
       input: z.output<typeof IdentityListReadSchema>,
       signal: AbortSignal,
@@ -87,14 +87,13 @@ export function readingOperations(context: OperationContext) {
         backlog: FOLLOW_BACKLOG,
         // A reader this far behind would be told changes out of an order it can trust.
         lagged: () =>
-          new AppError('LAGGED', {
+          refusals.errors.LAGGED({
             message: 'The identity stream fell behind its reader; follow again',
-            status: 409,
           }),
       }),
     /**
      * This machine's chat log from a cursor, then every row as it is written: the frames
-     * `ccmux chat log --follow` prints, from the same producer (`followLog`).
+     * `stitchmux chat log --follow` prints, from the same producer (`followLog`).
      */
     followChatLog: (
       input: z.output<typeof ChatFollowReadSchema>,
@@ -102,18 +101,16 @@ export function readingOperations(context: OperationContext) {
     ): AsyncIterable<LogFrame> => {
       const from = input.since === null ? ZERO_CURSOR : parseCursor(input.since);
       if ('error' in from)
-        throw new AppError('INVALID_INPUT', {
+        throw refusals.errors.INVALID_INPUT({
           message: `since needs a cursor this log gave: ${from.error}`,
-          status: 400,
         });
       const cursor = 'cursor' in from ? from.cursor : from;
       return followed<LogFrame>(signal, (emit) => followLog(m, cursor, emit), {
         backlog: FOLLOW_BACKLOG,
         lagged: () =>
-          new AppError('LAGGED', {
+          refusals.errors.LAGGED({
             message:
               'The chat log stream fell behind its reader; follow again from its last cursor',
-            status: 409,
           }),
       });
     },
@@ -132,7 +129,7 @@ export function readingOperations(context: OperationContext) {
         searchPlan(SearchRequestSchema.parse(call.input));
       } catch (error) {
         if (error instanceof SearchPatternError || error instanceof SearchRequestError)
-          throw new AppError('VALIDATION_ERROR', { message: error.message, status: 400 });
+          throw refusals.errors.VALIDATION_ERROR({ message: error.message });
         throw error;
       }
       const startedAt = Date.now();
@@ -154,9 +151,8 @@ export function readingOperations(context: OperationContext) {
             const session =
               route.kind === 'local' ? findSession(loadSessions(m), route.session) : undefined;
             if (session === undefined)
-              throw new AppError('INVALID_TARGET', {
+              throw refusals.errors.INVALID_TARGET({
                 message: 'A message is read by the exact address of a session on this machine',
-                status: 400,
               });
             return readExactMessage(m, session, input.messageId);
           },
@@ -167,7 +163,7 @@ export function readingOperations(context: OperationContext) {
     sentLetters: (input: z.output<typeof SentLettersReadSchema>, caller: ChatPrincipal) =>
       sentLetters(m, caller, input.task ?? undefined),
     /**
-     * A letter from the caller, as `ccmux msg --json` sends it and with its receipt: the same
+     * A letter from the caller, as `stitchmux msg --json` sends it and with its receipt: the same
      * function. A letter that cannot be sent as asked is refused with the sentence the command says.
      */
     sendLetter: async (input: LetterRequest, caller: ChatPrincipal) => {
@@ -175,7 +171,7 @@ export function readingOperations(context: OperationContext) {
         deadline: Date.now() + LETTER_SEND_MS,
       });
       if (outcome.status === 'refused')
-        throw new AppError('LETTER_REFUSED', { message: outcome.reason, status: 409 });
+        throw refusals.errors.LETTER_REFUSED({ message: outcome.reason });
       return outcome.receipt;
     },
   };

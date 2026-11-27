@@ -1,5 +1,5 @@
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { defineMailbox } from './mailbox.ts';
 
@@ -28,17 +28,13 @@ const mailbox = defineMailbox<RuntimeMcpRequest, { server: string; status: strin
   deadlineMs: 30_000,
   precondition: (snapshot) => {
     if (snapshot.mcpServers === undefined)
-      throw new AppError('UNSUPPORTED', {
+      throw refusals.errors.UNSUPPORTED({
         message: 'This runtime does not report its MCP servers',
-        status: 409,
       });
   },
   settle: (receipt, snapshot) => {
     if (receipt.phase === 'failed')
-      throw new AppError('UNAVAILABLE', {
-        message: receipt.reason ?? 'The runtime refused',
-        status: 503,
-      });
+      throw refusals.errors.UNAVAILABLE({ message: receipt.reason ?? 'The runtime refused' });
     if (receipt.phase !== 'complete') return undefined;
     // The status the session publishes afterwards, not the fact that a request completed: a
     // reconnect that the runtime accepted and that then failed is not a working server.
@@ -49,8 +45,7 @@ const mailbox = defineMailbox<RuntimeMcpRequest, { server: string; status: strin
         'unknown',
     };
   },
-  mismatch: () =>
-    new AppError('IDENTITY_MISMATCH', { message: 'The MCP request was replaced', status: 409 }),
+  mismatch: () => refusals.errors.IDENTITY_MISMATCH({ message: 'The MCP request was replaced' }),
 });
 
 export const readRuntimeMcpRequest = (m: MachineConfig, s: Session) => mailbox.read(m, s);
@@ -71,10 +66,7 @@ export async function requestRuntimeMcp(
       // Refused against what the session actually has: naming a server it never loaded would ask
       // the runtime about something that does not exist and report the silence as success.
       if (!snapshot.mcpServers?.some((server) => server.name === input.server))
-        throw new AppError('UNSUPPORTED', {
-          message: 'This session has no such MCP server',
-          status: 409,
-        });
+        throw refusals.errors.UNSUPPORTED({ message: 'This session has no such MCP server' });
       return {
         operationId: input.operationId,
         generation,

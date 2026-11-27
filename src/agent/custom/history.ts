@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import type { AgentMessage } from 'stitchkit/agent-runtime';
 import {
   boundedHistoryPage,
@@ -7,6 +6,7 @@ import {
 } from '../../context/history.ts';
 import type { NativeContextApi } from '../../context/pump.ts';
 import { HISTORY_LIMITS, type NativeHistoryEntry } from '../../context/schema.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import type { openCustomEngine } from './engine.ts';
 import { CustomInputMetadataSchema } from './input.ts';
@@ -107,10 +107,7 @@ export function customContextApi(
       );
     },
     async compact() {
-      throw new AppError('UNSUPPORTED', {
-        message: 'Native compaction is unavailable',
-        status: 409,
-      });
+      throw refusals.errors.UNSUPPORTED({ message: 'Native compaction is unavailable' });
     },
     async compactionMarker() {
       return null;

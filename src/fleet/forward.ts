@@ -46,7 +46,7 @@ export async function forwardIfRemote(
   const args = remoteArgs;
 
   const argv = [
-    'ccmux',
+    'stitchmux',
     verb,
     ...(opts.verbArgs ?? []),
     opts.remoteTarget ?? route.session,

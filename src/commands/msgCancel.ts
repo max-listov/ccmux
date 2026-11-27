@@ -16,7 +16,7 @@ export async function msgCancel(
   cancelTask: string | undefined,
 ): Promise<number> {
   if (!cancelTask) {
-    console.log('usage: ccmux msg cancel <task>');
+    console.log('usage: stitchmux msg cancel <task>');
     return 1;
   }
   const ledger = loadLedger(machine);

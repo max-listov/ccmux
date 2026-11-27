@@ -13,7 +13,7 @@ import { shellQuote } from '../src/util/shellQuote.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('usage travels the Unix control contract with exact managed and external addresses', async () => {
-  const root = mkdtempSync('/tmp/ccmux-usage-control-');
+  const root = mkdtempSync('/tmp/stitchmux-usage-control-');
   const m = makeMachine({
     stateDir: root,
     rcPrefix: 'host-a',
@@ -91,7 +91,7 @@ test('usage travels the Unix control contract with exact managed and external ad
       const child = Bun.spawn([process.execPath, '--no-env-file', cliPath, 'usage', ...args], {
         env: {
           ...process.env,
-          CCMUX_CONFIG: file,
+          STITCHMUX_CONFIG: file,
           PATH: `${join(root, 'bin')}:${process.env.PATH}`,
         },
         stdout: 'pipe',
@@ -109,13 +109,13 @@ test('usage travels the Unix control contract with exact managed and external ad
     expect(local.data.self.values.inputTokens).toBe(25);
     mkdirSync(join(root, 'bin'));
     writeFileSync(
-      join(root, 'bin', 'ccmux'),
+      join(root, 'bin', 'stitchmux'),
       `#!/bin/sh\nexec ${shellQuote(process.execPath)} --no-env-file ${shellQuote(cliPath)} "$@"\n`,
       { mode: 0o700 },
     );
     writeFileSync(
       join(root, 'bin', 'ssh'),
-      `#!/bin/sh\nfor arg do command=$arg; done\nexport CCMUX_CONFIG=${shellQuote(config)}\nexec /bin/sh -c "$command"\n`,
+      `#!/bin/sh\nfor arg do command=$arg; done\nexport STITCHMUX_CONFIG=${shellQuote(config)}\nexec /bin/sh -c "$command"\n`,
       { mode: 0o700 },
     );
     const origin = join(root, 'origin.json');

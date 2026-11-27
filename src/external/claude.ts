@@ -72,7 +72,7 @@ function writerRuntime(writers: Writer[]): WriterRuntime | null {
       writer.kind === 'desktop'
         ? 'Claude desktop process resumes this thread'
         : writer.kind === 'self'
-          ? 'this ccmux process descends from the writer'
+          ? 'this stitchmux process descends from the writer'
           : 'one dedicated Claude CLI process resumes this thread',
   };
 }

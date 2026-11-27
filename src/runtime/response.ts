@@ -4,7 +4,7 @@
  *
  * It lived in the Codex adapter, where it started, while every other runtime and the control plane
  * imported it from there. The files it writes are unchanged — the same `codex-control/<hash>` root,
- * named for its origin — because a runtime owner outlives an update of ccmux: an owner started by the
+ * named for its origin — because a runtime owner outlives an update of stitchmux: an owner started by the
  * previous version reads these exact paths until its session restarts.
  */
 import { createHash } from 'node:crypto';

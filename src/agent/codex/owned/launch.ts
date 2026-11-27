@@ -4,7 +4,8 @@ import { composePolicyDeveloperInstructions } from '../../../policy/codex.ts';
 import { verifyApplicationPolicy } from '../../../policy/resolve.ts';
 import { readSelection } from '../../../runtime/selection.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
-import { promptInvocation, UID } from '../../../util/env.ts';
+import { promptInvocation } from '../../../util/env.ts';
+import { UID } from '../../../util/home.ts';
 import { compareSemver } from '../../../util/version.ts';
 import { buildPrompt } from '../../prompt/managePrompt.ts';
 import { ownedCodexSocket } from './paths.ts';
@@ -90,7 +91,7 @@ export function ownedCodexArgv(s: Session, m: MachineConfig, cli = promptInvocat
         s.name,
         cli,
         'codex',
-        'ccmux',
+        'stitchmux',
         chatEnabledFor(s, m),
         s.promptModules,
         m.ownerLang,
@@ -151,7 +152,7 @@ export function ownedCodexDeveloperInstructions(s: Session, m: MachineConfig): s
     s.name,
     promptInvocation(),
     'codex',
-    'ccmux',
+    'stitchmux',
     chatEnabledFor(s, m),
     s.promptModules,
     m.ownerLang,

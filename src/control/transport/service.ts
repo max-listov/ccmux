@@ -188,6 +188,7 @@ export function controlServices(
       atTarget('session.sleep', addressOf(input.target), input, principal, signal, () =>
         mutate(principal, input.target, () => operations.sleep(input, signal)),
       ),
+    'session.sleep-idle': ({ input, signal }) => operations.sleepIdle(input, signal),
     'session.wake': ({ input, signal, principal }) =>
       atTarget('session.wake', addressOf(input.target), input, principal, signal, () =>
         mutate(principal, input.target, () => operations.wake(input, signal)),
@@ -248,7 +249,7 @@ export function controlServices(
     watchChatLog: ({ input, signal }) => operations.followChatLog(input, signal),
     search: (call) => operations.search(call, call.principal),
   });
-  // A fleet reader on another machine, relayed by `ccmux _peer-read`: answered here, where the
+  // A fleet reader on another machine, relayed by `stitchmux _peer-read`: answered here, where the
   // caches that make building the rows cheap are warm.
   const measure = dependencies.measure ?? (<T>(_name: string, run: () => T) => run());
   const peerRead = implement(peerReadContract, {

@@ -4,7 +4,7 @@ description: Canonical identity and transport boundaries for managed sessions an
 type: architecture
 status: active
 created: 2026-08-10
-updated: 2026-11-11 08:48 +07:00
+updated: 2026-11-27 21:27 +08:00
 ---
 
 # Peer routing and session identity
@@ -15,16 +15,16 @@ into a cwd-based guess.
 | Dimension | Question | Examples | Routing role |
 |---|---|---|---|
 | Provider | Which agent runtime owns the conversation? | `claude`, `codex` | Selects launch, transcript, pane, and lifecycle adapters. |
-| Source | Which system emitted the identity/message? | `ccmux`, Codex Desktop | Names the source of truth; it is not a provider. |
-| Coordination plane | Which routing contract is active? | `ccmux-managed`, `ccmux-app`, `desktop-native` | Selects discovery, addressing, and delivery. |
+| Source | Which system emitted the identity/message? | `stitchmux`, Codex Desktop | Names the source of truth; it is not a provider. |
+| Coordination plane | Which routing contract is active? | `stitchmux-managed`, `stitchmux-app`, `desktop-native` | Selects discovery, addressing, and delivery. |
 | Address | Which exact conversation is the target? | `host-a:agent-a`, `host-a:app/<uuid>` | Routes to one registry session or App thread. |
 | Capability | What can that source/provider pair actually do? | managed chat, App Server turn input, native task messaging | Decides which operation is legal; capability is not identity. |
 
 Two sessions can share one execution directory while using different providers or sources. A cwd
 does not prove a Git checkout or product/repository membership. Any product catalogue is explicit
 and consumer-owned; a dependency or harness project label does not establish membership. Therefore
-cwd, project name, model name, and recency are never routing keys. `ccmux list --json` requires an
-`agent` field for every local session. `ccmux fleet` preserves the field from peers; if an older peer
+cwd, project name, model name, and recency are never routing keys. `stitchmux list --json` requires an
+`agent` field for every local session. `stitchmux fleet` preserves the field from peers; if an older peer
 does not send it, the human view says `unknown` instead of silently claiming Claude.
 
 ### One row, two answers
@@ -46,9 +46,9 @@ which a consumer reads as "that session has nothing to show".
 ### A peer answers by change
 
 A fleet reader asks every peer for its session list and its chat log every few seconds, and
-between two reads almost nothing moves. The peer is asked `ccmux _peer-read list`,
-`ccmux _peer-read identities` (who its sessions are, for `whois --follow`) or
-`ccmux _peer-read chat-log -n N`, and the reader names in `--known` the rows it already holds. The
+between two reads almost nothing moves. The peer is asked `stitchmux _peer-read list`,
+`stitchmux _peer-read identities` (who its sessions are, for `whois --follow`) or
+`stitchmux _peer-read chat-log -n N`, and the reader names in `--known` the rows it already holds. The
 answer is the `list --json` / `chat log --json` envelope with each large array —
 `sessions`, `inventory.sessions`, the log's `rows` — packed as `{ refs, items, volatile? }`: `refs`
 is every row in order as a 16-hex digest of its bytes, and `items` carries only the rows the reader
@@ -59,7 +59,7 @@ did not name (`src/fleet/peerDelta.ts`).
   everything.
 - **What moves without an event travels beside the digest.** A running session's `uptime` is in
   `volatile`, aligned with `refs`; digesting it would make every row new every second.
-- **The reader's cache** is `~/.cache/ccmux/peer-reads/<machine>.<list|identities|chat-log>.json`, holding
+- **The reader's cache** is `~/.cache/stitchmux/peer-reads/<machine>.<list|identities|chat-log>.json`, holding
   exactly the rows of the latest answer. It is loaded once per read and expanded from memory, so a
   concurrent reader rewriting the file cannot remove a row this read claimed to hold.
 - **A reference the reader never held fails the machine's row** as unreadable. It means the peer
@@ -72,7 +72,7 @@ With sessions unchanged a peer's list answer is its header, the digests and the 
 start cold — transcript tails, the chat ledger parsed from scratch, a pane capture per session —
 about half a second of CPU per read on a machine with two dozen sessions. The daemon holds those
 caches warm and builds the same rows in about a tenth of that. So `_peer-read` loads only a client
-for the internal `ccmux-peer-read` contract (`src/fleet/peerReadContract.ts`), asks the daemon over
+for the internal `stitchmux-peer-read` contract (`src/fleet/peerReadContract.ts`), asks the daemon over
 the local control socket and prints the answer; the daemon serves it beside the published control
 contracts, which it is not part of (`src/fleet/peerRead.ts`). Only when the request never reached
 a daemon — none is running — does the command build the same answer itself, with the same
@@ -88,13 +88,13 @@ for parsing the whole CLI.
 A control operation whose target is a session on another machine is answered by that machine's
 daemon. `message.read`, `session.start`, `session.stop`, `session.restart`, `session.remove` and
 `session.keys` are handed over as they arrived — the operation's name and its validated input —
-through this same transport: the target machine runs `ccmux _peer-operation <operation>` with the
+through this same transport: the target machine runs `stitchmux _peer-operation <operation>` with the
 input on stdin, the program asks its own daemon over the local socket, and prints one line, the
 answer or the refusal with its code (`src/control/peerOperation.ts`). A refusal is an answer, so the
 program exits 0 either way; anything else on the far side — a release that predates the program,
 which answers an unknown verb with its help — is `UNKNOWN_OPERATION` naming the operation.
 
-The far daemon sees the call as its own machine's command line, the authority `ccmux stop
+The far daemon sees the call as its own machine's command line, the authority `stitchmux stop
 <machine>:<name>` has always arrived with, and decides there. A caller authenticated by this
 machine's declared service is not handed over: its reach is the machine whose service authenticated
 it, and on another machine it would act with that machine's command-line authority, which nothing
@@ -127,10 +127,10 @@ answer, including the dead-socket refusal. `test/shim-writers-agree.test.ts` che
 writers and the exact argument match. A real daemon test checks peer freshness together with a
 quiet tool, a menu, completion and the death of the exact agent pane.
 
-### One session by its address: `ccmux state`
+### One session by its address: `stitchmux state`
 
 A job a session starts — a render, a gate, an upload — runs in its own process and cannot tell
-"still going" from "whoever led it is gone": neither leaves a record. `ccmux state
+"still going" from "whoever led it is gone": neither leaves a record. `stitchmux state
 [<name|machine:name>] [--since ISO] [--json]` answers for one session by the ordinary address chat and
 the fleet list use, never a second identifier. Its row is built by the same `buildRow` as `list`
 (`collectRows(m, { only })`), so the state vocabulary is the list's and cannot drift from it.
@@ -139,22 +139,22 @@ The answer carries `running`, `archived`, `state`, `lifeStartedAt` (the current 
 `conversation` id. With `--since` — the job's own start — `life` says whether the life that was running
 then still is: `same`, `restarted` (the address continues in a new life; ownership is read through the
 address, which a restart keeps) or `stopped`. A renew shows as a changed conversation id at the same
-address. The name defaults to `CCMUX_SESSION`, so a job can record its owner from inside the session.
+address. The name defaults to `STITCHMUX_SESSION`, so a job can record its owner from inside the session.
 
 Exit codes keep apart what a caller must not confuse: 0 the session exists in any state, 3 there is
 no session by that name (with the reason in words, and `exists: false` in JSON), 1 the question could
-not be asked — an unknown machine, an unreachable one, or a peer too old for the verb. ccmux stores no
+not be asked — an unknown machine, an unreachable one, or a peer too old for the verb. stitchmux stores no
 jobs and decides nothing about showing them; it answers for its own session only.
 
-### The tmux tree: declared, addressed by id, extended only through ccmux
+### The tmux tree: declared, addressed by id, extended only through stitchmux
 
 Every row of `list --json` (and `fleet --json`) carries `tmux: { socket, session, agentPane }` — the
 `-L` socket name (null for the default server), the tmux session name and the agent's pane by tmux's
-own id. A consumer takes these instead of deriving them from the ccmux name, so a rename or a move to a
+own id. A consumer takes these instead of deriving them from the stitchmux name, so a rename or a move to a
 named socket is a change in the data, not a silent misdirection. Null for a session that is not running.
 
 The agent pane is addressed by that id, recorded at creation in the session option
-`@ccmux-agent-pane` (`src/tmux/tmux.ts`). The earlier address `=<name>:0.0` is an index: once a session
+`@stitchmux-agent-pane` (`src/tmux/tmux.ts`). The earlier address `=<name>:0.0` is an index: once a session
 holds a second window and the agent's pane dies, tmux resolves that index to the second window's pane
 (measured with `base-index` 0 and 1), so a letter for the agent would be typed into another terminal.
 A pane id resolves to that pane or to nothing. A session created before the id was recorded is given it
@@ -164,21 +164,21 @@ Liveness follows the agent pane, not the tmux session: `listAgentLiveness` reads
 session's recorded agent pane in one call, and `ensure` takes down a session whose agent pane is gone
 while another window kept it alive, then starts it like any other down session.
 
-`ccmux window <name|machine:name> [--json]` opens a terminal window beside the agent, in the session's
+`stitchmux window <name|machine:name> [--json]` opens a terminal window beside the agent, in the session's
 directory, detached — the agent's window stays current and keeps its size — and prints its pane and
 window ids. It lives and dies with the session: `stop`, `restart` and the heal above take it down, and
-ccmux never types into it. The session environment tmux gives every window holds only the instance
+stitchmux never types into it. The session environment tmux gives every window holds only the instance
 variables; an agent's chat credential is passed to the agent process alone.
 
 Session options are set with `=<name>:` (`sessionOptionTarget`): `set-option` resolves its target as a
 pane, and a bare `=<name>` there is "no such session" on tmux 3.4 and 3.7 alike.
 
-## ccmux-managed plane
+## stitchmux-managed plane
 
 The human selector is the exact `<machine>:<session>` address. At send time it resolves to and pins
 `source + machine + provider + session + thread UUID`; queued delivery and retry validate that full
 endpoint, so reusing a name cannot redirect mail. A bare session name means the current machine only.
-ccmux owns the registry, tmux persistence, daemon self-heal, transcript adapter, wait state, and
+stitchmux owns the registry, tmux persistence, daemon self-heal, transcript adapter, wait state, and
 managed routing identity for these sessions. Both Claude and Codex expose provider-owned structured
 pane inspection.
 
@@ -213,15 +213,15 @@ machine reader asked for the registry and filters for itself.
 Each v2 chat envelope carries full structured `from` and `to` identities. Remote send resolves the
 target once, then receiver and retry use that same immutable provider+UUID endpoint. The receiver
 serializes idempotency check+append, so concurrent retries produce one ledger row. A rotating
-per-runtime capability prevents a shell that merely self-sets `CCMUX_SESSION` from being promoted
-from `cli` to a managed sender. An authenticated remote transport is the remote admission boundary. These mechanisms prove ccmux
+per-runtime capability prevents a shell that merely self-sets `STITCHMUX_SESSION` from being promoted
+from `cli` to a managed sender. An authenticated remote transport is the remote admission boundary. These mechanisms prove stitchmux
 process/routing provenance, not security against a hostile process with the same OS user, which can
-read ccmux state; provider metadata never increases trust.
+read stitchmux state; provider metadata never increases trust.
 
 An outbound `msg` invoked directly beneath an authenticated remote transport (`sshd` or the local
-Injected remote adapter agent) without managed identity remains legal and keeps exit code zero after a successful
+Stitchwire agent) without managed identity remains legal and keeps exit code zero after a successful
 send, but it is never silent: stderr warns that the envelope was sent as `cli`, has no route back to
-the originating agent, and must instead be addressed through `ccmux msg <machine>:<session>` from
+the originating agent, and must instead be addressed through `stitchmux msg <machine>:<session>` from
 that managed session. A local human CLI is intentionally quiet; the distinction comes from process
 ancestry, not from forgeable environment variables or a guess based on the recipient address.
 
@@ -261,9 +261,9 @@ from its first letter. Three rules keep that from happening:
 - **Missing resumes at the present.** A ledger is created together with its cursors, so a ledger
   without them has lost them. Every recipient in the ledger is then marked delivered and read up to
   its current length, and that is persisted at once. A letter queued at that moment stays in the
-  ledger (`ccmux chat log`) and is not delivered; nothing is repeated.
+  ledger (`stitchmux chat log`) and is not delivered; nothing is repeated.
 - **One write path.** Every cursor write re-reads the file under `chat-cursors.json.lock` and applies
-  its change to what is there now. The daemon owns every field but `read`, which `ccmux inbox`
+  its change to what is there now. The daemon owns every field but `read`, which `stitchmux inbox`
   advances too; `read` only moves forward, and a save keeps the further position per recipient, so
   a daemon pass that held its cursors for seconds cannot revert an `inbox` that ran meanwhile.
 
@@ -288,9 +288,9 @@ told apart; two sessions of one project on ONE machine were not.
 So a session may declare what it is FOR, and an address may select on that:
 
 ```bash
-ccmux role agent-a contract-owner       # declare — applies at once, no restart
-ccmux role                              # what answers to what, on this machine
-ccmux msg host-a:@contract-owner "…"    # address by role
+stitchmux role agent-a contract-owner       # declare — applies at once, no restart
+stitchmux role                              # what answers to what, on this machine
+stitchmux msg host-a:@contract-owner "…"    # address by role
 ```
 
 Four properties carry it, and the label itself is the least of them:
@@ -303,7 +303,7 @@ Four properties carry it, and the label itself is the least of them:
 - **The refusal carries what a reader needs to choose** — each candidate's directory, what it last
   said, and the exact address to retry with. A refusal that only redirects to another command leaves
   the sender guessing from the same information that misled them.
-- **It costs nothing to change** (`ccmux role`, no restart, never a `stale` flag). A second name that
+- **It costs nothing to change** (`stitchmux role`, no restart, never a `stale` flag). A second name that
   is expensive to correct is one people put off correcting, and within a week it lies while being
   trusted — worse than having no role at all. Only the name is stored; nothing is snapshotted.
 
@@ -314,7 +314,7 @@ none.
 
 ### An owner outside the fleet is an address, not a gap
 
-A component owner may work as an agent in another product, under another subscription. ccmux is not
+A component owner may work as an agent in another product, under another subscription. stitchmux is not
 that product's transport and must not pretend to be — one hop through a person is cheaper than
 integrating with someone else's product. The defect was never the hop; it was that the hop was
 **unwritten**. No record, no reply address, no way to ask what had not come back. And with nobody to
@@ -327,8 +327,8 @@ So there is a third kind of target beside `managed` and `owner`:
 ```
 
 ```bash
-ccmux msg owner/contract-owner --task release "please cut a release"
-ccmux relay owner/contract-owner --task release "shipped in 1.2.0"
+stitchmux msg owner/contract-owner --task release "please cut a release"
+stitchmux relay owner/contract-owner --task release "shipped in 1.2.0"
 ```
 
 - `owner/<name>` carries no colon, so `<machine>:<session>` parsing can never see it, and the word
@@ -336,7 +336,7 @@ ccmux relay owner/contract-owner --task release "shipped in 1.2.0"
   the failure being removed is a message that went somewhere real and wrong, so an address resolving
   to nothing must stop rather than improvise.
 - The declaration is **prose** because a person reads it. Anything more structured would be a promise
-  ccmux cannot keep and would invite an automatic delivery that cannot exist.
+  stitchmux cannot keep and would invite an automatic delivery that cannot exist.
 - Delivery **refuses and names the route**. A half-success would leave the sender believing it had
   reached the owner, which is precisely what this address exists to prevent.
 - The record is **awaiting a reply by default**, never a flag. A flag the sender must remember is
@@ -344,7 +344,7 @@ ccmux relay owner/contract-owner --task release "shipped in 1.2.0"
   norm here, not the exception.
 - The answer comes back as a **relay**: `onBehalfOf` already means "who this truly came from when
   `from` is only the courier", so the sender sees the attribution while nothing gains the ability to
-  impersonate a party ccmux cannot authenticate. Answers are counted per letter and per task; two
+  impersonate a party stitchmux cannot authenticate. Answers are counted per letter and per task; two
   errands want two answers.
 
 An `owner/<name>` external-party record never crosses a machine boundary: the address is intercepted
@@ -362,7 +362,6 @@ optional, and it is the same one the event feed already follows: the consumer's 
 |---|---|---|---|
 | ssh | a machine with an address and a key | the receiver to be reachable | `fleet: { <machine>: <alias> }` |
 | Stitchwire | a peer connected to the broker | a local Wire agent | `remoteTransport: { kind: "stitchwire", peers: [<machine>] }` |
-| external adapter | a peer supported by the operator's transport | a local adapter socket | `remoteTransport: { peers: [<machine>], socket: <path> }` |
 
 ssh cannot address a roaming laptop, and never will: it has no stable address, and giving it an
 inbound port plus a server-held key would change the trust model. With Stitchwire,
@@ -375,7 +374,7 @@ node.
 Two rules cover every case, and neither depends on a person being connected:
 
 1. **Between machines that can address each other** — ssh. *How* those machines authenticate is a
-   property of that fleet's ssh configuration, not something ccmux knows or should assume. A key file
+   property of that fleet's ssh configuration, not something stitchmux knows or should assume. A key file
    sitting in `~/.ssh` is not evidence of being authorised on the other end, and `IdentityAgent` in
    `ssh_config` overrides `SSH_AUTH_SOCK`, so a fleet may in fact authenticate only through a
    forwarded identity. Read the config before asserting anything about it.
@@ -385,7 +384,7 @@ Two rules cover every case, and neither depends on a person being connected:
 Checking a route takes one command, and the flags matter:
 
 ```
-ssh -o ControlPath=none -o BatchMode=yes <peer> "ccmux --version"
+ssh -o ControlPath=none -o BatchMode=yes <peer> "stitchmux --version"
 ```
 
 Both flags matter, and a third one usually does too:
@@ -419,7 +418,7 @@ alias in `ssh_config`, gets none of it and needs the agent named explicitly. The
 both cases is *do not invent a socket path* — point at whatever canonical, maintained path the fleet
 keeps, never at a `/tmp` socket copied out of an old environment.
 
-ccmux therefore drops these variables at launch **when the socket is already dead**, and logs what it
+stitchmux therefore drops these variables at launch **when the socket is already dead**, and logs what it
 dropped. A live socket is never touched: whether a machine can reach its peers without it is that
 fleet's business, and taking away a working credential to enforce a theory would be worse than the
 problem.
@@ -557,7 +556,7 @@ A machine listed in `remoteTransport.peers` is reached over the remote transport
 what makes the remote transport adoptable one direction at a time: a fleet-wide flag would make "which path did
 that call take" unanswerable exactly while it matters.
 
-When that machine has an SSH alias and the primary route is temporarily unavailable, CCMux
+When that machine has an SSH alias and the primary route is temporarily unavailable, Stitchmux
 can use SSH only with confirmed `not-sent` delivery. A permanent policy refusal, cancellation
 or uncertain delivery ends the call. The fallback is logged as `remote route fell back to ssh` with the
 machine and the route's reason, and `fleet` names it on that machine's row: `→ <alias> (ssh fallback:
@@ -621,7 +620,7 @@ the answer somewhere the sender will never see it — silently, with no error on
 So the hint asks the same resolver `msg` delivers with (`routeFor`), and nothing else. It used to read
 the ssh map directly, which made every remote-only direction unreachable *in the tag* while it was
 carrying mail: a machine with `wire.peers: [<hub>]` and a live agent was told "no route back to
-`<hub>`" and answered the human, minutes after `ccmux msg <hub>:<session>` from that same box
+`<hub>`" and answered the human, minutes after `stitchmux msg <hub>:<session>` from that same box
 delivered instantly. One resolver means a direction that moves onto a new transport moves its hint
 with it.
 
@@ -636,26 +635,26 @@ When the hint does fall back to `msg owner`, it names the reason the resolver ga
 no transport configured, local agent down. A bare "no route" is the one shape a reader cannot act on:
 it names nothing to check, so it can only be believed.
 
-**Invariant: a injected remote adapter node id IS a ccmux `rcPrefix`.** One label names one machine in both
-systems. `ccmux doctor` proves it per peer by asking the far side which prefix it reports — a
+**Invariant: a Stitchwire node id IS a stitchmux `rcPrefix`.** One label names one machine in both
+systems. `stitchmux doctor` proves it per peer by asking the far side which prefix it reports — a
 mismatch would deliver correctly-addressed mail to the wrong box, which is the failure fleet
 addressing exists to remove.
 
 Admission is transport-shaped, not transport-specific. An inbound chat receiver must descend from an
-authenticated remote transport: **sshd**, or **the local injected remote adapter agent** — the daemon that
+authenticated remote transport: **sshd**, or **the local Stitchwire agent** — the daemon that
 authenticated to the broker with this machine's own token and runs only what this machine's
 allowlist names. Both are proved by walking the process tree, because ancestry is kernel truth while
-an environment variable is a claim the caller writes. `injected remote adapter call` is explicitly NOT admitted:
+an environment variable is a claim the caller writes. an outbound call through that agent is explicitly NOT admitted:
 it is the outbound side, and treating it as a transport would let any local process launder itself
 into delivery by shelling out through the CLI.
 
 ## Codex App chat endpoint
 
 A Codex App task remains owned by the App and addressed by its immutable native thread UUID. It is
-not adopted into the registry and ccmux does not supervise its lifecycle. The chat endpoint is a
+not adopted into the registry and stitchmux does not supervise its lifecycle. The chat endpoint is a
 narrow bridge into the shared conversation:
 
-- `CODEX_THREAD_ID` is only a candidate sender identity. ccmux confirms that exact UUID through the
+- `CODEX_THREAD_ID` is only a candidate sender identity. stitchmux confirms that exact UUID through the
   local App Server before writing an envelope; failure is loud and never degrades to `cli`.
   A present but malformed or empty ID is a refusal, as is a Desktop tool environment without an ID.
   Only an environment with no Codex sender indicators can select anonymous CLI identity.
@@ -664,19 +663,19 @@ narrow bridge into the shared conversation:
 - Delivery joins the App's existing shared daemon over its private WebSocket control socket. It uses
   `turn/start`, never pane keystrokes and never a second Codex runtime. Active/approval/elicitation,
   `systemError`, unavailable direct input and unknown state hold without steer.
-- ccmux persists a pickup barrier before submission. A restart proves acceptance from the
+- stitchmux persists a pickup barrier before submission. A restart proves acceptance from the
   provider-written `client_id` in JSONL before retrying, so the crash window cannot duplicate a turn.
-- The ordinary ccmux ledger/feed/mirror carries both directions. Native Desktop task messaging
-  remains native and is not copied; only explicit `ccmux msg` participates in this channel.
+- The ordinary stitchmux ledger/feed/mirror carries both directions. Native Desktop task messaging
+  remains native and is not copied; only explicit `stitchmux msg` participates in this channel.
 
 The required capability is a reachable provider-owned Unix WebSocket control endpoint supporting
 `initialize` and exact `thread/read`. A socket file alone does not prove a listener. Connection
 failures distinguish `endpoint-absent`, `endpoint-not-listening`, `upgrade-refused` and
 `connection-lost`; sender resolution refuses before ledger admission in every case.
 An App Server owned by a Desktop host over stdio alone does not expose this capability. Native
-Desktop tools may still work, but their success does not prove CCMux chat delivery or produce a
-CCMux message receipt. CCMux never starts a second App Server or reads a stored transcript as a
-replacement for live sender verification. Testing a consumer's CCMux ledger path requires an
+Desktop tools may still work, but their success does not prove Stitchmux chat delivery or produce a
+Stitchmux message receipt. Stitchmux never starts a second App Server or reads a stored transcript as a
+replacement for live sender verification. Testing a consumer's Stitchmux ledger path requires an
 already verified managed sender or an App host that exposes the required endpoint.
 
 Exact remote resolution uses one discriminated result from `_codex-app-resolve`: success carries
@@ -693,7 +692,7 @@ response is refused explicitly with any sanitized owner diagnostic that accompan
 
 ## Capability-driven routing
 
-1. Identify the coordination plane: `desktop-native`, `ccmux-managed` or `ccmux-app`.
+1. Identify the coordination plane: `desktop-native`, `stitchmux-managed` or `stitchmux-app`.
 2. Resolve the exact native task ID, managed address or App thread UUID from its own source.
 3. Confirm the provider/capability shown by that surface.
 4. Invoke only the source-native operation.
@@ -703,9 +702,9 @@ that requires a provider adapter must fail explicitly rather than defaulting to 
 
 | Plane / API | Discover | Write | Wait | Status meaning |
 |---|---|---|---|---|
-| `ccmux-managed` | `ccmux list/fleet` | `ccmux msg` only when the provider exposes managed chat | `ccmux wait` | `idle/working/stopped` are ccmux lifecycle/pane states. |
+| `stitchmux-managed` | `stitchmux list/fleet` | `stitchmux msg` only when the provider exposes managed chat | `stitchmux wait` | `idle/working/stopped` are stitchmux lifecycle/pane states. |
 | `desktop-native` | Desktop task list/read tools | Desktop native task send tool | Desktop native task wait tool | Native task state belongs to the Desktop host. |
-| `ccmux-app` | external inventory + exact UUID | `ccmux msg app/<uuid>` through existing App Server | provider turn status | `notLoaded` may resume; active/error/unknown hold fail-closed. |
+| `stitchmux-app` | external inventory + exact UUID | `stitchmux msg app/<uuid>` through existing App Server | provider turn status | `notLoaded` may resume; active/error/unknown hold fail-closed. |
 
 Transcript visibility is read capability only. It never grants write ownership or authorizes moving
 a native task into the managed registry.

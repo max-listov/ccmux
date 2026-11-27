@@ -1,8 +1,7 @@
 import { render } from 'ink';
 import { loadMachineConfig } from '../config/machine.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
-import { wakeSessionByName } from '../session/sleep/operations.ts';
-import { sleepUnsettled } from '../session/sleep/store.ts';
+import { wakeBeforeAttach } from '../session/sleep/operations.ts';
 import { attachTmux, cleanTerminalForAttach, insideTmux } from '../tmux/attach.ts';
 import { LOG_FILE, log, setStderrLogging } from '../util/log.ts';
 import type { Intent } from './App.tsx';
@@ -101,12 +100,12 @@ export async function runTui(fullscreen: boolean): Promise<number> {
         log.info({ msg: 'waitReady done', name: created.name, ms: Date.now() - t0 });
       } else if (intent.type === 'attach') {
         const existing = findSession(loadSessions(m), intent.name);
-        if (existing !== undefined && !existing.archived && sleepUnsettled(m, existing)) {
-          process.stderr.write(`waking ${existing.name}…\n`);
-          const t0 = Date.now();
-          await wakeSessionByName(m, existing.name);
+        const t0 = Date.now();
+        if (
+          existing !== undefined &&
+          (await wakeBeforeAttach(m, existing, (line) => process.stderr.write(line)))
+        )
           log.info({ msg: 'wake on attach done', name: existing.name, ms: Date.now() - t0 });
-        }
       }
       attachTmux(m, intent.name);
       if (insideTmux()) return 0; // switch-client doesn't block — no menu to come back to
@@ -118,7 +117,7 @@ export async function runTui(fullscreen: boolean): Promise<number> {
         err: String(err),
         stack: err instanceof Error ? err.stack : undefined,
       });
-      process.stderr.write(`ccmux: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(`stitchmux: ${err instanceof Error ? err.message : String(err)}\n`);
       return 1;
     }
   }

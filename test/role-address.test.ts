@@ -100,7 +100,7 @@ test('no match names the roles that DO exist there', () => {
 
 test('no roles at all anywhere says how to declare one instead of listing nothing', () => {
   const out = resolveRole('@contract-owner', [c('agent-a', null), c('agent-b', null)]);
-  expect((out as { error: string }).error).toContain('ccmux role <session> contract-owner');
+  expect((out as { error: string }).error).toContain('stitchmux role <session> contract-owner');
 });
 
 test('a session with no role is invisible to role addressing, and that is ordinary', () => {

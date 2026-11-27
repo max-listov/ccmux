@@ -25,7 +25,7 @@ const render = (over: Record<string, unknown> = {}) =>
 
 const dirs: string[] = [];
 const tmp = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-plan-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-plan-'));
   dirs.push(dir);
   return dir;
 };

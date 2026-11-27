@@ -1,5 +1,5 @@
 ---
-title: ccmux — видение
+title: stitchmux — видение
 description: Persistent self-healing флот агентских сессий на всех машинах — от tmux-супервайзера к live-клиенту «агентский отдел в кармане»
 type: vision
 status: active
@@ -7,7 +7,7 @@ created: 2026-06-11
 updated: 2026-08-30
 ---
 
-# ccmux — куда идём
+# stitchmux — куда идём
 
 ## Что это
 Супервайзер **постоянных агентских сессий** и единый identity-pinned chat для поддерживаемых
@@ -20,7 +20,7 @@ Remote Control/statusline и permission-mode — Claude-specific capabilities; C
 
 ## Принципы
 - **Супервизор, не agent loop** — native CLI/SDK/API выбирается по runtime. Подписка, API account,
-  inference, tools и prompts принадлежат runtime/host configuration, не новому общему циклу CCMux.
+  inference, tools и prompts принадлежат runtime/host configuration, не новому общему циклу Stitchmux.
   Capability discovery честно различает поддерживаемые операции, не обещая равенства всех адаптеров.
 - **Один provider runtime = один writer** — managed Codex поддерживает обычный TUI и opt-in
   native App Server под существующим supervisor; у Claude аналогично есть opt-in native режим на
@@ -29,7 +29,7 @@ Remote Control/statusline и permission-mode — Claude-specific capabilities; C
   поэтому managed id и id беседы пиннятся в одно значение и оба исключаются из discovery/adoption. В App Server режиме терминальный CLI — клиент
   того же writer, статусы и управление идут по native protocol. Изоляция env сохраняется на
   уровне каждой сессии. Решение: [owned native runtime](decisions/2026-08-28-owned-native-codex-runtime.md). Для thread,
-  уже принадлежащего Codex App, ccmux подключается клиентом к существующему shared App Server и
+  уже принадлежащего Codex App, stitchmux подключается клиентом к существующему shared App Server и
   отправляет provider-native `turn/start`; второй runtime и второй writer не создаются.
 - **Runtime отдельно от model provider** — Claude, Codex и OpenCode имеют разные протоколы;
   выбор модели не создаёт новый вид сессии. Optional Custom использует только опубликованный
@@ -46,9 +46,9 @@ reader без CLI-процесса на каждый poll, с ограничен
 [monitoring-status](architecture/monitoring-status.md).
 
 Resident control объединяет typed HTTP/CLI/tool API и bounded live snapshots на локальном Unix
-socket. Stitchkit управляет контрактом, transport и lifecycle ресурсов daemon; CCMux сохраняет
+socket. Stitchkit управляет контрактом, transport и lifecycle ресурсов daemon; Stitchmux сохраняет
 session identity, журнал сообщений, provider adapters и restart policy. Контракт —
-[control-plane](architecture/control-plane.md). Для authenticated declared-service transport CCMux
+[control-plane](architecture/control-plane.md). Для authenticated declared-service transport Stitchmux
 также публикует owner descriptor, fixed ingress и stable-cursor native stream profile поверх тех же
 handlers/admission; локальный socket не проксируется наружу. Это не замена provider harness и не
 подключение официального Desktop к чужому writer.
@@ -57,7 +57,7 @@ Managed create может выбрать immutable host-owned launch recipe бе
 Recipe остаётся конфигурацией execution host и разворачивается в уже существующие `flags`,
 `envFile`, session environment и launch stamp; caller не передаёт path, executable, shell или
 secret. Та же immutable recipe может выбрать установленный Codex collaboration preset: provider
-support проверяется до каждого turn, который начинает CCMux, а native input продолжает идти через один exact response
+support проверяется до каждого turn, который начинает Stitchmux, а native input продолжает идти через один exact response
 contract. Решения: [server-owned control launch recipes](decisions/2026-08-29-server-owned-control-launch-recipes.md)
 и [managed collaboration policy](decisions/2026-08-29-managed-codex-collaboration-policy.md).
 
@@ -80,7 +80,7 @@ host-native provider catalog, отдельный `ses_…` continuation и то�
 4. **Ниша**: «persistent multi-machine self-healing fleet» — свободна в экосистеме
    (ACP-ресёрч 2026-06-10); acpx и адаптеры — single-machine, без хилинга/флота.
 
-## Что ccmux НЕ делает
+## Что stitchmux НЕ делает
 Не IDE-клиент, не замена tmux, не прокси model API. Не копирует native Desktop task bus и не
 объявляет чужие App threads daemon-healed managed sessions. Не заменяет provider harness,
 inference transport или authentication собственной реализацией. Native App Server mode
@@ -88,7 +88,7 @@ inference transport или authentication собственной реализа�
 
 ## Название
 
-В текущем scope сохраняется CCMux: continuity существующих addresses, packages и deployments
+В текущем scope сохраняется Stitchmux: continuity существующих addresses, packages и deployments
 важнее косметического переименования. «Agent session supervisor» описывает роль точнее, чем
 «Claude multiplexer»; «runtime control plane» описывает публичный API, но не отдельный продукт.
 Возможный будущий rename требует отдельного migration decision и не меняет пути/бинарники сейчас.

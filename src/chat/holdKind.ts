@@ -21,6 +21,8 @@ export const ChatHoldKindSchema = z.enum([
   'rate-limited',
   'human-typing',
   'not-settled',
+  // The recipient is being put to sleep, sleeps or is waking; delivery resumes once it is awake.
+  'sleeping',
   'other',
 ]);
 export type ChatHoldKind = z.infer<typeof ChatHoldKindSchema>;

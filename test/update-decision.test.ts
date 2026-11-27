@@ -89,8 +89,10 @@ test('the release manifest is fetched with a unique cache key — the header alo
   // Measured on a live host minutes after publishing: `cache-control: no-cache` returned the PREVIOUS
   // version while the same URL with a query string returned the new one. Every release that day first
   // reported "already on latest", and auto-update would lag the whole fleet exactly the same way.
-  expect(cacheBusted('https://x/release.json', 42)).toBe('https://x/release.json?ccmux=42');
-  expect(cacheBusted('https://x/release.json?a=1', 42)).toBe('https://x/release.json?a=1&ccmux=42');
+  expect(cacheBusted('https://x/release.json', 42)).toBe('https://x/release.json?stitchmux=42');
+  expect(cacheBusted('https://x/release.json?a=1', 42)).toBe(
+    'https://x/release.json?a=1&stitchmux=42',
+  );
 });
 
 // --- a version match is not evidence the install is intact ---

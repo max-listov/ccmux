@@ -23,7 +23,7 @@ export async function cmdAdopt(args: string[]): Promise<number> {
     (providerResult.data !== 'claude' && providerResult.data !== 'codex')
   ) {
     console.log(
-      'usage: ccmux adopt <claude|codex> <uuid> [name] [--fork | --takeover --confirm-writer <pid>]',
+      'usage: stitchmux adopt <claude|codex> <uuid> [name] [--fork | --takeover --confirm-writer <pid>]',
     );
     return 1;
   }
@@ -68,14 +68,14 @@ export async function cmdAdopt(args: string[]): Promise<number> {
     if (fork) {
       const managed = await forkAdopt(m, uuid, name);
       console.log(
-        `forked ${uuid.slice(0, 8)} as '${managed}' (new uuid, original untouched) — resumed in ccmux tmux.`,
+        `forked ${uuid.slice(0, 8)} as '${managed}' (new uuid, original untouched) — resumed in stitchmux tmux.`,
       );
       return 0;
     }
     if (takeover) {
       const managed = await takeoverAdopt(m, t.dir, uuid, name);
       console.log(
-        `took over ${uuid.slice(0, 8)} as '${managed}' — previous writer(s) stopped, resumed in ccmux tmux.`,
+        `took over ${uuid.slice(0, 8)} as '${managed}' — previous writer(s) stopped, resumed in stitchmux tmux.`,
       );
       console.log(
         'note: a supervised writer (desktop app) may respawn — if the fork returns, close it at the source.',
@@ -84,7 +84,7 @@ export async function cmdAdopt(args: string[]): Promise<number> {
     }
     const managed = await adoptSession(m, t.dir, uuid, name);
     console.log(
-      `adopted ${uuid.slice(0, 8)} as '${managed}' (dir ${t.dir}) — resumed in ccmux tmux.`,
+      `adopted ${uuid.slice(0, 8)} as '${managed}' (dir ${t.dir}) — resumed in stitchmux tmux.`,
     );
     return 0;
   } catch (e) {
@@ -94,10 +94,10 @@ export async function cmdAdopt(args: string[]): Promise<number> {
       );
       console.log('a second resume would fork the conversation. choose explicitly:');
       console.log(
-        `  ccmux adopt claude ${uuid} --fork      # safe: copy under a new uuid, original untouched`,
+        `  stitchmux adopt claude ${uuid} --fork      # safe: copy under a new uuid, original untouched`,
       );
       console.log(
-        `  ccmux adopt claude ${uuid} --takeover  # kill the writer(s), then adopt the original`,
+        `  stitchmux adopt claude ${uuid} --takeover  # kill the writer(s), then adopt the original`,
       );
       return 1;
     }

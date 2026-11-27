@@ -15,7 +15,7 @@ function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
 }
 
-const root = mkdtempSync(join(tmpdir(), 'ccmux-models-probe-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-models-probe-'));
 const m = { ...loadMachineConfig(), stateDir: join(root, 'state'), rcPrefix: 'probe' };
 const monitoring = new MonitoringPublisher();
 const publisher = new ControlPublisher(m);

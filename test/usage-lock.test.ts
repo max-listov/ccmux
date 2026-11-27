@@ -23,7 +23,7 @@ const holdWriteLock = (path: string) => {
 };
 
 test('a usage read whose cache another process is writing answers from what is committed', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-usage-lock-'));
   try {
     const path = join(dir, 'usage.sqlite');
     const query = UsageQuerySchema.parse({});
@@ -54,7 +54,7 @@ test('a usage read whose cache another process is writing answers from what is c
 });
 
 test('usage for a transcript another process is indexing is never "accounting unavailable"', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-usage-lock-'));
   try {
     const path = join(dir, 'transcript.jsonl');
     writeFileSync(path, numbered(1, 1_000));
@@ -75,7 +75,7 @@ test('usage for a transcript another process is indexing is never "accounting un
 });
 
 test('usage stays readable while another process holds the index through its commit', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-usage-lock-'));
   try {
     const path = join(dir, 'transcript.jsonl');
     writeFileSync(path, numbered(1, 1_000));
@@ -100,7 +100,7 @@ test('usage stays readable while another process holds the index through its com
 });
 
 test('opening a usage store is a read, so a writer on the same file does not refuse it', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-usage-lock-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-usage-lock-'));
   try {
     const path = join(dir, 'usage.sqlite');
     new UsageStore(path).close();

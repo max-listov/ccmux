@@ -27,7 +27,7 @@ const supported = [
 ];
 
 async function discover(requested?: string, initialization?: 'no-inference'): Promise<Discovery> {
-  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-admission-selection-'));
+  const stateDir = mkdtempSync(join(tmpdir(), 'stitchmux-admission-selection-'));
   roots.push(stateDir);
   const m = makeMachine({ stateDir, claudeNativeRuntime: true });
   const session = makeSession({

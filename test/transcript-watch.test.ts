@@ -16,7 +16,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const temp = () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-watch-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-watch-'));
   roots.push(root);
   return root;
 };

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat } from 'node:fs/promises';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import {
@@ -56,16 +57,10 @@ export async function readExternalContent(
         JSON.parse(Buffer.from(input.cursor, 'base64url').toString('utf8')),
       );
     } catch {
-      throw new AppError('INVALID_CURSOR', {
-        message: 'External history cursor is invalid',
-        status: 400,
-      });
+      throw refusals.errors.INVALID_CURSOR({ message: 'External history cursor is invalid' });
     }
     if (cursor.identity !== identity)
-      throw new AppError('IDENTITY_MISMATCH', {
-        message: 'External cursor identity differs',
-        status: 409,
-      });
+      throw refusals.errors.IDENTITY_MISMATCH({ message: 'External cursor identity differs' });
   }
   try {
     const source = await openExternalSource(m, input.target, signal);
@@ -123,9 +118,8 @@ export async function readExternalContent(
         earlierFiles,
       });
       if (Buffer.byteLength(JSON.stringify(page)) > limits.responseBytes)
-        throw new AppError('RESOURCE_EXHAUSTED', {
+        throw refusals.errors.TOO_LARGE({
           message: 'External history response exceeds its byte budget',
-          status: 413,
         });
       if (!cursor) publishContentSnapshot(snapshot);
       return page;

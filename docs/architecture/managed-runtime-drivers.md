@@ -4,7 +4,7 @@ description: Capability-aware native session supervision with exact continuation
 type: architecture
 status: active
 created: 2026-08-30
-updated: 2026-11-27 14:41 +08:00
+updated: 2026-11-28 01:39 +08:00
 ---
 
 # Managed runtime drivers
@@ -24,7 +24,7 @@ absence or ambiguity fails closed, never creates a replacement conversation.
 The supervisor owns only children it launches. An owned OpenCode server binds authenticated
 loopback on an ephemeral port. Its credential exists in process memory/environment, not argv,
 receipts or projections. No endpoint or executable is accepted from a control caller. The server's
-native store remains authoritative; CCMux does not import that store into a second transcript DB.
+native store remains authoritative; Stitchmux does not import that store into a second transcript DB.
 
 `reserved → starting → ready → working → waiting-input/approval → terminal` describes admission
 and turns. Disconnection changes availability, not the last terminal outcome. Only native terminal
@@ -70,7 +70,7 @@ When `opencodeBin` or `codexBin` is not set in `machine.json`, it is resolved fr
 from the usual install locations (`~/.bun/bin`, `~/.local/bin`, `~/.opencode/bin`,
 `/opt/homebrew/bin`, `/usr/local/bin`), so a caller started with a minimal PATH — a launchd job, a
 non-login shell — sees the same machine as the daemon.
-CLI creation is `ccmux new agent-a ~/code/demo --agent opencode`; native input and history use the
+CLI creation is `stitchmux new agent-a ~/code/demo --agent opencode`; native input and history use the
 control service, not an invented terminal composer. OpenCode does not accept Codex launch recipes or
 caller flags. Claude exposes its existing interactive lifecycle, not native model/request parity.
 
@@ -101,7 +101,7 @@ fixtures. Its optional coexistence, coding and resident lanes report independent
 
 `src/agent/antigravity/` implements the fifth managed runtime (`runtime: 'antigravity'`,
 `mode: 'native'`) on top of `stitchkit/agent-executor/acp` (`agy acp --stdio --process-per-session
---sandbox`). CCMux does not duplicate ACP v1 JSON-RPC framing or delta classification.
+--sandbox`). Stitchmux does not duplicate ACP v1 JSON-RPC framing or delta classification.
 
 - **Preflight and availability (`preflight.ts`):** `antigravityBin` (auto-detected via `agy` or
   pinned in `machine.json`), minimum version `1.5.14`, and cached host auth state under
@@ -111,7 +111,11 @@ fixtures. Its optional coexistence, coding and resident lanes report independent
   `runtime-version-unsupported`, `runtime-auth-unavailable`).
 - **Model catalog (`catalog.ts`):** Host `models.read({ runtime: 'antigravity' })` opens an
   ephemeral private workspace session (`session/new` → `configOptions` → `session/close`) with zero
-  inference and is cached in `HostCatalogCache`. Live sessions write `models.json` beside their
+  inference and is cached for `HOST_CATALOG_TTL_MS` in `native-runtime/antigravity-host-models.json`.
+  The agent describes `thought_level` only for the selected model, so the probe runs with
+  `eachModel` and selects every model in turn before closing and deleting the session: each row
+  carries that model's own reasoning efforts, and a model answered without `thought_level` carries
+  none. A live session's catalog knows only its active model's levels and gives them to that row. Live sessions write `models.json` beside their
   status file and refresh it on `setConfigOption` updates. Unknown model IDs are rejected before
   session creation (`MODEL_UNAVAILABLE`).
 - **Owner and mailboxes (`owner.ts`, `projection.ts`, `process.ts`):** `AntigravityOwner` maps
@@ -195,7 +199,7 @@ part of `selection.provider`, which is compared against the host adapter. It is 
 narrow charset because an OpenAI-compatible adapter exists precisely so the server need not be one
 this project has heard of; the value is recipe configuration pinned by digest, not caller input.
 
-`ccmux models <launch-recipe-id>` checks a declared registry against the provider that must serve
+`stitchmux models <launch-recipe-id>` checks a declared registry against the provider that must serve
 it: per model, whether the provider currently serves that id, and whether a context window the
 provider published contradicts the declared one. It stays a diagnostic — never a startup dependency
 and never a turn-time probe — so an unreachable provider yields `unknown` rather than `missing`, and
@@ -255,7 +259,7 @@ active file with no retention slot — is renamed to `<file>.quarantined-<epoch>
 and never deleted, and the journal starts (Stitchkit's default `onStartupRefusal: 'quarantine'`):
 the daemon's control server depends on the journal, so a diagnostic facility must not stop it.
 Four retained slots allow a torn active generation to rotate intact. The status the journal writes
-beside itself (`<journal>.status.json`) is read by `ccmux doctor`, which names how many records were
+beside itself (`<journal>.status.json`) is read by `stitchmux doctor`, which names how many records were
 skipped on open, where the first one was, and every quarantined file until the operator removes it.
 `src/runtime/journalOwner.ts` integrates the daemon and Custom worker lifetimes. An owner lock
 serializes this machine's writers; inside it the journal opens with stitchkit's `reclaim-stale`
@@ -270,7 +274,7 @@ gap and terminal transitions carry only allowlisted metadata. Other native engin
 existing private diagnostics; no journal is used as their canonical execution state.
 
 At build time the public `stitchkit/files/packaging` (`createNativePackaging`) resolves where the
-native assets come from; ccmux decides where the installed files go. One JS bundle carries both
+native assets come from; stitchmux decides where the installed files go. One JS bundle carries both
 Darwin targets through one multi-target plugin. The main bundle, the routed programs and the Custom
 driver set an exact `naming.entry`, disable splitting, refuse a build that produces more than one
 artifact, and go through `scripts/native-companion.ts`. Stitchkit compares each addon with the digest
@@ -336,12 +340,12 @@ forward fix instead. Never delete native history or silently relabel a row as Co
 the external reference harness
 separates its provider registry, owned-server lifetime and native continuation cursor. Its OpenCode
 adapter handles prompt-admission races and correlates assistant messages with native parent IDs.
-CCMux uses those ownership principles, not its UI, orchestration framework or application loop.
+Stitchmux uses those ownership principles, not its UI, orchestration framework or application loop.
 
 [OpenCode 1.18.20](https://github.com/anomalyco/opencode/tree/7248bc1964b13fa67e601733f89ee9dc6dfa0563)
 provides authenticated HTTP control and structured SSE. `prompt_async` acknowledges admission, not
 completion. `message.updated` carries assistant terminal evidence; `session.status` alone does not
-prove that a particular prompt completed. Native session deletion is not CCMux archive.
+prove that a particular prompt completed. Native session deletion is not Stitchmux archive.
 
 
 ## Native Claude execution mode
@@ -353,7 +357,7 @@ deployment leans on and that decision is the operator's. `claudeNativeRuntime` p
 drives that SDK exclusively through `stitchkit/agent-executor/claude-sdk` (`createClaudeSdkDriver`,
 `probeCapabilities`, `forkSession`, `findInput`, `readUsage`, `onPermissionRequest`, `onTurnUsage`,
 `onEvent`, `onQueryExit`, `verifyDelegation`), without maintaining a duplicate SDK classifier,
-prompt queue, permission mapper or cumulative usage differencer in CCMux. `runtime.list`
+prompt queue, permission mapper or cumulative usage differencer in Stitchmux. `runtime.list`
 reports both Claude modes and separates three answers that call for three different actions:
 the CLI is not configured, the mode is not enabled here, or no SDK is present at the configured path.
 
@@ -437,7 +441,7 @@ both consumed: the pull answers "how full is it now" and the push — including 
 names one window and merges onto the reading rather than replacing it. Codex is asked on the account,
 not on the thread, so a session that has taken no turn can still answer.
 
-Stitchkit normalizes the native usage response. CCMux stores each window's label, model scope,
+Stitchkit normalizes the native usage response. Stitchmux stores each window's label, model scope,
 percentage and UTC reset time. The Codex account plan and its windows can accompany per-model
 limits in the same sample. Claude model windows with a measured zero keep that value even when
 the provider omits the display name.

@@ -15,7 +15,7 @@ test('the transcript root is the session own profile, not the machine interactiv
   // The interactive CLI and this mode are different processes with different configuration.
   // Reading the machine's value would look in a neighbouring directory and report an empty
   // conversation as a complete one.
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-profile-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-profile-'));
   const envFile = join(dir, 'profile.env');
   writeFileSync(envFile, 'CLAUDE_CONFIG_DIR=/Users/u/.elsewhere\n');
   const m = { projectsDir: '/Users/u/.claude/projects' };

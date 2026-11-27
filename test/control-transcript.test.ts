@@ -20,7 +20,7 @@ const record = (n: number) =>
   });
 
 async function setup(lines: number) {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-control-transcript-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-control-transcript-'));
   const dir = join(root, 'proj');
   mkdirSync(dir, { recursive: true });
   const projectsDir = join(root, 'projects');
@@ -39,7 +39,7 @@ async function setup(lines: number) {
 const target = (machine: string) =>
   ({
     kind: 'managed',
-    source: 'ccmux',
+    source: 'stitchmux',
     agent: 'claude',
     machine,
     session: 'agent-a',

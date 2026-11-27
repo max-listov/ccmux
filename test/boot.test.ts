@@ -14,18 +14,18 @@ import {
 } from '../src/boot/render.ts';
 
 const ctx: BootContext = {
-  selfArgv: ['/usr/local/bin/ccmux'],
-  label: 'ccmux.service',
+  selfArgv: ['/usr/local/bin/stitchmux'],
+  label: 'stitchmux.service',
   user: 'root',
   home: '/root',
-  configPath: '/root/.config/ccmux/machine.json',
+  configPath: '/root/.config/stitchmux/machine.json',
   pathEnv: '/root/.bun/bin:/usr/bin:/bin',
   logDir: '/var/log',
 };
 
 test('systemd unit: supervisor model, correct ExecStart, no ExecStop / no dangerous flag', () => {
   const u = renderSystemdUnit(ctx);
-  expect(u).toContain('ExecStart=/usr/local/bin/ccmux daemon');
+  expect(u).toContain('ExecStart=/usr/local/bin/stitchmux daemon');
   expect(u).toContain('Type=simple');
   // `always`, not `on-failure`: 143 is declared a success, and on-failure would then leave the
   // daemon down after its own post-update bounce — the one restart it asks for by name.
@@ -33,7 +33,7 @@ test('systemd unit: supervisor model, correct ExecStart, no ExecStop / no danger
   expect(u).toContain('SuccessExitStatus=143');
   expect(u).toContain('User=root');
   expect(u).toContain('Environment="HOME=/root"');
-  expect(u).toContain('Environment="CCMUX_CONFIG=/root/.config/ccmux/machine.json"');
+  expect(u).toContain('Environment="STITCHMUX_CONFIG=/root/.config/stitchmux/machine.json"');
   expect(u).toContain('Environment="PATH=/root/.bun/bin:/usr/bin:/bin"');
   expect(u).not.toContain('ExecStop'); // sessions outlive the daemon
   expect(u).not.toContain('dangerously');
@@ -48,15 +48,15 @@ test('systemd unit: supervisor model, correct ExecStart, no ExecStop / no danger
 test('launchd plist: valid structure, KeepAlive SuccessfulExit false, daemon arg', () => {
   const mac: BootContext = {
     ...ctx,
-    label: 'com.ccmux.daemon',
+    label: 'com.stitchmux.daemon',
     home: '/Users/u',
     logDir: '/Users/u/Library/Logs',
-    selfArgv: ['/Users/u/.local/bin/ccmux'],
+    selfArgv: ['/Users/u/.local/bin/stitchmux'],
   };
   const p = renderLaunchdPlist(mac);
   expect(p.startsWith('<?xml')).toBe(true);
-  expect(p).toContain('<string>com.ccmux.daemon</string>');
-  expect(p).toContain('<string>/Users/u/.local/bin/ccmux</string>');
+  expect(p).toContain('<string>com.stitchmux.daemon</string>');
+  expect(p).toContain('<string>/Users/u/.local/bin/stitchmux</string>');
   expect(p).toContain('<string>daemon</string>');
   expect(p).toMatch(/<key>SuccessfulExit<\/key>\s*<false\/>/);
 });
@@ -67,9 +67,12 @@ test('render is deterministic (install compares-then-writes relies on this)', ()
 });
 
 test('bundle-mode selfArgv (bun + js) renders into ExecStart (P1-6: no hardcoded bun path)', () => {
-  const bundle: BootContext = { ...ctx, selfArgv: ['/root/.bun/bin/bun', '/opt/ccmux/ccmux.js'] };
+  const bundle: BootContext = {
+    ...ctx,
+    selfArgv: ['/root/.bun/bin/bun', '/opt/stitchmux/stitchmux.js'],
+  };
   expect(renderSystemdUnit(bundle)).toContain(
-    'ExecStart=/root/.bun/bin/bun /opt/ccmux/ccmux.js daemon',
+    'ExecStart=/root/.bun/bin/bun /opt/stitchmux/stitchmux.js daemon',
   );
 });
 
@@ -104,20 +107,22 @@ test('the boot unit is rewritten when it differs, never created and never rewrit
   expect(bootUnitNeedsWrite(old, rendered)).toBe(true);
 });
 
-test('launchd plist wraps ProgramArguments with ccmux.app launcher only (never systemd or PATH shim)', () => {
-  const launcher = '/Users/u/Applications/ccmux.app/Contents/MacOS/ccmux-launcher';
+test('launchd plist wraps ProgramArguments with stitchmux.app launcher only (never systemd or PATH shim)', () => {
+  const launcher = '/Users/u/Applications/stitchmux.app/Contents/MacOS/stitchmux-launcher';
   const mac: BootContext = {
     ...ctx,
-    label: 'com.ccmux.daemon',
+    label: 'com.stitchmux.daemon',
     home: '/Users/u',
     logDir: '/Users/u/Library/Logs',
-    selfArgv: ['/Users/u/.bun/bin/bun', '/Users/u/.local/share/ccmux/app/ccmux.js'],
+    selfArgv: ['/Users/u/.bun/bin/bun', '/Users/u/.local/share/stitchmux/app/stitchmux.js'],
     macosLauncher: launcher,
   };
   const plist = renderLaunchdPlist(mac);
   const idxLauncher = plist.indexOf(`<string>${launcher}</string>`);
   const idxBun = plist.indexOf('<string>/Users/u/.bun/bin/bun</string>');
-  const idxBundle = plist.indexOf('<string>/Users/u/.local/share/ccmux/app/ccmux.js</string>');
+  const idxBundle = plist.indexOf(
+    '<string>/Users/u/.local/share/stitchmux/app/stitchmux.js</string>',
+  );
   const idxDaemon = plist.indexOf('<string>daemon</string>');
   expect(idxLauncher).toBeGreaterThan(-1);
   expect(idxBun).toBeGreaterThan(idxLauncher);
@@ -125,23 +130,23 @@ test('launchd plist wraps ProgramArguments with ccmux.app launcher only (never s
   expect(idxDaemon).toBeGreaterThan(idxBundle);
   expect(plist).toMatch(/<key>ProcessType<\/key>\s*<string>Background<\/string>/);
   // Linux systemd unit never uses the macOS launcher.
-  expect(renderSystemdUnit(mac)).not.toContain('ccmux-launcher');
-  // CLI PATH shim never wraps through ccmux-launcher.
-  expect(shimContents()).not.toContain('ccmux-launcher');
+  expect(renderSystemdUnit(mac)).not.toContain('stitchmux-launcher');
+  // CLI PATH shim never wraps through stitchmux-launcher.
+  expect(shimContents()).not.toContain('stitchmux-launcher');
 });
 
-test('launchd tmux plist runs tmux -u [-L socket] -D under ccmux.app with KeepAlive and ThrottleInterval', () => {
-  const launcher = '/Users/u/Applications/ccmux.app/Contents/MacOS/ccmux-launcher';
+test('launchd tmux plist runs tmux -u [-L socket] -D under stitchmux.app with KeepAlive and ThrottleInterval', () => {
+  const launcher = '/Users/u/Applications/stitchmux.app/Contents/MacOS/stitchmux-launcher';
   const prod = renderLaunchdTmuxPlist({
-    label: tmuxBootLabel({ bootLabel: 'com.ccmux.daemon', tmuxBootLabel: undefined }),
+    label: tmuxBootLabel({ bootLabel: 'com.stitchmux.daemon', tmuxBootLabel: undefined }),
     tmuxBin: '/opt/homebrew/bin/tmux',
     home: '/Users/u',
-    configPath: '/Users/u/.config/ccmux/machine.json',
+    configPath: '/Users/u/.config/stitchmux/machine.json',
     pathEnv: '/opt/homebrew/bin:/usr/bin:/bin',
     logDir: '/Users/u/Library/Logs',
     macosLauncher: launcher,
   });
-  expect(prod).toContain('<string>com.ccmux.tmux</string>');
+  expect(prod).toContain('<string>com.stitchmux.tmux</string>');
   expect(prod).toContain(`<string>${launcher}</string>`);
   expect(prod).toContain('<string>/opt/homebrew/bin/tmux</string>');
   expect(prod).toContain('<string>-u</string>');
@@ -150,15 +155,15 @@ test('launchd tmux plist runs tmux -u [-L socket] -D under ccmux.app with KeepAl
   expect(prod).toMatch(/<key>KeepAlive<\/key>\s*<true\/>/);
   expect(prod).toMatch(/<key>ThrottleInterval<\/key>\s*<integer>10<\/integer>/);
   expect(prod.replace(/>\s+</g, '><')).toContain(
-    '<key>CCMUX_CONFIG</key><string>/Users/u/.config/ccmux/machine.json</string>',
+    '<key>STITCHMUX_CONFIG</key><string>/Users/u/.config/stitchmux/machine.json</string>',
   );
 
   const scoped = renderLaunchdTmuxPlist({
-    label: 'com.ccmux.custom.tmux',
+    label: 'com.stitchmux.custom.tmux',
     tmuxBin: '/opt/homebrew/bin/tmux',
     tmuxSocket: 'custom-sock',
     home: '/Users/u',
-    configPath: '/Users/u/.config/ccmux/machine.json',
+    configPath: '/Users/u/.config/stitchmux/machine.json',
     pathEnv: '/opt/homebrew/bin:/usr/bin:/bin',
     logDir: '/Users/u/Library/Logs',
     macosLauncher: launcher,
@@ -168,13 +173,13 @@ test('launchd tmux plist runs tmux -u [-L socket] -D under ccmux.app with KeepAl
 
 test('launchctl print parser detects plist migration mismatch and reloadLaunchdJob runs bootout + bootstrap', async () => {
   const loadedOld = parseLaunchctlPrint(`
-gui/501/com.ccmux.daemon = {
+gui/501/com.stitchmux.daemon = {
 \tstate = running
 \tpid = 2346
 \tprogram = /Users/u/.bun/bin/bun
 \targuments = {
 \t\t/Users/u/.bun/bin/bun
-\t\t/Users/u/.local/share/ccmux/app/ccmux.js
+\t\t/Users/u/.local/share/stitchmux/app/stitchmux.js
 \t\tdaemon
 \t}
 }
@@ -182,16 +187,16 @@ gui/501/com.ccmux.daemon = {
   expect(loadedOld.running).toBe(true);
   expect(loadedOld.pid).toBe(2346);
   const newArgs = [
-    '/Users/u/Applications/ccmux.app/Contents/MacOS/ccmux-launcher',
+    '/Users/u/Applications/stitchmux.app/Contents/MacOS/stitchmux-launcher',
     '/Users/u/.bun/bin/bun',
-    '/Users/u/.local/share/ccmux/app/ccmux.js',
+    '/Users/u/.local/share/stitchmux/app/stitchmux.js',
     'daemon',
   ];
   expect(launchdJobMatchesPlist(loadedOld, newArgs)).toBe(false);
   expect(
     launchdJobMatchesPlist(loadedOld, [
       '/Users/u/.bun/bin/bun',
-      '/Users/u/.local/share/ccmux/app/ccmux.js',
+      '/Users/u/.local/share/stitchmux/app/stitchmux.js',
       'daemon',
     ]),
   ).toBe(true);
@@ -201,7 +206,7 @@ gui/501/com.ccmux.daemon = {
   const calls: string[] = [];
   let active = true;
   let now = 0;
-  await applyLaunchAgent('com.example.daemon', plist, content, '/usr/local/bin/ccmux', {
+  await applyLaunchAgent('com.example.daemon', plist, content, '/usr/local/bin/stitchmux', {
     now: () => now,
     sleep: async (ms) => {
       now += ms;

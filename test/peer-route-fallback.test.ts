@@ -32,7 +32,7 @@ const FleetSchema = z.object({
 });
 
 async function fleetThrough(socket: string) {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-route-fallback-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-route-fallback-'));
   roots.push(root);
   const recorded = join(root, 'ssh-called');
   // A stand-in for ssh found by the child's PATH: it records that it was asked, then fails the way
@@ -45,18 +45,18 @@ async function fleetThrough(socket: string) {
     stateDir,
     rcPrefix: 'host-a',
     tmuxBin: Bun.which('tmux') ?? '/usr/bin/false',
-    tmuxSocket: `ccmux-route-fallback-${process.pid}`,
+    tmuxSocket: `stitchmux-route-fallback-${process.pid}`,
     fleet: { 'host-b': 'user@host-b.invalid' },
-    remoteTransport: { socket, peers: ['host-b'] },
+    remoteTransport: { kind: 'stitchwire', agentSocket: socket, peers: ['host-b'] },
   });
   const configPath = join(root, 'machine.json');
   writeFileSync(configPath, `${JSON.stringify(machine)}\n`);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
   env.PATH = `${root}:${env.PATH ?? ''}`;
-  env.CCMUX_CONFIG = configPath;
-  env.CCMUX_STATE_DIR = stateDir;
-  env.CCMUX_CACHE_DIR = join(root, 'cache');
+  env.STITCHMUX_CONFIG = configPath;
+  env.STITCHMUX_STATE_DIR = stateDir;
+  env.STITCHMUX_CACHE_DIR = join(root, 'cache');
   const proc = Bun.spawn(['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'fleet', '--json'], {
     env,
     stdin: 'ignore',
@@ -73,19 +73,19 @@ async function fleetThrough(socket: string) {
 }
 
 test('a peer whose remote route is down is asked over ssh, and the row says why', async () => {
-  const { peer, sshCalled, err } = await fleetThrough('/nonexistent/remote-adapter.sock');
+  const { peer, sshCalled, err } = await fleetThrough('/nonexistent/stitchwire-agent.sock');
   expect(sshCalled).toBe(true);
-  expect(peer?.fallback).toBe('local remote adapter is unavailable');
+  expect(peer?.fallback).toContain('Stitchwire');
   // The row names the path it actually took, not the one configured.
   expect(peer?.alias).toBe('user@host-b.invalid');
   expect(err).toContain('remote route fell back to ssh');
 }, 30_000);
 
 test('a call the remote route may have delivered is never repeated over ssh', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-route-adapter-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-route-adapter-'));
   roots.push(root);
-  const socket = join(root, 'adapter.sock');
-  // An adapter that takes the request and hangs up: the call left this machine, so whether it ran
+  const socket = join(root, 'agent.sock');
+  // An agent that takes the request and hangs up: the call left this machine, so whether it ran
   // on the far side is unknown.
   const server = Bun.listen({
     unix: socket,

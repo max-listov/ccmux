@@ -9,14 +9,14 @@ import { makeMachine } from './helpers.ts';
 test('bootstrap rollback kills only the tmux session carrying its exact generation', async () => {
   const tmuxBin = Bun.which('tmux');
   if (!tmuxBin) throw new Error('tmux is required for generation-scoped rollback');
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-tmux-generation-'));
-  const tmuxSocket = `ccmux-generation-${process.pid}`;
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-tmux-generation-'));
+  const tmuxSocket = `stitchmux-generation-${process.pid}`;
   const machine = makeMachine({ stateDir: dir, tmuxBin, tmuxSocket });
   const generation = '11111111-1111-4111-8111-111111111111';
 
   try {
     await newSession(machine, 'agent-a', dir, ['sleep', '30'], {
-      CCMUX_BOOTSTRAP_GENERATION: generation,
+      STITCHMUX_BOOTSTRAP_GENERATION: generation,
     });
     expect(
       await killSessionIfGeneration(machine, 'agent-a', '22222222-2222-4222-8222-222222222222'),

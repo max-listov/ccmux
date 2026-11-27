@@ -6,7 +6,7 @@ import type { ChatMessage } from '../src/types.ts';
 const peer = (machine: string, session: string) =>
   ({
     kind: 'managed',
-    source: 'ccmux',
+    source: 'stitchmux',
     machine,
     agent: 'claude',
     session,

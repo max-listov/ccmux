@@ -94,13 +94,13 @@ export async function verifyRuntimeCoexistence(
   const invocation = shellJoin([
     process.execPath,
     '--no-env-file',
-    process.env.CCMUX_E2E_CLI ?? join(process.cwd(), 'src/cli.ts'),
+    process.env.STITCHMUX_E2E_CLI ?? join(process.cwd(), 'src/cli.ts'),
   ]);
   await client['message.send']({
     communicationAuthorization: acceptanceCommunicationAuthorization,
     target: a,
     messageId: crypto.randomUUID(),
-    body: `Authorized isolated communication test. Run exactly ${invocation} msg ${b.machine}:${b.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent ${b.agent} --to-thread ${b.threadId} with body "${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command from CCMux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not contact anyone else or edit files." After the command returns, finish this turn immediately with SENT. Do not poll, read logs or wait for a reply: CCMux delivers the reply asynchronously. When it arrives answer RECEIVED without using tools or sending another message.`,
+    body: `Authorized isolated communication test. Run exactly ${invocation} msg ${b.machine}:${b.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent ${b.agent} --to-thread ${b.threadId} with body "${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command from Stitchmux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not contact anyone else or edit files." After the command returns, finish this turn immediately with SENT. Do not poll, read logs or wait for a reply: Stitchmux delivers the reply asynchronously. When it arrives answer RECEIVED without using tools or sending another message.`,
   });
   const deadline = Date.now() + 180_000;
   let proved = false;

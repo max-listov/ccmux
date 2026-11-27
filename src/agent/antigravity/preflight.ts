@@ -2,7 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PermissionMode } from '../../runtime/projectionSchema.ts';
 import type { MachineConfig } from '../../types.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { compareSemver } from '../../util/version.ts';
 
 /** Minimum Antigravity CLI version verified with `agy acp --stdio --process-per-session`. */
@@ -116,7 +116,7 @@ export function preflightAntigravity(
   return executable;
 }
 
-/** Map CCMux's unified permission modes onto Antigravity ACP `mode` config values. */
+/** Map Stitchmux's unified permission modes onto Antigravity ACP `mode` config values. */
 export function toAcpMode(mode: PermissionMode): string {
   switch (mode) {
     case 'default':
@@ -130,7 +130,7 @@ export function toAcpMode(mode: PermissionMode): string {
   }
 }
 
-/** Map an Antigravity ACP `mode` config value back to CCMux's unified permission mode. */
+/** Map an Antigravity ACP `mode` config value back to Stitchmux's unified permission mode. */
 export function fromAcpMode(value: string | undefined): PermissionMode {
   switch (value) {
     case 'plan':

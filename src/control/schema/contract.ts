@@ -44,6 +44,8 @@ import {
   IdleProofSchema,
   PinReceiptSchema,
   PinRequestSchema,
+  SleepIdleRequestSchema,
+  SleepIdleResultSchema,
   SleepReceiptSchema,
   SleepRequestSchema,
   SleepTargetSchema,
@@ -98,6 +100,7 @@ import {
   IdentityWhoisReadSchema,
   SentLettersReadSchema,
 } from './reading.ts';
+import { refusals } from './refusals.ts';
 import {
   ControlCommandCatalogSchema,
   ControlCommandsReadSchema,
@@ -129,6 +132,30 @@ import {
   TerminalPromptRespondSchema,
   TerminalPromptResultSchema,
 } from './terminalPrompt.ts';
+
+const refuse = refusals.errors;
+
+/**
+ * The codes the session lifecycle operations refuse with, beyond the framework's own.
+ *
+ * Each list is every catalog code the operation's handler can reach — the local path, the hand-over
+ * to the target machine (whose daemon holds its answer to the same list) and the mutation and
+ * admission wrappers around them — found by walking the handler's call graph, not by reading it.
+ * The server holds the handler to the list: a code missing here leaves as `INTERNAL_SERVER_ERROR`,
+ * and the daemon's log names the code it replaced (`createControlServer`). A throw site added on one
+ * of these paths adds its code here.
+ */
+const SHARED_SESSION_REFUSALS = [
+  refuse.BUSY,
+  refuse.CANCELLED,
+  refuse.CORRUPT_STATE,
+  refuse.DELEGATION_REFUSED,
+  refuse.FORBIDDEN,
+  refuse.IDENTITY_MISMATCH,
+  refuse.ORIGIN_REFUSED,
+  refuse.TIMEOUT,
+  refuse.UNAVAILABLE,
+] as const;
 
 export const controlContract = defineContract(
   {
@@ -261,7 +288,7 @@ export const controlContract = defineContract(
       method: 'POST',
       path: '/letter/send',
       effect: 'write',
-      desc: "A letter from the caller to a fleet session, an App thread or the owner, with the receipt ccmux msg --json prints; another machine's recipient is resolved and handed the letter there",
+      desc: "A letter from the caller to a fleet session, an App thread or the owner, with the receipt stitchmux msg --json prints; another machine's recipient is resolved and handed the letter there",
       input: LetterRequestSchema,
       output: SendReceiptSchema,
       expose: ['HTTP', 'CLI', 'MCP'],
@@ -417,6 +444,11 @@ export const controlContract = defineContract(
       input: SleepTargetSchema,
       output: IdleProofSchema,
       idempotent: true,
+      refuses: [
+        ...SHARED_SESSION_REFUSALS,
+        refuse.CONTEXT_UNAVAILABLE,
+        refuse.REGISTRATION_UNAVAILABLE,
+      ],
       desc: 'Measure an exact managed session idle proof',
       expose: ['HTTP', 'CLI', 'MCP'],
     },
@@ -428,7 +460,30 @@ export const controlContract = defineContract(
       output: SleepReceiptSchema,
       idempotent: true,
       timeout: 30000,
+      refuses: [
+        ...SHARED_SESSION_REFUSALS,
+        refuse.CONTEXT_UNAVAILABLE,
+        refuse.IDEMPOTENCY_CONFLICT,
+        refuse.MIN_AWAKE_PER_PROFILE,
+        refuse.NOT_IDLE,
+        refuse.PINNED_SESSION,
+        refuse.PROFILE_UNAVAILABLE,
+        refuse.REGISTRATION_UNAVAILABLE,
+        refuse.REVISION_CONFLICT,
+        refuse.SLEEP_PENDING,
+        refuse.SLEEP_SUPERSEDED,
+      ],
       desc: 'Put one idle managed session to sleep using revision CAS',
+      expose: ['HTTP', 'CLI', 'MCP'],
+    },
+    'session.sleep-idle': {
+      method: 'POST',
+      path: '/session/sleep-idle',
+      effect: 'write',
+      input: SleepIdleRequestSchema,
+      output: SleepIdleResultSchema,
+      timeout: 30000,
+      desc: 'Put every session idle at least N minutes to sleep, or with dryRun say which would be, with a receipt per session',
       expose: ['HTTP', 'CLI', 'MCP'],
     },
     'session.wake': {
@@ -439,6 +494,16 @@ export const controlContract = defineContract(
       output: SleepReceiptSchema,
       idempotent: true,
       timeout: 30000,
+      refuses: [
+        ...SHARED_SESSION_REFUSALS,
+        refuse.NOT_SLEEPING,
+        refuse.SESSION_BLOCKED,
+        refuse.SLEEP_PENDING,
+        refuse.SLEEP_SUPERSEDED,
+        refuse.WAKE_CAPACITY,
+        refuse.WAKE_FAILED,
+        refuse.WAKE_PENDING,
+      ],
       desc: 'Wake a sleeping managed session',
       expose: ['HTTP', 'CLI', 'MCP'],
     },
@@ -450,6 +515,7 @@ export const controlContract = defineContract(
       output: PinReceiptSchema,
       idempotent: true,
       timeout: 15000,
+      refuses: [...SHARED_SESSION_REFUSALS, refuse.ARCHIVED],
       desc: 'Pin or unpin a managed session against sleep without restarting it',
       expose: ['HTTP', 'CLI', 'MCP'],
     },
@@ -574,6 +640,8 @@ export const controlContract = defineContract(
       desc: 'Read the prepared managed-session snapshot',
       expose: ['HTTP', 'CLI', 'MCP'],
       output: ControlSnapshotSchema,
+      // A prepared snapshot: nothing on its path refuses with a code of ours.
+      refuses: [],
       tool: { name: 'sessions' },
     },
     'session.get': {
@@ -666,7 +734,7 @@ export const controlContract = defineContract(
       method: 'POST',
       path: '/keys',
       effect: 'write',
-      desc: 'Type text and Enter into a session terminal composer — a slash command or a numbered menu answer — and record that ccmux typed it; a message to an agent is message.send',
+      desc: 'Type text and Enter into a session terminal composer — a slash command or a numbered menu answer — and record that stitchmux typed it; a message to an agent is message.send',
       expose: ['HTTP', 'CLI', 'MCP'],
       input: ControlKeysSchema,
       output: ControlActionReceiptSchema,

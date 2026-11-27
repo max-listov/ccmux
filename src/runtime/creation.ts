@@ -1,4 +1,4 @@
-import { AppError } from 'stitchkit';
+import { refusals } from '../control/schema/refusals.ts';
 import type { Session } from '../types.ts';
 import { runtimeCapabilities } from './capabilities.ts';
 
@@ -12,17 +12,15 @@ export function assertInferenceFreeCreate(
   if (input.initialization !== 'no-inference') return;
   const creation = runtimeCapabilities({ agent: input.agent, runtime: input.runtime }).creation;
   if (!creation.noInference)
-    throw new AppError('NO_INFERENCE_CREATE_UNSUPPORTED', {
+    throw refusals.errors.NO_INFERENCE_CREATE_UNSUPPORTED({
       message: `No-inference create is unsupported: ${creation.reason}`,
-      status: 409,
     });
   if (
     input.delegation === undefined ||
     input.modelSelection?.provider !== 'claude' ||
     input.modelSelection.model === 'default'
   )
-    throw new AppError('NO_INFERENCE_CREATE_REQUIREMENTS', {
+    throw refusals.errors.NO_INFERENCE_CREATE_REQUIREMENTS({
       message: 'No-inference create requires immutable delegation and an explicit provider/model',
-      status: 409,
     });
 }

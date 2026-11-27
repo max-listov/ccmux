@@ -28,7 +28,7 @@ const GENERATION = '11111111-1111-4111-8111-111111111111';
 const READY = '22222222-2222-4222-8222-222222222222';
 
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-state-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-state-'));
   const stateDir = join(root, 'state');
   mkdirSync(stateDir);
   return makeMachine({ stateDir });
@@ -37,7 +37,7 @@ function setup() {
 function pending(name = 'agent-a') {
   return PendingSessionSchema.parse({
     generation: GENERATION,
-    marker: `ccmux_${GENERATION}`,
+    marker: `stitchmux_${GENERATION}`,
     operation: { kind: 'create' },
     session: { name, dir: '/home/user', agent: 'codex' },
     createdAt: '2026-08-10T00:00:00.000Z',

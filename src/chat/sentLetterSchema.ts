@@ -5,24 +5,24 @@ import { continuationRef } from './communicationAuthorizationSchema.ts';
 import { targetLabel } from './identity.ts';
 
 /*
- * What became of a letter, as its sender is told — when it is sent (`ccmux msg … --json`) and when
- * the sender looks back (`ccmux msg sent --json`). One shape for both, so the letter a program has
+ * What became of a letter, as its sender is told — when it is sent (`stitchmux msg … --json`) and when
+ * the sender looks back (`stitchmux msg sent --json`). One shape for both, so the letter a program has
  * just sent is the letter it later finds in the list.
  */
 
 /**
  * - `accepted` — in the recipient's ledger. It is shown to the recipient at its next turn boundary
- *   (at once when idle, or when `notBefore` comes); `ccmux msg pending` says whether that happened.
+ *   (at once when idle, or when `notBefore` comes); `stitchmux msg pending` says whether that happened.
  * - `held` — not accepted yet: the recipient's machine was not reached, or answered no; the letter
  *   is recorded here and tried again for the retry window. The note carries what was answered.
  * - `refused` — the recipient's side will refuse it identically however often it is sent; settled.
- * - `recorded` — addressed somewhere ccmux does not deliver; mirrored to the owner, who carries it.
+ * - `recorded` — addressed somewhere stitchmux does not deliver; mirrored to the owner, who carries it.
  * - `undelivered` — held past the retry window. Only a look back can say this.
  */
 export const SentLetterStateSchema = z
   .enum(['accepted', 'held', 'refused', 'recorded', 'undelivered'])
   .describe(
-    "accepted: in the recipient's ledger, shown to it at its next turn boundary. held: not accepted yet — its machine was not reached or answered no — and kept for retry. refused: its side will refuse it however often it is sent; settled, not retried. recorded: addressed where ccmux does not deliver; mirrored to the owner. undelivered: held past the retry window.",
+    "accepted: in the recipient's ledger, shown to it at its next turn boundary. held: not accepted yet — its machine was not reached or answered no — and kept for retry. refused: its side will refuse it however often it is sent; settled, not retried. recorded: addressed where stitchmux does not deliver; mirrored to the owner. undelivered: held past the retry window.",
   );
 export type SentLetterState = z.infer<typeof SentLetterStateSchema>;
 
@@ -62,7 +62,7 @@ export function sentLetter(message: ChatMessage, state: SentLetterState): SentLe
   };
 }
 
-/** The answer of `ccmux msg sent --json`. */
+/** The answer of `stitchmux msg sent --json`. */
 export const SentListSchema = z.object({
   sender: z.string().min(1),
   sent: z.array(SentLetterSchema),
@@ -70,7 +70,7 @@ export const SentListSchema = z.object({
   fromEarlierLives: z.int().nonnegative(),
 });
 
-/** The answer of `ccmux msg <to> <text> --json`: the one letter, and who it is from. */
+/** The answer of `stitchmux msg <to> <text> --json`: the one letter, and who it is from. */
 export const SendReceiptSchema = SentLetterSchema.extend({
   from: z.string().min(1),
   /** When a timed letter comes due; null for ordinary mail. */

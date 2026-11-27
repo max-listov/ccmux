@@ -63,7 +63,7 @@ context sections for collaboration-mode instructions and client developer instru
 
 Selected skills use native `turn/start` skill items `{type:"skill",name,path}`. Before admission,
 the adapter refreshes `skills/list` for the exact workspace and verifies each selected name/path is
-uniquely discovered and enabled. The native runtime, not CCMux, loads skill bodies. Discovery and
+uniquely discovered and enabled. The native runtime, not Stitchmux, loads skill bodies. Discovery and
 selection are distinct from evidence that a real turn consumed a skill; live acceptance must prove
 the latter. Applied native-selection evidence requires a successful skill-bearing turn admission or
 an exact native user-message acknowledgement. A resume without such acknowledgement remains desired
@@ -78,7 +78,7 @@ classic `app.agents` (`GET /agent`), checks a unique selectable agent, and compa
 to the canonical Markdown body (only frontmatter and outer whitespace/CRLF normalization are
 removed for comparison). The validated agent name is passed in native session prompt admission.
 Source identity is pinned to the full file, including frontmatter. The native agent owns its system
-prompt, tools, skills and agent loop; CCMux writes no duplicate agent configuration.
+prompt, tools, skills and agent loop; Stitchmux writes no duplicate agent configuration.
 
 Optional `denyTools` is a restrictive assertion, not a grant or a mutation. Each requested tool must
 already have an effective native all-resource denial with no later allow/ask exception. Failure

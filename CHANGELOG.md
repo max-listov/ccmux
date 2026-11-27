@@ -4,17 +4,28 @@ All notable changes to ccmux. The `[Unreleased]` section accumulates as work lan
 `bun run release X.Y.Z "notes"` rolls it into a dated version section, and CI publishes
 the GitHub Release with that section as the notes.
 
-## [0.83.0] — 2026-10-15
-
-- Create read-only delegated native Claude sessions without initialization inference, pin explicit model selection and preserve the same identity through retries and sleep/wake.
-
-## [0.82.2] — 2026-10-15
-
-- Check total user and system CPU when validating tracing epochs on Linux.
-
-- Declare create-time inference capabilities and refuse explicit no-inference creation before provider startup when the runtime cannot guarantee it.
-
 ## [Unreleased]
+
+- `@stitchmux/client` is the one client package: its root exports both the local socket client and the injected-transport client with the refusal catalog, and `@stitchmux/client/monitoring` reads monitoring snapshots. The `./control-client` subpath is gone — import from the package root. `zod` is now a peer dependency, like `stitchkit`.
+- ccmux is now Stitchmux. The command is `stitchmux`, the client package `@stitchmux/client`, the environment variables `STITCHMUX_*`, the directories `~/.config/stitchmux`, `~/.local/state/stitchmux`, `~/.local/share/stitchmux` and `~/.cache/stitchmux`, the boot units `com.stitchmux.daemon` and `stitchmux.service`, and the declared control service `stitchmux.control`. The first run on a machine moves its directories, renames its files and rewrites the stored session addresses and the keys built from them; `stitchmux install` retires the previous boot units while the live tmux server and every session keep running. For this release only, letters and forwarded calls from a machine still on the previous release, and sessions started before the update, keep working: the `ccmux` command runs the new installation, and the previous directories are links to the moved ones.
+- A letter that arrives while a terminal session is being put to sleep now waits and is delivered once after the session wakes, instead of being typed into an agent that is about to stop. Such a hold reports the kind `sleeping`.
+- A terminal session is not put to sleep for six seconds after a letter was typed into it, so a turn that has not shown yet is not cut off.
+- Sleep reads the process table at the moment it decides, so a build or turn started after an automatic sleep pass began is no longer stopped with the session.
+- A native Codex session whose terminal tmux cannot list or read is not put to sleep.
+- A sleep receipt's `release` is `processReleased` or `unsupported`; the unused value `handles-only` is gone from the control contract.
+- A session whose working directory the agent cannot enter or list is blocked with that reason instead of failing to spawn, and every working-directory block names both repair steps: `stitchmux dir <name> <path>`, then `stitchmux start <name>`.
+- A Stitchwire failure kind stitchmux does not know is reported as delivery `unknown`, never as `not-sent`, so it is not taken as permission to retry a command on another machine.
+- The declared control service is reached only through its envelope on `/invoke`. The `x-stitchmux-caller` header no longer makes a request a service call; a local process that sends it is this machine's local caller.
+- `remoteTransport` is the Stitchwire agent and requires `kind: "stitchwire"`. The separately supplied adapter route (`{ socket, peers }`) is gone, and a configuration that still declares it is refused when it loads.
+- `@stitchmux/client` no longer exports `controlServiceEffects`, `remoteTransportContract`, `RemoteTransportRequestSchema`, `RemoteTransportResultSchema` or `STITCHMUX_CONTROL_CALLER_HEADER`; each operation's `effect` is on `controlContract`.
+- `stitchmux/monitoring-reader` reads a snapshot from a daemon of another version: an unknown session `state` or `agent` reads as `unknown` instead of making the whole snapshot `invalid`, and unknown fields are dropped. It exports `MonitoringRowReadSchema` and `MonitoringSnapshotReadSchema`; the producer's schemas now require every field the daemon writes.
+- In control session rows `pinned` and `registrationGeneration` are always present.
+- Every refusal comes from one table, `refusals`, exported from `stitchmux/control-client` and the control client package: each code with its HTTP status, `retryable` and a default sentence. A code now has one status, so codes that meant two things were split: `UNAVAILABLE` stays the 503 of a runtime or service that is down, and a request whose precondition does not hold is refused with `PRECONDITION_FAILED` (409); a body over its byte budget is `TOO_LARGE` (413) instead of `RESOURCE_EXHAUSTED`; steering a busy turn, and selecting a model mid-turn, is `NOT_IDLE` instead of `BUSY`; steering an archived session is `ARCHIVED`; a changed native context identity is `IDENTITY_MISMATCH`; a model page cursor that needs a fresh baseline is `STALE_CURSOR`; a full selection or steering journal is `JOURNAL_CAPACITY`; and a refusal of steering itself is `STEERING_UNAVAILABLE`.
+- `session.idle`, `session.sleep`, `session.wake`, `session.pin` and `session.list` declare the codes they refuse with: a typed client's `client['session.sleep'].refusal(error)` returns the refusal with `code` narrowed to that operation's codes, and comparing it with a code the operation does not declare does not type-check. A code an operation does not declare reaches the caller as `INTERNAL_SERVER_ERROR` (500), and the daemon's log names the original code.
+- The Antigravity model catalog gives every model its own reasoning efforts (`supportedReasoningEfforts`, `defaultReasoningEffort`), read with that model selected; a model without thought levels has none. Before, only the default model had them.
+- `stitchkit` 0.133.0 or later is required.
+- `session.sleep-idle` puts every session idle at least `idleAfterMinutes` to sleep under the same policy as automatic sleep, or with `dryRun` says which it would, and answers with a receipt per session: slept, would sleep, skipped with its code (pinned, busy, the profile's last awake session), refused, or not attempted within the call's budget.
+- On Linux each session runs in its own systemd scope, `stitchmux-session-<uuid>-<start>.scope`, where systemd can create one, so the builds and tests an agent starts are counted to its session. A running session's monitoring row carries `boundary`: that unit, and its root processes with their process instances (on macOS the roots alone).
 
 ## [0.95.0] — 2026-11-27
 
@@ -120,7 +131,7 @@ Search every stored conversation on every fleet machine with ccmux search, and r
 - Open a Claude conversation stored under another profile by its external address.
 - Read a Claude message sent while the agent was working as the user's message at its own time, and stop reading the stored copies of model requests as a second, undated set of messages.
 
-## [0.86.0] - 2026-11-06
+## [0.86.0] — 2026-11-06
 
 - Read the newest 8 MiB of external histories of any file size, report the exact byte coverage, and keep older pages pinned through appends with bounded rewrite checks.
 
@@ -143,7 +154,7 @@ Resolve one exact external Codex message with its recorded submitter, read Codex
 
 ## [0.84.6] — 2026-10-24
 
-- Build and run CI checks with Bun 1.4.4 and its patched TLS certificate policy.
+- The released ccmux runs on Bun 1.4.4 with its patched TLS certificate policy.
 
 ## [0.84.5] — 2026-10-21
 
@@ -189,6 +200,18 @@ Account quota of every Claude and Codex account in one request, startup menus an
 - New `ccmux accounts [--json] [--refresh] [--local]`: every signed-in Claude and Codex account in one answer, including GPT (Codex) accounts and profiles that no session runs under, with plan windows, the source of each number and its age.
 - Account quota no longer depends on a session having spoken lately: the daemon asks the vendor's own program (`claude auth status`, `claude -p "/usage"`, `codex app-server`) for a profile whose newest measurement is older than `quota.refreshMinutes` (default 15), never reading a token, one profile at a time, with back-off after a failure. `quota.probe: "off"` in the machine config stops it.
 - A session's account and plan windows are the freshest of its profile's sources, so a terminal session shows the window another session of the same account measured. Terminal and native sessions of one account group together.
+
+## [0.83.0] — 2026-10-15
+
+- Create read-only delegated native Claude sessions without initialization inference, pin explicit model selection and preserve the same identity through retries and sleep/wake.
+
+## [0.82.2] — 2026-10-15
+
+First published build of the 0.82.1 changes, whose tag was cut but whose CI build failed on a test.
+
+## [0.82.1] — 2026-10-15
+
+- Declare create-time inference capabilities and refuse explicit no-inference creation before provider startup when the runtime cannot guarantee it.
 
 ## [0.82.0] — 2026-10-15
 
@@ -3358,6 +3381,10 @@ fix: shipped bundle is truly self-contained — stub react-devtools-core at buil
   stage / CI / release), the misleading "never reached in prod" comment and the obsolete "build only
   outside the project tree" caveat are gone, and a guard test builds via that same path and asserts
   the bundle starts under a wiped cache + dead registry — so this can never silently regress.
+
+## [0.2.0] — 2026-07-29
+
+The shipped bundle is self-contained: a machine with a cleared cache or no network no longer fails to start with `ENOENT`.
 
 ## [0.1.19] — 2026-07-25
 

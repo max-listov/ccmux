@@ -15,7 +15,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'ccmux-follow-'));
+  dir = mkdtempSync(join(tmpdir(), 'stitchmux-follow-'));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 

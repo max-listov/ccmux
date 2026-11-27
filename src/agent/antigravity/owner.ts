@@ -22,7 +22,7 @@ import { readSelection, seedNativeSelection } from '../../runtime/selection.ts';
 import { readRuntimeMode, shouldRestoreMode, writeRuntimeMode } from '../../runtime/sessionMode.ts';
 import { ManagedRuntimeStatusWriter } from '../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { writeAntigravityCatalog } from './catalog.ts';
 import {
   fromAcpMode,
@@ -37,7 +37,7 @@ import { antigravityContextApi } from './transcript.ts';
  * The single-writer owner of one Antigravity ACP session, built on `stitchkit/agent-executor/acp`.
  *
  * All ACP v1 protocol framing, JSON-RPC correlation, turn deltas, permission replies and
- * `session/load` resume live in `stitchkit/agent-executor/acp`. This owner bridges CCMux's
+ * `session/load` resume live in `stitchkit/agent-executor/acp`. This owner bridges Stitchmux's
  * durable mailboxes (`input`, `response`, `interrupt`, `permission-mode`, `selection`, `history`)
  * onto that driver without duplicating any ACP transport code.
  */
@@ -228,7 +228,15 @@ export class AntigravityOwner {
     source: 'admission' | 'settings',
     turnId: string | null,
   ): Promise<void> {
-    await writeAntigravityCatalog(this.m, this.session, configOptions);
+    // What this owner's driver passes as images; whether the agent declared them is checked by the
+    // driver per prompt. The session API does not carry the agent's `promptCapabilities` itself —
+    // requested from Stitchkit.
+    await writeAntigravityCatalog(
+      this.m,
+      this.session,
+      configOptions,
+      this.driver?.capabilities.images === true,
+    );
     const modelOpt = configOptions.find((option) => option.category === 'model');
     const effortOpt = configOptions.find((option) => option.category === 'thought_level');
     const modeOpt = configOptions.find((option) => option.category === 'mode');

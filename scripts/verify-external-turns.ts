@@ -10,7 +10,7 @@ import { externalProbeThreads } from './externalProbeServer.ts';
 
 if (Bun.argv[2] !== '--run') {
   console.error(
-    'usage: bun scripts/verify-external-turns.ts --run (creates and archives two test threads; uses installed ccmux)',
+    'usage: bun scripts/verify-external-turns.ts --run (creates and archives two test threads; uses installed stitchmux)',
   );
   process.exit(2);
 }
@@ -18,7 +18,7 @@ if (Bun.argv[2] !== '--run') {
 const ids: string[] = [];
 let cleanupFailed = false;
 const turns = new Map<string, string>();
-const root = mkdtempSync(join(tmpdir(), 'ccmux-turn-e2e-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-turn-e2e-'));
 const probes = externalProbeThreads(loadMachineConfig(), root);
 
 async function start(threadId: string, text: string): Promise<void> {
@@ -31,7 +31,7 @@ async function start(threadId: string, text: string): Promise<void> {
 }
 
 async function snapshot(label: string) {
-  const child = Bun.spawn(['ccmux', 'external', '--json'], { stdout: 'pipe', stderr: 'pipe' });
+  const child = Bun.spawn(['stitchmux', 'external', '--json'], { stdout: 'pipe', stderr: 'pipe' });
   const timer = setTimeout(() => child.kill(), 30_000);
   try {
     const [out, err] = await Promise.all([

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import { withNativeAdmission } from './admission.ts';
@@ -30,25 +30,21 @@ const SelectionStoreSchema = z
 const selectionPath = (m: MachineConfig, s: Session) =>
   join(managedRuntimeRoot(m, s), 'selection.json');
 
-/** Create-time model/flags remain immutable; this register only describes future CCMux turns. */
+/** Create-time model/flags remain immutable; this register only describes future Stitchmux turns. */
 function readStore(m: MachineConfig, s: Session) {
   const path = selectionPath(m, s);
   const row = readPrivateJson(path, SelectionStoreSchema, 256 * 1024);
   if (row === null) {
     if (existsSync(path))
-      throw new AppError('SELECTION_UNAVAILABLE', {
-        message: 'Session selection is unavailable',
-        status: 409,
-      });
+      throw refusals.errors.SELECTION_UNAVAILABLE({ message: 'Session selection is unavailable' });
     return null;
   }
   if (
     row.registrationGeneration !== s.registrationGeneration ||
     row.current.options.runtime !== s.agent
   )
-    throw new AppError('IDENTITY_MISMATCH', {
+    throw refusals.errors.IDENTITY_MISMATCH({
       message: 'Session selection belongs to another registration',
-      status: 409,
     });
   return row;
 }
@@ -66,14 +62,11 @@ export function selectionReceipt(
   const prior = store?.receipts.find((row) => row.operationId === operationId);
   if (prior !== undefined) {
     if (fingerprint !== prior.fingerprint)
-      throw new AppError('IDEMPOTENCY_CONFLICT', {
-        message: 'Selection request changed',
-        status: 409,
-      });
+      throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Selection request changed' });
     return prior.result;
   }
   if ((store?.receipts.length ?? 0) >= 256)
-    throw new AppError('CAPACITY', { message: 'Selection journal capacity reached', status: 409 });
+    throw refusals.errors.JOURNAL_CAPACITY({ message: 'Selection journal capacity reached' });
   return null;
 }
 
@@ -86,7 +79,7 @@ export async function writeSelection(
   fingerprint: string,
 ): Promise<void> {
   if (s.registrationGeneration === undefined)
-    throw new AppError('UNSUPPORTED', { message: 'Managed registration is required', status: 409 });
+    throw refusals.errors.UNSUPPORTED({ message: 'Managed registration is required' });
   const prior = readStore(m, s);
   const row = SelectionStoreSchema.parse({
     current: value,

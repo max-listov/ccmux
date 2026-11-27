@@ -24,9 +24,9 @@ test('TUI Tab selects Codex and emits an explicit provider in the create intent'
   const screen = render(
     <App
       m={makeMachine({
-        stateDir: `/tmp/ccmux-tui-provider-${process.pid}`,
+        stateDir: `/tmp/stitchmux-tui-provider-${process.pid}`,
         tmuxBin,
-        tmuxSocket: `ccmux-tui-provider-${process.pid}`,
+        tmuxSocket: `stitchmux-tui-provider-${process.pid}`,
       })}
       initialFullscreen={false}
       onIntent={(value) => resolveIntent?.(value)}

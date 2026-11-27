@@ -12,7 +12,7 @@ const KnownSchema = z.array(z.string().regex(/^[0-9a-f]{16}$/)).max(4096);
 const AnswerSchema = z.record(z.string(), z.unknown());
 
 export const peerReadContract = defineContract(
-  { prefix: 'ccmux-peer-read', scope: 'local' },
+  { prefix: 'stitchmux-peer-read', scope: 'local' },
   {
     list: {
       method: 'POST',

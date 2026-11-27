@@ -1,15 +1,12 @@
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-export const PLATFORM = process.platform; // "darwin" | "linux"
-export const UID = process.getuid?.() ?? 0;
-export const HOME = homedir(); // never $HOME string-parse
+import { APP_BUNDLE } from '../config/paths.ts';
+import { HOME } from './home.ts';
 
 /**
  * A spawnable invocation of THIS tool as an argv prefix — prepend a verb to re-exec
- * ccmux (used by the tmux `_run` pane command and the injected prompt's <SELF>).
+ * stitchmux (used by the tmux `_run` pane command and the injected prompt's <SELF>).
  *
  * P0-11: inside a `bun build --compile` binary, `import.meta.url` resolves to a
  * virtual bunfs path that is NOT a spawnable file. `process.execPath` IS the on-disk
@@ -57,23 +54,23 @@ export const SELF_ARGV_NO_ENV_FILE: readonly string[] = withNoEnvFile(SELF_ARGV)
  *  which must not depend on any PATH. NOT what we teach an in-session agent (see below). */
 export const SELF_DISPLAY: string = SELF_ARGV.join(' ');
 
-/** Fixed install location of the `ccmux` PATH shim (`scripts/install.sh` → `~/.local/bin/ccmux`,
+/** Fixed install location of the `stitchmux` PATH shim (`scripts/install.sh` → `~/.local/bin/stitchmux`,
  *  a 2-line `exec bun <bundle>`). Kept in sync with that installer by convention. */
-export const SHIM_PATH = join(HOME, '.local', 'bin', 'ccmux');
+export const SHIM_PATH = join(HOME, '.local', 'bin', 'stitchmux');
 
 /** The shim points at the DEFAULT cache's bundle, so an isolated instance — which has its own
  *  cache — must not teach that shim: it would run the wrong code and the wrong config. */
-const DEFAULT_CACHE_DIR = join(HOME, '.cache', 'ccmux');
+const DEFAULT_CACHE_DIR = join(HOME, '.cache', 'stitchmux');
 
-/** Decide which form to teach: bare `ccmux` when the shim is installed, else the absolute
+/** Decide which form to teach: bare `stitchmux` when the shim is installed, else the absolute
  *  invocation. Pure — separated from the filesystem check so it's unit-testable. */
 export function pickInvocation(shimInstalled: boolean, absolute: string): string {
-  return shimInstalled ? 'ccmux' : absolute;
+  return shimInstalled ? 'stitchmux' : absolute;
 }
 
 /**
- * The ccmux invocation to teach an in-session agent (injected prompt). Prefer the bare
- * `ccmux` shim so fleet agents call it cleanly, instead of copying an absolute path prefix
+ * The stitchmux invocation to teach an in-session agent (injected prompt). Prefer the bare
+ * `stitchmux` shim so fleet agents call it cleanly, instead of copying an absolute path prefix
  * into every command — the crutch `workflow.md §13` forbids. The shim's presence is checked
  * by its FIXED install path, NOT the daemon's own PATH: the prompt is built in the daemon
  * process (thin launchd/systemd PATH that may not see the shim), while the child session runs
@@ -83,11 +80,23 @@ export function pickInvocation(shimInstalled: boolean, absolute: string): string
 export function promptInvocation(): string {
   // An isolated instance (its own cache) must teach its OWN re-exec, not the shared shim — that
   // shim runs the default cache's bundle, i.e. the wrong code and config for a dev instance.
-  const onDefaultCache = (process.env.CCMUX_CACHE_DIR ?? DEFAULT_CACHE_DIR) === DEFAULT_CACHE_DIR;
+  const onDefaultCache =
+    (process.env.STITCHMUX_CACHE_DIR ?? DEFAULT_CACHE_DIR) === DEFAULT_CACHE_DIR;
   return pickInvocation(onDefaultCache && existsSync(SHIM_PATH), SELF_DISPLAY);
 }
 
-/** Running from live source (`ccmux-dev` → bun src/cli.ts) vs the frozen prod bundle/binary.
+/** Running from live source (`stitchmux-dev` → bun src/cli.ts) vs the frozen prod bundle/binary.
  *  Source modules are `.ts`; the prod bundle is a single `.js` (compiled binary is neither).
  *  Used to badge the TUI header so dev is never confused with prod at the same version. */
 export const IS_DEV: boolean = fileURLToPath(import.meta.url).endsWith('.ts');
+
+/**
+ * Installed boot units and PATH commands use the durable application root.
+ * A source checkout keeps re-executing its source.
+ */
+export function bootArgv(): readonly string[] {
+  if (IS_DEV) return SELF_ARGV;
+  const exec = process.execPath;
+  // A compiled single-file binary IS the thing to launch; under bun, the bundle is.
+  return basename(exec).toLowerCase() === 'bun' ? [exec, APP_BUNDLE] : [exec];
+}

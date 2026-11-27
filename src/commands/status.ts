@@ -1,12 +1,12 @@
 import { loadMachineConfig } from '../config/machine.ts';
 import { readMonitoringStatus } from '../monitoring/read.ts';
-import type { MonitoringRow } from '../monitoring/schema.ts';
+import type { MonitoringRowRead } from '../monitoring/schema.ts';
 import { parseFlags } from './flags.ts';
 
 /** The statusLine's own cost, as a number rather than an impression: it runs per session on every
  *  transcript event, which is the most frequent thing this tool causes a machine to do. Summed from
  *  what the daemon already observed, so this reader still opens exactly one file. */
-function renderLine(rows: readonly MonitoringRow[]): string {
+function renderLine(rows: readonly MonitoringRowRead[]): string {
   const measured = rows.filter((row) => row.statusLineRendersPerMinute !== null);
   if (measured.length === 0) return 'status-line: not measured yet';
   const total = measured.reduce((sum, row) => sum + (row.statusLineRendersPerMinute ?? 0), 0);

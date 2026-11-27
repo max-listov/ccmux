@@ -82,7 +82,7 @@ producerMetrics.register('observation', () => ({ execCount, childCpuUs }));
  */
 // Read per call, not at import: a value captured when the module loads cannot be overridden by
 // anything that happens afterwards, which would make the override above true only in the comment.
-const deadlineMs = (): number => Number(process.env.CCMUX_OBSERVE_DEADLINE_MS ?? 1000);
+const deadlineMs = (): number => Number(process.env.STITCHMUX_OBSERVE_DEADLINE_MS ?? 1000);
 async function invoke(
   argv: string[],
   maxOutput = MAX_OUTPUT,
@@ -147,7 +147,7 @@ export async function observedSessionInventory(m: MachineConfig): Promise<Map<st
   }
   const parsed = parsePaneInventory(result.stdout, true);
   // The pane each session records is the truth; this process's cache is only a memory of it. A
-  // session restarted by another process (`ccmux restart --all` from a shell) gets a new pane, and a
+  // session restarted by another process (`stitchmux restart --all` from a shell) gets a new pane, and a
   // cache left on the old id would aim every capture at a pane that no longer exists.
   for (const [name, pane] of parsed.agentPanes) rememberAgentPane(m, name, pane);
   const roots = parsed.roots;
@@ -184,7 +184,7 @@ export async function observedPanes(
   const panes = new Map<string, string | null>();
   for (let offset = 0; offset < names.length; offset += 8) {
     const chunk = names.slice(offset, offset + 8);
-    const nonce = `ccmux-${crypto.randomUUID()}`;
+    const nonce = `stitchmux-${crypto.randomUUID()}`;
     const argv: string[] = [];
     for (const [index, name] of chunk.entries()) {
       if (index) argv.push(';');

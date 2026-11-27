@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { EXECUTOR_ENV_KEY_PATTERN } from 'stitchkit/agent-executor';
 import { CHAT_CREDENTIAL_ENV } from '../../chat/auth.ts';
 import type { Session } from '../../types.ts';
 import { ensurePath, ensureUtf8Locale, loginShellPath } from '../../util/envPath.ts';
@@ -20,7 +21,7 @@ import type { LaunchStamp } from './launchStamp.ts';
  *
  *  1. The pane command carries `--no-env-file`, so the runtime never loads the directory's files
  *     into the supervisor at all. Verified against Bun 1.3.14. It is the clean mechanism, and it is
- *     the one that works in production, where ccmux runs as `bun <bundle>`.
+ *     the one that works in production, where stitchmux runs as `bun <bundle>`.
  *  2. This module subtracts, by NAME, whatever those files declare — so the guarantee does not
  *     depend on the runtime honouring a flag. Verified necessary: a `bun build --compile` binary
  *     never sees `--no-env-file` (the flag lands in the app's argv, not the runtime's), and no
@@ -36,11 +37,11 @@ import type { LaunchStamp } from './launchStamp.ts';
 /**
  * Parse an env file into name → value.
  *
- * ccmux parses it rather than handing the path to the runtime's own `--env-file`, and that is a
+ * stitchmux parses it rather than handing the path to the runtime's own `--env-file`, and that is a
  * decision, not laziness: the runtime's loader puts the file's variables into the SUPERVISOR, where
- * a project file could then redefine `CCMUX_STATE_DIR` and repoint the whole instance. Parsing here
+ * a project file could then redefine `STITCHMUX_STATE_DIR` and repoint the whole instance. Parsing here
  * keeps the file's reach exactly where it was declared to reach — the agent — and keeps the recipe a
- * property of ccmux rather than of whichever runtime happens to host it. That last point is the
+ * property of stitchmux rather than of whichever runtime happens to host it. That last point is the
  * original complaint about this whole area: an implementation detail had leaked into product
  * behaviour, and swapping the runtime would have silently changed it.
  *
@@ -115,16 +116,35 @@ export function readEnvFile(
 }
 
 /**
- * Names ccmux controls and a project file may never set.
+ * Names stitchmux controls and a project file may never set.
  *
- * Without this, an `.env` in a working directory could set `CCMUX_STATE_DIR` and point the session's
- * whole instance elsewhere, or set `CCMUX_SESSION` and make one session answer to another's name —
+ * Without this, an `.env` in a working directory could set `STITCHMUX_STATE_DIR` and point the session's
+ * whole instance elsewhere, or set `STITCHMUX_SESSION` and make one session answer to another's name —
  * from a file that is often not even in version control. The recipe grants a session variables; it
  * does not let a project reconfigure its supervisor.
  */
-export const RESERVED_ENV_PREFIX = 'CCMUX_';
+export const RESERVED_ENV_PREFIX = 'STITCHMUX_';
 export const isReservedEnvKey = (key: string): boolean =>
   key.startsWith(RESERVED_ENV_PREFIX) || key === CHAT_CREDENTIAL_ENV;
+
+/**
+ * The part of a session's environment an executor profile can carry.
+ *
+ * The environment a session runs with is inherited, and an inherited environment holds names the
+ * executor profile schema refuses (`npm_config_*`, `http_proxy`, …) and unset entries. Refusing the
+ * profile over one of them would stop a session for a variable nobody declared for the engine, so
+ * dropping them is the decision here; Stitchkit itself refuses a bad name instead of dropping it.
+ */
+export function executorProfileEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === 'string' && EXECUTOR_ENV_KEY_PATTERN.test(entry[0]),
+    ),
+  );
+}
 
 export interface SessionEnvRecipe {
   env: Record<string, string>;
@@ -212,13 +232,13 @@ export function inheritsUndeclaredEnv(
  *
  * The PATH is re-derived because a daemon started by launchd or systemd has a thin one, and the
  * agent shells out to git, rg and node. The locale is forced because without LANG a TUI draws its
- * box rules as ASCII. Names an env file tried to set that ccmux controls are dropped, and said so.
+ * box rules as ASCII. Names an env file tried to set that stitchmux controls are dropped, and said so.
  */
 export function providerLaunchEnv(session: Session, binDirs: string[]): Record<string, string> {
   const { env, refused } = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
   if (refused.length > 0)
     log.warn({
-      msg: 'env file tried to set ccmux-controlled names — ignored',
+      msg: 'env file tried to set stitchmux-controlled names — ignored',
       name: session.name,
       keys: refused,
     });

@@ -1,11 +1,11 @@
 import type { ControlNativeSnapshot } from '../control/schema/native.ts';
 import {
-  CCMUX_NATIVE_STREAM_HEARTBEAT_MS,
-  CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
   ControlNativeStreamRequestSchema,
   controlNativeStreamFrame,
   NativeStreamFrameUnrepresentable,
   readControlNativeStreamCursor,
+  STITCHMUX_NATIVE_STREAM_HEARTBEAT_MS,
+  STITCHMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
 } from '../control/schema/nativeStreamContract.ts';
 import { createControlClient } from '../control/transport/client.ts';
 import { writeOut } from '../util/stdout.ts';
@@ -68,7 +68,7 @@ export async function cmdControlNativeStream(): Promise<number> {
   const client = createControlClient();
   try {
     const input = ControlNativeStreamRequestSchema.parse(
-      JSON.parse(await boundedStdin(CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES)),
+      JSON.parse(await boundedStdin(STITCHMUX_NATIVE_STREAM_MAX_INPUT_BYTES)),
     );
     const resume = readControlNativeStreamCursor(input.cursor, input.target);
     const stream = await client.watchNative.withOptions(
@@ -81,7 +81,9 @@ export async function cmdControlNativeStream(): Promise<number> {
     while (!abort.signal.aborted) {
       const outcome = await Promise.race([
         pending.then((value) => ({ kind: 'item' as const, value })),
-        Bun.sleep(CCMUX_NATIVE_STREAM_HEARTBEAT_MS).then(() => ({ kind: 'heartbeat' as const })),
+        Bun.sleep(STITCHMUX_NATIVE_STREAM_HEARTBEAT_MS).then(() => ({
+          kind: 'heartbeat' as const,
+        })),
       ]);
       if (outcome.kind === 'heartbeat') {
         if (last !== null) {

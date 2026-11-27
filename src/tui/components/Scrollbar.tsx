@@ -2,7 +2,7 @@ import { Box, Text } from 'ink';
 
 /** A slim custom vertical scrollbar for the windowed list. The thumb height is proportional
  *  to the visible fraction and its position to how far the window is scrolled; it glows in the
- *  pane's accent colour (cyan when focused) over a dim track — matching ccmux's round-border
+ *  pane's accent colour (cyan when focused) over a dim track — matching stitchmux's round-border
  *  aesthetic. Renders nothing when everything fits (no scroll needed). */
 export function Scrollbar({
   total,

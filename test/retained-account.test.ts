@@ -22,7 +22,7 @@ const ACCOUNT = {
 };
 
 function fixture(observedMsAgo: number) {
-  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-retained-'));
+  const stateDir = mkdtempSync(join(tmpdir(), 'stitchmux-retained-'));
   roots.push(stateDir);
   const m = makeMachine({ stateDir });
   const session = makeSession({

@@ -4,6 +4,7 @@ import { AppError } from 'stitchkit';
 import { ownedCodexFlags } from '../agent/codex/owned/launch.ts';
 import { envFilePath, stableJson } from '../agent/launch/launchInputs.ts';
 import { isReservedEnvKey, sessionEnvRecipe } from '../agent/launch/sessionEnv.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import type {
   LaunchRecipeMetadata,
   LaunchRecipeReference,
@@ -44,10 +45,7 @@ function recipeDigest(recipe: MachineLaunchRecipe, beforeServices = false): stri
 
 function unavailable(id: string, reason: string): never {
   log.error({ msg: 'configured launch recipe is unavailable', recipeId: id, reason });
-  throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', {
-    message: 'Launch recipe is unavailable',
-    status: 409,
-  });
+  throw refusals.errors.LAUNCH_RECIPE_UNAVAILABLE({ message: 'Launch recipe is unavailable' });
 }
 
 function verifyAvailability(
@@ -128,9 +126,8 @@ export function resolveControlLaunchRecipe(
 ): ResolvedControlLaunch {
   if (reference === undefined) return { flags: [...callerFlags] };
   if (callerFlags.length > 0)
-    throw new AppError('INVALID_RECIPE_CREATE', {
+    throw refusals.errors.INVALID_RECIPE_CREATE({
       message: 'Launch recipe owns native configuration',
-      status: 409,
     });
   const configured = m.launchRecipes[reference.id];
   if (configured === undefined) unavailable(reference.id, 'recipe id is not configured');

@@ -43,7 +43,7 @@ test('idle, disconnected, stale generation or turn and pending approvals/input f
       reason: null,
       snapshot: { ...f.projection.snapshot(), state },
     });
-    await expect(f.run()).rejects.toMatchObject({ code: 'BUSY' });
+    await expect(f.run()).rejects.toMatchObject({ code: 'NOT_IDLE' });
     expect(f.calls).toEqual([]);
   }
   const missing = await steeringFixture();
@@ -81,7 +81,7 @@ test('idle, disconnected, stale generation or turn and pending approvals/input f
     requestedAt: new Date().toISOString(),
   });
   request.setState({ protocol: 1, status: 'live', reason: null, snapshot });
-  await expect(request.run()).rejects.toMatchObject({ code: 'BUSY' });
+  await expect(request.run()).rejects.toMatchObject({ code: 'NOT_IDLE' });
   expect(request.calls).toEqual([]);
 });
 
@@ -95,17 +95,17 @@ test('typed partial input, recent typing and approval chrome are preserved witho
   ]) {
     const f = await steeringFixture();
     f.setPane(pane);
-    await expect(f.run()).rejects.toMatchObject({ code: 'BUSY' });
+    await expect(f.run()).rejects.toMatchObject({ code: 'NOT_IDLE' });
     expect(f.calls).toEqual(['connect', 'gate', 'ungate', 'close']);
     expect(readSteeringJournal(f.machine, f.session).operations).toEqual([]);
   }
   const typed = await steeringFixture();
   typed.setTyping(true);
-  await expect(typed.run()).rejects.toMatchObject({ code: 'BUSY' });
+  await expect(typed.run()).rejects.toMatchObject({ code: 'NOT_IDLE' });
   expect(typed.calls).toEqual([]);
   const pending = await steeringFixture();
   pending.setStatus({ type: 'active', activeFlags: ['waitingOnApproval'] });
-  await expect(pending.run()).rejects.toMatchObject({ code: 'BUSY' });
+  await expect(pending.run()).rejects.toMatchObject({ code: 'NOT_IDLE' });
   expect(pending.submissions).toEqual([]);
 });
 

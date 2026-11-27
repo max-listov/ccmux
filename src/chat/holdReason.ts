@@ -71,7 +71,7 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
   if (!ctx.chatEnabled) {
     return {
       kind: 'chat-off',
-      text: `recipient has chat disabled (ccmux chat on ${sessionName}, then restart it)`,
+      text: `recipient has chat disabled (stitchmux chat on ${sessionName}, then restart it)`,
     };
   }
   // Permanent, not transient: an agent with no safe-to-inject detector is skipped by the delivery
@@ -98,12 +98,12 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
       }
       return {
         kind: 'recipient-sleeping',
-        text: `recipient is sleeping — daemon will wake it automatically (or run: ccmux wake ${sessionName})`,
+        text: `recipient is sleeping — daemon will wake it automatically (or run: stitchmux wake ${sessionName})`,
       };
     }
     return {
       kind: 'recipient-stopped',
-      text: `recipient is not running (ccmux start ${sessionName})`,
+      text: `recipient is not running (stitchmux start ${sessionName})`,
     };
   }
   if (msg.notBefore !== null) {
@@ -149,6 +149,6 @@ export function holdReason(msg: ChatMessage, ctx: HoldContext): HoldReason {
     };
   return {
     kind: 'pending',
-    text: 'queued — the daemon delivers it (if nothing appears, check the daemon is running: ccmux doctor)',
+    text: 'queued — the daemon delivers it (if nothing appears, check the daemon is running: stitchmux doctor)',
   };
 }

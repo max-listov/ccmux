@@ -1,7 +1,7 @@
 import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { HOME, PLATFORM } from '../../util/env.ts';
+import { HOME, PLATFORM } from '../../util/home.ts';
 import { VERSION } from '../../util/version.ts';
 import { buildMacosIcns } from './icon.ts';
 import {
@@ -51,10 +51,10 @@ export function findDeveloperId(
   return match?.[1] ?? null;
 }
 
-/** Resolve signing identity: explicit option → CCMUX_SIGNING_IDENTITY env → Developer ID lookup. */
+/** Resolve signing identity: explicit option → STITCHMUX_SIGNING_IDENTITY env → Developer ID lookup. */
 export function resolveSigningIdentity(explicit?: string | null): string | null {
   if (explicit !== undefined) return explicit;
-  const fromEnv = process.env.CCMUX_SIGNING_IDENTITY?.trim();
+  const fromEnv = process.env.STITCHMUX_SIGNING_IDENTITY?.trim();
   if (fromEnv) return fromEnv;
   return findDeveloperId();
 }
@@ -62,7 +62,7 @@ export function resolveSigningIdentity(explicit?: string | null): string | null 
 /** Resolve the bundle identifier from explicit option, env override, or public default. */
 export function resolveMacosBundleId(explicit?: string): string {
   if (explicit?.trim()) return explicit.trim();
-  const fromEnv = process.env.CCMUX_MACOS_BUNDLE_ID?.trim();
+  const fromEnv = process.env.STITCHMUX_MACOS_BUNDLE_ID?.trim();
   return fromEnv || MACOS_DEFAULT_BUNDLE_ID;
 }
 
@@ -150,7 +150,7 @@ export function installVerifiedBundle(
   if (replacing) rmSync(staged, { recursive: true, force: true });
 }
 
-/** Build and Developer-ID-sign a `ccmux.app` candidate at `destinationApp` (fail-closed). */
+/** Build and Developer-ID-sign a `stitchmux.app` candidate at `destinationApp` (fail-closed). */
 export function buildSignedMacosBundle(
   destinationApp: string,
   options: {
@@ -168,7 +168,7 @@ export function buildSignedMacosBundle(
   }
   if (identity === '-') {
     throw new Error(
-      'codesign refused (fail-closed): ad-hoc signing is not permitted for ccmux.app',
+      'codesign refused (fail-closed): ad-hoc signing is not permitted for stitchmux.app',
     );
   }
   const contents = join(destinationApp, 'Contents');
@@ -193,7 +193,7 @@ export function buildSignedMacosBundle(
         '-o',
         binaryPath,
       ],
-      'clang ccmux-launcher',
+      'clang stitchmux-launcher',
     );
   } finally {
     rmSync(sourcePath, { force: true });
@@ -203,8 +203,8 @@ export function buildSignedMacosBundle(
   const bundleId = resolveMacosBundleId(options.bundleId);
   const infoPlist = {
     CFBundleIdentifier: bundleId,
-    CFBundleName: 'ccmux',
-    CFBundleDisplayName: 'ccmux',
+    CFBundleName: 'stitchmux',
+    CFBundleDisplayName: 'stitchmux',
     CFBundleExecutable: MACOS_LAUNCHER_NAME,
     CFBundlePackageType: 'APPL',
     CFBundleShortVersionString: version,
@@ -213,9 +213,9 @@ export function buildSignedMacosBundle(
     NSHighResolutionCapable: true,
     LSBackgroundOnly: true,
     NSLocalNetworkUsageDescription:
-      'ccmux runs supervised agent sessions and adapters that reach devices on the local network.',
+      'stitchmux runs supervised agent sessions and adapters that reach devices on the local network.',
     NSAppleEventsUsageDescription:
-      'ccmux runs supervised agent sessions that automate local macOS applications.',
+      'stitchmux runs supervised agent sessions that automate local macOS applications.',
   };
   const jsonPath = join(contents, 'Info.json');
   writeFileSync(jsonPath, JSON.stringify(infoPlist));
@@ -288,7 +288,7 @@ export function installMacosAppBundle(
   };
 }
 
-/** Keep a valid installed `ccmux.app` untouched unless missing, invalid, or `--force`. */
+/** Keep a valid installed `stitchmux.app` untouched unless missing, invalid, or `--force`. */
 export function ensureMacosAppBundle(
   options: {
     home?: string;

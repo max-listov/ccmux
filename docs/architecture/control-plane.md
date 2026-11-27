@@ -4,12 +4,12 @@ description: Typed same-user IPC, bounded live snapshots and managed daemon life
 type: architecture
 status: active
 created: 2026-08-28
-updated: 2026-11-27 18:09 +08:00
+updated: 2026-11-28 01:39 +08:00
 ---
 
 # Terminal-меню
 
-`terminal.prompt` / CLI `ccmux control terminal_prompt` принимает exact managed target и
+`terminal.prompt` / CLI `stitchmux control terminal_prompt` принимает exact managed target и
 возвращает распознанное меню с option ids, текущим выбором и одноразовым `observationId`
 со сроком 30 секунд. `terminal.respond` / `terminal_respond` принимает target, observationId
 и optionId. Поддержаны интерактивные Claude folder trust, declared permissions, resume picker
@@ -32,7 +32,7 @@ Message admission, application attribution and notification suppression follow t
 [message origin and audience contract](message-origin.md). Transport identity alone never proves
 a human author, and conversation receipt is not a notification request.
 
-CCMux owns session identity, the durable chat journal, delivery receipts, native provider adapters
+Stitchmux owns session identity, the durable chat journal, delivery receipts, native provider adapters
 and supervisor restart policy. Stitchkit owns the typed request contract, HTTP/CLI/tool execution,
 bounded Unix transport, stream framing, operation admission and process-local resource ordering.
 It does not replace the Codex/Claude inference loop, authentication or conversation history.
@@ -61,13 +61,13 @@ The OS user is trusted. This is not isolation against another process running as
 Browser Origin requests are refused. Forwarded identity headers have no authority by themselves.
 
 Without a managed claim the authenticated local user acts as `cli`. To preserve managed sender
-identity, pass both `session` and its inherited `CCMUX_CHAT_CREDENTIAL`. The daemon checks the
+identity, pass both `session` and its inherited `STITCHMUX_CHAT_CREDENTIAL`. The daemon checks the
 registered session, chat enablement and current capability; rotation invalidates an old client.
 Provider account credentials are neither copied nor returned. Every target includes
-`kind=managed`, `source=ccmux`, `machine`, `agent`, `session` and exact `threadId`. Commands refuse
+`kind=managed`, `source=stitchmux`, `machine`, `agent`, `session` and exact `threadId`. Commands refuse
 replacement UUIDs, providers and machine identities, even if the name matches.
 
-`createControlClient()` discovers the configured socket using CCMux's shared configuration
+`createControlClient()` discovers the configured socket using Stitchmux's shared configuration
 selection and location rules. Discovery needs no provider binary. An explicit local `socket`
 option selects another isolated instance; it is deployment configuration, never a request-body
 path to make the daemon read. A client captures its location at construction. After root/identity
@@ -78,7 +78,7 @@ monitoring publisher continues to follow live configuration independently.
 # Contract
 
 `src/control/schema/contract.ts` is the single schema-derived HTTP/CLI/tool declaration. HTTP paths have
-no implicit `/api` prefix. The CLI is `ccmux control <command>`; `--help` renders contract inputs.
+no implicit `/api` prefix. The CLI is `stitchmux control <command>`; `--help` renders contract inputs.
 Object-valued flags such as `--target` accept JSON; `--json` selects compact output.
 
 | Client method / CLI | HTTP | Result |
@@ -112,15 +112,15 @@ Object-valued flags such as `--target` accept JSON; `--json` selects compact out
 | `fork` | POST `/control/fork` | Same-workspace native fork with a new managed identity |
 | `session.idle` / `session.sleep` / `session.wake` / `session.pin` | POST `/control/session/{idle,sleep,wake,pin}` | Idle proof (`read`), reversible sleep with optional `forcePolicy`, wake, and pinned flag (`write`); all four forward across fleet peers |
 
-The service uses the unversioned prefix `/ccmux/control`, envelope revision **current** and sole
-native stream profile **ccmux-native**. There is no numbered dispatcher, compatibility client or
+The service uses the unversioned prefix `/stitchmux/control`, envelope revision **current** and sole
+native stream profile **stitchmux-native**. There is no numbered dispatcher, compatibility client or
 text-only alias. Envelope and cursor format guards remain strict; they do not select a legacy path. See
 [native content and turn controls](native-content-and-turn-controls.md) for the current model,
 attachment, content-replay, steering and context contracts.
 
 `create` accepts an absolute workspace, a legal registry name, explicit native flags and a
 caller-generated immutable request UUID. The workspace is normalized before the request fingerprint
-is persisted. It reuses the same pending/promotion transaction as `ccmux new`; a lost reply or retry
+is persisted. It reuses the same pending/promotion transaction as `stitchmux new`; a lost reply or retry
 reconciles the stable registration generation and cannot mint a second writer. Reusing the request
 UUID for another name, workspace or flag set is `IDEMPOTENCY_CONFLICT`. `archive` marks the exact
 identity before stopping its process group, so healing and routing stop while registry and provider
@@ -134,7 +134,7 @@ normalization nor path-prefix matching establishes product membership or grants 
 
 Product-to-repository membership is explicit and many-to-many. A private companion repository may
 belong to the same product; consuming a dependency does not automatically make it a member.
-The consumer owns that private catalogue, independently of harness project labels. CCMux exposes
+The consumer owns that private catalogue, independently of harness project labels. Stitchmux exposes
 execution facts and exact session identities, not a project registry or inferred membership.
 
 An optional `runtime` selects Claude, Codex or native OpenCode independently of inference selection.
@@ -201,7 +201,7 @@ the native default and existing known-model recipe behavior. Custom-provider con
 host-owned; this interface does not aggregate or proxy external inference services.
 
 An optional recipe `collaborationMode` selects only an installed App Server preset. Before each
-managed `turn/start`—bootstrap, immediate or deferred delivery, and delivery after restart—CCMux
+managed `turn/start`—bootstrap, immediate or deferred delivery, and delivery after restart—Stitchmux
 reads `collaborationMode/list`, verifies the requested mode and combines the preset with the loaded
 thread model. It sends `developer_instructions: null`, which delegates instructions to the
 provider's built-in preset. Missing support returns generic `COLLABORATION_MODE_UNAVAILABLE` before
@@ -247,7 +247,7 @@ first frame immediately after `create_session`. A different native conversation 
 
 `models({})` reads the native App Server catalog before the first conversation, with no managed
 target or registry row. An optional `launchRecipe: { id, revision }` selects host-owned configuration;
-a host-catalog env source must be absolute or home-relative, not workspace-relative. CCMux starts
+a host-catalog env source must be absolute or home-relative, not workspace-relative. Stitchmux starts
 one short-lived metadata App Server with the existing native flags/session-environment mechanism,
 connects once it accepts connections — the socket path appears at `bind()` before the server
 listens, so a refused or vanished endpoint is retried until the caller's signal or the provider's
@@ -256,8 +256,8 @@ initializes it, reads `config/read` and `model/list`, then closes the socket and
 process group through `stitchkit/process` with `ownerLoss: 'terminate'`. A native guard owns the
 group and kills it when its inherited kernel channel closes after owner death, including SIGKILL;
 JavaScript disposal is used for normal completion and cancellation. The guard adds one process
-per metadata read. The narrow `stitchkit/process/owner-loss` bootstrap runs before CLI dispatch
-and claims only the guard invocation, so the full process runner stays behind a lazy import.
+per metadata read. The narrow `stitchkit/process/bootstrap` (`bootstrapPackageProcess`) runs before CLI
+dispatch and claims only the package's own invocations, so the full process runner stays behind a lazy import.
 An unavailable guard refuses the catalog before provider startup. Release-bundle tests cover
 catalog reads and owner loss without installed dependencies beside the bundle. It never calls `thread/start`
 or `thread/resume`. Failure retains only the last
@@ -339,7 +339,7 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 
 ## Чтения, которые раньше были только командой
 
-Команда человека и операция контракта — два представления одной функции домена. `ccmux whois`,
+Команда человека и операция контракта — два представления одной функции домена. `stitchmux whois`,
 `search`, `fleet`, `chat log`, `transcript --message`, `msg` и `msg sent` читают флаги и
 печатают; тот же ответ программа получает по имени, тем же объектом, что команда печатает под
 `--json`. Схему этого ответа команда печатает под `--schema` из одной таблицы
@@ -370,7 +370,7 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 **Поиск отвечает кадрами.** Один ответ может быть всем, что человек написал за день, целыми
 текстами, — это больше любого ограниченного ответа. Кадры: `conversation`, `match`, `mark` и
 последний `end` с тем, какие машины опрошены и какие нет. `collectSearch` собирает из них объект
-`ccmux search --json`. Поток, оборванный до `end`, — `SearchStreamCutError`: читатель не узнал,
+`stitchmux search --json`. Поток, оборванный до `end`, — `SearchStreamCutError`: читатель не узнал,
 что было опрошено, и не вправе считать полученное ответом.
 
 **Поиск исполняется не в цикле демона.** Демон отвечает о состоянии всех сессий из одного цикла;
@@ -400,20 +400,20 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 `session.sleep`, `session.wake`, `session.pin`, `session.start`, `session.stop`, `session.restart`,
 `session.remove` и `session.keys` с целью на другой машине
 демон не исполняет и не отклоняет: он передаёт тот же вызов — имя операции и проверенный вход —
-машине цели (`src/control/peerOperation.ts`). Та запускает `ccmux _peer-operation <операция>` со
+машине цели (`src/control/peerOperation.ts`). Та запускает `stitchmux _peer-operation <операция>` со
 входом на stdin; программа спрашивает свой демон через локальный сокет и печатает одну строку —
 ответ или отказ с его кодом. Транспорт тот же, что у чтений флота: удалённый маршрут, где он
 настроен, иначе ssh. Отказ машины цели возвращается под её кодом; машина, чей выпуск ещё не знает
 `_peer-operation` или чей демон не знает операцию, даёт `UNKNOWN_OPERATION` с именем операции.
 
 Права решаются там, где сессия. Демон цели видит вызов как командную строку своей машины —
-ровно так, как туда всегда приходила `ccmux stop <машина>:<имя>`, — поэтому делегированная сессия
+ровно так, как туда всегда приходила `stitchmux stop <машина>:<имя>`, — поэтому делегированная сессия
 отказывает, если правила её машины не разрешают это командной строке. Вызывающего через
 объявленный сервис (`declared-service`) демон не передаёт: его досягаемость — машина, чей сервис
 его аутентифицировал, а переданный вызов действовал бы на другой машине с правами её командной
 строки, которых ему никто там не давал. Такой вызывающий обращается к сервису машины цели.
 
-**Письмо — одна функция.** `ccmux msg` и `letter.send` вызывают `sendLetter`
+**Письмо — одна функция.** `stitchmux msg` и `letter.send` вызывают `sendLetter`
 (`src/chat/sendLetter.ts`): кто может отправить, куда разрешается имя, что пишется в журнал и что
 отвечает квитанция, у двух дорог одно. Отправитель — тот, кто вызвал: сессия со своим
 удостоверением, командная строка (`cli`) или программа на сокете (`service`). `message.send` —
@@ -421,19 +421,19 @@ only cancels that wait. Deadlines never acknowledge a message or declare a runni
 происхождением; письмом он не является.
 
 **Лента чата потоком.** `watchChatLog` отдаёт ленту этой машины от курсора, который она же дала:
-сначала кадр машины, затем каждую строку по мере записи. Это кадры `ccmux chat log --follow` от
+сначала кадр машины, затем каждую строку по мере записи. Это кадры `stitchmux chat log --follow` от
 того же источника (`followLog`); курсор, которого лента не давала, — `INVALID_INPUT`, а не «с
 этого момента». Читатель, отставший больше чем на 4096 кадров, получает `LAGGED` и продолжает со
 своего последнего курсора.
 
 # Resident consumption
 
-Import `ccmux/control-client` in Bun, or download the release's immutable `control-client.js`
+Import `stitchmux/control-client` in Bun, or download the release's immutable `control-client.js`
 and verify `control-client.sha256`. The ESM asset bundles its dependencies and starts no runtime
 on import. The command-line bundle also remains self-contained/offline.
 
 ```ts
-import { createControlClient, currentControlSnapshot } from "ccmux/control-client";
+import { createControlClient, currentControlSnapshot } from "stitchmux/control-client";
 
 const client = createControlClient();
 const stop = new AbortController();
@@ -485,7 +485,7 @@ One possible execution-host declaration is:
   "launchRecipes": {
     "provider-a": {
       "revision": "r1",
-      "envFile": "~/.config/ccmux/provider-a.env",
+      "envFile": "~/.config/stitchmux/provider-a.env",
       "flags": [
         "-c", "model_provider=\"provider-a\"",
         "-c", "model_providers.provider-a.name=\"Provider A\"",
@@ -516,30 +516,32 @@ there is no custom HTTP parser, stream decoder, cancellation shim or application
 `createControlProxy()` exposes the same unary contract as a peer-free Stitchkit `ServiceDef`.
 `createToolInvoker(proxy, { transport: 'MCP' })` exercises canonical tool dispatch; an application
 can pass the proxy to its own MCP/agent mount. Authorization is always checked at the daemon,
-not trusted from an in-process tool context. Close the proxy with `proxy.close()`. CCMux does not
+not trusted from an in-process tool context. Close the proxy with `proxy.close()`. Stitchmux does not
 install an MCP server into existing provider sessions or change Desktop configuration.
 
 # Declared service and native stream binding
 
-When the Stitchwire route has a `serviceDirectory`, the CCMux daemon serves
-`ccmux.control` at `POST /invoke` on its existing, same-user control socket. The local Wire
+When the Stitchwire route has a `serviceDirectory`, the Stitchmux daemon serves
+`stitchmux.control` at `POST /invoke` on its existing, same-user control socket. The local Wire
 agent authenticates the calling node. The public SDK validates the envelope and attaches
-the caller to the request. CCMux checks the local grant and dispatches as a
+the caller to the request. Stitchmux checks the local grant and dispatches as a
 `declared-service` principal through the ordinary control handlers and mutation admission.
-A custom same-user transport can also forward the authenticated node in `x-ccmux-caller`.
+The envelope is the only way a request becomes a service call: no header on the socket names a
+caller, so a same-user process that sends one is still this machine's local caller.
 
 Configure the agent's `services.descriptors` with the absolute path to
-`ccmux.control.declaration.json` inside the private service directory. CCMux writes the
-declaration and the sibling `ccmux.control.json` from its running version and contract.
-The operator owns the sibling `ccmux.control.callers.json`. For example,
+`stitchmux.control.declaration.json` inside the private service directory. Stitchmux writes the
+declaration and the sibling `stitchmux.control.json` from its running version and contract.
+The operator owns the sibling `stitchmux.control.callers.json`. For example,
 `[{"caller":"host-a","scope":{"kind":"service-read"}}]` grants reads. A write requires
-an entry with `"scope":{"kind":"operation","operation":"letter.send"}`. CCMux rereads the
+an entry with `"scope":{"kind":"operation","operation":"letter.send"}`. Stitchmux rereads the
 file every five seconds. A missing or invalid policy withdraws the grants. Stopping the daemon
 withdraws its declaration. Outbound command routing works independently of this service.
 
 **The service is the contract, and each operation says what it does.** The declared service carries
 every operation of `controlContract`, and each one declares in `effect` whether it is a `read`
-or a `write` (`src/control/schema/serviceEffect.ts`). There is no default — an operation that says
+or a `write` (`effect` on each endpoint in `src/control/schema/contract.ts`; the daemon projects its
+descriptor from them in `src/control/wire/descriptor.ts`). There is no default — an operation that says
 nothing does not compile — because the failure this replaced was a silent one: a transport kept its
 own list of reads beside the contract, written at one release, which called every later operation a
 write, and the descriptor built from it was never regenerated, so every operation added after it was
@@ -548,20 +550,26 @@ absent from the service on every machine, with nothing saying so.
 - A `read` changes nothing on the owner, so a grant to read the service admits it without naming it;
   a `write` needs a grant naming it. Idempotent is not read: `session.archive`, `letter.send`,
   `daemon.performance.configure` and every lifecycle operation are writes.
-- The daemon holds the boundary itself: a `declared-service` caller reaches the control operations
-  and is answered `FORBIDDEN` (403) for anything else on the socket — the contract identity, the
-  event streams, the peer reads — whatever a transport forwards.
+- The daemon holds the boundary itself: the ingress dispatches only operations its descriptor
+  declares, and a `declared-service` caller is answered `FORBIDDEN` (403) for anything else on the
+  socket — the contract identity, the event streams, the peer reads.
 - Every operation is a POST with a static route and a unary JSON answer, the only shape a service
   descriptor carries (`test/control-service.test.ts`); a parameterised route or a stream would make
   the projection refuse the whole service.
 
-The npm package `@ccmux/control-service-client` ships two ESM entry points with
-TypeScript declarations. The package root exports the injected-fetch client. Its `./control-client`
-subpath exports the resident Unix client and observation schemas. The declaration build resolves
-relative source imports to ESM paths. The GitHub release carries the same npm archive and
-`control-service-client.sha256`. The package includes `native-stream.json`.
-For a transport projecting its descriptor the package exports `controlServiceEffects`, and
-its own `package.json`: the package version is the service revision, so a node serving a descriptor
+The npm package `@stitchmux/client` (`src/client.ts`, built by `scripts/package-client.ts`) is the one
+client: its root exports both transports — `createControlClient` for the local daemon socket and
+`createInjectedControlClient` for a caller's transport — with the schemas, `refusals` and resident
+status frames; `./monitoring` exports the monitoring snapshot reader. Both entry points come from one
+`Bun.build` with a shared chunk, so a schema reached through either is the same object; `zod` and
+`stitchkit` are peers, and the code carries the package version, not the source's `package.json`,
+nor the command line's self re-exec (`src/util/env.ts`; the default state root takes its home
+directory from `src/util/home.ts`). `scripts/verify-client.ts` installs the archive and refuses
+either, and refuses a build in which a module both entries import is emitted twice.
+The declaration build resolves relative source imports to ESM paths. The GitHub release carries the
+same npm archive and `client.sha256`. The package includes `native-stream.json`.
+Each operation's `effect` travels with `controlContract`, and the package exports its own
+`package.json`: the package version is the service revision, so a node serving a descriptor
 from an older client says which release that is. The package grants nothing and opens no connection. The operator owns the
 transport's socket path, node binding, credentials and exact service/revision/operation/effect
 grants.
@@ -586,9 +594,27 @@ removes what was left. The window is bounded in the request schema, so an over-l
 by name instead of by a transport size error after the work is done.
 
 The public `controlContract` declares the current operations and their individual deadlines. A remote
-wait is capped at 25 seconds inside a 30-second service deadline. Transport integration and descriptor
-generation belong outside this repository. Delivery is never retried by the owner client. If transport
-delivery is unknown, the caller retains that uncertainty. An idempotent
+wait is capped at 25 seconds inside a 30-second service deadline. The daemon serves the declared
+service itself and projects its descriptor from the contract (`src/control/wire/`). Delivery is never retried by the owner client. If transport
+delivery is unknown, the caller retains that uncertainty.
+
+**Refusals come from one table.** `src/control/schema/refusals.ts` declares every refusal with
+Stitchkit's `defineErrors`: its code, its one HTTP status, `retryable` and a default sentence. A
+throw site raises `refusals.errors.<CODE>()` and may give its own `message`; no code is typed as a
+string where it is thrown (`test/refusals.test.ts`). The table is exported to clients, so a consumer
+shows a code's sentence and branches on its `retryable` without a dictionary of its own.
+
+**The session lifecycle operations declare their refusals.** `session.idle`, `session.sleep`,
+`session.wake`, `session.pin` and `session.list` carry `refuses` in `controlContract`: the catalog
+codes each handler can reach, on the local path, through the hand-over to the target machine and
+through the mutation and admission wrappers. A typed client's `client['session.sleep'].refusal(error)`
+narrows `code` to those codes plus Stitchkit's own, and a code the operation does not declare does
+not type-check (`scripts/verify-client.ts`, under `Bundler` and `NodeNext`). The server holds the
+handler to the list: an undeclared code leaves as `INTERNAL_SERVER_ERROR` (500), and the daemon logs
+`control operation refused with a code it does not declare` with the code it replaced
+(`test/peer-operation.test.ts`), which is how a missing entry, or a target machine on another
+release answering with a code this one does not have, shows up. The other operations declare
+nothing yet and answer any catalog code. An idempotent
 `session.create` may deliberately retry the same immutable `requestId`: the durable create receipt
 reconciles one registration generation and one writer. Other mutations require their own exact
 idempotency identity or an authoritative read before any caller-selected retry.
@@ -596,10 +622,10 @@ idempotency identity or an authoritative read before any caller-selected retry.
 Operation IDs are dot-delimited authorization identifiers and satisfy
 `^[a-z0-9][a-z0-9._-]*$`. The published client is generated directly from `controlContract` and accepts
 an injected fetch implementation. There is no second operation catalog, descriptor copy or legacy
-translation path inside CCMux.
+translation path inside Stitchmux.
 
 Native updates use a separate fixed stream producer, not unary polling. An allowlisted profile is
-created with `createCcmuxNativeStreamProfile(<absolute standard ccmux executable>)`. The standard
+created with `createStitchmuxNativeStreamProfile(<absolute standard stitchmux executable>)`. The standard
 installer writes that executable as a POSIX `/bin/sh` shim with absolute Bun and bundle paths and
 replaces it atomically. It therefore runs with the profile's empty environment; `PATH`, a
 caller-authored wrapper and copied argv are not prerequisites. Bundle upgrades and rollback retain
@@ -663,12 +689,13 @@ fetches the same line again.
   256 KiB. Body/request cap: 64 KiB; client response
   header cap: 16 KiB; shared unary response cap: 1 MiB + 1 KiB to accommodate external snapshots.
   Managed snapshot bounds remain 512 KiB. Client header deadline at most 65 seconds.
-- Mutation caller budgets are 60 seconds (create), 15 seconds (message/start/archive), and 10 seconds
-  (interrupt/respond). A timed-out
+- Mutation admission budgets are 60 seconds (create), 30 seconds (start, sleep, wake), 15 seconds
+  (message, archive, stop, restart, remove, keys, pin, permission update), and 10 seconds
+  (interrupt, command). A timed-out
   call retains its admission lease until its underlying operation really settles; retries must
   reconcile an immutable message ID. Capacity refusal is `BUSY`/429; draining is 503.
 
-With `remoteTransport.kind` set to `stitchwire`, CCMux sends the peer, argv, stdin and
+With `remoteTransport.kind` set to `stitchwire`, Stitchmux sends the peer, argv, stdin and
 deadline directly to the local Wire agent through `@stitchwire/client`. The agent owns the
 broker connection, credentials and node policy. A custom command transport can implement the
 public Stitchkit Unix adapter contract. Both return the same delivery and refusal information.
@@ -703,13 +730,13 @@ ready отмечается после готовности required resource gra
 Структурные логи проходят через Stitchkit `createBoundedLogger`: секретные поля, URL с query,
 fragment или userinfo маскируются, Error и циклические значения безопасно сериализуются.
 Запись вместе с envelope ограничена 16 KiB; `ts`, `pid`, `src`, `level` назначает sink.
-CCMux сохраняет свой JSONL sink, rotation, динамический threshold и выключаемое stderr mirror.
+Stitchmux сохраняет свой JSONL sink, rotation, динамический threshold и выключаемое stderr mirror.
 Логгер не заменяет metadata-only audit и не делает произвольный текст безопасным для публикации.
 
 `RuntimeWake` использует `createRevisionSignal` для единственного ожидающего runtime owner:
 монотонная revision сохраняет уведомление во время работы, deadline допускает reconciliation,
 abort/close освобождает ожидание. Наблюдение точных файлов команд и фильтрация output-only
-filesystem events остаются в CCMux; provider outputs не будят собственного producer.
+filesystem events остаются в Stitchmux; provider outputs не будят собственного producer.
 
 Stitchkit 0.70.5 owns cooperative HTTP stream cancellation when admission closes. Native feed
 sources receive their existing signal and finish before the server resource reports closed;
@@ -755,7 +782,7 @@ daemon regression in `test/daemon-update.test.ts` verifies install, clean shutdo
 
 Tests: `test/control.test.ts`, `test/control-lifecycle.test.ts`, `test/control-models.test.ts`, `test/codex-owned-connection.test.ts`,
 `test/control-client-bundle.test.ts`, `test/monitoring-daemon.test.ts`
-and `test/bundle-selfcontained.test.ts`. `scripts/verify-control-service-client.ts` installs the SDK
+and `test/bundle-selfcontained.test.ts`. `scripts/verify-client.ts` installs the SDK
 by version into an empty consumer, runs Bun and checks both TypeScript resolution modes without
 `allowImportingTsExtensions`. CI repeats this check against public npm. Explicit provider E2E: run
 `scripts/codex-owned-runtime-probe.ts`, then
@@ -777,10 +804,10 @@ on each runtime. Native completion is correlated by message ID and registration 
 bounded history, retained preview and safe native content are checked against that exact turn.
 Run against the checksum-verified published client and installed owner for release qualification.
 
-`scripts/control-model-selection-acceptance.ts [ccmux-entrypoint] [published-client-module]` uses isolated
+`scripts/control-model-selection-acceptance.ts [stitchmux-entrypoint] [published-client-module]` uses isolated
 state and an isolated tmux socket with native authentication. The optional client module is the
 extracted, checksum-verified service package's `dist/index.js`; supplying it together with the
-installed CCMux entrypoint tests the published boundary rather than only source imports.
+installed Stitchmux entrypoint tests the published boundary rather than only source imports.
 It proves empty-inventory service discovery, directory reads,
 two catalog models under one profile, native shell execution in Plan, same-ID refusal/retry, and
 provider/daemon restart. Tool acceptance requires a completed native `commandExecution` item and

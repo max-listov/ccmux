@@ -83,7 +83,7 @@ test('every key the catalog publishes is one the admission accepts', () => {
 });
 
 test('a receipt replays only the canonical fingerprint', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-receipt-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-receipt-'));
   roots.push(root);
   const m = makeMachine({ stateDir: join(root, 'state') });
   const s = makeSession({

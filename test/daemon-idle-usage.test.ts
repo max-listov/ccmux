@@ -24,7 +24,7 @@ const record = (id: string, input: number) =>
 test.skipIf(!Bun.which('tmux'))(
   'full daemon keeps prepared archive quiet and completes requested catch-up',
   async () => {
-    const root = mkdtempSync('/tmp/ccmux-idle-daemon-');
+    const root = mkdtempSync('/tmp/stitchmux-idle-daemon-');
     const tmux = Bun.which('tmux');
     if (!tmux) throw new Error('tmux required');
     const machine = makeMachine({
@@ -32,7 +32,7 @@ test.skipIf(!Bun.which('tmux'))(
       stateDir: root,
       projectsDir: join(root, 'projects'),
       tmuxBin: tmux,
-      tmuxSocket: `ccmux-idle-${crypto.randomUUID()}`,
+      tmuxSocket: `stitchmux-idle-${crypto.randomUUID()}`,
       claudeBin: '/usr/bin/false',
       codexBin: '/usr/bin/false',
       opencodeBin: '/usr/bin/false',
@@ -64,11 +64,11 @@ test.skipIf(!Bun.which('tmux'))(
       {
         env: {
           ...process.env,
-          CCMUX_CONFIG: config,
-          CCMUX_RC_PREFIX: 'host-a',
-          CCMUX_STATE_DIR: root,
-          CCMUX_CACHE_DIR: join(root, 'cache'),
-          CCMUX_DATA_DIR: join(root, 'data'),
+          STITCHMUX_CONFIG: config,
+          STITCHMUX_RC_PREFIX: 'host-a',
+          STITCHMUX_STATE_DIR: root,
+          STITCHMUX_CACHE_DIR: join(root, 'cache'),
+          STITCHMUX_DATA_DIR: join(root, 'data'),
         },
         stdout: 'ignore',
         stderr: 'pipe',

@@ -12,9 +12,9 @@ import { appendSession, loadSessions } from './registry.ts';
 import { SessionSchema } from './schema.ts';
 import { startSession } from './start.ts';
 
-// Adopt an EXTERNAL conversation into ccmux. The conversation is a jsonl + 0..N live
+// Adopt an EXTERNAL conversation into stitchmux. The conversation is a jsonl + 0..N live
 // processes; the safe action depends on the writers (see writers.ts):
-//   no writers   → COLD adopt: register + resume; ccmux becomes the only writer.
+//   no writers   → COLD adopt: register + resume; stitchmux becomes the only writer.
 //   live writers → never silently resume (that's a second writer = a forked conversation —
 //                  the 2026-06-10 incident). Two EXPLICIT modes instead:
 //     fork     — copy the jsonl under a NEW uuid and resume THAT. Original + its writer

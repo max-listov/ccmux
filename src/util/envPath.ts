@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { PLATFORM } from './env.ts';
+import { PLATFORM } from './home.ts';
 
 /** claude/codex draw their box-rules with Unicode; with NO UTF-8 locale they fall back to
  *  ASCII ('_' '|' '-') — the stray-underscore look. Boot daemons (launchd/systemd) start with
@@ -11,7 +11,7 @@ export function ensureUtf8Locale(env: Record<string, string>): void {
 
 /** The user's REAL login-shell PATH (fish-aware) — boot daemons (launchd/systemd) start
  *  with a thin PATH, so re-derive what the user's interactive shell would see. Mirrors bash
- *  ccmux: fish exposes $PATH space-separated → ask it to colon-join; POSIX prints as-is.
+ *  stitchmux: fish exposes $PATH space-separated → ask it to colon-join; POSIX prints as-is.
  *  Returns null if $SHELL is unset or the probe fails (callers fall back to ensurePath). */
 export function loginShellPath(): string | null {
   const shell = process.env.SHELL;

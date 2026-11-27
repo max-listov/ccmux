@@ -36,7 +36,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 const HANG_GUARD_MS = HISTORY_LIMITS.deadlineMs;
 
 async function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-context-test-');
+  const root = mkdtempSync('/tmp/stitchmux-context-test-');
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const s = makeSession({
     agent: 'codex',

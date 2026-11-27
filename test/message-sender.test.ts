@@ -40,7 +40,7 @@ const user = (uuid: string, text: string, at = AT): string =>
 async function conversation(
   run: (f: { m: MachineConfig; session: Session; write(lines: string[]): void }) => Promise<void>,
 ): Promise<void> {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-sender-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-sender-')));
   try {
     const projectsDir = join(root, 'projects');
     const m = makeMachine({ projectsDir, rcPrefix: 'host-a', stateDir: join(root, 'state') });
@@ -57,7 +57,7 @@ async function conversation(
   }
 }
 
-test('a person, a letter, the harness and keys typed by ccmux are told apart', async () => {
+test('a person, a letter, the harness and keys typed by stitchmux are told apart', async () => {
   await conversation(async ({ m }) => {
     const letter = makeChatMessage({ body: 'build is green' });
     appendMessage(m, letter);
@@ -77,7 +77,7 @@ test('a person, a letter, the harness and keys typed by ccmux are told apart', a
     expect(verdict('do it, no commit')).toBe('person');
     // Pasted and dictated text is still sent by the person who sent it.
     expect(verdict('a long paste\n\nwith a footer\n\nref abcd1234')).toBe('person');
-    // A letter is one because ccmux's own ledger holds it — as delivered, and as a hook returns it.
+    // A letter is one because stitchmux's own ledger holds it — as delivered, and as a hook returns it.
     expect(verdict(delivered)).toBe('session-letter');
     expect(verdict(`Stop hook feedback:\n${delivered}`)).toBe('session-letter');
     // The same words under an id the ledger does not hold are nobody's letter and no person's.
@@ -87,9 +87,9 @@ test('a person, a letter, the harness and keys typed by ccmux are told apart', a
     expect(verdict('<task-notification>\n<task-id>b1</task-id>')).toBe('harness');
     expect(verdict('<system-reminder>be brief</system-reminder>')).toBe('harness');
     expect(verdict('Stop hook feedback:\nlint failed')).toBe('harness');
-    // What an agent typed into the pane through ccmux reads exactly like a person's message.
-    expect(verdict('approve the plan')).toBe('ccmux-keys');
-    expect(verdict('  approve the plan\n')).toBe('ccmux-keys');
+    // What an agent typed into the pane through stitchmux reads exactly like a person's message.
+    expect(verdict('approve the plan')).toBe('stitchmux-keys');
+    expect(verdict('  approve the plan\n')).toBe('stitchmux-keys');
     // Not the same text, not the same session, not the same hour: a person's.
     expect(verdict('approve the plan now')).toBe('person');
     expect(

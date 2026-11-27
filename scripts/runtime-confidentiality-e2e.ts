@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { LOG_FILE } from '../src/config/paths.ts';
 import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import type { MachineConfig, Session } from '../src/types.ts';
+import { LOG_FILE } from '../src/util/log.ts';
 
 /** Verify the installed executable and a real inherited secret-like fixture without printing it. */
 export async function verifyRuntimeConfidentiality(
@@ -27,7 +27,7 @@ export async function verifyRuntimeConfidentiality(
     JSON.stringify(session),
     argv.stdout.toString(),
     // The daemon's own file name, not a spelling of it: a daemon run from source writes
-    // `ccmux.dev.log`, and a hard-coded `ccmux.log` failed the check before it could look.
+    // `stitchmux.dev.log`, and a hard-coded `stitchmux.log` failed the check before it could look.
     readFileSync(join(m.stateDir, basename(LOG_FILE)), 'utf8'),
   ];
   if (evidence.some((value) => value.includes(fixture)))

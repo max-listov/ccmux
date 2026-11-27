@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileStamp } from '../src/util/fileStamp.ts';
 
 test('a stamp follows a symlink by default, stamps the link itself when asked, and names absence', () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-file-stamp-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-file-stamp-'));
   try {
     const target = join(root, 'target');
     const link = join(root, 'link');

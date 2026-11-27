@@ -13,7 +13,7 @@ import {
 } from '../session/status.ts';
 
 /**
- * `ccmux hook-status` — Claude Code lifecycle hooks (UserPromptSubmit / Stop / SessionStart) for a
+ * `stitchmux hook-status` — Claude Code lifecycle hooks (UserPromptSubmit / Stop / SessionStart) for a
  * managed session. Turns the authoritative turn-boundary events into a `working`/`idle` lifecycle
  * status file, so `list`/TUI stop guessing working-vs-idle from the pane spinner.
  *
@@ -26,7 +26,7 @@ import {
  * supervisor closes those from outside (`src/events/observe.ts`) once it can prove the turn is over,
  * which is why `working` here means a turn that is genuinely running rather than one that once was.
  *
- * Identity is `CCMUX_SESSION` (the stable session NAME set at launch), like `stop-hook`. Writes
+ * Identity is `STITCHMUX_SESSION` (the stable session NAME set at launch), like `stop-hook`. Writes
  * NOTHING to stdout (a Stop hook's stdout is parsed by Claude — the chat `stop-hook` runs on the same
  * event and owns the `{decision:block}` channel; this must stay silent). Fully fail-open: any error
  * exits 0 so a status hiccup can never wedge a turn.
@@ -139,7 +139,7 @@ export function lifecycleToWrite(
 export async function cmdHookStatus(): Promise<number> {
   try {
     const raw = await Bun.stdin.text().catch(() => '');
-    const self = process.env.CCMUX_SESSION;
+    const self = process.env.STITCHMUX_SESSION;
     if (self === undefined || self === '') return 0;
     const status = parseLifecycle(raw, Date.now());
     if (status === null) return 0;

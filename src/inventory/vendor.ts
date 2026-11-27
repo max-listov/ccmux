@@ -74,7 +74,7 @@ export function vendorMark(id: string | null): VendorMark | null {
   return vendor === null ? null : MARKS[vendor];
 }
 
-/** The mark as plain text for the colourless surfaces (`ccmux list`, `ccmux fleet`, statusline). */
+/** The mark as plain text for the colourless surfaces (`stitchmux list`, `stitchmux fleet`, statusline). */
 export function vendorGlyph(id: string | null): string {
   return vendorMark(id)?.glyph ?? VENDOR_CELL;
 }

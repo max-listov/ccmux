@@ -51,9 +51,9 @@ export async function verifyClientProvenance(
 ) {
   const version = archive.manifest.version;
   const ref = `refs/tags/v${version}`;
-  const repository = 'https://github.com/max-listov/ccmux';
+  const repository = 'https://github.com/max-listov/stitchmux';
   const signal = AbortSignal.timeout(30_000);
-  const url = `${NPM_REGISTRY}/-/npm/v1/attestations/@ccmux%2fcontrol-service-client@${version}`;
+  const url = `${NPM_REGISTRY}/-/npm/v1/attestations/@stitchmux%2fclient@${version}`;
   const request = () => get(url, { signal, redirect: 'error' });
   let response = await request();
   for (let retry = 0; response.status === 404 && retry < 9; retry++) {
@@ -78,7 +78,7 @@ export async function verifyClientProvenance(
   const workflow = build.externalParameters.workflow;
   const digest = new Bun.CryptoHasher('sha512').update(archive.bytes).digest('hex');
   if (
-    proof.subject[0]?.name !== `pkg:npm/%40ccmux/control-service-client@${version}` ||
+    proof.subject[0]?.name !== `pkg:npm/%40stitchmux/client@${version}` ||
     proof.subject[0]?.digest.sha512 !== digest ||
     workflow.repository !== repository ||
     workflow.ref !== ref ||
@@ -152,7 +152,7 @@ async function publishFromTag(archive: ClientArchive): Promise<number> {
     env.GITHUB_ACTIONS !== 'true' ||
     env.GITHUB_REF !== ref ||
     !env.ACTIONS_ID_TOKEN_REQUEST_URL ||
-    env.GITHUB_WORKFLOW_REF !== `max-listov/ccmux/.github/workflows/ci.yml@${ref}`
+    env.GITHUB_WORKFLOW_REF !== `max-listov/stitchmux/.github/workflows/ci.yml@${ref}`
   )
     throw new Error('Publishing requires the trusted tagged CI workflow');
   if (

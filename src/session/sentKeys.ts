@@ -4,13 +4,13 @@ import type { MachineConfig } from '../types.ts';
 import { appendJsonl, readJsonl } from '../util/jsonl.ts';
 
 /**
- * What `ccmux send` typed into a session's pane, kept so it can be told apart afterwards.
+ * What `stitchmux send` typed into a session's pane, kept so it can be told apart afterwards.
  *
  * Keys sent to a pane arrive in the conversation exactly as if a person had typed them: the provider
  * records a user message and nothing in it says who pressed the keys. A reader that asks "did a
  * person send this" would otherwise be told yes for any text an agent chose to type. So each send
  * leaves a line here — whose pane, a digest of the text, when, and who ran the command — and a
- * message whose text was typed by ccmux is answered as that.
+ * message whose text was typed by stitchmux is answered as that.
  *
  * A digest, not the text: this is a record of the fact, and the words already lie in the
  * conversation.

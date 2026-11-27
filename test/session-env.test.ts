@@ -19,7 +19,7 @@ import { withNoEnvFile } from '../src/util/env.ts';
 
 let dir: string;
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'ccmux-env-'));
+  dir = mkdtempSync(join(tmpdir(), 'stitchmux-env-'));
   mkdirSync(join(dir, 'proj'), { recursive: true });
   writeFileSync(join(dir, 'proj', '.env'), 'PROJECT_SECRET=leak-me\nSHARED=from-dotenv\n');
   writeFileSync(join(dir, 'proj', 'declared.env'), 'export TOKEN="tok"\nURL=https://x/$TOKEN\n');
@@ -34,7 +34,7 @@ const inherited = {
   REAL: 'kept',
 };
 
-// ── parsing: ccmux owns the recipe, not whichever runtime hosts it ───────────────────────────────
+// ── parsing: stitchmux owns the recipe, not whichever runtime hosts it ───────────────────────────────
 
 test('quotes, comments, export, expansion and multi-line values', () => {
   const parsed = parseEnvFile(
@@ -93,22 +93,22 @@ test("declaring the directory's own .env is how you keep it — deliberately, by
 });
 
 test('a project file cannot reconfigure its own supervisor', () => {
-  // Without this, an .env in a working directory could set CCMUX_STATE_DIR and repoint the whole
-  // instance, or set CCMUX_SESSION and make one session answer to another's name — from a file that
+  // Without this, an .env in a working directory could set STITCHMUX_STATE_DIR and repoint the whole
+  // instance, or set STITCHMUX_SESSION and make one session answer to another's name — from a file that
   // is often not even in version control.
   writeFileSync(
     join(dir, 'proj', 'hijack.env'),
-    'CCMUX_STATE_DIR=/tmp/hijacked\nCCMUX_SESSION=other\nOK=1\n',
+    'STITCHMUX_STATE_DIR=/tmp/hijacked\nSTITCHMUX_SESSION=other\nOK=1\n',
   );
   const { env, refused } = sessionEnvRecipe(
     { dir: proj(), envFile: 'hijack.env' },
     inherited,
     undefined,
   );
-  expect(refused).toEqual(['CCMUX_SESSION', 'CCMUX_STATE_DIR']);
-  expect(env.CCMUX_STATE_DIR).toBeUndefined();
+  expect(refused).toEqual(['STITCHMUX_SESSION', 'STITCHMUX_STATE_DIR']);
+  expect(env.STITCHMUX_STATE_DIR).toBeUndefined();
   expect(env.OK).toBe('1'); // the rest of the file still applies — refusal is per name, not per file
-  expect(isReservedEnvKey('CCMUX_ANYTHING')).toBe(true);
+  expect(isReservedEnvKey('STITCHMUX_ANYTHING')).toBe(true);
 });
 
 test('a declared file that is missing costs a variable, never the session', () => {
@@ -178,10 +178,10 @@ test('declared, archived, or unknown are never on the list', () => {
 // ── the other half of the guarantee: the runtime never loads those files in the first place ──────
 
 test('the pane re-exec tells the runtime not to load .env from wherever it lands', () => {
-  expect(withNoEnvFile(['/bin/bun', '/opt/ccmux.js'])).toEqual([
+  expect(withNoEnvFile(['/bin/bun', '/opt/stitchmux.js'])).toEqual([
     '/bin/bun',
     '--no-env-file',
-    '/opt/ccmux.js',
+    '/opt/stitchmux.js',
   ]);
 });
 
@@ -189,5 +189,5 @@ test('a compiled single-file build is left alone — the flag would be a lie the
   // Probed against Bun 1.3.14: a `bun build --compile` binary passes the flag through to the app's
   // argv and still loads `.env`, and no environment variable or bunfig substitutes for it. Adding it
   // would read as a guarantee that is not there; the recipe's subtraction is what covers that shape.
-  expect(withNoEnvFile(['/opt/ccmux'])).toEqual(['/opt/ccmux']);
+  expect(withNoEnvFile(['/opt/stitchmux'])).toEqual(['/opt/stitchmux']);
 });

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "identity": {
-    "repositoryId": "max-listov/ccmux",
-    "project": "ccmux",
-    "productName": "CCMux",
+    "repositoryId": "max-listov/stitchmux",
+    "project": "stitchmux",
+    "productName": "Stitchmux",
     "policy": "public-source"
   },
   "layout": {

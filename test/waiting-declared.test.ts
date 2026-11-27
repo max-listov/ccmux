@@ -3,7 +3,7 @@ import { RemoteSessionSchema } from '../src/fleet/fleetSchema.ts';
 import { clearWaiting, readWaiting, writeWaiting } from '../src/session/status.ts';
 
 /**
- * A session standing on `ccmux wait` is mid-turn and therefore reads as working — which is true at
+ * A session standing on `stitchmux wait` is mid-turn and therefore reads as working — which is true at
  * the wrong altitude. It is the one edge a "who is holding whom" chain can be built from, so it is
  * declared rather than guessed at from a command line.
  */

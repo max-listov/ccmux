@@ -26,8 +26,8 @@ export function makeMachine(over: Record<string, unknown> = {}): MachineConfig {
     tmuxBin: '/bin/tmux',
     projectsDir: join(DATA_DIR, 'claude', 'projects'),
     rcPrefix: 'prod',
-    stateDir: '/tmp/ccmux-test-state',
-    bootLabel: 'ccmux-test.service',
+    stateDir: '/tmp/stitchmux-test-state',
+    bootLabel: 'stitchmux-test.service',
     ...over,
   });
 }
@@ -45,7 +45,7 @@ export function makeSession(over: Record<string, unknown> = {}): Session {
 export function makePeer(over: Partial<ManagedPeer> = {}): ManagedPeer {
   return {
     kind: 'managed',
-    source: 'ccmux',
+    source: 'stitchmux',
     machine: 'host-a',
     agent: 'claude',
     session: 'worker',
@@ -55,7 +55,7 @@ export function makePeer(over: Partial<ManagedPeer> = {}): ManagedPeer {
 }
 
 export function makeCli(machine = 'host-a'): ChatPrincipal {
-  return { kind: 'cli', source: 'ccmux', machine };
+  return { kind: 'cli', source: 'stitchmux', machine };
 }
 
 export function makeAppPeer(over: Partial<CodexAppPeer> = {}): CodexAppPeer {

@@ -14,7 +14,7 @@ import { readUsageFile } from '../src/usage/file.ts';
 import { USAGE_SLICE_BYTES, UsageQuerySchema } from '../src/usage/schema.ts';
 
 /** Synthetic, local-only probe. No provider credentials, native storage or running daemon. */
-const root = mkdtempSync(join(tmpdir(), 'ccmux-usage-measure-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-usage-measure-'));
 const path = join(root, 'history.jsonl');
 const q = UsageQuerySchema.parse({});
 const count = 50_000;

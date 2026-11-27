@@ -18,7 +18,7 @@ import {
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 import { verifyOpenCodeActions } from './opencode-actions-e2e.ts';
 import { verifyRuntimeCoexistence } from './runtime-coexistence-e2e.ts';
 import { verifyRuntimeConfidentiality } from './runtime-confidentiality-e2e.ts';
@@ -39,7 +39,7 @@ async function until(label: string, probe: () => Promise<boolean>, timeoutMs = 1
 
 const [root] = acceptancePositionals();
 if (root === undefined) {
-  const probe = mkdtempSync(join(tmpdir(), 'ccmux-opencode-e2e-'));
+  const probe = mkdtempSync(join(tmpdir(), 'stitchmux-opencode-e2e-'));
   const source = loadMachineConfig();
   const { telegram: _telegram, fleet: _fleet, launchRecipes: _recipes, ...machine } = source;
   const config = join(probe, 'machine.json');
@@ -55,7 +55,7 @@ if (root === undefined) {
       ...machine,
       rcPrefix: 'probe',
       stateDir: join(probe, 'state'),
-      tmuxSocket: `ccmux-opencode-${crypto.randomUUID().slice(0, 8)}`,
+      tmuxSocket: `stitchmux-opencode-${crypto.randomUUID().slice(0, 8)}`,
       fleet: {},
       launchRecipes: {},
       extraFlags: [],
@@ -70,14 +70,14 @@ if (root === undefined) {
   );
   const env: Record<string, string | undefined> = {
     ...process.env,
-    CCMUX_CONFIG: config,
-    CCMUX_STATE_DIR: join(probe, 'state'),
-    CCMUX_CACHE_DIR: join(probe, 'cache'),
-    CCMUX_DATA_DIR: join(probe, 'data'),
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_STATE_DIR: join(probe, 'state'),
+    STITCHMUX_CACHE_DIR: join(probe, 'cache'),
+    STITCHMUX_DATA_DIR: join(probe, 'data'),
     NATIVE_RUNTIME_PROBE_SECRET: `fixture-runtime-secret-${crypto.randomUUID()}`,
   };
-  delete env.CCMUX_SESSION;
-  delete env.CCMUX_CHAT_CREDENTIAL;
+  delete env.STITCHMUX_SESSION;
+  delete env.STITCHMUX_CHAT_CREDENTIAL;
   const child = Bun.spawn(
     [
       process.execPath,
@@ -96,13 +96,13 @@ if (root === undefined) {
   report('isolated-probe', { root: probe });
   process.exit(await child.exited);
 }
-check(basename(root).startsWith('ccmux-opencode-e2e-'), 'Not an isolated probe directory');
+check(basename(root).startsWith('stitchmux-opencode-e2e-'), 'Not an isolated probe directory');
 const m = loadMachineConfig();
 check(
   m.stateDir === join(root, 'state') && !m.telegram && !Object.keys(m.fleet ?? {}).length,
   'Not an isolated runtime',
 );
-const cli = process.env.CCMUX_E2E_CLI ?? join(process.cwd(), 'src/cli.ts');
+const cli = process.env.STITCHMUX_E2E_CLI ?? join(process.cwd(), 'src/cli.ts');
 const spawnDaemon = () =>
   Bun.spawn([process.execPath, '--no-env-file', cli, 'daemon'], {
     env: process.env,
@@ -115,7 +115,7 @@ const local = createControlClient({ socket: controlSocket(m) });
 // The daemon gives `session.create` 60 s; a caller that gives up first reports the caller's clock,
 // not the daemon's — a cold Codex create was cut at 30 s while its own budget still ran.
 const service = createInjectedControlClient(
-  localControlFetch(controlSocket(m), 'probe-client'),
+  declaredServiceFetch(controlSocket(m), 'probe-client'),
   65_000,
 );
 try {
@@ -173,7 +173,7 @@ try {
   });
   const messageId = crypto.randomUUID();
   const body =
-    'This is an isolated runtime acceptance test. Use the shell tool to run pwd, printf CCMUX_NATIVE_TOOL_OK, and append exactly one line with the text effect to effect.txt in this workspace. Also run: test -n "$NATIVE_RUNTIME_PROBE_SECRET" && printf CHECKED > env-check.txt . Do not print the variable value. Do not edit other files, contact other agents, or print environment variables. Reply NATIVE_DONE afterwards.';
+    'This is an isolated runtime acceptance test. Use the shell tool to run pwd, printf STITCHMUX_NATIVE_TOOL_OK, and append exactly one line with the text effect to effect.txt in this workspace. Also run: test -n "$NATIVE_RUNTIME_PROBE_SECRET" && printf CHECKED > env-check.txt . Do not print the variable value. Do not edit other files, contact other agents, or print environment variables. Reply NATIVE_DONE afterwards.';
   await service['message.send']({
     communicationAuthorization: acceptanceCommunicationAuthorization,
     target,

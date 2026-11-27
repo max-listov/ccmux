@@ -8,7 +8,7 @@ import { isRemotePeer, remotePeers, runRemoteTransport } from './remoteTransport
 import { fallbackIsNew, routeRecovered } from './routeState.ts';
 
 /**
- * Run a ccmux command on another fleet machine over ssh.
+ * Run a stitchmux command on another fleet machine over ssh.
  *
  * Transport choices, each forced by a real hazard:
  *  - **`BatchMode=yes`** — without it ssh sits on a password prompt against a pipe and hangs forever
@@ -16,12 +16,12 @@ import { fallbackIsNew, routeRecovered } from './routeState.ts';
  *  - **`ConnectTimeout` + a hard kill deadline** — server→server transit exists only while the owner
  *    is connected (no server-side keys, by design), so a blackholed route must fail honestly instead
  *    of wedging the caller. ssh's own failures surface as exit 255, which never collides with
- *    ccmux's own 0/1/2.
+ *    stitchmux's own 0/1/2.
  *  - **argv is shell-quoted** (`shellJoin`) — everything after the alias is source for the REMOTE
  *    shell, and session names legally contain `;`/`$`/backticks.
- *  - **the message body travels on stdin**, never in the command line: `ccmux msg` already reads a
+ *  - **the message body travels on stdin**, never in the command line: `stitchmux msg` already reads a
  *    body from a pipe, so arbitrary quotes/newlines/`$` in the text can't corrupt or inject.
- *  - **both streams are relayed** — ccmux prints its own errors ("no such session") to stdout, so a
+ *  - **both streams are relayed** — stitchmux prints its own errors ("no such session") to stdout, so a
  *    wrapper that forwarded only stderr would swallow the real reason and show a bare exit code.
  */
 //  - **`ControlMaster=no`** — if this ssh became the multiplex MASTER (a common `~/.ssh/config` has
@@ -164,7 +164,7 @@ export function queuedForRetryNotice(
   }
   return (
     `${what}: the hop failed right now (${cause}; delivery: ${delivery}) — the message is QUEUED, not lost. ` +
-    `ccmux retries it automatically for up to ${windowMinutes} minutes. Nothing is required of you or of anyone else.`
+    `stitchmux retries it automatically for up to ${windowMinutes} minutes. Nothing is required of you or of anyone else.`
   );
 }
 
@@ -192,7 +192,7 @@ export async function relay(r: RemoteResult, what: string, writes = true): Promi
 /**
  * Verify each fleet entry points at the machine it CLAIMS to. A stale or mistyped alias produces the
  * worst possible outcome — a correctly-addressed message delivered to the wrong box, with exit 0 —
- * which is precisely the failure class fleet addressing exists to remove. `ccmux list --json` already
+ * which is precisely the failure class fleet addressing exists to remove. `stitchmux list --json` already
  * reports the remote's own `rcPrefix`, so one cheap call per entry proves (or disproves) the map.
  * Unreachable is NOT a failure here: with no server-side keys, transit only exists while the owner
  * is connected, so "unreachable" is the normal state on a server.
@@ -233,8 +233,8 @@ export async function runPeer(
       return remote;
     }
     const reason = remote.failureDetail ?? 'the remote route did not dispatch the call';
-    // On CHANGE, not once per call: the standing state is published by `ccmux fleet` and
-    // `ccmux doctor`, and this answer carries `fallback` whether or not the line was written.
+    // On CHANGE, not once per call: the standing state is published by `stitchmux fleet` and
+    // `stitchmux doctor`, and this answer carries `fallback` whether or not the line was written.
     if (await fallbackIsNew(m, machine, reason))
       log.warn({ msg: 'remote route fell back to ssh', machine, reason });
     return { ...(await runRemote(alias, argv, opts)), fallback: reason };
@@ -276,7 +276,7 @@ export function peersOf(m: MachineConfig): Peer[] {
 /**
  * The one line of a failed remote command that says why.
  *
- * A remote `ccmux` reports its failure as a JSON log line whose `err` carries a stack; anything else
+ * A remote `stitchmux` reports its failure as a JSON log line whose `err` carries a stack; anything else
  * says it in plain text. Without this the fleet printed only the exit code, and "the machine is
  * asleep", "a policy refused it" and "the command crashed" read the same.
  */
@@ -318,7 +318,7 @@ export interface FleetCheck {
 export async function checkFleet(m: MachineConfig): Promise<FleetCheck[]> {
   return Promise.all(
     peersOf(m).map(async ({ machine, alias, via }): Promise<FleetCheck> => {
-      const r = await runPeer(m, machine, alias, ['ccmux', 'list', '--json'], {
+      const r = await runPeer(m, machine, alias, ['stitchmux', 'list', '--json'], {
         timeoutMs: 15_000,
       });
       if (r.transportFailed) {
@@ -342,10 +342,10 @@ export async function checkFleet(m: MachineConfig): Promise<FleetCheck[]> {
           ok: false,
           reachable: true,
           reported: null,
-          detail: `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported — is ccmux on the non-interactive PATH there?'}`,
+          detail: `remote stitchmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported — is stitchmux on the non-interactive PATH there?'}`,
         };
       }
-      // Lenient on purpose: the far side may run an older ccmux whose `list --json` has a different
+      // Lenient on purpose: the far side may run an older stitchmux whose `list --json` has a different
       // shape. We only need one field, so parse for exactly that instead of the strict full schema.
       let reported: string | null = null;
       try {
@@ -361,7 +361,7 @@ export async function checkFleet(m: MachineConfig): Promise<FleetCheck[]> {
           ok: false,
           reachable: true,
           reported,
-          detail: 'remote did not report an rcPrefix (older ccmux?)',
+          detail: 'remote did not report an rcPrefix (older stitchmux?)',
         };
       if (reported !== machine) {
         return {

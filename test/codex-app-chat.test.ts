@@ -79,8 +79,8 @@ test('App sender keeps a readable mirror label and an exact pinned reply command
   const msg = makeChatMessage({ from: makeAppPeer(), to: makePeer({ session: 'worker' }) });
   expect(humanLabel(msg.from)).toBe('host-a:App task');
   expect(formatForTg(msg)).toContain('[host-a:App task → host-a:worker]');
-  expect(formatChatInjection(msg, { cli: 'ccmux', reply: { replyable: true } })).toContain(
-    `reply: ccmux msg host-a:app/${UUID} --to-agent codex --to-thread ${UUID}`,
+  expect(formatChatInjection(msg, { cli: 'stitchmux', reply: { replyable: true } })).toContain(
+    `reply: stitchmux msg host-a:app/${UUID} --to-agent codex --to-thread ${UUID}`,
   );
 });
 
@@ -124,7 +124,7 @@ test('active, approval, systemError and no-direct-input states hold fail-closed'
 
 test('notLoaded resumes, revalidates idle, and starts one turn with immutable message id', async () => {
   const messageId = randomUUID();
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-delivery-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-delivery-'));
   const dir = join(root, 'app-server-control');
   mkdirSync(dir, { mode: 0o700 });
   let reads = 0;
@@ -184,7 +184,7 @@ test('persisted client message proof closes restart window without a second turn
 });
 
 test('restart proof finds only an exact persisted client_id, including across a stream chunk', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-app-pickup-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-app-pickup-'));
   const messageId = randomUUID();
   const path = join(dir, `rollout-${UUID}.jsonl`);
   const exact = `"client_id":"${messageId}"`;

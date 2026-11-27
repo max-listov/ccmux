@@ -1,5 +1,5 @@
 /**
- * Public library entry — the STABLE seam for an external consumer of ccmux's session reader
+ * Public library entry — the STABLE seam for an external consumer of stitchmux's session reader
  * (e.g. a tool that indexes `~/.claude` history for semantic recall). This file is the contract;
  * everything under `src/agent/**` stays free to refactor behind it.
  *
@@ -9,7 +9,7 @@
  * (Claude + Codex) transcript parser and nothing else.
  *
  * Consumed via a local `file:` link (Bun runs the TS directly); see `package.json` → `exports`
- * (`ccmux/session-reader`). No build/publish step — this is not shipped to the fleet (the fleet
+ * (`stitchmux/session-reader`). No build/publish step — this is not shipped to the fleet (the fleet
  * gets the bundle built from `cli.ts`).
  */
 import { parse as parseClaude } from './agent/claude/transcript.ts';

@@ -13,7 +13,7 @@ import { commandCaller, journalEntry, journalSearch } from '../context/searchJou
 import { SEARCH_PROVIDERS, SearchRequestSchema } from '../context/searchRequestSchema.ts';
 import { listed, SearchPatternError } from '../context/transcriptSearch.ts';
 import { humanizeDuration } from '../util/duration.ts';
-import { HOME } from '../util/env.ts';
+import { HOME } from '../util/home.ts';
 import { printLine } from '../util/stdout.ts';
 import { tableLines } from '../util/table.ts';
 import { COMMAND_SCHEMAS } from './answerSchemas.ts';
@@ -21,7 +21,7 @@ import { parseFlags, UsageError } from './flags.ts';
 import { usageLine } from './help.ts';
 import { cmdSearchReport } from './searchReport.ts';
 
-/** `ccmux search` — reads the command line and prints what `context/searchFleet.ts` answers. */
+/** `stitchmux search` — reads the command line and prints what `context/searchFleet.ts` answers. */
 
 export interface SearchOpts extends SearchPlan {
   json: boolean;
@@ -182,7 +182,7 @@ export function mapLines(result: CorpusSearchJson, now: number, limit: number): 
   const last = shown.at(-1);
   if (last !== undefined)
     lines.push(
-      `one conversation's lines: ccmux transcript '${last.address}' --grep PATTERN, or this search without --map and with --project`,
+      `one conversation's lines: stitchmux transcript '${last.address}' --grep PATTERN, or this search without --map and with --project`,
     );
   return lines;
 }
@@ -251,11 +251,11 @@ function summaryLines(result: CorpusSearchJson, shownConversations: number): str
   const openable = result.matches.findLast((match) => match.lines);
   if (openable !== undefined)
     lines.push(
-      `SEQ is a line: ccmux transcript '${openable.address}' --json --before ${openable.seq + 1} --limit 20 reads what led up to it`,
+      `SEQ is a line: stitchmux transcript '${openable.address}' --json --before ${openable.seq + 1} --limit 20 reads what led up to it`,
     );
   if (result.matches.some((match) => !match.lines))
     lines.push(
-      "SEQ '-': the match is in a file ccmux transcript does not read by line (an earlier or compressed Codex file, or a second file under an id a session already reads); the excerpt is what there is",
+      "SEQ '-': the match is in a file stitchmux transcript does not read by line (an earlier or compressed Codex file, or a second file under an id a session already reads); the excerpt is what there is",
     );
   return lines;
 }

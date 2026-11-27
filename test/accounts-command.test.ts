@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
 
-// The whole path of `ccmux accounts`: profiles found in a home folder, each asked of the vendor's own
+// The whole path of `stitchmux accounts`: profiles found in a home folder, each asked of the vendor's own
 // program, the answers merged and printed — run as the real command, against stand-in programs.
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
@@ -16,7 +16,7 @@ Current week (all models): 61% used · resets Oct 20 at 6:59pm (Asia/Bangkok)
 `;
 
 function world() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-accounts-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-accounts-'));
   const home = join(root, 'home');
   mkdirSync(home);
   // Two Claude profiles and one Codex home, none with a session.
@@ -84,7 +84,7 @@ for await (const chunk of Bun.stdin.stream()) {
     codexSessionsDir: join(root, 'codex-sessions'),
     rcPrefix: 'host-a',
     stateDir: join(root, 'state'),
-    bootLabel: 'ccmux-test.service',
+    bootLabel: 'stitchmux-test.service',
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));
@@ -94,8 +94,8 @@ for await (const chunk of Bun.stdin.stream()) {
 async function run(w: ReturnType<typeof world>, args: string[]) {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = w.config;
-  env.CCMUX_STATE_DIR = w.state;
+  env.STITCHMUX_CONFIG = w.config;
+  env.STITCHMUX_STATE_DIR = w.state;
   env.HOME = w.home;
   delete env.CLAUDE_CONFIG_DIR;
   const proc = Bun.spawn(['bun', CLI, ...args], { env, stdout: 'pipe', stderr: 'pipe' });

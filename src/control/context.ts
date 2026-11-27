@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import {
   compactNativeContext,
@@ -14,6 +13,7 @@ import {
   type ControlHistoryReadSchema,
   PublicContextOperationSchema,
 } from './schema/context.ts';
+import { refusals } from './schema/refusals.ts';
 import { controlTarget } from './target.ts';
 
 function exactTarget(
@@ -25,15 +25,11 @@ function exactTarget(
 ) {
   const session = controlTarget(m, input.target);
   if (session.registrationGeneration !== input.registrationGeneration)
-    throw new AppError('IDENTITY_MISMATCH', {
+    throw refusals.errors.IDENTITY_MISMATCH({
       message: 'The exact managed registration is unavailable',
-      status: 409,
     });
   if (session.archived || !hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', {
-      message: 'Native context controls are unavailable',
-      status: 409,
-    });
+    throw refusals.errors.UNSUPPORTED({ message: 'Native context controls are unavailable' });
   return session;
 }
 export async function readControlHistory(
@@ -43,7 +39,7 @@ export async function readControlHistory(
 ) {
   const session = exactTarget(m, input);
   if (!runtimeCapabilities(session).history)
-    throw new AppError('UNSUPPORTED', { message: 'Native history is unavailable', status: 409 });
+    throw refusals.errors.UNSUPPORTED({ message: 'Native history is unavailable' });
   const page = await readNativeHistory(
     m,
     session,
@@ -60,7 +56,7 @@ export async function compactControlContext(
 ) {
   const session = exactTarget(m, input);
   if (!runtimeCapabilities(session).compaction)
-    throw new AppError('UNSUPPORTED', { message: 'Native compaction is unavailable', status: 409 });
+    throw refusals.errors.UNSUPPORTED({ message: 'Native compaction is unavailable' });
   const operation = await compactNativeContext(
     m,
     session,

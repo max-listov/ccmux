@@ -35,7 +35,7 @@ const session = () =>
   makeSession({ name: 'agent-a', uuid: '11111111-1111-4111-8111-111111111111' });
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'ccmux-events-'));
+  dir = mkdtempSync(join(tmpdir(), 'stitchmux-events-'));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -256,7 +256,7 @@ test("a session that is not in a turn has no instant at all — not zero, not th
 });
 
 test('in a turn whose start nobody recorded, the instant is null and the state still says working', () => {
-  // A provider without turn hooks, or a turn already under way when ccmux started. "Working, start
+  // A provider without turn hooks, or a turn already under way when stitchmux started. "Working, start
   // unknown" must stay distinguishable from "not working" — the state answers the first half.
   expect(turnStartedAt('working', null)).toBeNull();
   expect(turnStartedAt('working', { state: 'idle', ts: 1_000, event: 'Stop' })).toBeNull();
@@ -537,14 +537,14 @@ test('no variable and no flag leaves the behaviour exactly as it was', () => {
 });
 
 test('the resume point is read from the variable the profile names, and from no other', () => {
-  const env = { RESUME_AT: '2026-08-25T09:00:00.000Z', CCMUX_REMOTE_STREAM_CURSOR: 'x' };
+  const env = { RESUME_AT: '2026-08-25T09:00:00.000Z', STITCHMUX_REMOTE_STREAM_CURSOR: 'x' };
   expect(resumeCursor('RESUME_AT', env)).toBe('2026-08-25T09:00:00.000Z');
   // No name, no resume: a fixed name the transport never sets is how every reopen started from "now".
   expect(resumeCursor(undefined, env)).toBeUndefined();
 });
 
 test('a follower run with --cursor-env resumes from that variable, end to end', () => {
-  const state = mkdtempSync(join(tmpdir(), 'ccmux-cursor-env-'));
+  const state = mkdtempSync(join(tmpdir(), 'stitchmux-cursor-env-'));
   try {
     const m = makeMachine({ rcPrefix: 'host-a', stateDir: state });
     const early = buildEvent(
@@ -582,7 +582,7 @@ test('a follower run with --cursor-env resumes from that variable, end to end', 
           env: {
             HOME: state,
             PATH: '/usr/bin:/bin',
-            CCMUX_CONFIG: config,
+            STITCHMUX_CONFIG: config,
             ...extra,
           },
         },

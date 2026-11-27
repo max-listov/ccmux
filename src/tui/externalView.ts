@@ -33,7 +33,7 @@ export function externalEvidenceText(ext: DiscoveredSession): string {
  * The list window counts this card as a fixed height (see `inlineCardRows`), so a line that
  * wraps is not a cosmetic overflow — it pushes the frame past the terminal, and the terminal
  * starts scrolling the whole view again. The full evidence stays one keystroke away in the
- * fullscreen card and in `ccmux external`.
+ * fullscreen card and in `stitchmux external`.
  */
 export function externalInlineLines(ext: DiscoveredSession, width: number): [string, string] {
   const w = Math.max(8, width);

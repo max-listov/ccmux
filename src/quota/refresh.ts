@@ -128,7 +128,7 @@ export async function refreshQuota(
       continue;
     }
     const run = async (): Promise<RefreshOutcome> => {
-      // Another process (the daemon, a `ccmux accounts --refresh`) may have asked while this one
+      // Another process (the daemon, a `stitchmux accounts --refresh`) may have asked while this one
       // waited for the lock; its answer is read before deciding to ask again.
       const current = readQuotaRecord(target.key);
       if (

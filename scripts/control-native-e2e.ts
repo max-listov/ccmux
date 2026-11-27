@@ -23,7 +23,7 @@ const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAu
 import { hasExited } from './process-state.ts';
 
 const config = process.argv[2];
-if (!config || !basename(dirname(config)).startsWith('ccmux-owned-probe-'))
+if (!config || !basename(dirname(config)).startsWith('stitchmux-owned-probe-'))
   throw new Error('Pass an isolated owned-runtime probe config');
 const root = dirname(config),
   cli = process.argv[3] ?? join(process.cwd(), 'src/cli.ts');
@@ -32,7 +32,7 @@ if (
   m.stateDir !== join(root, 'state') ||
   m.telegram ||
   Object.keys(m.fleet ?? {}).length ||
-  !m.tmuxSocket?.startsWith('ccmux-owned-')
+  !m.tmuxSocket?.startsWith('stitchmux-owned-')
 )
   throw new Error('Probe is not isolated');
 const sessions = loadSessions(m);
@@ -43,16 +43,16 @@ if (!a || !b || a.runtime !== 'app-server' || b.runtime !== 'app-server')
 const targetA = managedPeer(m.rcPrefix, a),
   targetB = managedPeer(m.rcPrefix, b);
 const env: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: m.stateDir,
-  CCMUX_DATA_DIR: join(root, 'data'),
-  CCMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: m.stateDir,
+  STITCHMUX_DATA_DIR: join(root, 'data'),
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && env[key] === undefined) env[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
@@ -91,7 +91,7 @@ async function settled(target: typeof targetA) {
 const invocation = shellJoin([process.execPath, '--no-env-file', cli]);
 async function roundTrip(label: string) {
   const token = `control-${crypto.randomUUID()}`;
-  const request = `Authorized isolated communication test ${token}. Invoke exactly ${invocation} msg ${targetB.machine}:${targetB.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent codex --to-thread ${targetB.threadId} with this body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by ccmux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not message anyone else.' Do not reuse CLI paths from earlier history. When B_TO_A arrives finish with RECEIVED, without sending another message. Do not change files or do unrelated work.`;
+  const request = `Authorized isolated communication test ${token}. Invoke exactly ${invocation} msg ${targetB.machine}:${targetB.session} --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])} --to-agent codex --to-thread ${targetB.threadId} with this body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by stitchmux with --communication-authorization ${shellJoin([acceptanceAuthorizationPath()])}. Do not message anyone else.' Do not reuse CLI paths from earlier history. When B_TO_A arrives finish with RECEIVED, without sending another message. Do not change files or do unrelated work.`;
   const messageId = crypto.randomUUID();
   check(
     (

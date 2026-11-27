@@ -1,8 +1,8 @@
-import { AppError } from 'stitchkit';
 import type { ExecutorProfileConfig } from 'stitchkit/agent-executor';
 import { createClaudeSdkDriver } from 'stitchkit/agent-executor/claude-sdk';
 import type { ClaudeProfileBinding } from '../../../config/claudeProfileSchema.ts';
 import type { ControlModel } from '../../../control/schema/model.ts';
+import { refusals } from '../../../control/schema/refusals.ts';
 import type { MachineConfig } from '../../../types.ts';
 import { claudeModels } from './catalog.ts';
 import { type AgentSdk, claudeExecutorProfile } from './driver.ts';
@@ -56,8 +56,7 @@ export async function probeClaudeModels(
   binding?: ClaudeProfileBinding,
 ): Promise<Probed> {
   const resolved = resolveAgentSdk(m);
-  if ('unavailable' in resolved)
-    throw new AppError('UNSUPPORTED', { message: resolved.detail, status: 409 });
+  if ('unavailable' in resolved) throw refusals.errors.UNSUPPORTED({ message: resolved.detail });
   const profile = claudeExecutorProfile(m, {
     dir: m.stateDir,
     name: 'host-probe',

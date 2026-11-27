@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { LifecycleStateSchema } from 'stitchkit/application';
 import { histFile } from '../src/agent/claude/resume.ts';
 import { readMonitoringStatus } from '../src/monitoring/read.ts';
-import type { MonitoringSnapshot } from '../src/monitoring/schema.ts';
+import type { MonitoringSnapshotRead } from '../src/monitoring/schema.ts';
 import { readMonitoringStatus as readNativeStatus } from '../src/monitoring-reader.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { makeMachine, makeSession } from './helpers.ts';
@@ -13,8 +13,8 @@ import { makeMachine, makeSession } from './helpers.ts';
 test.skipIf(!Bun.which('tmux'))(
   'real isolated daemon publishes lifecycle, rotation and restart without owning reader lifetimes',
   async () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-status-daemon-'));
-    const socket = `ccmux-status-${crypto.randomUUID()}`;
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-status-daemon-'));
+    const socket = `stitchmux-status-${crypto.randomUUID()}`;
     const tmux = Bun.which('tmux');
     if (!tmux) throw new Error('tmux unavailable');
     const machine = makeMachine({
@@ -59,17 +59,17 @@ test.skipIf(!Bun.which('tmux'))(
     await writeSessionsUnlocked(machine, [a, b]);
     const config = join(root, 'machine.json');
     writeFileSync(config, JSON.stringify(machine));
-    const previousConfig = process.env.CCMUX_CONFIG;
-    const previousPrefix = process.env.CCMUX_RC_PREFIX;
-    process.env.CCMUX_CONFIG = config;
-    process.env.CCMUX_RC_PREFIX = 'host-a';
+    const previousConfig = process.env.STITCHMUX_CONFIG;
+    const previousPrefix = process.env.STITCHMUX_RC_PREFIX;
+    process.env.STITCHMUX_CONFIG = config;
+    process.env.STITCHMUX_RC_PREFIX = 'host-a';
     const env = {
       ...process.env,
-      CCMUX_CONFIG: config,
-      CCMUX_STATE_DIR: root,
-      CCMUX_DATA_DIR: join(root, 'data'),
-      CCMUX_CACHE_DIR: join(root, 'cache'),
-      CCMUX_RC_PREFIX: 'host-a',
+      STITCHMUX_CONFIG: config,
+      STITCHMUX_STATE_DIR: root,
+      STITCHMUX_DATA_DIR: join(root, 'data'),
+      STITCHMUX_CACHE_DIR: join(root, 'cache'),
+      STITCHMUX_RC_PREFIX: 'host-a',
       LANG: 'C',
       LC_ALL: 'C',
     };
@@ -99,8 +99,8 @@ test.skipIf(!Bun.which('tmux'))(
         ).exitCode,
       ).toBe(0);
     async function waitFor(
-      matches: (snapshot: MonitoringSnapshot) => boolean,
-    ): Promise<MonitoringSnapshot> {
+      matches: (snapshot: MonitoringSnapshotRead) => boolean,
+    ): Promise<MonitoringSnapshotRead> {
       // Bounds a hang, not the machine. Six seconds was the latter: every one of these conditions
       // is observed in milliseconds idle, but two of the waits follow a real daemon being spawned —
       // one of them right after a SIGKILL — and a loaded machine takes longer than that to bring a
@@ -199,10 +199,10 @@ test.skipIf(!Bun.which('tmux'))(
       daemon.kill('SIGTERM');
       await daemon.exited;
       runTmux('kill-session', '-t', '=agent-a');
-      if (previousConfig === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = previousConfig;
-      if (previousPrefix === undefined) delete process.env.CCMUX_RC_PREFIX;
-      else process.env.CCMUX_RC_PREFIX = previousPrefix;
+      if (previousConfig === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = previousConfig;
+      if (previousPrefix === undefined) delete process.env.STITCHMUX_RC_PREFIX;
+      else process.env.STITCHMUX_RC_PREFIX = previousPrefix;
       rmSync(root, { recursive: true, force: true });
     }
   },

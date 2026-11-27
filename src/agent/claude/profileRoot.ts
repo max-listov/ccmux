@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MachineConfig, Session } from '../../types.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { envFilePath } from '../launch/launchInputs.ts';
 import { parseEnvFile } from '../launch/sessionEnv.ts';
 
@@ -15,7 +15,7 @@ import { parseEnvFile } from '../launch/sessionEnv.ts';
  * directory" are different answers, and `configDir: null` is the first one.
  *
  * The profile is read from what the SESSION declared (its env file) and from the machine's
- * `projectsDir`, never from the environment of whichever process asks. The daemon, a `ccmux list`
+ * `projectsDir`, never from the environment of whichever process asks. The daemon, a `stitchmux list`
  * typed inside another profile's session, and the supervisor loop all have different environments;
  * a session whose profile depended on who looked would be a different session to each of them. The
  * launch recipe applies the same declared file, so what is computed here is what the agent got.

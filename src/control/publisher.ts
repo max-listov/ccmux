@@ -9,7 +9,7 @@ import { hasNativeRuntime, runtimeModes } from '../runtime/modes.ts';
 import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import { loadSessions } from '../session/registry.ts';
-import { readSleepSafe } from '../session/sleep/store.ts';
+import { readSleepSafe, showsAsSleeping } from '../session/sleep/store.ts';
 import type { MachineConfig } from '../types.ts';
 import { SnapshotPublisher } from '../util/snapshotPublisher.ts';
 import { VERSION } from '../util/version.ts';
@@ -63,12 +63,7 @@ export class ControlPublisher extends SnapshotPublisher<ControlSnapshot> {
       const stopped = delegationStopped(m, session);
       // Archived always takes precedence over any historical sleep receipt; while the process is
       // still tearing down (`item.running`), keep reporting live state rather than premature stopped.
-      const sleeping =
-        !session.archived &&
-        !item.running &&
-        sleep !== null &&
-        sleep.phase !== 'awake' &&
-        sleep.phase !== 'waking';
+      const sleeping = showsAsSleeping(m, session, item.running);
       const native = owned ? readManagedRuntimeStatus(m, session) : null;
       const expiry = new Date(Date.parse(item.observedAt) + source.maxAgeMs).toISOString();
       const row: ControlRow = {

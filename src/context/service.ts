@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { blockingInbound } from '../chat/inboundHold.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { withNativeAdmission } from '../runtime/admission.ts';
 import { readRuntimeInput } from '../runtime/input.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../runtime/status.ts';
@@ -67,10 +67,7 @@ export async function readNativeHistory(
     async () => {
       const status = readManagedRuntimeStatus(m, s);
       if (status.status !== 'live' || !status.snapshot)
-        throw new AppError('HISTORY_UNAVAILABLE', {
-          message: 'Native history is unavailable',
-          status: 503,
-        });
+        throw refusals.errors.HISTORY_UNAVAILABLE({ message: 'Native history is unavailable' });
       signal.throwIfAborted();
       const request = HistoryMailboxSchema.parse({
         id: randomUUID(),
@@ -85,28 +82,20 @@ export async function readNativeHistory(
         signal.throwIfAborted();
         const response = readHistoryMailbox(m, s);
         if (response?.id !== request.id)
-          throw new AppError('HISTORY_UNAVAILABLE', {
-            message: 'Native history request changed',
-            status: 503,
-          });
+          throw refusals.errors.HISTORY_UNAVAILABLE({ message: 'Native history request changed' });
         if (response.state === 'complete' && response.page !== null) return response.page;
         if (response.state === 'failed') {
           if (response.error === 'HISTORY_CURSOR')
-            throw new AppError('HISTORY_CURSOR', {
+            throw refusals.errors.HISTORY_CURSOR({
               message: 'Native history cursor is invalid or no longer current',
-              status: 409,
             });
-          throw new AppError('HISTORY_UNAVAILABLE', {
+          throw refusals.errors.HISTORY_UNAVAILABLE({
             message: 'Native history could not be read within its limits',
-            status: 503,
           });
         }
         await Bun.sleep(20);
       }
-      throw new AppError('HISTORY_UNAVAILABLE', {
-        message: 'Native history deadline exceeded',
-        status: 503,
-      });
+      throw refusals.errors.HISTORY_UNAVAILABLE({ message: 'Native history deadline exceeded' });
     },
     'native history reader',
     undefined,
@@ -127,9 +116,8 @@ export async function compactNativeContext(
       const prior = journal.operations.find((row) => row.operationId === parsed.operationId);
       if (prior) {
         if (prior.generation !== parsed.generation)
-          throw new AppError('CONTEXT_CONFLICT', {
+          throw refusals.errors.CONTEXT_CONFLICT({
             message: 'Native context operation identity changed',
-            status: 409,
           });
         return prior;
       }
@@ -143,20 +131,18 @@ export async function compactNativeContext(
         status.snapshot.turn?.status === 'inProgress' ||
         status.snapshot.pendingRequests.length !== 0
       )
-        throw new AppError('CONTEXT_BUSY', { message: 'Native context is not idle', status: 409 });
+        throw refusals.errors.CONTEXT_BUSY({ message: 'Native context is not idle' });
       const input = readRuntimeInput(m, s);
       if (
         blockingInbound(m, s, Date.now()).length !== 0 ||
         (input !== null && input.phase !== 'accepted')
       )
-        throw new AppError('CONTEXT_BUSY', {
+        throw refusals.errors.CONTEXT_BUSY({
           message: 'Native context has accepted input pending',
-          status: 409,
         });
       if (journal.operations.length >= 256)
-        throw new AppError('CONTEXT_CAPACITY', {
+        throw refusals.errors.CONTEXT_CAPACITY({
           message: 'Native context operation capacity reached',
-          status: 409,
         });
       const operation = ContextOperationSchema.parse({
         ...parsed,
@@ -177,8 +163,7 @@ export const readContextOperation = (m: MachineConfig, s: Session, operationId: 
 
 /** Deprecated history-only rollback and workspace-changing revert are not safe substitutes. */
 export function refuseNativeRollback(): never {
-  throw new AppError('ROLLBACK_UNSUPPORTED', {
+  throw refusals.errors.ROLLBACK_UNSUPPORTED({
     message: 'Native rollback cannot guarantee conversation and workspace safety',
-    status: 409,
   });
 }

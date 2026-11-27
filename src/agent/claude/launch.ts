@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { chatEnabledFor } from '../../config/chat.ts';
 import { rcName } from '../../config/machine.ts';
 import type { MachineConfig, Session } from '../../types.ts';
-import { HOME, UID } from '../../util/env.ts';
+import { HOME, UID } from '../../util/home.ts';
 import { IDENTITY_ENV_KEYS, pinIdentity } from '../launch/identityEnv.ts';
 import {
   digestOf,
@@ -52,7 +52,7 @@ export function buildArgv(
       s.name,
       cli,
       s.agent,
-      'ccmux',
+      'stitchmux',
       chatEnabledFor(s, m),
       s.promptModules,
       m.ownerLang,
@@ -74,7 +74,7 @@ export function buildArgv(
  *    in an isolated instance and the prod shim otherwise (never a versioned bundle path). Claude
  *    merges this PER-EVENT with the user's own settings — verified it does not clobber their other
  *    hooks (e.g. a global PostToolUse). Gated on chatEnabled so the chat-off fleet pays nothing;
- *    like the chat prompt-framing, it takes effect on the next restart after `ccmux chat on`.
+ *    like the chat prompt-framing, it takes effect on the next restart after `stitchmux chat on`.
  */
 function settingsArg(m: MachineConfig, s: Session, cli: string): string[] {
   const settings: Record<string, unknown> = {};
@@ -108,7 +108,7 @@ const ESCALATED_MODES = new Set(['bypassPermissions', 'dontAsk']);
  *
  * Pure, and shared by every surface that lets someone ASK for a mode, so the refusal is worded once
  * and cannot drift between them. It names the AGENT as the blocker, because that is the truth: this
- * is not a ccmux policy with a switch to flip — the switch it does have is named in the same breath.
+ * is not a stitchmux policy with a switch to flip — the switch it does have is named in the same breath.
  */
 export function escalationRefusal(mode: string, isRoot: boolean, allowed = false): string | null {
   if (!isRoot || allowed || !ESCALATED_MODES.has(mode)) return null;
@@ -122,7 +122,7 @@ export function escalationRefusal(mode: string, isRoot: boolean, allowed = false
 /**
  * Blocked twice over, and only the machine's owner can lift both.
  *
- * ccmux downgrades escalated modes under a root daemon, and the agent independently refuses to start
+ * stitchmux downgrades escalated modes under a root daemon, and the agent independently refuses to start
  * as root at all. Learned by shipping half of it: lifting only OUR guard put every session on a live
  * server into a crash loop, because the agent's refusal was still there. The agent's own escape is
  * an environment variable declaring the process sandboxed — so a machine that declares
@@ -136,7 +136,7 @@ export function resolvePermissionMode(mode: string, isRoot: boolean, allowed = f
   return mode;
 }
 
-/** The agent's own root check reads this. ccmux sets it ONLY where the machine declared it: on a
+/** The agent's own root check reads this. stitchmux sets it ONLY where the machine declared it: on a
  *  non-root daemon nothing needs asserting, and an unnecessary claim is still a false one. */
 export const SANDBOX_ENV = 'IS_SANDBOX';
 
@@ -147,7 +147,7 @@ function stripDangerous(flags: string[]): string[] {
   );
 }
 
-/** What ccmux itself puts into the child's environment — the identity pin and the chat capability.
+/** What stitchmux itself puts into the child's environment — the identity pin and the chat capability.
  *  Everything else `launchEnv` touches (PATH, locale) is normalisation, not policy, so it is not
  *  part of the recipe a restart would change. */
 export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): readonly string[] {
@@ -157,7 +157,7 @@ export function launchEnvKeys(m: MachineConfig, isRoot: boolean = UID === 0): re
 }
 
 /**
- * Environment for the spawned claude: the provider launch environment, without ccmux's own Claude
+ * Environment for the spawned claude: the provider launch environment, without stitchmux's own Claude
  * Code context (so the child does not think it is nested), and without ANTHROPIC_API_KEY when an
  * OAuth login exists, so the login wins.
  */

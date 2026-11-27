@@ -27,7 +27,7 @@ import {
 } from '../src/tmux/tmux.ts';
 
 const config = process.argv[2];
-if (config === undefined || !basename(dirname(config)).startsWith('ccmux-owned-probe-'))
+if (config === undefined || !basename(dirname(config)).startsWith('stitchmux-owned-probe-'))
   throw new Error('Pass an isolated runtime probe config');
 const root = dirname(config),
   cli = process.argv[3] ?? join(process.cwd(), 'src/cli.ts');
@@ -42,15 +42,15 @@ if (
 const s = loadSessions(m).find((row) => row.name === 'agent-a');
 if (s === undefined) throw new Error('Missing probe session');
 const env: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: m.stateDir,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: m.stateDir,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && env[key] === undefined) env[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
@@ -192,8 +192,8 @@ progress('provider-crash-resume', {
   expiredMs,
 });
 
-process.env.CCMUX_CONFIG = config;
-process.env.CCMUX_STATE_DIR = m.stateDir;
+process.env.STITCHMUX_CONFIG = config;
+process.env.STITCHMUX_STATE_DIR = m.stateDir;
 const benchPid = snapshot()?.providerPid;
 let completedAt: number | null = null,
   deliveredAfterMs: number | null = null,

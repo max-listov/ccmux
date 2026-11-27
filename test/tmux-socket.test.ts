@@ -15,7 +15,7 @@ const cfg = (extra: Record<string, unknown>) =>
 
 test('every tmux call writes UTF-8 whatever the caller locale: a tab in `-F` output stays a tab', () => {
   expect(tmuxArgv(cfg({}), 'list-panes')[1]).toBe('-u');
-  expect(tmuxArgv(cfg({ tmuxSocket: 'ccmux-dev' }), 'list-panes')[1]).toBe('-u');
+  expect(tmuxArgv(cfg({ tmuxSocket: 'stitchmux-dev' }), 'list-panes')[1]).toBe('-u');
 });
 
 test('tmuxArgv without a socket → default socket (no -L), i.e. current prod behaviour', () => {
@@ -29,14 +29,7 @@ test('tmuxArgv without a socket → default socket (no -L), i.e. current prod be
 });
 
 test('tmuxArgv with tmuxSocket → every call scoped to that socket via -L', () => {
-  expect(tmuxArgv(cfg({ tmuxSocket: 'ccmux-dev' }), 'new-session', '-d', '-s', 'dev-a')).toEqual([
-    '/bin/tmux',
-    '-u',
-    '-L',
-    'ccmux-dev',
-    'new-session',
-    '-d',
-    '-s',
-    'dev-a',
-  ]);
+  expect(
+    tmuxArgv(cfg({ tmuxSocket: 'stitchmux-dev' }), 'new-session', '-d', '-s', 'dev-a'),
+  ).toEqual(['/bin/tmux', '-u', '-L', 'stitchmux-dev', 'new-session', '-d', '-s', 'dev-a']);
 });

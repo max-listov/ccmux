@@ -19,7 +19,7 @@ tmux server. Только внешний Codex provider заменён явны�
 
 Тест не записывает hold, cursor, ack или operation receipt вручную. Их создаёт production
 код после настоящего чтения панели и обработки provider-ответа. Этот сценарий проверяет
-CCMux, а не поведение реального провайдера или готовность конкретного consumer UI.
+Stitchmux, а не поведение реального провайдера или готовность конкретного consumer UI.
 
 Native menu hold публикуется как `kind: other` с причиной меню в `text`. На стадии удержания
 `state: uncertain`, `turnId: null`: mailbox уже создан, provider turn ещё не начат.
@@ -47,7 +47,7 @@ completed — пустой delta. Проверяются отрицательн�
 1. Запустить стенд из source checkout:
 
 ```sh
-CCMUX_HELD_FIXTURE_INTERACTIVE=1 bun test --timeout 650000 test/controlled-delivery.test.ts
+STITCHMUX_HELD_FIXTURE_INTERACTIVE=1 bun test --timeout 650000 test/controlled-delivery.test.ts
 ```
 
 На `held` он печатает путь `manifest` к временному `consumer.json` и ждёт Enter,

@@ -43,7 +43,7 @@ export async function cmdDaemon(): Promise<number> {
   try {
     const state = await application.start();
     log.info({
-      msg: 'ccmux daemon up',
+      msg: 'stitchmux daemon up',
       rcPrefix: m.rcPrefix,
       interval: m.ensureInterval,
       lifecycle: state.lifecycle,

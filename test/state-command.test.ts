@@ -5,11 +5,11 @@ import { join } from 'node:path';
 import { makeMachine, makeSession } from './helpers.ts';
 
 /**
- * `ccmux state` answers a job that outlived its view of the session that started it. Three answers
+ * `stitchmux state` answers a job that outlived its view of the session that started it. Three answers
  * must never be confused: the session exists (0), it does not (3), the question could not be asked
  * (1). And `--since` must tell the life that was running then from a later one at the same address.
  */
-const root = mkdtempSync(join(tmpdir(), 'ccmux-state-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-state-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 // tmux as the list reads it: one live session created at a known second; nothing else is running.
@@ -37,7 +37,12 @@ writeFileSync(
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 async function state(...args: string[]): Promise<{ code: number; out: string; err: string }> {
   const proc = Bun.spawn(['bun', CLI, 'state', ...args], {
-    env: { ...process.env, CCMUX_CONFIG: configPath, CCMUX_STATE_DIR: root, CCMUX_SESSION: '' },
+    env: {
+      ...process.env,
+      STITCHMUX_CONFIG: configPath,
+      STITCHMUX_STATE_DIR: root,
+      STITCHMUX_SESSION: '',
+    },
     stdout: 'pipe',
     stderr: 'pipe',
   });

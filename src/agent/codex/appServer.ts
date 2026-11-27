@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import type {
   CodexApprovalPolicy,
   CodexControlClient,
@@ -6,6 +5,7 @@ import type {
   CodexTurnInputPart,
 } from 'stitchkit/agent-executor/codex';
 import { z } from 'zod';
+import { refusals } from '../../control/schema/refusals.ts';
 import { delegationStopped } from '../../delegation/cancel.ts';
 import { delegatedCodexPolicy } from '../../delegation/codex.ts';
 import { delegationRefused } from '../../delegation/resolve.ts';
@@ -77,9 +77,8 @@ function collaborationUnavailable(session: Session, reason: string): never {
     mode: session.launchRecipe?.collaborationMode ?? null,
     reason,
   });
-  throw new AppError('COLLABORATION_MODE_UNAVAILABLE', {
+  throw refusals.errors.COLLABORATION_MODE_UNAVAILABLE({
     message: 'Managed collaboration policy is unavailable',
-    status: 409,
   });
 }
 
@@ -235,7 +234,7 @@ export async function resumeCodexAppThreadContext(
   return response;
 }
 
-/** Convert ccmux turn inputs + managed policy into a Stitchkit `CodexTurnInput` payload. */
+/** Convert stitchmux turn inputs + managed policy into a Stitchkit `CodexTurnInput` payload. */
 export function buildCodexExecutorTurnInput(
   messageId: string,
   input: CodexTurnInput[],

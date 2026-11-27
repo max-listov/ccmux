@@ -17,7 +17,7 @@ const UUID = 'a1b2c3d4-0000-4000-8000-000000000001';
 const RESULT = 'b1b2c3d4-0000-4000-8000-000000000001';
 
 async function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-tool-images-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-tool-images-'));
   const dir = join(root, 'project');
   const projectsDir = join(root, 'projects');
   const historyDir = join(projectsDir, encodeDir(dir));
@@ -77,10 +77,10 @@ test('CLI JSON addresses a tool picture and a slow pipe receives every byte', as
   const f = await fixture();
   const env = {
     ...process.env,
-    CCMUX_CONFIG: f.config,
-    CCMUX_STATE_DIR: f.m.stateDir,
-    CCMUX_CACHE_DIR: join(f.root, 'cache'),
-    CCMUX_DATA_DIR: join(f.root, 'data'),
+    STITCHMUX_CONFIG: f.config,
+    STITCHMUX_STATE_DIR: f.m.stateDir,
+    STITCHMUX_CACHE_DIR: join(f.root, 'cache'),
+    STITCHMUX_DATA_DIR: join(f.root, 'data'),
   };
   const run = (flags: string[]) =>
     Bun.spawn(
@@ -138,7 +138,7 @@ test('control schema preserves descriptors and real indexed windows preserve res
   try {
     const target = {
       kind: 'managed',
-      source: 'ccmux',
+      source: 'stitchmux',
       agent: 'claude',
       machine: f.m.rcPrefix,
       session: f.session.name,

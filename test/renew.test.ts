@@ -12,7 +12,7 @@ test('renewing refuses while the conversation is still there, and says what it w
   expect(refusal).not.toBeNull();
   expect(refusal).toContain('/root/.claude/projects/p/x.jsonl');
   // It must offer the non-destructive alternative, not just say no.
-  expect(refusal).toMatch(/ccmux restart agent-a/);
+  expect(refusal).toMatch(/stitchmux restart agent-a/);
   expect(refusal).toMatch(/--force/);
 });
 
@@ -47,7 +47,7 @@ test('a settings-free session reports only what it actually has', () => {
 });
 
 test('clearing a block removes the file it is stored in', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-block-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-block-'));
   const m = makeMachine({ stateDir: dir });
   const path = lifecycleBlockPath(m, 'agent-a');
   mkdirSync(join(dir, 'lifecycle-blocks'), { recursive: true });

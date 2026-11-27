@@ -30,7 +30,7 @@ const record = (id: string, tokens = 1, timestamp = '2026-01-01T01:00:00Z') =>
   })}\n`;
 
 test('a single cold window read finishes in background over a 200 MiB source without consumer polling', async () => {
-  const root = mkdtempSync('/tmp/ccmux-window-');
+  const root = mkdtempSync('/tmp/stitchmux-window-');
   const m = makeMachine({
     stateDir: root,
     projectsDir: join(root, 'projects'),
@@ -93,7 +93,7 @@ test('a single cold window read finishes in background over a 200 MiB source wit
 }, 20000);
 
 test('past windows cover a fixed source snapshot including out-of-order events and later corrections', () => {
-  const root = mkdtempSync('/tmp/ccmux-window-tail-'),
+  const root = mkdtempSync('/tmp/stitchmux-window-tail-'),
     path = join(root, 'history.jsonl');
   const padding = `${JSON.stringify({ type: 'progress', data: 'x'.repeat(1024 * 1024) })}\n`;
   try {

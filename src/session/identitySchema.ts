@@ -33,7 +33,7 @@ export const SessionLifeSchema = z.object({
 export type SessionLife = z.infer<typeof SessionLifeSchema>;
 
 export const SessionIdentitySchema = z.object({
-  /** `<machine>:<name>` — what every other ccmux command takes. */
+  /** `<machine>:<name>` — what every other stitchmux command takes. */
   address: z.string().min(1),
   machine: z.string().regex(RC_PREFIX_RE),
   name: z.string().regex(SESSION_NAME_RE),
@@ -86,7 +86,7 @@ export const StrayConversationSchema = z.object({
   provider: z.enum(['claude', 'codex']),
   id: z.string().min(1),
   machine: z.string().regex(RC_PREFIX_RE),
-  /** What `ccmux transcript` opens it by. */
+  /** What `stitchmux transcript` opens it by. */
   address: z.string().min(1),
   /** The title its file opens with, when it has one — the name of a session that is gone. */
   title: z.string().nullable(),

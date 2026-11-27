@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function absentProvider() {
-  const root = mkdtempSync('/tmp/ccmux-external-generation-');
+  const root = mkdtempSync('/tmp/stitchmux-external-generation-');
   roots.push(root);
   const machine = makeMachine({ stateDir: root, codexHome: root, rcPrefix: 'host-a' });
   const publisher = new ExternalStatusPublisher('host-a');

@@ -17,7 +17,6 @@ import { ContentWriter } from '../src/content/store.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
 import { CONTROL_MAX_BYTES, CONTROL_MAX_READERS } from '../src/control/schema/core.ts';
 import { currentControlSnapshot } from '../src/control/schema/runtimeOps.ts';
-import { CCMUX_CONTROL_CALLER_HEADER } from '../src/control/transport/boundary.ts';
 import { createControlClient, createControlProxy } from '../src/control/transport/client.ts';
 import { createControlServer } from '../src/control/transport/server.ts';
 import { controlSocket, prepareControlDirectory } from '../src/control/transport/socketPath.ts';
@@ -29,6 +28,7 @@ import { seedNativeSelection } from '../src/runtime/selection.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
 import { withSessionRegistryLock } from '../src/session/registryLock.ts';
 import { communicationAuthorization } from './communication-fixture.ts';
+import { declaredServiceConfig, declaredServiceFetch, grantCallers } from './declared-service.ts';
 import { nativeCatalogFixture } from './fixtures/native-catalog.ts';
 import { makeMachine, makeSession, producerMetric } from './helpers.ts';
 
@@ -38,13 +38,15 @@ afterEach(async () => {
 });
 
 async function fixture(native = false) {
-  const root = mkdtempSync('/tmp/ccmux-control-test-');
+  const root = mkdtempSync('/tmp/stitchmux-control-test-');
   const m = makeMachine({
     stateDir: root,
     rcPrefix: 'host-a',
     projectsDir: join(root, 'history'),
     chatEnabled: true,
+    ...declaredServiceConfig(join(root, 'services')),
   });
+  grantCallers(join(root, 'services'), [{ caller: 'host-b', scope: { kind: 'service-read' } }]);
   const s = makeSession({
     name: 'agent-a',
     dir: root,
@@ -71,10 +73,12 @@ async function fixture(native = false) {
   };
   await publish();
   const owned = createControlServer(m, p);
+  await owned.wire?.start();
   const socket = controlSocket(m);
   const client = createControlClient({ socket });
   cleanup.push(async () => {
     await client.close();
+    await owned.wire?.close();
     p.close();
     await catalog?.stop(true);
     await owned.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
@@ -128,11 +132,11 @@ test('Unix HTTP, CLI and peer-free tools share contract output and auth; no publ
 
 test('authorization precedes body handling, managed credentials rotate, and exact identities fail closed', async () => {
   const f = await fixture();
-  const invalid = await fetch('http://ccmux.local/control/message', {
+  const invalid = await fetch('http://stitchmux.local/control/message', {
     unix: f.socket,
     method: 'POST',
     headers: {
-      'x-ccmux-session': f.s.name,
+      'x-stitchmux-session': f.s.name,
       authorization: 'Bearer wrong',
       'content-type': 'application/json',
     },
@@ -169,58 +173,39 @@ test('authorization precedes body handling, managed credentials rotate, and exac
     ).rejects.toMatchObject({ code: 'IDENTITY_MISMATCH' });
   }
   expect(loadLedger(f.m)).toEqual([]);
-  const transported = await fetch('http://ccmux.local/control/sessions', {
-    unix: f.socket,
+  // A caller of the declared service arrives as an envelope on `/invoke`, granted by the operator.
+  const service = declaredServiceFetch(f.socket, 'host-b');
+  const transported = await service('http://stitchmux.local/control/sessions', {
     method: 'POST',
-    headers: { [CCMUX_CONTROL_CALLER_HEADER]: 'host-b' },
+    body: '{}',
   });
   expect(transported.status).toBe(200);
-  // The service caller reaches the control operations and nothing else on this socket — not the
-  // contract identity, not the peer reads — whatever the transport forwards.
+  // Measuring the daemon is part of the service: its own answer (this fixture collects no CPU).
+  const performance = await service('http://stitchmux.local/control/daemon/performance', {
+    method: 'POST',
+    body: '{}',
+  });
+  expect(performance.status === 403).toBe(false);
+  // No header makes a request a service call: one naming another machine is still this machine's
+  // local caller, answered on the local terms, never as a service principal.
   for (const [method, path] of [
-    ['POST', '/ccmux-peer-read/list'],
+    ['POST', '/stitchmux-peer-read/list'],
     ['GET', '/contract-identity'],
   ] as const) {
-    const local = await fetch(`http://ccmux.local${path}`, {
-      unix: f.socket,
-      method,
-      ...(method === 'POST' ? { body: '{}', headers: { 'content-type': 'application/json' } } : {}),
-    });
-    // The route's own answer, never an access refusal.
-    expect([path, local.status === 403]).toEqual([path, false]);
-    const outside = await fetch(`http://ccmux.local${path}`, {
+    const named = await fetch(`http://stitchmux.local${path}`, {
       unix: f.socket,
       method,
       headers: {
-        [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
+        'x-stitchmux-caller': 'host-b',
         ...(method === 'POST' ? { 'content-type': 'application/json' } : {}),
       },
       ...(method === 'POST' ? { body: '{}' } : {}),
     });
-    expect([path, outside.status]).toEqual([path, 403]);
-    expect(await outside.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+    expect([path, named.status === 403]).toEqual([path, false]);
   }
-  // Measuring the daemon is part of the service: its own answer (this fixture collects no CPU).
-  const performance = await fetch('http://ccmux.local/control/daemon/performance', {
-    unix: f.socket,
-    method: 'POST',
-    headers: { [CCMUX_CONTROL_CALLER_HEADER]: 'host-b', 'content-type': 'application/json' },
-    body: '{}',
-  });
-  expect(performance.status === 403).toBe(false);
-  const conflicting = await fetch('http://ccmux.local/control/sessions', {
-    unix: f.socket,
-    method: 'POST',
-    headers: {
-      [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
-      'x-ccmux-session': f.s.name,
-      authorization: 'Bearer wrong',
-    },
-  });
-  expect(conflicting.status).toBe(401);
   expect(
     (
-      await fetch('http://ccmux.local/control/sessions', {
+      await fetch('http://stitchmux.local/control/sessions', {
         unix: f.socket,
         method: 'POST',
         headers: { origin: 'http://example.invalid' },
@@ -386,7 +371,7 @@ test.each(['client', 'proxy'] as const)(
   'oversize bodies refuse early and cancelled %s lock waiters cannot append later',
   async (transport) => {
     const f = await fixture();
-    const response = await fetch('http://ccmux.local/control/message', {
+    const response = await fetch('http://stitchmux.local/control/message', {
       unix: f.socket,
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -730,7 +715,7 @@ test('wait never returns a cached idle observation from before the call', async 
 });
 
 test('protected socket directory rejects symlinks and foreign permissive state', () => {
-  const root = mkdtempSync('/tmp/ccmux-control-path-');
+  const root = mkdtempSync('/tmp/stitchmux-control-path-');
   try {
     const m = makeMachine({ stateDir: root });
     mkdirSync(join(root, 'control'), { mode: 0o755 });

@@ -8,7 +8,7 @@ import { encodeDir, histFile } from './resume.ts';
 import { parse as parseClaude } from './transcript.ts';
 
 // ── follow the fork ─────────────────────────────────────────────────────────────
-// ccmux pins one uuid per session, but Claude Code does NOT keep that uuid forever:
+// stitchmux pins one uuid per session, but Claude Code does NOT keep that uuid forever:
 // when a conversation runs out of context (and in other undocumented cases), sending
 // the next message FORKS it — a NEW session id, a NEW jsonl materialized with the old
 // tail copied in, while the supervised pane process still says `--resume <old>` in its
@@ -17,7 +17,7 @@ import { parse as parseClaude } from './transcript.ts';
 // 2026-07-14: e8f056d3 → 711f8574 under Claude's bg-pty-host daemon, v2.1.208.)
 //
 // Detection is trigger-agnostic — we don't assume WHY Claude forked, only observe WHERE
-// the conversation lives now. The identity key is ccmux's own: every launch passes
+// the conversation lives now. The identity key is stitchmux's own: every launch passes
 // `-n <rcName>` and Claude writes it into the transcript as a `custom-title` event,
 // which a fork inherits in its FIRST lines (the materialized copy starts with it).
 // So "the current conversation of session X" = the jsonl in X's project dir whose head
@@ -67,7 +67,7 @@ const UUID_JSONL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
  * A candidate must clear EVERY guard — when in doubt we return null and keep the pin:
  *  - lives in the session's project dir and is a `<uuid>.jsonl` (forks always are);
  *  - not the pinned uuid, and not pinned by ANY other managed session (`takenUuids`);
- *  - its HEAD carries a custom-title equal to this session's rc title (ccmux's own
+ *  - its HEAD carries a custom-title equal to this session's rc title (stitchmux's own
  *    launch stamp — forks inherit it in their first lines; two sessions sharing one
  *    dir have different rc titles, so they can never claim each other's forks);
  *  - its newest message is STRICTLY newer than the pinned file's (equal → no move).

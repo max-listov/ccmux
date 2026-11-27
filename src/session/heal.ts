@@ -74,7 +74,7 @@ export async function startHealed(
     });
     if (!cleared) return;
     log.info({
-      msg: 'heal: block written by an older ccmux version — trying again under this one',
+      msg: 'heal: block written by an older stitchmux version — trying again under this one',
       name,
       blockVersion: block.version ?? 'unknown',
       version: VERSION,

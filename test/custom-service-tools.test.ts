@@ -7,7 +7,7 @@ import { clearServiceFixtures, stdioService as server, TASKS } from './service-f
  *
  * The server here is built by the framework's own `createStdioMcpServer` from a contract, spawned
  * as an actual process and spoken to over real stdio — not a fake handshake in this file. What is
- * under test is whether ccmux mounts what a service built the intended way offers, and a
+ * under test is whether stitchmux mounts what a service built the intended way offers, and a
  * hand-written fixture would only prove it mounts the shape I imagined.
  */
 

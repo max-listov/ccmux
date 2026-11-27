@@ -39,16 +39,20 @@ import {
   WAKE_JOURNAL_CAPACITY,
   type WakeOperation,
 } from '../src/session/sleep/wakeStore.ts';
+import { tmuxArgv } from '../src/tmux/argv.ts';
+import codexFrames from './fixtures/codex-pane/v0.159.1.json';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const dirs: string[] = [];
-function tempDir(prefix = 'ccmux-sleep-policy-'): string {
+function tempDir(prefix = 'stitchmux-sleep-policy-'): string {
   const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
   dirs.push(dir);
   return dir;
 }
 
+const afterEachKill: Array<() => void> = [];
 afterEach(() => {
+  for (const kill of afterEachKill.splice(0)) kill();
   for (const dir of dirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -60,7 +64,7 @@ describe('MachineConfigSchema idleSleep defaults and backward compatibility', ()
     tmuxBin: '/usr/local/bin/tmux',
     projectsDir: '/tmp/projects',
     stateDir: '/tmp/state',
-    bootLabel: 'com.ccmux.test',
+    bootLabel: 'com.stitchmux.test',
     rcPrefix: 'host-a',
   };
 
@@ -92,7 +96,7 @@ describe('MachineConfigSchema idleSleep defaults and backward compatibility', ()
 
 describe('sessionProfileKey canonicalization and fail-closed envFile', () => {
   test('Claude default profile stays distinct from explicit ~/.claude and canonicalizes symlinks', () => {
-    const home = tempDir('ccmux-home-');
+    const home = tempDir('stitchmux-home-');
     const workdir = join(home, 'work');
     mkdirSync(workdir, { recursive: true });
     const realProfile = join(home, 'real-profile');
@@ -136,7 +140,7 @@ describe('sessionProfileKey canonicalization and fail-closed envFile', () => {
   });
 
   test('ownCredentials (API key / Bedrock) isolates from OAuth profile and missing envFile fails closed', () => {
-    const home = tempDir('ccmux-creds-');
+    const home = tempDir('stitchmux-creds-');
     const workdir = join(home, 'work');
     mkdirSync(workdir, { recursive: true });
     const customAuthEnv = join(workdir, 'bedrock.env');
@@ -199,7 +203,7 @@ describe('sessionProfileKey canonicalization and fail-closed envFile', () => {
   });
 
   test('Codex unset CODEX_HOME and explicit ~/.codex share one canonical profile key', () => {
-    const home = tempDir('ccmux-codex-prof-');
+    const home = tempDir('stitchmux-codex-prof-');
     const workdir = join(home, 'work');
     const codexDir = join(home, '.codex');
     mkdirSync(workdir, { recursive: true });
@@ -225,7 +229,7 @@ describe('sessionProfileKey canonicalization and fail-closed envFile', () => {
 
 describe('evaluateSleepPolicy (pinned, minAwakePerProfile, healthy-only, forcePolicy)', () => {
   test('enforces pinned and minAwakePerProfile strictly over healthy awake peers of the same profile', () => {
-    const root = tempDir('ccmux-policy-eval-');
+    const root = tempDir('stitchmux-policy-eval-');
     const m = makeMachine({
       stateDir: join(root, 'state'),
       idleSleep: {
@@ -304,7 +308,7 @@ describe('evaluateSleepPolicy (pinned, minAwakePerProfile, healthy-only, forcePo
   });
 
   test('withProfilePolicyLock serializes concurrent policy decisions so last awake session is preserved', async () => {
-    const root = tempDir('ccmux-policy-lock-');
+    const root = tempDir('stitchmux-policy-lock-');
     const m = makeMachine({
       stateDir: join(root, 'state'),
       idleSleep: {
@@ -357,7 +361,7 @@ describe('classifyTuiProcessTree and loadDeclaredMcpSpecs', () => {
   });
 
   test('loads declared stdio MCP specs for Claude (.mcp.json + global) and Codex (config.toml)', () => {
-    const home = tempDir('ccmux-mcp-specs-');
+    const home = tempDir('stitchmux-mcp-specs-');
     const workdir = join(home, 'repo');
     const codexHome = join(home, '.codex');
     mkdirSync(workdir, { recursive: true });
@@ -406,7 +410,7 @@ describe('classifyTuiProcessTree and loadDeclaredMcpSpecs', () => {
       { name: 'launcher', command: 'bunx', args: ['-y', '@acme/mcp-helper@latest'] },
     ];
     const cleanRows: ProcessSnapshot[] = [
-      snap(100, 1, 100, '/usr/local/bin/ccmux _run agent-a'),
+      snap(100, 1, 100, '/usr/local/bin/stitchmux _run agent-a'),
       snap(101, 100, 100, '/usr/local/bin/claude --resume 123'),
       snap(102, 101, 100, '/usr/local/bin/my-mcp --stdio'),
       snap(103, 101, 100, 'bunx -y @acme/mcp-helper@latest'),
@@ -447,7 +451,7 @@ describe('classifyTuiProcessTree and loadDeclaredMcpSpecs', () => {
 
     // Missing provider child fails closed with owner-unavailable.
     const noAgent = classifyTuiProcessTree({
-      rows: [snap(100, 1, 100, '/usr/local/bin/ccmux _run agent-a')],
+      rows: [snap(100, 1, 100, '/usr/local/bin/stitchmux _run agent-a')],
       panePid: 100,
       providerId: 'claude',
       mcpSpecs: specs,
@@ -471,7 +475,7 @@ describe('classifyTuiProcessTree and loadDeclaredMcpSpecs', () => {
   });
 
   test('loadDeclaredMcpSpecs expands ~/ CLAUDE_CONFIG_DIR and respects enabledPlugins vs disabled/marketplaces', () => {
-    const home = tempDir('ccmux-mcp-plugins-');
+    const home = tempDir('stitchmux-mcp-plugins-');
     const workdir = join(home, 'repo');
     const altCfg = join(home, '.claude-alt');
     const enabledPluginDir = join(altCfg, 'plugins', 'cache', 'mp', 'good-mcp', '1.0');
@@ -615,7 +619,7 @@ describe('computeIdleAnchorMs, wakeStore LRU eviction, backfill, lifecycle block
   test('appendWakeOperation evicts oldest completed prior-cycle entries past 256 without bricking', () => {
     const target = {
       kind: 'managed' as const,
-      source: 'ccmux' as const,
+      source: 'stitchmux' as const,
       machine: 'host-a',
       agent: 'claude' as const,
       session: 'agent-a',
@@ -647,12 +651,12 @@ describe('computeIdleAnchorMs, wakeStore LRU eviction, backfill, lifecycle block
   });
 
   test('registrationGeneration backfill and pinned toggling do not dirty LaunchStamp and preserve legacy LifecycleBlock', async () => {
-    const root = tempDir('ccmux-backfill-');
+    const root = tempDir('stitchmux-backfill-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const legacy = makeSession({ name: 'agent-a', agent: 'claude', dir: root });
     await writeSessionsUnlocked(m, [legacy]);
 
-    const stampBefore = { ...computeStamp(legacy, m, '/usr/local/bin/ccmux'), ts: Date.now() };
+    const stampBefore = { ...computeStamp(legacy, m, '/usr/local/bin/stitchmux'), ts: Date.now() };
     await writeLifecycleBlock(m, {
       name: legacy.name,
       agent: legacy.agent,
@@ -672,14 +676,16 @@ describe('computeIdleAnchorMs, wakeStore LRU eviction, backfill, lifecycle block
     expect(updated.pinned).toBe(true);
 
     // Neither registrationGeneration nor pinned invalidates LaunchStamp.
-    expect(launchStaleReasons(stampBefore, updated, m, '/usr/local/bin/ccmux').reasons).toEqual([]);
+    expect(launchStaleReasons(stampBefore, updated, m, '/usr/local/bin/stitchmux').reasons).toEqual(
+      [],
+    );
 
     // Legacy LifecycleBlock with generation === undefined still matches after backfill!
     expect(readLifecycleBlockForSession(m, updated)?.error).toBe('legacy crash');
   });
 
   test('readSleepSafe isolates corrupt sleep.json while strict readSleep still throws', () => {
-    const root = tempDir('ccmux-corrupt-sleep-');
+    const root = tempDir('stitchmux-corrupt-sleep-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const s = makeSession({
       name: 'agent-a',
@@ -698,7 +704,7 @@ describe('computeIdleAnchorMs, wakeStore LRU eviction, backfill, lifecycle block
   test('appendWakeOperation evicts stale null-result prior-cycle entries before completed ones', () => {
     const target = {
       kind: 'managed' as const,
-      source: 'ccmux' as const,
+      source: 'stitchmux' as const,
       machine: 'host-a',
       agent: 'claude' as const,
       session: 'agent-a',
@@ -745,8 +751,34 @@ describe('computeIdleAnchorMs, wakeStore LRU eviction, backfill, lifecycle block
   test('native idleProof rejects PID-reused background process whose startTime differs from ownership.baseline', async () => {
     const { OwnedCodexProjection } = await import('../src/agent/codex/owned/projection.ts');
     const { OwnedCodexStatusWriter } = await import('../src/agent/codex/owned/status.ts');
-    const root = tempDir('ccmux-pid-reuse-');
-    const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
+    const root = tempDir('stitchmux-pid-reuse-');
+    const tmuxBin = Bun.which('tmux');
+    if (tmuxBin === null) throw Error('tmux is required');
+    const m = makeMachine({
+      stateDir: join(root, 'state'),
+      rcPrefix: 'host-a',
+      tmuxBin,
+      tmuxSocket: `stitchmux-pid-reuse-${process.pid}-${crypto.randomUUID()}`,
+    });
+    // The non-delegated Codex terminal at its idle composer, so only the process tree decides.
+    const frame = join(root, 'frame');
+    writeFileSync(frame, codexFrames.idle);
+    Bun.spawnSync(
+      tmuxArgv(
+        m,
+        'new-session',
+        '-d',
+        '-x',
+        '120',
+        '-y',
+        '40',
+        '-s',
+        'native-codex',
+        `cat ${frame}; exec sleep 600`,
+      ),
+    );
+    afterEachKill.push(() => Bun.spawnSync(tmuxArgv(m, 'kill-server')));
+    await Bun.sleep(300);
     const s = makeSession({
       name: 'native-codex',
       agent: 'codex',
@@ -789,7 +821,13 @@ describe('computeIdleAnchorMs, wakeStore LRU eviction, backfill, lifecycle block
 
     // Same PID as baseline, but NEW startTime 'T1' (PID reuse) -> MUST be rejected!
     const rows: ProcessSnapshot[] = [
-      { pid: ownerPid, ppid: 1, processGroup: ownerPid, startTime: 'T0', command: 'ccmux _run' },
+      {
+        pid: ownerPid,
+        ppid: 1,
+        processGroup: ownerPid,
+        startTime: 'T0',
+        command: 'stitchmux _run',
+      },
       {
         pid: reusedPid,
         ppid: ownerPid,
@@ -805,7 +843,7 @@ describe('computeIdleAnchorMs, wakeStore LRU eviction, backfill, lifecycle block
   });
 
   test('sleepSession refuses IDEMPOTENCY_CONFLICT when forcePolicy changes on same operationId replay', async () => {
-    const root = tempDir('ccmux-idemp-force-');
+    const root = tempDir('stitchmux-idemp-force-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const s = makeSession({
       name: 'agent-a',

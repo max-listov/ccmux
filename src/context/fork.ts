@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { ManagedPeerSchema } from '../chat/identitySchema.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { recordRuntimeDiagnostic } from '../runtime/diagnostics.ts';
 import { NativeTurnOptionsSchema } from '../runtime/selectionSchema.ts';
 import { privateRuntimeDirectory, readPrivateJson } from '../runtime/store.ts';
@@ -84,9 +84,8 @@ export async function admitNativeFork<T>(
       if (intent.state === 'accepted' && intent.nativeId !== null)
         return adapter.resume(intent.nativeId, signal);
       if (intent.state !== 'reserved')
-        throw new AppError('FORK_UNCERTAIN', {
+        throw refusals.errors.FORK_UNCERTAIN({
           message: 'Native fork admission requires reconciliation',
-          status: 409,
         });
       signal.throwIfAborted();
       const persist = (row: NativeForkIntent) =>
@@ -102,9 +101,8 @@ export async function admitNativeFork<T>(
       } catch (error) {
         await persist({ ...intent, state: 'uncertain' });
         await recordRuntimeDiagnostic(m, s.name, 'native-fork-admission', error);
-        throw new AppError('FORK_UNCERTAIN', {
+        throw refusals.errors.FORK_UNCERTAIN({
           message: 'Native fork admission requires reconciliation',
-          status: 409,
         });
       }
     },

@@ -16,7 +16,7 @@ import { loadSessions } from '../src/session/registry.ts';
 import { makeMachine, makePeer, shortTempDir } from './helpers.ts';
 
 function fixture() {
-  const dir = realpathSync(shortTempDir('ccmux-profiles-'));
+  const dir = realpathSync(shortTempDir('stitchmux-profiles-'));
   const local = join(dir, 'team');
   const imported = join(dir, 'second');
   const registry = join(dir, '.config', 'claude-multiprofile', 'profiles.json');
@@ -56,8 +56,8 @@ if (argv[0] === 'auth') {
     ...process.env,
     HOME: dir,
     XDG_CONFIG_HOME: join(dir, '.config'),
-    CCMUX_CONFIG: config,
-    CCMUX_STATE_DIR: m.stateDir,
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_STATE_DIR: m.stateDir,
     ANTHROPIC_AUTH_TOKEN: 'fixture-override',
   };
   onTestFinished(() =>

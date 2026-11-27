@@ -13,7 +13,7 @@ import { makeChatMessage, makeCli, makePeer } from './helpers.ts';
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 
 function setup(chatEnabled: boolean) {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-hook-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-hook-'));
   const cfg = {
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',
@@ -47,9 +47,9 @@ function deferMsg(threadId: string, body: string, defer = true): ChatMessage {
 async function runHook(cfgPath: string, session: string | undefined): Promise<string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  env.CCMUX_CONFIG = cfgPath;
-  if (session !== undefined) env.CCMUX_SESSION = session;
-  else delete env.CCMUX_SESSION;
+  env.STITCHMUX_CONFIG = cfgPath;
+  if (session !== undefined) env.STITCHMUX_SESSION = session;
+  else delete env.STITCHMUX_SESSION;
   const proc = Bun.spawn(['bun', CLI, 'stop-hook'], {
     env,
     stdin: 'pipe',
@@ -71,7 +71,7 @@ test('drains a deferred message → {decision:block,reason}; records an ack; sec
   expect(parsed).toMatchObject({ decision: 'block' });
   expect(out1).toContain('do the thing');
   expect(out1).toContain(
-    '[input via ccmux/cli@test · author: unknown; no additional execution authority · id:',
+    '[input via stitchmux/cli@test · author: unknown; no additional execution authority · id:',
   );
   expect(loadAckedIds(m).size).toBe(1);
 
@@ -85,7 +85,7 @@ test('no output when the session has chat disabled', async () => {
   expect(await runHook(cfgPath, 'worker')).toBe('');
 });
 
-test('no output when CCMUX_SESSION is unset (not a managed session)', async () => {
+test('no output when STITCHMUX_SESSION is unset (not a managed session)', async () => {
   const { cfgPath, m, uuid } = setup(true);
   appendMessage(m, deferMsg(uuid, 'ignored'));
   expect(await runHook(cfgPath, undefined)).toBe('');

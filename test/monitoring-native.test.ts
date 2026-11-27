@@ -26,19 +26,19 @@ let root: string;
 let previousConfig: string | undefined;
 let previousPrefix: string | undefined;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'ccmux-native-'));
-  previousConfig = process.env.CCMUX_CONFIG;
-  previousPrefix = process.env.CCMUX_RC_PREFIX;
-  process.env.CCMUX_CONFIG = join(root, 'machine.json');
-  delete process.env.CCMUX_RC_PREFIX;
+  root = mkdtempSync(join(tmpdir(), 'stitchmux-native-'));
+  previousConfig = process.env.STITCHMUX_CONFIG;
+  previousPrefix = process.env.STITCHMUX_RC_PREFIX;
+  process.env.STITCHMUX_CONFIG = join(root, 'machine.json');
+  delete process.env.STITCHMUX_RC_PREFIX;
 });
 afterEach(async () => {
   // Allow cancelled file reads to release their handles before deleting the isolated fixture.
   await Bun.sleep(20);
-  if (previousConfig === undefined) delete process.env.CCMUX_CONFIG;
-  else process.env.CCMUX_CONFIG = previousConfig;
-  if (previousPrefix === undefined) delete process.env.CCMUX_RC_PREFIX;
-  else process.env.CCMUX_RC_PREFIX = previousPrefix;
+  if (previousConfig === undefined) delete process.env.STITCHMUX_CONFIG;
+  else process.env.STITCHMUX_CONFIG = previousConfig;
+  if (previousPrefix === undefined) delete process.env.STITCHMUX_RC_PREFIX;
+  else process.env.STITCHMUX_RC_PREFIX = previousPrefix;
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -184,6 +184,18 @@ test('native reader accepts snapshots with startedAt/step/atPrompt/waitingFor, l
     JSON.stringify({
       ...snapshot,
       sessions: snapshot.sessions.map((row) => ({ ...row, state: 'not-a-valid-state' })),
+    }),
+  );
+  // A state this reader does not know is a newer daemon's word, read as `unknown`.
+  const newerState = await readMonitoringStatus(UNHURRIED);
+  expect(newerState.status).toBe('live');
+  expect(newerState.snapshot?.sessions[0]?.state).toBe('unknown');
+
+  writeFileSync(
+    path,
+    JSON.stringify({
+      ...snapshot,
+      sessions: snapshot.sessions.map((row) => ({ ...row, uuid: 'not-a-uuid' })),
     }),
   );
   expect((await readMonitoringStatus(UNHURRIED)).reason).toBe('invalid');

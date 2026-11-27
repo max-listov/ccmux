@@ -9,7 +9,7 @@ import { loadOutbox } from './outbox.ts';
 import { loadPeerHeld, PackedSchema, unpack } from './peerDelta.ts';
 import { peersOf, remoteFailureCause, runPeer } from './transport.ts';
 
-/** The chat log of this machine, or of the fleet — what `ccmux chat log --json` prints. */
+/** The chat log of this machine, or of the fleet — what `stitchmux chat log --json` prints. */
 
 interface Source {
   machine: LogMachine;
@@ -27,20 +27,20 @@ const TRUNCATION_MARKER = 'output truncated';
  * Why a peer's answer could not be read.
  *
  * A cut document and an old build produce the same `JSON.parse` failure and are nothing alike: one
- * is fixed by asking for less, the other by upgrading a machine. Saying "older ccmux?" about a
+ * is fixed by asking for less, the other by upgrading a machine. Saying "older stitchmux?" about a
  * message that was simply too long sends the reader to the wrong place entirely — and this snapshot
  * serialises whole message bodies, so it is the failure that actually happens.
  */
 export function unreadableReason(stdout: string, stderr: string): string {
   if (stderr.includes(TRUNCATION_MARKER)) {
-    return `answer was cut at the transport's cap (${stdout.length} bytes arrived) — ask for fewer rows with -n, or follow the feed instead: ccmux chat log --follow`;
+    return `answer was cut at the transport's cap (${stdout.length} bytes arrived) — ask for fewer rows with -n, or follow the feed instead: stitchmux chat log --follow`;
   }
   // A cut answer that carried no marker still betrays itself: it is large AND it does not close.
   const looksCut = stdout.length > 64 * 1024 && !stdout.trimEnd().endsWith('}');
   if (looksCut) {
-    return `answer arrived incomplete (${stdout.length} bytes, no closing brace) — ask for fewer rows with -n, or follow the feed instead: ccmux chat log --follow`;
+    return `answer arrived incomplete (${stdout.length} bytes, no closing brace) — ask for fewer rows with -n, or follow the feed instead: stitchmux chat log --follow`;
   }
-  return 'unreadable log output (older ccmux?)';
+  return 'unreadable log output (older stitchmux?)';
 }
 
 /** Ask every OTHER machine for its own log. The remote call deliberately omits `--fleet`, so the
@@ -65,13 +65,13 @@ async function remoteLogs(m: MachineConfig, limit: number): Promise<Source[]> {
         m,
         machine,
         alias,
-        ['ccmux', '_peer-read', 'chat-log', '-n', String(limit), ...held.knownArgs],
+        ['stitchmux', '_peer-read', 'chat-log', '-n', String(limit), ...held.knownArgs],
         { timeoutMs: 20_000 },
       );
       if (r.transportFailed) return fail(r.failureDetail ?? 'unreachable (no transit right now)');
       if (r.code !== 0)
         return fail(
-          `remote ccmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
+          `remote stitchmux failed (exit ${r.code}): ${remoteFailureCause(r.stderr) ?? 'no reason reported'}`,
         );
       try {
         const envelope = RemoteEnvelopeSchema.safeParse(JSON.parse(r.stdout)).data;

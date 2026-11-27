@@ -19,7 +19,7 @@ if (!toolsPath) throw new Error('Pass the peer-complete published Stitchkit tool
 const { mountAgent }: typeof import('stitchkit/tools/agent') = await import(
   pathToFileURL(toolsPath).href
 );
-const root = await mkdtemp(join(tmpdir(), 'ccmux-harness-qualification-'));
+const root = await mkdtemp(join(tmpdir(), 'stitchmux-harness-qualification-'));
 const filename = join(root, 'conversation.sqlite');
 const conversationId = randomUUID();
 const secret = randomUUID();

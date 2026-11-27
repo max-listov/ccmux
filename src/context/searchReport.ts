@@ -76,7 +76,7 @@ async function reportThere(
     m,
     peer,
     [
-      'ccmux',
+      'stitchmux',
       'search',
       '--report',
       '--local',

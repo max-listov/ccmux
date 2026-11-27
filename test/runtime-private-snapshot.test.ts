@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { readPrivateJson } from '../src/runtime/store.ts';
 
 test('private snapshots keep callers separate and observe replacement, permissions and links', () => {
-  const root = mkdtempSync('/tmp/ccmux-private-snapshot-');
+  const root = mkdtempSync('/tmp/stitchmux-private-snapshot-');
   const path = join(root, 'command.json');
   const schema = z.object({ value: z.number(), nested: z.unknown() }).strict();
   const put = (value: number) =>

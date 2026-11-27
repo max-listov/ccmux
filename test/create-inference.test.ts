@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-inference-test-');
+  const root = mkdtempSync('/tmp/stitchmux-inference-test-');
   cleanup.push(async () => rmSync(root, { recursive: true, force: true }));
   return { root, m: makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' }) };
 }

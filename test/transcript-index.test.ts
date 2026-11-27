@@ -19,7 +19,7 @@ import {
  * on the part of the conversation nobody happened to be looking at.
  */
 const withFile = <T>(lines: string[], run: (path: string) => T): T => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-index-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-index-'));
   try {
     const path = join(dir, 'transcript.jsonl');
     writeFileSync(path, lines.map((line) => `${line}\n`).join(''));

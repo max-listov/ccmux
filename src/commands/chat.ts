@@ -14,16 +14,16 @@ import { resolveSince, resumeCursor } from './events.ts';
 import { type ParsedFlags, parseFlags } from './flags.ts';
 
 const USAGE =
-  'usage: ccmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
+  'usage: stitchmux chat <log [-n N] [--fleet] [--json] | log --follow [--since <cursor>] [--cursor-env <NAME>] [--json|--framed]\n             | on <name> | off <name> | default <name>>';
 
 /**
- * `ccmux chat log --follow` — the log as a stream a consumer can resume, instead of a snapshot it
+ * `stitchmux chat log --follow` — the log as a stream a consumer can resume, instead of a snapshot it
  * has to take again and again.
  *
  * Deliberately LOCAL, and the fan-out lives where it already works. A machine's chat log is its own
  * two files, so a fleet feed is N local feeds; the transport that carries one carries N, and that is
  * how the session event feed reaches a dashboard today. Holding N long-lived remote commands open
- * inside ccmux would rebuild a stream multiplexer that exists one layer down, and would make a
+ * inside stitchmux would rebuild a stream multiplexer that exists one layer down, and would make a
  * cursor mean N positions on N clocks instead of one position in one file.
  *
  * `--fleet` therefore stays what it is: a snapshot, for first paint. The feed owns what happens next.
@@ -122,12 +122,12 @@ async function cmdChatLog(m: MachineConfig, flags: ParsedFlags): Promise<number>
 
 /**
  * Chat administration + inspection:
- *   ccmux chat log [-n N]    — this machine's exchange (received + sent), tail of N (default 30)
- *   ccmux chat log --fleet   — the same, merged with every other machine's log, in time order
- *   ccmux chat log --json    — machine-readable; also the remote transport format `--fleet` reads from peers
- *   ccmux chat on  <name>     — enable inter-agent chat for this session
- *   ccmux chat off <name>     — disable it for this session
- *   ccmux chat default <name> — clear the override; inherit the machine's chatEnabled
+ *   stitchmux chat log [-n N]    — this machine's exchange (received + sent), tail of N (default 30)
+ *   stitchmux chat log --fleet   — the same, merged with every other machine's log, in time order
+ *   stitchmux chat log --json    — machine-readable; also the remote transport format `--fleet` reads from peers
+ *   stitchmux chat on  <name>     — enable inter-agent chat for this session
+ *   stitchmux chat off <name>     — disable it for this session
+ *   stitchmux chat default <name> — clear the override; inherit the machine's chatEnabled
  */
 export async function cmdChat(args: string[]): Promise<number> {
   const flags = parseFlags('chat', args, [1, 2]);
@@ -146,7 +146,7 @@ export async function cmdChat(args: string[]): Promise<number> {
     const target = flags.positionals[1];
     if (target === undefined) {
       console.log(
-        `usage: ccmux chat ${sub} <name>   ·   <machine>:<name> for another fleet machine`,
+        `usage: stitchmux chat ${sub} <name>   ·   <machine>:<name> for another fleet machine`,
       );
       return 1;
     }
@@ -160,7 +160,7 @@ export async function cmdChat(args: string[]): Promise<number> {
     }
     log.info({ msg: 'chat toggled', name, enabled: sub === 'default' ? null : sub === 'on' });
     // Chat framing + the Stop hook are LAUNCH-time (see claude/launch.ts settingsArg) — so, like
-    // `ccmux mode` and `ccmux router`, this only takes effect on the next restart. Saying so here is
+    // `stitchmux mode` and `stitchmux router`, this only takes effect on the next restart. Saying so here is
     // the difference between "it works" and "I toggled it and nothing happened".
     const state =
       sub === 'default'
@@ -168,12 +168,12 @@ export async function cmdChat(args: string[]): Promise<number> {
         : sub === 'on'
           ? 'enabled'
           : 'disabled';
-    console.log(`${name}: chat ${state} — applies on: ccmux restart ${name}`);
+    console.log(`${name}: chat ${state} — applies on: stitchmux restart ${name}`);
     if (sub === 'on' || (sub === 'default' && m.chatEnabled)) {
       console.log(
-        `  then: ccmux msg ${name} "…" --task <name>   ·   mail waits for its turn to end`,
+        `  then: stitchmux msg ${name} "…" --task <name>   ·   mail waits for its turn to end`,
       );
-      console.log(`  restarting the whole fleet at once: ccmux restart --all`);
+      console.log(`  restarting the whole fleet at once: stitchmux restart --all`);
     }
     return 0;
   }

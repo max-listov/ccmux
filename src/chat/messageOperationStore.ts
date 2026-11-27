@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { lstatExists, readPrivate, writePrivateJson } from '../attachments/files.ts';
 import { nativeId } from '../context/store.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { managedRuntimeRoot } from '../runtime/status.ts';
 import { privateRuntimeDirectory } from '../runtime/store.ts';
 import type { ChatPrincipal, MachineConfig, Session } from '../types.ts';
@@ -15,9 +15,8 @@ import {
 } from './messageOperationSchema.ts';
 
 export function messageOperationFailure(): never {
-  throw new AppError('MESSAGE_EVIDENCE_UNAVAILABLE', {
+  throw refusals.errors.MESSAGE_EVIDENCE_UNAVAILABLE({
     message: 'Message evidence is unavailable',
-    status: 503,
   });
 }
 export function messagePrincipal(principal: ChatPrincipal): string {
@@ -74,8 +73,7 @@ export function prepareMessageOperation(
   );
   if (journal.records.length >= MESSAGE_OPERATION_LIMITS.records) {
     const index = journal.records.findIndex((record) => record.expiresAt !== null);
-    if (index < 0)
-      throw new AppError('CAPACITY', { message: 'Message evidence capacity reached', status: 429 });
+    if (index < 0) throw refusals.errors.CAPACITY({ message: 'Message evidence capacity reached' });
     journal.records.splice(index, 1);
   }
   journal.records.push({

@@ -44,7 +44,7 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
   test(
     `catalog owner SIGKILL reaps its complete group during ${phase}`,
     async () => {
-      const root = mkdtempSync(join(tmpdir(), 'ccmux-owner-loss-'));
+      const root = mkdtempSync(join(tmpdir(), 'stitchmux-owner-loss-'));
       const executable = join(root, 'codex');
       copyFileSync(join(import.meta.dir, 'fixtures/catalog-owner-server.ts'), executable);
       if (phase === 'before-listen') {
@@ -127,13 +127,13 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
 }
 
 test('the next catalog read removes the socket directory of a killed one, and only that', () => {
-  const parent = mkdtempSync(join(tmpdir(), 'ccmux-catalog-roots-'));
+  const parent = mkdtempSync(join(tmpdir(), 'stitchmux-catalog-roots-'));
   try {
     const names = {
-      dead: 'ccmux-catalog-101-aB3dE9',
-      live: 'ccmux-catalog-202-xY7zQ1',
-      self: `ccmux-catalog-${process.pid}-k2LmN8`,
-      foreign: 'ccmux-catalog-test-p0QrS4',
+      dead: 'stitchmux-catalog-101-aB3dE9',
+      live: 'stitchmux-catalog-202-xY7zQ1',
+      self: `stitchmux-catalog-${process.pid}-k2LmN8`,
+      foreign: 'stitchmux-catalog-test-p0QrS4',
     };
     for (const name of Object.values(names)) mkdirSync(join(parent, name));
     expect(sweepAbandonedCatalogRoots(parent, (pid) => pid === 202)).toEqual([names.dead]);

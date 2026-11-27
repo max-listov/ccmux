@@ -17,7 +17,7 @@ import { log } from '../util/log.ts';
  * `api` on another machine would otherwise be picked up by this machine's own delivery loop (which
  * matches purely on `to === session.name`) and pasted into a local same-named session — literally
  * re-creating the bug this whole feature removes. A separate file also means zero edits to delivery,
- * the Stop hook, cursors, rate limiting and the Telegram mirror, and an older ccmux simply ignores it.
+ * the Stop hook, cursors, rate limiting and the Telegram mirror, and an older stitchmux simply ignores it.
  *
  * Failed transit is recorded too: "it never left" must be as visible as "it went".
  */

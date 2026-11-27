@@ -1,5 +1,4 @@
 import { dirname } from 'node:path';
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { validateAntigravitySelection } from '../agent/antigravity/catalog.ts';
 import { selectClaudeProfile } from '../agent/claude/namedProfiles.ts';
@@ -46,6 +45,7 @@ import {
   saveCreateReceipts,
   storeLockPath,
 } from './createReceipts.ts';
+import { refusals } from './schema/refusals.ts';
 import { controlTarget } from './target.ts';
 
 export async function createControlSession(
@@ -70,14 +70,12 @@ export async function createControlSession(
   });
   const workspace = normalizeWorkspace(input.workspace);
   if (runtime !== 'codex' && runtime !== 'custom' && input.launchRecipe !== undefined)
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'This runtime does not accept a Codex launch recipe',
-      status: 409,
     });
   if (runtime !== 'codex' && (input.flags?.length ?? 0) > 0)
-    throw new AppError('INVALID_INPUT', {
+    throw refusals.errors.INVALID_INPUT({
       message: 'This runtime requires typed configuration without caller flags',
-      status: 400,
     });
   // Refused by capability, not by runtime name: the interactive mode's model is the provider's to
   // choose, and the native mode's is a turn option this project serves. Named for the agent, this
@@ -86,14 +84,12 @@ export async function createControlSession(
     input.modelSelection !== undefined &&
     !runtimeCapabilities({ agent: runtime, runtime: mode }).modelSelection
   )
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'Model selection is provider-owned for this runtime',
-      status: 409,
     });
   if (input.modelSelection !== undefined && (input.flags?.length ?? 0) > 0)
-    throw new AppError('INVALID_INPUT', {
+    throw refusals.errors.INVALID_INPUT({
       message: 'Typed model selection cannot carry caller flags',
-      status: 400,
     });
   const resolved =
     fork?.launch ??
@@ -111,19 +107,15 @@ export async function createControlSession(
     modelSelection = { provider: 'claude', model: 'default' };
   if (runtime === 'custom') {
     if (input.applicationPolicy !== undefined)
-      throw new AppError('UNSUPPORTED', {
+      throw refusals.errors.UNSUPPORTED({
         message: 'Custom composition is owned by its launch recipe',
-        status: 409,
       });
     try {
       const host = prepareCustomHost(m, { dir: workspace, ...resolved });
       modelSelection = customModel(host.config, input.modelSelection).selection;
     } catch (error) {
       await recordRuntimeDiagnostic(m, null, 'custom-create-preflight', error);
-      throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', {
-        message: 'Launch recipe is unavailable',
-        status: 409,
-      });
+      throw refusals.errors.LAUNCH_RECIPE_UNAVAILABLE({ message: 'Launch recipe is unavailable' });
     }
   }
   const applicationPolicy =
@@ -159,31 +151,23 @@ export async function createControlSession(
       input.flags?.length ||
       input.applicationPolicy !== undefined)
   )
-    throw new AppError('DELEGATION_REFUSED', {
+    throw refusals.errors.DELEGATION_REFUSED({
       message: 'Delegated create requires typed execution policy without launch overrides',
-      status: 409,
     });
   const profileName = input.profile ?? fork?.launch.profile?.name;
   if (priorCreate !== undefined && priorCreate.profile?.name !== profileName)
-    throw new AppError('IDEMPOTENCY_CONFLICT', {
-      message: 'Create request profile changed',
-      status: 409,
-    });
+    throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Create request profile changed' });
   if (profileName !== undefined && runtime !== 'claude')
-    throw new AppError('UNSUPPORTED', {
-      message: 'Named profiles are available for Claude only',
-      status: 409,
-    });
+    throw refusals.errors.UNSUPPORTED({ message: 'Named profiles are available for Claude only' });
   let profile = priorCreate?.profile ?? fork?.launch.profile;
   if (profileName !== undefined && profile === undefined) {
     try {
       profile = selectClaudeProfile(m, runtime, profileName);
     } catch (error) {
       await recordRuntimeDiagnostic(m, null, 'claude-profile-selection', error);
-      throw new AppError('PROFILE_UNAVAILABLE', {
+      // The cause is in the runtime diagnostic just recorded; the refusal names the code only.
+      throw refusals.errors.PROFILE_UNAVAILABLE({
         message: 'The selected Claude profile is unavailable on this host',
-        status: 409,
-        cause: error,
       });
     }
   }
@@ -210,10 +194,7 @@ export async function createControlSession(
   const digest = fingerprint(canonical);
   const accepted = loadCreateReceipts(m).find((row) => row.requestId === input.requestId);
   if (accepted !== undefined && accepted.fingerprint !== digest)
-    throw new AppError('IDEMPOTENCY_CONFLICT', {
-      message: 'Create request payload changed',
-      status: 409,
-    });
+    throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Create request payload changed' });
   if (accepted === undefined && modelSelection !== undefined) {
     if (runtime === 'opencode')
       await validateOpenCodeSelection(m, workspace, modelSelection, signal);
@@ -236,9 +217,8 @@ export async function createControlSession(
           const found = rows.find((item) => item.requestId === input.requestId);
           if (found) {
             if (found.fingerprint !== digest)
-              throw new AppError('IDEMPOTENCY_CONFLICT', {
+              throw refusals.errors.IDEMPOTENCY_CONFLICT({
                 message: 'Create request payload changed',
-                status: 409,
               });
             row = found;
             duplicate = true;
@@ -257,9 +237,8 @@ export async function createControlSession(
             updatedAt: now,
           });
           if (rows.length >= 256)
-            throw new AppError('CREATE_CAPACITY', {
+            throw refusals.errors.CREATE_CAPACITY({
               message: 'Managed create receipt capacity reached',
-              status: 409,
             });
           await saveCreateReceipts(m, [...rows, row]);
         },
@@ -269,15 +248,11 @@ export async function createControlSession(
       );
       signal.throwIfAborted();
       if (row.status === 'failed')
-        throw new AppError('CREATE_FAILED', {
-          message: 'Managed session create failed',
-          status: 409,
-        });
+        throw refusals.errors.CREATE_FAILED({ message: 'Managed session create failed' });
       let session = matchingSession(m, row);
       if (row.status === 'complete' && session === null)
-        throw new AppError('IDENTITY_MISMATCH', {
+        throw refusals.errors.IDENTITY_MISMATCH({
           message: 'The accepted managed registration no longer exists',
-          status: 409,
         });
       if (session === null) {
         const pending = loadPendingSessions(m).some((item) => item.generation === row.generation);
@@ -327,9 +302,8 @@ export async function createControlSession(
                   requestId: row.requestId,
                   error: message,
                 });
-                throw new AppError('FORK_PENDING', {
+                throw refusals.errors.FORK_PENDING({
                   message: 'Native fork is unresolved; retry the same request',
-                  status: 503,
                 });
               }
               await withLock(
@@ -356,10 +330,7 @@ export async function createControlSession(
                 recipeId: row.launchRecipe?.id ?? null,
                 error: message,
               });
-              throw new AppError('CREATE_FAILED', {
-                message: 'Managed session create failed',
-                status: 409,
-              });
+              throw refusals.errors.CREATE_FAILED({ message: 'Managed session create failed' });
             }
           }
         }
@@ -371,9 +342,8 @@ export async function createControlSession(
         session = matchingSession(m, row);
       }
       if (session === null)
-        throw new AppError('CREATE_PENDING', {
+        throw refusals.errors.CREATE_PENDING({
           message: 'Create is still reconciling; retry the same request',
-          status: 503,
         });
       if (
         session.initialization !== row.initialization ||
@@ -388,18 +358,16 @@ export async function createControlSession(
         stableJson(session.modelSelection ?? null) !== stableJson(row.modelSelection ?? null) ||
         stableJson(session.applicationPolicy ?? null) !== stableJson(row.applicationPolicy ?? null)
       )
-        throw new AppError('CORRUPT_STATE', {
+        throw refusals.errors.CORRUPT_STATE({
           message: 'Managed create identity does not match its receipt',
-          status: 503,
         });
       signal.throwIfAborted();
       const ready = session;
       if (row.forkSource !== undefined) {
         const source = controlTarget(m, row.forkSource.target);
         if (source.registrationGeneration !== row.forkSource.registration)
-          throw new AppError('IDENTITY_MISMATCH', {
+          throw refusals.errors.IDENTITY_MISMATCH({
             message: 'Native fork source registration changed',
-            status: 409,
           });
         await inheritAttachmentPins(m, source, ready, signal);
       }
@@ -453,10 +421,7 @@ export async function archiveControlSession(
 ) {
   const result = await archiveSessionExact(m, target.session, target.threadId);
   if (result === 'missing')
-    throw new AppError('IDENTITY_MISMATCH', {
-      message: 'Managed identity changed or disappeared',
-      status: 409,
-    });
+    throw refusals.errors.IDENTITY_MISMATCH({ message: 'Managed identity changed or disappeared' });
   const { killed: stopped } = await killSession(m, target.session);
   return { target, archived: true as const, duplicate: result === 'duplicate', stopped };
 }

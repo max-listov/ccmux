@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { MachineConfig } from '../../types.ts';
-import { HOME, PLATFORM } from '../../util/env.ts';
+import { HOME, PLATFORM } from '../../util/home.ts';
 import { run } from '../../util/spawn.ts';
 import { macosAppPath, macosLauncherPath, responsiblePidOf, verifyMacosBundle } from './bundle.ts';
 import {

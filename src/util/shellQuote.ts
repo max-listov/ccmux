@@ -1,7 +1,7 @@
 /**
  * POSIX single-quote a string for a REMOTE shell.
  *
- * Everything else in ccmux launches processes as an argv array precisely so there is no shell and
+ * Everything else in stitchmux launches processes as an argv array precisely so there is no shell and
  * nothing to quote (see util/spawn.ts). `ssh` is the one unavoidable exception: it joins its
  * arguments with spaces and hands the result to the remote login shell, so every value we send —
  * session name or task label is shell source on the far side. Session names legally

@@ -20,7 +20,7 @@ export function menuRefusal(screen: string, text: string, name: string): string 
   return (
     `send: ${name} is waiting at a menu (${prompt.title}); text and Enter would select the highlighted option. ` +
     'The supervisor answers trust and resume menus itself (machine config trustPrompt, resumePicker). ' +
-    'A recognised menu is read with the control operation terminal.prompt and answered with terminal.respond; a numbered menu takes its number: ccmux send ' +
+    'A recognised menu is read with the control operation terminal.prompt and answered with terminal.respond; a numbered menu takes its number: stitchmux send ' +
     `${name} 1`
   );
 }
@@ -29,7 +29,7 @@ export function menuRefusal(screen: string, text: string, name: string): string 
 export type KeysRefusal = { reason: 'no-composer' | 'menu' | 'not-running'; message: string };
 
 /**
- * Type text and Enter into a session's pane, and record that ccmux did it.
+ * Type text and Enter into a session's pane, and record that stitchmux did it.
  *
  * Keystrokes carry no sender: without the record a reader of the conversation cannot tell this text
  * from one a person typed. `by` is who asked — an address, or `cli` for a person at a shell.

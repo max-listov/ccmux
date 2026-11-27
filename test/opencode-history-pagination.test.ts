@@ -16,7 +16,7 @@ function message(id: number, count: number) {
 }
 function fixture(data: ReturnType<typeof message>[]) {
   const calls: URL[] = [];
-  const m = makeMachine({ stateDir: `/tmp/ccmux-unused-history-${crypto.randomUUID()}` });
+  const m = makeMachine({ stateDir: `/tmp/stitchmux-unused-history-${crypto.randomUUID()}` });
   const s = makeSession({
     agent: 'opencode',
     runtime: 'native',

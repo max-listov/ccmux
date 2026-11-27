@@ -13,7 +13,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 test('owned journal recovers only after its real prior process died and retains frames', async () => {
-  const stateDir = await mkdtemp(join(tmpdir(), 'ccmux-journal-owner-'));
+  const stateDir = await mkdtemp(join(tmpdir(), 'stitchmux-journal-owner-'));
   roots.push(stateDir);
   const m = makeMachine({ stateDir });
   const script = `import { openOwnedRuntimeJournal } from ${JSON.stringify(resolve('src/runtime/journalOwner.ts'))};
@@ -94,7 +94,7 @@ const readLock = async (path: string) => JSON.parse(await readFile(path, 'utf8')
 // A crash reboot hands the dead writer's pid to an unrelated process. The lock record carries the
 // owner's boot and birth, so only the writer itself — same boot, same birth — keeps the journal.
 test('a crash-left journal lock whose pid now belongs to another process is reclaimed', async () => {
-  const stateDir = await mkdtemp(join(tmpdir(), 'ccmux-journal-reuse-'));
+  const stateDir = await mkdtemp(join(tmpdir(), 'stitchmux-journal-reuse-'));
   roots.push(stateDir);
   const m = makeMachine({ stateDir });
   const path = runtimeJournalPath(m, { kind: 'daemon' });

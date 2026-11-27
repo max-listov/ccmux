@@ -1,5 +1,4 @@
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import type { ModelSelection } from '../../config/modelSelectionFlags.ts';
 import { pageModelCatalog } from '../../control/modelPage.ts';
@@ -9,13 +8,14 @@ import {
   ControlModelSchema,
   type ControlModelsRead,
 } from '../../control/schema/model.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { modelSelectionLabel } from '../../runtime/selectionSchema.ts';
 import { managedRuntimeRoot, readManagedRuntimeStatus } from '../../runtime/status.ts';
 import { readPrivateJson } from '../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
-import { HOME } from '../../util/env.ts';
+import { HOME } from '../../util/home.ts';
 import { type OpenCodeClient, startOpenCodeServer } from './server.ts';
 
 const ModelSchema = z.object({
@@ -113,10 +113,7 @@ function runtimeGate(runtime: { status: string; reason: string | null }): string
   return `runtime ${runtime.status}${runtime.reason === null ? '' : ` (${runtime.reason})`}`;
 }
 function catalogUnavailable(gate: string): never {
-  throw new AppError('UNAVAILABLE', {
-    message: `Native runtime catalog is unavailable: ${gate}`,
-    status: 503,
-  });
+  throw refusals.errors.UNAVAILABLE({ message: `Native runtime catalog is unavailable: ${gate}` });
 }
 async function hostCatalog(
   m: MachineConfig,
@@ -128,10 +125,7 @@ async function hostCatalog(
     return await nativeOpenCodeModels(server.client, signal);
   } catch (error) {
     await recordRuntimeDiagnostic(m, null, 'model-catalog', error, server.stderr());
-    throw new AppError('UNAVAILABLE', {
-      message: 'Native model catalog is unavailable',
-      status: 503,
-    });
+    throw refusals.errors.UNAVAILABLE({ message: 'Native model catalog is unavailable' });
   } finally {
     await server.close();
   }
@@ -149,9 +143,8 @@ export async function validateOpenCodeSelection(
         model.provider === selection.provider && model.id === selection.model && !model.hidden,
     )
   )
-    throw new AppError('MODEL_UNAVAILABLE', {
+    throw refusals.errors.MODEL_UNAVAILABLE({
       message: `Model ${modelSelectionLabel(selection)} is unavailable for this runtime`,
-      status: 409,
     });
 }
 export async function readOpenCodeModels(
@@ -161,9 +154,8 @@ export async function readOpenCodeModels(
   signal: AbortSignal,
 ): Promise<ControlModelCatalog> {
   if (input.launchRecipe !== undefined)
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'This runtime does not accept a Codex launch recipe',
-      status: 409,
     });
   if (session !== undefined) {
     const runtime = readManagedRuntimeStatus(m, session);

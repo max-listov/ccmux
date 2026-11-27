@@ -45,8 +45,8 @@ export function formatChatInjection(
         ? // The body placeholder matters: the prompt says to use this command verbatim, and a command
           // without one runs as an empty send — usage error, exit 1 — right when the agent is trying
           // to answer.
-          ` · reply: ${opts.cli ?? 'ccmux'} msg ${msg.from.machine}:${msg.from.kind === 'managed' ? msg.from.session : codexAppAddress(msg.from.threadId)} --to-agent ${msg.from.agent} --to-thread ${msg.from.threadId}${msg.task ? ` --task ${msg.task}` : ''} "<your reply>"`
-        : ` · cannot reach ${msg.from.machine} from here (${opts.reply.reason}) — answer with ${opts.cli ?? 'ccmux'} msg owner "<your reply>"`;
+          ` · reply: ${opts.cli ?? 'stitchmux'} msg ${msg.from.machine}:${msg.from.kind === 'managed' ? msg.from.session : codexAppAddress(msg.from.threadId)} --to-agent ${msg.from.agent} --to-thread ${msg.from.threadId}${msg.task ? ` --task ${msg.task}` : ''} "<your reply>"`
+        : ` · cannot reach ${msg.from.machine} from here (${opts.reply.reason}) — answer with ${opts.cli ?? 'stitchmux'} msg owner "<your reply>"`;
   const origin = msg.origin ?? unknownMessageOrigin();
   const attributed = origin.application;
   if (attributed !== null) {

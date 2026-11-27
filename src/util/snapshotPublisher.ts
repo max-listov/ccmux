@@ -1,5 +1,5 @@
-import { AppError } from 'stitchkit';
 import { type BoundedChannel, createBoundedChannel } from 'stitchkit/application';
+import { refusals } from '../control/schema/refusals.ts';
 
 /**
  * The readers of one resident snapshot.
@@ -38,15 +38,9 @@ class SnapshotReaders<T> {
   subscribe(signal: AbortSignal, sequence: number): AsyncIterable<T> {
     signal.throwIfAborted();
     if (this.stopped)
-      throw new AppError('UNAVAILABLE', {
-        message: `${this.options.label} publisher is stopped`,
-        status: 503,
-      });
+      throw refusals.errors.UNAVAILABLE({ message: `${this.options.label} publisher is stopped` });
     if (this.readers.size >= this.options.limit)
-      throw new AppError('BUSY', {
-        message: `${this.options.label} subscriber limit reached`,
-        status: 429,
-      });
+      throw refusals.errors.BUSY({ message: `${this.options.label} subscriber limit reached` });
     const channel = createBoundedChannel<number>({
       policy: 'latest',
       maxItems: 1,

@@ -48,7 +48,7 @@ afterEach(() => {
 afterAll(() => logged.mockRestore());
 
 function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-policy-control-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-policy-control-')));
   roots.push(root);
   const dir = join(root, 'workspace');
   const privateDir = join(root, 'canonical');
@@ -248,11 +248,11 @@ test('Codex applies private thread instructions plus native skills and preserves
 
 test('source failure prevents provider restart while status/stamp reads remain body-free', async () => {
   const f = fixture();
-  const stamp = computeStamp(f.s, f.m, 'ccmux');
+  const stamp = computeStamp(f.s, f.m, 'stitchmux');
   expect(stamp.applicationPolicy).toEqual(f.policy.metadata);
   expect(JSON.stringify(stamp)).not.toContain(f.body);
   writeFileSync(f.source.path, 'Changed source');
-  expect(computeStamp(f.s, f.m, 'ccmux')).toEqual(stamp);
+  expect(computeStamp(f.s, f.m, 'stitchmux')).toEqual(stamp);
   expect(
     staleReasons(
       { ...stamp, ts: Date.now() },

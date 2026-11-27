@@ -8,7 +8,7 @@ import { ExternalStatusPublisher } from '../src/external/residentPublisher.ts';
 import { makeMachine } from './helpers.ts';
 
 function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-catalog-test-');
+  const root = mkdtempSync('/tmp/stitchmux-catalog-test-');
   const bin = join(root, 'codex');
   copyFileSync(join(import.meta.dir, 'fixtures/catalog-server.ts'), bin);
   chmodSync(bin, 0o700);

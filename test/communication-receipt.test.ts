@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-receipt-');
+  const root = mkdtempSync('/tmp/stitchmux-receipt-');
   roots.push(root);
   const machine = makeMachine({ stateDir: root, rcPrefix: 'host-a', chatEnabled: true });
   const session = makeSession({ uuid: crypto.randomUUID(), name: 'worker', chat: true, dir: root });

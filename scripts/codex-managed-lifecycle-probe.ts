@@ -17,14 +17,14 @@ import { SessionSchema } from '../src/session/schema.ts';
 import { readSession } from '../src/session-reader.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
-const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-lifecycle-'));
+const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-lifecycle-'));
 const work = join(root, 'work');
 const codexHome = join(root, 'codex-home');
 const codexSessions = join(codexHome, 'sessions');
 const stateDir = join(root, 'state');
 const cacheDir = join(root, 'cache');
 const configPath = join(root, 'machine.json');
-const tmuxSocket = `ccmux-lifecycle-${process.pid}`;
+const tmuxSocket = `stitchmux-lifecycle-${process.pid}`;
 const codexBin = Bun.which('codex');
 const claudeBin = Bun.which('claude');
 const tmuxBin = Bun.which('tmux');
@@ -47,7 +47,7 @@ try {
     codexSessionsDir: codexSessions,
     rcPrefix: 'host-a',
     stateDir,
-    bootLabel: 'ccmux-probe.service',
+    bootLabel: 'stitchmux-probe.service',
     autoUpdate: false,
     remoteControl: false,
     ensureInterval: 1,
@@ -57,9 +57,9 @@ try {
 
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = configPath;
-  env.CCMUX_STATE_DIR = stateDir;
-  env.CCMUX_CACHE_DIR = cacheDir;
+  env.STITCHMUX_CONFIG = configPath;
+  env.STITCHMUX_STATE_DIR = stateDir;
+  env.STITCHMUX_CACHE_DIR = cacheDir;
   env.CODEX_HOME = codexHome;
 
   type CommandResult = { code: number; stdout: string; stderr: string };
@@ -393,6 +393,6 @@ try {
       stdout: 'ignore',
       stderr: 'ignore',
     });
-  if (process.env.CCMUX_PROBE_KEEP === '1') console.error(`probe files kept at ${root}`);
+  if (process.env.STITCHMUX_PROBE_KEEP === '1') console.error(`probe files kept at ${root}`);
   else rmSync(root, { recursive: true, force: true });
 }

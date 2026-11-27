@@ -1,6 +1,7 @@
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
+import type { AppError } from 'stitchkit';
 import type { z } from 'zod';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
 import type { ManagedRuntimeSnapshot } from './schema.ts';
@@ -93,10 +94,7 @@ export function defineMailbox<Receipt extends MailboxReceipt, Result>(
     async request(m, s, operationId, compose, signal) {
       const live = readManagedRuntimeStatus(m, s);
       if (live.status !== 'live' || !live.snapshot)
-        throw new AppError('UNAVAILABLE', {
-          message: 'The native runtime is unavailable',
-          status: 503,
-        });
+        throw refusals.errors.UNAVAILABLE({ message: 'The native runtime is unavailable' });
       definition.precondition?.(live.snapshot);
       const generation = live.snapshot.generation;
       // Fetched only when a `settle` asks for it. Two of the four never look at it, and the
@@ -132,10 +130,7 @@ export function defineMailbox<Receipt extends MailboxReceipt, Result>(
         if (settled !== undefined) return settled;
         await Bun.sleep(definition.pollMs);
       }
-      throw new AppError('UNAVAILABLE', {
-        message: 'The runtime did not answer the request',
-        status: 503,
-      });
+      throw refusals.errors.UNAVAILABLE({ message: 'The runtime did not answer the request' });
     },
   };
 }

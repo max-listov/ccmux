@@ -63,7 +63,7 @@ async function searching<T>(
     read: (window: TranscriptWindowOptions) => Promise<ReturnType<typeof readTranscriptFile>>,
   ) => Promise<T>,
 ): Promise<T> {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-search-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-search-'));
   try {
     const path = join(dir, 'session.jsonl');
     writeFileSync(path, lines.map((line) => `${line}\n`).join(''));

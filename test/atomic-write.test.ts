@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { atomicWrite, copyFileAtomic } from '../src/util/atomic.ts';
 
-// The atomic replace itself is stitchkit's `writeFileAtomic`, tested there. What is ccmux's is what
+// The atomic replace itself is stitchkit's `writeFileAtomic`, tested there. What is stitchmux's is what
 // its callers rely on around it: a missing parent is created, and a file is private unless a mode
 // is stated.
 test('an atomic write creates its parent and is private unless a mode is stated', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-atomic-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-atomic-'));
   try {
     const nested = join(dir, 'a', 'b', 'state.json');
     await atomicWrite(nested, '{"ok":true}');
@@ -24,7 +24,7 @@ test('an atomic write creates its parent and is private unless a mode is stated'
 });
 
 test('a write that cannot land leaves no staging file beside its target', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-atomic-fail-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-atomic-fail-'));
   try {
     const target = join(dir, 'occupied');
     mkdirSync(target);
@@ -36,10 +36,10 @@ test('a write that cannot land leaves no staging file beside its target', async 
 });
 
 test('an atomic copy keeps the bytes and the permission bits of its source', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-atomic-copy-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-atomic-copy-'));
   try {
-    const from = join(dir, 'ccmux.js.bak');
-    const to = join(dir, 'ccmux.js');
+    const from = join(dir, 'stitchmux.js.bak');
+    const to = join(dir, 'stitchmux.js');
     Bun.spawnSync([
       'sh',
       '-c',
@@ -48,7 +48,7 @@ test('an atomic copy keeps the bytes and the permission bits of its source', () 
     copyFileAtomic(from, to);
     expect(readFileSync(to, 'utf8')).toBe('previous');
     expect(statSync(to).mode & 0o777).toBe(0o755);
-    expect(readdirSync(dir).sort()).toEqual(['ccmux.js', 'ccmux.js.bak']);
+    expect(readdirSync(dir).sort()).toEqual(['stitchmux.js', 'stitchmux.js.bak']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -15,7 +15,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 async function fixture() {
-  const root = realpathSync(mkdtempSync('/tmp/ccmux-no-inference-'));
+  const root = realpathSync(mkdtempSync('/tmp/stitchmux-no-inference-'));
   roots.push(root);
   const parent = makeSession({
     name: 'parent',

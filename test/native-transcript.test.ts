@@ -110,7 +110,7 @@ test('a complete short native conversation reports its own start', () => {
 
 async function nativeFixture() {
   const m = makeMachine({
-    stateDir: mkdtempSync('/tmp/ccmux-native-transcript-'),
+    stateDir: mkdtempSync('/tmp/stitchmux-native-transcript-'),
     rcPrefix: 'host-a',
   });
   const session = makeSession({
@@ -133,7 +133,7 @@ async function nativeFixture() {
 }
 
 test('a codex app-server session keeps its real rollout file, not the native feed', async () => {
-  const root = mkdtempSync('/tmp/ccmux-codex-transcript-');
+  const root = mkdtempSync('/tmp/stitchmux-codex-transcript-');
   const storage = join(root, 'sessions');
   mkdirSync(storage, { recursive: true });
   const uuid = '11111111-1111-4111-8111-111111111111';

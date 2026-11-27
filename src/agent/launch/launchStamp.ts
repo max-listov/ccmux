@@ -15,11 +15,11 @@ import { envInput, type LaunchInput } from './launchInputs.ts';
  * Everything that shapes an agent's behaviour is injected at launch: the system prompt (chat block,
  * prompt modules, its own fleet address), `--settings` (the chat Stop hook, statusline, RC), the
  * permission mode, and the supervisor code itself. So a change to any of them lands only on the next
- * restart. ccmux already SAYS this at the moment you act ("applies on: ccmux restart …"), but a line
+ * restart. stitchmux already SAYS this at the moment you act ("applies on: stitchmux restart …"), but a line
  * that scrolls away is not a state you can check an hour later.
  *
  * The question is deliberately NOT "is the version older". That measure lies in both directions: a
- * release that didn't touch the prompt would flag every session for nothing, while `ccmux chat on`
+ * release that didn't touch the prompt would flag every session for nothing, while `stitchmux chat on`
  * doesn't move the version at all yet absolutely requires a restart. The honest question is
  * **"would relaunching now give it something different?"** — which is directly computable.
  */
@@ -29,7 +29,7 @@ export const LaunchStampSchema = z.object({
   permissionMode: z.string(),
   chatEnabled: z.boolean(),
   promptModules: z.array(z.string()).default([]),
-  /** The ccmux-controlled env var NAMES this launch injected — never their values. `null` means the
+  /** The stitchmux-controlled env var NAMES this launch injected — never their values. `null` means the
    *  stamp predates this field: unknown, never reported as stale (same doctrine as a missing stamp). */
   envKeys: z.array(z.string()).nullable().default(null),
   /**
@@ -135,7 +135,7 @@ export function launchStaleReasons(
 /**
  * What changed since this session started, in words a human can act on. Empty = up to date.
  * A MISSING stamp yields empty too: "we don't know" must never be displayed as "stale", or the
- * first upgrade of ccmux itself would paint the whole fleet red for no reason.
+ * first upgrade of stitchmux itself would paint the whole fleet red for no reason.
  */
 export function staleReasons(stamp: LaunchStamp | null, now: Omit<LaunchStamp, 'ts'>): string[] {
   if (stamp === null) return [];

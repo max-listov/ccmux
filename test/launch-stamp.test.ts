@@ -23,10 +23,10 @@ const session = (over: Record<string, unknown> = {}) =>
     ...over,
   });
 
-const stamp = (s = session(), m = machine()) => ({ ...computeStamp(s, m, 'ccmux'), ts: 0 });
+const stamp = (s = session(), m = machine()) => ({ ...computeStamp(s, m, 'stitchmux'), ts: 0 });
 
 test('a fresh session is not stale', () => {
-  expect(staleReasons(stamp(), computeStamp(session(), machine(), 'ccmux'))).toEqual([]);
+  expect(staleReasons(stamp(), computeStamp(session(), machine(), 'stitchmux'))).toEqual([]);
 });
 
 test('a row whose runtime this reader cannot resolve is UNKNOWN, not a failed listing', () => {
@@ -34,22 +34,22 @@ test('a row whose runtime this reader cannot resolve is UNKNOWN, not a failed li
   const launched = machine({ opencodeBin: '/opt/opencode' });
   const reader = machine();
   // The recipe really cannot be built for this reader — otherwise this test would prove nothing.
-  expect(() => computeStamp(s, reader, 'ccmux')).toThrow('Native executable is unavailable');
+  expect(() => computeStamp(s, reader, 'stitchmux')).toThrow('Native executable is unavailable');
   // Unmeasured, with its cause — neither "nothing to pick up" nor a restart reason.
-  expect(launchStaleReasons(stamp(s, launched), s, reader, 'ccmux')).toEqual({
+  expect(launchStaleReasons(stamp(s, launched), s, reader, 'stitchmux')).toEqual({
     reasons: [],
     unknown: 'launch recipe cannot be built: Native executable is unavailable',
   });
-  expect(launchStaleReasons(stamp(s, launched), s, launched, 'ccmux')).toEqual({
+  expect(launchStaleReasons(stamp(s, launched), s, launched, 'stitchmux')).toEqual({
     reasons: [],
     unknown: null,
   });
 });
 
 test('no stamp means UNKNOWN, never stale', () => {
-  // Sessions launched before stamping existed must not light up: the first upgrade of ccmux itself
+  // Sessions launched before stamping existed must not light up: the first upgrade of stitchmux itself
   // would otherwise paint the whole fleet red for no reason.
-  expect(staleReasons(null, computeStamp(session(), machine(), 'ccmux'))).toEqual([]);
+  expect(staleReasons(null, computeStamp(session(), machine(), 'stitchmux'))).toEqual([]);
 });
 
 test('a forked conversation is NOT a config change', () => {
@@ -59,29 +59,32 @@ test('a forked conversation is NOT a config change', () => {
   const after = computeStamp(
     session({ uuid: '22222222-2222-4222-8222-222222222222' }),
     machine(),
-    'ccmux',
+    'stitchmux',
   );
   expect(staleReasons(before, after)).toEqual([]);
 });
 
 test('turning chat on is named as such — the case a version check would miss entirely', () => {
   const before = stamp(session({ chatEnabled: false }));
-  const after = computeStamp(session({ chatEnabled: true }), machine(), 'ccmux');
+  const after = computeStamp(session({ chatEnabled: true }), machine(), 'stitchmux');
   expect(staleReasons(before, after)).toEqual(['chat']);
 });
 
 test('permission mode and prompt modules are named separately', () => {
   const base = stamp();
   expect(
-    staleReasons(base, computeStamp(session({ permissionMode: 'plan' }), machine(), 'ccmux')),
+    staleReasons(base, computeStamp(session({ permissionMode: 'plan' }), machine(), 'stitchmux')),
   ).toContain('mode');
   expect(
-    staleReasons(base, computeStamp(session({ promptModules: ['router'] }), machine(), 'ccmux')),
+    staleReasons(
+      base,
+      computeStamp(session({ promptModules: ['router'] }), machine(), 'stitchmux'),
+    ),
   ).toContain('modules');
 });
 
 test('module order is not a change — including for a stamp written before sorting existed', () => {
-  const now = computeStamp(session(), machine(), 'ccmux');
+  const now = computeStamp(session(), machine(), 'stitchmux');
   const unsorted = { ...stamp(), promptModules: ['router', 'alpha'], hash: now.hash };
   const sorted = { ...now, promptModules: ['alpha', 'router'] };
   expect(staleReasons(unsorted, sorted)).not.toContain('modules');
@@ -94,21 +97,21 @@ test('a release that changed nothing about this session asks for nothing', () =>
   // argv, not a path), the mode and the flags are all inside the hash, and hooks resolve the binary
   // when they run. So a differing version alone must ask for nothing.
   const older = { ...stamp(), version: '0.0.1' };
-  expect(staleReasons(older, computeStamp(session(), machine(), 'ccmux'))).toEqual([]);
+  expect(staleReasons(older, computeStamp(session(), machine(), 'stitchmux'))).toEqual([]);
 });
 
 test('an older binary does NOT mask a real change', () => {
   // The other direction: dropping the version check must not swallow a reason. A session launched on
-  // an older ccmux whose recipe also changed still reports the actual cause.
+  // an older stitchmux whose recipe also changed still reports the actual cause.
   const older = { ...stamp(), version: '0.0.1', chatEnabled: false };
   expect(
-    staleReasons(older, computeStamp(session({ chatEnabled: true }), machine(), 'ccmux')),
+    staleReasons(older, computeStamp(session({ chatEnabled: true }), machine(), 'stitchmux')),
   ).toEqual(['chat']);
   const reworded = { ...stamp(), version: '0.0.1' };
   expect(
     staleReasons(
       reworded,
-      computeStamp(session(), machine({ extraFlags: ['--verbose'] }), 'ccmux'),
+      computeStamp(session(), machine({ extraFlags: ['--verbose'] }), 'stitchmux'),
     ),
   ).toEqual(['config']);
 });
@@ -117,7 +120,7 @@ test("anything else the launch recipe covers surfaces as 'config'", () => {
   // e.g. a reworded prompt or changed extraFlags — reported only when nothing more specific explains
   // it, so the message stays as precise as the evidence allows.
   const before = stamp();
-  const after = computeStamp(session(), machine({ extraFlags: ['--verbose'] }), 'ccmux');
+  const after = computeStamp(session(), machine({ extraFlags: ['--verbose'] }), 'stitchmux');
   expect(staleReasons(before, after)).toEqual(['config']);
 });
 
@@ -126,12 +129,12 @@ test('what the launch injects through the ENVIRONMENT is part of the recipe', ()
   // the environment — deliberately not argv, because a secret must not be an argument. So the hash
   // could not see it, and every session started before that capability existed kept RECEIVING while
   // silently unable to SEND. The column said a restart would change nothing.
-  const before = { ...stamp(), envKeys: ['CCMUX_SESSION'] };
-  expect(staleReasons(before, computeStamp(session(), machine(), 'ccmux'))).toEqual(['env']);
+  const before = { ...stamp(), envKeys: ['STITCHMUX_SESSION'] };
+  expect(staleReasons(before, computeStamp(session(), machine(), 'stitchmux'))).toEqual(['env']);
 });
 
 test('env keys are compared as a SET — order is not a change', () => {
-  const now = computeStamp(session(), machine(), 'ccmux');
+  const now = computeStamp(session(), machine(), 'stitchmux');
   const shuffled = { ...stamp(), envKeys: [...(now.envKeys ?? [])].reverse() };
   expect(staleReasons(shuffled, now)).toEqual([]);
 });
@@ -140,13 +143,13 @@ test('a stamp written before env was recorded is UNKNOWN, never stale', () => {
   // Same doctrine as a missing stamp: a field that did not exist says nothing about that launch.
   // Reporting it as stale would have flagged the whole fleet the moment this field shipped.
   const older = { ...stamp(), envKeys: null };
-  expect(staleReasons(older, computeStamp(session(), machine(), 'ccmux'))).toEqual([]);
+  expect(staleReasons(older, computeStamp(session(), machine(), 'stitchmux'))).toEqual([]);
 });
 
 test('values never enter the stamp — only names', () => {
   // The capability rotates on every launch and is a secret. Hashing its VALUE would make every
   // session permanently stale AND put a copy of the secret on disk.
-  const now = computeStamp(session(), machine(), 'ccmux');
+  const now = computeStamp(session(), machine(), 'stitchmux');
   expect(now.envKeys).toEqual([...(now.envKeys ?? [])].sort());
   for (const k of now.envKeys ?? []) expect(k).toMatch(/^[A-Z0-9_]+$/);
 });

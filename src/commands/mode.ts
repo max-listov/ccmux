@@ -2,21 +2,21 @@ import { escalationRefusal } from '../agent/claude/launch.ts';
 import { PermissionModeSchema } from '../config/launchSchema.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { setSessionPermissionMode } from '../session/registry.ts';
-import { UID } from '../util/env.ts';
+import { UID } from '../util/home.ts';
 import { log } from '../util/log.ts';
 
 const CHOICES = PermissionModeSchema.options.join('|');
 
 /**
  * Set (or clear) a session's per-session permission-mode override.
- *   ccmux mode <name> <auto|plan|acceptEdits|bypassPermissions|dontAsk|manual>
- *   ccmux mode <name> default   → clear the override (inherit the machine default)
- * The mode is a launch-time flag, so it applies on the next `ccmux restart <name>`.
+ *   stitchmux mode <name> <auto|plan|acceptEdits|bypassPermissions|dontAsk|manual>
+ *   stitchmux mode <name> default   → clear the override (inherit the machine default)
+ * The mode is a launch-time flag, so it applies on the next `stitchmux restart <name>`.
  */
 export async function cmdMode(name: string | undefined, mode: string | undefined): Promise<number> {
   if (name === undefined || mode === undefined) {
     console.log(
-      `usage: ccmux mode <name> <${CHOICES}|default>   ·   <machine>:<name> for another fleet machine`,
+      `usage: stitchmux mode <name> <${CHOICES}|default>   ·   <machine>:<name> for another fleet machine`,
     );
     return 1;
   }
@@ -49,6 +49,6 @@ export async function cmdMode(name: string | undefined, mode: string | undefined
   }
   log.info({ msg: 'session permission mode set', name, mode: value ?? null });
   console.log(`${name}: permission mode → ${value ?? `default (${m.permissionMode})`}`);
-  console.log(`apply: ccmux restart ${name}   (mode is set at launch)`);
+  console.log(`apply: stitchmux restart ${name}   (mode is set at launch)`);
   return 0;
 }

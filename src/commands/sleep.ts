@@ -2,8 +2,11 @@ import { loadMachineConfig } from '../config/machine.ts';
 import { routeFor } from '../fleet/address.ts';
 import { forwardIfRemote } from '../fleet/forward.ts';
 import { findSession, loadSessions, setSessionPinned } from '../session/registry.ts';
-import { sleepSessionByName, wakeSessionByName } from '../session/sleep/operations.ts';
-import { sleepUnsettled } from '../session/sleep/store.ts';
+import {
+  sleepSessionByName,
+  wakeBeforeAttach,
+  wakeSessionByName,
+} from '../session/sleep/operations.ts';
 import { attachTmux, cleanTerminalForAttach } from '../tmux/attach.ts';
 import { hasSession } from '../tmux/tmux.ts';
 import { parseFlags } from './flags.ts';
@@ -95,16 +98,11 @@ export async function cmdAttach(args: string[]): Promise<number> {
     console.error(`cannot attach ${name}: session is archived`);
     return 1;
   }
-  if (sleepUnsettled(m, session)) {
-    process.stderr.write(`waking ${name}…\n`);
-    try {
-      await wakeSessionByName(m, name);
-    } catch (error) {
-      console.error(
-        `cannot wake ${name}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return 1;
-    }
+  try {
+    await wakeBeforeAttach(m, session, (line) => process.stderr.write(line));
+  } catch (error) {
+    console.error(`cannot wake ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
   }
   if (!(await hasSession(m, name))) {
     console.error(`${name} has no live tmux session`);

@@ -15,8 +15,8 @@ const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 // Setup, not the subject. The flush test runs the shipped bundle, and building it costs whatever the
 // host's CPU allows — fifteen seconds were measured on a loaded machine. Built here, under a budget
 // of its own, the test's budget measures the flush and not how busy the host is.
-const bundleRoot = mkdtempSync(join(tmpdir(), 'ccmux-external-bundle-'));
-const bundle = join(bundleRoot, 'ccmux.js');
+const bundleRoot = mkdtempSync(join(tmpdir(), 'stitchmux-external-bundle-'));
+const bundle = join(bundleRoot, 'stitchmux.js');
 let bundled = false;
 beforeAll(async () => {
   bundled = await buildBundle(bundle);
@@ -73,7 +73,7 @@ describe('external inventory command', () => {
   });
 
   test('the real CLI flushes JSON larger than a pipe buffer before exiting', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-external-cli-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-external-cli-'));
     const sessionsDir = join(root, 'codex', 'sessions');
     const stateDir = join(root, 'state');
     const fakeBin = join(root, 'bin');
@@ -108,14 +108,14 @@ describe('external inventory command', () => {
         codexSessionsDir: sessionsDir,
         rcPrefix: 'host-a',
         stateDir,
-        bootLabel: 'ccmux-test.service',
+        bootLabel: 'stitchmux-test.service',
       }),
     );
 
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env))
       if (value !== undefined) env[key] = value;
-    env.CCMUX_CONFIG = config;
+    env.STITCHMUX_CONFIG = config;
 
     try {
       expect(bundled).toBe(true);

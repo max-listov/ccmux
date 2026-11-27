@@ -2,14 +2,16 @@ import type { CliTrustRoot } from 'stitchkit/cli';
 import type { MachineConfig } from '../types.ts';
 
 /**
- * The key ccmux releases are signed with, compiled into the bundle.
+ * The key stitchmux releases are signed with, compiled into the bundle.
  *
  * A trust root fetched at runtime from the same place as the release would prove nothing: whoever
  * can replace `release.json` could replace it too. The private half lives only in the CI secret
- * `CCMUX_RELEASE_SIGNING_KEY`; rotating it means publishing a release, signed with the old key,
+ * `STITCHMUX_RELEASE_SIGNING_KEY`; rotating it means publishing a release, signed with the old key,
  * whose bundle names the new one.
  */
 export const RELEASE_KEYS: Readonly<Record<string, string>> = {
+  // The id is this key's own name, given when it was made; installed releases trust it by this id,
+  // so a product rename does not rename it.
   'ccmux-2026-09': 'vZlOErFFvHVcdGlWU7TiCKsmJCL/c+2AcJcwQYqTwFg=',
 };
 

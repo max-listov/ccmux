@@ -8,7 +8,7 @@
 
 export interface PromptModuleContext {
   name: string; // this session's name
-  cli: string; // how to invoke ccmux (bare shim / absolute — see env.promptInvocation)
+  cli: string; // how to invoke stitchmux (bare shim / absolute — see env.promptInvocation)
   selfAddress: string; // this session's FLEET address (<machine>:<name>) — what a peer must reply to
 }
 

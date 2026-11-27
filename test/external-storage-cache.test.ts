@@ -10,7 +10,7 @@ import {
 } from '../src/external/storage.ts';
 
 test('known threads avoid walks; a duplicate in another directory is caught at the bounded deadline', async () => {
-  const root = mkdtempSync('/tmp/ccmux-storage-cache-');
+  const root = mkdtempSync('/tmp/stitchmux-storage-cache-');
   const id = crypto.randomUUID();
   const target: ExternalContentTarget = { provider: 'codex', machine: 'host-a', threadId: id };
   for (const dir of ['a', 'b', 'unrelated']) mkdirSync(join(root, dir));
@@ -52,7 +52,7 @@ test('known threads avoid walks; a duplicate in another directory is caught at t
 });
 
 test('moving a whole cached parent directory is found without a false unavailable result', async () => {
-  const root = mkdtempSync('/tmp/ccmux-storage-parent-');
+  const root = mkdtempSync('/tmp/stitchmux-storage-parent-');
   const id = crypto.randomUUID();
   const target: ExternalContentTarget = { provider: 'codex', machine: 'host-a', threadId: id };
   mkdirSync(join(root, 'live', 'day'), { recursive: true });
@@ -75,7 +75,7 @@ test('moving a whole cached parent directory is found without a false unavailabl
 });
 
 test('one caller abandoning a shared walk does not fail the others waiting on it', async () => {
-  const root = mkdtempSync('/tmp/ccmux-storage-abort-');
+  const root = mkdtempSync('/tmp/stitchmux-storage-abort-');
   const id = crypto.randomUUID();
   const target: ExternalContentTarget = { provider: 'codex', machine: 'host-a', threadId: id };
   mkdirSync(join(root, 'day'));
@@ -99,7 +99,7 @@ test('one caller abandoning a shared walk does not fail the others waiting on it
 });
 
 test('a thread created in an existing day directory is found once the index is briefly old', async () => {
-  const root = mkdtempSync('/tmp/ccmux-storage-miss-');
+  const root = mkdtempSync('/tmp/stitchmux-storage-miss-');
   const known = crypto.randomUUID();
   const fresh = crypto.randomUUID();
   const look = (threadId: string) =>

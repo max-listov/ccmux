@@ -35,7 +35,7 @@ tool, retry or prompt loop is introduced to make that checkbox appear complete.
 - Adopting an arbitrary server URL loses ownership and restart authority.
 - Parsing OpenCode's TUI discards native request IDs and terminal evidence already available in API.
 - Recreating sessions after uncertain responses risks a second writer or duplicated tool effects.
-- Replacing CCMux's chat ledger with a runtime-specific queue duplicates delivery authority.
+- Replacing Stitchmux's chat ledger with a runtime-specific queue duplicates delivery authority.
 - Renaming the package or deploying another product is not required by this adapter boundary.
 
 # Consequences

@@ -16,7 +16,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 test.skipIf(!Bun.which('tmux'))(
   'full daemon delivers pane work, quiet tool, completion, prompt, interruption and exact agent death to the Unix reader',
   async () => {
-    const root = mkdtempSync('/tmp/ccmux-pane-freshness-');
+    const root = mkdtempSync('/tmp/stitchmux-pane-freshness-');
     const tmux = Bun.which('tmux');
     if (!tmux) throw new Error('tmux');
     const m = makeMachine({
@@ -24,7 +24,7 @@ test.skipIf(!Bun.which('tmux'))(
       rcPrefix: 'host-a',
       projectsDir: join(root, 'projects'),
       tmuxBin: tmux,
-      tmuxSocket: `ccmux-pane-${crypto.randomUUID()}`,
+      tmuxSocket: `stitchmux-pane-${crypto.randomUUID()}`,
       claudeBin: '/usr/bin/false',
       codexBin: '/usr/bin/false',
       opencodeBin: '/usr/bin/false',
@@ -83,11 +83,11 @@ test.skipIf(!Bun.which('tmux'))(
       {
         env: {
           ...process.env,
-          CCMUX_CONFIG: config,
-          CCMUX_RC_PREFIX: m.rcPrefix,
-          CCMUX_STATE_DIR: root,
-          CCMUX_CACHE_DIR: join(root, 'cache'),
-          CCMUX_DATA_DIR: join(root, 'data'),
+          STITCHMUX_CONFIG: config,
+          STITCHMUX_RC_PREFIX: m.rcPrefix,
+          STITCHMUX_STATE_DIR: root,
+          STITCHMUX_CACHE_DIR: join(root, 'cache'),
+          STITCHMUX_DATA_DIR: join(root, 'data'),
         },
         stdout: 'ignore',
         stderr: 'pipe',
@@ -196,12 +196,12 @@ test.skipIf(!Bun.which('tmux'))(
       while (
         Date.now() < until &&
         !readFileSync(join(root, 'status', `${b.name}.lifecycle.json`), 'utf8').includes(
-          'ccmux:turn-closed',
+          'stitchmux:turn-closed',
         )
       )
         await Bun.sleep(50);
       expect(readFileSync(join(root, 'status', `${b.name}.lifecycle.json`), 'utf8')).toContain(
-        'ccmux:turn-closed',
+        'stitchmux:turn-closed',
       );
       command('kill-pane', '-t', pane);
       const stopped = await state(a.name, 'stopped');

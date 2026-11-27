@@ -129,9 +129,9 @@ async function deliverLocked(
       )
         // An owner that is held by something says what, every tick. One that says nothing while its
         // runtime sits idle is not reading the slot at all — which is what an owner started by an
-        // earlier version of ccmux does, since it predates this mailbox.
+        // earlier version of stitchmux does, since it predates this mailbox.
         await hold(
-          `the session's owner has not taken this letter; an owner started by an earlier ccmux takes none — ccmux restart ${s.name}`,
+          `the session's owner has not taken this letter; an owner started by an earlier stitchmux takes none — stitchmux restart ${s.name}`,
         );
       return 0;
     }

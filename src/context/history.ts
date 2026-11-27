@@ -1,9 +1,9 @@
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { attachmentPath } from '../attachments/files.ts';
 import type { AttachmentReference } from '../attachments/reference.ts';
 import { withAttachmentStore } from '../attachments/store.ts';
 import { managedPeer, sameTarget } from '../chat/identity.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import {
@@ -30,10 +30,7 @@ export function historyCursor(m: MachineConfig, s: Session, cursor?: string): st
   try {
     parsed = CursorSchema.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')));
   } catch {
-    throw new AppError('HISTORY_CURSOR', {
-      message: 'Native history cursor is invalid',
-      status: 409,
-    });
+    throw refusals.errors.HISTORY_CURSOR({ message: 'Native history cursor is invalid' });
   }
   if (
     parsed.registration !== s.registrationGeneration ||
@@ -41,9 +38,8 @@ export function historyCursor(m: MachineConfig, s: Session, cursor?: string): st
     parsed.revision !== readContextJournal(m, s).revision ||
     parsed.generation !== (readManagedRuntimeStatus(m, s).snapshot?.generation ?? null)
   )
-    throw new AppError('HISTORY_CURSOR', {
+    throw refusals.errors.HISTORY_CURSOR({
       message: 'Native history cursor no longer belongs to this context',
-      status: 409,
     });
   return parsed.cursor;
 }

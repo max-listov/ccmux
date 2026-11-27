@@ -32,7 +32,7 @@ test('the route is written for a PERSON: no provider, no thread uuid', () => {
   // a 130-character header that nobody could act on — this mirror is one-way.
   const line = formatForTg(msg('a', 'b', 'hi'));
   expect(line).not.toContain('11111111-1111-4111-8111-111111111111');
-  expect(line).not.toContain('ccmux/claude@');
+  expect(line).not.toContain('stitchmux/claude@');
   // machine:session is already unique across the fleet — that is what fleet addressing is for.
   expect(line).toContain('host-a:a');
 });
@@ -71,7 +71,7 @@ test('classifyHttpStatus: 4xx permanent (skip), 429/5xx transient (retry)', () =
 });
 
 test('mirrorPending is a fail-soft no-op when telegram is unconfigured (no network, no cursor)', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-tg-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-tg-'));
   const m = MachineConfigSchema.parse({
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',

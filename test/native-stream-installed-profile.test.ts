@@ -14,7 +14,7 @@ import { shimContents } from '../src/boot/installedApp.ts';
 import {
   ControlNativeStreamFrameSchema,
   controlNativeStreamFrame,
-  createCcmuxNativeStreamProfile,
+  createStitchmuxNativeStreamProfile,
 } from '../src/control/schema/nativeStreamContract.ts';
 import { replaceBundle } from '../src/release/update.ts';
 import { makePeer } from './helpers.ts';
@@ -45,7 +45,7 @@ function bundle(path: string, sequence: number): void {
 }
 
 async function firstFrame(executable: string) {
-  const profile = createCcmuxNativeStreamProfile(executable);
+  const profile = createStitchmuxNativeStreamProfile(executable);
   const child = Bun.spawn([profile.bin, ...profile.argv], {
     env: profile.env.set,
     stdin: new TextEncoder().encode(
@@ -61,10 +61,10 @@ async function firstFrame(executable: string) {
 }
 
 test('standard installed executable runs the native profile with an empty environment across upgrade and rollback', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-installed-profile-'));
-  const app = join(root, 'app', 'ccmux.js');
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-installed-profile-'));
+  const app = join(root, 'app', 'stitchmux.js');
   const runtime = join(root, 'bun');
-  const executable = join(root, 'bin', 'ccmux');
+  const executable = join(root, 'bin', 'stitchmux');
   mkdirSync(join(root, 'app'), { recursive: true });
   mkdirSync(join(root, 'bin'), { recursive: true });
   writeFileSync(runtime, '#!/bin/sh\nexec /bin/sh "$@"\n');
@@ -85,7 +85,7 @@ test('standard installed executable runs the native profile with an empty enviro
     expect(JSON.parse((await firstFrame(executable)).data).sequence).toBe(1);
     expect(readFileSync(executable, 'utf8')).toStartWith('#!/bin/sh\n');
     expect(shimContents()).toStartWith('#!/bin/sh\n');
-    expect(createCcmuxNativeStreamProfile(executable).env).toEqual({ inherit: [], set: {} });
+    expect(createStitchmuxNativeStreamProfile(executable).env).toEqual({ inherit: [], set: {} });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

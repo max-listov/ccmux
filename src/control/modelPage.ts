@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { AppError } from 'stitchkit';
 import type { ControlModel, ControlModelCatalog, ControlModelsRead } from './schema/model.ts';
+import { refusals } from './schema/refusals.ts';
 
 /**
  * One page of a model catalog, and one place that decides what a page is — for every runtime.
@@ -23,9 +23,8 @@ export function pageModelCatalog(
   if (input.cursor) {
     const [revision, start] = input.cursor.split(':');
     if (revision !== digest || !start || !/^\d+$/.test(start) || Number(start) > visible.length)
-      throw new AppError('INVALID_CURSOR', {
+      throw refusals.errors.STALE_CURSOR({
         message: 'Native catalog cursor requires a fresh baseline',
-        status: 409,
       });
     offset = Number(start);
   }

@@ -1,9 +1,10 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { bootArgv, DATA_DIR, DEFAULT_DATA_DIR, NATIVE_BACKEND_DIR } from '../config/paths.ts';
+import { DATA_DIR, DEFAULT_DATA_DIR, NATIVE_BACKEND_DIR } from '../config/paths.ts';
+import { PREVIOUS_COMMAND } from '../migration/renameFromCcmux.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
-import { IS_DEV, SHIM_PATH } from '../util/env.ts';
+import { bootArgv, IS_DEV, SHIM_PATH } from '../util/env.ts';
 import { log } from '../util/log.ts';
 import { convergeBootUnit } from './install.ts';
 import { ensureNativeBackend } from './nativeBackendInstall.ts';
@@ -42,14 +43,28 @@ export function ownsInstallation(dataDir: string = DATA_DIR, isDev: boolean = IS
   return !isDev && dataDir === DEFAULT_DATA_DIR;
 }
 
-export async function ensureShim(): Promise<boolean> {
-  const want = shimContents();
-  const file = Bun.file(SHIM_PATH);
+export async function ensureShim(path = SHIM_PATH, want = shimContents()): Promise<boolean> {
+  const file = Bun.file(path);
   if ((await file.exists()) && (await file.text()) === want) return false;
-  mkdirSync(dirname(SHIM_PATH), { recursive: true });
-  await atomicWrite(SHIM_PATH, want, 0o755);
-  log.info({ msg: 'installed PATH shim written', path: SHIM_PATH });
+  mkdirSync(dirname(path), { recursive: true });
+  await atomicWrite(path, want, 0o755);
+  log.info({ msg: 'installed PATH shim written', path });
   return true;
+}
+
+/**
+ * Rename window: the previous release's command runs this installation. The machine's move from
+ * the previous name deletes the code that command pointed at, and every session started before the
+ * update — and every machine still on the previous release — keeps calling it. Only a command that
+ * is already there is replaced, and only once the program it will run exists. REMOVE with the window.
+ */
+export async function bridgePreviousCommand(
+  previous = PREVIOUS_COMMAND,
+  want = shimContents(),
+  program: string | undefined = bootArgv()[1] ?? bootArgv()[0],
+): Promise<boolean> {
+  if (!existsSync(previous) || program === undefined || !existsSync(program)) return false;
+  return ensureShim(previous, want);
 }
 
 async function installNativeBackend(): Promise<PackagedInstall | 'not-needed'> {
@@ -78,5 +93,6 @@ export async function ensureInstalledApp(m: MachineConfig): Promise<void> {
   if (!ownsInstallation()) return;
   await installRoutedPrograms();
   await ensureShim();
+  await bridgePreviousCommand();
   await convergeBootUnit(m);
 }

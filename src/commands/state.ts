@@ -36,7 +36,7 @@ export async function cmdState(args: string[]): Promise<number> {
     console.error(`--since is not a time: ${sinceRaw}`);
     return 1;
   }
-  const target = flags.positionals[0] ?? process.env.CCMUX_SESSION;
+  const target = flags.positionals[0] ?? process.env.STITCHMUX_SESSION;
   if (target === undefined || target === '') {
     console.error(`${usageLine('state')}\nno address given and this is not a managed session`);
     return 1;

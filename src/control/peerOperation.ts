@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ChatPrincipal } from '../chat/identitySchema.ts';
 import type { Route } from '../fleet/address.ts';
 import { type RemoteResult, runPeer } from '../fleet/transport.ts';
+import { adoptPreviousSource } from '../migration/renameFromCcmux.ts';
 import type { MachineConfig } from '../types.ts';
 import { controlContract } from './schema/contract.ts';
 
@@ -12,13 +13,13 @@ import { controlContract } from './schema/contract.ts';
  *
  * The daemon that is asked does not act on another machine's session itself, and it does not
  * refuse either: it hands the same call — the operation's name and its validated input — to the
- * target machine, which runs `ccmux _peer-operation <name>` with the input on stdin. That program
+ * target machine, which runs `stitchmux _peer-operation <name>` with the input on stdin. That program
  * asks its own daemon over the local socket and prints one line, the answer or the refusal, which
  * comes back here as this operation's answer. The transport is the one every fleet read uses
  * (`fleet/transport.ts`): the remote route where it is configured, ssh where it is not.
  *
  * Authority is decided where the session is. The far daemon sees the call as its own machine's
- * command line, exactly as `ccmux stop <machine>:<name>` has always arrived there, so a delegated
+ * command line, exactly as `stitchmux stop <machine>:<name>` has always arrived there, so a delegated
  * session refuses it unless that machine's own rules let its command line act. One caller is not
  * forwarded at all: a caller authenticated by this machine's declared service. Its reach is the
  * machine whose service authenticated it; forwarded, it would act on another machine with that
@@ -93,7 +94,7 @@ export async function forwardOperation<K extends ForwardedOperation>(
       403,
       `A caller of this machine's service reaches ${route.machine} through that machine's own service`,
     );
-  const result = await run(m, route.machine, route.alias, ['ccmux', '_peer-operation', key], {
+  const result = await run(m, route.machine, route.alias, ['stitchmux', '_peer-operation', key], {
     stdin: JSON.stringify(input),
     timeoutMs: PEER_OPERATION_TIMEOUT_MS,
     signal,
@@ -137,7 +138,7 @@ function unanswered(machine: string, key: string, result: RemoteResult): AppErro
   return refusal(
     'UNKNOWN_OPERATION',
     501,
-    `${machine} does not take a forwarded ${key}: its ccmux answered with exit ${result.code} and no operation answer; update it`,
+    `${machine} does not take a forwarded ${key}: its stitchmux answered with exit ${result.code} and no operation answer; update it`,
   );
 }
 
@@ -159,7 +160,7 @@ export async function answerPeerOperation(
     };
   let input: unknown;
   try {
-    input = controlContract.endpoints[key].input.parse(JSON.parse(raw));
+    input = controlContract.endpoints[key].input.parse(adoptPreviousSource(JSON.parse(raw)));
   } catch (error) {
     return {
       ok: false,

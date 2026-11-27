@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { packageSource } from '../scripts/package-source.ts';
 
 test('source package is deterministic and contains bytes from the exact commit', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'ccmux-source-package-'));
+  const directory = mkdtempSync(join(tmpdir(), 'stitchmux-source-package-'));
   try {
     const first = packageSource(join(directory, 'first'), '0.0.0');
     const second = packageSource(join(directory, 'second'), '0.0.0');

@@ -22,7 +22,7 @@ import { writeEphemeralSnapshot } from '../util/atomic.ts';
  * So the supervisor, which looks at every pane every couple of seconds anyway, writes down what it
  * saw. Two readers depend on it and neither could keep the memory itself:
  *
- *  - **`ccmux wait`** is a fresh process on every call, and its FIRST look is the dangerous one.
+ *  - **`stitchmux wait`** is a fresh process on every call, and its FIRST look is the dangerous one.
  *    It answers "is the peer done" for the whole fleet, and a false yes sends the caller to
  *    `transcript --last-message`, which hands back what was said BEFORE the tool calls that had not
  *    finished — a stale answer, reported as the result.

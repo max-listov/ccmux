@@ -72,19 +72,19 @@ const dirs: string[] = [];
 test('producer inventory uses printable delimiters under a service locale', async () => {
   // What is asserted is the parse, not the speed of spawning a shell. Under a loaded full-suite
   // run the child lost the production deadline, and the failure read as "the delimiter is wrong".
-  process.env.CCMUX_OBSERVE_DEADLINE_MS = '15000';
+  process.env.STITCHMUX_OBSERVE_DEADLINE_MS = '15000';
   const m = fixture();
   const script = join(m.stateDir, 'inventory');
   writeFileSync(
     script,
-    "#!/bin/sh\ncase \"$5\" in\n  '#{session_name}|#{pane_id}|#{@ccmux-agent-pane}|#{session_created}|#{pane_pid}|#{pid}|#{pane_height}') printf 'agent-a|%%1|%%1|123|100|200|24\\n';;\n  *) printf 'agent-a_123\\n';;\nesac\n",
+    "#!/bin/sh\ncase \"$5\" in\n  '#{session_name}|#{pane_id}|#{@stitchmux-agent-pane}|#{session_created}|#{pane_pid}|#{pid}|#{pane_height}') printf 'agent-a|%%1|%%1|123|100|200|24\\n';;\n  *) printf 'agent-a_123\\n';;\nesac\n",
     { mode: 0o700 },
   );
   m.tmuxBin = script;
   try {
     expect([...(await observedSessionInventory(m))]).toEqual([['agent-a', 123]]);
   } finally {
-    delete process.env.CCMUX_OBSERVE_DEADLINE_MS;
+    delete process.env.STITCHMUX_OBSERVE_DEADLINE_MS;
   }
 });
 test('managed status distinguishes work, idle, prompt, unknown and stopped', () => {
@@ -275,13 +275,13 @@ test('producer rejects oversized output and counts invalid identities without tr
   m.tmuxBin = script;
   // The limit is what must end this read, not the one-second deadline: a loaded host can spend that
   // second starting the shell, and a timeout resolves the read instead of rejecting it.
-  const previous = process.env.CCMUX_OBSERVE_DEADLINE_MS;
-  process.env.CCMUX_OBSERVE_DEADLINE_MS = '30000';
+  const previous = process.env.STITCHMUX_OBSERVE_DEADLINE_MS;
+  process.env.STITCHMUX_OBSERVE_DEADLINE_MS = '30000';
   try {
     await expect(observedPane(m, 'agent-a')).rejects.toThrow('output limit');
   } finally {
-    if (previous === undefined) delete process.env.CCMUX_OBSERVE_DEADLINE_MS;
-    else process.env.CCMUX_OBSERVE_DEADLINE_MS = previous;
+    if (previous === undefined) delete process.env.STITCHMUX_OBSERVE_DEADLINE_MS;
+    else process.env.STITCHMUX_OBSERVE_DEADLINE_MS = previous;
   }
   const p = new MonitoringPublisher();
   p.begin(m);
@@ -291,7 +291,7 @@ test('producer rejects oversized output and counts invalid identities without tr
   expect(snapshot.omitted).toBe(1);
 });
 function fixture() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-monitoring-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-monitoring-'));
   dirs.push(dir);
   return makeMachine({ stateDir: dir, projectsDir: join(dir, 'history'), rcPrefix: 'host-a' });
 }

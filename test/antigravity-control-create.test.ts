@@ -13,7 +13,7 @@ test.skipIf(!Bun.which('tmux'))(
     const f = antigravityFixture();
     const tmux = Bun.which('tmux');
     if (!tmux) throw new Error('tmux required');
-    const socket = `ccmux-agy-${crypto.randomUUID()}`;
+    const socket = `stitchmux-agy-${crypto.randomUUID()}`;
     const m = makeMachine({
       rcPrefix: 'host-a',
       stateDir: f.stateDir,
@@ -31,11 +31,11 @@ test.skipIf(!Bun.which('tmux'))(
     await Bun.write(config, JSON.stringify(m));
     const env = {
       ...process.env,
-      CCMUX_CONFIG: config,
-      CCMUX_STATE_DIR: m.stateDir,
-      CCMUX_RC_PREFIX: m.rcPrefix,
-      CCMUX_CACHE_DIR: join(f.dir, 'cache'),
-      CCMUX_DATA_DIR: join(f.dir, 'data'),
+      STITCHMUX_CONFIG: config,
+      STITCHMUX_STATE_DIR: m.stateDir,
+      STITCHMUX_RC_PREFIX: m.rcPrefix,
+      STITCHMUX_CACHE_DIR: join(f.dir, 'cache'),
+      STITCHMUX_DATA_DIR: join(f.dir, 'data'),
     };
     const cli = [process.execPath, '--no-env-file', join(import.meta.dir, '../src/cli.ts')];
     const daemon = Bun.spawn([...cli, 'daemon'], { env, stdout: 'ignore', stderr: 'pipe' });

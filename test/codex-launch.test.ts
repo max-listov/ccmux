@@ -16,7 +16,7 @@ import { codexHistoryPresent, historyFile } from '../src/agent/codex/resume.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const tempDirs: string[] = [];
-const makeTemp = (prefix = 'ccmux-codex-'): string => {
+const makeTemp = (prefix = 'stitchmux-codex-'): string => {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -32,22 +32,22 @@ test('first launch injects the management prompt as the positional PROMPT (no --
   const argv = buildArgv(
     makeSession({ agent: 'codex', name: 'cc-api' }),
     codexMachine(),
-    'ccmux',
+    'stitchmux',
     false,
   );
   expect(argv[0]).toBe('/opt/codex/codex');
   expect(argv).not.toContain('resume');
-  // the prompt is the trailing positional and carries ccmux's management instructions + the name
+  // the prompt is the trailing positional and carries stitchmux's management instructions + the name
   const prompt = argv[argv.length - 1] ?? '';
-  expect(prompt).toContain('managed by ccmux');
+  expect(prompt).toContain('managed by stitchmux');
   expect(prompt).toContain('cc-api');
 });
 
 test('resume launches `codex resume <uuid>` and NEVER re-injects the prompt', () => {
   const s = makeSession({ agent: 'codex', uuid: 'abcdef01-1111-4111-8111-111111111111' });
-  const argv = buildArgv(s, codexMachine(), 'ccmux', true);
+  const argv = buildArgv(s, codexMachine(), 'stitchmux', true);
   expect(argv.slice(0, 3)).toEqual(['/opt/codex/codex', 'resume', s.uuid]);
-  expect(argv.some((a) => a.includes('managed by ccmux'))).toBe(false);
+  expect(argv.some((a) => a.includes('managed by stitchmux'))).toBe(false);
 });
 
 test('adopt bootstrap resumes the exact source without a synthetic prompt', () => {
@@ -55,23 +55,23 @@ test('adopt bootstrap resumes the exact source without a synthetic prompt', () =
   const source = 'abcdef01-1111-4111-8111-111111111111';
   const argv = buildAdoptArgv(s, codexMachine(), source);
   expect(argv.slice(0, 3)).toEqual(['/opt/codex/codex', 'resume', source]);
-  expect(argv.some((arg) => arg.includes('managed by ccmux'))).toBe(false);
+  expect(argv.some((arg) => arg.includes('managed by stitchmux'))).toBe(false);
 });
 
 test('fork bootstrap uses provider-native fork and prompts only the new identity', () => {
   const s = makeSession({ agent: 'codex', name: 'cc-fork' });
   const source = 'abcdef01-1111-4111-8111-111111111111';
-  const marker = 'ccmux_33333333-3333-4333-8333-333333333333';
-  const argv = buildForkArgv(s, codexMachine(), source, 'ccmux', marker);
+  const marker = 'stitchmux_33333333-3333-4333-8333-333333333333';
+  const argv = buildForkArgv(s, codexMachine(), source, 'stitchmux', marker);
   expect(argv.slice(0, 3)).toEqual(['/opt/codex/codex', 'fork', source]);
-  expect(argv.at(-1)).toContain('managed by ccmux');
+  expect(argv.at(-1)).toContain('managed by stitchmux');
   expect(argv.at(-1)).toContain('cc-fork');
   expect(argv.at(-1)).toContain(marker);
 });
 
 test('flags survive verbatim, extraFlags come after session flags', () => {
   const s = makeSession({ agent: 'codex', flags: ['-m', 'gpt-5.6-sol'] });
-  const argv = buildArgv(s, codexMachine({ extraFlags: ['--search'] }), 'ccmux', true);
+  const argv = buildArgv(s, codexMachine({ extraFlags: ['--search'] }), 'stitchmux', true);
   expect(argv).toContain('gpt-5.6-sol');
   expect(argv.indexOf('-m')).toBeLessThan(argv.indexOf('--search'));
 });
@@ -101,7 +101,7 @@ function forkRollout(root: string, id: string, originator: string, sourceThreadI
     payload: {
       type: 'message',
       role: 'user',
-      content: [{ type: 'input_text', text: `ccmux launch correlation: ${originator}` }],
+      content: [{ type: 'input_text', text: `stitchmux launch correlation: ${originator}` }],
     },
   });
   const largePrelude = JSON.stringify({
@@ -128,16 +128,24 @@ function forkRollout(root: string, id: string, originator: string, sourceThreadI
 const CODEX_ID = '019f7a53-8aa1-7e63-bc1d-5d2c9fdbb236';
 
 test('correlation selects only the exact persisted launch marker', () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-'));
-  rollout(root, '2026/07/30', CODEX_ID, '/home/user', 'ccmux_11111111-1111-4111-8111-111111111111');
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-'));
+  rollout(
+    root,
+    '2026/07/30',
+    CODEX_ID,
+    '/home/user',
+    'stitchmux_11111111-1111-4111-8111-111111111111',
+  );
   rollout(root, '2026/07/30', 'aaaaaaaa-1111-4111-8111-111111111111', '/home/user', 'codex_cli_rs');
   const m = codexMachine({ codexSessionsDir: root });
-  expect(rolloutIdsForMarker(m, 'ccmux_11111111-1111-4111-8111-111111111111')).toEqual([CODEX_ID]);
+  expect(rolloutIdsForMarker(m, 'stitchmux_11111111-1111-4111-8111-111111111111')).toEqual([
+    CODEX_ID,
+  ]);
 });
 
 test('correlation never uses cwd and exposes ambiguity instead of choosing newest', () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-'));
-  const marker = 'ccmux_11111111-1111-4111-8111-111111111111';
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-'));
+  const marker = 'stitchmux_11111111-1111-4111-8111-111111111111';
   rollout(root, '2026/07/30', CODEX_ID, '/somewhere/else', marker);
   rollout(root, '2026/07/31', 'aaaaaaaa-1111-4111-8111-111111111111', '/home/user', marker);
   const m = codexMachine({ codexSessionsDir: root });
@@ -148,8 +156,8 @@ test('correlation never uses cwd and exposes ambiguity instead of choosing newes
 });
 
 test('fork correlation requires both exact launch marker and provider-recorded parent', () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-codex-fork-'));
-  const marker = 'ccmux_11111111-1111-4111-8111-111111111111';
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-codex-fork-'));
+  const marker = 'stitchmux_11111111-1111-4111-8111-111111111111';
   const source = 'aaaaaaaa-1111-4111-8111-111111111111';
   forkRollout(root, CODEX_ID, marker, source);
   forkRollout(
@@ -164,7 +172,13 @@ test('fork correlation requires both exact launch marker and provider-recorded p
 
 test('ready Codex identity resolves its exact rollout', () => {
   const root = makeTemp();
-  rollout(root, '2026/07/30', CODEX_ID, '/home/user', 'ccmux_11111111-1111-4111-8111-111111111111');
+  rollout(
+    root,
+    '2026/07/30',
+    CODEX_ID,
+    '/home/user',
+    'stitchmux_11111111-1111-4111-8111-111111111111',
+  );
   const s = makeSession({ agent: 'codex', dir: '/home/user', uuid: CODEX_ID });
   const m = codexMachine({ codexSessionsDir: root });
   expect(historyFile(s, m)).not.toBeNull();
@@ -173,7 +187,7 @@ test('ready Codex identity resolves its exact rollout', () => {
 // ── per-session CODEX_HOME profiles ────────────────────────────────────────────────────
 
 function declareCodexProfile(codexHome: string): string {
-  const file = join(makeTemp('ccmux-codex-env-'), 'profile.env');
+  const file = join(makeTemp('stitchmux-codex-env-'), 'profile.env');
   writeFileSync(file, `CODEX_HOME=${codexHome}\n`);
   return file;
 }
@@ -182,8 +196,8 @@ test('session CODEX_HOME overrides machine codexHome; machine codexHome remains 
   const previous = process.env.CODEX_HOME;
   process.env.CODEX_HOME = '/inherited/foreign/codex';
   try {
-    const machineHome = makeTemp('ccmux-codex-default-');
-    const secondHome = makeTemp('ccmux-codex-second-');
+    const machineHome = makeTemp('stitchmux-codex-default-');
+    const secondHome = makeTemp('stitchmux-codex-second-');
     const m = codexMachine({
       codexHome: machineHome,
       codexSessionsDir: join(machineHome, 'sessions'),
@@ -209,8 +223,8 @@ test('session CODEX_HOME overrides machine codexHome; machine codexHome remains 
 });
 
 test('codexProfile routes launchInputs and rollout discovery to the session CODEX_HOME', () => {
-  const machineHome = makeTemp('ccmux-codex-default-');
-  const secondHome = makeTemp('ccmux-codex-second-');
+  const machineHome = makeTemp('stitchmux-codex-default-');
+  const secondHome = makeTemp('stitchmux-codex-second-');
   const m = codexMachine({
     codexHome: machineHome,
     codexSessionsDir: join(machineHome, 'sessions'),
@@ -221,7 +235,7 @@ test('codexProfile routes launchInputs and rollout discovery to the session CODE
     '2026/11/25',
     CODEX_ID,
     '/work/app',
-    'ccmux_22222222-2222-4222-8222-222222222222',
+    'stitchmux_22222222-2222-4222-8222-222222222222',
   );
   const second = makeSession({
     agent: 'codex',
@@ -248,7 +262,7 @@ test('codexProfile routes launchInputs and rollout discovery to the session CODE
 });
 
 test('two Codex profiles on one host launch app-server each with its own CODEX_HOME', async () => {
-  const root = makeTemp('ccmux-codex-two-');
+  const root = makeTemp('stitchmux-codex-two-');
   const homeA = join(root, 'codex-a');
   const homeB = join(root, 'codex-b');
   const stateDir = join(root, 'state');
@@ -297,7 +311,7 @@ printf '{"type":"session_meta","payload":{"id":"%s","originator":"app-server"}}\
   });
 
   const runServer = async (session: typeof sessionA) => {
-    const proc = Bun.spawn(ownedCodexArgv(session, m, 'ccmux'), {
+    const proc = Bun.spawn(ownedCodexArgv(session, m, 'stitchmux'), {
       cwd: session.dir,
       env: { ...launchEnv(m, session), TEST_THREAD_ID: session.uuid },
       stdout: 'pipe',

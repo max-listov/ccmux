@@ -15,7 +15,7 @@ import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { makeMachine } from './helpers.ts';
 
 async function bundle(root: string) {
-  const output = join(root, 'ccmux.js');
+  const output = join(root, 'stitchmux.js');
   const builder = join(import.meta.dir, '../scripts/bundle.ts');
   const build = Bun.spawn(
     [
@@ -53,7 +53,7 @@ function killFixture(pid: number) {
 }
 
 test('the release bundle serves the host model catalog through its guarded metadata process', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-catalog-bundle-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-catalog-bundle-'));
   const output = await bundle(root);
   const bin = join(root, 'codex');
   copyFileSync(join(import.meta.dir, 'fixtures/catalog-server.ts'), bin);
@@ -63,7 +63,7 @@ test('the release bundle serves the host model catalog through its guarded metad
     rcPrefix: 'host-a',
     projectsDir: root,
     tmuxBin: Bun.which('tmux') ?? '/usr/bin/false',
-    tmuxSocket: `ccmux-catalog-${crypto.randomUUID()}`,
+    tmuxSocket: `stitchmux-catalog-${crypto.randomUUID()}`,
     codexBin: bin,
     codexHome: root,
     chatEnabled: false,
@@ -74,10 +74,10 @@ test('the release bundle serves the host model catalog through its guarded metad
   writeFileSync(config, JSON.stringify(machine));
   const env = {
     ...process.env,
-    CCMUX_CONFIG: config,
-    CCMUX_STATE_DIR: machine.stateDir,
-    CCMUX_DATA_DIR: join(root, 'data'),
-    CCMUX_CACHE_DIR: join(root, 'cache'),
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_STATE_DIR: machine.stateDir,
+    STITCHMUX_DATA_DIR: join(root, 'data'),
+    STITCHMUX_CACHE_DIR: join(root, 'cache'),
   };
   const daemon = Bun.spawn([process.execPath, output, 'daemon'], {
     env,
@@ -116,7 +116,7 @@ test('the release bundle serves the host model catalog through its guarded metad
 
 for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
   test(`the release bundle reaps metadata after owner SIGKILL during ${phase}`, async () => {
-    const root = mkdtempSync(join(tmpdir(), 'ccmux-catalog-bundle-kill-'));
+    const root = mkdtempSync(join(tmpdir(), 'stitchmux-catalog-bundle-kill-'));
     const output = await bundle(root);
     const bin = join(root, 'codex');
     const target = readFileSync(join(import.meta.dir, 'fixtures/catalog-owner-server.ts'), 'utf8');
@@ -132,7 +132,7 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
       rcPrefix: 'host-a',
       projectsDir: root,
       tmuxBin: Bun.which('tmux') ?? '/usr/bin/false',
-      tmuxSocket: `ccmux-catalog-${crypto.randomUUID()}`,
+      tmuxSocket: `stitchmux-catalog-${crypto.randomUUID()}`,
       codexBin: bin,
       codexHome: root,
       chatEnabled: false,
@@ -143,10 +143,10 @@ for (const phase of ['before-listen', 'after-initialize', 'hanging-rpc']) {
     writeFileSync(config, JSON.stringify(machine));
     const env = {
       ...process.env,
-      CCMUX_CONFIG: config,
-      CCMUX_STATE_DIR: machine.stateDir,
-      CCMUX_DATA_DIR: join(root, 'data'),
-      CCMUX_CACHE_DIR: join(root, 'cache'),
+      STITCHMUX_CONFIG: config,
+      STITCHMUX_STATE_DIR: machine.stateDir,
+      STITCHMUX_DATA_DIR: join(root, 'data'),
+      STITCHMUX_CACHE_DIR: join(root, 'cache'),
     };
     const owner = Bun.spawn([process.execPath, output, 'daemon'], {
       env,

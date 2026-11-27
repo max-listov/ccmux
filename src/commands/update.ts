@@ -74,7 +74,7 @@ export async function cmdUpdate(args: string[]): Promise<number> {
         return 1;
       }
       console.log(
-        `updated to ${release.version}. daemon bounced; sessions keep running. rollback: ccmux update --rollback`,
+        `updated to ${release.version}. daemon bounced; sessions keep running. rollback: stitchmux update --rollback`,
       );
       return 0;
     }

@@ -8,13 +8,13 @@ import {
 } from '../context/searchReport.ts';
 import { SearchPatternError } from '../context/transcriptSearch.ts';
 import { humanizeDuration } from '../util/duration.ts';
-import { HOME } from '../util/env.ts';
+import { HOME } from '../util/home.ts';
 import { printLine } from '../util/stdout.ts';
 import { tableLines } from '../util/table.ts';
 import { type ParsedFlags, parseFlags, UsageError } from './flags.ts';
 import { COMMANDS, usageLine } from './help.ts';
 
-/** `ccmux search --report` — reads the command line and prints what `context/searchReport.ts` answers. */
+/** `stitchmux search --report` — reads the command line and prints what `context/searchReport.ts` answers. */
 
 /** What a report reads; every other flag of `search` is about a search and is refused here. */
 const REPORT_FLAGS = new Set(['report', 'since', 'until', 'machine', 'local', 'limit', 'json']);

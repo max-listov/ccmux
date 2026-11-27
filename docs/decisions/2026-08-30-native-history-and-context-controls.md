@@ -74,7 +74,7 @@ The destination-owned App Server performs Codex `thread/fork` with the captured 
 excluding response turns and deferring goal continuation. It does not fork on the source server and
 then attach a competing writer. OpenCode forks through the destination's existing authenticated
 native client while source input admission is held. Native fork supplies new message/part identities;
-CCMux retains the existing safe image references for both branches.
+Stitchmux retains the existing safe image references for both branches.
 
 OpenCode 1.18.20 native fork does not copy its session-level model/agent fields. After recording the
 fork ACK, the owner uses the native typed config-only model/agent switch on the same session table,

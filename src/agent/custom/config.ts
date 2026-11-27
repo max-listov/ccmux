@@ -103,7 +103,7 @@ export const MAX_DECLARED_CUSTOM_TOOLS =
  * Custom exists to run this system's own loop on a machine that is not the consumer's, and without
  * this a session could read and write files and perform not one operation of the party that started
  * it. The seam was never missing — `mountAgent` takes services — what was missing is where the
- * operation SHAPES come from, because the service runs elsewhere. They arrive by handshake: ccmux
+ * operation SHAPES come from, because the service runs elsewhere. They arrive by handshake: stitchmux
  * spawns the declared executable and speaks MCP over its stdio, so no schema is written down twice
  * and nothing of the far side's code runs inside the supervisor.
  */

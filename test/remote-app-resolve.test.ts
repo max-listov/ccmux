@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { LOCAL_API_VERSION } from '@stitchwire/client';
 import { z } from 'zod';
 import { loadLedger } from '../src/chat/ledger.ts';
 import { loadOutbox } from '../src/fleet/outbox.ts';
@@ -18,7 +19,7 @@ const RpcSchema = z.object({
   params: z.unknown().optional(),
 });
 
-test('real resolve CLI through the remote adapter refuses before admission, and accepts only the exact App identity', async () => {
+test('real resolve CLI through the Stitchwire agent refuses before admission, and accepts only the exact App identity', async () => {
   const root = mkdtempSync('/tmp/car-');
   const home = join(root, 'c');
   const directory = join(home, 'app-server-control');
@@ -70,22 +71,23 @@ test('real resolve CLI through the remote adapter refuses before admission, and 
   const calls: string[][] = [];
   const env: Record<string, string | undefined> = { ...process.env };
   for (const name of [
-    'CCMUX_SESSION',
-    'CCMUX_CHAT_CREDENTIAL',
+    'STITCHMUX_SESSION',
+    'STITCHMUX_CHAT_CREDENTIAL',
     'CODEX_THREAD_ID',
     'CODEX_SESSION_ID',
     'CODEX_APP_TOOLS_PIPE_PATH',
     'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
   ])
     delete env[name];
+  // The Stitchwire agent on the sending machine: it runs each call on the receiver and answers.
   const adapter = Bun.serve({
-    unix: join(root, 'adapter.sock'),
+    unix: join(root, 'agent.sock'),
     async fetch(request) {
       const input = InputSchema.parse(await request.json());
       calls.push(input.argv);
       const receive = input.argv[1] === '_chat-receive-v2';
       expect(input.argv).toEqual(
-        receive ? ['ccmux', '_chat-receive-v2'] : ['ccmux', '_codex-app-resolve', UUID],
+        receive ? ['stitchmux', '_chat-receive-v2'] : ['stitchmux', '_codex-app-resolve', UUID],
       );
       const child = Bun.spawn(
         [
@@ -98,7 +100,7 @@ test('real resolve CLI through the remote adapter refuses before admission, and 
         ],
         {
           cwd: root,
-          env: { ...env, CCMUX_CONFIG: receiverConfig },
+          env: { ...env, STITCHMUX_CONFIG: receiverConfig },
           stdin: new Response(input.stdin ?? ''),
           stdout: 'pipe',
           stderr: 'pipe',
@@ -109,13 +111,31 @@ test('real resolve CLI through the remote adapter refuses before admission, and 
         new Response(child.stderr).text(),
         child.exited,
       ]);
-      return Response.json({ code, stdout, stderr, transportFailed: false, delivery: 'received' });
+      return Response.json({
+        v: LOCAL_API_VERSION,
+        id: crypto.randomUUID(),
+        ts: new Date().toISOString(),
+        from: 'host-b',
+        code,
+        stdout,
+        stderr,
+        detail: '',
+        retryAfterMs: null,
+        transportCause: null,
+        failure: 'none',
+        refusal: 'none',
+        truncated: false,
+      });
     },
   });
   const sender = makeMachine({
     stateDir: join(root, 's'),
     rcPrefix: 'host-a',
-    remoteTransport: { socket: join(root, 'adapter.sock'), peers: ['host-b'] },
+    remoteTransport: {
+      kind: 'stitchwire',
+      agentSocket: join(root, 'agent.sock'),
+      peers: ['host-b'],
+    },
   });
   const senderConfig = join(root, 'sender.json');
   writeFileSync(senderConfig, JSON.stringify(sender));
@@ -132,7 +152,7 @@ test('real resolve CLI through the remote adapter refuses before admission, and 
       ],
       {
         cwd: root,
-        env: { ...env, CCMUX_CONFIG: senderConfig },
+        env: { ...env, STITCHMUX_CONFIG: senderConfig },
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
@@ -163,7 +183,7 @@ test('real resolve CLI through the remote adapter refuses before admission, and 
     const accepted = await send();
     expect(accepted.code).toBe(0);
     expect(calls).toHaveLength(4);
-    expect(calls[3]).toEqual(['ccmux', '_chat-receive-v2']);
+    expect(calls[3]).toEqual(['stitchmux', '_chat-receive-v2']);
     expect(loadLedger(receiver)).toHaveLength(1);
     expect(loadOutbox(sender)).toHaveLength(1);
     expect(loadLedger(receiver)[0]?.to).toMatchObject({

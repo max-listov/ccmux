@@ -12,7 +12,7 @@ import { entryNames } from '../util/entryNames.ts';
 import { readFirstLine, readHeadLines } from '../util/readLines.ts';
 import type { SessionIdentity, SessionLife } from './identitySchema.ts';
 import { declaredProject, repositoryOf } from './repository.ts';
-import { sleepBlocksStart } from './sleep/store.ts';
+import { showsAsSleeping } from './sleep/store.ts';
 
 /**
  * A session's identity, assembled from what already records it: the registry (name, directory, the
@@ -200,10 +200,7 @@ export async function sessionIdentities(
     const last = conversations.map((life) => ms(life.lastAt)).filter((at) => at > 0);
     const invRow = inventoryByName.get(session.name);
     const isRunning = invRow?.running ?? null;
-    const isSleeping =
-      !session.archived &&
-      isRunning !== true &&
-      (invRow?.sleeping === true || sleepBlocksStart(m, session));
+    const isSleeping = invRow?.sleeping === true || showsAsSleeping(m, session, isRunning);
     out.push({
       address: selfAddress(m, session.name),
       machine: m.rcPrefix,

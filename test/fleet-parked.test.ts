@@ -44,8 +44,8 @@ test('a machine with nothing parked says nothing about parking', () => {
 });
 
 test("a peer's parked rows are read by the same rule as this machine's", () => {
-  // The two halves of the map used to disagree: `ccmux list` said `archived` for a row while
-  // `ccmux fleet` said `stopped` for that same row on that same machine.
+  // The two halves of the map used to disagree: `stitchmux list` said `archived` for a row while
+  // `stitchmux fleet` said `stopped` for that same row on that same machine.
   const machine: FleetMachine = {
     machine: 'host-a',
     alias: null,

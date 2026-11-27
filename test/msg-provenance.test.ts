@@ -14,7 +14,7 @@ const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 
 // A config + registry with three chat-enabled sessions: a router, a plain peer, and a target.
 function setup() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-prov-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-prov-'));
   const cfg = {
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',
@@ -50,15 +50,15 @@ async function runMsg(
 ): Promise<number> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  env.CCMUX_CONFIG = cfgPath;
+  env.STITCHMUX_CONFIG = cfgPath;
   if (session !== undefined) {
-    env.CCMUX_SESSION = session;
+    env.STITCHMUX_SESSION = session;
     const m = MachineConfigSchema.parse(JSON.parse(await Bun.file(cfgPath).text()));
     const managed = loadSessions(m).find((item) => item.name === session);
     if (managed !== undefined)
       env[CHAT_CREDENTIAL_ENV] = (await Bun.file(chatAuthPath(m, managed.name)).text()).trim();
   } else {
-    delete env.CCMUX_SESSION;
+    delete env.STITCHMUX_SESSION;
     delete env.CODEX_THREAD_ID;
     delete env.CODEX_SESSION_ID;
     delete env.CODEX_APP_TOOLS_PIPE_PATH;
@@ -78,8 +78,20 @@ test('a router session MAY relay --on-behalf-of owner', async () => {
   expect(code).toBe(0);
   const led = loadLedger(m);
   expect(led.at(-1)).toMatchObject({
-    from: { kind: 'managed', source: 'ccmux', machine: 'test', agent: 'claude', session: 'router' },
-    to: { kind: 'managed', source: 'ccmux', machine: 'test', agent: 'claude', session: 'worker' },
+    from: {
+      kind: 'managed',
+      source: 'stitchmux',
+      machine: 'test',
+      agent: 'claude',
+      session: 'router',
+    },
+    to: {
+      kind: 'managed',
+      source: 'stitchmux',
+      machine: 'test',
+      agent: 'claude',
+      session: 'worker',
+    },
     onBehalfOf: 'owner',
     defer: true,
   });
@@ -92,12 +104,12 @@ test('a plain peer session may NOT forge --on-behalf-of owner', async () => {
   expect(loadLedger(m).length).toBe(0); // nothing written
 });
 
-test('self-setting CCMUX_SESSION without its capability cannot promote cli to managed', async () => {
+test('self-setting STITCHMUX_SESSION without its capability cannot promote cli to managed', async () => {
   const { cfgPath, m } = setup();
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = cfgPath;
-  env.CCMUX_SESSION = 'router';
+  env.STITCHMUX_CONFIG = cfgPath;
+  env.STITCHMUX_SESSION = 'router';
   delete env[CHAT_CREDENTIAL_ENV];
   const proc = Bun.spawn(['bun', CLI, 'msg', 'worker', 'forged'], {
     env,
@@ -118,7 +130,7 @@ test('the cli (human operator) MAY relay --on-behalf-of', async () => {
   ]);
   expect(code).toBe(0);
   expect(loadLedger(m).at(-1)).toMatchObject({
-    from: { kind: 'cli', source: 'ccmux', machine: 'test' },
+    from: { kind: 'cli', source: 'stitchmux', machine: 'test' },
     onBehalfOf: 'owner',
   });
 });

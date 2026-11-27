@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import { providerFor } from '../../agent/index.ts';
 import { managedPeer } from '../../chat/identity.ts';
+import { type RefusalCode, refusals } from '../../control/schema/refusals.ts';
 import { controlTarget } from '../../control/target.ts';
 import { delegationStopped } from '../../delegation/cancel.ts';
 import { withNativeAdmission } from '../../runtime/admission.ts';
@@ -17,11 +17,11 @@ import { listSessionPanes } from './proof.ts';
 import { reconcileSleepRecord } from './reconcile.ts';
 import { awaitRelease, sessionHasFreshLiveProcess } from './release.ts';
 import { SleepReceiptSchema, type SleepRecord, type WakeRequestSchema } from './schema.ts';
-import { readSleep, writeSleep } from './store.ts';
+import { readSleep, sleepUnsettled, writeSleep } from './store.ts';
 import { appendWakeOperation, readWakeOperations, writeWakeOperations } from './wakeStore.ts';
 
-function refuse(code: string, message: string): never {
-  throw new AppError(code, { message, status: 409 });
+function refuse(code: RefusalCode, message: string): never {
+  throw refusals.errors[code]({ message });
 }
 
 function assertWakeTarget(
@@ -239,9 +239,8 @@ async function withinWakeBudget<T>(
   work: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
-  const pending = new AppError('WAKE_PENDING', {
+  const pending = refusals.errors.WAKE_PENDING({
     message: 'Session has not acknowledged wake; retry',
-    status: 409,
   });
   const timer = setTimeout(
     () => controller.abort(pending),
@@ -282,7 +281,7 @@ export async function wakeSessionByName(
 ): Promise<{ readonly woke: boolean; readonly session: Session }> {
   const session = await ensureRegistrationGeneration(m, name);
   if (session === null) {
-    throw new AppError('NOT_FOUND', { message: `Unknown session '${name}'`, status: 404 });
+    throw refusals.errors.NOT_FOUND({ message: `Unknown session '${name}'` });
   }
   if (session.archived) {
     refuse('ARCHIVED', `Session '${name}' is archived`);
@@ -311,4 +310,20 @@ export async function wakeSessionByName(
     signal,
   );
   return { woke: true, session };
+}
+
+/**
+ * Wake a session someone is about to attach to — the one sequence `stitchmux attach` and the TUI's
+ * attach both run. Announces the wake before it starts, since it can take seconds; returns whether
+ * a wake ran. An archived or awake session is left alone.
+ */
+export async function wakeBeforeAttach(
+  m: MachineConfig,
+  s: Session,
+  announce: (line: string) => void,
+): Promise<boolean> {
+  if (s.archived || !sleepUnsettled(m, s)) return false;
+  announce(`waking ${s.name}…\n`);
+  await wakeSessionByName(m, s.name);
+  return true;
 }

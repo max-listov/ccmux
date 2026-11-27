@@ -10,6 +10,7 @@ import { UNSEEN } from '../src/events/observe.ts';
 import { InventoryRowSchema } from '../src/events/schema.ts';
 import { rowStateLabel } from '../src/inventory/rows.ts';
 import {
+  MEMORY_SAMPLE_MAX_AGE_MS,
   MemorySampler,
   measureDarwinTreeMemory,
   measureLinuxSessionTrees,
@@ -18,6 +19,7 @@ import {
 } from '../src/monitoring/memory.ts';
 import { projectMonitoringRow } from '../src/monitoring/project.ts';
 import {
+  MonitoringRowReadSchema,
   MonitoringRowSchema,
   MonitoringSnapshotSchema,
   STATUS_MAX_AGE_MS,
@@ -56,11 +58,13 @@ describe('memory measurement (macOS libproc + Linux smaps_rollup parser/fixture 
     expect(missing).toBeNull();
 
     // Real parent -> child tree where child touches 24 MiB: falsifies missing proc_listchildpids.
+    // The child keeps the buffer reachable (a global and the timer touch it): an unreferenced one is
+    // collected within ~200 ms and the footprint falls back to ~4 MiB before it is measured.
     const parentProc = Bun.spawn(
       [
         process.execPath,
         '-e',
-        `const child = Bun.spawn([process.execPath, '-e', 'const b = new Uint8Array(24 * 1024 * 1024); for (let i = 0; i < b.length; i += 4096) b[i] = 1; console.log("READY"); setInterval(() => {}, 1000);'], { stdout: 'pipe' });
+        `const child = Bun.spawn([process.execPath, '-e', 'const b = new Uint8Array(24 * 1024 * 1024); for (let i = 0; i < b.length; i += 4096) b[i] = 1; globalThis.held = b; console.log("READY"); setInterval(() => { b[0] ^= 1; }, 1000);'], { stdout: 'pipe' });
 const reader = child.stdout.getReader();
 await reader.read();
 reader.releaseLock();
@@ -124,7 +128,7 @@ setInterval(() => {}, 1000);`,
   });
 
   test('measureLinuxTreeMemory sums synthetic /proc tree and returns null on missing root smaps_rollup', () => {
-    const procRoot = tempDir('ccmux-fake-proc-');
+    const procRoot = tempDir('stitchmux-fake-proc-');
     // Root PID 1000 -> child 1001 -> grandchild 1002 (transient ENOENT smaps_rollup).
     const writeProc = (
       pid: number,
@@ -152,7 +156,7 @@ setInterval(() => {}, 1000);`,
     expect(measureLinuxTreeMemory([1000], procRoot)).toBe((2000 + 500 + 1000) * 1024);
 
     // Root without readable smaps_rollup must return null, NEVER 0 or partial child-only sum.
-    const brokenRoot = tempDir('ccmux-fake-proc-broken-');
+    const brokenRoot = tempDir('stitchmux-fake-proc-broken-');
     const writeBroken = (
       pid: number,
       ppid: number,
@@ -187,10 +191,10 @@ setInterval(() => {}, 1000);`,
     expect(batched.get('broken')).toBeNull();
   });
 
-  test('live native session without tmux never reports memoryBytes=0 before sampling (MemorySampler.rawMemoryFor)', async () => {
+  test('live native session without tmux never reports memoryBytes=0 before sampling (MemorySampler.memoryFor)', async () => {
     const { OwnedCodexProjection } = await import('../src/agent/codex/owned/projection.ts');
     const { OwnedCodexStatusWriter } = await import('../src/agent/codex/owned/status.ts');
-    const root = tempDir('ccmux-native-mem-');
+    const root = tempDir('stitchmux-native-mem-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const nativeSession = makeSession({
       name: 'native-only',
@@ -222,7 +226,7 @@ setInterval(() => {}, 1000);`,
       null,
       UNSEEN,
       now,
-      sampler.rawMemoryFor(nativeSession.name),
+      sampler.memoryFor(nativeSession.name),
     );
     expect(beforeSample.running).toBe(true);
     expect(beforeSample.memoryBytes).toBeNull();
@@ -236,40 +240,38 @@ setInterval(() => {}, 1000);`,
         null,
         UNSEEN,
         now,
-        sampler.rawMemoryFor(nativeSession.name),
+        sampler.memoryFor(nativeSession.name),
       );
       expect(afterSample.running).toBe(true);
       expect(afterSample.memoryBytes).toBeGreaterThan(0);
     }
   });
 
-  test('MemorySampler reports 0 when stopped/sleeping and null (never 0) when live without sample', async () => {
-    const root = tempDir('ccmux-sampler-');
+  test('MemorySampler reports null (never 0) without a fresh sample and bytes once measured', async () => {
+    const root = tempDir('stitchmux-sampler-');
     const m = makeMachine({ stateDir: join(root, 'state') });
     const live = makeSession({ name: 'agent-live', agent: 'claude', dir: root });
-    const asleep = makeSession({ name: 'agent-sleep', agent: 'claude', dir: root });
     const sampler = new MemorySampler();
 
-    // Before first refresh: stopped/sleeping -> 0; live -> null.
-    expect(sampler.memoryFor(asleep.name, false)).toBe(0);
-    expect(sampler.memoryFor(live.name, true)).toBeNull();
-
-    // Refresh with empty pane PIDs must still report null (never 0) for a live session.
-    await sampler.refresh(m, [live, asleep], new Map());
-    expect(sampler.memoryFor(live.name, true)).toBeNull();
-    expect(sampler.memoryFor(asleep.name, false)).toBe(0);
+    expect(sampler.memoryFor(live.name)).toBeNull();
+    // A live session whose pane pids are unknown is unmeasured, not empty.
+    await sampler.refresh(m, [live], new Map());
+    expect(sampler.memoryFor(live.name)).toBeNull();
 
     if (process.platform === 'darwin') {
-      await sampler.refresh(m, [live, asleep], new Map([[live.name, [process.pid]]]));
-      expect(sampler.memoryFor(live.name, true)).toBeGreaterThan(0);
-      expect(sampler.memoryFor(asleep.name, false)).toBe(0);
+      await sampler.refresh(m, [live], new Map([[live.name, [process.pid]]]));
+      expect(sampler.memoryFor(live.name)).toBeGreaterThan(0);
+      // The same sample read after it went stale is not reported.
+      expect(
+        sampler.memoryFor(live.name, Date.now() + MEMORY_SAMPLE_MAX_AGE_MS + 1_000),
+      ).toBeNull();
     }
   });
 });
 
 describe('MonitoringRowSchema, InventoryRowSchema, TUI status, and controlContract parity', () => {
   test('MonitoringRowSchema keeps protocol-1 state="stopped" while carrying additive sleep/pin/memory fields', async () => {
-    const root = tempDir('ccmux-mon-row-');
+    const root = tempDir('stitchmux-mon-row-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const s = makeSession({
       name: 'agent-a',
@@ -309,9 +311,9 @@ describe('MonitoringRowSchema, InventoryRowSchema, TUI status, and controlContra
     expect(row.sleeping).toBe(true);
     expect(row.pinned).toBe(true);
     expect(row.memoryBytes).toBe(0);
-    expect(row.registrationGeneration).toBe(s.registrationGeneration);
+    expect(row.registrationGeneration).toBe(s.registrationGeneration ?? null);
 
-    // Backward-compatible parse without new optional fields still passes.
+    // A row from a producer older than these fields still reads; the producer's own schema requires them.
     const {
       sleeping: _s,
       pinned: _p,
@@ -319,7 +321,8 @@ describe('MonitoringRowSchema, InventoryRowSchema, TUI status, and controlContra
       registrationGeneration: _g,
       ...legacy
     } = row;
-    expect(MonitoringRowSchema.parse(legacy).state).toBe('stopped');
+    expect(MonitoringRowReadSchema.parse(legacy).state).toBe('stopped');
+    expect(MonitoringRowSchema.safeParse(legacy).success).toBe(false);
   });
 
   test('InventoryRowSchema carries sleeping/pinned and deliberately omits memoryBytes', () => {
@@ -385,7 +388,7 @@ describe('MonitoringRowSchema, InventoryRowSchema, TUI status, and controlContra
   });
 
   test('ControlPublisher prioritizes archived over sleeping and preserves live state during requested teardown', async () => {
-    const root = tempDir('ccmux-ctrl-pub-');
+    const root = tempDir('stitchmux-ctrl-pub-');
     const m = makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' });
     const now = Date.now();
     const nowIso = new Date(now).toISOString();

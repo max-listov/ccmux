@@ -1,6 +1,6 @@
 import { accessSync, constants, realpathSync, statSync } from 'node:fs';
-import { AppError } from 'stitchkit';
 import { resolveControlLaunchRecipe } from '../../config/launchRecipes.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import { MAX_POLICY_BYTES, readPolicySource } from '../../policy/sources.ts';
 import { modelSelectionLabel } from '../../runtime/selectionSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -14,9 +14,8 @@ export function prepareCustomHost(
 ) {
   const accepted = session.launchRecipe;
   if (!accepted)
-    throw new AppError('UNAVAILABLE', {
+    throw refusals.errors.PRECONDITION_FAILED({
       message: 'Custom runtime requires a host launch recipe',
-      status: 409,
     });
   const launch = resolveControlLaunchRecipe(
     m,
@@ -31,13 +30,10 @@ export function prepareCustomHost(
     launch.envFile !== session.envFile ||
     session.flags.length !== 0
   )
-    throw new AppError('LAUNCH_RECIPE_UNAVAILABLE', {
-      message: 'Launch recipe is unavailable',
-      status: 409,
-    });
+    throw refusals.errors.LAUNCH_RECIPE_UNAVAILABLE({ message: 'Launch recipe is unavailable' });
   const config = m.launchRecipes[accepted.id]?.custom;
   if (!config)
-    throw new AppError('UNAVAILABLE', { message: 'Custom runtime is unavailable', status: 409 });
+    throw refusals.errors.PRECONDITION_FAILED({ message: 'Custom runtime is unavailable' });
   const environment = sessionEnvRecipe(session, process.env, process.env.NODE_ENV);
   const credentialEnv = config.provider.credentialEnv;
   const serviceCredentialEnvs = config.services.flatMap((service) =>
@@ -112,9 +108,8 @@ export function customModel(config: CustomLaunchConfig, selection: Session['mode
       candidate.provider === selected.provider && candidate.model === selected.model,
   );
   if (!model)
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: `Model ${modelSelectionLabel(selected)} is not one this host declares`,
-      status: 409,
     });
   return model;
 }

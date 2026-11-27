@@ -7,8 +7,8 @@ import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts'
 import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 test('control create request is durable and idempotent across a lost reply', async () => {
-  const stateDir = shortTempDir('ccmux-control-lifecycle-');
-  const workspace = shortTempDir('ccmux-control-workspace-');
+  const stateDir = shortTempDir('stitchmux-control-lifecycle-');
+  const workspace = shortTempDir('stitchmux-control-workspace-');
   const m = makeMachine({ stateDir, rcPrefix: 'host-a' });
   const requestId = crypto.randomUUID();
   let calls = 0;
@@ -54,7 +54,7 @@ test('control create request is durable and idempotent across a lost reply', asy
     ),
   ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
 
-  const secondState = makeMachine({ ...m, stateDir: shortTempDir('ccmux-control-lost-') });
+  const secondState = makeMachine({ ...m, stateDir: shortTempDir('stitchmux-control-lost-') });
   const lostId = crypto.randomUUID();
   const lost = async (_machine: typeof m, input: CreateManagedInput) => {
     const session = makeSession({
@@ -83,7 +83,7 @@ test('archive is exact, idempotent and keeps the canonical registry identity', a
   const tmuxBin = Bun.which('tmux');
   assert(tmuxBin, 'tmux must be installed for lifecycle tests');
   const m = makeMachine({
-    stateDir: shortTempDir('ccmux-control-archive-'),
+    stateDir: shortTempDir('stitchmux-control-archive-'),
     rcPrefix: 'host-a',
     tmuxBin,
   });
@@ -115,7 +115,7 @@ test('a retry of a create that already finished is answered, not refused as busy
   const { mkdirSync, writeFileSync, mkdtempSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-create-receipt-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-create-receipt-'));
   try {
     const m = makeMachine({ stateDir: root });
     const requestId = '55555555-5555-4555-8555-555555555555';

@@ -12,16 +12,14 @@ import {
 } from '../src/control/models.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
 import { ControlModelCatalogSchema, ControlModelsReadSchema } from '../src/control/schema/model.ts';
-import {
-  CCMUX_CONTROL_CALLER_HEADER,
-  createInjectedControlClient,
-} from '../src/control/transport/boundary.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import { createControlClient } from '../src/control/transport/client.ts';
 import { createControlServer } from '../src/control/transport/server.ts';
 import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { UNSEEN } from '../src/events/observe.ts';
 import { MonitoringPublisher } from '../src/monitoring/publish.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
+import { declaredServiceConfig, declaredServiceFetch, grantCallers } from './declared-service.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -168,7 +166,7 @@ function fakeAppServer(socket: string, providerId = 'openai', models = catalog) 
 }
 
 async function fixture(options: { extraClaudeSession?: boolean } = {}) {
-  const root = mkdtempSync('/tmp/ccmux-models-test-');
+  const root = mkdtempSync('/tmp/stitchmux-models-test-');
   const codexHome = join(root, 'codex');
   const m = makeMachine({
     stateDir: root,
@@ -176,7 +174,9 @@ async function fixture(options: { extraClaudeSession?: boolean } = {}) {
     projectsDir: join(root, 'history'),
     chatEnabled: true,
     codexHome,
+    ...declaredServiceConfig(join(root, 'services')),
   });
+  grantCallers(join(root, 'services'), [{ caller: 'host-b', scope: { kind: 'service-read' } }]);
   const s = makeSession({
     name: 'agent-a',
     dir: root,
@@ -200,10 +200,12 @@ async function fixture(options: { extraClaudeSession?: boolean } = {}) {
   await publish();
   const provider = fakeAppServer(ownedCodexSocket(m, s.name));
   const owned = createControlServer(m, p);
+  await owned.wire?.start();
   const socket = controlSocket(m);
   const client = createControlClient({ socket });
   cleanup.push(async () => {
     await client.close();
+    await owned.wire?.close();
     p.close();
     provider.close();
     await owned.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
@@ -223,16 +225,7 @@ async function fixture(options: { extraClaudeSession?: boolean } = {}) {
     provider,
     target: managedPeer(m.rcPrefix, s),
     claudeTarget: sessions[1] ? managedPeer(m.rcPrefix, sessions[1]) : null,
-    remote: createInjectedControlClient((url, init) =>
-      fetch(String(url), {
-        unix: socket,
-        ...init,
-        headers: {
-          ...Object.fromEntries(new Headers(init?.headers)),
-          [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
-        },
-      }),
-    ),
+    remote: createInjectedControlClient(declaredServiceFetch(socket, 'host-b')),
   };
 }
 
@@ -464,7 +457,7 @@ test('catalog failure retains the exact cause only in private owner diagnostics'
 });
 
 test('unconfigured provider homes fail closed', async () => {
-  const root = mkdtempSync('/tmp/ccmux-models-unit-');
+  const root = mkdtempSync('/tmp/stitchmux-models-unit-');
   cleanup.push(async () => rmSync(root, { recursive: true, force: true }));
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a', projectsDir: join(root, 'history') });
   const s = makeSession({ name: 'agent-a', dir: root, agent: 'codex', runtime: 'app-server' });
@@ -479,7 +472,7 @@ test('unconfigured provider homes fail closed', async () => {
 });
 
 test('handler bounds drop provider extras, honor optional efforts and reject oversized pages', async () => {
-  const root = mkdtempSync('/tmp/ccmux-models-unit-');
+  const root = mkdtempSync('/tmp/stitchmux-models-unit-');
   cleanup.push(async () => rmSync(root, { recursive: true, force: true }));
   const m = makeMachine({
     stateDir: root,
@@ -586,7 +579,7 @@ test('reads admission bounds provider connections; cancellation and deadline rel
 test('zod model schemas accept canonical safe shapes only', () => {
   const peer = {
     kind: 'managed' as const,
-    source: 'ccmux' as const,
+    source: 'stitchmux' as const,
     machine: 'host-a',
     agent: 'codex' as const,
     session: 'agent-a',

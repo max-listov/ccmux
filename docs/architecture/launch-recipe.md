@@ -1,5 +1,5 @@
 ---
-title: What shapes a session, and how ccmux knows it changed
+title: What shapes a session, and how stitchmux knows it changed
 description: The launch recipe — argv plus the external inputs an agent reads at startup — and why the RESTART column can be trusted
 type: architecture
 status: active
@@ -11,14 +11,14 @@ updated: 2026-11-27 14:41 +08:00
 
 A running agent never re-reads what it was configured with. Everything below is read once, at
 startup, and lands only on the next restart. So "would relaunching this session give it something
-different?" is the question `ccmux list` answers in its `RESTART` column, and the launch stamp is
+different?" is the question `stitchmux list` answers in its `RESTART` column, and the launch stamp is
 what makes it answerable an hour later rather than something the operator has to remember.
 
 ## Four layers, one recipe
 
 | Layer | Where it lives | How the stamp sees it |
 |---|---|---|
-| ccmux's own prompt, `--settings` hooks, statusline, mode, flags | argv | hashed argv |
+| stitchmux's own prompt, `--settings` hooks, statusline, mode, flags | argv | hashed argv |
 | capabilities handed through the environment (identity pin, chat credential) | process env | variable **names** |
 | the agent's global rule set, its MCP configuration | the user's files | digest per input |
 | the env files in the session's own directory | the session directory | digest + variable names |
@@ -39,7 +39,7 @@ session so create retry and restart can prove they are applying the same recipe.
 The definition can require environment variable names and configure a native model provider through
 the existing allowed `-c key=value` argv. A provider config names an environment key; the secret
 value remains in the declared env file or host environment and never becomes argv. Missing inputs,
-reserved CCMux names, refused native flags and revision/digest drift fail before provider spawn.
+reserved Stitchmux names, refused native flags and revision/digest drift fail before provider spawn.
 
 A Custom recipe additionally names which adapter answers for its model registry. `openrouter`
 requires a credential environment name; `local` carries an OpenAI-compatible endpoint and an
@@ -55,7 +55,7 @@ The local kind may also name its server with an optional `label`, reported besid
 and never used to select anything.
 
 A recipe may additionally pin `collaborationMode: "plan"` (or the explicit provider default). This
-is turn policy, not caller-authored prompt text: before every managed turn it starts, CCMux asks the installed
+is turn policy, not caller-authored prompt text: before every managed turn it starts, Stitchmux asks the installed
 App Server for its collaboration-mode catalog, selects the named preset and uses the provider's
 effort and built-in instructions while preserving the loaded thread's model, even if the preset
 names another model. The check happens before a delivery pickup is persisted.
@@ -135,12 +135,12 @@ directory's env file and genuinely in the supervisor's environment is dropped to
 direction — a missing variable is visible and fixable by declaring it, a leaked secret is neither —
 and mechanism 1 makes the case unreachable in production.
 
-### Why ccmux parses the declared file itself
+### Why stitchmux parses the declared file itself
 
 Handing the path to the runtime's own `--env-file` would put the file's variables into the
-**supervisor**, where a project file could then set `CCMUX_STATE_DIR` and repoint the whole instance.
+**supervisor**, where a project file could then set `STITCHMUX_STATE_DIR` and repoint the whole instance.
 Parsing here keeps the file's reach where it was declared to reach — the agent — and keeps the recipe
-a property of ccmux rather than of its host runtime. `CCMUX_*` names are refused outright and
+a property of stitchmux rather than of its host runtime. `STITCHMUX_*` names are refused outright and
 reported: a session grants a project variables, it does not let a project reconfigure its supervisor.
 
 A declared file that is missing costs a variable, never the session. A supervisor whose sessions
@@ -150,7 +150,7 @@ forever — so `list` prints the missing path and `doctor` repeats it.
 ### Migration is a state you can read
 
 Sessions started before the recipe keep the environment they were launched with until they restart.
-`doctor` lists exactly those, `ccmux env-file --adopt` turns what they are inheriting into
+`doctor` lists exactly those, `stitchmux env-file --adopt` turns what they are inheriting into
 declarations, and when the list is empty the migration is provably over. The distinction is drawn
 from the stamp: a stamp with no `inputs` map was written by a build that inherited, so its session is
 still carrying those variables; a stamp whose `inputs.env` is null was written under the recipe, so a
@@ -169,7 +169,7 @@ asks it: the history file and resume branch, follow-the-fork, the native transcr
 in `list`. (The status-line process runs inside the agent and reads the profile from its own
 `CLAUDE_CONFIG_DIR`, which the launch sets from this same answer.)
 
-A named Claude profile is chosen on the host by `ccmux new --profile NAME` or the `profile` field of
+A named Claude profile is chosen on the host by `stitchmux new --profile NAME` or the `profile` field of
 `session.create`. Names resolve from machine configuration and the optional read-only
 `claude-multiprofile` Code registry. The registration stores the source, physical directory and,
 when the provider publishes its account UUID, a digest of that identity. The default login keeps
@@ -185,7 +185,7 @@ vendor's standalone transcript-copy operation reads its own environment before a
 
 For registrations without a named profile, the profile comes from the **session's declared env file** (`CLAUDE_CONFIG_DIR` in it) and from the
 machine's `projectsDir`, never from the environment of the process that asks. The daemon, a
-`ccmux list` typed inside another profile's session and the supervisor loop have different
+`stitchmux list` typed inside another profile's session and the supervisor loop have different
 environments; a session whose profile depended on who looked would be a different session to each.
 The launch applies the same declared file, and a `CLAUDE_CONFIG_DIR` the launching environment
 carries is removed from sessions that declare none, so the computed profile is what the agent got:
@@ -209,12 +209,12 @@ creates the file with the first message, so a session closed on its folder-trust
 a conversation and starts fresh. Claude removes old transcripts on its own schedule; a long-quiet
 session whose file was removed that way is blocked at restart and says where it looked.
 
-`ccmux env-file` warns when a profile change moves the place the conversation is looked for.
+`stitchmux env-file` warns when a profile change moves the place the conversation is looked for.
 
 Поиск возвращает вместе найденную историю, все корни проектов, в которых он пытался её найти,
 и причины недоступности. Текущий профиль сессии входит в область поиска даже до записи в реестр.
 Отказ supervisor перечисляет эти корни и найденный путь; ошибка чтения обозначается как
 `Search incomplete`, а не как отсутствие разговора. При неполном поиске новый разговор не
 создаётся даже без отметки `seen`. Отсутствующий корень (`ENOENT`) допускает первый запуск;
-нечитаемый или некорректный корень требует восстановления доступа перед `ccmux start`.
+нечитаемый или некорректный корень требует восстановления доступа перед `stitchmux start`.
 

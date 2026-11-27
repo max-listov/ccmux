@@ -9,7 +9,6 @@ import {
   chatCursorsPath,
   chatLedgerPath,
   DATA_DIR,
-  LOG_FILE,
   outboxAckPath,
   outboxPath,
   RELEASES_DIR,
@@ -18,6 +17,7 @@ import {
   STATUS_DIR,
   sessionsPath,
 } from '../src/config/paths.ts';
+import { LOG_FILE } from '../src/util/log.ts';
 import { makeMachine } from './helpers.ts';
 
 // The layout exists to answer one question by itself — "can I delete this?" — so these tests assert
@@ -37,12 +37,12 @@ test('everything durable sits in ONE directory, taken from the config', () => {
   // The defect this replaces: the directory came from a config field holding a FILE path, and five
   // other files were derived from that file's parent — so one careless value silently relocated the
   // whole set into an unrelated folder.
-  const m = makeMachine({ stateDir: '/tmp/ccmux-layout' });
-  for (const f of stateFiles) expect(dirname(f(m))).toBe('/tmp/ccmux-layout');
+  const m = makeMachine({ stateDir: '/tmp/stitchmux-layout' });
+  for (const f of stateFiles) expect(dirname(f(m))).toBe('/tmp/stitchmux-layout');
 });
 
 test('each durable file is named, and no two share a name', () => {
-  const m = makeMachine({ stateDir: '/tmp/ccmux-layout' });
+  const m = makeMachine({ stateDir: '/tmp/stitchmux-layout' });
   const names = stateFiles.map((f) => f(m));
   expect(new Set(names).size).toBe(names.length);
   // Named with a real extension: the registry used to be the one file without one, which is exactly
@@ -55,8 +55,8 @@ test('each durable file is named, and no two share a name', () => {
 });
 
 test('two configs never share state — the property tests and isolated instances rely on', () => {
-  const a = makeMachine({ stateDir: '/tmp/ccmux-a' });
-  const b = makeMachine({ stateDir: '/tmp/ccmux-b' });
+  const a = makeMachine({ stateDir: '/tmp/stitchmux-a' });
+  const b = makeMachine({ stateDir: '/tmp/stitchmux-b' });
   for (const f of stateFiles) expect(f(a)).not.toBe(f(b));
 });
 
@@ -72,7 +72,7 @@ test('disposable and durable never share a root', () => {
 
 test("the runnable code is not filed under 'safe to delete'", () => {
   // This test replaces one that asserted the opposite, on the reasoning that losing the bundle
-  // "costs exactly one `ccmux update`". It does not: that command IS the deleted file, and the boot
+  // "costs exactly one `stitchmux update`". It does not: that command IS the deleted file, and the boot
   // unit launches it too, so a wiped cache leaves a machine that cannot repair itself and cannot be
   // restarted — visibly fine only while the already-loaded process happens to still be running.
   expect(APP_BUNDLE.startsWith(`${CACHE_DIR}/`)).toBe(false);
@@ -84,7 +84,7 @@ test("both roots are absolute and end in the tool's own directory", () => {
   // which is what stops the layout from drifting per machine the way the old one did.
   for (const root of [STATE_DIR, CACHE_DIR]) {
     expect(root.startsWith('/')).toBe(true);
-    expect(root.endsWith('/ccmux')).toBe(true);
+    expect(root.endsWith('/stitchmux')).toBe(true);
   }
 });
 
@@ -101,7 +101,7 @@ test('nothing lands directly in the home directory', () => {
 test("the archive is a directory, so 'what here is dead?' is answered by the path", () => {
   // Superseded state used to sit beside live state under a near-identical name (`chat.jsonl` next to
   // `chat-v2.jsonl`), which is the exact question this layout exists to end. One directory settles it.
-  const m = makeMachine({ stateDir: '/tmp/ccmux-layout' });
-  expect(archiveDir(m)).toBe('/tmp/ccmux-layout/archive');
+  const m = makeMachine({ stateDir: '/tmp/stitchmux-layout' });
+  expect(archiveDir(m)).toBe('/tmp/stitchmux-layout/archive');
   for (const f of stateFiles) expect(f(m).startsWith(`${archiveDir(m)}/`)).toBe(false);
 });

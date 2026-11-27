@@ -1,7 +1,7 @@
 import { join } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { writePrivateJson } from '../../attachments/files.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import { managedRuntimeRoot } from '../../runtime/status.ts';
 import { privateRuntimeDirectory, readPrivateJournal } from '../../runtime/store.ts';
 import type { MachineConfig, Session } from '../../types.ts';
@@ -50,7 +50,7 @@ export function readWakeOperations(m: MachineConfig, s: Session) {
   const path = join(managedRuntimeRoot(m, s), 'wake-operations.json');
   const rows = readPrivateJournal(path, JournalSchema, 262144);
   if (rows !== null && rows.registrationGeneration !== s.registrationGeneration)
-    throw new AppError('IDENTITY_MISMATCH', { message: 'Wake registration changed', status: 409 });
+    throw refusals.errors.IDENTITY_MISMATCH({ message: 'Wake registration changed' });
   return rows?.operations ?? [];
 }
 export function writeWakeOperations(

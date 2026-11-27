@@ -21,7 +21,7 @@ if (!Bun.argv.includes('--run')) {
 }
 const source = Bun.argv.includes('--source'),
   machine = loadMachineConfig();
-const root = mkdtempSync('/tmp/ccmux-resident-e2e-'),
+const root = mkdtempSync('/tmp/stitchmux-resident-e2e-'),
   ipc = { ...machine, stateDir: root };
 const external = new ExternalStatusPublisher(machine.rcPrefix),
   observer = new ExternalStatusObserver(machine, external);

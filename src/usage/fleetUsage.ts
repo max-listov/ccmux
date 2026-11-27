@@ -6,7 +6,7 @@ import { UsageListResultSchema } from './schema.ts';
 type UsageListResult = z.output<typeof UsageListResultSchema>;
 
 /**
- * `ccmux usage --fleet`: this machine's sessions beside every other machine's, each asked with the
+ * `stitchmux usage --fleet`: this machine's sessions beside every other machine's, each asked with the
  * same command line. A machine that does not answer, or answers for a machine it is not, is a row
  * that says so; the whole answer is `partial` when any row is short of complete.
  */
@@ -18,7 +18,7 @@ export async function fleetUsage(
 ) {
   const machines = await Promise.all(
     peersOf(m).map(async (peer) => {
-      const result = await run(m, peer.machine, peer.alias, ['ccmux', 'usage', ...remoteArgs], {
+      const result = await run(m, peer.machine, peer.alias, ['stitchmux', 'usage', ...remoteArgs], {
         timeoutMs: 10_000,
         connectTimeoutSeconds: 3,
       });

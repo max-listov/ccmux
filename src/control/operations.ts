@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import { type ApplicationAdmission, createBoundedAdmission } from 'stitchkit/application';
 import type { z } from 'zod';
 import type { ExternalStatusPublisher } from '../external/residentPublisher.ts';
@@ -14,6 +13,7 @@ import { sessionOperations } from './operations/session.ts';
 import { usageOperations } from './operations/usage.ts';
 import type { ControlPublisher } from './publisher.ts';
 import type { PerformanceConfigureSchema } from './schema/performance.ts';
+import { refusals } from './schema/refusals.ts';
 import { TerminalPrompts } from './terminalPrompt.ts';
 
 /**
@@ -58,9 +58,8 @@ export function createControlOperations(
     performance: () => {
       const profile = dependencies.performance;
       if (!profile)
-        throw new AppError('UNAVAILABLE', {
+        throw refusals.errors.UNAVAILABLE({
           message: 'Daemon performance collection is unavailable',
-          status: 503,
         });
       return profile.snapshot();
     },
@@ -74,9 +73,8 @@ export function createControlOperations(
           () => {
             const profile = dependencies.performance;
             if (!profile)
-              throw new AppError('UNAVAILABLE', {
+              throw refusals.errors.UNAVAILABLE({
                 message: 'Daemon performance collection is unavailable',
-                status: 503,
               });
             profile.start(input.enabled, input.reset);
             return profile.snapshot();

@@ -52,7 +52,7 @@ export async function cmdControl(args: string[]): Promise<number> {
       // what remains is the ordinary reason to keep a lazy import lazy.
       const { createCli } = await import('stitchkit/cli');
       await createCli({
-        name: 'ccmux control',
+        name: 'stitchmux control',
         version: VERSION,
         argv: args,
         services: [proxy],

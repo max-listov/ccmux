@@ -2,7 +2,7 @@ import { type InteractionReply, JsonRpcRecordSchema } from 'stitchkit/agent-exec
 import type { NativeSnapshot } from '../../../runtime/projectionSchema.ts';
 
 /**
- * Turning a tool permission request from `stitchkit/agent-executor/claude-sdk` into CCMux's
+ * Turning a tool permission request from `stitchkit/agent-executor/claude-sdk` into Stitchmux's
  * answerable pending-request snapshot and mapping operator decisions back to `InteractionReply`.
  */
 

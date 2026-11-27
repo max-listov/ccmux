@@ -19,6 +19,7 @@ import {
   ControlModelCatalogSchema,
   type ControlModelsReadSchema,
 } from './schema/model.ts';
+import { refusals } from './schema/refusals.ts';
 import { controlTarget } from './target.ts';
 
 export type ControlModelsClient = Pick<
@@ -62,11 +63,7 @@ const ProviderModelPageSchema = z.looseObject({
 
 function unavailable(reason: string, error: unknown): never {
   log.debug({ msg: 'provider model catalog read failed', reason, err: String(error) });
-  throw new AppError('UNAVAILABLE', {
-    message: 'Model catalog is unavailable',
-    status: 503,
-    cause: error,
-  });
+  throw refusals.errors.UNAVAILABLE({ message: 'Model catalog is unavailable' });
 }
 
 async function readProviderModels(
@@ -75,9 +72,8 @@ async function readProviderModels(
   source: ControlModelCatalog['source'],
 ): Promise<ControlModelCatalog> {
   if (source.provider !== 'openai')
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'This provider does not expose a supported model catalog',
-      status: 409,
     });
   const page = ProviderModelPageSchema.parse(
     await controls.listModels({
@@ -129,31 +125,27 @@ export async function readControlModels(
   try {
     const target = input.target === undefined ? undefined : controlTarget(m, input.target);
     if (input.runtime !== undefined && target !== undefined && input.runtime !== target.agent)
-      throw new AppError('IDENTITY_MISMATCH', {
+      throw refusals.errors.IDENTITY_MISMATCH({
         message: 'Model runtime does not match the managed identity',
-        status: 409,
       });
     const runtime = target?.agent ?? input.runtime ?? 'codex';
     if (input.profile !== undefined && (runtime !== 'claude' || target !== undefined))
-      throw new AppError('UNSUPPORTED', {
+      throw refusals.errors.UNSUPPORTED({
         message: 'Choose a named profile for a Claude host catalog',
-        status: 409,
       });
     if (runtime === 'antigravity') return await readAntigravityModels(m, input, target, signal);
     if (runtime === 'opencode') return await readOpenCodeModels(m, input, target, signal);
     if (runtime === 'custom') return readCustomModels(m, input, target);
     if (runtime === 'claude') return await readClaudeModels(m, input, target, signal);
     if (runtime !== 'codex')
-      throw new AppError('UNSUPPORTED', {
+      throw refusals.errors.UNSUPPORTED({
         message: 'This runtime does not expose a model catalog',
-        status: 409,
       });
     if (input.target !== undefined) {
       const session = controlTarget(m, input.target);
       if (!hasNativeRuntime(session))
-        throw new AppError('UNSUPPORTED', {
+        throw refusals.errors.UNSUPPORTED({
           message: 'Model catalog requires an owned App Server session',
-          status: 409,
         });
       const controls = await connect(m, { signal, maxFrameBytes: 2 * 1024 * 1024 }, session);
       try {
@@ -174,9 +166,8 @@ export async function readControlModels(
     if (m.codexHome === undefined) throw new Error('Codex home is not configured');
     const launch = resolveControlLaunchRecipe(m, m.codexHome, input.launchRecipe, []);
     if (launch.envFile !== undefined && !isAbsolute(expandHome(launch.envFile)))
-      throw new AppError('UNAVAILABLE', {
+      throw refusals.errors.PRECONDITION_FAILED({
         message: 'Host catalog requires a host-scoped environment source',
-        status: 409,
       });
     return await withCodexCatalogRuntime(m, launch, m.codexHome, signal, async (controls) =>
       readProviderModels(controls, input, {

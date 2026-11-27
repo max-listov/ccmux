@@ -149,7 +149,7 @@ export function unpublishedPlanLimits(
   };
 }
 
-/** Project the executor's measured answer into the on-disk CCMux format. */
+/** Project the executor's measured answer into the on-disk Stitchmux format. */
 export function projectExecutorPlanLimits(
   limits: executor.PlanLimits,
   source: PlanLimits['source'] = 'native',
@@ -162,7 +162,7 @@ export function projectExecutorPlanLimits(
     error: limits.error?.slice(0, 160) ?? null,
     source,
     windows: limits.windows.map((window) => {
-      // Existing CCMux readers and stored samples use model_scoped for Claude's named windows.
+      // Existing Stitchmux readers and stored samples use model_scoped for Claude's named windows.
       const name =
         window.scope && window.name.startsWith('model:')
           ? `model_scoped:${window.name.slice(6)}`

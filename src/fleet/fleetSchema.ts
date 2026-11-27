@@ -126,7 +126,7 @@ export const FleetAccountSchema = z.object({
   subscription: z.string().nullable(),
   /** Total across the sessions that reported one. Null = nobody measured, which is not zero. */
   costUsd: z.number().nullable(),
-  /** Full addresses, so a reader copies one into `ccmux msg` without reconstructing it. */
+  /** Full addresses, so a reader copies one into `stitchmux msg` without reconstructing it. */
   sessions: z.array(z.string()),
   /** Every profile the account is signed in under, with the state of its newest probe. */
   profiles: z.array(AccountProfileSchema),
@@ -181,7 +181,7 @@ export const FleetViewSchema = z.object({
 });
 export type FleetView = z.infer<typeof FleetViewSchema>;
 
-/** What `ccmux fleet --json` prints and `fleet.list` answers. */
+/** What `stitchmux fleet --json` prints and `fleet.list` answers. */
 export const FleetAnswerSchema = FleetViewSchema.extend({
   version: z.string(),
   generatedAt: z.iso.datetime(),

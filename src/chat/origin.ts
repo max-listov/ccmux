@@ -1,16 +1,13 @@
 import { createHash } from 'node:crypto';
-import { AppError } from 'stitchkit';
 import { stableJson } from '../agent/launch/launchInputs.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import type { ChatPrincipal, MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import type { MessageAttribution, MessageOrigin, NotificationAudience } from './originSchema.ts';
 
 function refuseOrigin(reason: string): never {
   log.warn({ msg: 'message origin admission refused', reason });
-  throw new AppError('ORIGIN_REFUSED', {
-    message: 'Message origin or audience is not authorized',
-    status: 403,
-  });
+  throw refusals.errors.ORIGIN_REFUSED({ message: 'Message origin or audience is not authorized' });
 }
 
 export function principalOrigin(principal: ChatPrincipal): MessageOrigin {

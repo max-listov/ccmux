@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { readTailLines, readTailUntil } from '../src/util/readLines.ts';
 
 function tmpFile(content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-tail-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-tail-'));
   const p = join(dir, 't.jsonl');
   writeFileSync(p, content);
   return p;
@@ -39,7 +39,7 @@ test('multibyte chars survive chunk borders', () => {
 });
 
 test('missing file → [] (no throw)', () => {
-  expect(readTailLines('/nonexistent/ccmux/x.jsonl', 10)).toEqual([]);
+  expect(readTailLines('/nonexistent/stitchmux/x.jsonl', 10)).toEqual([]);
 });
 
 /** A line cap bounds nothing when records are huge — this is the shape that made the fleet view

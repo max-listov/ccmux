@@ -1,19 +1,19 @@
 {
-  "name": "ccmux",
+  "name": "stitchmux",
   "private": true,
   "version": "0.95.0",
   "description": "Persistent, self-healing Claude and Codex tmux sessions with deterministic resume across a fleet of machines.",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "ccmux": "./dist/ccmux"
+    "stitchmux": "./dist/stitchmux"
   },
   "exports": {
+    "./client": "./src/client.ts",
     "./session-reader": "./src/session-reader.ts",
     "./monitoring-reader": "./src/monitoring-reader.ts",
     "./codex-runtime-reader": "./src/codex-runtime-reader.ts",
-    "./control-client": "./src/control-client.ts",
-    "./control-service-client": "./src/control-service-client.ts"
+    "./control-client": "./src/control-client.ts"
   },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
@@ -41,7 +41,7 @@
     "@types/react": "^19.3.3",
     "ink-testing-library": "^4.0.0",
     "socket.io": "4.8.4",
-    "stitchkit": "0.132.2",
+    "stitchkit": "0.133.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
@@ -60,7 +60,7 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "stitchkit": ">=0.132.1 <1"
+    "stitchkit": ">=0.133.0 <1"
   },
   "packageManager": "bun@1.4.5"
 }

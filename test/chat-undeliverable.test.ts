@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = mkdtempSync('/tmp/ccmux-undeliverable-');
+  const root = mkdtempSync('/tmp/stitchmux-undeliverable-');
   roots.push(root);
   const machine = makeMachine({ stateDir: root, rcPrefix: 'host-a', chatEnabled: true });
   const live = makeSession({ name: 'alive', dir: root, chat: true, uuid: crypto.randomUUID() });

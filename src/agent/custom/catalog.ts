@@ -1,11 +1,11 @@
 import { isAbsolute } from 'node:path';
-import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { resolveControlLaunchRecipe } from '../../config/launchRecipes.ts';
 import {
   ControlModelCatalogSchema,
   type ControlModelsReadSchema,
 } from '../../control/schema/model.ts';
+import { refusals } from '../../control/schema/refusals.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { customProviderLabel, prepareCustomHost } from './host.ts';
 
@@ -19,15 +19,14 @@ export function readCustomModels(
   target?: Session,
 ) {
   if (!target && !input.launchRecipe)
-    throw new AppError('UNSUPPORTED', { message: 'Choose a host launch recipe', status: 409 });
+    throw refusals.errors.UNSUPPORTED({ message: 'Choose a host launch recipe' });
   const launch = target ?? {
     ...resolveControlLaunchRecipe(m, m.stateDir, input.launchRecipe, [], 'custom'),
     dir: m.stateDir,
   };
   if (!target && launch.envFile !== undefined && !isAbsolute(launch.envFile))
-    throw new AppError('UNAVAILABLE', {
+    throw refusals.errors.PRECONDITION_FAILED({
       message: 'Host catalog requires a host-scoped environment source',
-      status: 409,
     });
   const host = prepareCustomHost(m, launch);
   const digest = launch.launchRecipe?.digest;
@@ -38,10 +37,7 @@ export function readCustomModels(
       JSON.parse(Buffer.from(input.cursor, 'base64url').toString()),
     );
     if (!parsed.success || parsed.data.digest !== digest)
-      throw new AppError('CURSOR_MISMATCH', {
-        message: 'Model catalog identity changed',
-        status: 409,
-      });
+      throw refusals.errors.CURSOR_MISMATCH({ message: 'Model catalog identity changed' });
     offset = parsed.data.offset;
   }
   const rows = host.config.models.slice(offset, offset + input.limit);

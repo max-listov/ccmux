@@ -5,7 +5,7 @@ import type { ManagedPeer } from '../src/types.ts';
 const runtimes: ManagedPeer['agent'][] = ['opencode', 'codex'];
 const targets: ManagedPeer[] = runtimes.map((agent, index) => ({
   kind: 'managed',
-  source: 'ccmux',
+  source: 'stitchmux',
   machine: 'host-a',
   agent,
   session: `agent-${index}`,

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
-import { LOG_FILE, STATE_DIR } from '../src/config/paths.ts';
+import { STATE_DIR } from '../src/config/paths.ts';
 import { IS_DEV } from '../src/util/env.ts';
+import { LOG_FILE } from '../src/util/log.ts';
 
 test('a checkout writes its own record, and never into the machine history', () => {
   // The suite itself runs from a checkout, so this test IS the case being guarded: without the
@@ -9,8 +10,8 @@ test('a checkout writes its own record, and never into the machine history', () 
   // came from checkout runs — 86.5% of the file, and any count taken from it answered about the
   // wrong population.
   expect(IS_DEV).toBe(true);
-  expect(LOG_FILE.endsWith('ccmux.dev.log')).toBe(true);
-  expect(LOG_FILE).not.toBe(`${STATE_DIR}/ccmux.log`);
+  expect(LOG_FILE.endsWith('stitchmux.dev.log')).toBe(true);
+  expect(LOG_FILE).not.toBe(`${STATE_DIR}/stitchmux.log`);
 
   // State is deliberately NOT split. A checkout run must see the real registry, sessions and locks,
   // or it would be answering about a machine that does not exist. Only the narrative separates.

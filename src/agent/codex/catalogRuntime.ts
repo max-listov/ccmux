@@ -1,6 +1,5 @@
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { sanitizeProfileEnv } from 'stitchkit/agent-executor';
 import {
   type CodexControlClient,
   type CodexControlConnection,
@@ -11,7 +10,7 @@ import type { ResolvedControlLaunch } from '../../config/launchRecipes.ts';
 import { privateRuntimeDirectory } from '../../runtime/store.ts';
 import type { MachineConfig } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
-import { sessionEnvRecipe } from '../launch/sessionEnv.ts';
+import { executorProfileEnv, sessionEnvRecipe } from '../launch/sessionEnv.ts';
 import { ownedChildAlive } from './owned/child.ts';
 import { ownedCodexFlags } from './owned/launch.ts';
 
@@ -38,7 +37,7 @@ export async function nativeModelProvider(
 /** The socket directory of a catalog read, named after the process that made it. Short and in
  * `/tmp` because a unix socket path is limited to about a hundred bytes. */
 const CATALOG_ROOT_PARENT = '/tmp';
-const CATALOG_ROOT = /^ccmux-catalog-(\d+)-[A-Za-z0-9]{6}$/;
+const CATALOG_ROOT = /^stitchmux-catalog-(\d+)-[A-Za-z0-9]{6}$/;
 
 /**
  * Remove the directories of catalog reads whose process is gone.
@@ -89,7 +88,7 @@ export async function withCodexCatalogRuntime<T>(
   );
   if (recipe.refused.length) throw new Error('Catalog environment contains reserved names');
   sweepAbandonedCatalogRoots();
-  const root = mkdtempSync(join(CATALOG_ROOT_PARENT, `ccmux-catalog-${process.pid}-`));
+  const root = mkdtempSync(join(CATALOG_ROOT_PARENT, `stitchmux-catalog-${process.pid}-`));
   privateRuntimeDirectory(root);
   const socket = join(root, 'rpc.sock');
   let connection: CodexControlConnection | undefined;
@@ -105,7 +104,7 @@ export async function withCodexCatalogRuntime<T>(
         engine: 'codex',
         profileId: 'catalog',
         home: m.codexHome,
-        env: sanitizeProfileEnv(recipe.env),
+        env: executorProfileEnv(recipe.env),
       },
       cwd,
       signal,

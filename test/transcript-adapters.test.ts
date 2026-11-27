@@ -103,7 +103,7 @@ test('codex reasoning: an encrypted item carries no text, a published summary ca
 // A spawned agent's story lives beside the session file; the `Agent` call is expected to tell it.
 
 function spawnFixture(opts: { notify: boolean; agentIdle: boolean }) {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-subagent-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-subagent-'));
   const sessionPath = join(root, 'session-uuid.jsonl');
   const agentDir = join(root, 'session-uuid', 'subagents');
   mkdirSync(agentDir, { recursive: true });

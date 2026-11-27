@@ -29,7 +29,7 @@ import { nativeTranscriptPath } from './claude.ts';
  * provider wrote them, so the store is what gets enumerated here, and the registry only decides how
  * each conversation is addressed.
  *
- * The address is the one `ccmux transcript` already accepts: a session's name for the file that
+ * The address is the one `stitchmux transcript` already accepts: a session's name for the file that
  * session reads now, the external storage key for everything else. `lines` says whether that command
  * can open the file at the line numbers a search reports — an earlier or compressed Codex file, and
  * a second Claude file under an id a session already reads, are searched but are not what the
@@ -42,7 +42,7 @@ export interface StoredFile {
   path: string;
   /** zstd-compressed by the provider. */
   compressed: boolean;
-  /** `ccmux transcript <address>` reads this file, so a line number found in it can be opened. */
+  /** `stitchmux transcript <address>` reads this file, so a line number found in it can be opened. */
   lines: boolean;
   /** When the provider started this file, where its name says so. */
   startMs: number | null;

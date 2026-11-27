@@ -210,7 +210,7 @@ test('a stopped Codex session keeps the account it ran on, as every other runtim
 });
 
 test('prepared file reader rejects symlinks, permissive files and oversize; coalesced writes retain last state', async () => {
-  const m = makeMachine({ stateDir: shortTempDir('ccmux-native-state-test-') });
+  const m = makeMachine({ stateDir: shortTempDir('stitchmux-native-state-test-') });
   const p = new OwnedCodexProjection(m, session, process.pid);
   const writer = new OwnedCodexStatusWriter(m, session.name);
   const writes: Promise<void>[] = [];
@@ -237,7 +237,7 @@ test('prepared file reader rejects symlinks, permissive files and oversize; coal
 });
 
 test('native launch keeps endpoint and UUID under owner control and disables only the client update prompt', () => {
-  const argv = ownedCodexArgv(session, machine, 'ccmux');
+  const argv = ownedCodexArgv(session, machine, 'stitchmux');
   expect(argv.slice(0, 4)).toEqual([
     '/bin/codex',
     'app-server',
@@ -260,7 +260,7 @@ test('native launch keeps endpoint and UUID under owner control and disables onl
 });
 
 test('a rejected projection write cannot strand the next valid publication', async () => {
-  const m = makeMachine({ stateDir: shortTempDir('ccmux-native-write-recovery-') });
+  const m = makeMachine({ stateDir: shortTempDir('stitchmux-native-write-recovery-') });
   const p = new OwnedCodexProjection(m, session, process.pid);
   state(p, { type: 'idle' });
   const writer = new OwnedCodexStatusWriter(m, session.name);

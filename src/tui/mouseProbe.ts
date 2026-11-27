@@ -1,11 +1,11 @@
 import { appendFileSync } from 'node:fs';
 import { MOTION, sgrReports, WHEEL_DOWN, WHEEL_UP } from './mouse.ts';
 
-// Capped mouse logger (CCMUX_MOUSE_DEBUG=1). Logs to /tmp/ccmux-mouse.log with a HARD
+// Capped mouse logger (STITCHMUX_MOUSE_DEBUG=1). Logs to /tmp/stitchmux-mouse.log with a HARD
 // line cap so any-motion tracking can NEVER fill the disk again.
 
-export const MOUSE_LOG = '/tmp/ccmux-mouse.log';
-export const mouseDebugOn = process.env.CCMUX_MOUSE_DEBUG === '1';
+export const MOUSE_LOG = '/tmp/stitchmux-mouse.log';
+export const mouseDebugOn = process.env.STITCHMUX_MOUSE_DEBUG === '1';
 
 let written = 0;
 const MAX_LINES = 300;

@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import type { ManagedPeerSchema } from '../chat/identitySchema.ts';
 import { readMessageJournal } from '../chat/messageOperationStore.ts';
@@ -17,6 +16,7 @@ import { readSelection } from '../runtime/selection.ts';
 import { readManagedRuntimeStatus } from '../runtime/status.ts';
 import type { MachineConfig } from '../types.ts';
 import type { ControlNativeSnapshot } from './schema/native.ts';
+import { refusals } from './schema/refusals.ts';
 import { controlTarget } from './target.ts';
 
 type Target = z.infer<typeof ManagedPeerSchema>;
@@ -29,9 +29,8 @@ export function readControlNative(
 ): ControlNativeSnapshot {
   const session = controlTarget(m, target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'Native feed requires an owned structured runtime',
-      status: 409,
     });
   return nativeFrame(m, target, readContent(m, session, cursor));
 }
@@ -44,13 +43,12 @@ function nativeFrame(
   const session = controlTarget(m, target);
   const read = readManagedRuntimeStatus(m, session);
   if (read.status !== 'live' || read.snapshot === null)
-    throw new AppError('UNAVAILABLE', {
+    throw refusals.errors.UNAVAILABLE({
       message: `Native projection is ${read.reason ?? read.status}`,
-      status: 503,
     });
   const snapshot = read.snapshot;
   if (content.generation !== snapshot.generation)
-    throw new AppError('UNAVAILABLE', { message: 'Native generation changed', status: 503 });
+    throw refusals.errors.UNAVAILABLE({ message: 'Native generation changed' });
   return {
     ...content,
     observedAt: snapshot.observedAt,
@@ -77,9 +75,8 @@ export async function* subscribeControlNative(
 ): AsyncIterable<ControlNativeSnapshot> {
   const session = controlTarget(m, target);
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'Native feed requires an owned structured runtime',
-      status: 409,
     });
   let last = '';
   for await (const content of subscribeContent(m, session, cursor, signal)) {
@@ -116,14 +113,12 @@ export async function respondControlNative(
 ) {
   const session = controlTarget(m, input.target);
   if (session.delegation?.applicationAuthority !== undefined)
-    throw new AppError('DELEGATION_REFUSED', {
+    throw refusals.errors.DELEGATION_REFUSED({
       message: 'Application child input requires its attested message route',
-      status: 409,
     });
   if (!hasNativeRuntime(session))
-    throw new AppError('UNSUPPORTED', {
+    throw refusals.errors.UNSUPPORTED({
       message: 'Native responses require an owned structured runtime',
-      status: 409,
     });
   const fingerprint = nativeResponseFingerprint(input);
   const canonical = readMessageJournal(m, session)
@@ -131,10 +126,7 @@ export async function respondControlNative(
     .find((continuation) => continuation.responseOperationId === input.operationId);
   if (canonical) {
     if (canonical.responseFingerprint !== fingerprint || canonical.requestId !== input.requestId)
-      throw new AppError('IDEMPOTENCY_CONFLICT', {
-        message: 'Native response payload changed',
-        status: 409,
-      });
+      throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Native response payload changed' });
     return {
       operationId: input.operationId,
       requestId: input.requestId,
@@ -148,31 +140,24 @@ export async function respondControlNative(
   const prior = readNativeReceipt(m, input.target.session);
   if (prior?.operationId === input.operationId) {
     if (prior.fingerprint !== fingerprint)
-      throw new AppError('IDEMPOTENCY_CONFLICT', {
-        message: 'Native response payload changed',
-        status: 409,
-      });
+      throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Native response payload changed' });
     if (prior.outcome !== 'rejected')
       return { operationId: input.operationId, requestId: input.requestId, outcome: prior.outcome };
-    throw new AppError('STALE_REQUEST', {
+    throw refusals.errors.STALE_REQUEST({
       message: prior.reason ?? 'Native response was rejected',
-      status: 409,
     });
   }
   const snapshot = readControlNative(m, input.target, null);
   if (snapshot.generation !== input.generation)
-    throw new AppError('STALE_REQUEST', { message: 'Projection generation changed', status: 409 });
+    throw refusals.errors.STALE_REQUEST({ message: 'Projection generation changed' });
   const pending = snapshot.pending.find((item) => item.requestId === input.requestId);
   if (!pending || pending.kind !== input.kind)
-    throw new AppError('STALE_REQUEST', { message: 'Native request is not pending', status: 409 });
+    throw refusals.errors.STALE_REQUEST({ message: 'Native request is not pending' });
   const active = readNativeCommand(m, input.target.session);
   if (active !== null && active.operationId !== input.operationId)
-    throw new AppError('BUSY', { message: 'Another native response is pending', status: 429 });
+    throw refusals.errors.BUSY({ message: 'Another native response is pending' });
   if (active !== null && active.fingerprint !== fingerprint)
-    throw new AppError('IDEMPOTENCY_CONFLICT', {
-      message: 'Native response payload changed',
-      status: 409,
-    });
+    throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Native response payload changed' });
   if (active === null)
     await writeNativeCommand(m, input.target.session, {
       operationId: input.operationId,
@@ -194,9 +179,8 @@ export async function respondControlNative(
           requestId: input.requestId,
           outcome: receipt.outcome,
         };
-      throw new AppError('STALE_REQUEST', {
+      throw refusals.errors.STALE_REQUEST({
         message: receipt.reason ?? 'Native response was rejected',
-        status: 409,
       });
     }
     await Bun.sleep(25);

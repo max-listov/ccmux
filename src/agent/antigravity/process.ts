@@ -69,7 +69,7 @@ export async function runAntigravityProcess(
         await recordRuntimeDiagnostic(m, initial.name, 'antigravity-runtime', error);
         log.error({ msg: 'managed Antigravity runtime failed', name: initial.name });
         throw new Error(
-          `Antigravity runtime failed; run \`ccmux logs ${initial.name}\` for the cause`,
+          `Antigravity runtime failed; run \`stitchmux logs ${initial.name}\` for the cause`,
         );
       } finally {
         wake.close();

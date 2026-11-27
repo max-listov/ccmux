@@ -9,7 +9,7 @@ updated: 2026-10-02 00:13 +07:00
 
 # Ownership and admission
 
-Create a new session with `ccmux new <name> <dir> --agent codex --runtime app-server`.
+Create a new session with `stitchmux new <name> <dir> --agent codex --runtime app-server`.
 The existing `_bootstrap`/`_run` supervisor owns one native `codex app-server` process group
 and its attached `codex resume --remote` terminal client. A launcher wrapper and native child
 are one disposal unit; a killed wrapper cannot leave an orphan writer behind. There is no new
@@ -32,14 +32,14 @@ The local endpoint is derived from the state-root/session identity and placed in
 0700 directory under the platform temporary root. It is not the official Desktop control socket.
 The same-user boundary is trusted; this is not isolation against another program running as
 that user. Raw native clients can control their own turns and must not be treated as concurrent
-CCMux delivery schedulers: the provider does not promise a conditional idle-to-start transaction.
+Stitchmux delivery schedulers: the provider does not promise a conditional idle-to-start transaction.
 
 # Native state and recovery
 
 The observer subscribes before start/resume, buffers at most 128 admission events, then reconciles
 the native snapshot with a revision guard. A response requested before a newer event cannot erase
 that event. Each reconnect creates a new generation. Retired connections cannot publish or close
-over a newer generation. Native turn events also feed the existing `ccmux events` stream; history
+over a newer generation. Native turn events also feed the existing `stitchmux events` stream; history
 reconciliation does not replay old completion notifications.
 
 | Evidence | Published state |
@@ -68,7 +68,7 @@ starts the host's configured MCP servers: a fresh server answered `thread/start`
 them and in 0.3 s without, and from cold not within 10 s, which made a Codex session impossible to
 create on a loaded host.
 
-The provider process and interactive client survive a CCMux daemon restart. A lost observer
+The provider process and interactive client survive a Stitchmux daemon restart. A lost observer
 reconnects without restarting the writer. A provider crash terminates its owned process group
 and resumes the same UUID with supervisor backoff. An explicit session stop/restart disposes the
 client and provider, retaining native history. If the supervisor itself is forcibly killed and
@@ -118,7 +118,7 @@ later attempt fails identically. Measured on one working session: 2,429,351 byte
 1,777 without, carrying the same fields.
 
 A delivery pass that throws records the failure as the pending letter's hold, in the recipient's
-status, so `ccmux inbox` reports the cause instead of falling back to "queued — the daemon delivers
+status, so `stitchmux inbox` reports the cause instead of falling back to "queued — the daemon delivers
 it".
 
 Immediate and conditional messages keep separate cursors. A conditional acknowledgement follows
@@ -138,11 +138,11 @@ neither reader extends the other's lease.
 
 # Resident contract
 
-`ccmux runtime <name> --json` reads the prepared session snapshot. It does not connect to Codex,
+`stitchmux runtime <name> --json` reads the prepared session snapshot. It does not connect to Codex,
 capture tmux or scan transcripts. Exit codes are 0 live, 2 stale, 3 unavailable, 1 invalid usage.
-Ordinary sessions are rejected. Remote selectors use the existing configured CCMux transport.
+Ordinary sessions are rejected. Remote selectors use the existing configured Stitchmux transport.
 
-Import `readCodexRuntime` and `codexRuntimeUpdates` from `ccmux/codex-runtime-reader` in a Bun
+Import `readCodexRuntime` and `codexRuntimeUpdates` from `stitchmux/codex-runtime-reader` in a Bun
 consumer. Releases publish self-contained `codex-runtime-reader.js` and `codex-runtime-reader.sha256`;
 verify both from the same immutable tag before importing the local asset. The exported
 `CODEX_RUNTIME_READER_VERSION` identifies the library, independently of the producer version.
@@ -170,7 +170,7 @@ mailbox (`src/runtime/response.ts`), the input and interrupt mailboxes (`runtime
 `runtime/interrupt`), model-catalog paging (`src/control/modelPage.ts`) and private runtime
 directories (`privateRuntimeDirectory`, `src/runtime/store.ts`) are one implementation. The status
 FILE stays at `codex-runtime/<hash>.json` rather than under `native-runtime/`: an owner outlives an
-update of ccmux, and this reader reads the path directly. An owner started by a version that did not
+update of stitchmux, and this reader reads the path directly. An owner started by a version that did not
 read the input and interrupt mailboxes does not start queued turns: owned Codex sessions are
 restarted at the rollout that brings them this protocol.
 Freshness is at most 5 seconds, checked again when delivering each result. Dead worker/provider
@@ -189,7 +189,7 @@ the reader cannot interrupt a blocked JavaScript event loop or forcibly cancel a
 or an event-window gap. Otherwise it returns only new events. Polling cadence belongs to the
 consumer; imports create no timers, processes, provider connections or subscriptions.
 
-The richer same-user control surface lives in `ccmux/control-client`. `create` uses the existing
+The richer same-user control surface lives in `stitchmux/control-client`. `create` uses the existing
 pending/promotion registry transaction with an immutable request receipt and normalized workspace;
 retries cannot create a second writer. `archive` retains the provider rollout and ready row while
 stopping healing and the owned process group. `native` and `watchNative` expose the bounded item

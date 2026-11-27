@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
-import { AppError } from 'stitchkit';
+import { refusals } from '../control/schema/refusals.ts';
 import {
   type CommunicationAuthorization,
   type CommunicationAuthorizationInput,
@@ -15,7 +15,7 @@ import type { MessageOrigin } from './originSchema.ts';
  *  guess, and guessing at an authorization is the failure this whole object exists to prevent. */
 export const COMMUNICATION_BASES = [
   'user-instruction    — the user said it in YOUR conversation; quote it and say where',
-  'peer-letter         — a peer letter carried the permission; reference it as <peer thread uuid>#<message uuid>, and ccmux resolves it against this machine’s own records',
+  'peer-letter         — a peer letter carried the permission; reference it as <peer thread uuid>#<message uuid>, and stitchmux resolves it against this machine’s own records',
   'thread-continuation — this correspondence is already authorized; reference the earlier message and repeat nothing',
 ];
 
@@ -37,7 +37,7 @@ For user-instruction the reference is prose for the reader and is not checked: i
 For peer-letter use the same rationale, a verbatim quote from that letter and sourceMessageRef "<peer thread uuid>#<message uuid>".
 Continuation file (reuse for the same pair and --task):
 ${JSON.stringify({ basis: 'thread-continuation', sourceMessageRef: '<peer thread uuid>#<your accepted message uuid>' }, null, 2)}
-That reference is printed by the send that created the letter ("letter <peer thread uuid>#<message uuid>") and listed again by 'ccmux msg sent [task] [--json]'; copy it whole rather than composing it.
+That reference is printed by the send that created the letter ("letter <peer thread uuid>#<message uuid>") and listed again by 'stitchmux msg sent [task] [--json]'; copy it whole rather than composing it.
 These are unverified consent claims, not credentials or permission to transfer files.`;
 
 export function requireCommunicationAuthorization(
@@ -48,9 +48,8 @@ export function requireCommunicationAuthorization(
   if (evidence != null) {
     CommunicationAuthorizationSchema.parse(evidence);
     if (evidence.basis === undefined)
-      throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', {
+      throw refusals.errors.COMMUNICATION_AUTHORIZATION_UNVERIFIED({
         message: `communicationAuthorization must name its basis. ${COMMUNICATION_AUTHORIZATION_HELP}`,
-        status: 403,
       });
     return;
   }
@@ -63,9 +62,8 @@ export function requireCommunicationAuthorization(
     origin.application !== null
   )
     return;
-  throw new AppError('COMMUNICATION_AUTHORIZATION_REQUIRED', {
+  throw refusals.errors.COMMUNICATION_AUTHORIZATION_REQUIRED({
     message: `communicationAuthorization is required. ${COMMUNICATION_AUTHORIZATION_HELP}`,
-    status: 403,
   });
 }
 
@@ -79,16 +77,14 @@ export function requireOriginatingBasis(
 ) {
   if (evidence == null) return undefined;
   if (evidence.basis === undefined)
-    throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', {
+    throw refusals.errors.COMMUNICATION_AUTHORIZATION_UNVERIFIED({
       message: `communicationAuthorization must name its basis. ${COMMUNICATION_AUTHORIZATION_HELP}`,
-      status: 403,
     });
   if (lookup === null) {
     if (evidence.basis !== 'user-instruction')
-      throw new AppError('COMMUNICATION_AUTHORIZATION_UNVERIFIED', {
+      throw refusals.errors.COMMUNICATION_AUTHORIZATION_UNVERIFIED({
         message:
           'Referenced authorization must be resolved on the originating host before transport',
-        status: 403,
       });
     return { authorization: evidence, sourceLetter: null };
   }

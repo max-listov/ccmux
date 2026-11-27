@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Scaffold an ISOLATED dev ccmux instance beside prod — its own tmux server (-L), registry, chat
+# Scaffold an ISOLATED dev stitchmux instance beside prod — its own tmux server (-L), registry, chat
 # store, log and boot-state, and RC turned OFF so its sessions never surface in the claude.ai app.
 # Run it, then `source` the printed exports (or `eval "$(scripts/dev-instance.sh --env)"`) and use
 # `bun run src/cli.ts <cmd>` for the dev instance. See docs/architecture/tui-and-dev-flow.md.
 #
-#   scripts/dev-instance.sh          # scaffold ~/.ccmux-dev + print how to drive it
+#   scripts/dev-instance.sh          # scaffold ~/.stitchmux-dev + print how to drive it
 #   scripts/dev-instance.sh --env    # print ONLY the export lines (for eval)
 #   scripts/dev-instance.sh --down   # tear the whole instance down (server + files)
 set -euo pipefail
 
-DEV_HOME="${CCMUX_DEV_HOME:-$HOME/.ccmux-dev}"
-SOCKET="ccmux-dev"
+DEV_HOME="${STITCHMUX_DEV_HOME:-$HOME/.stitchmux-dev}"
+SOCKET="stitchmux-dev"
 CONFIG="$DEV_HOME/machine.json"
 
 if [ "${1:-}" = "--down" ]; then
@@ -42,7 +42,7 @@ if [ "${1:-}" != "--env" ]; then
   "projectsDir": "$HOME/.claude/projects",
   "rcPrefix": "dev",
   "stateDir": "$DEV_HOME/state",
-  "bootLabel": "com.ccmux.dev",
+  "bootLabel": "com.stitchmux.dev",
   "permissionMode": "bypassPermissions",
   "ensureInterval": 30
 }
@@ -56,16 +56,16 @@ fi
 # The env vars that pin every command to THIS instance: its own state, its own bundle, its own
 # config. Sharing any one of them with the main instance would mean sharing a registry, a
 # self-update or a machine identity — each of which defeats the isolation.
-echo "export CCMUX_STATE_DIR=$DEV_HOME/state"
-echo "export CCMUX_CACHE_DIR=$DEV_HOME/cache"
-echo "export CCMUX_CONFIG=$CONFIG"
+echo "export STITCHMUX_STATE_DIR=$DEV_HOME/state"
+echo "export STITCHMUX_CACHE_DIR=$DEV_HOME/cache"
+echo "export STITCHMUX_CONFIG=$CONFIG"
 
 if [ "${1:-}" != "--env" ]; then
   cat >&2 <<EOF
 
 # ── drive the dev instance (after: eval "\$(scripts/dev-instance.sh --env)") ──
-bun run src/cli.ts new dev-a "\$CCMUX_STATE_DIR/a"   # real claude on socket $SOCKET, RC off
-bun run src/cli.ts new dev-b "\$CCMUX_STATE_DIR/b"
+bun run src/cli.ts new dev-a "\$STITCHMUX_STATE_DIR/a"   # real claude on socket $SOCKET, RC off
+bun run src/cli.ts new dev-b "\$STITCHMUX_STATE_DIR/b"
 bun run src/cli.ts chat on dev-a && bun run src/cli.ts chat on dev-b
 bun run daemon:watch                            # dev daemon from source, hot-reload
 bun run src/cli.ts msg dev-b "hi"               # from a session it's that session; from a shell it's 'cli'

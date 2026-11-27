@@ -335,7 +335,7 @@ export async function observeOnce(
     });
   }
   for (const name of [...previous.keys()]) if (!seen.has(name)) previous.delete(name);
-  // Published for the readers that cannot keep this memory themselves — `ccmux wait`, a fresh
+  // Published for the readers that cannot keep this memory themselves — `stitchmux wait`, a fresh
   // process on every call, and deferred chat delivery. See `paneActivity.ts`.
   await writePaneActivity(m, paneWorking);
   if (captured)

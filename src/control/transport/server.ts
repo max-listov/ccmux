@@ -2,12 +2,12 @@ import { AppError } from 'stitchkit';
 import type { ApplicationAdmission } from 'stitchkit/application';
 import { createObservability } from 'stitchkit/observability';
 import { createServer, withContractIdentity } from 'stitchkit/server';
-import { stitchwireRoute } from '../../config/remoteTransport.ts';
 import { ExternalStatusPublisher } from '../../external/residentPublisher.ts';
 import type { MachineConfig } from '../../types.ts';
 import { log } from '../../util/log.ts';
 import type { ControlOperationDependencies } from '../operations/context.ts';
 import type { ControlPublisher } from '../publisher.ts';
+import { refusals } from '../schema/refusals.ts';
 import { WireControlService } from '../wire/service.ts';
 import { controlAuth, refuseOutsideService } from './auth.ts';
 import { controlServices } from './service.ts';
@@ -32,15 +32,12 @@ export function createControlServer(
         current.codexSessionsDir !== m.codexSessionsDir ||
         current.projectsDir !== m.projectsDir
       )
-        throw new AppError('CONFIG_CHANGED', {
-          message: 'External content requires a restart',
-          status: 503,
-        });
+        throw refusals.errors.CONFIG_CHANGED({ message: 'External content requires a restart' });
       dependencies.assertExternalConfig?.();
     },
   });
   const authorize = controlAuth(m);
-  const directory = stitchwireRoute(m.remoteTransport)?.serviceDirectory;
+  const directory = m.remoteTransport?.serviceDirectory;
   const wire = directory ? new WireControlService(directory, controlSocket(m)) : undefined;
   const observability = createObservability({
     request: {
@@ -69,8 +66,7 @@ export function createControlServer(
           wrapFetch: (dispatch) =>
             wire.wrap(
               dispatch,
-              () =>
-                stitchwireRoute(currentMachine().remoteTransport)?.serviceDirectory === directory,
+              () => currentMachine().remoteTransport?.serviceDirectory === directory,
             ),
         }
       : {}),
@@ -84,18 +80,30 @@ export function createControlServer(
       authorize: async (ctx, endpoint) => {
         const current = currentMachine();
         if (current.stateDir !== m.stateDir || current.rcPrefix !== m.rcPrefix) {
-          throw new AppError('CONFIG_CHANGED', {
-            message: 'Control runtime requires a restart',
-            status: 503,
-          });
+          throw refusals.errors.CONFIG_CHANGED({ message: 'Control runtime requires a restart' });
         }
         if (ctx.req?.headers.has('origin'))
-          throw new AppError('FORBIDDEN', {
+          throw refusals.errors.FORBIDDEN({
             message: 'Browser requests are not accepted on local IPC',
-            status: 403,
           });
         await authorize(ctx, endpoint);
         refuseOutsideService(ctx.principal, endpoint.effect);
+      },
+      // An operation that declares its refusals answers an undeclared code as a bare 500; the
+      // caller never learns which code it was, so the log has to (`SHARED_SESSION_REFUSALS`).
+      onError: (_ctx, error, endpoint) => {
+        if (
+          error instanceof AppError &&
+          error.code === 'INTERNAL_SERVER_ERROR' &&
+          error.cause instanceof AppError
+        )
+          log.error({
+            msg: 'control operation refused with a code it does not declare',
+            action: endpoint?.key ?? null,
+            code: error.cause.code,
+            err: error.cause.message,
+          });
+        return undefined;
       },
     },
   });

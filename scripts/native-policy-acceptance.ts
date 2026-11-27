@@ -37,8 +37,8 @@ const [requestedRoot] = acceptancePositionals();
 if (requestedRoot === undefined) {
   const fixture = await createPolicyFixture();
   const env: Record<string, string | undefined> = { ...fixture.env };
-  delete env.CCMUX_SESSION;
-  delete env.CCMUX_CHAT_CREDENTIAL;
+  delete env.STITCHMUX_SESSION;
+  delete env.STITCHMUX_CHAT_CREDENTIAL;
   const child = Bun.spawn(
     [
       process.execPath,
@@ -61,12 +61,12 @@ if (requestedRoot === undefined) {
   process.exit(await child.exited);
 }
 const root = requestedRoot;
-check(basename(root).startsWith('ccmux-policy-e2e-'), 'Not an isolated policy probe directory');
+check(basename(root).startsWith('stitchmux-policy-e2e-'), 'Not an isolated policy probe directory');
 retainReports(root);
 const m = loadMachineConfig();
 check(
   m.stateDir === join(root, 'state') &&
-    m.tmuxSocket?.startsWith('ccmux-policy-') &&
+    m.tmuxSocket?.startsWith('stitchmux-policy-') &&
     !m.telegram &&
     Object.keys(m.fleet ?? {}).length === 0,
   'Not an isolated runtime',
@@ -381,7 +381,7 @@ try {
     const original = readFileSync(source.path, 'utf8');
     const count = spawnCount(root, session.agent);
     const refusalCount = () =>
-      readFileSync(join(root, 'state', 'ccmux.log'), 'utf8')
+      readFileSync(join(root, 'state', 'stitchmux.log'), 'utf8')
         .split('\n')
         .filter(
           (line) =>

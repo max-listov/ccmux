@@ -15,10 +15,10 @@ const letter = (): ChatMessage =>
     v: CHAT_GENERATION,
     id: randomUUID(),
     ts: '2026-08-26T00:39:01.000Z',
-    from: { kind: 'cli', source: 'ccmux', machine: 'host-a' },
+    from: { kind: 'cli', source: 'stitchmux', machine: 'host-a' },
     to: {
       kind: 'managed',
-      source: 'ccmux',
+      source: 'stitchmux',
       machine: 'host-b',
       agent: 'claude',
       session: 'agent-b',

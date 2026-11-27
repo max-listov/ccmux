@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const stateDir = await mkdtemp(join(tmpdir(), 'ccmux-lifecycle-'));
+  const stateDir = await mkdtemp(join(tmpdir(), 'stitchmux-lifecycle-'));
   roots.push(stateDir);
   privateRuntimeDirectory(join(stateDir, 'native-diagnostics'));
   return {

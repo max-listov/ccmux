@@ -15,10 +15,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import {
-  CCMUX_CONTROL_CALLER_HEADER,
-  createInjectedControlClient,
-} from '../src/control/transport/boundary.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import { createControlClient } from '../src/control/transport/client.ts';
 import { createControlServer } from '../src/control/transport/server.ts';
 import { controlSocket } from '../src/control/transport/socketPath.ts';
@@ -28,6 +25,7 @@ import {
   type ExternalContentTarget,
 } from '../src/external/contentSchema.ts';
 import { writeSessionsUnlocked } from '../src/session/registry.ts';
+import { declaredServiceConfig, declaredServiceFetch, grantCallers } from './declared-service.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -42,7 +40,7 @@ const message = (text: string, role = 'assistant') =>
     payload: { type: 'message', role, content: [{ type: 'output_text', text }] },
   })}\n`;
 async function fixture(provider: 'codex' | 'claude' = 'codex') {
-  const root = await realpath(await mkdtemp('/tmp/ccmux-external-content-'));
+  const root = await realpath(await mkdtemp('/tmp/stitchmux-external-content-'));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   const storage = join(root, 'storage');
   await mkdir(join(storage, 'nested'), { recursive: true });
@@ -307,27 +305,23 @@ test('Claude content uses record identity and excludes synthetic context', async
 test('real local and declared-service readers share one nonmutating external operation', async () => {
   const p = await fixture();
   await appendFile(p.path, message('live transcript'));
-  const publisher = new ControlPublisher(p.m);
-  let current = p.m;
-  const owned = createControlServer(p.m, publisher, undefined, () => current);
-  const local = createControlClient({ socket: controlSocket(p.m) });
+  const services = join(p.root, 'services');
+  grantCallers(services, [{ caller: 'host-b', scope: { kind: 'service-read' } }]);
+  const m = { ...p.m, ...declaredServiceConfig(services) };
+  const publisher = new ControlPublisher(m);
+  let current = m;
+  const owned = createControlServer(m, publisher, undefined, () => current);
+  await owned.wire?.start();
+  const local = createControlClient({ socket: controlSocket(m) });
   cleanup.push(async () => {
     await local.close();
+    await owned.wire?.close();
     await owned.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
     owned.external.close();
     publisher.close();
     await owned.observability.close();
   });
-  const service = createInjectedControlClient((url, init) =>
-    fetch(String(url), {
-      unix: controlSocket(p.m),
-      ...init,
-      headers: {
-        ...Object.fromEntries(new Headers(init?.headers)),
-        [CCMUX_CONTROL_CALLER_HEADER]: 'host-b',
-      },
-    }),
-  );
+  const service = createInjectedControlClient(declaredServiceFetch(controlSocket(m), 'host-b'));
   const before = await readFile(p.path, 'utf8');
   const page = await service['external.history']({ target: p.target });
   expect(page.entries[0]?.text).toBe('live transcript');
@@ -347,7 +341,7 @@ test('real local and declared-service readers share one nonmutating external ope
     revision: snapshot.revision,
     nextCursor: null,
   });
-  current = { ...p.m, externalInventory: false };
+  current = { ...m, externalInventory: false };
   await expect(service['external.history']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
@@ -355,10 +349,10 @@ test('real local and declared-service readers share one nonmutating external ope
     code: 'CONFIG_CHANGED',
   });
   expect(await service['runtime.list']({})).toBeDefined();
-  current = { ...p.m, codexSessionsDir: p.root };
+  current = { ...m, codexSessionsDir: p.root };
   await expect(local['external.history']({ target: p.target })).rejects.toMatchObject({
     code: 'CONFIG_CHANGED',
   });
-  current = p.m;
+  current = m;
   expect((await service['external.history']({ target: p.target })).outcome).toBe('available');
 });

@@ -88,7 +88,7 @@ interface Fleet {
 }
 
 async function fleet(run: (f: Fleet) => Promise<void>): Promise<void> {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-whois-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-whois-')));
   try {
     const projectsDir = join(root, 'claude', 'projects');
     const api = join(root, 'work', 'api');
@@ -230,7 +230,7 @@ test('a window title is matched as a whole word, never by the nearest name', asy
       expect([title, none.found, none.session, none.candidates]).toEqual([title, 'none', null, []]);
     }
     expect(answerLines(await ask('Agent-A notes'), 0)).toEqual([
-      "'Agent-A notes' is not a ccmux session",
+      "'Agent-A notes' is not a stitchmux session",
     ]);
   });
 });
@@ -316,7 +316,7 @@ test('every machine is asked, and one that did not answer is not read as having 
       runPeer: remote,
     });
     expect(asked[0]).toEqual([
-      'ccmux',
+      'stitchmux',
       'whois',
       '--local',
       '--json',
@@ -376,7 +376,7 @@ test('every machine is asked, and one that did not answer is not read as having 
       { machine: 'host-b', status: 'unavailable', error: 'connection timed out' },
     ]);
     expect(answerLines(down, 0)).toEqual([
-      "'host-b-agent-a' is not a ccmux session",
+      "'host-b-agent-a' is not a stitchmux session",
       'NOT asked: host-b — connection timed out',
     ]);
     // An answer about another machine's sessions is not the asked machine's answer.
@@ -974,7 +974,7 @@ test('a delivery says who sent the marked message: a person, a letter that quote
     write(NOW, [
       L({ type: 'custom-title', customTitle: 'host-a-agent-a', sessionId: NOW }),
       said('p-1', NOW, api, 'do this\n\nticket eeee5555', '2026-09-02T10:00:00.000Z'),
-      // The same mark, quoted to another session in a letter ccmux delivered there.
+      // The same mark, quoted to another session in a letter stitchmux delivered there.
       said('l-1', NOW, api, formatChatInjection(letter), '2026-09-02T11:00:00.000Z'),
       // A letter this machine's ledger does not hold is nobody's letter and no person's paste.
       said(
@@ -1151,7 +1151,7 @@ test('the stream follows every machine, and one that stops answering loses no se
       );
       // Asked by change, of the daemon: the second question names what is already held.
       await until('asked again', () => asked.length >= 3);
-      expect(asked[0]?.slice(0, 3)).toEqual(['ccmux', '_peer-read', 'identities']);
+      expect(asked[0]?.slice(0, 3)).toEqual(['stitchmux', '_peer-read', 'identities']);
       expect(asked.at(-1)).toContain('--known');
       expect(events.length).toBe(5);
 
@@ -1285,8 +1285,8 @@ test('a program asks the daemon by name and gets the object the command prints',
     const config = join(root, 'machine.json');
     writeFileSync(config, JSON.stringify(m));
     // The search runs as this binary started again; it reads the machine the daemon serves.
-    const before = process.env.CCMUX_CONFIG;
-    process.env.CCMUX_CONFIG = config;
+    const before = process.env.STITCHMUX_CONFIG;
+    process.env.STITCHMUX_CONFIG = config;
     const publisher = new ControlPublisher(m);
     const server = createControlServer(m, publisher);
     const client = createControlClient({ socket: controlSocket(m) });
@@ -1325,7 +1325,7 @@ test('a program asks the daemon by name and gets the object the command prints',
           row.caller,
         ]);
       expect(journaled()).toEqual([
-        ['control', 'receipts', streamed.total, 'ccmux/service@host-a'],
+        ['control', 'receipts', streamed.total, 'stitchmux/service@host-a'],
       ]);
       // A stream that stops before its last frame is not an answer, and is not read as one.
       await expect(collectSearch(frames.slice(0, -1))).rejects.toBeInstanceOf(SearchStreamCutError);
@@ -1414,14 +1414,14 @@ test('a program asks the daemon by name and gets the object the command prints',
       expect(events.filter((event) => event.event === 'session').length).toBe(sessions.length);
       expect(events.at(-1)).toEqual({ event: 'machine', machine: 'host-a', status: 'asked' });
 
-      // Managing a session by name: keys are typed and recorded as ccmux's, a stop says what it
+      // Managing a session by name: keys are typed and recorded as stitchmux's, a stop says what it
       // found, a removal takes the session out of the registry and leaves its history.
       const target = managedPeer(m.rcPrefix, sessions[0] as Session);
       expect(await client['session.keys']({ target, text: '/compact' })).toEqual({
         target,
         accepted: true,
       });
-      expect(sentKeysOf(m, 'agent-a').map((row) => row.by)).toEqual(['ccmux:host-a:cli']);
+      expect(sentKeysOf(m, 'agent-a').map((row) => row.by)).toEqual(['stitchmux:host-a:cli']);
       expect(await client['session.stop']({ target })).toMatchObject({ accepted: true });
       expect(await client['session.remove']({ target })).toMatchObject({
         accepted: true,
@@ -1435,8 +1435,8 @@ test('a program asks the daemon by name and gets the object the command prints',
       publisher.close();
       await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
       await server.observability.close();
-      if (before === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = before;
+      if (before === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = before;
     }
   });
 });
@@ -1461,8 +1461,8 @@ test("while a search reads gigabytes, the daemon's session list answers in its o
     await writeSessionsUnlocked(m, sessions);
     const config = join(root, 'machine.json');
     writeFileSync(config, JSON.stringify(m));
-    const before = process.env.CCMUX_CONFIG;
-    process.env.CCMUX_CONFIG = config;
+    const before = process.env.STITCHMUX_CONFIG;
+    process.env.STITCHMUX_CONFIG = config;
     const publisher = new ControlPublisher(m);
     const server = createControlServer(m, publisher);
     const client = createControlClient({ socket: controlSocket(m) });
@@ -1497,8 +1497,8 @@ test("while a search reads gigabytes, the daemon's session list answers in its o
       publisher.close();
       await server.server.shutdown({ gracePeriodMs: 200, forceTimeoutMs: 100 });
       await server.observability.close();
-      if (before === undefined) delete process.env.CCMUX_CONFIG;
-      else process.env.CCMUX_CONFIG = before;
+      if (before === undefined) delete process.env.STITCHMUX_CONFIG;
+      else process.env.STITCHMUX_CONFIG = before;
     }
   });
 });

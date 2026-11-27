@@ -225,25 +225,25 @@ test('reader queues coalesce, row/byte bounds declare omission, and stopped publ
 
 test('the real daemon owns observation across restart but never stops its external provider', async () => {
   const f = await fixture(),
-    root = mkdtempSync('/tmp/ccmux-external-daemon-');
+    root = mkdtempSync('/tmp/stitchmux-external-daemon-');
   const machine = {
     ...f.machine,
     stateDir: root,
     autoUpdate: false,
     chatEnabled: false,
     sessionEvents: false,
-    tmuxSocket: `ccmux-external-${crypto.randomUUID()}`,
+    tmuxSocket: `stitchmux-external-${crypto.randomUUID()}`,
     tmuxBin: Bun.which('tmux') ?? '/usr/bin/false',
   };
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));
   const env = {
     ...process.env,
-    CCMUX_CONFIG: config,
-    CCMUX_RC_PREFIX: machine.rcPrefix,
-    CCMUX_STATE_DIR: root,
-    CCMUX_DATA_DIR: join(root, 'data'),
-    CCMUX_CACHE_DIR: join(root, 'cache'),
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_RC_PREFIX: machine.rcPrefix,
+    STITCHMUX_STATE_DIR: root,
+    STITCHMUX_DATA_DIR: join(root, 'data'),
+    STITCHMUX_CACHE_DIR: join(root, 'cache'),
   };
   const start = () =>
     Bun.spawn(

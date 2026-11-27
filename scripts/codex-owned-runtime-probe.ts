@@ -13,8 +13,8 @@ import { killSession, newSession } from '../src/tmux/tmux.ts';
 // Deliberately separate state and tmux socket; real provider authentication stays native.
 // No production conversation is adopted, resumed, stopped or messaged by this probe.
 const reuse = process.argv[2];
-const root = reuse === undefined ? mkdtempSync('/tmp/ccmux-owned-probe-') : dirname(reuse);
-if (!basename(root).startsWith('ccmux-owned-probe-'))
+const root = reuse === undefined ? mkdtempSync('/tmp/stitchmux-owned-probe-') : dirname(reuse);
+if (!basename(root).startsWith('stitchmux-owned-probe-'))
   throw new Error('Reuse requires an isolated owned-runtime probe directory');
 const config = reuse ?? join(root, 'machine.json');
 const work = process.cwd();
@@ -24,7 +24,7 @@ const machine = MachineConfigSchema.parse({
     : MachineConfigSchema.parse(JSON.parse(readFileSync(config, 'utf8')))),
   stateDir: join(root, 'state'),
   rcPrefix: 'test',
-  tmuxSocket: `ccmux-owned-${root.split('-').at(-1)}`,
+  tmuxSocket: `stitchmux-owned-${root.split('-').at(-1)}`,
   fleet: {},
   remoteTransport: { peers: [] },
   autoUpdate: false,
@@ -37,16 +37,16 @@ const machine = MachineConfigSchema.parse({
 writeFileSync(config, JSON.stringify(machine), { mode: 0o600 });
 const cli = process.argv[3] ?? join(work, 'src/cli.ts');
 const env: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: machine.stateDir,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
-  CCMUX_DATA_DIR: join(root, 'data'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: machine.stateDir,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_DATA_DIR: join(root, 'data'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && env[key] === undefined) env[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',

@@ -15,7 +15,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 
 /**
  * A process inside a session learns who it is from its environment. The address there has to be the
- * one the rest of ccmux uses for that session, and it has to be this session's — the supervisor's
+ * one the rest of stitchmux uses for that session, and it has to be this session's — the supervisor's
  * own environment may carry another session's identity, and that must not travel into the next.
  */
 const POISON = {
@@ -49,7 +49,7 @@ test('every provider launches a session under its name and its fleet address', (
   }
   // Named here, not read from the module: a key that left the list would leave this check too.
   for (const keys of [claudeKeys(m), codexKeys(m), nativeProvider('opencode').launchEnvKeys(m)])
-    for (const key of ['CCMUX_SESSION', 'CCMUX_ADDRESS', 'CCMUX_CHAT_CREDENTIAL'])
+    for (const key of ['STITCHMUX_SESSION', 'STITCHMUX_ADDRESS', 'STITCHMUX_CHAT_CREDENTIAL'])
       expect(keys).toContain(key);
 });
 

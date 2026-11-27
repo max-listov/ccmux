@@ -24,7 +24,7 @@ import type {
 } from '../src/types.ts';
 
 function tempConfig() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-chat-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-chat-'));
   return MachineConfigSchema.parse({
     claudeBin: '/bin/claude',
     tmuxBin: '/bin/tmux',
@@ -45,7 +45,7 @@ function peer(
   agent: AgentKind = 'claude',
   machine = 'host-a',
 ): ManagedPeer {
-  return { kind: 'managed', source: 'ccmux', machine, agent, session, threadId };
+  return { kind: 'managed', source: 'stitchmux', machine, agent, session, threadId };
 }
 
 function msg(
@@ -120,16 +120,16 @@ test('fmtMessage exposes source, provider, machine, session and thread', () => {
   const rendered = fmtMessage(
     msg(peer('agent-a', THREAD_A, 'claude'), peer('agent-b', THREAD_B, 'codex', 'host-b'), 'hello'),
   );
-  expect(rendered).toContain(`ccmux/claude@host-a:agent-a#${THREAD_A}`);
-  expect(rendered).toContain(`ccmux/codex@host-b:agent-b#${THREAD_B}`);
+  expect(rendered).toContain(`stitchmux/claude@host-a:agent-a#${THREAD_A}`);
+  expect(rendered).toContain(`stitchmux/codex@host-b:agent-b#${THREAD_B}`);
 });
 
 test('stable keys distinguish provider, thread and cli principal', () => {
   const claude = peer('worker', THREAD_A, 'claude');
   const codex = peer('worker', THREAD_A, 'codex');
   expect(managedPeerKey(claude)).not.toBe(managedPeerKey(codex));
-  expect(chatPrincipalKey({ kind: 'cli', source: 'ccmux', machine: 'host-a' })).toBe(
-    'ccmux:host-a:cli',
+  expect(chatPrincipalKey({ kind: 'cli', source: 'stitchmux', machine: 'host-a' })).toBe(
+    'stitchmux:host-a:cli',
   );
 });
 
@@ -152,7 +152,7 @@ test('a record from a NEWER build is stepped over, and its position is kept', ()
   // the fleet always has such a window: rollout takes minutes and a rollback is legitimate.
   const m = tempConfig();
   const mine = msg(
-    { kind: 'cli', source: 'ccmux', machine: 'test' },
+    { kind: 'cli', source: 'stitchmux', machine: 'test' },
     peer('agent-a', THREAD_A),
     'mine',
   );
@@ -172,9 +172,9 @@ test('a record of THIS generation that is merely extended is skew, not damage', 
   // Everything the current generation requires is still there, so it is skipped rather than fatal.
   const m = tempConfig();
   const extended = {
-    ...msg({ kind: 'cli', source: 'ccmux', machine: 'test' }, peer('agent-a', THREAD_A), 'x'),
+    ...msg({ kind: 'cli', source: 'stitchmux', machine: 'test' }, peer('agent-a', THREAD_A), 'x'),
     somethingNewer: true,
-    to: { kind: 'external', source: 'ccmux', name: 'someone' },
+    to: { kind: 'external', source: 'stitchmux', name: 'someone' },
   };
   writeFileSync(chatPaths(m).ledger, `${JSON.stringify(extended)}\n`);
   const slots = loadLedger(m);

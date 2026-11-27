@@ -20,7 +20,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 
 function fixture() {
   const m = makeMachine({
-    stateDir: mkdtempSync(join(tmpdir(), 'ccmux-runtime-test-')),
+    stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-runtime-test-')),
     rcPrefix: 'host-a',
   });
   const s = makeSession({
@@ -53,7 +53,7 @@ test('runtime selection is separate from inference selection and unavailable dri
       executable: 'sh',
     }).success,
   ).toBe(false);
-  const workspace = mkdtempSync(join(tmpdir(), 'ccmux-runtime-workspace-'));
+  const workspace = mkdtempSync(join(tmpdir(), 'stitchmux-runtime-workspace-'));
   await expect(
     createControlSession(
       m,
@@ -77,7 +77,7 @@ test('runtime selection is separate from inference selection and unavailable dri
 
 test('native create retries keep one registration and reject a changed runtime', async () => {
   const { m } = fixture();
-  const workspace = mkdtempSync(join(tmpdir(), 'ccmux-runtime-create-'));
+  const workspace = mkdtempSync(join(tmpdir(), 'stitchmux-runtime-create-'));
   let calls = 0;
   const create = async (_m: typeof m, input: CreateManagedInput) => {
     calls++;

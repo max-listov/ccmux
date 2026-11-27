@@ -20,7 +20,7 @@ test('parseSession block-parses claude lines into normalized messages', () => {
 });
 
 test('readSession reads a file from disk + parses in one call', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-lib-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-lib-'));
   const path = join(dir, 'session.jsonl');
   writeFileSync(path, `${claudeLine('assistant', 'from disk')}\n`);
   const msgs = readSession(path, 'claude').filter((m) => m.kind === 'message');

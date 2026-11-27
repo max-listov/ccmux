@@ -3,13 +3,13 @@ import { setSessionRouter } from '../session/registry.ts';
 import { log } from '../util/log.ts';
 import { parseFlags } from './flags.ts';
 
-const USAGE = 'usage: ccmux router <on <name> | off <name>>';
+const USAGE = 'usage: stitchmux router <on <name> | off <name>>';
 
 /**
  * Promote/demote a session to/from ROUTER mode (the autonomous-manager protocol):
- *   ccmux router on  <name>   — add the router protocol module + enable chat
- *   ccmux router off <name>   — remove the router protocol module (chat left as-is)
- * Launch-time, like `ccmux mode`/chat framing: applies on the next `ccmux restart <name>`.
+ *   stitchmux router on  <name>   — add the router protocol module + enable chat
+ *   stitchmux router off <name>   — remove the router protocol module (chat left as-is)
+ * Launch-time, like `stitchmux mode`/chat framing: applies on the next `stitchmux restart <name>`.
  */
 export async function cmdRouter(args: string[]): Promise<number> {
   const positionals = parseFlags('router', args, [0, 2]).positionals;
@@ -21,7 +21,7 @@ export async function cmdRouter(args: string[]): Promise<number> {
   const target = positionals[1];
   if (target === undefined) {
     console.log(
-      `usage: ccmux router ${sub} <name>   ·   <machine>:<name> for another fleet machine`,
+      `usage: stitchmux router ${sub} <name>   ·   <machine>:<name> for another fleet machine`,
     );
     return 1;
   }
@@ -35,7 +35,7 @@ export async function cmdRouter(args: string[]): Promise<number> {
   }
   log.info({ msg: 'router toggled', name, on: sub === 'on' });
   console.log(
-    `${name}: router ${sub === 'on' ? 'on (chat enabled)' : 'off'} — applies on: ccmux restart ${name}`,
+    `${name}: router ${sub === 'on' ? 'on (chat enabled)' : 'off'} — applies on: stitchmux restart ${name}`,
   );
   return 0;
 }

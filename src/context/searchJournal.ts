@@ -62,7 +62,7 @@ export function commandCaller(
   machine: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  if (env.CCMUX_SESSION) return `${machine}:${env.CCMUX_SESSION}`;
+  if (env.STITCHMUX_SESSION) return `${machine}:${env.STITCHMUX_SESSION}`;
   if (env.CLAUDE_CODE_SESSION_ID)
     return externalSessionKey('claude', machine, env.CLAUDE_CODE_SESSION_ID);
   if (env.CODEX_THREAD_ID) return externalSessionKey('codex', machine, env.CODEX_THREAD_ID);

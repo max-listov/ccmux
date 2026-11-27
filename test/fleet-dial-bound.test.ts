@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 test('the fleet view bounds the dial, keeps the execution budget, and still names the failure', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-fleet-dial-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-fleet-dial-'));
   roots.push(root);
   const recorded = join(root, 'argv.txt');
   // A stand-in for ssh that records how it was asked to dial and then reports a transport failure
@@ -41,7 +41,7 @@ test('the fleet view bounds the dial, keeps the execution budget, and still name
     stateDir,
     rcPrefix: 'host-a',
     tmuxBin: Bun.which('tmux') ?? '/usr/bin/false',
-    tmuxSocket: `ccmux-fleet-dial-${process.pid}`,
+    tmuxSocket: `stitchmux-fleet-dial-${process.pid}`,
     fleet: { 'host-b': 'user@host-b.invalid' },
   });
   const configPath = join(root, 'machine.json');
@@ -49,9 +49,9 @@ test('the fleet view bounds the dial, keeps the execution budget, and still name
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
   env.PATH = `${root}:${env.PATH ?? ''}`;
-  env.CCMUX_CONFIG = configPath;
-  env.CCMUX_STATE_DIR = stateDir;
-  env.CCMUX_CACHE_DIR = join(root, 'cache');
+  env.STITCHMUX_CONFIG = configPath;
+  env.STITCHMUX_STATE_DIR = stateDir;
+  env.STITCHMUX_CACHE_DIR = join(root, 'cache');
   const proc = Bun.spawn(['bun', join(import.meta.dir, '..', 'src', 'cli.ts'), 'fleet', '--json'], {
     env,
     stdin: 'ignore',

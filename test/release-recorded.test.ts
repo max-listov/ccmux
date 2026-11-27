@@ -8,8 +8,8 @@ const script = join(import.meta.dir, '..', 'scripts', 'release.ts');
 // command (a malformed version stops it later, at its own guard, and never reaches a tag).
 async function tag(version: string, recorded: boolean) {
   const env = { ...process.env };
-  delete env.CCMUX_RELEASE_RECORDED;
-  if (recorded) env.CCMUX_RELEASE_RECORDED = '1';
+  delete env.STITCHMUX_RELEASE_RECORDED;
+  if (recorded) env.STITCHMUX_RELEASE_RECORDED = '1';
   const child = Bun.spawn([process.execPath, script, '--tag', version], {
     env,
     stdout: 'pipe',

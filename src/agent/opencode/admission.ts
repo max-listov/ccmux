@@ -74,8 +74,8 @@ export async function admitOpenCode(
     await server.client.session.update(
       {
         sessionID: nativeId,
-        title: `CCMux ${generation}`,
-        metadata: { ccmuxRegistration: generation },
+        title: `Stitchmux ${generation}`,
+        metadata: { stitchmuxRegistration: generation },
       },
       { signal },
     );
@@ -114,7 +114,7 @@ export async function admitOpenCode(
         ).data,
       );
     const matching = candidates.filter(
-      (session) => session.metadata?.ccmuxRegistration === generation,
+      (session) => session.metadata?.stitchmuxRegistration === generation,
     );
     if (matching.length !== 1)
       throw new Error('Native admission cannot be reconciled unambiguously');
@@ -126,8 +126,8 @@ export async function admitOpenCode(
       (
         await server.client.session.create(
           {
-            title: `CCMux ${generation}`,
-            metadata: { ccmuxRegistration: generation },
+            title: `Stitchmux ${generation}`,
+            metadata: { stitchmuxRegistration: generation },
             ...(initial.modelSelection === undefined
               ? {}
               : {
@@ -150,7 +150,7 @@ export async function admitOpenCode(
   if (
     native.id !== nativeId ||
     realpathSync(native.directory) !== realpathSync(initial.dir) ||
-    native.metadata?.ccmuxRegistration !== generation
+    native.metadata?.stitchmuxRegistration !== generation
   )
     throw new Error('Native continuation identity or workspace mismatch');
   const retained = readSelection(m, initial);

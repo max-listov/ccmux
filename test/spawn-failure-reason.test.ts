@@ -14,7 +14,7 @@ test('a missing working directory is named, not the executable it blamed', () =>
   expect(reason).not.toContain('posix_spawn');
   // And it says what to do about it, because the fix is one command and the reader should not have
   // to go looking for which.
-  expect(reason).toContain('ccmux dir agent-a');
+  expect(reason).toContain('stitchmux dir agent-a');
 });
 
 test('the same error keeps its own text when the directory is there', () => {

@@ -62,8 +62,8 @@ test('a local fleet row carries the directory exactly as `list --json` reports i
 
 test('the directory is transported, never interpreted', () => {
   // A trailing slash, a symlinked home, an unusual character: all of them change a prefix match, and
-  // none of them are ccmux's to decide. What the directory MEANS belongs to whoever keeps the
-  // catalogue; ccmux only knows what the session declared.
+  // none of them are stitchmux's to decide. What the directory MEANS belongs to whoever keeps the
+  // catalogue; stitchmux only knows what the session declared.
   for (const dir of ['/Users/u/src/api/', '/var/tmp/../src/api', '/src/проект', '/src/a b/c']) {
     expect(RemoteSession.parse({ name: 'agent-a', dir }).dir).toBe(dir);
   }

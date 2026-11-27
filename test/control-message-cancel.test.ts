@@ -13,7 +13,7 @@ import { makeMachine, makeSession } from './helpers.ts';
 const recipient = makeSession({ name: 'agent-b', uuid: '22222222-2222-4222-8222-222222222222' });
 
 function setup(): { m: MachineConfig } {
-  return { m: makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'ccmux-cancel-')) }) };
+  return { m: makeMachine({ stateDir: mkdtempSync(join(tmpdir(), 'stitchmux-cancel-')) }) };
 }
 
 const letter = (m: MachineConfig, from: ChatMessage['from'], defer: boolean): ChatMessage => {

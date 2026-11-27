@@ -18,7 +18,7 @@ const READY_TIMEOUT_SEC = 60;
 
 /**
  * Register a new managed session and start it. Flags after `--` are stored verbatim
- * as an array (e.g. `ccmux new cc-x /dir -- --model claude-opus-4-8[1m]`).
+ * as an array (e.g. `stitchmux new cc-x /dir -- --model claude-opus-4-8[1m]`).
  */
 export async function cmdNew(
   name: string | undefined,
@@ -35,7 +35,7 @@ export async function cmdNew(
 ): Promise<number> {
   if (!name || !dir) {
     console.log(
-      'usage: ccmux new <name> <dir> [--agent AGENT] [--runtime MODE] [--router] [--profile NAME] [--env-file <path>] [--timeout N] [-- provider flags...]',
+      'usage: stitchmux new <name> <dir> [--agent AGENT] [--runtime MODE] [--router] [--profile NAME] [--env-file <path>] [--timeout N] [-- provider flags...]',
     );
     return 1;
   }
@@ -50,7 +50,7 @@ export async function cmdNew(
   }
   const m = loadMachineConfig();
   try {
-    // --router: this session carries the router protocol module and, since it drives ccmux chat,
+    // --router: this session carries the router protocol module and, since it drives stitchmux chat,
     // has chat enabled. Just DATA (a module key + a bool), resolved to live code at launch.
     const router = opts.router === true;
     const agent = AgentKindSchema.parse(opts.agent ?? 'claude');
@@ -105,8 +105,8 @@ async function untilReady(
   console.error(
     block === null
       ? code === 2
-        ? `${name} is registered but was not ready within ${timeoutSec}s — see \`ccmux list\` for what it is waiting on`
-        : `${name} is registered but not running — see \`ccmux list\``
+        ? `${name} is registered but was not ready within ${timeoutSec}s — see \`stitchmux list\` for what it is waiting on`
+        : `${name} is registered but not running — see \`stitchmux list\``
       : `${name} is registered but blocked: ${block.error}`,
   );
   return 2;

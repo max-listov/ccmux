@@ -27,7 +27,7 @@ import { isConditional, letterState } from './settlement.ts';
  *  delivery only ever targets real sessions. */
 export const OWNER = 'owner';
 
-/** Reserved SENDER = the command-line operator (a human or Claude driving `ccmux msg` from a shell) —
+/** Reserved SENDER = the command-line operator (a human or Claude driving `stitchmux msg` from a shell) —
  *  NOT a managed session, NOT the owner. It's the default `from` for a command-line send, so those
  *  read as `cli → …` (and never masquerade as the owner). Not a delivery target. */
 export const CLI = 'cli';
@@ -46,7 +46,7 @@ export function chatPaths(m: MachineConfig): { ledger: string; cursors: string }
 // sharing a mutable cursor (which would lose-update — see the design doc's R5): each appends one
 // O_APPEND line (atomic across processes, like the ledger), and both check it before delivering, so
 // a message is injected exactly once. The hook never touches `cursors`; the daemon owns every field
-// but `read`, which `ccmux inbox` advances too — see `commitCursors` for how the two never overwrite
+// but `read`, which `stitchmux inbox` advances too — see `commitCursors` for how the two never overwrite
 // each other.
 
 /**

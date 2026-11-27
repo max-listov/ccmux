@@ -8,7 +8,7 @@ import { VERSION } from '../src/util/version.ts';
 import { makeMachine } from './helpers.ts';
 
 test('release native ESM asset loads offline and reads in-process without runtime dependencies', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-native-asset-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-native-asset-'));
   try {
     const machine = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
     const config = join(root, 'machine.json');
@@ -36,7 +36,7 @@ test('release native ESM asset loads offline and reads in-process without runtim
     `;
     const proc = Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--eval', script], {
       cwd: root,
-      env: { ...process.env, CCMUX_CONFIG: config, CCMUX_RC_PREFIX: 'host-a' },
+      env: { ...process.env, STITCHMUX_CONFIG: config, STITCHMUX_RC_PREFIX: 'host-a' },
       stdout: 'pipe',
       stderr: 'pipe',
     });

@@ -1,20 +1,20 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import { HOME } from '../../util/env.ts';
 import { settled, statStamp } from '../../util/fileStamp.ts';
+import { HOME } from '../../util/home.ts';
 
 /**
  * What shapes a session at startup but is NOT in argv.
  *
- * The launch stamp hashes the argv a session is spawned with, which honestly covers everything ccmux
+ * The launch stamp hashes the argv a session is spawned with, which honestly covers everything stitchmux
  * writes itself: the injected prompt, `--settings`, the mode, the flags. But the agent reads more
  * than argv when it boots — its global rule set, its MCP configuration — and the supervisor's own
  * runtime quietly contributes a fourth layer (the env files in the session's directory). None of it
  * is re-read by a running session, and none of it was visible.
  *
  * The cost of that blind spot is measured: a global rule set changed, every session on the fleet was
- * running yesterday's rules, and `ccmux list` showed a clean RESTART column for all of them. The only
+ * running yesterday's rules, and `stitchmux list` showed a clean RESTART column for all of them. The only
  * remedy left was to bounce two dozen sessions blind, on three machines, without knowing which of
  * them had actually fallen behind.
  *

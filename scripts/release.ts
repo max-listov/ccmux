@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 // DEV release tooling — runs ONLY from the source checkout (package.json scripts). This is
-// NOT part of the `ccmux` tool that ships to the fleet: clients have a bundle, no repo, no
+// NOT part of the `stitchmux` tool that ships to the fleet: clients have a bundle, no repo, no
 // package.json, so they can never build or publish a release.
 //
 //   bun run release X.Y.Z "notes"  → git CEREMONY (the only human release entrypoint):
@@ -14,7 +14,7 @@
 //   bun scripts/release.ts --tag X.Y.Z   → HEAD declares X.Y.Z → tag vX.Y.Z → push (pre-push gate)
 //                                    The two halves of the ceremony, for a conductor that runs
 //                                    the check between them and reports each step as it goes.
-//   bun run stage                 → build bundle → the cache's staged/ (local `ccmux update` test)
+//   bun run stage                 → build bundle → the cache's staged/ (local `stitchmux update` test)
 //   bun scripts/release.ts --ci-assets URL  → bundle + manifest at URL (CI release job only)
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -41,7 +41,7 @@ import { buildControlClient } from './build-control-client.ts';
 import { buildMonitoringReader } from './build-monitoring-reader.ts';
 import { buildBundle } from './bundle.ts';
 import { rollChangelogText } from './changelog.ts';
-import { packageControlServiceClient } from './package-control-service.ts';
+import { packageClient } from './package-client.ts';
 import { packageSource } from './package-source.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,11 +53,11 @@ function sha256(path: string): { bytes: number; hex: string } {
   return { bytes: buf.length, hex: new Bun.CryptoHasher('sha256').update(buf).digest('hex') };
 }
 
-/** The key id the CI secret `CCMUX_RELEASE_SIGNING_KEY` belongs to — see `src/release/trust.ts`. */
+/** The key id the CI secret `STITCHMUX_RELEASE_SIGNING_KEY` belongs to — see `src/release/trust.ts`. */
 const SIGNING_KEY_ID = 'ccmux-2026-09';
 
 /** `release.json` for the bundle just built: a signed build manifest, plus the flat fields earlier
- *  ccmux and the install script read (`src/release/document.ts`). Unsigned only when no key is
+ *  stitchmux and the install script read (`src/release/document.ts`). Unsigned only when no key is
  *  given, which `--ci-assets` refuses: a release the fleet cannot verify is not published. */
 async function writeManifest(
   url: string,
@@ -84,7 +84,7 @@ async function writeManifest(
     if (
       !cliSignatureAccepted(verifyCliManifest(manifest, manifest.signature, { keys: RELEASE_KEYS }))
     )
-      throw new Error('the signing key is not the one ccmux trusts (src/release/trust.ts)');
+      throw new Error('the signing key is not the one stitchmux trusts (src/release/trust.ts)');
     assertCliPublishable(await publishedManifest(), manifest);
   }
   await Bun.write(RELEASE_MANIFEST, `${JSON.stringify(document, null, 2)}\n`);
@@ -98,7 +98,7 @@ async function publishedManifest(): Promise<CliBuildManifest | undefined> {
   if (repository === undefined) return undefined;
   try {
     const resp = await fetch(
-      `https://github.com/${repository}/releases/latest/download/release.json?ccmux=${Date.now()}`,
+      `https://github.com/${repository}/releases/latest/download/release.json?stitchmux=${Date.now()}`,
     );
     if (!resp.ok) return undefined;
     return CliBuildManifestSchema.safeParse(await resp.json()).data;
@@ -119,7 +119,7 @@ async function git(argv: string[], capture = false): Promise<{ ok: boolean; out:
 async function doStage(): Promise<number> {
   if (!(await buildBundle(STAGED_BUNDLE))) return fail('build failed');
   console.log(`staged v${VERSION} → ${STAGED_BUNDLE}`);
-  console.log('apply locally: ccmux update');
+  console.log('apply locally: stitchmux update');
   return 0;
 }
 
@@ -129,17 +129,17 @@ async function doCiAssets(url: string): Promise<number> {
   if (!url.startsWith('https://')) return fail('--ci-assets needs the versioned https bundle url');
   mkdirSync(RELEASES_DIR, { recursive: true });
   if (!(await buildBundle(RELEASE_BUNDLE))) return fail('build failed');
-  const signingKey = process.env.CCMUX_RELEASE_SIGNING_KEY;
+  const signingKey = process.env.STITCHMUX_RELEASE_SIGNING_KEY;
   if (signingKey === undefined || signingKey === '')
     return fail(
-      '--ci-assets needs CCMUX_RELEASE_SIGNING_KEY: an unsigned release is refused by the fleet',
+      '--ci-assets needs STITCHMUX_RELEASE_SIGNING_KEY: an unsigned release is refused by the fleet',
     );
-  const notes = changelogSection(VERSION) ?? `ccmux v${VERSION}`;
+  const notes = changelogSection(VERSION) ?? `stitchmux v${VERSION}`;
   const hex = await writeManifest(url, notes.split('\n')[0] ?? '', signingKey);
   await buildMonitoringReader(RELEASES_DIR);
   await buildCodexRuntimeReader(RELEASES_DIR);
   await buildControlClient(RELEASES_DIR);
-  await packageControlServiceClient(RELEASES_DIR);
+  await packageClient(RELEASES_DIR);
   packageSource(RELEASES_DIR, VERSION);
   console.log(
     `assets ready: ${RELEASE_BUNDLE} + ${RELEASE_MANIFEST} (sha256 ${hex.slice(0, 12)}…)`,
@@ -231,10 +231,10 @@ async function doTag(version: string): Promise<number> {
   // A tag publishes. The conductor that records every release in the maintainer's publication
   // journal sets this; a bare `--tag` or ceremony would publish a release nobody recorded, which
   // is how three releases once left no trace. Setting it by hand is a deliberate unrecorded release.
-  if (process.env.CCMUX_RELEASE_RECORDED !== '1')
+  if (process.env.STITCHMUX_RELEASE_RECORDED !== '1')
     return fail(
       `refusing to tag v${version}: a release is tagged by the conductor that records it. ` +
-        'Export CCMUX_RELEASE_RECORDED=1 only to release without a record.',
+        'Export STITCHMUX_RELEASE_RECORDED=1 only to release without a record.',
     );
   const refused = await releasableTree(version);
   if (refused !== null) return fail(refused);

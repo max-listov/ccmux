@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 async function probeOpenOptions(withTranscript: boolean): Promise<Record<string, unknown>> {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-native-resume-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-native-resume-'));
   roots.push(root);
   const work = join(root, 'work');
   mkdirSync(work, { recursive: true });

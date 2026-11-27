@@ -9,7 +9,7 @@ import { DEFAULT_DATA_DIR } from '../src/config/paths.ts';
 import { makeMachine, shortTempDir } from './helpers.ts';
 
 function tmpRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'ccmux-roots-'));
+  return mkdtempSync(join(tmpdir(), 'stitchmux-roots-'));
 }
 
 /** The roots are read from the environment when paths.ts is first imported, so the layout question
@@ -28,8 +28,8 @@ function rootsUnder(root: string): {
   const r = Bun.spawnSync(['bun', '-e', script], {
     env: {
       ...process.env,
-      CCMUX_DATA_DIR: join(root, 'share', 'ccmux'),
-      CCMUX_CACHE_DIR: join(root, 'cache', 'ccmux'),
+      STITCHMUX_DATA_DIR: join(root, 'share', 'stitchmux'),
+      STITCHMUX_CACHE_DIR: join(root, 'cache', 'stitchmux'),
     },
   });
   return JSON.parse(r.stdout.toString());
@@ -62,7 +62,7 @@ test('wiping the cache root leaves the runnable code untouched', () => {
 });
 
 test('an isolated data root or a source run never owns the installed shim or boot unit', () => {
-  expect(ownsInstallation(join(tmpdir(), 'isolated-ccmux-data'), false)).toBe(false);
+  expect(ownsInstallation(join(tmpdir(), 'isolated-stitchmux-data'), false)).toBe(false);
   expect(ownsInstallation(DEFAULT_DATA_DIR, false)).toBe(true);
   expect(ownsInstallation(DEFAULT_DATA_DIR, true)).toBe(false);
 });
@@ -74,7 +74,7 @@ test('a daemon that is not the installation leaves the boot unit alone', async (
   // A source run carries no embedded native artifact; that install is not what this case is about.
   const backend = spyOn(nativeBackend, 'ensureNativeBackend').mockResolvedValue('not-needed');
   try {
-    await ensureInstalledApp(makeMachine({ stateDir: shortTempDir('ccmux-boot-owner-') }));
+    await ensureInstalledApp(makeMachine({ stateDir: shortTempDir('stitchmux-boot-owner-') }));
     expect(converge).not.toHaveBeenCalled();
   } finally {
     converge.mockRestore();

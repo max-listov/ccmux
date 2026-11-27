@@ -12,6 +12,7 @@ import { ChatMessageSchema } from '../chat/messageSchema.ts';
 import { principalOrigin } from '../chat/origin.ts';
 import { chatEnabledFor } from '../config/chat.ts';
 import { loadMachineConfig } from '../config/machine.ts';
+import { adoptPreviousSource } from '../migration/renameFromCcmux.ts';
 import { findSession, loadSessions } from '../session/registry.ts';
 import type { ChatMessage } from '../types.ts';
 
@@ -21,7 +22,7 @@ export async function cmdReceiveChat(
   rawInput?: string,
 ): Promise<number> {
   const machine = loadMachineConfig();
-  if (process.env.CCMUX_SESSION !== undefined) {
+  if (process.env.STITCHMUX_SESSION !== undefined) {
     console.error('chat receive is transport-only');
     return 1;
   }
@@ -31,7 +32,9 @@ export async function cmdReceiveChat(
   }
   let message: ChatMessage;
   try {
-    message = ChatMessageSchema.parse(JSON.parse(rawInput ?? (await Bun.stdin.text())));
+    message = ChatMessageSchema.parse(
+      adoptPreviousSource(JSON.parse(rawInput ?? (await Bun.stdin.text()))),
+    );
   } catch {
     console.error('chat receive: invalid v2 envelope');
     return 1;

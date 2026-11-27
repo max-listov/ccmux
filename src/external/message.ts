@@ -2,6 +2,7 @@ import { lstat, realpath } from 'node:fs/promises';
 import { AppError } from 'stitchkit';
 import { z } from 'zod';
 import { uuidV7Time } from '../agent/codex/rolloutFiles.ts';
+import { refusals } from '../control/schema/refusals.ts';
 import type { MachineConfig } from '../types.ts';
 import { log } from '../util/log.ts';
 import { fileIdentity, scan, scanCompressed } from './contentSnapshot.ts';
@@ -296,9 +297,8 @@ export async function readExternalMessage(
         if (revision === null) return { ...result, outcome: 'too-large' };
       } else {
         if (stat.size > limits.sourceBytes)
-          throw new AppError('RESOURCE_EXHAUSTED', {
+          throw refusals.errors.TOO_LARGE({
             message: 'External history source exceeds the read budget',
-            status: 413,
           });
         revision = await scan(file, stat.size, signal, scanner.consume);
         if (revision === null) return { ...result, outcome: 'unavailable' };

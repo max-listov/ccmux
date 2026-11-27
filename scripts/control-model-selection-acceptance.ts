@@ -27,12 +27,12 @@ import { readAcceptanceCommunicationAuthorization } from './acceptance-communica
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
 }
-const root = realpathSync(mkdtempSync('/tmp/ccmux-owned-probe-'));
+const root = realpathSync(mkdtempSync('/tmp/stitchmux-owned-probe-'));
 const config = join(root, 'machine.json');
 const cli = resolve(process.argv[2] ?? 'src/cli.ts');
 const commandPrefix =
@@ -47,7 +47,7 @@ const machine = MachineConfigSchema.parse({
   ...loadMachineConfig(),
   stateDir: join(root, 'state'),
   rcPrefix: 'probe',
-  tmuxSocket: `ccmux-owned-${root.split('-').at(-1)}`,
+  tmuxSocket: `stitchmux-owned-${root.split('-').at(-1)}`,
   fleet: {},
   remoteTransport: { peers: [] },
   autoUpdate: false,
@@ -68,16 +68,16 @@ const machine = MachineConfigSchema.parse({
   },
 });
 const environment: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: machine.stateDir,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
-  CCMUX_DATA_DIR: join(root, 'data'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: machine.stateDir,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_DATA_DIR: join(root, 'data'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && environment[key] === undefined) environment[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
@@ -106,7 +106,7 @@ async function restartDaemon() {
     async () => {
       try {
         return (
-          await fetch('http://ccmux.local/control/sessions', { unix: controlSocket(machine) })
+          await fetch('http://stitchmux.local/control/sessions', { unix: controlSocket(machine) })
         ).ok;
       } catch {
         return false;
@@ -130,7 +130,7 @@ async function command(args: string[]) {
   ]);
   check(code === 0, `Command failed (${code}): ${out} ${err}`);
 }
-const remote = makeServiceClient(localControlFetch(controlSocket(machine), machine.rcPrefix));
+const remote = makeServiceClient(declaredServiceFetch(controlSocket(machine), machine.rcPrefix));
 async function idle(target: ManagedPeer) {
   await until('native idle', async () => {
     try {

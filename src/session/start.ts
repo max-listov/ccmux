@@ -3,8 +3,10 @@ import { hasSession, newSession, setOption, setPaneOption } from '../tmux/tmux.t
 import type { MachineConfig, PendingSession } from '../types.ts';
 import { SELF_ARGV_NO_ENV_FILE } from '../util/env.ts';
 import { log } from '../util/log.ts';
+import { launchInBoundary } from './boundary.ts';
+import { findSession, loadSessions } from './registry.ts';
 
-/** Create the tmux session running ccmux's own `_run` loop. Idempotent. */
+/** Create the tmux session running stitchmux's own `_run` loop. Idempotent. */
 export async function startSession(
   m: MachineConfig,
   name: string,
@@ -15,7 +17,16 @@ export async function startSession(
     console.log(`${name} already running`);
     return;
   }
-  await newSession(m, name, dir, [...SELF_ARGV_NO_ENV_FILE, '_run', name], {}, signal);
+  const command = [...SELF_ARGV_NO_ENV_FILE, '_run', name];
+  const session = findSession(loadSessions(m), name);
+  await newSession(
+    m,
+    name,
+    dir,
+    session === undefined ? command : launchInBoundary(session, command),
+    {},
+    signal,
+  );
   await applySessionOptions(m, name, signal);
   log.info({ msg: 'session started', name, rc: rcName(m, name), dir });
   console.log(`started ${name} (${rcName(m, name)})`);
@@ -40,14 +51,16 @@ export async function startBootstrapSession(
         : [`CLAUDE_CONFIG_DIR=${profile.home}`]),
     );
   }
-  await newSession(m, name, dir, command, {
-    CCMUX_BOOTSTRAP_GENERATION: generation,
+  // A pending session has no uuid yet; its scope is named by the create's generation, and the
+  // monitoring row attributes the scope to the session by its root process, not by that name.
+  await newSession(m, name, dir, launchInBoundary({ uuid: generation }, command), {
+    STITCHMUX_BOOTSTRAP_GENERATION: generation,
   });
   await applySessionOptions(m, name);
 }
 
 /**
- * The options every session ccmux creates is given — session-local, never the shared server's.
+ * The options every session stitchmux creates is given — session-local, never the shared server's.
  *
  * Until the target was corrected (`sessionOptionTarget`) none of these reached any session: tmux
  * refused the bare `=NAME` form and the refusal was not checked.
@@ -65,7 +78,7 @@ async function applySessionOptions(
   await setOption(m, name, 'history-limit', '50000', signal);
   // Claude-Code-in-tmux nicety, kept PANE-local (never the shared tmux server's globals): lets
   // claude's notification/progress escape sequences pass through tmux when you attach interactively.
-  // (focus-events / extended-keys / terminal-features are server-global in tmux, so ccmux leaves them
+  // (focus-events / extended-keys / terminal-features are server-global in tmux, so stitchmux leaves them
   // to your ~/.tmux.conf — see README.)
   await setPaneOption(m, name, 'allow-passthrough', 'on', signal);
 }

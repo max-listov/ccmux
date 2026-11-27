@@ -18,7 +18,7 @@ afterAll(() => {
 });
 
 function machine() {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-inventory-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-inventory-'));
   dirs.push(dir);
   return makeMachine({ rcPrefix: 'host-a', stateDir: dir });
 }
@@ -45,8 +45,17 @@ function monitoring(name: keyof typeof UUIDS, patch: Partial<MonitoringRow> = {}
     contextPercent: null,
     statusLineRendersPerMinute: null,
     uptimeSeconds: null,
+    startedAt: null,
     lastActivityAt: null,
     turnStartedAt: null,
+    step: null,
+    atPrompt: null,
+    waitingFor: null,
+    sleeping: false,
+    pinned: false,
+    memoryBytes: 0,
+    registrationGeneration: null,
+    boundary: null,
     observedAt: '2026-01-01T00:00:00.000Z',
     ...patch,
   };

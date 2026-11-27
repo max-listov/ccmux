@@ -1,6 +1,6 @@
-import { AppError } from 'stitchkit';
 import type { z } from 'zod';
 import type { ControlModelCatalog, ControlModelsReadSchema } from './schema/model.ts';
+import { refusals } from './schema/refusals.ts';
 
 type ModelsReadInput = z.output<typeof ControlModelsReadSchema>;
 type CatalogRead = (input: ModelsReadInput, signal: AbortSignal) => Promise<ControlModelCatalog>;
@@ -88,9 +88,8 @@ export class HostCatalogCache {
     }
     const first = await Promise.race([this.refresh(input), this.waiting(signal)]);
     if (first === 'waiting')
-      throw new AppError('UNAVAILABLE', {
+      throw refusals.errors.UNAVAILABLE({
         message: 'The model catalog is still being read on this host; ask again shortly',
-        status: 503,
       });
     return this.present(first);
   }

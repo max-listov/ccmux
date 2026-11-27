@@ -6,8 +6,10 @@ import { writeOut } from '../util/stdout.ts';
 /** The session identity a control call presents: the one the managed launch handed this process. */
 export function controlIdentity(): { session?: string; credential?: string } {
   return {
-    ...(process.env.CCMUX_SESSION ? { session: process.env.CCMUX_SESSION } : {}),
-    ...(process.env.CCMUX_CHAT_CREDENTIAL ? { credential: process.env.CCMUX_CHAT_CREDENTIAL } : {}),
+    ...(process.env.STITCHMUX_SESSION ? { session: process.env.STITCHMUX_SESSION } : {}),
+    ...(process.env.STITCHMUX_CHAT_CREDENTIAL
+      ? { credential: process.env.STITCHMUX_CHAT_CREDENTIAL }
+      : {}),
   };
 }
 

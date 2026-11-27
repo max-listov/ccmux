@@ -1,6 +1,6 @@
 import { dlopen, FFIType } from 'bun:ffi';
 
-/** SIGTTIN and SIGTTOU have the same numbers on Linux and macOS, the two platforms ccmux runs on. */
+/** SIGTTIN and SIGTTOU have the same numbers on Linux and macOS, the two platforms stitchmux runs on. */
 const SIGTTIN = 21;
 const SIGTTOU = 22;
 /** `SIG_IGN` is the handler value 1. */

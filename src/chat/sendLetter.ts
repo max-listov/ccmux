@@ -180,8 +180,8 @@ export async function sendLetter(
     // sender would believe it had reached the owner, which is the exact failure this address exists
     // to remove.
     const where = [
-      `ccmux does not deliver there — ${external.where}. It is mirrored to the owner, who carries it.`,
-      `It stays outstanding until an answer is recorded: ccmux relay ${targetLabel(target)}${task === null ? '' : ` --task ${task}`} "<their answer>"`,
+      `stitchmux does not deliver there — ${external.where}. It is mirrored to the owner, who carries it.`,
+      `It stays outstanding until an answer is recorded: stitchmux relay ${targetLabel(target)}${task === null ? '' : ` --task ${task}`} "<their answer>"`,
     ];
     return sent(
       envelope,
@@ -238,7 +238,7 @@ export async function sendLetter(
       communicationAuthorization,
       communicationReceipt,
     });
-    const result = await run(m, route.machine, route.alias, ['ccmux', '_chat-receive-v2'], {
+    const result = await run(m, route.machine, route.alias, ['stitchmux', '_chat-receive-v2'], {
       stdin: JSON.stringify(envelope),
       timeoutMs: hop(),
     });

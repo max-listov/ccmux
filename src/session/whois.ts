@@ -17,7 +17,7 @@ import { declaredProjectOnly, repositoryOf } from './repository.ts';
 /**
  * "Which session is this?" — asked with whatever name of it the asker happened to see.
  *
- * A program outside ccmux meets a session by one of three names: the title its window shows, the id
+ * A program outside stitchmux meets a session by one of three names: the title its window shows, the id
  * the provider gave its conversation, or its address. Each is matched exactly. A title is compared
  * word by word with the title a session is launched under, so a window that merely resembles one —
  * a longer name, a shared prefix — is not a session: the nearest name is a different session, and

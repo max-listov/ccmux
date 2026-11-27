@@ -22,7 +22,7 @@ import { type LaunchStamp, staleReasons } from '../src/agent/launch/launchStamp.
 
 let dir: string;
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'ccmux-inputs-'));
+  dir = mkdtempSync(join(tmpdir(), 'stitchmux-inputs-'));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -211,7 +211,7 @@ test('an env file that appeared (or changed) since launch is reported', () => {
 });
 
 test('a stamp written before inputs existed is UNKNOWN, never stale', () => {
-  // Same doctrine as a missing stamp: the first upgrade of ccmux itself must not paint the fleet red.
+  // Same doctrine as a missing stamp: the first upgrade of stitchmux itself must not paint the fleet red.
   expect(
     staleReasons(stamp({ inputs: null }), now({ inputs: { rules: 'r9', mcp: 'm9', env: 'e9' } })),
   ).toEqual([]);
@@ -219,7 +219,7 @@ test('a stamp written before inputs existed is UNKNOWN, never stale', () => {
 
 test('nothing changed → nothing reported, and the env reason is not doubled', () => {
   expect(staleReasons(stamp(), now())).toEqual([]);
-  // `env` can arrive from the ccmux-injected key list AND from the input map; it must be said once.
+  // `env` can arrive from the stitchmux-injected key list AND from the input map; it must be said once.
   const out = staleReasons(
     stamp({ envKeys: ['A'] }),
     now({ envKeys: ['A', 'B'], inputs: { rules: 'r1', mcp: 'm1', env: 'e1' } }),

@@ -20,16 +20,16 @@ export interface ReleaseDocumentInput {
 }
 
 /**
- * `release.json`: a stitchkit `CliBuildManifest`, signed, which is what a current ccmux installs
+ * `release.json`: a stitchkit `CliBuildManifest`, signed, which is what a current stitchmux installs
  * from, and beside it the flat fields (`version`, `notes`, `sha256`, `url`, `releasedAt`) that the
- * install script and every earlier ccmux read — so a fleet still on an unsigned version updates to
+ * install script and every earlier stitchmux read — so a fleet still on an unsigned version updates to
  * the first signed one without knowing what a signature is. The signature covers the manifest's
  * identity and every asset's digest, never the flat fields; they name the same bundle.
  */
 export function releaseDocument(input: ReleaseDocumentInput): Record<string, unknown> {
   const sha256 = new Bun.CryptoHasher('sha256').update(input.bundle).digest('hex');
   const manifest: CliBuildManifest = {
-    name: 'ccmux',
+    name: 'stitchmux',
     version: input.version,
     commit: input.commit,
     builtAt: input.builtAt,

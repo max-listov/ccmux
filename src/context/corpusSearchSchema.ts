@@ -11,7 +11,7 @@ import { MessageSenderSchema } from './messageSenderSchema.ts';
 /** Which conversation a line is in, and whose it is. Every line, conversation and receipt of an
  *  answer carries exactly this. */
 export const ConversationRefSchema = z.object({
-  /** What `ccmux transcript` accepts for this conversation, from any machine of the fleet. */
+  /** What `stitchmux transcript` accepts for this conversation, from any machine of the fleet. */
   address: z.string().min(1),
   provider: z.enum(['claude', 'codex']),
   threadId: z.string().min(1),
@@ -87,7 +87,7 @@ export const DeliverySchema = ConversationRefSchema.extend({
   sender: MessageSenderSchema.nullable()
     .optional()
     .describe(
-      "Who sent that first message, in the words of `transcript --json`: person, session-letter, routed-input, harness, ccmux-keys or unverifiable. Null when the message is not on the user's side. Absent when the machine holding the conversation runs a release that does not say — not the same as null.",
+      "Who sent that first message, in the words of `transcript --json`: person, session-letter, routed-input, harness, stitchmux-keys or unverifiable. Null when the message is not on the user's side. Absent when the machine holding the conversation runs a release that does not say — not the same as null.",
     ),
 });
 export type Delivery = z.infer<typeof DeliverySchema>;

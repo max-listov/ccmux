@@ -86,7 +86,7 @@ test("originalCommand skips our OWN injected command but keeps a user script con
   mkdirSync(join(home, '.claude'), { recursive: true });
   writeFileSync(
     join(home, '.claude', 'settings.json'),
-    L({ statusLine: { command: 'ccmux status-line' } }),
+    L({ statusLine: { command: 'stitchmux status-line' } }),
   );
   expect(originalCommand(home, home)).toBeNull(); // our own standalone `status-line` subcommand → skipped
   // a real user statusline whose path merely CONTAINS the substring must NOT be skipped (guard is word-precise)

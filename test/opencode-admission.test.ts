@@ -10,7 +10,7 @@ import { ManagedRuntimeStatusWriter, managedRuntimeRoot } from '../src/runtime/s
 import { makeMachine, makeSession, shortTempDir } from './helpers.ts';
 
 function fixture() {
-  const root = shortTempDir('ccmux-native-admission-');
+  const root = shortTempDir('stitchmux-native-admission-');
   const m = makeMachine({ stateDir: join(root, 'state') });
   const s = makeSession({
     name: 'native',
@@ -33,7 +33,7 @@ test('lost native create response reconciles the reservation without a second PO
     directory: s.dir,
     version: '1.18.20',
     model: { id: 'model-a', providerID: 'provider-a' },
-    metadata: { ccmuxRegistration: s.registrationGeneration },
+    metadata: { stitchmuxRegistration: s.registrationGeneration },
   };
   const server = Bun.serve({
     hostname: '127.0.0.1',

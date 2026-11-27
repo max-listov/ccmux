@@ -25,7 +25,8 @@ import { hasNativeRuntime } from '../runtime/modes.ts';
 import { loadSessions } from '../session/registry.ts';
 import { readChatHold, readLaunchStamp } from '../session/status.ts';
 import type { MachineConfig } from '../types.ts';
-import { HOME, PLATFORM, promptInvocation, SELF_DISPLAY, UID } from '../util/env.ts';
+import { promptInvocation, SELF_DISPLAY } from '../util/env.ts';
+import { HOME, PLATFORM, UID } from '../util/home.ts';
 import { run } from '../util/spawn.ts';
 import { VERSION } from '../util/version.ts';
 
@@ -158,7 +159,7 @@ export async function buildDoctorReport(m: MachineConfig): Promise<DoctorReport>
     os: PLATFORM,
     self: SELF_DISPLAY,
     promptInvocation: promptInvocation(),
-    configFile: process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`,
+    configFile: process.env.STITCHMUX_CONFIG ?? `${HOME}/.config/stitchmux/machine.json`,
     mutedChat: mutedChatSessions(m),
     unhonourableModes: unhonourableModes(m, UID === 0),
     stateDir: m.stateDir,

@@ -21,8 +21,8 @@ test('msg --help and the arg-error usage share ONE source (all flags visible)', 
 });
 
 test('usageLine is derived per verb; unknown verb degrades gracefully', () => {
-  expect(usageLine('send')).toContain('usage: ccmux send');
-  expect(usageLine('does-not-exist')).toBe('usage: ccmux does-not-exist');
+  expect(usageLine('send')).toContain('usage: stitchmux send');
+  expect(usageLine('does-not-exist')).toBe('usage: stitchmux does-not-exist');
 });
 
 test('inbox help documents that it is a fallback, not an archive', () => {

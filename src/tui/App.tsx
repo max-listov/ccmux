@@ -368,7 +368,7 @@ export function App({
       setNewAgent('claude');
       return;
     }
-    // adopt an EXTERNAL session into ccmux. Cold adopt only when nobody is driving the uuid;
+    // adopt an EXTERNAL session into stitchmux. Cold adopt only when nobody is driving the uuid;
     // a live writer would mean a SECOND resume = forked conversation, so the blocked case
     // opens the explicit fork/takeover choice instead.
     if (input === 'a' && isExternal) {

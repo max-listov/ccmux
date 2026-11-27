@@ -11,8 +11,8 @@ import { makeMachine } from './helpers.ts';
  * operator's home and the suite starts writing into it again — silently, because nothing a test
  * asserts depends on where its state lives. This is the test that notices.
  */
-test('every ccmux root resolves inside the private test home, none inside the real one', () => {
-  const home = process.env.CCMUX_TEST_HOME;
+test('every stitchmux root resolves inside the private test home, none inside the real one', () => {
+  const home = process.env.STITCHMUX_TEST_HOME;
   expect(home).toBeDefined();
   for (const root of [
     STATE_DIR,
@@ -29,7 +29,11 @@ test('every ccmux root resolves inside the private test home, none inside the re
 test('a child started without an explicit env lands in the same private home', async () => {
   // The case `process.env` alone does not cover: a child is handed the environment the process
   // started with unless the preload supplies the current one.
-  const probe = [process.execPath, '-e', 'console.log(process.env.CCMUX_STATE_DIR ?? "MISSING")'];
+  const probe = [
+    process.execPath,
+    '-e',
+    'console.log(process.env.STITCHMUX_STATE_DIR ?? "MISSING")',
+  ];
   const async = Bun.spawn(probe, { stdout: 'pipe' });
   expect((await new Response(async.stdout).text()).trim()).toBe(STATE_DIR);
   expect(Bun.spawnSync({ cmd: probe }).stdout.toString().trim()).toBe(STATE_DIR);
@@ -37,10 +41,10 @@ test('a child started without an explicit env lands in the same private home', a
 
 test('operator identity is absent in the test process and inherited child environments', async () => {
   const keys = [
-    'CCMUX_SESSION',
-    'CCMUX_CHAT_CREDENTIAL',
-    'CCMUX_BOOTSTRAP_GENERATION',
-    'CCMUX_RC_PREFIX',
+    'STITCHMUX_SESSION',
+    'STITCHMUX_CHAT_CREDENTIAL',
+    'STITCHMUX_BOOTSTRAP_GENERATION',
+    'STITCHMUX_RC_PREFIX',
   ];
   for (const key of keys) expect(process.env[key]).toBeUndefined();
   const probe = [
@@ -60,10 +64,10 @@ test('operator identity is absent in the test process and inherited child enviro
   }
 });
 
-test('a test run without the preload refuses to load ccmux paths instead of using the real ones', async () => {
+test('a test run without the preload refuses to load stitchmux paths instead of using the real ones', async () => {
   // `bun test` started outside the repository root never reads bunfig.toml, so the preload never
   // runs. Such a run once deleted the operator's installed app; the paths module now refuses it.
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-unpreloaded-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-unpreloaded-'));
   try {
     const paths = join(import.meta.dir, '..', 'src', 'config', 'paths.ts');
     writeFileSync(

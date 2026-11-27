@@ -75,7 +75,7 @@ export function readOwnedCodexStatus(
 }
 
 /** The Codex owner's status writer. Its file stays where Codex owners have always written it
- *  (`ownedCodexStatusPath`): an owner outlives an update of ccmux, and the published
+ *  (`ownedCodexStatusPath`): an owner outlives an update of stitchmux, and the published
  *  `codex-runtime-reader` reads this path directly. */
 export class OwnedCodexStatusWriter extends RuntimeStatusWriter<OwnedCodexSnapshot> {
   constructor(m: MachineConfig, name: string) {

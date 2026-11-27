@@ -30,7 +30,7 @@ function msg(iso: string): string {
 
 /** A machine whose projectsDir is a temp dir, plus the session's encoded project folder. */
 function setup(): { m: MachineConfig; dir: string; projDir: string } {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-fork-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-fork-'));
   const dir = join(root, 'proj');
   mkdirSync(dir, { recursive: true });
   const projectsDir = join(root, 'projects');

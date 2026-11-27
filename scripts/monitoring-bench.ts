@@ -14,7 +14,7 @@ import { producerMetrics } from '../src/util/producerMetrics.ts';
 const seconds = Number(Bun.argv[2] ?? 900);
 if (!Number.isFinite(seconds) || seconds < 1) throw new Error('positive duration required');
 const actual = loadMachineConfig();
-const dir = mkdtempSync(join(tmpdir(), 'ccmux-status-bench-'));
+const dir = mkdtempSync(join(tmpdir(), 'stitchmux-status-bench-'));
 const machine = { ...actual, stateDir: dir, sessionEvents: false };
 const config = join(dir, 'machine.json');
 await Bun.write(config, JSON.stringify(machine));
@@ -34,7 +34,7 @@ const cpuStart = process.cpuUsage();
 async function read(): Promise<string> {
   const at = performance.now();
   const proc = Bun.spawn([process.execPath, cli, 'status', '--json'], {
-    env: { ...process.env, CCMUX_CONFIG: config },
+    env: { ...process.env, STITCHMUX_CONFIG: config },
     stdout: 'pipe',
     stderr: 'pipe',
     stdin: 'ignore',

@@ -1,6 +1,6 @@
 import { constants, type Stats } from 'node:fs';
 import { type FileHandle, lstat, open, realpath } from 'node:fs/promises';
-import { AppError } from 'stitchkit';
+import { refusals } from '../control/schema/refusals.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import type { ExternalContentTarget } from './contentSchema.ts';
@@ -24,19 +24,14 @@ export type ExternalSource = {
 /** Every external read refuses before it looks: another host, a disabled policy, a managed identity. */
 export function authorizeExternalRead(m: MachineConfig, target: ExternalContentTarget): void {
   if (target.machine !== m.rcPrefix)
-    throw new AppError('IDENTITY_MISMATCH', {
+    throw refusals.errors.IDENTITY_MISMATCH({
       message: 'External identity does not belong to this host',
-      status: 409,
     });
   if (!m.externalInventory)
-    throw new AppError('PERMISSION_DENIED', {
-      message: 'External content access is disabled',
-      status: 403,
-    });
+    throw refusals.errors.PERMISSION_DENIED({ message: 'External content access is disabled' });
   if (loadSessions(m).some((s) => s.agent === target.provider && s.uuid === target.threadId))
-    throw new AppError('IDENTITY_MISMATCH', {
+    throw refusals.errors.IDENTITY_MISMATCH({
       message: 'Use the managed history contract for this identity',
-      status: 409,
     });
 }
 
@@ -72,10 +67,7 @@ export async function openExternalPath(
   try {
     const stat = await file.stat();
     if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o022) !== 0)
-      throw new AppError('PERMISSION_DENIED', {
-        message: 'External storage is not accessible',
-        status: 403,
-      });
+      throw refusals.errors.PERMISSION_DENIED({ message: 'External storage is not accessible' });
     if (fileIdentity(await lstat(path), path) !== fileIdentity(stat, path)) {
       await file.close();
       return 'changed';

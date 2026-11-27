@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { LOCAL_API_VERSION } from '@stitchwire/client';
 import { z } from 'zod';
 import { managedPeer } from '../src/chat/identity.ts';
 import { loadLedger } from '../src/chat/ledger.ts';
@@ -19,7 +20,7 @@ const InputSchema = z.object({
 });
 
 test('lost remote reply and concurrent outbox retries preserve one receiver envelope', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-remote-chat-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-remote-chat-'));
   const state = join(root, 'receiver');
   mkdirSync(state);
   const receiver = makeMachine({ stateDir: state, rcPrefix: 'host-b', chatEnabled: true });
@@ -27,9 +28,9 @@ test('lost remote reply and concurrent outbox retries preserve one receiver enve
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(receiver));
   writeFileSync(sessionsPath(receiver), `${JSON.stringify(session)}\n`);
-  const env: Record<string, string | undefined> = { ...process.env, CCMUX_CONFIG: config };
-  delete env.CCMUX_SESSION;
-  delete env.CCMUX_CHAT_CREDENTIAL;
+  const env: Record<string, string | undefined> = { ...process.env, STITCHMUX_CONFIG: config };
+  delete env.STITCHMUX_SESSION;
+  delete env.STITCHMUX_CHAT_CREDENTIAL;
   delete env.CODEX_THREAD_ID;
   const received: string[] = [];
   let loseReply = true;
@@ -38,7 +39,7 @@ test('lost remote reply and concurrent outbox retries preserve one receiver enve
     unix: socket,
     fetch: async (request) => {
       const input = InputSchema.parse(await request.json());
-      expect(input.argv).toEqual(['ccmux', '_chat-receive-v2']);
+      expect(input.argv).toEqual(['stitchmux', '_chat-receive-v2']);
       const stdin = input.stdin ?? '';
       received.push(stdin);
       const child = Bun.spawn(
@@ -61,11 +62,19 @@ test('lost remote reply and concurrent outbox retries preserve one receiver enve
         return new Response('{');
       }
       return Response.json({
+        v: LOCAL_API_VERSION,
+        id: crypto.randomUUID(),
+        ts: new Date().toISOString(),
+        from: 'host-b',
         code,
         stdout,
         stderr,
-        transportFailed: false,
-        delivery: 'received',
+        detail: '',
+        retryAfterMs: null,
+        transportCause: null,
+        failure: 'none',
+        refusal: 'none',
+        truncated: false,
       });
     },
   });
@@ -73,7 +82,7 @@ test('lost remote reply and concurrent outbox retries preserve one receiver enve
     const sender = makeMachine({
       stateDir: join(root, 'sender'),
       rcPrefix: 'host-a',
-      remoteTransport: { socket, peers: ['host-b'] },
+      remoteTransport: { kind: 'stitchwire', agentSocket: socket, peers: ['host-b'] },
     });
     const envelope = makeChatMessage({
       id: crypto.randomUUID(),
@@ -82,7 +91,7 @@ test('lost remote reply and concurrent outbox retries preserve one receiver enve
       to: managedPeer('host-b', session),
     });
     const encoded = JSON.stringify(envelope);
-    const result = await runPeer(sender, 'host-b', null, ['ccmux', '_chat-receive-v2'], {
+    const result = await runPeer(sender, 'host-b', null, ['stitchmux', '_chat-receive-v2'], {
       stdin: encoded,
     });
     expect(result).toMatchObject({ transportFailed: true, delivery: 'unknown' });

@@ -21,10 +21,10 @@ const ENTRY = readFileSync(resolve('src/cli.ts'), 'utf8');
 
 // Help and the retired-token notice are the exceptions ON PURPOSE: both run BEFORE the switch, for
 // every invocation, so deferring them would buy nothing and cost a branch. Both are leaf modules.
-// The narrow owner-loss bootstrap must run before dispatch in bundled guard invocations;
+// The narrow package-process bootstrap must run before dispatch in bundled guard invocations;
 // the full stitchkit/process command runner remains behind the lazy command graph.
 const EAGER_BY_DESIGN = new Set([
-  'stitchkit/process/owner-loss',
+  'stitchkit/process/bootstrap',
   './commands/help.ts',
   './commands/retired.ts',
   './util/version.ts',
@@ -49,7 +49,7 @@ test('every dispatched command is reached through a dynamic import', () => {
 });
 
 /**
- * A command a person can type is a command `ccmux help` names.
+ * A command a person can type is a command `stitchmux help` names.
  *
  * `models` and `router` both existed, dispatched and worked, and appeared in neither the help list
  * nor the shell completions that are generated from it — one of them referenced by name in an
@@ -80,6 +80,6 @@ test('every verb a person can type is in the help list', async () => {
   expect(missing).toEqual([]);
   // An alias is only exempt while the verb it stands for is documented.
   expect([...ALIASES.values()].filter((verb) => !documented.has(verb))).toEqual([]);
-  // And the list does not name commands that do not exist: `ccmux help` is read as an inventory.
+  // And the list does not name commands that do not exist: `stitchmux help` is read as an inventory.
   expect(COMMANDS.map((entry) => entry.verb).filter((verb) => !cases.includes(verb))).toEqual([]);
 });

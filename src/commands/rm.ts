@@ -6,7 +6,7 @@ import { refusesSelf } from './guard.ts';
 
 export async function cmdRm(name: string | undefined, force = false): Promise<number> {
   if (!name) {
-    console.log('usage: ccmux rm <name>   ·   <machine>:<name> for another fleet machine');
+    console.log('usage: stitchmux rm <name>   ·   <machine>:<name> for another fleet machine');
     return 1;
   }
   const fwd = await forwardIfRemote(name, 'rm', force ? ['--force'] : []);

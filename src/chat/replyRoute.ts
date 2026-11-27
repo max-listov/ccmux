@@ -21,7 +21,7 @@ export type ReplyRoute = { replyable: true } | { replyable: false; reason: strin
  *
  * The bug it closes: the reply hint used to consult `fleet` (the ssh map) directly and nothing else,
  * so every machine reached over the remote transport — the transport that exists precisely for peers ssh cannot
- * address — was declared unreachable while `ccmux msg <machine>:<session>` from that same box
+ * address — was declared unreachable while `stitchmux msg <machine>:<session>` from that same box
  * delivered instantly. Asking the resolver means a direction that moves onto a new transport moves
  * the hint with it, and no second source of truth can drift from the first.
  *
@@ -42,7 +42,7 @@ export function replyRouteFor(m: MachineConfig, machine: string, session: string
     if (!existsSync(socket))
       return {
         replyable: false,
-        reason: `the ${m.remoteTransport && 'kind' in m.remoteTransport ? 'Stitchwire agent' : 'remote adapter'} is not running here — no socket at ${socket}`,
+        reason: `the Stitchwire agent is not running here — no socket at ${socket}`,
       };
   }
   return { replyable: true };

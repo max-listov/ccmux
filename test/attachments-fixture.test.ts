@@ -42,7 +42,7 @@ export function digest(bytes: Buffer): string {
 }
 
 export async function attachmentFixture() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-attachments-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-attachments-test-'));
   temporary.push(root);
   const machine = makeMachine({
     stateDir: root,

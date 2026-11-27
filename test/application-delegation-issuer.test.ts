@@ -1,15 +1,15 @@
 import { afterEach, expect, test } from 'bun:test';
-import { createClient, createHttpClient } from 'stitchkit';
-import { createUnixClientTransport } from 'stitchkit/server';
+import { join } from 'node:path';
 import { managedPeer, servicePrincipal } from '../src/chat/identity.ts';
 import { createControlSession } from '../src/control/lifecycle.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
-import { controlContract } from '../src/control/schema/contract.ts';
+import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 import { createControlServer } from '../src/control/transport/server.ts';
 import { controlSocket } from '../src/control/transport/socketPath.ts';
 import { openApplicationAuthority } from '../src/delegation/application.ts';
 import { resolveDelegation } from '../src/delegation/resolve.ts';
 import { loadSessions, writeSessionsUnlocked } from '../src/session/registry.ts';
+import { declaredServiceConfig, declaredServiceFetch, grantCallers } from './declared-service.ts';
 import { cleanup, fixture, signal } from './fixtures/applicationAuthority.ts';
 import { makeSession } from './helpers.ts';
 
@@ -88,27 +88,30 @@ test('foreign service cannot inherit, resume create receipts or cancel through a
     createControlSession(f.m, request, signal(), create, undefined, undefined, foreign),
   ).rejects.toThrow();
   expect(starts).toBe(0);
-  const p = new ControlPublisher(f.m);
-  const owned = createControlServer(f.m, p);
-  const transport = createUnixClientTransport({
-    socketPath: controlSocket(f.m),
-    maxRequestBytes: 65536,
-    maxHeaderBytes: 16384,
-    maxResponseBytes: 1048576,
-    maxConnections: 4,
-    headersTimeoutMs: 5000,
-  });
-  const client = createClient(
-    controlContract,
-    createHttpClient({
-      baseUrl: 'http://ccmux.local',
-      fetch: transport.fetch,
-      headers: { 'x-ccmux-caller': foreign.machine },
-      retry: { limit: 0 },
-    }),
+  // The foreign machine reaches this daemon as a caller of its declared service, granted each
+  // operation it tries; the refusals below are the application authority's, not the grant's.
+  const services = join(f.root, 'services');
+  grantCallers(
+    services,
+    [
+      'session.create',
+      'session.archive',
+      'session.start',
+      'session.sleep',
+      'session.wake',
+      'turn.interrupt',
+      'delegation.cancel',
+    ].map((operation) => ({ caller: foreign.machine, scope: { kind: 'operation', operation } })),
+  );
+  const served = { ...f.m, ...declaredServiceConfig(services) };
+  const p = new ControlPublisher(served);
+  const owned = createControlServer(served, p);
+  await owned.wire?.start();
+  const client = createInjectedControlClient(
+    declaredServiceFetch(controlSocket(served), foreign.machine),
   );
   cleanup.push(async () => {
-    await transport.close();
+    await owned.wire?.close();
     p.close();
     await owned.server.shutdown({ gracePeriodMs: 100, forceTimeoutMs: 100 });
     await owned.observability.close();

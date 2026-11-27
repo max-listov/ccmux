@@ -22,7 +22,7 @@ test('terminal menu parser exposes only a complete known option set', () => {
 });
 
 test('real terminal submits a nondefault option once and refuses stale observations without keys', async () => {
-  const root = mkdtempSync('/tmp/ccmux-menu-');
+  const root = mkdtempSync('/tmp/stitchmux-menu-');
   const m = makeMachine({
     stateDir: root,
     rcPrefix: 'host-a',

@@ -41,7 +41,7 @@ const record = (n: number) =>
   });
 
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-external-transcript-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-external-transcript-'));
   roots.push(root);
   const storage = join(root, 'sessions');
   const state = join(root, 'state');
@@ -66,7 +66,7 @@ function setup() {
   writeFileSync(config, JSON.stringify(m));
   const env: Record<string, string | undefined> = {
     ...process.env,
-    CCMUX_CONFIG: config,
+    STITCHMUX_CONFIG: config,
     XDG_CACHE_HOME: join(root, 'cache'),
   };
   async function cli(address = ADDRESS, args = ['--json', '--tail', '3']) {
@@ -157,11 +157,11 @@ test('remote machine prefix reaches the target CLI with exact app identity and o
   const argv = join(f.root, 'ssh-argv');
   writeFileSync(
     join(bin, 'ssh'),
-    `#!/bin/sh\nprintf '%s\\n' "$@" > ${shellQuote(argv)}\nfor arg do command=$arg; done\nexport CCMUX_CONFIG=${shellQuote(remoteConfig)}\nexec /bin/sh -c "$command"\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$@" > ${shellQuote(argv)}\nfor arg do command=$arg; done\nexport STITCHMUX_CONFIG=${shellQuote(remoteConfig)}\nexec /bin/sh -c "$command"\n`,
     { mode: 0o700 },
   );
   writeFileSync(
-    join(bin, 'ccmux'),
+    join(bin, 'stitchmux'),
     `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(CLI)} "$@"\n`,
     { mode: 0o700 },
   );

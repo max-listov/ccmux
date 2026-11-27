@@ -13,7 +13,7 @@ import { advanceTurn, initialTurn, type TurnState } from './turn.ts';
 /** Bounded so a long session cannot grow the published observation without limit. */
 const MAX_ITEMS = 256;
 
-/** Sum per-model additive turn deltas from `ClaudeSdkTurnUsage` into CCMux's `NativeUsage`. */
+/** Sum per-model additive turn deltas from `ClaudeSdkTurnUsage` into Stitchmux's `NativeUsage`. */
 export function nativeUsageFromTurn(usage: ClaudeSdkTurnUsage): NativeUsage | null {
   const entries = Object.values(usage.modelUsageDelta ?? {});
   if (entries.length === 0) return null;

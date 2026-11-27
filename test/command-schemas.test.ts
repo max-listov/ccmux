@@ -35,12 +35,12 @@ const EXPECTED: [string[], unknown][] = [
 ];
 
 test('a command describes its --json answer with the schema its operation declares', async () => {
-  const bareHome = mkdtempSync(join(tmpdir(), 'ccmux-bare-home-'));
+  const bareHome = mkdtempSync(join(tmpdir(), 'stitchmux-bare-home-'));
   for (const [argv, expected] of EXPECTED) {
     // No agent runtime, tmux or config on PATH or under the home directory: a schema is read off the contract, so a command
     // that needs the machine to print one fails here on every host, not only on a bare CI runner.
     const child = Bun.spawn([process.execPath, join(import.meta.dir, '../src/cli.ts'), ...argv], {
-      env: { ...process.env, CCMUX_SESSION: '', PATH: '/nonexistent', HOME: bareHome },
+      env: { ...process.env, STITCHMUX_SESSION: '', PATH: '/nonexistent', HOME: bareHome },
       stdout: 'pipe',
       stderr: 'pipe',
     });

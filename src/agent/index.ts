@@ -71,14 +71,14 @@ export interface AgentProvider {
   id: AgentKind;
   /** Deterministic configuration checks performed before any registry/tmux mutation. */
   preflight(m: MachineConfig): void;
-  // launch — `cli` is how the injected prompt should tell the agent to invoke ccmux
+  // launch — `cli` is how the injected prompt should tell the agent to invoke stitchmux
   // (bare shim when installed, else absolute; see env.promptInvocation)
   buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[];
   /** The environment for the spawned agent. Takes the SESSION, not just its name, because the
    *  environment is a declared recipe (`envFile`) rather than whatever the supervisor happened to
    *  inherit — see agent/launch/sessionEnv.ts for why that distinction had to become explicit. */
   launchEnv(m: MachineConfig, session: Session): Record<string, string>;
-  /** The ccmux-controlled environment variable NAMES this launch injects — never their values.
+  /** The stitchmux-controlled environment variable NAMES this launch injects — never their values.
    *  It exists so the launch stamp can see the one part of the recipe that is deliberately NOT in
    *  argv: a secret must not be an argument. Names are enough to answer "would relaunching give this
    *  session something it does not have", which is the only question the stamp asks. */

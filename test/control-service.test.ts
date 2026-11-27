@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 import { OperationEffectSchema } from 'stitchkit/contract';
 import { controlContract } from '../src/control/schema/contract.ts';
-import { controlServiceEffects } from '../src/control/schema/service.ts';
 import { createInjectedControlClient } from '../src/control/transport/boundary.ts';
 
 const endpoints = Object.entries(controlContract.endpoints);
@@ -13,15 +12,6 @@ test('every control operation says whether it reads or writes', () => {
     .filter(([, endpoint]) => !OperationEffectSchema.safeParse(endpoint.effect).success)
     .map(([id]) => id);
   expect(undeclared).toEqual([]);
-});
-
-test('the effects a transport projects are the operations’ own, one per operation', () => {
-  expect(Object.keys(controlServiceEffects).sort()).toEqual(endpoints.map(([id]) => id).sort());
-  for (const [id, endpoint] of endpoints)
-    expect([id, controlServiceEffects[id as keyof typeof controlServiceEffects]]).toEqual([
-      id,
-      endpoint.effect,
-    ]);
 });
 
 test('every operation is a POST with a static JSON route and a unary JSON answer', () => {
@@ -58,7 +48,7 @@ test('reading is decided per operation, and idempotent is not read', () => {
     'session.wait',
     'daemon.performance',
   ] as const)
-    expect([id, controlServiceEffects[id]]).toEqual([id, 'read']);
+    expect([id, controlContract.endpoints[id].effect]).toEqual([id, 'read']);
   // Each of these changes a session, the chat ledger or the daemon, idempotent or not.
   for (const id of [
     'letter.send',
@@ -74,7 +64,7 @@ test('reading is decided per operation, and idempotent is not read', () => {
     'attachment.begin',
     'daemon.performance.configure',
   ] as const)
-    expect([id, controlServiceEffects[id]]).toEqual([id, 'write']);
+    expect([id, controlContract.endpoints[id].effect]).toEqual([id, 'write']);
 });
 
 test('createInjectedControlClient performs no retry on failing idempotent operations', async () => {

@@ -151,7 +151,7 @@ async function askMachine(
     m,
     peer,
     // Said to the machine asked, so it does not record as its own a search that is ours to record.
-    ['ccmux', 'search', '--local', '--json', '--asked-by', m.rcPrefix, ...peerArgs],
+    ['stitchmux', 'search', '--local', '--json', '--asked-by', m.rcPrefix, ...peerArgs],
     (stdout) => CorpusSearchJsonSchema.parse(JSON.parse(stdout)),
     {
       what: 'search',

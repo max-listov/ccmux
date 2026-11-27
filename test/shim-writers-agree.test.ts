@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { shimContents } from '../src/boot/installedApp.ts';
 
 /**
- * Two programs write `~/.local/bin/ccmux`: the installer, before any of our code can run, and the
+ * Two programs write `~/.local/bin/stitchmux`: the installer, before any of our code can run, and the
  * daemon, which converges it on every start. They must produce the same bytes — otherwise each
  * rewrites the other's work forever, the installer reports a change it did not keep, and a routing
  * decision that lives in that file is true only until the next daemon start.
@@ -20,7 +20,7 @@ test('the installer and the daemon write the same PATH shim, byte for byte', asy
   // Both sides are asked about the SAME install: the shim names the bundle it routes to, and the
   // installer is handed that bundle's directory. Anything else compares two different machines.
   const written = shimContents();
-  const bundle = /exec "[^"]+" "([^"]+ccmux\.js|[^"]+\.ts)" "\$@"/.exec(written)?.[1];
+  const bundle = /exec "[^"]+" "([^"]+stitchmux\.js|[^"]+\.ts)" "\$@"/.exec(written)?.[1];
   expect(bundle).toBeDefined();
   const exec = process.execPath;
   const appDir = dirname(bundle ?? '');
@@ -30,11 +30,11 @@ test('the installer and the daemon write the same PATH shim, byte for byte', asy
   );
   const fromInstaller = await new Response(proc.stdout).text();
   await proc.exited;
-  expect(fromInstaller).toBe(written.replace(/ccmux\.js|[^"/]+\.ts/, 'ccmux.js'));
+  expect(fromInstaller).toBe(written.replace(/stitchmux\.js|[^"/]+\.ts/, 'stitchmux.js'));
 });
 
 test('the installed shim fails when its required program is missing, without running the bundle', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-shim-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-shim-'));
   try {
     const installer = readFileSync(join(import.meta.dir, '..', 'scripts', 'install.sh'), 'utf8');
     const line = installer.split('\n').find((row) => row.startsWith('WANT_SHIM='));
@@ -44,10 +44,10 @@ test('the installed shim fails when its required program is missing, without run
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const shim = join(dir, 'ccmux');
+    const shim = join(dir, 'stitchmux');
     writeFileSync(shim, await new Response(render.stdout).text());
     expect(await render.exited).toBe(0);
-    writeFileSync(join(dir, 'ccmux.js'), 'console.log("BUNDLE_EXECUTED")');
+    writeFileSync(join(dir, 'stitchmux.js'), 'console.log("BUNDLE_EXECUTED")');
     const missing = Bun.spawn(['sh', shim, 'status-line'], { stdout: 'pipe', stderr: 'pipe' });
     const [out, err, code] = await Promise.all([
       new Response(missing.stdout).text(),

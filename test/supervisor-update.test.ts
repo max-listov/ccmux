@@ -37,7 +37,7 @@ async function buildBundle(out: string): Promise<void> {
 }
 
 async function world() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-supervisor-update-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-supervisor-update-'));
   const stateDir = join(root, 'state');
   mkdirSync(stateDir);
   const dir = join(root, 'project');
@@ -56,7 +56,7 @@ async function world() {
     projectsDir: join(root, 'projects'),
     rcPrefix: 'host-a',
     stateDir,
-    bootLabel: 'ccmux-test.service',
+    bootLabel: 'stitchmux-test.service',
   });
   const config = join(root, 'machine.json');
   writeFileSync(config, JSON.stringify(machine));
@@ -64,12 +64,12 @@ async function world() {
     machine,
     SessionSchema.parse({ name: 'agent-a', dir, agent: 'claude', uuid: UUID }),
   );
-  const bundle = join(root, 'ccmux.js');
+  const bundle = join(root, 'stitchmux.js');
   await buildBundle(bundle);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = config;
-  env.CCMUX_STATE_DIR = stateDir;
+  env.STITCHMUX_CONFIG = config;
+  env.STITCHMUX_STATE_DIR = stateDir;
   env.HOME = root;
   delete env.CLAUDE_CONFIG_DIR;
   const supervisor = Bun.spawn([process.execPath, '--no-env-file', bundle, '_run', 'agent-a'], {

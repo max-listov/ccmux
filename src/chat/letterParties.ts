@@ -1,6 +1,6 @@
 /**
  * Who a letter is from and who it is to, before anything is written: the sender this process is,
- * and the exact recipient another machine has under a name. `ccmux msg` and `letter.send` both ask
+ * and the exact recipient another machine has under a name. `stitchmux msg` and `letter.send` both ask
  * here (`sendLetter.ts`), so a name cannot resolve to two different sessions on the two roads.
  */
 import { z } from 'zod';
@@ -39,11 +39,11 @@ export function anonymousRemoteWarning(
   transport: RemoteTransport | null,
 ): string | null {
   if (from.kind !== 'cli' || transport === null) return null;
-  const transportLabel = transport === 'ssh' ? 'ssh' : 'the remote adapter';
+  const transportLabel = transport === 'ssh' ? 'ssh' : 'the Stitchwire agent';
   return (
     `msg: warning — this command is running under ${transportLabel} without a managed sender; sent as ${principalLabel(from)}, ` +
-    'so the recipient cannot reply to the originating agent. Run ccmux msg <machine>:<session> from the managed ' +
-    `session instead of invoking remote ccmux msg through ${transportLabel}.`
+    'so the recipient cannot reply to the originating agent. Run stitchmux msg <machine>:<session> from the managed ' +
+    `session instead of invoking remote stitchmux msg through ${transportLabel}.`
   );
 }
 
@@ -52,17 +52,17 @@ export async function senderFor(
   sessions: Session[],
   m: MachineConfig,
 ): Promise<ChatPrincipal | { error: string }> {
-  const name = process.env.CCMUX_SESSION;
+  const name = process.env.STITCHMUX_SESSION;
   if (name !== undefined && name !== '') {
     const session = findSession(sessions, name);
     if (!session || !chatEnabledFor(session, m)) {
       return {
-        error: `msg: this session '${name}' has chat disabled — enable with: ccmux chat on ${name}`,
+        error: `msg: this session '${name}' has chat disabled — enable with: stitchmux chat on ${name}`,
       };
     }
     if (!hasChatCredential(loadMachineConfig(), session, process.env[CHAT_CREDENTIAL_ENV])) {
       return {
-        error: `msg: CCMUX_SESSION does not identify the calling process as managed session '${name}'`,
+        error: `msg: STITCHMUX_SESSION does not identify the calling process as managed session '${name}'`,
       };
     }
     return managedPeer(machine, session);
@@ -107,9 +107,15 @@ export async function resolveRemoteCodexAppPeer(
 ): Promise<CodexAppPeer | { error: string }> {
   const parsed = z.uuid().safeParse(codexAppThreadId(token));
   if (!parsed.success) return { error: `msg ${machine}:${token}: app address needs a thread UUID` };
-  const result = await execute(cfg, machine, alias, ['ccmux', '_codex-app-resolve', parsed.data], {
-    timeoutMs,
-  });
+  const result = await execute(
+    cfg,
+    machine,
+    alias,
+    ['stitchmux', '_codex-app-resolve', parsed.data],
+    {
+      timeoutMs,
+    },
+  );
   if (result.transportFailed)
     return {
       error: `msg ${machine}:${token}: transport failed while resolving exact App thread${result.failureDetail === undefined ? '' : ` (${appResolveDiagnostic(result.failureDetail)})`}`,
@@ -147,7 +153,7 @@ export async function resolveRemotePeer(
   timeoutMs = REMOTE_HOP_MS,
 ): Promise<ManagedPeer | { error: string }> {
   const name = token;
-  const result = await execute(cfg, machine, alias, ['ccmux', 'list', '--json'], {
+  const result = await execute(cfg, machine, alias, ['stitchmux', 'list', '--json'], {
     timeoutMs,
   });
   if (result.transportFailed)
@@ -182,7 +188,7 @@ export async function resolveRemotePeer(
       return { error: `msg ${machine}:${name}: peer disappeared during resolution` };
     return {
       kind: 'managed',
-      source: 'ccmux',
+      source: 'stitchmux',
       machine,
       agent: match.agent,
       session: match.name,

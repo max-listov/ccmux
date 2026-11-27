@@ -16,7 +16,7 @@ import {
 } from '../src/boot/macos/tmuxAgent.ts';
 import { makeMachine } from './helpers.ts';
 
-const work = mkdtempSync(join(tmpdir(), 'ccmux-macos-bundle-test-'));
+const work = mkdtempSync(join(tmpdir(), 'stitchmux-macos-bundle-test-'));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
 describe('macOS bundle signing and atomic install contracts', () => {
@@ -79,15 +79,15 @@ describe('macOS bundle signing and atomic install contracts', () => {
 
 describe('managed tmux LaunchAgent scope and startup race guard', () => {
   test('never enables managed tmux agent on Linux or on dev instances with custom tmuxSocket', () => {
-    const prod = makeMachine({ bootLabel: 'com.ccmux.daemon' });
-    const dev = makeMachine({ bootLabel: 'com.ccmux.daemon', tmuxSocket: 'ccmux-dev' });
+    const prod = makeMachine({ bootLabel: 'com.stitchmux.daemon' });
+    const dev = makeMachine({ bootLabel: 'com.stitchmux.daemon', tmuxSocket: 'stitchmux-dev' });
     const explicit = makeMachine({
-      bootLabel: 'com.ccmux.verify-daemon',
-      tmuxBootLabel: 'com.ccmux.verify-tmux',
-      tmuxSocket: 'ccmux-verify',
+      bootLabel: 'com.stitchmux.verify-daemon',
+      tmuxBootLabel: 'com.stitchmux.verify-tmux',
+      tmuxSocket: 'stitchmux-verify',
     });
 
-    expect(tmuxBootLabel(prod)).toBe('com.ccmux.tmux');
+    expect(tmuxBootLabel(prod)).toBe('com.stitchmux.tmux');
     expect(tmuxBootLabel({ bootLabel: 'custom.unit' })).toBe('custom.unit.tmux');
     expect(usesManagedTmuxAgent(prod, 'linux')).toBe(false);
     expect(usesManagedTmuxAgent(prod, 'darwin')).toBe(true);
@@ -98,8 +98,11 @@ describe('managed tmux LaunchAgent scope and startup race guard', () => {
   test('waitForManagedTmuxReady waits for socket readiness and fails closed without spawning rogue tmux', async () => {
     const fakeHome = join(work, 'home-wait');
     mkdirSync(join(fakeHome, 'Library', 'LaunchAgents'), { recursive: true });
-    writeFileSync(join(fakeHome, 'Library', 'LaunchAgents', 'com.ccmux.tmux.plist'), '<plist/>');
-    const machine = makeMachine({ bootLabel: 'com.ccmux.daemon' });
+    writeFileSync(
+      join(fakeHome, 'Library', 'LaunchAgents', 'com.stitchmux.tmux.plist'),
+      '<plist/>',
+    );
+    const machine = makeMachine({ bootLabel: 'com.stitchmux.daemon' });
 
     let checks = 0;
     const ready = await waitForManagedTmuxReady(machine, {
@@ -128,7 +131,7 @@ describe('managed tmux LaunchAgent scope and startup race guard', () => {
     ).rejects.toThrow(/refusing to spawn an unmanaged tmux server/);
 
     // Dev instance with its own tmuxSocket is unaffected even when prod plist exists.
-    const dev = makeMachine({ bootLabel: 'com.ccmux.daemon', tmuxSocket: 'ccmux-dev-iso' });
+    const dev = makeMachine({ bootLabel: 'com.stitchmux.daemon', tmuxSocket: 'stitchmux-dev-iso' });
     expect(
       await waitForManagedTmuxReady(dev, {
         home: fakeHome,
@@ -141,17 +144,17 @@ describe('managed tmux LaunchAgent scope and startup race guard', () => {
   if (process.platform === 'darwin' && Bun.which('tmux') !== null) {
     test('waitForManagedTmuxReady connects to an asynchronously starting real tmux -D server', async () => {
       const tmuxBin = Bun.which('tmux') as string;
-      const socket = `ccmux-race-${process.pid}-${Date.now()}`;
+      const socket = `stitchmux-race-${process.pid}-${Date.now()}`;
       const m = makeMachine({
         tmuxBin,
         tmuxSocket: socket,
-        bootLabel: 'com.ccmux.race-daemon',
-        tmuxBootLabel: 'com.ccmux.race-tmux',
+        bootLabel: 'com.stitchmux.race-daemon',
+        tmuxBootLabel: 'com.stitchmux.race-tmux',
       });
       const fakeHome = join(work, 'home-real-tmux');
       mkdirSync(join(fakeHome, 'Library', 'LaunchAgents'), { recursive: true });
       writeFileSync(
-        join(fakeHome, 'Library', 'LaunchAgents', 'com.ccmux.race-tmux.plist'),
+        join(fakeHome, 'Library', 'LaunchAgents', 'com.stitchmux.race-tmux.plist'),
         '<plist/>',
       );
 
@@ -187,10 +190,10 @@ describe('managed tmux LaunchAgent scope and startup race guard', () => {
 });
 
 if (process.platform === 'darwin') {
-  describe('ccmux-launcher C binary behavior', () => {
-    const source = join(work, 'ccmux-launcher.c');
-    const strictBinary = join(work, 'ccmux-launcher-strict');
-    const testBinary = join(work, 'ccmux-launcher-test');
+  describe('stitchmux-launcher C binary behavior', () => {
+    const source = join(work, 'stitchmux-launcher.c');
+    const strictBinary = join(work, 'stitchmux-launcher-strict');
+    const testBinary = join(work, 'stitchmux-launcher-test');
     writeFileSync(source, MACOS_LAUNCHER_C);
     const compiledStrict = Bun.spawnSync(
       ['clang', '-O2', '-Wall', '-Wextra', '-Werror', source, '-o', strictBinary],
@@ -203,7 +206,7 @@ if (process.platform === 'darwin') {
         '-Wall',
         '-Wextra',
         '-Werror',
-        '-DCCMUX_LAUNCHER_ALLOW_NON_LAUNCHD',
+        '-DSTITCHMUX_LAUNCHER_ALLOW_NON_LAUNCHD',
         source,
         '-o',
         testBinary,
@@ -226,13 +229,20 @@ if (process.platform === 'darwin') {
       expect(usage.exitCode).toBe(2);
 
       const ok = Bun.spawnSync(
-        [testBinary, '/bin/sh', '-c', 'printf "%s:%s" "$CCMUX_PROBE" "$1"; exit 7', '--', 'val'],
-        { env: { ...process.env, CCMUX_PROBE: 'hi' }, stdout: 'pipe', stderr: 'pipe' },
+        [
+          testBinary,
+          '/bin/sh',
+          '-c',
+          'printf "%s:%s" "$STITCHMUX_PROBE" "$1"; exit 7',
+          '--',
+          'val',
+        ],
+        { env: { ...process.env, STITCHMUX_PROBE: 'hi' }, stdout: 'pipe', stderr: 'pipe' },
       );
       expect(ok.exitCode).toBe(7);
       expect(ok.stdout.toString()).toBe('hi:val');
 
-      const missing = Bun.spawnSync([testBinary, '/nonexistent/ccmux-launcher-target'], {
+      const missing = Bun.spawnSync([testBinary, '/nonexistent/stitchmux-launcher-target'], {
         stderr: 'pipe',
       });
       expect(missing.exitCode).toBe(127);

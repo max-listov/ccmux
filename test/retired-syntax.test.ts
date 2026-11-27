@@ -4,7 +4,7 @@ import { RETIRED, retiredNotice } from '../src/commands/retired.ts';
 test('a retired flag answers with its replacement, not a usage line', () => {
   const notice = retiredNotice('restart', ['agent-a', '--then', 'do the thing']);
   expect(notice).not.toBeNull();
-  expect(notice).toContain('ccmux msg');
+  expect(notice).toContain('stitchmux msg');
   // The version is in the text because the misreading it exists to prevent is "my build is old".
   expect(notice).toContain('0.12.0');
   expect(notice).toMatch(/not an old build/i);

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /**
- * Every test runs against a private ccmux home, never the operator's.
+ * Every test runs against a private stitchmux home, never the operator's.
  *
  * `src/config/paths.ts` resolves its roots once, at import, from the environment — and before this a
  * test that did not set them itself resolved to the real ones. Measured when this was added: one test
@@ -28,18 +28,21 @@ import { join } from 'node:path';
 const root = mkdtempSync(join(process.platform === 'darwin' ? '/tmp' : tmpdir(), 'ccmx-'));
 // Operator identity must not authenticate subprocesses against a synthetic test instance.
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_ADDRESS',
-  'CCMUX_CHAT_CREDENTIAL',
-  'CCMUX_BOOTSTRAP_GENERATION',
-  'CCMUX_RC_PREFIX',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_ADDRESS',
+  'STITCHMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_BOOTSTRAP_GENERATION',
+  'STITCHMUX_RC_PREFIX',
 ])
   delete process.env[key];
-process.env.CCMUX_STATE_DIR = join(root, 'state', 'ccmux');
-process.env.CCMUX_CACHE_DIR = join(root, 'cache', 'ccmux');
-process.env.CCMUX_DATA_DIR = join(root, 'data', 'ccmux');
-process.env.CCMUX_CONFIG = join(root, 'config', 'ccmux', 'machine.json');
-process.env.CCMUX_TEST_HOME = root;
+// Rename window: a test started from a session of the previous release inherits its `CCMUX_*`
+// variables, which the CLI would read as `STITCHMUX_*` (`adoptPreviousEnv`). REMOVE with the window.
+for (const key of Object.keys(process.env)) if (key.startsWith('CCMUX_')) delete process.env[key];
+process.env.STITCHMUX_STATE_DIR = join(root, 'state', 'stitchmux');
+process.env.STITCHMUX_CACHE_DIR = join(root, 'cache', 'stitchmux');
+process.env.STITCHMUX_DATA_DIR = join(root, 'data', 'stitchmux');
+process.env.STITCHMUX_CONFIG = join(root, 'config', 'stitchmux', 'machine.json');
+process.env.STITCHMUX_TEST_HOME = root;
 // Temporary directories the tests make through `tmpdir()` land inside this root and go with it.
 // On Linux `tmpdir()` is `/tmp`, and three full runs left more than a thousand directories there.
 mkdirSync(join(root, 'tmp'));

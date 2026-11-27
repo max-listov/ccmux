@@ -37,7 +37,7 @@ export function rowFromLedgerRecord(machine: string, msg: LedgerSlot): LogRow {
       from: '?',
       to: '?',
       task: null,
-      body: '(a record this ccmux cannot read — written by a newer build)',
+      body: '(a record this stitchmux cannot read — written by a newer build)',
       note: '',
     };
   }

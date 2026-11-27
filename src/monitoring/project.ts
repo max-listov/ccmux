@@ -11,8 +11,9 @@ import { lastSignOfLife, type Observed } from '../events/observe.ts';
 import { selfAddress } from '../fleet/address.ts';
 import { hasNativeRuntime } from '../runtime/modes.ts';
 import { latestActivityMs, managedRuntimeView } from '../runtime/view.ts';
+import type { SessionBoundary } from '../session/boundary.ts';
 import { readLifecycleBlockForSession } from '../session/lifecycleBlocks.ts';
-import { sleepBlocksStart } from '../session/sleep/store.ts';
+import { showsAsSleeping } from '../session/sleep/store.ts';
 import {
   readLifecycle,
   readMetrics,
@@ -54,6 +55,7 @@ function projectMonitoringRowImpl(
   seen: Observed,
   now = Date.now(),
   memoryBytes?: number | null,
+  boundary?: SessionBoundary | null,
 ): MonitoringRow {
   const native = hasNativeRuntime(s) ? managedRuntimeView(m, s, now) : null;
   const running = startedAt !== undefined || native?.read.status === 'live';
@@ -95,7 +97,7 @@ function projectMonitoringRowImpl(
   const pct = metrics?.pct ?? scan?.context.percent ?? null;
   const prompt = native !== null ? native.atPrompt : (scan?.atPrompt ?? null);
   const waitingTarget = running ? (readWaiting(s.name, now)?.target ?? null) : null;
-  const sleeping = !s.archived && !running && sleepBlocksStart(m, s);
+  const sleeping = showsAsSleeping(m, s, running);
   return {
     plane: 'managed',
     name: s.name,
@@ -111,6 +113,7 @@ function projectMonitoringRowImpl(
     pinned: s.pinned === true,
     memoryBytes: running ? (memoryBytes ?? null) : 0,
     registrationGeneration: s.registrationGeneration ?? null,
+    boundary: running ? (boundary ?? null) : null,
     model: running
       ? (native?.read.snapshot?.nativeSelection?.model.model ?? sessionModel(s, m))
       : null,

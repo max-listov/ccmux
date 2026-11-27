@@ -99,7 +99,7 @@ test('the status-line program answers exactly as the bundled verb does', async (
   // Built in a child process, the way the release builds it — and because a `Bun.build` call is the
   // first thing this process would do, which this runtime resolves unreliably until some other build
   // has warmed it. A test that fails by running first is not a statement about the code.
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-sl-equal-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-sl-equal-'));
   const build = Bun.spawn(
     [process.execPath, join(import.meta.dir, '..', 'scripts', 'build-routed-programs.ts'), dir],
     { stdout: 'pipe', stderr: 'pipe' },
@@ -112,7 +112,7 @@ test('the status-line program answers exactly as the bundled verb does', async (
   const run = async (argv: string[], home: string) => {
     mkdirSync(home, { recursive: true });
     // The location here is chosen through XDG, so the suite's own state root must not override it.
-    const { CCMUX_STATE_DIR: _suiteRoot, ...inherited } = process.env;
+    const { STITCHMUX_STATE_DIR: _suiteRoot, ...inherited } = process.env;
     const proc = Bun.spawn(argv, {
       stdin: new Response(payload),
       stdout: 'pipe',
@@ -122,12 +122,12 @@ test('the status-line program answers exactly as the bundled verb does', async (
         ...inherited,
         HOME: home,
         XDG_STATE_HOME: join(home, 'state'),
-        CCMUX_SESSION: 'sl-equal',
+        STITCHMUX_SESSION: 'sl-equal',
       },
     });
     const out = await new Response(proc.stdout).text();
     const code = await proc.exited;
-    const metrics = join(home, 'state', 'ccmux', 'status', 'sl-equal.metrics.json');
+    const metrics = join(home, 'state', 'stitchmux', 'status', 'sl-equal.metrics.json');
     const written = existsSync(metrics)
       ? (JSON.parse(readFileSync(metrics, 'utf8')) as Record<string, unknown>)
       : null;

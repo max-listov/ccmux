@@ -10,7 +10,7 @@ updated: 2026-11-27 18:09 +08:00
 # TUI (Ink) и dev-флоу
 
 ## Что это
-`ccmux` без аргументов на TTY → интерактивный терминальный UI на **Ink** (React → Yoga →
+`stitchmux` без аргументов на TTY → интерактивный терминальный UI на **Ink** (React → Yoga →
 ANSI; тот же класс, что Claude Code). Категория — **inline-native** по умолчанию (живёт в
 потоке терминала, остаётся в истории), **fullscreen** по флагу (`-f`, alt-screen + листаемый
 транскрипт справа). Клавиша `f` переключает на лету.
@@ -19,35 +19,35 @@ ANSI; тот же класс, что Claude Code). Категория — **inli
 только layout-обёрткой). Подробности компонентов — в коде.
 
 ## Dev / Prod / self-update
-Bun-ccmux **заменил** bash-ccmux локально (bash-демон убит, плист `.legacy`, бинарь → `ccmux-legacy`
+Bun-stitchmux **заменил** bash-stitchmux локально (bash-демон убит, плист `.legacy`, бинарь → `stitchmux-legacy`
 как fallback). Два режима, **развязаны** — правка дев-исходника НЕ трогает прод-демон, который рулит
 боевыми сессиями:
 
 | Режим | Команда | Что запускает |
 |---|---|---|
-| **DEV** | `ccmux-dev` | `bun run <repo>/src/cli.ts` (исходник, `bun tui:hot` = `--hot` для HMR) — разработка |
-| **PROD** | `ccmux` | `bun ~/.ccmux/app/ccmux.js` (бандл ~1.7МБ) — боевой; демон `com.ccmux.daemon` крутит ЕГО |
+| **DEV** | `stitchmux-dev` | `bun run <repo>/src/cli.ts` (исходник, `bun tui:hot` = `--hot` для HMR) — разработка |
+| **PROD** | `stitchmux` | `bun ~/.stitchmux/app/stitchmux.js` (бандл ~1.7МБ) — боевой; демон `com.stitchmux.daemon` крутит ЕГО |
 
-Лаунчеры: `~/.local/bin/ccmux-dev` → исходник; `~/.local/bin/ccmux` → бандл.
+Лаунчеры: `~/.local/bin/stitchmux-dev` → исходник; `~/.local/bin/stitchmux` → бандл.
 
 **Инвариант: ОДИН демон (прод).** Дев демон НЕ ставит → нет коллизии двух ensure-циклов (делить
 реестр двум демонам нельзя — был реальный баг: bash+наш писали разный формат → мусорные сессии).
-Оба режима читают один `~/.ccmux-sessions` (JSONL Session-schema) — чтение из обоих безопасно.
+Оба режима читают один `~/.stitchmux-sessions` (JSONL Session-schema) — чтение из обоих безопасно.
 
 ### Бандл + self-update
-- **Сборка** — dev-скрипты в `package.json` (НЕ команды тулзы — `ccmux` их не содержит, в клиентский
+- **Сборка** — dev-скрипты в `package.json` (НЕ команды тулзы — `stitchmux` их не содержит, в клиентский
   бандл они не попадают): `bun run stage` → `bun build --target=bun --external react-devtools-core` →
-  `~/.ccmux/staged/ccmux.js` (для локального теста апдейта). Логика — `scripts/release.ts`.
+  `~/.stitchmux/staged/stitchmux.js` (для локального теста апдейта). Логика — `scripts/release.ts`.
   (`react-devtools-core` external: Ink тянет его только в СВОЁМ dev-режиме, в проде не нужен.)
-- **Апдейт**: `ccmux update` — **локальный staged ПЕРВЫМ** (тестим сборку локально), иначе remote: `release.json` —
+- **Апдейт**: `stitchmux update` — **локальный staged ПЕРВЫМ** (тестим сборку локально), иначе remote: `release.json` —
   подписанный Ed25519 `CliBuildManifest` (ключ в `src/release/trust.ts`, закрытый — секрет CI
-  `CCMUX_RELEASE_SIGNING_KEY`; плоские `version`/`url`/`sha256` — для прежних ccmux и `install.sh`) →
+  `STITCHMUX_RELEASE_SIGNING_KEY`; плоские `version`/`url`/`sha256` — для прежних stitchmux и `install.sh`) →
   подпись до скачивания → `applyCliUpdate` stitchkit (только https и публичные хосты, если нет
   `releaseAllowPrivateHosts`; лимиты размера и времени; кандидат запускается `bun <кандидат> version` ДО подмены).
-  Atomic swap `~/.ccmux/app/ccmux.js` (+`.bak` и его digest `.bak.sha256`) → bounce демона (`kickstart -k`). **Сессии переживают** (tmux
-  независим от демона); каждый `_run` подхватывает новый код на следующем рестарте. Откат: `ccmux update --rollback` (`rollbackCliUpdate` сверяет `.bak` с записанным digest).
-- Версия — в шапке TUI (`ccmux vX.Y.Z · fleet`). Пути: `src/config/paths.ts`. SELF_ARGV (`src/util/env.ts`)
-  различает compiled-бинарь / dev-исходник / bundle → плист печёт `bun ~/.ccmux/app/ccmux.js daemon`.
+  Atomic swap `~/.stitchmux/app/stitchmux.js` (+`.bak` и его digest `.bak.sha256`) → bounce демона (`kickstart -k`). **Сессии переживают** (tmux
+  независим от демона); каждый `_run` подхватывает новый код на следующем рестарте. Откат: `stitchmux update --rollback` (`rollbackCliUpdate` сверяет `.bak` с записанным digest).
+- Версия — в шапке TUI (`stitchmux vX.Y.Z · fleet`). Пути: `src/config/paths.ts`. SELF_ARGV (`src/util/env.ts`)
+  различает compiled-бинарь / dev-исходник / bundle → плист печёт `bun ~/.stitchmux/app/stitchmux.js daemon`.
 
 ### Раздача на флот (GitHub Releases, без своего бэкенда)
 Monitoring consumers use the resident [status snapshot](monitoring-status.md), not repeated
@@ -63,14 +63,14 @@ list aggregation. It is produced by the existing daemon observation loop.
   коммит `X.Y.Z: notes` → тег `vX.Y.Z` → push. Та же церемония разрезана на две половины для
   проводника, который гоняет check между ними и сообщает каждый шаг: `--commit X.Y.Z "notes"`
   (бамп + CHANGELOG → локальный коммит) и `--tag X.Y.Z` (HEAD объявляет версию и несёт её
-  секцию CHANGELOG → тег → push). Одноразовая команда — их композиция вокруг check. `--tag` (а значит и церемония) отказывает без `CCMUX_RELEASE_RECORDED=1`: эту переменную ставит только проводник, записывающий каждый выпуск в журнал публикаций; тег, отправленный вручную, выпустил бы релиз без записи.
+  секцию CHANGELOG → тег → push). Одноразовая команда — их композиция вокруг check. `--tag` (а значит и церемония) отказывает без `STITCHMUX_RELEASE_RECORDED=1`: эту переменную ставит только проводник, записывающий каждый выпуск в журнал публикаций; тег, отправленный вручную, выпустил бы релиз без записи.
 - **Проверки тега.** В `.github/workflows/ci.yml` задачи `ci`, `smoke` и `darwin-native`
   проверяют исходники, установленный SDK, запуск бандла и нативный компонент. Версия тега
   должна совпасть с `package.json`. Команда `--ci-assets` подписывает манифест с версионным URL.
 - **Публикация SDK.** Job `release` устанавливает собранный архив в чистый проект и прикладывает
   его к черновику GitHub. Job `publish-sdk` получает этот же архив по ID артефакта и SHA-256.
-  В настройках npm доверенный издатель пакета `@ccmux/control-service-client` соответствует
-  репозиторию `max-listov/ccmux`, workflow `ci.yml` и окружению `npm-production`.
+  В настройках npm доверенный издатель пакета `@stitchmux/client` соответствует
+  репозиторию `max-listov/stitchmux`, workflow `ci.yml` и окружению `npm-production`.
   Официальный npm CLI публикует архив через OIDC с provenance. Повтор сверяет уже доступные
   байты этой версии. Установка по версии из публичного npm проходит оба typecheck и runtime-проверку.
 - **Публикация на флот.** Job `activate` сверяет commit черновика и SHA-256 его SDK с проверенным
@@ -81,32 +81,32 @@ list aggregation. It is produced by the existing daemon observation loop.
   semver, тянет, **sha256-verify → preflight → swap**. Анонимный HTTPS + CDN GitHub, токены не нужны.
   Сам демон берёт релиз, только когда тот отлежался: `releasedAt` из `release.json` старше
   `autoUpdateSettleSeconds` (деф. 600с) — это время, которое релиз живёт на первой машине один.
-  `ccmux update` руками берёт сразу; пропавший с диска бандл восстанавливается без выдержки.
+  `stitchmux update` руками берёт сразу; пропавший с диска бандл восстанавливается без выдержки.
 - **Защита от кривого релиза, 2 слоя** (`update.ts` + `util/bootGuard.ts`): (1) **preflight** —
   `bun <candidate> version` обязан вернуть верную версию ДО свапа (ловит не-загружающийся бандл,
-  live не трогается); (2) **boot-guard** — счётчик стартов демона (`~/.ccmux/boot-attempts`):
+  live не трогается); (2) **boot-guard** — счётчик стартов демона (`~/.stitchmux/boot-attempts`):
   3 старта без успешного ensure-тика → возврат `.bak` + exit≠0 → boot-юнит поднимает старый бандл.
   Первый хороший тик чистит счётчик и записывает sha256 бандла как проверенный
   (`boot-attempts.proven`). Цикл падений на проверенном бандле — причина вне бандла (lock после
   аварии, диск, зависимость): `.bak` не копируется, рестарты супервизора продолжаются. Откат
-  вручную: `ccmux update --rollback`.
+  вручную: `stitchmux update --rollback`.
 - **Супервизор не сдаётся**: systemd-юнит — `StartLimitIntervalSec=0`, `Restart=always`,
   `RestartSec=15`. Предел запусков у systemd терминален, и его бюджет тратят старты юнитов с
-  `Requires=ccmux.service`: зацикленный соседний адаптер съел половину бюджета, пока демон падал на
+  `Requires=stitchmux.service`: зацикленный соседний адаптер съел половину бюджета, пока демон падал на
   lock. launchd (`KeepAlive`) тоже не сдаётся.
 - **Юнит сводит только установленное приложение**: на старте демон переписывает уже
   установленный boot-юнит под определение своей версии (`convergeBootUnit`), но только когда он
   сам — установка по умолчанию: бандл, данные в каталоге по умолчанию (`ownsInstallation`, то же
-  условие охраняет PATH-шим). Демон из временного каталога (тест) или из исходников (`ccmux-dev`)
+  условие охраняет PATH-шим). Демон из временного каталога (тест) или из исходников (`stitchmux-dev`)
   юнит не трогает: иначе он направил бы `ExecStart` на свой бандл. Так полный прогон тестов под
-  root на Linux однажды переписал боевой `ccmux.service`, и следующий рестарт не нашёл бандл.
-  Тестовые машины носят метку `ccmux-test.service`, не боевую.
+  root на Linux однажды переписал боевой `stitchmux.service`, и следующий рестарт не нашёл бандл.
+  Тестовые машины носят метку `stitchmux-test.service`, не боевую.
 - **Новый клиент** — одной командой: `curl -fsSL <repo>/releases/latest/download/install.sh | bash`
-  (`scripts/install.sh`): ставит bun при отсутствии, качает бандл + sha256-verify, шим в `~/.local/bin/ccmux`,
-  `ccmux install --rc-prefix … --release-url <manifest>` (пишет releaseUrl + autoUpdate). Override
-  источника: `CCMUX_REPO=owner/name`.
+  (`scripts/install.sh`): ставит bun при отсутствии, качает бандл + sha256-verify, шим в `~/.local/bin/stitchmux`,
+  `stitchmux install --rc-prefix … --release-url <manifest>` (пишет releaseUrl + autoUpdate). Override
+  источника: `STITCHMUX_REPO=owner/name`.
 
-### Системный лог (`~/.ccmux/ccmux.log`)
+### Системный лог (`~/.stitchmux/stitchmux.log`)
 JSON-строки, уровни `debug<info<warn<error`, порог `logLevel` в machine.json (деф. `info`, демон
 перечитывает живьём — флипнуть в `debug` без рестарта). Ротация по размеру (5MB × 3 ≈ 15MB cap,
 фикс — не конфиг, чтобы лог не съел диск сервера). События: daemon up/stop, heal (сессия упала→рестарт),
@@ -127,9 +127,9 @@ session new/start/stop/rm, update seen/applied/failed/rolled-back, boot-guard re
 ждёт причину (`src/cli.ts`).
 
 ## Реальные данные
-`ccmux` (бандл) и `ccmux-dev` (исходник) читают живой `~/.ccmux-sessions` — это не мок.
+`stitchmux` (бандл) и `stitchmux-dev` (исходник) читают живой `~/.stitchmux-sessions` — это не мок.
 `rcPrefix` дефолтится в `local` (свежая машина без `machine.json` просто работает; `install`
-пишет реальный local|dev|prod). Изоляция dev-реестра при нужде — `CCMUX_SESSIONS=…`.
+пишет реальный local|dev|prod). Изоляция dev-реестра при нужде — `STITCHMUX_SESSIONS=…`.
 
 ## Правки → проверка
 Hot-reload:
@@ -184,7 +184,7 @@ tmux capture-pane -t X -p     # прочитать что нарисовалос
 Не заявлять «выглядит красиво» как факт — писать «структурно ок, визуал на тебе».
 
 ## Производительность рендера и время жизни (горячий цикл / сироты)
-> Реальный инцидент 2026-06-11: `ccmux-dev -f`, оставленный открытым, сжёг **~84% ядра 14 часов**.
+> Реальный инцидент 2026-06-11: `stitchmux-dev -f`, оставленный открытым, сжёг **~84% ядра 14 часов**.
 > Два корня, оба теперь закрыты — но это легко вернуть регрессией, поэтому держим инварианты.
 
 **Инвариант 1 — Ink-дерево перерисовывается только когда нужно.** В Ink ЛЮБОЙ `setState`
@@ -195,7 +195,7 @@ tmux capture-pane -t X -p     # прочитать что нарисовалос
   `sleeping` имеет `active: false` и не запускает спиннер; `SessionCard` включает `sleeping` и
   `pinned` в ручной компаратор `React.memo`. Idle/sleeping-флот = статичный кадр, **ноль ререндеров**. *(Был безусловный `setInterval(…,120)` → 8.3 ререндера/сек
   вечно, даже когда всё простаивает — это и жгло ядро.)*
-- **Attach с авто-пробуждением.** Общий хелпер `src/tmux/attach.ts` используют и `ccmux attach <name>`,
+- **Attach с авто-пробуждением.** Общий хелпер `src/tmux/attach.ts` используют и `stitchmux attach <name>`,
   и вход по Enter из TUI (`src/tui/run.tsx`): для спящей сессии сначала вызывается `wakeSessionByName`
   с прогрессом и ожиданием готовности, затем `attachTmux`. Клавиша `i` (compose) в fullscreen
   отключена на спящей карточке с подсказкой разбудить её через Enter.
@@ -226,7 +226,7 @@ stdin/stdout) терминал сами не восстанавливаем, в�
 — программа без защиты обязана встать на `SIGTTOU`.
 
 ### Как дебажить «комп горячий» / подозрение на горячий TUI
-1. **Найти жор:** `ps aux | grep -E "src/cli.ts|ccmux.js" | grep -v grep` — смотри `%CPU` и колонку
+1. **Найти жор:** `ps aux | grep -E "src/cli.ts|stitchmux.js" | grep -v grep` — смотри `%CPU` и колонку
    времени. `bun run src/cli.ts` на ~целом ядре часами = горячий цикл рендера.
 2. **Сирота?** `ps -o pid,ppid,tty,stat -p <PID>` — `PPID=1` + `STAT` с `+` на мёртвом tty = процесс
    осиротел (терминал закрыт, а он жив). `STAT` `T` = остановлен job-control сигналом на выходе
@@ -238,7 +238,7 @@ stdin/stdout) терминал сами не восстанавливаем, в�
    src/cli.ts -f'`), сэмпли `ps -o %cpu= -p <PID>` — на простаивающем флоте должно быть ~0%. Не ноль
    → проверь, не тикает ли спиннер без активных сессий (Инвариант 1).
 5. **Проверка exit-on-death:** подними TUI в tmux-пейне, `tmux kill-session -t t`, через секунду
-   `ps -p <PID>` — процесс ОБЯЗАН исчезнуть; в `~/.ccmux/ccmux.log` будет `terminal died — exiting`.
+   `ps -p <PID>` — процесс ОБЯЗАН исчезнуть; в `~/.stitchmux/stitchmux.log` будет `terminal died — exiting`.
 
 **Демон НЕ затронут** ничем из этого — он не крутит Ink. Горит/сиротеет только интерактивное меню.
 
@@ -261,7 +261,7 @@ stdin/stdout) терминал сами не восстанавливаем, в�
   (`revealCursor` на смену `cur`). Удалили выделенную — фолбэк на ту же позицию списка.
 
 Регрессии ловит `test/fleet.test.ts` (порядок, бакет-стабильность, фолбэки, activityText).
-CLI `ccmux list` осознанно НЕ сортируется — там порядок реестра (детерминизм для скриптов).
+CLI `stitchmux list` осознанно НЕ сортируется — там порядок реестра (детерминизм для скриптов).
 
 ## Окно списка: рисуется только то, что влезает
 **Кадр выше терминала — это кадр, который терминал ПРОКРУЧИВАЕТ сам.** Ink переписывает свой кадр
@@ -292,7 +292,7 @@ resize не снимает обработчики посреди drag и не т
 говорит, чья модель отвечает: у OpenCode и Custom-рецептов это разные вещи. Знак вендора
 (`src/inventory/vendor.ts`) — одна ячейка в фирменном цвете перед моделью: Anthropic `✳` `#D97757`,
 OpenAI `✻` белый, DeepSeek `≋` `#4D6BFE`, Google `✦` `#4285F4`. Он виден везде, где показана
-модель: строка и карточка TUI, `ccmux list`, `ccmux fleet`, минимальная строка статуса.
+модель: строка и карточка TUI, `stitchmux list`, `stitchmux fleet`, минимальная строка статуса.
 
 - **Определение — преобразование, а не каталог**: id вида `vendor/model` отвечает своим префиксом,
   остальные — по семейству (`claude-*`, `opus`, `gpt-*`, `o3`, `deepseek*`, `gemini*`). Новая

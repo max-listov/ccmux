@@ -4,7 +4,7 @@ import type { MachineConfig } from '../../types.ts';
  * Claude's blocking selection menus, as a table rather than one hard-coded case.
  *
  * A supervised session has nobody sitting at it, so any menu that blocks the pane strands it
- * indefinitely: typed input lands on the MENU, not the conversation. ccmux already answered exactly
+ * indefinitely: typed input lands on the MENU, not the conversation. stitchmux already answered exactly
  * one of these (the resume picker) and every other menu stranded the session in silence — which is
  * how six of twelve sessions came back from a restart unable to do anything while reporting `idle`.
  *

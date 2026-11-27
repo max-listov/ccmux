@@ -14,7 +14,7 @@ test('rcName: <prefix>-<name without cc->, single strip only', () => {
 });
 
 test('loadMachineConfig: file over defaults, defaults applied, env override wins', () => {
-  const cfg = join(mkdtempSync(join(tmpdir(), 'ccmux-mc-')), 'machine.json');
+  const cfg = join(mkdtempSync(join(tmpdir(), 'stitchmux-mc-')), 'machine.json');
   writeFileSync(
     cfg,
     JSON.stringify({
@@ -23,11 +23,11 @@ test('loadMachineConfig: file over defaults, defaults applied, env override wins
       tmuxBin: '/x/tmux',
       projectsDir: '/root/.claude/projects',
       stateDir: '/x',
-      bootLabel: 'ccmux-test.service',
+      bootLabel: 'stitchmux-test.service',
     }),
   );
-  const prevCfg = process.env.CCMUX_CONFIG;
-  process.env.CCMUX_CONFIG = cfg;
+  const prevCfg = process.env.STITCHMUX_CONFIG;
+  process.env.STITCHMUX_CONFIG = cfg;
   try {
     const m = loadMachineConfig();
     expect(m.rcPrefix).toBe('dev');
@@ -37,14 +37,14 @@ test('loadMachineConfig: file over defaults, defaults applied, env override wins
     // its neighbours live, which is what used to let one careless path relocate the whole set.
     expect(sessionsPath(m)).toBe('/x/sessions.jsonl');
   } finally {
-    if (prevCfg === undefined) delete process.env.CCMUX_CONFIG;
-    else process.env.CCMUX_CONFIG = prevCfg;
+    if (prevCfg === undefined) delete process.env.STITCHMUX_CONFIG;
+    else process.env.STITCHMUX_CONFIG = prevCfg;
   }
 });
 
 // A child process, because the home directory is fixed when the module loads.
 test('loadMachineConfig: a runtime installed in its usual place resolves without it on PATH', () => {
-  const home = mkdtempSync(join(tmpdir(), 'ccmux-home-'));
+  const home = mkdtempSync(join(tmpdir(), 'stitchmux-home-'));
   const bin = join(home, '.bun', 'bin');
   mkdirSync(bin, { recursive: true });
   for (const name of ['opencode', 'codex']) {
@@ -63,7 +63,7 @@ test('loadMachineConfig: a runtime installed in its usual place resolves without
       '-e',
       `const { loadMachineConfig } = await import(${JSON.stringify(machine)}); const m = loadMachineConfig(); console.log(JSON.stringify([m.opencodeBin ?? null, m.codexBin ?? null]));`,
     ],
-    { env: { HOME: home, PATH: '/usr/bin:/bin', CCMUX_CONFIG: cfg }, stderr: 'pipe' },
+    { env: { HOME: home, PATH: '/usr/bin:/bin', STITCHMUX_CONFIG: cfg }, stderr: 'pipe' },
   );
   expect(probe.stderr.toString()).toBe('');
   expect(JSON.parse(probe.stdout.toString())).toEqual([join(bin, 'opencode'), join(bin, 'codex')]);

@@ -1,5 +1,4 @@
 import { serviceCaller } from '@stitchwire/client';
-import { AppError } from 'stitchkit';
 import { OperationEffectSchema } from 'stitchkit/contract';
 import { setRequestDimensions } from 'stitchkit/observability';
 import { createAuthHook } from 'stitchkit/server';
@@ -9,33 +8,16 @@ import { ChatPrincipalSchema } from '../../chat/identitySchema.ts';
 import { chatEnabledFor } from '../../config/chat.ts';
 import { findSession, loadSessions } from '../../session/registry.ts';
 import type { ChatPrincipal, MachineConfig } from '../../types.ts';
-import { CCMUX_CONTROL_CALLER_HEADER, ControlTransportCallerSchema } from './boundary.ts';
+import { refusals } from '../schema/refusals.ts';
+import { ControlTransportCallerSchema } from './boundary.ts';
 
 /** The socket authenticates the local OS user; a managed claim additionally needs its capability. */
 export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrincipal {
-  const sessionName = headers.get('x-ccmux-session');
+  const sessionName = headers.get('x-stitchmux-session');
   const credential = headers.get('authorization');
-  const transportCaller = headers.get(CCMUX_CONTROL_CALLER_HEADER);
-  if (transportCaller !== null) {
-    if (sessionName !== null || credential !== null)
-      throw new AppError('UNAUTHORIZED', {
-        message: 'Conflicting local caller credentials',
-        status: 401,
-      });
-    const parsed = ControlTransportCallerSchema.safeParse(transportCaller);
-    if (!parsed.success)
-      throw new AppError('UNAUTHORIZED', {
-        message: 'Invalid local transport caller',
-        status: 401,
-      });
-    return servicePrincipal(parsed.data, 'declared-service');
-  }
   if (sessionName === null && credential === null) return servicePrincipal(m.rcPrefix, 'local');
   if (sessionName === null || credential === null || !credential.startsWith('Bearer ')) {
-    throw new AppError('UNAUTHORIZED', {
-      message: 'Invalid managed caller credentials',
-      status: 401,
-    });
+    throw refusals.errors.UNAUTHORIZED({ message: 'Invalid managed caller credentials' });
   }
   const session = findSession(loadSessions(m), sessionName);
   if (
@@ -43,10 +25,7 @@ export function controlPrincipal(m: MachineConfig, headers: Headers): ChatPrinci
     !chatEnabledFor(session, m) ||
     !hasChatCredential(m, session, credential.slice(7))
   ) {
-    throw new AppError('UNAUTHORIZED', {
-      message: 'Invalid managed caller credentials',
-      status: 401,
-    });
+    throw refusals.errors.UNAUTHORIZED({ message: 'Invalid managed caller credentials' });
   }
   return managedPeer(m.rcPrefix, session);
 }
@@ -63,17 +42,15 @@ export function refuseOutsideService(principal: unknown, effect: unknown): void 
   const caller = parsed.data;
   if (caller.kind !== 'service' || caller.transport !== 'declared-service') return;
   if (OperationEffectSchema.safeParse(effect).success) return;
-  throw new AppError('FORBIDDEN', {
+  throw refusals.errors.FORBIDDEN({
     message: 'This operation is not part of the declared service',
-    status: 403,
   });
 }
 
 export function controlAuth(m: MachineConfig) {
   return createAuthHook<ChatPrincipal>({
     resolve: async (ctx) => {
-      if (!ctx.req)
-        throw new AppError('UNAUTHORIZED', { message: 'Local request required', status: 401 });
+      if (!ctx.req) throw refusals.errors.UNAUTHORIZED({ message: 'Local request required' });
       const caller = serviceCaller(ctx);
       return caller
         ? servicePrincipal(ControlTransportCallerSchema.parse(caller.caller), 'declared-service')

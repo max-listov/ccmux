@@ -10,8 +10,8 @@ import type { MessageSender } from './messageSenderSchema.ts';
  * A provider records everything that enters a conversation from outside the model as a user
  * message: what a person typed, a letter another session sent, a hook's output, the notice that a
  * background task ended. A consumer that acts on a person's words has to know which it is, and the
- * owner of the history is the one that can say: the letters are in ccmux's own ledger, the keys
- * ccmux typed are in its own log, and the harness's forms are the forms this parser already reads.
+ * owner of the history is the one that can say: the letters are in stitchmux's own ledger, the keys
+ * stitchmux typed are in its own log, and the harness's forms are the forms this parser already reads.
  *
  * The verdict is about who SENT the message, not who wrote its words — pasted text is sent by the
  * one who pasted it.
@@ -63,7 +63,7 @@ export function senderJudge(m: MachineConfig, session: string, textLimit?: numbe
       const id = LETTER.exec(inner)?.[1];
       if (id === undefined && cut(text)) return notJudged;
       return inLedger(id)
-        ? { verdict: 'session-letter', reason: `delivered by ccmux: ledger message ${id}` }
+        ? { verdict: 'session-letter', reason: `delivered by stitchmux: ledger message ${id}` }
         : {
             verdict: 'unverifiable',
             reason: "reads as a delivered letter, but this machine's ledger holds no such message",
@@ -75,7 +75,7 @@ export function senderJudge(m: MachineConfig, session: string, textLimit?: numbe
       return inLedger(id)
         ? {
             verdict: 'routed-input',
-            reason: `input through a router or application, delivered by ccmux: ledger message ${id}`,
+            reason: `input through a router or application, delivered by stitchmux: ledger message ${id}`,
           }
         : {
             verdict: 'unverifiable',
@@ -96,14 +96,14 @@ export function senderJudge(m: MachineConfig, session: string, textLimit?: numbe
       );
       if (typed !== undefined)
         return {
-          verdict: 'ccmux-keys',
-          reason: `typed into the pane by ccmux send, run by ${typed.by}`,
+          verdict: 'stitchmux-keys',
+          reason: `typed into the pane by stitchmux send, run by ${typed.by}`,
         };
     }
     return {
       verdict: 'person',
       reason:
-        "entered in the provider's client and not typed by ccmux; keys sent to the pane outside ccmux are not recorded and would read the same",
+        "entered in the provider's client and not typed by stitchmux; keys sent to the pane outside stitchmux are not recorded and would read the same",
     };
   };
 }
@@ -114,7 +114,7 @@ export type ConversationSenders = (ofSession: string | null) => SenderJudge;
 /**
  * The judges of every conversation on this machine, for a reader that walks many of them.
  *
- * A conversation no session reads has no pane ccmux could have typed into, so only the ledger and
+ * A conversation no session reads has no pane stitchmux could have typed into, so only the ledger and
  * the harness's own forms can speak about it; the log of sent keys is asked for no session.
  */
 export function conversationSenders(m: MachineConfig, textLimit?: number): ConversationSenders {

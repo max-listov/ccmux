@@ -16,7 +16,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture(runtime: 'codex' | 'opencode') {
-  const stateDir = mkdtempSync('/tmp/ccmux-tool-observation-');
+  const stateDir = mkdtempSync('/tmp/stitchmux-tool-observation-');
   roots.push(stateDir);
   const m = makeMachine({ stateDir, rcPrefix: 'host-a' });
   const s = makeSession({

@@ -2,17 +2,17 @@ import { expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 import { streamRefusal } from '../src/commands/controlNativeStream.ts';
 import {
-  CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
-  CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
-  CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
   controlNativeStreamFrame,
   controlNativeStreamFrameBytes,
   NativeStreamFrameUnrepresentable,
+  STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
+  STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
+  STITCHMUX_NATIVE_STREAM_MAX_INPUT_BYTES,
 } from '../src/control/schema/nativeStreamContract.ts';
 
 const target = {
   kind: 'managed',
-  source: 'ccmux',
+  source: 'stitchmux',
   agent: 'claude',
   machine: 'host-a',
   session: 'agent-a',
@@ -81,7 +81,7 @@ test('the frame budget is measured on the line a consumer reads, not on the payl
 
 test('an ordinary snapshot passes through whole', () => {
   const value = snapshot(4, 60);
-  expect(rawLineBytes(value)).toBeLessThanOrEqual(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
+  expect(rawLineBytes(value)).toBeLessThanOrEqual(STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
   const frame = controlNativeStreamFrame(value);
   const sent = JSON.parse(frame.data) as { records: unknown[]; omittedRecords: number };
   expect(sent.records).toHaveLength(4);
@@ -94,11 +94,11 @@ test('a snapshot too large for the line is shed until it fits, and says how much
   const value = snapshot(512, 300, 7);
   // The fixture has to actually reach the condition: a probe that never crosses the budget would
   // report success without exercising anything. This threw during development, twice.
-  expect(rawLineBytes(value)).toBeGreaterThan(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
+  expect(rawLineBytes(value)).toBeGreaterThan(STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
 
   const frame = controlNativeStreamFrame(value);
   expect(controlNativeStreamFrameBytes(frame)).toBeLessThanOrEqual(
-    CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
+    STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
   );
 
   const sent = JSON.parse(frame.data) as {
@@ -129,13 +129,13 @@ test("the budget comes from the remote transport under it, not from this project
   // Read from the transport's source rather than inferred: it buffers the producer's NDJSON at
   // `maxChunkBytes * 2` and separately refuses a framed chunk whose `data` exceeds `maxChunkBytes`.
   // That knob's schema maximum and its default are both 32 KiB, so no deployment carries more.
-  expect(CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES).toBe(32 * 1024);
-  expect(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBe(2 * CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES);
+  expect(STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES).toBe(32 * 1024);
+  expect(STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBe(2 * STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES);
 
   // The earlier value was this project's own 513 KiB — eight times what the remote transport carries — and a
   // frame sized against it satisfied the contract and died on the remote transport. This pins the relationship
   // so the number cannot drift back to one nobody on the remote transport enforces.
-  expect(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBeLessThan(512 * 1024);
+  expect(STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES).toBeLessThan(512 * 1024);
 });
 
 test('both ceilings are enforced, because the transport applies both', () => {
@@ -143,12 +143,12 @@ test('both ceilings are enforced, because the transport applies both', () => {
   const frame = controlNativeStreamFrame(value);
   // The line, which is what the parser buffers.
   expect(controlNativeStreamFrameBytes(frame)).toBeLessThanOrEqual(
-    CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
+    STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
   );
   // And the payload, which the chunk check measures separately. A frame can clear one alone, so
   // clearing one is not evidence about the other.
   expect(new TextEncoder().encode(frame.data).byteLength).toBeLessThanOrEqual(
-    CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
+    STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
   );
 });
 
@@ -188,11 +188,11 @@ test('pending requests too large for the line are shed, and the frame says how m
   };
   // The fixture has to actually reach the condition, and before this shed existed it did not merely
   // exceed the budget — it exceeded it forty-fold, from data the schema calls legal.
-  expect(rawLineBytes(value)).toBeGreaterThan(CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
+  expect(rawLineBytes(value)).toBeGreaterThan(STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES);
 
   const frame = controlNativeStreamFrame(value);
   expect(controlNativeStreamFrameBytes(frame)).toBeLessThanOrEqual(
-    CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
+    STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
   );
   const sent = JSON.parse(frame.data) as { pending: unknown[]; omittedPending: number };
   // Every request had to go — one alone is over the budget — and the count says so. An empty
@@ -266,7 +266,7 @@ test('the producer prints that refusal on stderr and exits non-zero', async () =
   // consumer: the shape above is what a transport reads back from a producer that gave up.
   const child = Bun.spawn(['bun', 'src/cli.ts', 'control-native-stream'], {
     cwd: resolve('.'),
-    stdin: new TextEncoder().encode('a'.repeat(CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES + 1)),
+    stdin: new TextEncoder().encode('a'.repeat(STITCHMUX_NATIVE_STREAM_MAX_INPUT_BYTES + 1)),
     stdout: 'pipe',
     stderr: 'pipe',
   });

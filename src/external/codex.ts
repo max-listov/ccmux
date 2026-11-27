@@ -175,10 +175,10 @@ export function codexWriterRuntime(
   let reason = 'writer lock is held but runtime ancestry is not recognized';
   if (ownAncestors.has(holder.pid)) {
     kind = 'self';
-    reason = 'writer is an ancestor of this ccmux process';
+    reason = 'writer is an ancestor of this stitchmux process';
   } else if (commands.some((command) => /(?:^|\s)_(?:run|bootstrap)\s/.test(command))) {
     kind = 'managed';
-    reason = 'writer descends from a ccmux supervisor';
+    reason = 'writer descends from a stitchmux supervisor';
   } else if (
     commands.some((command) => /(?:chatgpt|codex)\.app\/contents\/macos\//.test(command))
   ) {
@@ -262,7 +262,7 @@ export function discoverCodex(m: MachineConfig): ExternalSession[] {
       process.pid,
       m.codexBin,
     );
-    // A correlated pending bootstrap is already ccmux-owned even before registry promotion.
+    // A correlated pending bootstrap is already stitchmux-owned even before registry promotion.
     if (writerRuntime?.kind === 'managed') continue;
     const storage = storedItem ? 'stored' : 'missing';
     const data = storedItem

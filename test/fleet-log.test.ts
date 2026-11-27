@@ -60,7 +60,7 @@ test('a remote sender is rendered with its machine, so a reply address is readab
     [msg({ ts: 't', from: makePeer({ machine: 'host-a', session: 'agent-a' }) })],
     [],
   );
-  expect(row?.from).toBe('ccmux/claude@host-a:agent-a#11111111-1111-4111-8111-111111111111');
+  expect(row?.from).toBe('stitchmux/claude@host-a:agent-a#11111111-1111-4111-8111-111111111111');
 });
 
 test('a failed hand-off is visible as such, not silently absent', () => {

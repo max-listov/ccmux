@@ -32,7 +32,7 @@ export const RETIRED: readonly RetiredSyntax[] = [
     verb: 'restart',
     token: '--then',
     removedIn: '0.12.0',
-    replacement: 'ccmux msg <name> "<note>"',
+    replacement: 'stitchmux msg <name> "<note>"',
     why:
       'a hand-off has to be recorded. A note carried by a restart flag has no sender, no reply ' +
       'address and no entry in the chat ledger, so nobody could see it was sent or answer it',
@@ -41,7 +41,7 @@ export const RETIRED: readonly RetiredSyntax[] = [
 
 /**
  * The notice for a retired token in this invocation, or null when there is nothing to say. Pure:
- * argv in, text out. Matching is whole-token and verb-scoped — `ccmux msg x "mentions --then"` is
+ * argv in, text out. Matching is whole-token and verb-scoped — `stitchmux msg x "mentions --then"` is
  * ordinary text and must pass straight through.
  */
 export function retiredNotice(verb: string | undefined, args: readonly string[]): string | null {
@@ -49,7 +49,7 @@ export function retiredNotice(verb: string | undefined, args: readonly string[])
   const hit = RETIRED.find((r) => r.verb === verb && args.includes(r.token));
   if (hit === undefined) return null;
   return [
-    `'${hit.verb} ${hit.token}' was removed in ccmux ${hit.removedIn} — this is not an old build.`,
+    `'${hit.verb} ${hit.token}' was removed in stitchmux ${hit.removedIn} — this is not an old build.`,
     `  use instead:  ${hit.replacement}`,
     `  why:          ${hit.why}.`,
     '  If a rule or prompt still tells you to use it, that rule is out of date — the tool is the current answer.',

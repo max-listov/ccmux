@@ -17,7 +17,7 @@ export function managedPeerKey(peer: ManagedPeer): string {
 export function managedPeer(machine: string, session: Session): ManagedPeer {
   return {
     kind: 'managed',
-    source: 'ccmux',
+    source: 'stitchmux',
     machine,
     agent: session.agent,
     session: session.name,
@@ -26,14 +26,14 @@ export function managedPeer(machine: string, session: Session): ManagedPeer {
 }
 
 export function cliPrincipal(machine: string): CliPrincipal {
-  return { kind: 'cli', source: 'ccmux', machine };
+  return { kind: 'cli', source: 'stitchmux', machine };
 }
 
 export function servicePrincipal(
   machine: string,
   transport: 'local' | 'declared-service',
 ): ChatPrincipal {
-  return { kind: 'service', source: 'ccmux', machine, transport };
+  return { kind: 'service', source: 'stitchmux', machine, transport };
 }
 
 export function codexAppPeer(machine: string, threadId: string, name: string | null): CodexAppPeer {
@@ -64,7 +64,7 @@ export function ownerTarget(): OwnerTarget {
 export const EXTERNAL_PREFIX = 'owner/';
 
 export function externalTarget(name: string): ExternalTarget {
-  return { kind: 'external', source: 'ccmux', name };
+  return { kind: 'external', source: 'stitchmux', name };
 }
 
 export function externalAddress(name: string): string {
@@ -118,11 +118,11 @@ export function sameTarget(left: ChatTarget, right: ChatTarget): boolean {
 }
 
 export function principalLabel(principal: ChatPrincipal): string {
-  if (principal.kind === 'cli') return `ccmux/cli@${principal.machine}`;
-  if (principal.kind === 'service') return `ccmux/service@${principal.machine}`;
+  if (principal.kind === 'cli') return `stitchmux/cli@${principal.machine}`;
+  if (principal.kind === 'service') return `stitchmux/service@${principal.machine}`;
   if (principal.kind === 'codex-app')
     return `codex-app@${principal.machine}:${principal.name ?? 'thread'}#${principal.threadId}`;
-  return `ccmux/${principal.agent}@${principal.machine}:${principal.session}#${principal.threadId}`;
+  return `stitchmux/${principal.agent}@${principal.machine}:${principal.session}#${principal.threadId}`;
 }
 
 export function targetLabel(target: ChatTarget): string {

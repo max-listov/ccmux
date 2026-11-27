@@ -85,7 +85,7 @@ export function searchSummary(search: TranscriptSearch, target: string): string[
   const newest = search.matches.at(-1);
   if (newest !== undefined)
     lines.push(
-      `SEQ is a line: ccmux transcript ${target} --json --before ${newest.seq + 1} --limit 20 reads what led up to it`,
+      `SEQ is a line: stitchmux transcript ${target} --json --before ${newest.seq + 1} --limit 20 reads what led up to it`,
     );
   return lines;
 }

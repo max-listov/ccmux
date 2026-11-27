@@ -10,6 +10,7 @@ import { makeMachine } from './helpers.ts';
 
 const machine = makeMachine({
   remoteTransport: {
+    kind: 'stitchwire',
     peers: [],
     trustedAncestor: { executable: '/opt/relay/receiver', argument: 'serve' },
   },
@@ -67,9 +68,9 @@ test('a caller is not a receiver: only the agent confers admission', () => {
   // outbound side, and treating that as an authenticated inbound transport would let any local
   // process launder itself into delivery by shelling out through the CLI.
   const trusted = machine.remoteTransport?.trustedAncestor;
-  expect(isTrustedRemoteAncestor('/opt/relay/receiver call host-C -- ccmux list', trusted)).toBe(
-    false,
-  );
+  expect(
+    isTrustedRemoteAncestor('/opt/relay/receiver call host-C -- stitchmux list', trusted),
+  ).toBe(false);
   expect(isTrustedRemoteAncestor('/usr/bin/runtime /opt/relay/receiver nodes', trusted)).toBe(
     false,
   );

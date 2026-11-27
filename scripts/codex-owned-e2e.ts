@@ -20,7 +20,7 @@ import type { Session } from '../src/types.ts';
 import { shellJoin } from '../src/util/shellQuote.ts';
 
 const config = process.argv[2];
-if (config === undefined || !basename(dirname(config)).startsWith('ccmux-owned-probe-'))
+if (config === undefined || !basename(dirname(config)).startsWith('stitchmux-owned-probe-'))
   throw new Error("Pass the isolated probe's machine.json");
 const root = dirname(config);
 const m = MachineConfigSchema.parse(JSON.parse(readFileSync(config, 'utf8')));
@@ -32,16 +32,16 @@ if (
   throw new Error('Probe must be isolated, with no Telegram or fleet routes');
 const cli = process.argv[3] ?? join(process.cwd(), 'src/cli.ts');
 const env: Record<string, string> = {
-  CCMUX_CONFIG: config,
-  CCMUX_STATE_DIR: m.stateDir,
-  CCMUX_CACHE_DIR: join(root, 'cache'),
-  CCMUX_DATA_DIR: join(root, 'data'),
+  STITCHMUX_CONFIG: config,
+  STITCHMUX_STATE_DIR: m.stateDir,
+  STITCHMUX_CACHE_DIR: join(root, 'cache'),
+  STITCHMUX_DATA_DIR: join(root, 'data'),
 };
 for (const [key, value] of Object.entries(process.env))
   if (value !== undefined && env[key] === undefined) env[key] = value;
 for (const key of [
-  'CCMUX_SESSION',
-  'CCMUX_CHAT_CREDENTIAL',
+  'STITCHMUX_SESSION',
+  'STITCHMUX_CHAT_CREDENTIAL',
   'CODEX_THREAD_ID',
   'CODEX_APP_TOOLS_PIPE_PATH',
   'CODEX_INTERNAL_ORIGINATOR_OVERRIDE',
@@ -104,7 +104,7 @@ await Promise.all([
 const token = `native-${crypto.randomUUID()}`;
 const invocation = shellJoin([process.execPath, '--no-env-file', cli]);
 // Resumed test history can contain older source invocations. Pin this run's artifact explicitly.
-const request = `Authorized native runtime communication test ${token}. For this run invoke exactly ${invocation} msg ${m.rcPrefix}:${b.name} --to-agent codex --to-thread ${b.uuid} with this message body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by ccmux. This is a receipt test; do not message the owner or any other session.' Do not reuse CLI paths from earlier conversation history. When the B_TO_A receipt arrives, finish with RECEIVED and do not send another message. Do not change files or run unrelated work.`;
+const request = `Authorized native runtime communication test ${token}. For this run invoke exactly ${invocation} msg ${m.rcPrefix}:${b.name} --to-agent codex --to-thread ${b.uuid} with this message body: '${token} A_TO_B. Reply once with ${token} B_TO_A using the pinned reply command supplied by stitchmux. This is a receipt test; do not message the owner or any other session.' Do not reuse CLI paths from earlier conversation history. When the B_TO_A receipt arrives, finish with RECEIVED and do not send another message. Do not change files or run unrelated work.`;
 await command(['msg', a.name, request]);
 const peerA = managedPeer(m.rcPrefix, a),
   peerB = managedPeer(m.rcPrefix, b);
@@ -173,8 +173,8 @@ try {
   await rpc.close();
 }
 
-process.env.CCMUX_CONFIG = config;
-process.env.CCMUX_STATE_DIR = m.stateDir;
+process.env.STITCHMUX_CONFIG = config;
+process.env.STITCHMUX_STATE_DIR = m.stateDir;
 const cpu = process.cpuUsage(),
   started = performance.now(),
   rss = process.memoryUsage().rss;

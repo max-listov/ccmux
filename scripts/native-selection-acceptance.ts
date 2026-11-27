@@ -34,7 +34,7 @@ import {
 
 const [requestedRoot] = acceptancePositionals();
 if (requestedRoot === undefined) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-selection-e2e-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-selection-e2e-')));
   chmodSync(root, 0o700);
   const {
     telegram: _telegram,
@@ -57,7 +57,7 @@ if (requestedRoot === undefined) {
       ...machine,
       rcPrefix: 'selection-probe',
       stateDir: join(root, 'state'),
-      tmuxSocket: `ccmux-selection-${crypto.randomUUID().slice(0, 8)}`,
+      tmuxSocket: `stitchmux-selection-${crypto.randomUUID().slice(0, 8)}`,
       fleet: {},
       launchRecipes: {},
       agentPolicies: {},
@@ -73,13 +73,13 @@ if (requestedRoot === undefined) {
   );
   const env: Record<string, string | undefined> = {
     ...process.env,
-    CCMUX_CONFIG: config,
-    CCMUX_STATE_DIR: join(root, 'state'),
-    CCMUX_CACHE_DIR: join(root, 'cache'),
-    CCMUX_DATA_DIR: join(root, 'data'),
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_STATE_DIR: join(root, 'state'),
+    STITCHMUX_CACHE_DIR: join(root, 'cache'),
+    STITCHMUX_DATA_DIR: join(root, 'data'),
   };
-  delete env.CCMUX_SESSION;
-  delete env.CCMUX_CHAT_CREDENTIAL;
+  delete env.STITCHMUX_SESSION;
+  delete env.STITCHMUX_CHAT_CREDENTIAL;
   report('isolated-probe', { directoryHash: hash(root), retainedDirectoryName: basename(root) });
   const child = Bun.spawn(
     [
@@ -99,12 +99,12 @@ if (requestedRoot === undefined) {
   process.exit(await child.exited);
 }
 const root = requestedRoot;
-check(basename(root).startsWith('ccmux-selection-e2e-'), 'Not an isolated selection probe');
+check(basename(root).startsWith('stitchmux-selection-e2e-'), 'Not an isolated selection probe');
 retainReports(root);
 const m = loadMachineConfig();
 check(
   m.stateDir === join(root, 'state') &&
-    m.tmuxSocket?.startsWith('ccmux-selection-') &&
+    m.tmuxSocket?.startsWith('stitchmux-selection-') &&
     !m.telegram &&
     Object.keys(m.fleet ?? {}).length === 0,
   'Isolation guard failed',

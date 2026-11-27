@@ -111,7 +111,7 @@ export async function settlePrompts(
 }
 
 /**
- * The in-session conversation-level supervisor. ccmux (this loop) — NOT the agent — is
+ * The in-session conversation-level supervisor. stitchmux (this loop) — NOT the agent — is
  * the tmux pane's foreground process, so an agent crash just relaunches here. Fully
  * provider-agnostic: launch argv/env, history location and resume are all decided by
  * the session's AgentProvider.
@@ -164,7 +164,7 @@ export async function cmdRun(name: string | undefined): Promise<number> {
   // "composer occupied" delivery gate and silenced that session's chat for good, while blaming a
   // human who wasn't there. The logger already has this switch for exactly this reason; the TUI
   // uses it so Ink isn't corrupted, and `_run` needs it for the same reason. Nothing is lost —
-  // every record still goes to the state root's ccmux.log.
+  // every record still goes to the state root's stitchmux.log.
   setStderrLogging(false);
   if (readLifecycleBlockForSession(m, initial)) return 1;
   return superviseReady(m, name, initial.agent);
@@ -174,14 +174,14 @@ export async function cmdRun(name: string | undefined): Promise<number> {
  *  explicit start or restart clears it; the line says why to whoever attaches to the pane. */
 async function refuse(m: MachineConfig, s: Session, error: string): Promise<number> {
   await writeLifecycleBlock(m, sessionBlock(s, error));
-  console.error(`ccmux: ${error}`);
+  console.error(`stitchmux: ${error}`);
   return 1;
 }
 
 /** Leave the session to the daemon's heal, which starts it under the code installed now. */
 function handOver(name: string): number {
   log.info({
-    msg: 'supervisor: ccmux was updated since this process started — handing the session to heal',
+    msg: 'supervisor: stitchmux was updated since this process started — handing the session to heal',
     name,
     loadedVersion: VERSION,
   });
@@ -285,7 +285,7 @@ export async function superviseReady(
       log.info({ msg: 'dropped a dead agent socket from the session launch', name, dropped });
     }
     grantIdentity(env, m, s);
-    // The invocation TAUGHT to the agent (bare `ccmux` shim when installed) — NOT the
+    // The invocation TAUGHT to the agent (bare `stitchmux` shim when installed) — NOT the
     // absolute self re-exec; those are different concerns (see env.ts). Re-evaluated each
     // loop so a shim installed after boot is picked up on the next relaunch.
     const argv = provider.buildArgv(s, m, promptInvocation(), present);
@@ -326,7 +326,7 @@ export async function superviseReady(
       if (directoryIssue !== null) return refuse(m, s, directoryIssue);
       // The one case where the pane would otherwise be blank: no agent ever started, so nothing
       // else will explain the emptiness to whoever attaches. A plain sentence, never JSON.
-      console.error(`ccmux: could not start ${provider.id} — ${reason}`);
+      console.error(`stitchmux: could not start ${provider.id} — ${reason}`);
     } finally {
       agentGone.abort();
     }

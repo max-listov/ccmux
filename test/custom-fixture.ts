@@ -21,7 +21,7 @@ export async function customFixture(
     config: ReturnType<typeof CustomLaunchConfigSchema.parse>,
   ) => Promise<void>,
 ) {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'ccmux-custom-engine-')));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'stitchmux-custom-engine-')));
   roots.push(root);
   const envFile = join(root, 'declared.env');
   await writeFile(

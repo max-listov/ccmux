@@ -27,7 +27,7 @@ import { makeMachine } from './helpers.ts';
 
 /** A profile is what the session declares in its env file; the process environment plays no part. */
 function conversation(entries: unknown[]): { session: Session; dir: string; m: MachineConfig } {
-  const home = mkdtempSync(join(tmpdir(), 'ccmux-dispatch-'));
+  const home = mkdtempSync(join(tmpdir(), 'stitchmux-dispatch-'));
   const dir = join(home, 'work');
   mkdirSync(dir, { recursive: true });
   const id = '11111111-1111-4111-8111-111111111111';

@@ -108,7 +108,7 @@ export function retryCandidates(
 
 /** Optional, generic pre-attempt hook: some fleets can restore transit with one local command
  *  (re-pointing a forwarded-key socket, refreshing a token). Run once per flush, never per message,
- *  and only when there is something to retry. Deliberately NOT a named third-party script — ccmux
+ *  and only when there is something to retry. Deliberately NOT a named third-party script — stitchmux
  *  must not know about anyone's personal tooling. */
 const PreflightSchema = z.array(z.string().min(1)).min(1);
 
@@ -156,7 +156,7 @@ export async function flushOutbox(m: MachineConfig): Promise<void> {
       });
       continue;
     }
-    const r = await runPeer(m, route.machine, route.alias, ['ccmux', '_chat-receive-v2'], {
+    const r = await runPeer(m, route.machine, route.alias, ['stitchmux', '_chat-receive-v2'], {
       stdin: JSON.stringify(rec.envelope),
       timeoutMs: 20_000,
     });

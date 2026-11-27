@@ -50,11 +50,15 @@ export async function listSessionsCreated(m: MachineConfig): Promise<Map<string,
   return out;
 }
 
-// ccmux's own env that pins WHICH instance a pane belongs to. tmux does NOT propagate arbitrary
+// stitchmux's own env that pins WHICH instance a pane belongs to. tmux does NOT propagate arbitrary
 // env vars into a new session's panes (even on a dedicated socket), so we pass them EXPLICITLY via
 // `new-session -e` — otherwise a `_run` pane in an isolated (dev) instance reads the prod config and
 // dies. Prod sets none of these (uses defaults) → nothing is passed, behaviour unchanged.
-const INSTANCE_ENV_KEYS = ['CCMUX_STATE_DIR', 'CCMUX_CACHE_DIR', 'CCMUX_CONFIG'] as const;
+const INSTANCE_ENV_KEYS = [
+  'STITCHMUX_STATE_DIR',
+  'STITCHMUX_CACHE_DIR',
+  'STITCHMUX_CONFIG',
+] as const;
 
 function instanceEnvArgs(): string[] {
   const out: string[] = [];
@@ -74,7 +78,7 @@ export async function newSession(
   signal?: AbortSignal,
 ): Promise<void> {
   // Wait for the managed macOS tmux LaunchAgent before invoking `new-session`, so a login or
-  // restart race can never spawn an unmanaged rogue tmux server outside `ccmux.app`.
+  // restart race can never spawn an unmanaged rogue tmux server outside `stitchmux.app`.
   await waitForManagedTmuxReady(m, signal ? { signal } : {});
   // `-s NAME` (plain, for creation), `-e` pins the instance env into the pane (see above), `--` so
   // tmux treats the rest as command tokens.
@@ -122,9 +126,9 @@ export async function killSessionIfGeneration(
   generation: string,
 ): Promise<boolean> {
   const result = await run(
-    tmuxArgv(m, 'show-environment', '-t', exactTarget(name), 'CCMUX_BOOTSTRAP_GENERATION'),
+    tmuxArgv(m, 'show-environment', '-t', exactTarget(name), 'STITCHMUX_BOOTSTRAP_GENERATION'),
   );
-  if (result.code !== 0 || result.stdout.trim() !== `CCMUX_BOOTSTRAP_GENERATION=${generation}`)
+  if (result.code !== 0 || result.stdout.trim() !== `STITCHMUX_BOOTSTRAP_GENERATION=${generation}`)
     return false;
   return (await killSession(m, name)).killed;
 }
@@ -134,7 +138,7 @@ export async function killSessionIfGeneration(
  *
  * `killed` is whether tmux took the session down. `lingering` is a process group that outlived it —
  * a real thing to report and NOT a failure of the kill, which is what conflating them made it: the
- * straggler threw, the throw escaped the caller, and `ccmux rm` printed a slice of its own bundled
+ * straggler threw, the throw escaped the caller, and `stitchmux rm` printed a slice of its own bundled
  * source and exited non-zero having successfully removed the session. A caller that must answer
  * "is it gone" got the opposite of the truth from the exit code, and the reason was in a stack
  * trace rather than in a sentence.
@@ -207,7 +211,7 @@ export async function setOption(
 }
 
 /** Pane-scoped option on the session's single pane (e.g. allow-passthrough) — kept
- *  session-local so ccmux never mutates the shared tmux server's global options. */
+ *  session-local so stitchmux never mutates the shared tmux server's global options. */
 export async function setPaneOption(
   m: MachineConfig,
   name: string,
@@ -249,7 +253,7 @@ export async function sendKeysNamed(m: MachineConfig, name: string, key: string)
  * recipients from replacing each other's payload while the daemon is fanning out a pass.
  */
 export async function loadPasteBuffer(m: MachineConfig, text: string): Promise<string | null> {
-  const buffer = `ccmux-chat-${crypto.randomUUID()}`;
+  const buffer = `stitchmux-chat-${crypto.randomUUID()}`;
   const loaded = await run(tmuxArgv(m, 'load-buffer', '-b', buffer, '-'), { input: text });
   return loaded.code === 0 ? buffer : null;
 }
@@ -303,7 +307,7 @@ export async function submitPasteBuffer(
     '-p',
     '-t',
     target,
-    '@ccmux-chat-submitted',
+    '@stitchmux-chat-submitted',
     messageId,
   ]);
   return code === 0;
@@ -317,7 +321,7 @@ export async function submittedChatId(m: MachineConfig, name: string): Promise<s
     '-v',
     '-t',
     target,
-    '@ccmux-chat-submitted',
+    '@stitchmux-chat-submitted',
   ]);
   return code === 0 && stdout.trim() !== '' ? stdout.trim() : null;
 }

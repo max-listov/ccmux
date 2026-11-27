@@ -11,7 +11,7 @@ import { refusesSelf } from './guard.ts';
 
 export async function cmdStart(name: string | undefined): Promise<number> {
   if (!name) {
-    console.log('usage: ccmux start <name>   ·   <machine>:<name> for another fleet machine');
+    console.log('usage: stitchmux start <name>   ·   <machine>:<name> for another fleet machine');
     return 1;
   }
   const fwd = await forwardIfRemote(name, 'start', []);
@@ -34,7 +34,7 @@ export async function cmdStart(name: string | undefined): Promise<number> {
 
 export async function cmdStop(name: string | undefined, force = false): Promise<number> {
   if (!name) {
-    console.log('usage: ccmux stop <name>   ·   <machine>:<name> for another fleet machine');
+    console.log('usage: stitchmux stop <name>   ·   <machine>:<name> for another fleet machine');
     return 1;
   }
   const fwd = await forwardIfRemote(name, 'stop', force ? ['--force'] : []);

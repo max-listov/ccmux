@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   createDefaultLaunchdHostAdapter,
@@ -6,10 +6,11 @@ import {
   type LaunchdHostAdapter,
   reloadLaunchdJob,
 } from 'stitchkit/service-host';
-import { bootArgv } from '../config/paths.ts';
+import { PREVIOUS_BOOT_UNITS } from '../migration/renameFromCcmux.ts';
 import type { MachineConfig } from '../types.ts';
 import { atomicWrite } from '../util/atomic.ts';
-import { HOME, PLATFORM, UID } from '../util/env.ts';
+import { bootArgv } from '../util/env.ts';
+import { HOME, PLATFORM, UID } from '../util/home.ts';
 import { log } from '../util/log.ts';
 import { run } from '../util/spawn.ts';
 import {
@@ -63,7 +64,7 @@ function context(m: MachineConfig, macosLauncher?: string): BootContext {
     label: m.bootLabel,
     user: UID === 0 ? 'root' : (process.env.USER ?? ''),
     home: HOME,
-    configPath: process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`,
+    configPath: process.env.STITCHMUX_CONFIG ?? `${HOME}/.config/stitchmux/machine.json`,
     pathEnv: pathEnv(m),
     logDir: isMac ? `${HOME}/Library/Logs` : '/var/log',
     ...(macosLauncher ? { macosLauncher } : {}),
@@ -76,14 +77,14 @@ function tmuxContext(m: MachineConfig, macosLauncher: string): TmuxBootContext {
     tmuxBin: m.tmuxBin,
     ...(m.tmuxSocket ? { tmuxSocket: m.tmuxSocket } : {}),
     home: HOME,
-    configPath: process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`,
+    configPath: process.env.STITCHMUX_CONFIG ?? `${HOME}/.config/stitchmux/machine.json`,
     pathEnv: pathEnv(m),
     logDir: `${HOME}/Library/Logs`,
     macosLauncher,
   };
 }
 
-const systemdUnitPath = (label: string): string => `/etc/systemd/system/${label}`;
+export const systemdUnitPath = (label: string): string => `/etc/systemd/system/${label}`;
 
 /** Enable the job, then replace its plist and verify it under a stable PID. */
 export async function applyLaunchAgent(
@@ -98,10 +99,74 @@ export async function applyLaunchAgent(
   await reloadLaunchdJob({ label, uid: UID, plistPath, content, expectedProgram, adapter });
 }
 
+/**
+ * Rename window: retire the boot units the previous release installed before this one installs its
+ * own, so two daemons never manage the same sessions. The old daemon unit is stopped and removed —
+ * its tmux server and sessions survive (`KillMode=process` on Linux; on macOS the daemon is not their
+ * parent). The old tmux LaunchAgent is NOT booted out: that would end the live server and every
+ * session on it. Only its plist goes, so the next login starts the new agent alone. REMOVE with
+ * `src/migration/renameFromCcmux.ts`.
+ */
+export async function retirePreviousBootUnits(
+  m: MachineConfig,
+  deps: {
+    readonly mac: boolean;
+    readonly run: (argv: string[]) => Promise<unknown>;
+    readonly exists: (path: string) => boolean;
+    readonly unlink: (path: string) => void;
+    /** Copy a directory and what is in it, keeping a target that already exists. */
+    readonly copyDir: (from: string, to: string) => void;
+    readonly plistPath: (label: string) => string;
+    readonly unitPath: (unit: string) => string;
+  } = {
+    mac: isMac,
+    run,
+    exists: existsSync,
+    unlink: unlinkSync,
+    copyDir: (from, to) => cpSync(from, to, { recursive: true, force: false }),
+    plistPath: launchdPlistPath,
+    unitPath: systemdUnitPath,
+  },
+): Promise<string[]> {
+  const retired: string[] = [];
+  if (deps.mac) {
+    const daemon = PREVIOUS_BOOT_UNITS.launchdDaemon;
+    const daemonPlist = deps.plistPath(daemon);
+    if (m.bootLabel !== daemon && deps.exists(daemonPlist)) {
+      await deps.run(['launchctl', 'bootout', `gui/${UID}/${daemon}`]);
+      deps.unlink(daemonPlist);
+      retired.push(daemon);
+    }
+    const tmux = PREVIOUS_BOOT_UNITS.launchdTmux;
+    const tmuxPlist = deps.plistPath(tmux);
+    if (tmuxBootLabel(m) !== tmux && deps.exists(tmuxPlist)) {
+      deps.unlink(tmuxPlist);
+      retired.push(`${tmux} (plist only; the running server is kept)`);
+    }
+  } else {
+    const daemon = PREVIOUS_BOOT_UNITS.systemdDaemon;
+    const unit = deps.unitPath(daemon);
+    if (m.bootLabel !== daemon && deps.exists(unit)) {
+      // The machine's own settings for the daemon — a fleet resource slice, memory ceiling or OOM
+      // score — live in the unit's drop-in directory. They belong to the daemon, not to its name.
+      const dropIns = `${unit}.d`;
+      const next = `${deps.unitPath(m.bootLabel)}.d`;
+      if (deps.exists(dropIns) && !deps.exists(next)) deps.copyDir(dropIns, next);
+      await deps.run(['systemctl', 'disable', '--now', daemon]);
+      deps.unlink(unit);
+      await deps.run(['systemctl', 'daemon-reload']);
+      retired.push(daemon);
+    }
+  }
+  for (const unit of retired) console.log(`retired the previous release's boot unit ${unit}`);
+  return retired;
+}
+
 export async function installBoot(
   m: MachineConfig,
   options: { force?: boolean } = {},
 ): Promise<void> {
+  await retirePreviousBootUnits(m);
   if (isMac) {
     const app = ensureMacosAppBundle({
       ...(options.force ? { force: true } : {}),
@@ -195,7 +260,7 @@ export async function convergeBootUnit(m: MachineConfig): Promise<boolean> {
   const macosLauncher = isMac ? installedMacosLauncher() : undefined;
   if (isMac && macosLauncher === undefined) {
     log.warn({
-      msg: "ccmux.app is not installed or failed codesign verification — run 'ccmux install' to enable signed bundle launch",
+      msg: "stitchmux.app is not installed or failed codesign verification — run 'stitchmux install' to enable signed bundle launch",
       appPath: macosAppPath(HOME),
     });
   }
@@ -214,7 +279,7 @@ export async function convergeBootUnit(m: MachineConfig): Promise<boolean> {
     if (!isMac) await run(['systemctl', 'daemon-reload']);
     log.info({
       msg: isMac
-        ? 'boot unit converged to this version (run bootout+bootstrap or ccmux install to reload launchd definition)'
+        ? 'boot unit converged to this version (run bootout+bootstrap or stitchmux install to reload launchd definition)'
         : 'boot unit converged to this version',
       path,
     });
@@ -268,7 +333,7 @@ export async function uninstallBoot(m: MachineConfig): Promise<void> {
 /**
  * Bounce the daemon in place — sessions outlive it, so this never drops a conversation.
  *
- * On macOS, if the on-disk plist was migrated (e.g. wrapped with `ccmux.app`) and differs from
+ * On macOS, if the on-disk plist was migrated (e.g. wrapped with `stitchmux.app`) and differs from
  * launchd's loaded job definition, performs `bootout` + `bootstrap` so launchd actually picks up
  * the updated plist (`kickstart -k` alone reuses the cached definition).
  */

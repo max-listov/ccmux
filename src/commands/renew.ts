@@ -29,7 +29,7 @@ export function renewRefusal(
   return (
     `${name} still has its conversation at ${historyFile ?? 'its expected path'}. ` +
     'Renewing pins a NEW uuid, so that history stops being what this session resumes — it stays on disk, but nothing points at it. ' +
-    `Continue it instead with: ccmux restart ${name}   ·   or renew deliberately: ccmux renew ${name} --force`
+    `Continue it instead with: stitchmux restart ${name}   ·   or renew deliberately: stitchmux renew ${name} --force`
   );
 }
 
@@ -47,8 +47,8 @@ export function renewSummary(s: Session, uuid: string): string {
 
 /**
  * Give a registered session a fresh conversation without demolishing the session.
- *   ccmux renew <name>            → only when the pinned conversation is gone
- *   ccmux renew <name> --force    → abandon a conversation that is still there
+ *   stitchmux renew <name>            → only when the pinned conversation is gone
+ *   stitchmux renew <name> --force    → abandon a conversation that is still there
  *
  * The recovery path for a transcript that was deleted underneath a session: the block that stopped
  * it exists precisely so a new conversation is never started in silence, and until now the only way

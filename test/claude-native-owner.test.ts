@@ -119,7 +119,7 @@ export function query({ prompt, options }) {
 `;
 
 test('ClaudeNativeOwner runs turns, session-scoped approvals, usage and planLimits through stitchkit/agent-executor/claude-sdk', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-claude-owner-e2e-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-claude-owner-e2e-'));
   roots.push(root);
   const sdkDir = join(root, 'sdk');
   mkdirSync(sdkDir);

@@ -1,4 +1,3 @@
-import { AppError } from 'stitchkit';
 import { stableJson } from '../agent/launch/launchInputs.ts';
 import { blockingInbound } from '../chat/inboundHold.ts';
 import { verifyManagedLaunchRecipe } from '../config/launchRecipes.ts';
@@ -17,6 +16,7 @@ import { createNativeBootstrap } from '../session/create.ts';
 import type { MachineConfig } from '../types.ts';
 import { loadCreateReceipts } from './createReceipts.ts';
 import { createControlSession } from './lifecycle.ts';
+import { refusals } from './schema/refusals.ts';
 import { controlTarget } from './target.ts';
 
 /** One create journal reserves the destination before its own native server forks the source. */
@@ -29,9 +29,8 @@ export async function forkControlSession(
     sourceTarget = input.target;
   const source = controlTarget(m, sourceTarget);
   if (source.delegation !== undefined)
-    throw new AppError('DELEGATION_REFUSED', {
+    throw refusals.errors.DELEGATION_REFUSED({
       message: 'Delegated children must use narrowed create',
-      status: 409,
     });
   return withNativeAdmission(m, source, async () => {
     const current = controlTarget(m, sourceTarget);
@@ -45,10 +44,7 @@ export async function forkControlSession(
         accepted.name !== input.name ||
         stableJson(accepted.forkSource.target) !== stableJson(sourceTarget))
     )
-      throw new AppError('IDEMPOTENCY_CONFLICT', {
-        message: 'Native fork source changed',
-        status: 409,
-      });
+      throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Native fork source changed' });
     if (accepted === undefined) assertNoContextMutation(m, current);
     const status = readManagedRuntimeStatus(m, current);
     if (
@@ -56,10 +52,7 @@ export async function forkControlSession(
       (current.registrationGeneration !== input.registrationGeneration ||
         status.snapshot?.generation !== input.generation)
     )
-      throw new AppError('IDENTITY_MISMATCH', {
-        message: 'Native fork source generation changed',
-        status: 409,
-      });
+      throw refusals.errors.IDENTITY_MISMATCH({ message: 'Native fork source generation changed' });
     if (
       accepted === undefined &&
       (!current.registrationGeneration ||
@@ -70,28 +63,19 @@ export async function forkControlSession(
         status.snapshot.turn?.status === 'inProgress' ||
         status.snapshot.pendingRequests.length !== 0)
     )
-      throw new AppError('FORK_BUSY', {
-        message: 'Native source must be idle before fork',
-        status: 409,
-      });
+      throw refusals.errors.FORK_BUSY({ message: 'Native source must be idle before fork' });
     const pendingInput = readRuntimeInput(m, current);
     if (
       accepted === undefined &&
       (blockingInbound(m, current, Date.now()).length !== 0 ||
         (pendingInput !== null && pendingInput.phase !== 'accepted'))
     )
-      throw new AppError('FORK_BUSY', {
-        message: 'Native source has accepted input pending',
-        status: 409,
-      });
+      throw refusals.errors.FORK_BUSY({ message: 'Native source has accepted input pending' });
     // Asked of the declared capability, not of a list of runtime names: the capability is what the
     // control plane answers `runtime.list` with, and a name list beside it is a second answer that
     // goes stale the moment a runtime gains the operation.
     if (!runtimeCapabilities(current).fork)
-      throw new AppError('UNSUPPORTED', {
-        message: 'Native fork is unavailable for this runtime',
-        status: 409,
-      });
+      throw refusals.errors.UNSUPPORTED({ message: 'Native fork is unavailable for this runtime' });
     const sourceIdentity =
       accepted?.forkSource ??
       NativeForkSourceSchema.parse({
@@ -106,10 +90,7 @@ export async function forkControlSession(
         selection: readSelection(m, current)?.options ?? status.snapshot?.nativeSelection?.options,
       });
     if (sourceIdentity.selection === undefined)
-      throw new AppError('FORK_UNAVAILABLE', {
-        message: 'Native source selection is unavailable',
-        status: 409,
-      });
+      throw refusals.errors.FORK_UNAVAILABLE({ message: 'Native source selection is unavailable' });
     const sourceLaunch = accepted ?? current;
     const modelFlags = modelSelectionFlags(sourceLaunch.modelSelection);
     const flags =

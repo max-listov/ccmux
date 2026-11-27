@@ -61,7 +61,7 @@ test('the kind vocabulary is closed, so a consumer can exhaust it', () => {
 });
 
 test('the kind survives the round trip to disk, and an older record defaults honestly', async () => {
-  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-hold-roundtrip-'));
+  const stateDir = mkdtempSync(join(tmpdir(), 'stitchmux-hold-roundtrip-'));
   // The status path is a module-level constant derived from the environment, so the round trip is
   // exercised where that environment can be set: in a child, not by reaching around the module.
   const script = `
@@ -74,13 +74,13 @@ test('the kind survives the round trip to disk, and an older record defaults hon
     const { join } = await import('node:path');
     // A record written before the field existed: only prose on disk.
     writeFileSync(
-      join(process.env.CCMUX_STATE_DIR, 'status', 'agent-b.chathold.json'),
+      join(process.env.STITCHMUX_STATE_DIR, 'status', 'agent-b.chathold.json'),
       JSON.stringify({ reason: 'older record', ts: Date.now(), msgId: 'm2' }),
     );
     console.log(JSON.stringify({ held, older: readChatHold('agent-b') }));
   `;
   const proc = Bun.spawn(['bun', '-e', script], {
-    env: { ...process.env, CCMUX_STATE_DIR: stateDir },
+    env: { ...process.env, STITCHMUX_STATE_DIR: stateDir },
     stdout: 'pipe',
     stderr: 'pipe',
   });

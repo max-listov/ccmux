@@ -24,7 +24,7 @@ import {
 
 const acceptanceCommunicationAuthorization = await readAcceptanceCommunicationAuthorization();
 
-import { localControlFetch } from './control-client.ts';
+import { declaredServiceFetch } from './control-client.ts';
 
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -42,7 +42,7 @@ async function until(label: string, probe: () => Promise<boolean>, timeoutMs = 1
 
 const [requested] = acceptancePositionals();
 if (requested === undefined) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ccmux-context-e2e-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'stitchmux-context-e2e-')));
   const source = loadMachineConfig();
   const {
     telegram: _telegram,
@@ -69,7 +69,7 @@ if (requested === undefined) {
       ...machine,
       rcPrefix: 'context-probe',
       stateDir: join(root, 'state'),
-      tmuxSocket: `ccmux-context-${crypto.randomUUID().slice(0, 8)}`,
+      tmuxSocket: `stitchmux-context-${crypto.randomUUID().slice(0, 8)}`,
       fleet: {},
       agentPolicies: {},
       launchRecipes: {
@@ -92,13 +92,13 @@ if (requested === undefined) {
   );
   const env: Record<string, string | undefined> = {
     ...process.env,
-    CCMUX_CONFIG: config,
-    CCMUX_STATE_DIR: join(root, 'state'),
-    CCMUX_CACHE_DIR: join(root, 'cache'),
-    CCMUX_DATA_DIR: join(root, 'data'),
+    STITCHMUX_CONFIG: config,
+    STITCHMUX_STATE_DIR: join(root, 'state'),
+    STITCHMUX_CACHE_DIR: join(root, 'cache'),
+    STITCHMUX_DATA_DIR: join(root, 'data'),
   };
-  delete env.CCMUX_SESSION;
-  delete env.CCMUX_CHAT_CREDENTIAL;
+  delete env.STITCHMUX_SESSION;
+  delete env.STITCHMUX_CHAT_CREDENTIAL;
   report('isolated-fixture', { rootHash: hash(root), directoryName: basename(root) });
   const child = Bun.spawn(
     [
@@ -121,9 +121,9 @@ if (requested === undefined) {
 const root = requested,
   m = loadMachineConfig();
 check(
-  basename(root).startsWith('ccmux-context-e2e-') &&
+  basename(root).startsWith('stitchmux-context-e2e-') &&
     m.stateDir === join(root, 'state') &&
-    m.tmuxSocket?.startsWith('ccmux-context-') &&
+    m.tmuxSocket?.startsWith('stitchmux-context-') &&
     !m.telegram &&
     Object.keys(m.fleet ?? {}).length === 0,
   'Probe is not isolated',
@@ -138,7 +138,9 @@ const spawnDaemon = () =>
   });
 let daemon = spawnDaemon();
 const local = createControlClient({ socket: controlSocket(m) });
-const service = createInjectedControlClient(localControlFetch(controlSocket(m), 'context-client'));
+const service = createInjectedControlClient(
+  declaredServiceFetch(controlSocket(m), 'context-client'),
+);
 const accepted: ControlCreateReceipt[] = [];
 async function idle(target: ManagedPeer) {
   await until('live idle', async () => {
@@ -227,8 +229,8 @@ try {
   for (const runtime of ['codex', 'opencode']) {
     if (runtime !== 'codex' && runtime !== 'opencode') throw new Error('Invalid fixture runtime');
     if (
-      process.env.CCMUX_CONTEXT_RUNTIME !== undefined &&
-      process.env.CCMUX_CONTEXT_RUNTIME !== runtime
+      process.env.STITCHMUX_CONTEXT_RUNTIME !== undefined &&
+      process.env.STITCHMUX_CONTEXT_RUNTIME !== runtime
     )
       continue;
     const modelSelection =
@@ -236,7 +238,7 @@ try {
         ? { provider: 'openai', model: 'gpt-5.6-luna' }
         : {
             provider: 'openrouter',
-            model: process.env.CCMUX_CONTEXT_OPENCODE_MODEL ?? 'google/gemini-2.5-flash',
+            model: process.env.STITCHMUX_CONTEXT_OPENCODE_MODEL ?? 'google/gemini-2.5-flash',
           };
     const create = {
       runtime,

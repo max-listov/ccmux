@@ -11,13 +11,14 @@ import {
   type ServiceDeclaration,
   ServiceDeclarationSchema,
 } from '@stitchwire/client/contracts';
+import { readJsonOnce } from 'stitchkit/files';
 import type { FetchHandler } from 'stitchkit/server';
 import { atomicWrite } from '../../util/atomic.ts';
 import { log } from '../../util/log.ts';
 import { ControlTransportCallerSchema } from '../transport/boundary.ts';
 import { wireControlDescriptor as descriptor } from './descriptor.ts';
 
-const declarationFile = 'ccmux.control.declaration.json';
+const declarationFile = 'stitchmux.control.declaration.json';
 const endpointPath = '/invoke';
 const effects = new Map(descriptor.operations.map((operation) => [operation.id, operation.effect]));
 const limits = {
@@ -27,20 +28,20 @@ const limits = {
 };
 type Callers = ServiceDeclaration['callers'];
 
-async function readCallers(path: string): Promise<Callers> {
-  const bytes = await Bun.file(path)
-    .slice(0, SERVICE_MAX_DECLARATION_BYTES + 1)
-    .arrayBuffer();
-  if (bytes.byteLength > SERVICE_MAX_DECLARATION_BYTES)
-    throw new Error('Callers file exceeds declaration limit');
-  const callers = ServiceDeclarationSchema.shape.callers.parse(
-    JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-  );
+/** The operator's grants, or an error saying why there are none: missing, unreadable or invalid. */
+function readCallers(path: string): Callers {
+  const reading = readJsonOnce(path, ServiceDeclarationSchema.shape.callers, {
+    limit: SERVICE_MAX_DECLARATION_BYTES,
+  });
+  if (reading.state === 'missing') throw new Error(`No callers file at ${path}`);
+  if (reading.state !== 'read')
+    throw new Error(`Callers file is ${reading.state}: ${reading.detail}`);
+  const callers = reading.value;
   const seen = new Set<string>();
   for (const { caller, scope } of callers) {
     ControlTransportCallerSchema.parse(caller);
     if (scope.kind === 'operation' && !effects.has(scope.operation))
-      throw new Error(`Unknown ccmux.control operation: ${scope.operation}`);
+      throw new Error(`Unknown stitchmux.control operation: ${scope.operation}`);
     const key = JSON.stringify([caller, scope]);
     if (seen.has(key)) throw new Error('Duplicate caller scope');
     seen.add(key);
@@ -95,7 +96,7 @@ export class WireControlService {
   async start(): Promise<void> {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     await atomicWrite(
-      join(this.directory, 'ccmux.control.json'),
+      join(this.directory, 'stitchmux.control.json'),
       `${JSON.stringify(descriptor, null, 2)}\n`,
       0o600,
     );
@@ -118,13 +119,13 @@ export class WireControlService {
     let callers: Callers = [];
     let problem: string | null = null;
     try {
-      callers = await readCallers(join(this.directory, 'ccmux.control.callers.json'));
+      callers = readCallers(join(this.directory, 'stitchmux.control.callers.json'));
     } catch (error) {
       problem = String(error);
     }
     const binding = {
       service: descriptor.service,
-      descriptorPath: join(this.directory, 'ccmux.control.json'),
+      descriptorPath: join(this.directory, 'stitchmux.control.json'),
       socketPath: this.socketPath,
       endpointPath,
       maxInflight: descriptor.maxInflight,

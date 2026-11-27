@@ -35,7 +35,7 @@ import { makeMachine, makeSession, UUID } from './helpers.ts';
 
 const dirs: string[] = [];
 const tmp = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-quota-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-quota-'));
   dirs.push(dir);
   return dir;
 };
@@ -563,7 +563,7 @@ test('the probe asks as the profile, not as whoever launched it', async () => {
   echo "KEY=$ANTHROPIC_API_KEY"
   echo "TOKEN=$CLAUDE_CODE_OAUTH_TOKEN"
   echo "BEDROCK=$CLAUDE_CODE_USE_BEDROCK"
-  echo "CCMUX=$CCMUX_SESSION"
+  echo "STITCHMUX=$STITCHMUX_SESSION"
   echo "PROFILE=$CLAUDE_CONFIG_DIR"
   echo "DECLARED=$DECLARED_VALUE"
 } >> ${seen}
@@ -583,7 +583,7 @@ ANTHROPIC_API_KEY=
   process.env.ANTHROPIC_API_KEY = 'sk-from-the-callers-shell';
   process.env.CLAUDE_CODE_OAUTH_TOKEN = 'token-of-another-account';
   process.env.CLAUDE_CODE_USE_BEDROCK = '1';
-  process.env.CCMUX_SESSION = 'agent-launcher';
+  process.env.STITCHMUX_SESSION = 'agent-launcher';
   process.env.CLAUDE_CONFIG_DIR = '/the/callers/profile';
   try {
     const profile = join(dir, 'profile');
@@ -598,7 +598,7 @@ ANTHROPIC_API_KEY=
       'ANTHROPIC_API_KEY',
       'CLAUDE_CODE_OAUTH_TOKEN',
       'CLAUDE_CODE_USE_BEDROCK',
-      'CCMUX_SESSION',
+      'STITCHMUX_SESSION',
       'CLAUDE_CONFIG_DIR',
     ])
       if (keep[key] === undefined) delete process.env[key];
@@ -609,7 +609,7 @@ ANTHROPIC_API_KEY=
   expect(printed).not.toContain('sk-from-the-callers-shell');
   expect(printed).not.toContain('token-of-another-account');
   expect(printed).toContain('BEDROCK=\n');
-  expect(printed).toContain('CCMUX=\n');
+  expect(printed).toContain('STITCHMUX=\n');
   expect(printed).toContain(`PROFILE=${join(dir, 'profile')}`);
   expect(printed).toContain('DECLARED=from-file');
 });
@@ -723,7 +723,7 @@ test('a saved copy of a profile and a linked profile directory are told apart', 
 });
 
 test('two askers for one profile make one call, and the second reads what the first learned', async () => {
-  // The daemon's pass and `ccmux accounts --refresh` can run together.
+  // The daemon's pass and `stitchmux accounts --refresh` can run together.
   const { m, session } = fixture('race');
   let calls = 0;
   const slow = (async () => {

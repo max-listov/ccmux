@@ -17,7 +17,7 @@ const internal =
   'Called the Read tool with the following input: /private/owner-store/internal-image.png';
 const authored = 'Called the Read tool with the following input: /workspace/user-authored.png';
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-private-context-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-private-context-'));
   roots.push(root);
   const m = makeMachine({ stateDir: root, rcPrefix: 'host-a' });
   const s = makeSession({

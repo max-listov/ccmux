@@ -73,13 +73,13 @@ time.sleep(600)
 test.skipIf(!canLowerOom || !Bun.which('tmux'))(
   'Linux tmux spine is protected and a newly inherited tool is released; intentional browser adjustment survives',
   async () => {
-    const root = mkdtempSync('/tmp/ccmux-linux-oom-');
+    const root = mkdtempSync('/tmp/stitchmux-linux-oom-');
     const tmux = Bun.which('tmux');
     if (!tmux) throw new Error('tmux');
-    const m = makeMachine({ tmuxBin: tmux, tmuxSocket: `ccmux-oom-${crypto.randomUUID()}` });
+    const m = makeMachine({ tmuxBin: tmux, tmuxSocket: `stitchmux-oom-${crypto.randomUUID()}` });
     const previous = readFileSync(`/proc/${process.pid}/oom_score_adj`, 'utf8');
     const agent = join(root, 'agent.js'),
-      runner = join(root, 'ccmux.js'),
+      runner = join(root, 'stitchmux.js'),
       ready = join(root, 'ready'),
       spawn = join(root, 'spawn'),
       pids = join(root, 'pids');

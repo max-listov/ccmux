@@ -31,7 +31,7 @@ import { nativeCatalogFixture } from './fixtures/native-catalog.ts';
 import { makeMachine, makeSession } from './helpers.ts';
 
 test('controlled managed delivery: real menu hold, one provider admission, terminal evidence', async () => {
-  const root = mkdtempSync('/tmp/ccmux-held-');
+  const root = mkdtempSync('/tmp/stitchmux-held-');
   const m = makeMachine({
     stateDir: root,
     rcPrefix: 'host-a',
@@ -148,7 +148,7 @@ test('controlled managed delivery: real menu hold, one provider admission, termi
   }
   const owner = () => applyOwnedCodexInput(m, s, rpc, () => projection.snapshot());
   const monitoring = new MonitoringPublisher();
-  const interactive = process.env.CCMUX_HELD_FIXTURE_INTERACTIVE === '1';
+  const interactive = process.env.STITCHMUX_HELD_FIXTURE_INTERACTIVE === '1';
   const interrupted = new AbortController();
   const interrupt = () => interrupted.abort(new Error('Fixture interrupted'));
   async function publish() {

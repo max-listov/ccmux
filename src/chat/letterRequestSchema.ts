@@ -3,7 +3,7 @@ import { CommunicationAuthorizationInputSchema } from './communicationAuthorizat
 import { AgentKindSchema } from './identitySchema.ts';
 
 /**
- * One letter, as `ccmux msg` and the `letter.send` operation both ask for it.
+ * One letter, as `stitchmux msg` and the `letter.send` operation both ask for it.
  *
  * The command reads its flags into this; a program sends it as the operation's input. Both reach
  * `sendLetter`, so the two roads cannot differ in who may send, where a name resolves, or what the

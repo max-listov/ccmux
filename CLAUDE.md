@@ -4,7 +4,7 @@ globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
 alwaysApply: false
 ---
 
-# ccmux — project conventions
+# stitchmux — project conventions
 
 ## 🔒 This is a PUBLIC repo — never leak the maintainer's private identifiers
 Everything committed here (code, docs, backlog, tests, comments) is published. NEVER write into
@@ -101,7 +101,7 @@ there and fixed in 0.75.1 and 0.75.2 within eighty minutes. A canary would have 
 
 The window is held by the daemons themselves, not by the release procedure: an unattended update
 takes a release only once it is `autoUpdateSettleSeconds` old by its own `releasedAt` (ten minutes by
-default), while `ccmux update` on the first machine takes it at once. 0.91.1 reached production on
+default), while `stitchmux update` on the first machine takes it at once. 0.91.1 reached production on
 the third minute of its window because nothing held it.
 
 CHANGELOG lines describe what changed for a user; "X remains intact" and "Y is retained" describe
@@ -139,10 +139,10 @@ when necessary, not through a second permanent runtime path. The prohibited bran
 assuming an installed-client requirement that the project does not have.
 
 ## ⚠️ TUI: горячий цикл и сироты (если «комп горячий»)
-Интерактивный TUI (Ink) умеет жечь ядро и сиротеть — это **реальный инцидент** (`ccmux-dev -f`
+Интерактивный TUI (Ink) умеет жечь ядро и сиротеть — это **реальный инцидент** (`stitchmux-dev -f`
 держал ~84% ядра 14ч). Полный разбор + инварианты + пошаговый дебаг — **`docs/architecture/tui-and-dev-flow.md`
 → «Производительность рендера и время жизни»**. Кратко:
-- Первый шаг при «комп горячий»: `ps aux | grep -E "src/cli.ts|ccmux.js" | grep -v grep` → `bun run
+- Первый шаг при «комп горячий»: `ps aux | grep -E "src/cli.ts|stitchmux.js" | grep -v grep` → `bun run
   src/cli.ts` на ~целом ядре часами = горячий рендер; `PPID=1` = осиротевший TUI (терминал закрыт, а
   он жив). Убивать `kill -9` (обычный `kill` сирота глушит). Демон при этом НЕ трогать — он отдельный.
 - Инварианты, которые НЕЛЬЗЯ ломать: спиннер (`useSpinner`) тикает только при `status.active`;
@@ -177,7 +177,8 @@ A folder is a domain; a module lives with the domain that owns its meaning, and 
 it — `config/` holds configuration only, not every schema. `src/` root holds entry points and nothing
 else: `cli.ts`, one file per published package export named exactly as the export
 (`session-reader.ts`, `monitoring-reader.ts`, `codex-runtime-reader.ts`, `control-client.ts`,
-`control-service-client.ts`) and the shared `types.ts`.
+`client.ts` — the npm package `@stitchmux/client`, built by `scripts/package-client.ts`) and the
+shared `types.ts`.
 
 - `agent/` — providers (`claude/`, `codex/` with the App Server owner in `codex/owned/`, `opencode/`,
   `custom/`), transcript reading (`transcript/`), launch inputs and environment (`launch/`), the
@@ -185,9 +186,13 @@ else: `cli.ts`, one file per published package export named exactly as the expor
 - `session/` — the session registry and its lock, create/start/heal/adopt, lifecycle blocks, status files.
 - `chat/` — ledger, cursors, delivery, settlement; `runtime/` — what every native runtime shares
   (mailboxes, status, admission); `control/` — `schema/` (the wire), `operations/` (domain factories),
-  `transport/` (socket and service), with the handlers beside them.
+  `transport/` (the socket server, its authentication and clients), `wire/` (the declared
+  `stitchmux.control` service: descriptor and ingress), with the handlers beside them.
 - `commands/` reads command lines and prints; nothing but `cli.ts` imports it (`test/layering.test.ts`).
-- `util/` — domain-free helpers (JSONL, locks, spawn, ANSI, tables, the self re-exec in `env.ts`).
+- `migration/` — one-release moves of a machine's state between releases (today: the rename from the
+  previous product name); each module names the release that removes it.
+- `util/` — domain-free helpers (JSONL, locks, spawn, ANSI, tables, the platform and home directory in
+  `home.ts`, the command line's self re-exec in `env.ts` — which the client package never imports).
 
 File names are camelCase; only the published entry points use the kebab-case of their export.
 
@@ -213,7 +218,7 @@ pre-push hook passes at once for a tree that has one — a release pushes its co
 same tree, gated once. A test file that fails only beside the other shares — it measures what
 processes do to each other — is listed in `ALONE` in `test-shards.ts`, with the reason, and runs
 after them.
-`bunfig.toml` preloads `test/preload.ts`, which points every ccmux root (state, cache, data, config)
+`bunfig.toml` preloads `test/preload.ts`, which points every stitchmux root (state, cache, data, config)
 at a private temporary home before any test module loads; `test/test-isolation.test.ts` fails if
 that ever stops. A test never writes into the operator's real directories, and one that needs its
 own root still sets it itself.
@@ -247,9 +252,9 @@ test at all). Platform-only tests count only where they run: Linux-only tests ru
 job, the Darwin-only native test in the `darwin-native` job, and a local macOS gate that skipped them
 is not evidence for them.
 
-For a checkout with local run monitoring, set Git's `ccmux.checkRunner` to the absolute path of
-its runner executable. The full gate passes `--project ccmux --label ccmux-gate -- <command>`.
-The standalone test suite uses `ccmux-tests` for sharded runs and `ccmux-tests-serial` for serial
+For a checkout with local run monitoring, set Git's `stitchmux.checkRunner` to the absolute path of
+its runner executable. The full gate passes `--project stitchmux --label stitchmux-gate -- <command>`.
+The standalone test suite uses `stitchmux-tests` for sharded runs and `stitchmux-tests-serial` for serial
 runs. The outer command owns its nested checks and their exit status. With the setting absent,
 Bun runs the same stages directly.
 

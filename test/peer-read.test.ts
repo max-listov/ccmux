@@ -5,11 +5,11 @@ import { ControlPublisher } from '../src/control/publisher.ts';
 import { createControlServer } from '../src/control/transport/server.ts';
 import { makeMachine } from './helpers.ts';
 
-// A fleet reader on another machine runs `ccmux _peer-read` here. The answer is the daemon's, built
+// A fleet reader on another machine runs `stitchmux _peer-read` here. The answer is the daemon's, built
 // with its caches warm; the command only relays it. Which side answered is told apart by the
 // machine label: the daemon under test is `host-served`, the config the command reads says
 // `host-config`.
-const root = mkdtempSync('/tmp/ccmux-peer-read-');
+const root = mkdtempSync('/tmp/stitchmux-peer-read-');
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 const config = join(root, 'machine.json');
 // `claudeBin` because the machine config requires one and a CI runner has no provider installed.
@@ -21,7 +21,7 @@ const cli = join(import.meta.dir, '..', 'src', 'cli.ts');
 
 async function peerRead(...args: string[]) {
   const child = Bun.spawn([process.execPath, cli, '_peer-read', ...args], {
-    env: { ...process.env, CCMUX_CONFIG: config },
+    env: { ...process.env, STITCHMUX_CONFIG: config },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -139,7 +139,7 @@ test('warm peer reads retain every session field without running tmux and relay 
     const direct = await client['external.list']();
     const worker = Bun.spawn(
       [process.execPath, 'src/commands/controlExternalEntry.ts', 'control', 'external', '--json'],
-      { env: { ...process.env, CCMUX_CONFIG: config }, stdout: 'pipe', stderr: 'pipe' },
+      { env: { ...process.env, STITCHMUX_CONFIG: config }, stdout: 'pipe', stderr: 'pipe' },
     );
     const text = await new Response(worker.stdout).text();
     const external = { code: await worker.exited, answer: JSON.parse(text) };
@@ -159,7 +159,7 @@ test('warm peer reads retain every session field without running tmux and relay 
 test('external relay preserves the full CLI refusal on a dead socket and rejects unowned arguments', async () => {
   const invoke = async (entry: string, args: string[]) => {
     const child = Bun.spawn([process.execPath, entry, ...args], {
-      env: { ...process.env, CCMUX_CONFIG: config },
+      env: { ...process.env, STITCHMUX_CONFIG: config },
       stdout: 'pipe',
       stderr: 'pipe',
     });

@@ -67,7 +67,7 @@ interface Store {
 }
 
 function store(): Store {
-  const root = mkdtempSync(join(tmpdir(), 'ccmux-corpus-'));
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-corpus-'));
   const projectsDir = join(root, 'claude', 'projects');
   const codexSessionsDir = join(root, 'codex', 'sessions');
   const projectDir = join(root, 'work', 'api');
@@ -311,7 +311,7 @@ test('role, date, directory and provider each narrow the answer', async () => {
 });
 
 test('a line number is the one the transcript index gives the same record', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-corpus-lines-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-corpus-lines-'));
   try {
     const path = join(dir, `${FINISHED}.jsonl`);
     // A multi-byte character and a line that arrives in several reads: it has to be put back
@@ -386,7 +386,10 @@ test('shares are sized by bytes and never outnumber the work', () => {
 
 test('a machine that did not answer is named, and is not a clean "nothing found"', async () => {
   await withStore(async (s) => {
-    const m = { ...s.m, fleet: { 'host-a': 'self', 'host-b': 'ccmux-test-unreachable.invalid' } };
+    const m = {
+      ...s.m,
+      fleet: { 'host-a': 'self', 'host-b': 'stitchmux-test-unreachable.invalid' },
+    };
     const opts = parseSearch(['no-such-phrase-anywhere', '--machine', 'host-b,host-c']);
     const result = await searchFleet(m, opts, async () => ({
       code: 255,
@@ -401,7 +404,7 @@ test('a machine that did not answer is named, and is not a clean "nothing found"
       {
         machine: 'host-c',
         status: 'unavailable',
-        error: 'not a machine of this fleet (see ccmux fleet)',
+        error: 'not a machine of this fleet (see stitchmux fleet)',
       },
     ]);
     const text = searchLines(result, Date.now(), false).join('\n');
@@ -433,7 +436,7 @@ test('a peer is asked for the same search on its own store, and an older peer is
         delivery: 'received',
       };
     });
-    expect(asked[0]?.slice(0, 4)).toEqual(['ccmux', 'search', '--local', '--json']);
+    expect(asked[0]?.slice(0, 4)).toEqual(['stitchmux', 'search', '--local', '--json']);
     expect(asked[0]?.slice(-2)).toEqual(['--', 'Heron|kestrel']);
     expect(asked[0]).toContain('--case-sensitive');
     expect(asked[0]?.[asked[0].indexOf('--since') + 1]).toBe(new Date(2026, 6, 1).toISOString());
@@ -501,7 +504,7 @@ test('the matches are printed under the address that opens them', async () => {
     expect(lines[1]).toMatch(/^ {2}SEQ +AGE +ROLE +KIND +MATCH$/);
     expect(lines[2]).toMatch(/^ {2}1 +1d +user +message +the heron migration plan$/);
     expect(lines.at(-1)).toBe(
-      `SEQ is a line: ccmux transcript 'external:claude:host-a#${FINISHED}' --json --before 7 --limit 20 reads what led up to it`,
+      `SEQ is a line: stitchmux transcript 'external:claude:host-a#${FINISHED}' --json --before 7 --limit 20 reads what led up to it`,
     );
   });
 });
@@ -540,7 +543,7 @@ test('with nothing said about role or kind, a search is for what the two sides s
 });
 
 test('without a pattern the answer is an outline: each request and the last answer to it', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-corpus-outline-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-corpus-outline-'));
   try {
     const path = join(dir, `${FINISHED}.jsonl`);
     const text = (value: string) => [{ type: 'text', text: value }];
@@ -722,7 +725,7 @@ test("a conversation in another profile's store is found and opened by the same 
 });
 
 test('a message sent while the agent was working is the user speaking, at the time it was sent', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ccmux-corpus-queued-'));
+  const dir = mkdtempSync(join(tmpdir(), 'stitchmux-corpus-queued-'));
   try {
     const path = join(dir, `${FINISHED}.jsonl`);
     const text = (value: string) => [{ type: 'text', text: value }];
@@ -817,7 +820,7 @@ test('a message sent while the agent was working is the user speaking, at the ti
       [6, 'user'],
       [7, 'assistant'],
     ]);
-    // `ccmux transcript` reads through the same parser: the same two lines, the same role and time.
+    // `stitchmux transcript` reads through the same parser: the same two lines, the same role and time.
     const read = readTranscriptFile(path, getProvider('claude'), { tail: 100 });
     expect(
       read.messages

@@ -20,8 +20,8 @@ provider-default behavior is unchanged.
 
 # Provider authority and turn admission
 
-Before every managed turn it starts, CCMux calls the installed App Server's `collaborationMode/list`. It must
-find the configured mode, and the loaded thread must report a model. CCMux uses the provider preset's
+Before every managed turn it starts, Stitchmux calls the installed App Server's `collaborationMode/list`. It must
+find the configured mode, and the loaded thread must report a model. Stitchmux uses the provider preset's
 reasoning effort, preserves the loaded thread model regardless of the preset's model, and sends
 `developer_instructions: null`, preserving the provider's own
 built-in instructions. It does not copy, synthesize or persist prompt text.
@@ -33,7 +33,7 @@ generic `COLLABORATION_MODE_UNAVAILABLE`; exact cause stays in the owner log. No
 request or indeterminate accepted turn is created.
 
 An attached native TUI remains a separate human control surface. Turns submitted directly there
-use its explicit interactive collaboration selector rather than the control policy. CCMux does not
+use its explicit interactive collaboration selector rather than the control policy. Stitchmux does not
 race that selector with background `thread/settings/update` calls.
 
 # One input protocol

@@ -2,8 +2,9 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { MachineConfigSchema } from '../src/config/machineSchema.ts';
-import { APP_BUNDLE, LOG_FILE } from '../src/config/paths.ts';
+import { APP_BUNDLE } from '../src/config/paths.ts';
 import { autoUpdateOnce, releaseSettled } from '../src/release/update.ts';
+import { LOG_FILE } from '../src/util/log.ts';
 
 const MINUTE = 60_000;
 const NOW = Date.parse('2026-01-01T12:00:00.000Z');
@@ -40,14 +41,14 @@ function feed(ageMs: number) {
     port: 0,
     fetch(request) {
       const { pathname, origin } = new URL(request.url);
-      if (pathname === '/ccmux.js') {
+      if (pathname === '/stitchmux.js') {
         seen.bundle += 1;
         return new Response('not a bundle');
       }
       return Response.json({
         version: '999.0.0',
         sha256: 'a'.repeat(64),
-        url: `${origin}/ccmux.js`,
+        url: `${origin}/stitchmux.js`,
         releasedAt: new Date(Date.now() - ageMs).toISOString(),
       });
     },
@@ -61,8 +62,8 @@ const machine = (releaseUrl: string) =>
     tmuxBin: '/bin/true',
     projectsDir: '/tmp',
     rcPrefix: 'host-a',
-    stateDir: process.env.CCMUX_STATE_DIR,
-    bootLabel: 'ccmux-test.service',
+    stateDir: process.env.STITCHMUX_STATE_DIR,
+    bootLabel: 'stitchmux-test.service',
     releaseUrl,
     autoUpdate: true,
   });

@@ -5,7 +5,7 @@ import { controlContract } from '../schema/contract.ts';
 
 /** The descriptor and the implementation are compiled from the same contract and release. */
 export const wireControlDescriptor = serviceDescriptorFromContract(controlContract, {
-  service: 'ccmux.control',
+  service: 'stitchmux.control',
   revision: VERSION,
   maxInflight: 8,
   responseBytes: Object.fromEntries(

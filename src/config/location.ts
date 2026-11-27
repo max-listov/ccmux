@@ -1,4 +1,4 @@
-import { HOME } from '../util/env.ts';
+import { HOME } from '../util/home.ts';
 import { MachineConfigSchema } from './machineSchema.ts';
 import { STATE_DIR } from './paths.ts';
 
@@ -6,13 +6,13 @@ const LocationSchema = MachineConfigSchema.pick({ stateDir: true, rcPrefix: true
 
 /** Owner configuration selection, shared by the daemon and native monitoring reader. */
 export function machineConfigPath(): string {
-  return process.env.CCMUX_CONFIG ?? `${HOME}/.config/ccmux/machine.json`;
+  return process.env.STITCHMUX_CONFIG ?? `${HOME}/.config/stitchmux/machine.json`;
 }
 
 export function resolveMonitoringLocation(raw: unknown): { stateDir: string; rcPrefix: string } {
   const file = LocationSchema.parse(raw);
   return {
     stateDir: file.stateDir ?? STATE_DIR,
-    rcPrefix: process.env.CCMUX_RC_PREFIX || file.rcPrefix || 'local',
+    rcPrefix: process.env.STITCHMUX_RC_PREFIX || file.rcPrefix || 'local',
   };
 }

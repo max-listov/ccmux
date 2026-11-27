@@ -14,12 +14,12 @@ External inventory is a local, read-only projection. Its identity is
 metadata and never selectors. Managed rows use a separate plane key including provider, host,
 registry name and UUID, so equal cwd or UUID fixtures remain independently selectable.
 
-Pass an exact external `key` to `ccmux transcript <key> --json` for stored Codex/Claude
+Pass an exact external `key` to `stitchmux transcript <key> --json` for stored Codex/Claude
 records, including native roles, IDs and timestamps. The key carries its routing host;
 this read never becomes a write address or acquires a provider writer. Read errors distinguish
 missing files, inaccessible storage and unsupported providers. See [transcript selection](transcript-adapters.md#exact-external-selection).
 
-`ccmux external` reads that projection explicitly; `ccmux external --json` returns its strict
+`stitchmux external` reads that projection explicitly; `stitchmux external --json` returns its strict
 machine-readable shape. The command is local because the rows are observations, not lifecycle
 promises. `list` and `fleet` remain managed-only, and so does the TUI's first frame: the inventory
 is a second, far longer list of threads nobody is steering, so it is something a person asks for
@@ -67,7 +67,7 @@ the application bundle. A standalone bundled App Server is still an App Server r
 
 ## External turn observation
 
-`ccmux external --json` adds a required `turnState` object to every row. The human command has a
+`stitchmux external --json` adds a required `turnState` object to every row. The human command has a
 separate `TURN` column. Writer locks, PID, origin, last message and activity age never select its
 value. The synchronous ownership lookup used by adoption remains independent and starts with
 `unknown/not-observed`; it does not wait for execution observation or change admission rights.
@@ -151,7 +151,7 @@ the existing inventory's ownership/metadata discovery cost is unchanged. This is
 replacement for the full external inventory scan, nor permission for consumers to parse transcripts.
 
 For resident consumers, use the separate [external native status contract](external-resident-status.md):
-`ccmux control external --json`, `ccmux control watch-external`, or `ccmux/control-client`'s
+`stitchmux control external --json`, `stitchmux control watch-external`, or `stitchmux/control-client`'s
 `external`/`watchExternal`. One existing-daemon connection publishes prepared facts independently
 of this slower discovery inventory. The native runtime-access prerequisite is unchanged.
 
@@ -165,7 +165,7 @@ archived afterward. A separate 100-read native benchmark made exactly 100 list r
 To repeat the live acceptance check against the **installed release**, run
 `bun scripts/verify-external-turns.ts --run` on a host with an accessible App Server. This opt-in
 script creates two new read-only test threads, verifies both exact identities through installed
-`ccmux external --json`, observes working/idle under one shared writer, interrupts only its own
+`stitchmux external --json`, observes working/idle under one shared writer, interrupts only its own
 test turn, reconnects, and archives both test threads. It fails if the installed version differs
 from the checkout or any lifecycle/ownership check fails. It never resumes an existing thread.
 
@@ -184,7 +184,7 @@ managed chat/router capability.
 
 Takeover is unavailable for Desktop, editor, App Server, shared, self and unknown runtimes. They
 must release the thread at the source. A dedicated CLI requires a second explicit confirmation;
-ccmux revalidates UUID, PID, start time and process group immediately before SIGTERM. PID reuse,
+stitchmux revalidates UUID, PID, start time and process group immediately before SIGTERM. PID reuse,
 changed evidence or a respawn aborts or loses the subsequent atomic admission without registration.
 
 External inventory itself remains read-only and does not grant takeover. A narrower capability now

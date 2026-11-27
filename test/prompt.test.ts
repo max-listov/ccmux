@@ -3,11 +3,11 @@ import { buildPrompt } from '../src/agent/prompt/managePrompt.ts';
 import { pickInvocation } from '../src/util/env.ts';
 
 test('buildPrompt teaches the bare shim invocation (no absolute-path crutch)', () => {
-  const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
+  const p = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux');
   expect(p).toContain("session 'cc-x'");
-  expect(p).toContain('ccmux list');
-  expect(p).toContain('ccmux new NAME DIR'); // agents need the create trigger
-  expect(p).toContain('ccmux restart NAME');
+  expect(p).toContain('stitchmux list');
+  expect(p).toContain('stitchmux new NAME DIR'); // agents need the create trigger
+  expect(p).toContain('stitchmux restart NAME');
   expect(p).toContain('use msg for any hand-off');
   expect(p).toContain('this session: cc-x');
   expect(p).toContain('print command output verbatim');
@@ -17,30 +17,41 @@ test('buildPrompt teaches the bare shim invocation (no absolute-path crutch)', (
 });
 
 test('buildPrompt falls back cleanly to an absolute invocation when given one', () => {
-  const p = buildPrompt('cc-x', '/abs/bun /abs/cli.js', 'claude', 'ccmux');
+  const p = buildPrompt('cc-x', '/abs/bun /abs/cli.js', 'claude', 'stitchmux');
   expect(p).toContain('/abs/bun /abs/cli.js list');
   expect(p).toContain('/abs/bun /abs/cli.js restart NAME');
 });
 
 test('buildPrompt pins provider/source/address and keeps Desktop native routing separate', () => {
-  const p = buildPrompt('agent-a', 'ccmux', 'codex', 'ccmux', false, [], undefined, 'host-a');
-  expect(p).toContain('provider=codex, source=ccmux, plane=ccmux-managed, address=host-a:agent-a');
+  const p = buildPrompt(
+    'agent-a',
+    'stitchmux',
+    'codex',
+    'stitchmux',
+    false,
+    [],
+    undefined,
+    'host-a',
+  );
+  expect(p).toContain(
+    'provider=codex, source=stitchmux, plane=stitchmux-managed, address=host-a:agent-a',
+  );
   expect(p).toContain('desktop-native plane');
   expect(p).toContain('does not mirror or duplicate');
-  expect(p).toContain('Never choose between Desktop-native and ccmux-managed by cwd/project');
+  expect(p).toContain('Never choose between Desktop-native and stitchmux-managed by cwd/project');
 });
 
 test('pickInvocation prefers the bare shim, else the absolute invocation', () => {
-  expect(pickInvocation(true, '/abs/bun /abs/cli.js')).toBe('ccmux');
+  expect(pickInvocation(true, '/abs/bun /abs/cli.js')).toBe('stitchmux');
   expect(pickInvocation(false, '/abs/bun /abs/cli.js')).toBe('/abs/bun /abs/cli.js');
 });
 
 test('buildPrompt adds inter-agent chat framing ONLY when chat is enabled', () => {
-  const off = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
+  const off = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux');
   expect(off).not.toContain('Inter-agent chat');
-  const on = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux', true);
+  const on = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux', true);
   expect(on).toContain('Inter-agent chat (enabled for this session)');
-  expect(on).toContain('ccmux msg <session>');
+  expect(on).toContain('stitchmux msg <session>');
   expect(on).toContain('PEER AGENT'); // framed as a peer, not the human
   expect(on).toContain('do NOT blindly'); // apply own judgment, not blind obedience
 });
@@ -50,33 +61,33 @@ test('every hand-off example is ADDRESSED — the omission that made the first v
   // cross-machine hand-off required the agent to join two halves itself. It didn't: 1m51s after
   // restarting onto that prompt it wrapped everything in ssh instead. Addresses now appear in the
   // examples themselves.
-  const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
-  expect(p).toContain('ccmux msg <machine>:<session>');
-  expect(p).toContain('ccmux wait <machine>:<session>');
-  expect(p).toContain('ccmux transcript <machine>:<session> --last-message');
-  expect(p).toContain('ccmux fleet'); // how to discover an address in the first place
+  const p = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux');
+  expect(p).toContain('stitchmux msg <machine>:<session>');
+  expect(p).toContain('stitchmux wait <machine>:<session>');
+  expect(p).toContain('stitchmux transcript <machine>:<session> --last-message');
+  expect(p).toContain('stitchmux fleet'); // how to discover an address in the first place
 });
 
 test('searching a peer is one command, and the prompt says it is not how to take a result', () => {
   // Without this line an agent looking for a place in a peer's history dumped a JSON window of a
   // guessed size and wrote its own regex parser over it.
-  const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
-  expect(p).toContain("ccmux transcript <machine>:<session> --grep '<regex>'");
+  const p = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux');
+  expect(p).toContain("stitchmux transcript <machine>:<session> --grep '<regex>'");
   expect(p).toContain('It finds a place, not a result');
 });
 
 test('the ssh wrapper is banned WITH its consequence, not just forbidden', () => {
-  const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
+  const p = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux');
   expect(p).toContain('NEVER wrap these in ssh');
   // The reason is the load-bearing part: an unattributed message reads as the human.
   expect(p).toContain('as coming from the human, not from you');
 });
 
 test('the polling ban names the SUBSTANCE, not one shape of loop', () => {
-  // The previous wording banned "sleep + ccmux list + grep/awk". The agent polled a DATABASE, which
+  // The previous wording banned "sleep + stitchmux list + grep/awk". The agent polled a DATABASE, which
   // that sentence does not cover — so it read the ban literally and complied with it while doing
   // exactly the forbidden thing.
-  const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux');
+  const p = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux');
   expect(p).toContain('by polling ANYTHING');
   for (const shape of ['not the pane', 'not a database', 'not files', 'not sizes'])
     expect(p).toContain(shape);
@@ -84,7 +95,7 @@ test('the polling ban names the SUBSTANCE, not one shape of loop', () => {
 });
 
 test('the recipe lives in ONE place — the chat block no longer restates it', () => {
-  const p = buildPrompt('cc-x', 'ccmux', 'claude', 'ccmux', true);
+  const p = buildPrompt('cc-x', 'stitchmux', 'claude', 'stitchmux', true);
   expect(p).not.toContain('Handing work off:');
-  expect(p.split('ccmux wait <machine>:<session>')).toHaveLength(2); // stated exactly once
+  expect(p.split('stitchmux wait <machine>:<session>')).toHaveLength(2); // stated exactly once
 });

@@ -16,7 +16,7 @@ working directory, permissions and chat capability; sharing a process across dif
 configured sessions would leak process-level configuration between them.
 
 The provider listens on a private, instance-and-session-specific Unix socket. The native TUI
-attaches with `resume --remote` to the exact UUID. Detaching a terminal or restarting the CCMux
+attaches with `resume --remote` to the exact UUID. Detaching a terminal or restarting the Stitchmux
 daemon does not restart this writer. A provider restart resumes the same persisted UUID; failed
 or mismatched admission blocks the session rather than creating a replacement conversation.
 
@@ -37,13 +37,13 @@ The existing immutable chat ledger and exact provider/machine/session identity r
 coordination boundary. Native `turn/start` carries the immutable message ID. Intent is durable
 before submission; acceptance, turn start, completion and interruption are distinct facts.
 An ambiguous submission is reconciled by exact persisted provider evidence, not blindly retried.
-CCMux serializes delivery and gates the attached CLI's input while checking its composer.
+Stitchmux serializes delivery and gates the attached CLI's input while checking its composer.
 `canAcceptDirectInput` describes provider admission policy, not client typing or a blank composer.
 
 # Boundaries
 
 Happy and CodexMonitor are references for snapshot/event reconciliation and native protocol
-handling. CCMux does not install them, copy their replacement inference harness, operate their
+handling. Stitchmux does not install them, copy their replacement inference harness, operate their
 relay or import their accounts. Authentication stays with the installed native Codex binary.
 
 Existing Desktop-owned threads are not adopted or resumed by this mode. History visibility in

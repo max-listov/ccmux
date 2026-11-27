@@ -1,6 +1,6 @@
 ---
 title: Managed Codex lifecycle
-description: Transactional first launch, authoritative thread binding, restart and self-heal for ccmux-managed Codex TUI sessions
+description: Transactional first launch, authoritative thread binding, restart and self-heal for stitchmux-managed Codex TUI sessions
 type: architecture
 status: active
 created: 2026-08-10
@@ -10,7 +10,7 @@ updated: 2026-10-24 13:39 +07:00
 # Managed Codex lifecycle
 
 Codex chooses the thread UUID when an ordinary TUI starts; it has no public `--session-id` flag.
-ccmux therefore separates launch correlation from ready session identity instead of storing a fake
+stitchmux therefore separates launch correlation from ready session identity instead of storing a fake
 UUID in `sessions.jsonl`.
 
 ## State and sources of truth
@@ -19,11 +19,11 @@ UUID in `sessions.jsonl`.
 |---|---|---|---|
 | pending | `pending-sessions.json` | One fresh Codex launch owns a unique generation and marker. | No |
 | ready | `sessions.jsonl` plus a transient `promoted` journal row in `pending-sessions.json` | The row contains the real rollout UUID and is the canonical managed peer. | Yes |
-| blocked | `lifecycle-blocks/<name>.json` | A terminal resume/admission/history error requires an explicit start/restart, or an update of ccmux: the block records the version that wrote it. | Yes, as `blocked` |
+| blocked | `lifecycle-blocks/<name>.json` | A terminal resume/admission/history error requires an explicit start/restart, or an update of stitchmux: the block records the version that wrote it. | Yes, as `blocked` |
 
 ### Blocks and updates
 
-A block is final for the version of ccmux that wrote it and for newer ones (`version` in the block
+A block is final for the version of stitchmux that wrote it and for newer ones (`version` in the block
 file). An older version may have judged the session by a rule that has since been fixed, and a fix
 that ships must not leave sessions stopped by the rule it replaced. The heal therefore removes a block written by an older version (or by one
 before blocks carried a version) once and starts the session under the code installed now; when that
@@ -36,7 +36,7 @@ session under the installed code on its next heal pass (`ensureInterval`, 30 s b
 newer version than the daemon's stays, so a daemon that lags behind the installed bundle cannot undo
 the newer code's refusal in a loop. The hand-over also applies to an agent that exited fast. It closes the session's other windows (the
 session is taken down whole) and takes up to one heal pass, where a relaunch inside the pane took
-seconds. A block written by a newer version stays after a rollback until `ccmux start` clears it. A supervisor run from sources (`.ts` entry) never
+seconds. A block written by a newer version stays after a rollback until `stitchmux start` clears it. A supervisor run from sources (`.ts` entry) never
 leaves, and a bundle that is missing at that instant counts as unchanged.
 
 The pending generation is never a conversation UUID. `sessions.jsonl` contains ready identities
@@ -46,9 +46,9 @@ only, so chat, transcript, list, and fleet code cannot accidentally address a bo
 
 1. CLI or TUI validates provider config before writing state. The Codex binary must be executable,
    and the configured rollout root must exist and be readable/writable.
-2. ccmux reserves one pending generation under the cross-process session-registry lock.
+2. stitchmux reserves one pending generation under the cross-process session-registry lock.
 3. A dedicated tmux pane runs `_bootstrap <generation>` and starts exactly one fresh ordinary Codex
-   TUI. `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=ccmux_<generation>` makes Codex persist the launch marker
+   TUI. `CODEX_INTERNAL_ORIGINATOR_OVERRIDE=stitchmux_<generation>` makes Codex persist the launch marker
    in the first `session_meta` record.
 4. Bootstrap scans only for that exact marker. cwd, mtime, source kind, model, and recency are never
    selectors. Zero matches continue until `codexCorrelationTimeoutMs` (30 seconds by default);
@@ -64,7 +64,7 @@ only, so chat, transcript, list, and fleet code cannot accidentally address a bo
 
 Native App Server creation uses the same bounded correlation budget with a different provider
 boundary. `thread/start` supplies the UUID, but the rollout is not readable until its first
-newline-terminated `session_meta` record is committed. CCMux waits for that exact UUID and record
+newline-terminated `session_meta` record is committed. Stitchmux waits for that exact UUID and record
 before issuing the initialization turn. An empty, partial, malformed or mismatched rollout remains
 pending only until the existing correlation deadline; it is never promoted or replaced by a second
 writer.

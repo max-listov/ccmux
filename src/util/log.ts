@@ -5,12 +5,13 @@
 //
 // Levels: debug < info < warn < error. Threshold defaults to "info"; long-lived processes
 // (daemon, _run) raise/lower it from machine.json `logLevel` — live, no restart needed.
-// Rotation: size-based at write time, ccmux.log → .1 → .2 (≈5MB × 3 ≈ 15MB cap) — fixed
+// Rotation: size-based at write time, stitchmux.log → .1 → .2 (≈5MB × 3 ≈ 15MB cap) — fixed
 // sane bounds, intentionally NOT config (a runaway log should never eat a server disk).
 
 import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { createBoundedLogger } from 'stitchkit/observability';
-import { LOG_FILE, STATE_DIR } from '../config/paths.ts';
+import { STATE_DIR } from '../config/paths.ts';
 import { IS_DEV } from './env.ts';
 import { rotateBySize } from './jsonl.ts';
 
@@ -21,7 +22,19 @@ const SEVERITY: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 
 const MAX_BYTES = 5 * 1024 * 1024;
 const KEEP = 2; // rotated generations: .1, .2
 
-export { LOG_FILE };
+/**
+ * The machine's own record, and a run from a source checkout does not belong in it.
+ *
+ * State stays shared — a checkout run must see the real registry, sessions and locks — but the LOG
+ * is a narrative of what happened on this machine, and a test suite is a different narrative.
+ * Measured on a developer's machine: 16_199 of 18_724 records came from checkout runs, 86.5% of the
+ * file. Every question answered from that log was answered about the wrong population, and counting
+ * anything in it silently mixed a suite's fixtures with the daemon's history — the same defect as
+ * any other quantity that answers about something other than what was asked.
+ *
+ * `stitchmux logs` and `doctor` resolve this same constant, so a checkout reads what a checkout wrote.
+ */
+export const LOG_FILE = join(STATE_DIR, IS_DEV ? 'stitchmux.dev.log' : 'stitchmux.log');
 
 let stderrOn = true; // daemon/CLI mirror to stderr; the TUI turns this off
 let threshold: LogLevel = 'info';

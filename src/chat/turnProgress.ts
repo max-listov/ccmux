@@ -29,7 +29,7 @@ import { assistantEndedCurrentTurn, type TurnState, turnState } from './turnStat
  * session four minutes into a tool call writes nothing while its pane is plainly working, so the
  * supervisor's record of when each pane was last seen working counts as activity beside the
  * transcript's own mtime. Without it, one look at the pane in the gap between a tool finishing and
- * its result being written reads as a turn nobody is coming back to — and `ccmux wait`, which is a
+ * its result being written reads as a turn nobody is coming back to — and `stitchmux wait`, which is a
  * fresh process with no memory of its own, would answer "done" about a session mid-work.
  */
 export function readTurnState(

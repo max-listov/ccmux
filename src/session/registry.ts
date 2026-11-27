@@ -230,7 +230,7 @@ export async function backfillRegistrationGenerations(m: MachineConfig): Promise
 }
 
 /** Enable/disable ROUTER mode on a session: add/remove the "router" prompt module, and — since a
- *  router drives ccmux chat (`msg`/`inbox`) — also enable chat when turning it on (leaving chat as-is
+ *  router drives stitchmux chat (`msg`/`inbox`) — also enable chat when turning it on (leaving chat as-is
  *  when turning off). Launch-time, like the other prompt-affecting fields: applies on next restart.
  *  Returns false if the name wasn't present. */
 export async function setSessionRouter(

@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { readJsonFileSync } from 'stitchkit/files';
 import type { MachineConfig } from '../types.ts';
-import { HOME, PLATFORM } from '../util/env.ts';
 import { FileSnapshot } from '../util/fileSnapshot.ts';
+import { HOME, PLATFORM } from '../util/home.ts';
 import { producerMetrics } from '../util/producerMetrics.ts';
 import { machineConfigPath, resolveMonitoringLocation } from './location.ts';
 import { MachineConfigSchema } from './machineSchema.ts';
@@ -27,7 +27,7 @@ function resolveDefaults(platform: NodeJS.Platform): Record<string, unknown> {
     ensureInterval: 30,
     oomScoreAdj: -300,
     permissionMode: 'auto',
-    bootLabel: mac ? 'com.ccmux.daemon' : 'ccmux.service',
+    bootLabel: mac ? 'com.stitchmux.daemon' : 'stitchmux.service',
     extraFlags: [],
   };
 }

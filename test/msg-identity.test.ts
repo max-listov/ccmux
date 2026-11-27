@@ -18,7 +18,7 @@ const RECEIVE_FIXTURE = join(import.meta.dir, 'fixtures', 'receive-chat.ts');
 const MSG_FIXTURE = join(import.meta.dir, 'fixtures', 'msg.ts');
 
 function setup() {
-  const stateDir = mkdtempSync(join(tmpdir(), 'ccmux-identity-'));
+  const stateDir = mkdtempSync(join(tmpdir(), 'stitchmux-identity-'));
   const configPath = join(stateDir, 'machine.json');
   const machine = MachineConfigSchema.parse({
     claudeBin: '/bin/claude',
@@ -28,7 +28,7 @@ function setup() {
     codexSessionsDir: '/tmp/codex',
     rcPrefix: 'host-a',
     stateDir,
-    bootLabel: 'ccmux-test.service',
+    bootLabel: 'stitchmux-test.service',
   });
   writeFileSync(configPath, JSON.stringify(machine));
   const target = makeSession({
@@ -47,8 +47,8 @@ async function receive(
 ): Promise<{ code: number; output: string }> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = configPath;
-  delete env.CCMUX_SESSION;
+  env.STITCHMUX_CONFIG = configPath;
+  delete env.STITCHMUX_SESSION;
   const processHandle = Bun.spawn(['bun', RECEIVE_FIXTURE], {
     env,
     stdin: new Response(envelope),
@@ -68,16 +68,16 @@ async function send(
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = configPath;
-  delete env.CCMUX_SESSION;
-  delete env.CCMUX_CHAT_CREDENTIAL;
+  env.STITCHMUX_CONFIG = configPath;
+  delete env.STITCHMUX_SESSION;
+  delete env.STITCHMUX_CHAT_CREDENTIAL;
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
   delete env.CODEX_APP_TOOLS_PIPE_PATH;
   delete env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE;
   Object.assign(env, senderEnv);
-  if (transport === null) delete env.CCMUX_TEST_REMOTE_TRANSPORT;
-  else env.CCMUX_TEST_REMOTE_TRANSPORT = transport;
+  if (transport === null) delete env.STITCHMUX_TEST_REMOTE_TRANSPORT;
+  else env.STITCHMUX_TEST_REMOTE_TRANSPORT = transport;
   const processHandle = Bun.spawn(
     ['bun', MSG_FIXTURE, '--communication-authorization', communicationAuthorizationFile, ...args],
     {
@@ -99,10 +99,10 @@ test('an anonymous msg invoked under ssh is delivered but loudly loses its retur
   const result = await send(configPath, 'ssh', ['worker', 'hello']);
 
   expect(result.code).toBe(0);
-  expect(result.stdout).toContain('sent ccmux/cli@host-a');
+  expect(result.stdout).toContain('sent stitchmux/cli@host-a');
   expect(result.stderr).toContain('warning');
   expect(result.stderr).toContain('cannot reply to the originating agent');
-  expect(result.stderr).toContain('instead of invoking remote ccmux msg through ssh');
+  expect(result.stderr).toContain('instead of invoking remote stitchmux msg through ssh');
   expect(loadLedger(machine)).toHaveLength(1);
   expect(loadLedger(machine)[0]?.from).toEqual(cliPrincipal('host-a'));
 }, 20_000);
@@ -112,10 +112,10 @@ test('an anonymous msg invoked through a remote adapter gets the same return-add
   const result = await send(configPath, 'remote', ['worker', 'hello']);
 
   expect(result.code).toBe(0);
-  expect(result.stdout).toContain('sent ccmux/cli@host-a');
+  expect(result.stdout).toContain('sent stitchmux/cli@host-a');
   expect(result.stderr).toContain('warning');
   expect(result.stderr).toContain(
-    'instead of invoking remote ccmux msg through the remote adapter',
+    'instead of invoking remote stitchmux msg through the Stitchwire agent',
   );
   expect(loadLedger(machine)).toHaveLength(1);
 });
@@ -265,8 +265,8 @@ test('receiver rejects a local invocation even when it self-sets SSH_CONNECTION'
   const { configPath, machine, target } = setup();
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
-  env.CCMUX_CONFIG = configPath;
-  delete env.CCMUX_SESSION;
+  env.STITCHMUX_CONFIG = configPath;
+  delete env.STITCHMUX_SESSION;
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
   delete env.SSH_CONNECTION;
@@ -339,7 +339,7 @@ test('Desktop-native coordination does not write the managed v2 ledger', () => {
     makeChatMessage({
       from: makeCli('host-a'),
       to: { kind: 'owner' },
-      body: 'only ccmux producers write here',
+      body: 'only stitchmux producers write here',
     }),
   );
   expect(loadLedger(machine)).toHaveLength(1);

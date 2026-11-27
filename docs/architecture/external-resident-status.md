@@ -9,7 +9,7 @@ updated: 2026-09-09 13:21 +0700
 
 # Authority and coverage
 
-The existing CCMux daemon observes the configured Codex App Server through its existing Unix
+The existing Stitchmux daemon observes the configured Codex App Server through its existing Unix
 control socket. It never starts the provider, resumes a thread, answers an approval, or imports
 external identities into the managed registry. The observer is independent of the full external
 inventory's process/lock/transcript discovery. Multiple consumers share one connection and one
@@ -85,11 +85,11 @@ requests are refused. There is no TCP listener, caller-selected provider path or
 
 | Client / CLI | HTTP | Result |
 | --- | --- | --- |
-| `external()` / `ccmux control external --json` | GET `/control/external` | Prepared external snapshot |
+| `external()` / `stitchmux control external --json` | GET `/control/external` | Prepared external snapshot |
 | `watchExternal()` | GET `/control-events/external` | Full baselines and subsequent absolute snapshots |
-| `ccmux control watch-external` | the same stream, encoded | Frames: a snapshot, then renewals until the content changes |
+| `stitchmux control watch-external` | the same stream, encoded | Frames: a snapshot, then renewals until the content changes |
 
-`ccmux external --json` remains the explicit, slower discovery/adoption inventory. It is not the
+`stitchmux external --json` remains the explicit, slower discovery/adoption inventory. It is not the
 resident API and should not be run on each status tick. Managed `list`/`watch`, registry and fleet
 counts retain their previous meanings.
 
@@ -101,7 +101,7 @@ This is read-only identity, not a managed-session command target.
 
 ## The CLI stream carries change
 
-`ccmux control watch-external` writes one frame per line (`src/external/residentFrames.ts`). The
+`stitchmux control watch-external` writes one frame per line (`src/external/residentFrames.ts`). The
 first frame, and every frame whose content changed, is `{ frame: 'snapshot', snapshot }`. Between
 changes the observer republishes only to move the clock, and the frame is
 `{ frame: 'renewal', generation, after, sequence, observedAt, expiresAt }`: the reader holding the
@@ -110,7 +110,7 @@ snapshot's own, to the new ones. A quiet machine therefore sends a few hundred b
 instead of the whole snapshot.
 
 The encoder emits a renewal only when `applyExternalStatusFrame` — the reader's own function,
-exported from `ccmux/control-client` with `ExternalStatusFrameSchema` — reproduces the new snapshot
+exported from `stitchmux/control-client` with `ExternalStatusFrameSchema` — reproduces the new snapshot
 exactly; otherwise it sends the snapshot. A renewal whose `generation` or `after` does not match
 what the reader holds returns null: the reader missed a line and reopens, and a reopened stream
 starts with a snapshot. The in-process `watchExternal()` stream keeps absolute snapshots.
@@ -141,7 +141,7 @@ The release's self-contained `control-client.js` includes this API and Zod schem
 SHA-256 asset before loading. A Bun consumer can also import the package entry point:
 
 ```ts
-import { createControlClient, currentExternalStatus } from 'ccmux/control-client';
+import { createControlClient, currentExternalStatus } from '@stitchmux/client';
 
 const client = createControlClient();
 const stop = new AbortController();
@@ -159,12 +159,12 @@ try {
 ```
 
 Fleet consumers keep independent connections and freshness state per host. Over configured SSH,
-run one long-lived `ccmux control watch-external` per host, rather than one CLI per refresh:
+run one long-lived `stitchmux control watch-external` per host, rather than one CLI per refresh:
 
 ```sh
 ssh -o BatchMode=yes -o ControlMaster=no -o ConnectTimeout=10 \
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3 host-a \
-  'ccmux control watch-external'
+  'stitchmux control watch-external'
 ```
 
 Validate each line with `ExternalStatusFrameSchema` and fold it with `applyExternalStatusFrame`, reopening on null; cap an unfinished line at 1 MiB + 1 byte,
@@ -178,7 +178,7 @@ hosts. Aggregation and rendering are consumer responsibilities.
 
 # Verification and rollback
 
-`test/external-resident.test.ts` uses real native WebSocket and CCMux HTTP Unix sockets. It covers
+`test/external-resident.test.ts` uses real native WebSocket and Stitchmux HTTP Unix sockets. It covers
 100 concurrent reads without source work, event/list races, approval/input states, unknown flags,
 expiry, absent/invalid sources, cancelled passes, changed roots, reconnect generations, independent
 hosts, bounded/coalescing queues and real daemon restart while the provider survives.

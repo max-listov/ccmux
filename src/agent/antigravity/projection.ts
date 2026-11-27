@@ -14,7 +14,7 @@ import type { MachineConfig, Session } from '../../types.ts';
 import { VERSION } from '../../util/version.ts';
 
 /**
- * Pure projection of `stitchkit/agent-executor/acp` deltas onto CCMux's unified native snapshot
+ * Pure projection of `stitchkit/agent-executor/acp` deltas onto Stitchmux's unified native snapshot
  * and bounded live content buffer.
  */
 export class AntigravityProjection {

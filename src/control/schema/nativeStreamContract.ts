@@ -3,9 +3,9 @@ import { managedPeerKey } from '../../chat/identity.ts';
 import { ManagedPeerSchema } from '../../chat/identitySchema.ts';
 import { ControlNativeCursorSchema, ControlNativeSnapshotSchema } from './native.ts';
 
-export const CCMUX_NATIVE_STREAM_PROFILE = 'ccmux-native';
-export const CCMUX_NATIVE_STREAM_COMMAND = 'control-native-stream';
-export const CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES = 4096;
+export const STITCHMUX_NATIVE_STREAM_PROFILE = 'stitchmux-native';
+export const STITCHMUX_NATIVE_STREAM_COMMAND = 'control-native-stream';
+export const STITCHMUX_NATIVE_STREAM_MAX_INPUT_BYTES = 4096;
 /**
  * What the remote transport under this stream actually allows, and it is TWO ceilings on two quantities.
  *
@@ -24,9 +24,9 @@ export const CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES = 4096;
  * that value. Then the refusal is the transport's and names its own ceiling; there is no honest way
  * to pre-empt a limit we cannot read.
  */
-export const CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES = 32 * 1024;
-export const CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES = CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES * 2;
-export const CCMUX_NATIVE_STREAM_HEARTBEAT_MS = 2000;
+export const STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES = 32 * 1024;
+export const STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES = STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES * 2;
+export const STITCHMUX_NATIVE_STREAM_HEARTBEAT_MS = 2000;
 
 const ControlNativeStreamCursorPayloadSchema = z
   .object({
@@ -92,7 +92,7 @@ export const ControlNativeStreamFrameSchema = z
   // received the same line and died again — a retry loop that cannot converge, because a retry
   // makes nothing smaller. A conversation showed as queued for twenty-two hours behind it.
   .refine(
-    (frame) => controlNativeStreamFrameBytes(frame) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
+    (frame) => controlNativeStreamFrameBytes(frame) <= STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES,
     'native stream frame exceeds the line budget',
   )
   // And the payload separately, because the transport checks it separately. Two ceilings on two
@@ -100,7 +100,7 @@ export const ControlNativeStreamFrameSchema = z
   // check measures, and a frame can satisfy either one alone.
   .refine(
     (frame) =>
-      new TextEncoder().encode(frame.data).byteLength <= CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
+      new TextEncoder().encode(frame.data).byteLength <= STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES,
     'native stream payload exceeds the chunk budget',
   );
 
@@ -140,7 +140,7 @@ export class NativeStreamFrameUnrepresentable extends Error {
   readonly bytes: number;
   constructor(bytes: number) {
     super(
-      `native stream frame is ${bytes} bytes with nothing left to shed, over the ${CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES}-byte budget`,
+      `native stream frame is ${bytes} bytes with nothing left to shed, over the ${STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES}-byte budget`,
     );
     this.name = 'NativeStreamFrameUnrepresentable';
     this.bytes = bytes;
@@ -196,8 +196,8 @@ export function controlNativeStreamFrame(snapshot: unknown) {
   ) => {
     const candidate = build(records, baseline, pending);
     return (
-      controlNativeStreamFrameBytes(candidate) <= CCMUX_NATIVE_STREAM_MAX_FRAME_BYTES &&
-      new TextEncoder().encode(candidate.data).byteLength <= CCMUX_NATIVE_STREAM_MAX_CHUNK_BYTES
+      controlNativeStreamFrameBytes(candidate) <= STITCHMUX_NATIVE_STREAM_MAX_FRAME_BYTES &&
+      new TextEncoder().encode(candidate.data).byteLength <= STITCHMUX_NATIVE_STREAM_MAX_CHUNK_BYTES
     );
   };
   const keepNewest = <T>(items: readonly T[], count: number) => items.slice(items.length - count);
@@ -262,13 +262,16 @@ export function controlNativeStreamFrame(snapshot: unknown) {
   return ControlNativeStreamFrameSchema.parse(build(records, baseline, pending));
 }
 
-export const CcmuxNativeStreamProfileSchema = z
+export const StitchmuxNativeStreamProfileSchema = z
   .object({
     bin: z.string().startsWith('/'),
-    argv: z.tuple([z.literal(CCMUX_NATIVE_STREAM_COMMAND)]),
+    argv: z.tuple([z.literal(STITCHMUX_NATIVE_STREAM_COMMAND)]),
     callerArgs: z.object({ mode: z.literal('none') }).strict(),
     stdin: z
-      .object({ mode: z.literal('text'), maxBytes: z.literal(CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES) })
+      .object({
+        mode: z.literal('text'),
+        maxBytes: z.literal(STITCHMUX_NATIVE_STREAM_MAX_INPUT_BYTES),
+      })
       .strict(),
     env: z.object({ inherit: z.tuple([]), set: z.object({}).strict() }).strict(),
     timeoutMs: z.literal(900_000),
@@ -278,15 +281,15 @@ export const CcmuxNativeStreamProfileSchema = z
   })
   .strict();
 
-/** Operator supplies only the standard installed `ccmux` executable path. The installer publishes
+/** Operator supplies only the standard installed `stitchmux` executable path. The installer publishes
  * a PATH-independent POSIX shim with absolute runtime and bundle paths, so the fixed empty
  * environment is executable without weakening the profile. argv and framing remain owner-fixed. */
-export function createCcmuxNativeStreamProfile(bin: string) {
-  return CcmuxNativeStreamProfileSchema.parse({
+export function createStitchmuxNativeStreamProfile(bin: string) {
+  return StitchmuxNativeStreamProfileSchema.parse({
     bin,
-    argv: [CCMUX_NATIVE_STREAM_COMMAND],
+    argv: [STITCHMUX_NATIVE_STREAM_COMMAND],
     callerArgs: { mode: 'none' },
-    stdin: { mode: 'text', maxBytes: CCMUX_NATIVE_STREAM_MAX_INPUT_BYTES },
+    stdin: { mode: 'text', maxBytes: STITCHMUX_NATIVE_STREAM_MAX_INPUT_BYTES },
     env: { inherit: [], set: {} },
     timeoutMs: 900_000,
     maxBytes: 64 * 1024 * 1024,

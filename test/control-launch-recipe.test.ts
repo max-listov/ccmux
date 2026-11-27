@@ -80,7 +80,7 @@ test('public create accepts only a safe immutable recipe reference', () => {
 });
 
 test('host recipe reuses flags and envFile without putting secret values in public metadata or argv', () => {
-  const root = mkdtempSync('/tmp/ccmux-recipe-resolve-');
+  const root = mkdtempSync('/tmp/stitchmux-recipe-resolve-');
   try {
     const f = configured(root);
     const resolved = resolveControlLaunchRecipe(
@@ -125,7 +125,7 @@ test('host recipe reuses flags and envFile without putting secret values in publ
 });
 
 test('recipe create is one-writer idempotent and rejects unknown, removed or changed definitions before spawn', async () => {
-  const root = mkdtempSync('/tmp/ccmux-recipe-create-');
+  const root = mkdtempSync('/tmp/stitchmux-recipe-create-');
   try {
     const f = configured(root);
     const requestId = crypto.randomUUID();
@@ -218,7 +218,7 @@ test('recipe create is one-writer idempotent and rejects unknown, removed or cha
       code: 'LAUNCH_RECIPE_UNAVAILABLE',
       message: 'Launch recipe is unavailable',
     });
-    const unknownRoot = mkdtempSync('/tmp/ccmux-recipe-unknown-');
+    const unknownRoot = mkdtempSync('/tmp/stitchmux-recipe-unknown-');
     try {
       const unknown = makeMachine({ ...removed, stateDir: join(unknownRoot, 'state') });
       await expect(
@@ -234,7 +234,7 @@ test('recipe create is one-writer idempotent and rejects unknown, removed or cha
       rmSync(unknownRoot, { recursive: true, force: true });
     }
 
-    const unavailableRoot = mkdtempSync('/tmp/ccmux-recipe-unavailable-');
+    const unavailableRoot = mkdtempSync('/tmp/stitchmux-recipe-unavailable-');
     try {
       const unavailable = makeMachine({
         ...f.machine,
@@ -262,7 +262,7 @@ test('recipe create is one-writer idempotent and rejects unknown, removed or cha
 });
 
 test('status and native projections expose the same safe recipe metadata only', async () => {
-  const root = mkdtempSync('/tmp/ccmux-recipe-projection-');
+  const root = mkdtempSync('/tmp/stitchmux-recipe-projection-');
   try {
     const f = configured(root);
     const resolved = resolveControlLaunchRecipe(

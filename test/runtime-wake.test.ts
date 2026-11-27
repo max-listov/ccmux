@@ -17,7 +17,7 @@ class TestWatcher extends EventEmitter {
 }
 
 test('an unchanged directory stamp cannot hide a newly created input after a lost event', () => {
-  const root = mkdtempSync('/tmp/ccmux-wake-parent-clock-');
+  const root = mkdtempSync('/tmp/stitchmux-wake-parent-clock-');
   const path = join(root, 'input.json');
   const parent = lstatSync(root, { bigint: true });
   const original = fs.lstatSync;
@@ -39,7 +39,7 @@ test('an unchanged directory stamp cannot hide a newly created input after a los
 });
 
 test('a coalesced event naming a lock still detects the changed command', async () => {
-  const root = mkdtempSync('/tmp/ccmux-wake-coalesced-');
+  const root = mkdtempSync('/tmp/stitchmux-wake-coalesced-');
   const command = join(root, 'input.json');
   let event: WatchListener<string> = () => {
     throw new Error('watcher not registered');
@@ -76,7 +76,7 @@ test('wake retains changes during work and cancellation releases an idle owner',
 });
 
 test('atomic command replacement wakes before reconciliation; producer outputs do not', async () => {
-  const root = mkdtempSync('/tmp/ccmux-wake-');
+  const root = mkdtempSync('/tmp/stitchmux-wake-');
   const command = join(root, 'input.json');
   const abort = new AbortController();
   const wake = new RuntimeWake([command], abort.signal);
@@ -109,7 +109,7 @@ test('atomic command replacement wakes before reconciliation; producer outputs d
 
 test('missing watcher still reconciles and cannot strand commands', async () => {
   const wake = new RuntimeWake(
-    ['/nonexistent/ccmux-wake/input.json'],
+    ['/nonexistent/stitchmux-wake/input.json'],
     new AbortController().signal,
   );
   try {
@@ -132,7 +132,7 @@ test('a second waiting owner is refused without stranding the first', async () =
 });
 
 test('lost events are found by exact input stamps and stable input does not request another pass', () => {
-  const root = mkdtempSync('/tmp/ccmux-wake-lost-');
+  const root = mkdtempSync('/tmp/stitchmux-wake-lost-');
   const path = join(root, 'input.json');
   const wake = new RuntimeWake([path], new AbortController().signal, () => new TestWatcher());
   try {
@@ -151,7 +151,7 @@ test('lost events are found by exact input stamps and stable input does not requ
 });
 
 test('central reconciliation wakes an idle context owner when every watcher event is lost', async () => {
-  const root = mkdtempSync('/tmp/ccmux-wake-fallback-');
+  const root = mkdtempSync('/tmp/stitchmux-wake-fallback-');
   const path = join(root, 'context.json');
   const wake = new RuntimeWake([path], new AbortController().signal, () => new TestWatcher(), 20);
   try {
@@ -167,7 +167,7 @@ test('central reconciliation wakes an idle context owner when every watcher even
 });
 
 test('unchanged parent never hides an in-place input edit alongside cached absent files', () => {
-  const root = mkdtempSync('/tmp/ccmux-wake-in-place-');
+  const root = mkdtempSync('/tmp/stitchmux-wake-in-place-');
   const path = join(root, 'input.json');
   writeFileSync(path, '{}');
   const wake = new RuntimeWake(

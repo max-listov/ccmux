@@ -1,6 +1,6 @@
 ---
 title: Codex остаётся per-session process TUI provider
-description: ccmux сохраняет обычный Codex TUI как production driver; внешний App Server остаётся versioned research boundary до production support
+description: stitchmux сохраняет обычный Codex TUI как production driver; внешний App Server остаётся versioned research boundary до production support
 type: decision
 status: active
 created: 2026-08-10
@@ -14,7 +14,7 @@ tags: [codex, app-server, tui, ownership, persistence]
 
 Codex CLI `0.147.0` содержит публичный App Server protocol, remote TUI и persistent thread store.
 При этом обычный Codex TUI уже использует App Server **in-process**: вопрос не в том, использовать ли
-эти внутренние primitives, а в том, должен ли ccmux заменить один интерактивный CLI-процесс на
+эти внутренние primitives, а в том, должен ли stitchmux заменить один интерактивный CLI-процесс на
 внешний App Server с отдельным remote TUI и control client.
 
 Официальная документация описывает App Server как JSON-RPC integration surface. CLI помечает
@@ -30,7 +30,7 @@ runtime calls дополнительно требуют `initialize.capabilities
 - Обычный TUI запускает `InProcessAppServerClient`; remote TUI подключает
   `RemoteAppServerClient`. Это один protocol с разной process boundary.
 - `thread/list` без `sourceKinds` возвращает только interactive origins (`cli`, `vscode`). Source
-  описывает происхождение thread, но не provider ccmux, не владельца writer и не адрес получателя.
+  описывает происхождение thread, но не provider stitchmux, не владельца writer и не адрес получателя.
 - `thread.status` и `thread/loaded/list` отражают память конкретного App Server. `notLoaded` не
   означает, что внешний writer отсутствует.
 - Writer защищён cross-process file lock. Изолированный probe подтвердил: второй App Server видит
@@ -52,22 +52,22 @@ runtime calls дополнительно требуют `initialize.capabilities
 
 ## Решение
 
-Production driver остаётся **одним обычным Codex TUI process на одну managed ccmux session** под
-tmux. ccmux не запускает shared/per-session external App Server, не подключает второй mutating
+Production driver остаётся **одним обычным Codex TUI process на одну managed stitchmux session** под
+tmux. stitchmux не запускает shared/per-session external App Server, не подключает второй mutating
 protocol client и не использует внутренний Desktop control socket.
 
 Источники правды разделены так:
 
 | Сущность | Источник правды |
 |---|---|
-| ccmux identity | registry record: `agent + machine + session name` |
+| stitchmux identity | registry record: `agent + machine + session name` |
 | Codex thread identity | однозначно reconciled Codex UUID в registry; placeholder до reconcile не является identity |
 | Беседа, модель, токены, activity | persisted Codex rollout JSONL через provider adapter |
 | Live TUI state | pane scanner конкретного managed process |
 | Writer ownership | atomic admission при фактическом `thread/resume`; discovery — только advisory |
 | Runtime source (`cli`, `vscode`, `appServer`) | origin metadata, не routing key и не ownership proof |
 
-Process TUI сохраняет per-session environment (`CCMUX_SESSION`), flags, cwd, root guard,
+Process TUI сохраняет per-session environment (`STITCHMUX_SESSION`), flags, cwd, root guard,
 management prompt, subscription auth, slash commands и существующий daemon→tmux self-heal без
 нового failure domain.
 
@@ -86,16 +86,16 @@ ownership transition: cross-process lock делает его атомарным.
 ### Один внешний App Server на машину
 
 Отклонён: общий failure domain и Code Mode host, а process-level env не доказывает отдельную
-`CCMUX_SESSION` identity для каждого thread. Один restart затрагивает весь Codex-флот машины.
+`STITCHMUX_SESSION` identity для каждого thread. Один restart затрагивает весь Codex-флот машины.
 
 ### Один внешний App Server на session + remote TUI
 
 Отклонён сейчас: сохраняет изоляцию, но добавляет sidecar/process supervision и reconnect protocol
-на production-unsupported boundary без необходимой ccmux функции, которой нет у обычного TUI.
+на production-unsupported boundary без необходимой stitchmux функции, которой нет у обычного TUI.
 
 ### Hybrid: обычный TUI writer + внешний mutating client
 
-Отклонён: два mutation-capable владельца нарушают single-writer invariant. ccmux read-only observer
+Отклонён: два mutation-capable владельца нарушают single-writer invariant. stitchmux read-only observer
 не должен вызывать `thread/resume`, `turn/start`, `turn/steer` или `thread/inject_items`.
 
 ## Последствия

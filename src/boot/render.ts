@@ -5,20 +5,20 @@ import * as serviceHost from 'stitchkit/service-host';
 // never a hardcoded bun path), so compiled-binary and dev/bundle installs both work.
 
 export type BootContext = {
-  selfArgv: readonly string[]; // e.g. ["/usr/local/bin/ccmux"] or ["/root/.bun/bin/bun","/opt/ccmux/ccmux.js"]
-  label: string; // systemd: "ccmux.service"; launchd: "com.ccmux.daemon"
+  selfArgv: readonly string[]; // e.g. ["/usr/local/bin/stitchmux"] or ["/root/.bun/bin/bun","/opt/stitchmux/stitchmux.js"]
+  label: string; // systemd: "stitchmux.service"; launchd: "com.stitchmux.daemon"
   user: string;
   home: string;
   configPath: string;
   pathEnv: string;
   logDir: string; // launchd stdout/stderr files live here
-  /** macOS signed app-bundle launcher (`~/Applications/ccmux.app/Contents/MacOS/ccmux-launcher`).
+  /** macOS signed app-bundle launcher (`~/Applications/stitchmux.app/Contents/MacOS/stitchmux-launcher`).
    *  Prepended ONLY inside `renderLaunchdPlist`, never in `bootArgv()` or the PATH shim. */
   macosLauncher?: string;
 };
 
 export type TmuxBootContext = {
-  label: string; // launchd: "com.ccmux.tmux"
+  label: string; // launchd: "com.stitchmux.tmux"
   tmuxBin: string;
   tmuxSocket?: string;
   home: string;
@@ -37,7 +37,7 @@ export function renderSystemdUnit(ctx: BootContext): string {
   // - `killMode: 'process'` + `oomPolicy: 'continue'`: live tmux sessions and spawned agents outlive
   //   daemon restarts and survive an OOM kill of a child process in the unit's cgroup.
   return serviceHost.renderSystemdServiceUnit({
-    description: 'ccmux — persistent self-healing Claude Code tmux fleet',
+    description: 'stitchmux — persistent self-healing Claude Code tmux fleet',
     scope: 'system',
     after: ['network-online.target'],
     wants: ['network-online.target'],
@@ -46,7 +46,7 @@ export function renderSystemdUnit(ctx: BootContext): string {
     user: ctx.user,
     environment: {
       HOME: ctx.home,
-      CCMUX_CONFIG: ctx.configPath,
+      STITCHMUX_CONFIG: ctx.configPath,
       PATH: ctx.pathEnv,
     },
     execStart: [...ctx.selfArgv, 'daemon'],
@@ -67,7 +67,7 @@ function launchAgent(
   return serviceHost.renderLaunchdPlist({
     label: ctx.label,
     programArguments,
-    environmentVariables: { HOME: ctx.home, CCMUX_CONFIG: ctx.configPath, PATH: ctx.pathEnv },
+    environmentVariables: { HOME: ctx.home, STITCHMUX_CONFIG: ctx.configPath, PATH: ctx.pathEnv },
     standardOutPath: `${ctx.logDir}/${ctx.label}.log`,
     standardErrorPath: `${ctx.logDir}/${ctx.label}.err`,
     processType: 'Background',

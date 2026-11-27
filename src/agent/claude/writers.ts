@@ -7,7 +7,7 @@
 // binary path (proven on the 2026-06-10 fork incident):
 //   …/claude.app/Contents/MacOS/claude  → the Claude DESKTOP app driving the convo
 //   …/Helpers/disclaimer …              → the desktop LAUNCHER (same logical writer — dedup)
-//   anything else (~/.local/bin/claude) → a CLI instance (terminal / tmux / ccmux itself)
+//   anything else (~/.local/bin/claude) → a CLI instance (terminal / tmux / stitchmux itself)
 // "self" = the writer is an ANCESTOR of this very process — adopting/killing it would be
 // sawing the branch we sit on.
 
@@ -60,7 +60,7 @@ export function resumingUuids(procs: PsProc[]): Set<string> {
 const RUN_SUPERVISOR_RE = /(?:^|\s)_run\s/;
 
 /** Like resumingUuids, but only uuids carried by at least one process OUTSIDE any
- *  ccmux-managed pane. A pane's own process tree — the `ccmux _run` supervisor and
+ *  stitchmux-managed pane. A pane's own process tree — the `stitchmux _run` supervisor and
  *  everything under it (the claude TUI, plus Claude's transient `daemon run`/bg-pty-host
  *  children it spawns) — never counts as external: those uuids are the managed session
  *  itself, or its fork in transit, which follow-the-fork re-pins within one daemon tick.
