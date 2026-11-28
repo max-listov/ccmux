@@ -2,7 +2,7 @@ import { afterAll, beforeEach, expect, test } from 'bun:test';
 import { generateKeyPairSync } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { CliBuildManifestSchema } from 'stitchkit/cli';
+import { CliBuildManifestSchema, verifyCliManifest } from 'stitchkit/cli';
 import { APP_BUNDLE } from '../src/config/paths.ts';
 import { releaseDocument } from '../src/release/document.ts';
 import { RELEASE_KEYS, releaseTrust } from '../src/release/trust.ts';
@@ -146,11 +146,25 @@ test('a rollback refuses a backup that is not the one it recorded', async () => 
   expect(readFileSync(APP_BUNDLE, 'utf8')).toBe(bundleFor('1.1.0'));
 });
 
-test('compiled release trust includes both legacy and stitchmux rotation Ed25519 keys', () => {
+test('compiled release trust accepts stitchmux-2026-11 and rejects the retired legacy key id', () => {
   const keys = releaseTrust(m).keys;
-  for (const id of ['ccmux-2026-09', 'stitchmux-2026-11']) {
-    const material = keys[id];
-    expect(material).toBe(RELEASE_KEYS[id]);
-    expect(Buffer.from(material ?? '', 'base64').length).toBe(32);
-  }
+  const active = keys['stitchmux-2026-11'];
+  expect(active).toBe(RELEASE_KEYS['stitchmux-2026-11']);
+  expect(Buffer.from(active ?? '', 'base64').length).toBe(32);
+  expect(Object.keys(keys)).toEqual(['stitchmux-2026-11']);
+
+  const retiredManifest = CliBuildManifestSchema.parse(
+    releaseDocument({
+      version: '1.1.0',
+      notes: 'retired key check',
+      url: `${server.url}retired.js`,
+      bundle: Buffer.from(bundleFor('1.1.0')),
+      commit: '1'.repeat(40),
+      builtAt: '2026-11-28T00:00:00.000Z',
+      signing: { keyId: ['cc', 'mux-2026-09'].join(''), privateKey: theirs.privateKey },
+    }),
+  );
+  expect(verifyCliManifest(retiredManifest, retiredManifest.signature, releaseTrust(m))).toBe(
+    'unknown-key',
+  );
 });

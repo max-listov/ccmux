@@ -6,6 +6,8 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+- Release signing rotated to `stitchmux-2026-11` (`STITCHMUX_RELEASE_SIGNING_KEY`); manifests signed with the retired `ccmux-2026-09` key id are now rejected.
+
 ## [0.97.0] — 2026-11-28
 
 Browser-safe @stitchmux/client root, Antigravity accounts with tiers and named multi-profile support, drop-in migration fix, and stitchmux-2026-11 release signing trust.

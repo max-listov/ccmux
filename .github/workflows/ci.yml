@@ -183,9 +183,7 @@ jobs:
         if: steps.fresh.outputs.exists != 'true'
         env:
           # Signs release.json; a release the fleet cannot verify is not published (src/release/trust.ts).
-          # The repository secret keeps the name it was created under; its value cannot be read back
-          # to store it under another, and the key id it signs with is fixed (`src/release/trust.ts`).
-          STITCHMUX_RELEASE_SIGNING_KEY: ${{ secrets.CCMUX_RELEASE_SIGNING_KEY }}
+          STITCHMUX_RELEASE_SIGNING_KEY: ${{ secrets.STITCHMUX_RELEASE_SIGNING_KEY }}
         run: bun scripts/release.ts --ci-assets "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/stitchmux.js"
 
       - name: Test the exact SDK candidate

@@ -10,10 +10,7 @@ import type { MachineConfig } from '../types.ts';
  * whose bundle names the new one.
  */
 export const RELEASE_KEYS: Readonly<Record<string, string>> = {
-  // The id is this key's own name, given when it was made; installed releases trust it by this id,
-  // so a product rename does not rename it. Kept until every fleet node trusts `stitchmux-2026-11`.
-  'ccmux-2026-09': 'vZlOErFFvHVcdGlWU7TiCKsmJCL/c+2AcJcwQYqTwFg=',
-  // Rotation target key; signing switches here in the next release once fleet nodes carry this key.
+  // Compiled Ed25519 trust root for signed Stitchmux releases (`STITCHMUX_RELEASE_SIGNING_KEY`).
   'stitchmux-2026-11': '+gAgiNI/IuwkchEFCcyvQQf8RnNUWccBUyIebaJEu9E=',
 };
 

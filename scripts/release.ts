@@ -54,7 +54,7 @@ function sha256(path: string): { bytes: number; hex: string } {
 }
 
 /** The key id the CI secret `STITCHMUX_RELEASE_SIGNING_KEY` belongs to — see `src/release/trust.ts`. */
-const SIGNING_KEY_ID = 'ccmux-2026-09';
+const SIGNING_KEY_ID = 'stitchmux-2026-11';
 
 /** `release.json` for the bundle just built: a signed build manifest, plus the flat fields earlier
  *  stitchmux and the install script read (`src/release/document.ts`). Unsigned only when no key is
