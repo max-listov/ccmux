@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.97.0] — 2026-11-28
+
+Browser-safe @stitchmux/client root, Antigravity accounts with tiers and named multi-profile support, drop-in migration fix, and stitchmux-2026-11 release signing trust.
+
 - Release verification trusts the new `stitchmux-2026-11` Ed25519 signing key alongside `ccmux-2026-09`, preparing zero-downtime key rotation off the previous key id on the next release.
 
 - `@stitchmux/client` loads in a browser: its root holds the contract, the schemas, `refusals` and `createInjectedControlClient` and runs no Node code when imported. `createControlClient` for the local daemon socket moved to `@stitchmux/client/socket`. Before, importing any schema from the root failed in a browser with `SharedArrayBuffer is not defined`.
