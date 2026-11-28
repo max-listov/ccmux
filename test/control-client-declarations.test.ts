@@ -32,7 +32,16 @@ test('an unresolved relative type prevents publication', async () => {
   const root = await mkdtemp(join(tmpdir(), 'stitchmux-missing-types-'));
   try {
     await Bun.write(join(root, 'client.d.ts'), "export type { Unknown } from './missing.ts';");
-    await expect(normalizeClientDeclarations(root)).rejects.toThrow(
+    // Await directly before asserting: Bun 1.4.5's `expect(p).rejects` stalls child-process JSON-RPC
+    // settlement when `tsgo` is spawned inside the rejected promise.
+    let failure: unknown;
+    try {
+      await normalizeClientDeclarations(root);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure instanceof Error ? failure.message : '').toContain(
       'Unresolved declaration import',
     );
   } finally {

@@ -4,6 +4,41 @@ import { dirname, join, resolve } from 'node:path';
 import { isStringLiteral } from 'typescript/unstable/ast/is';
 import { API } from 'typescript/unstable/async';
 
+interface SpawnedProcess {
+  exitCode: number | null;
+  signalCode: NodeJS.Signals | null;
+  once(event: 'exit', listener: () => void): unknown;
+}
+
+/** TypeScript 7's async API closes stdin and clears its reference without waiting for `tsgo` to
+ *  exit, leaving a briefly live child that `bun test` reaps between tests. Wait for that exit. */
+function spawnedServerProcess(api: API): SpawnedProcess | null {
+  const client: unknown = Reflect.get(api, 'client');
+  if (typeof client !== 'object' || client === null) return null;
+  const proc: unknown = Reflect.get(client, 'process');
+  if (
+    typeof proc === 'object' &&
+    proc !== null &&
+    'exitCode' in proc &&
+    'signalCode' in proc &&
+    'once' in proc &&
+    typeof proc.once === 'function'
+  )
+    return proc as SpawnedProcess;
+  return null;
+}
+
+async function waitForExit(proc: SpawnedProcess | null): Promise<void> {
+  if (proc === null || proc.exitCode !== null || proc.signalCode !== null) return;
+  await new Promise<void>((resolveExit) => {
+    const timer = setTimeout(resolveExit, 2_000);
+    proc.once('exit', () => {
+      clearTimeout(timer);
+      resolveExit();
+    });
+  });
+}
+
 /** Resolve against the emitted declarations. A bundled module can have types without a JS file of its own. */
 function esmSpecifier(file: string, specifier: string): string {
   if (!/^\.\.?\//.test(specifier) || specifier.endsWith('.json')) return specifier;
@@ -51,7 +86,9 @@ export async function normalizeClientDeclarations(directory: string): Promise<vo
       if (text !== source.text) await writeFile(file, text);
     }
   } finally {
+    const child = spawnedServerProcess(api);
     await api.close();
+    await waitForExit(child);
     await rm(config);
   }
 }
