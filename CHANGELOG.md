@@ -6,6 +6,10 @@ the GitHub Release with that section as the notes.
 
 ## [Unreleased]
 
+## [0.97.1] — 2026-11-28
+
+Rotate release signing key and CI secret to stitchmux-2026-11 and retire ccmux-2026-09.
+
 - Release signing rotated to `stitchmux-2026-11` (`STITCHMUX_RELEASE_SIGNING_KEY`); manifests signed with the retired `ccmux-2026-09` key id are now rejected.
 
 ## [0.97.0] — 2026-11-28
