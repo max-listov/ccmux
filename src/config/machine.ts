@@ -54,7 +54,7 @@ function detectClaudeBin(): string {
  * different machine than the daemon did: a runtime the daemon launched becomes "not configured" for
  * that one reader. The install locations come after PATH so that PATH still wins when it has one.
  */
-function detectOptionalBin(name: 'codex' | 'opencode' | 'agy'): string | undefined {
+function detectOptionalBin(name: 'codex' | 'opencode'): string | undefined {
   return firstExisting([
     Bun.which(name),
     `${HOME}/.bun/bin/${name}`,
@@ -62,6 +62,25 @@ function detectOptionalBin(name: 'codex' | 'opencode' | 'agy'): string | undefin
     `${HOME}/.opencode/bin/${name}`,
     `/opt/homebrew/bin/${name}`,
     `/usr/local/bin/${name}`,
+  ]);
+}
+
+/**
+ * Antigravity's native self-updating installer places `agy` in `~/.local/bin/agy`, while Homebrew
+ * casks lag behind and often sit ahead of `~/.local/bin` in launchd PATH. Check user-local native
+ * installs before PATH so hosts with both binaries do not pin an older Homebrew wrapper.
+ */
+export function detectAntigravityBin(
+  home = HOME,
+  which: (name: string) => string | null = (name) => Bun.which(name),
+): string | undefined {
+  return firstExisting([
+    `${home}/.local/bin/agy`,
+    `${home}/.gemini/bin/agy`,
+    which('agy'),
+    `${home}/.bun/bin/agy`,
+    '/opt/homebrew/bin/agy',
+    '/usr/local/bin/agy',
   ]);
 }
 
@@ -103,7 +122,7 @@ export function loadMachineConfig(): MachineConfig {
     if (opencode) merged.opencodeBin = opencode;
   }
   if (merged.antigravityBin === undefined) {
-    const agy = detectOptionalBin('agy');
+    const agy = detectAntigravityBin();
     if (agy) merged.antigravityBin = agy;
   }
   if (merged.tmuxBin === undefined) merged.tmuxBin = detectTmuxBin();

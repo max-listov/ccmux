@@ -1,9 +1,14 @@
 import { loadMachineConfig } from '../config/machine.ts';
-import { fleetAccounts } from '../fleet/accounts.ts';
+import {
+  type AccountProfileInput,
+  fleetAccounts,
+  fleetMachineProfiles,
+} from '../fleet/accounts.ts';
 import { collectFleet, fleetView } from '../fleet/fleetList.ts';
 import { collectRows } from '../inventory/rows.ts';
 import { refreshQuota } from '../quota/refresh.ts';
-import { machineProfiles, type ProfileView } from '../quota/view.ts';
+import type { QuotaProvider } from '../quota/store.ts';
+import { machineProfiles } from '../quota/view.ts';
 import { loadSessions } from '../session/registry.ts';
 import { printLine } from '../util/stdout.ts';
 import { VERSION } from '../util/version.ts';
@@ -14,15 +19,15 @@ import { parseFlags } from './flags.ts';
 interface AccountProblem {
   machine: string;
   profile: string;
-  provider: 'claude' | 'codex';
+  provider: QuotaProvider;
   /** Why: the newest probe's error, or that nothing has asked yet. */
   reason: string;
 }
 
-function problemsOf(machine: string, views: readonly ProfileView[]): AccountProblem[] {
+function problemsOf(profiles: readonly AccountProfileInput[]): AccountProblem[] {
   const out: AccountProblem[] = [];
-  for (const view of views) {
-    if (view.account !== null && view.error === null) continue;
+  for (const { machine, view } of profiles) {
+    if (view.error === null && (view.account !== null || view.limits !== null)) continue;
     out.push({
       machine,
       profile: view.home ?? 'default',
@@ -40,17 +45,19 @@ function problemsOf(machine: string, views: readonly ProfileView[]): AccountProb
 /**
  * `stitchmux accounts` — every signed-in account in one answer.
  *
- * The same grouping `fleet` prints under its sessions, asked for on its own: Claude and Codex
- * accounts across the fleet, each with its plan windows, the source of every number and its age,
- * and the profiles on this machine that no session runs under. `--refresh` asks the vendors now.
+ * The same grouping `fleet` prints under its sessions, asked for on its own: Claude, Codex and
+ * Antigravity accounts across the fleet, each with its plan windows, the source of every number and
+ * its age, and the profiles on every machine that no session runs under. `--refresh` asks the
+ * vendors now.
  */
 export async function cmdAccounts(args: string[] = []): Promise<number> {
   const flags = parseFlags('accounts', args, [0, 0]);
   const m = loadMachineConfig();
   const sessions = loadSessions(m);
   if (flags.bool('refresh')) await refreshQuota(m, sessions, { force: true });
-  const profiles = machineProfiles(m, sessions);
-  const machines = flags.bool('local')
+  const localProfiles = machineProfiles(m, sessions);
+  const localOnly = flags.bool('local');
+  const machines = localOnly
     ? [
         {
           machine: m.rcPrefix,
@@ -63,12 +70,12 @@ export async function cmdAccounts(args: string[] = []): Promise<number> {
         },
       ]
     : fleetView(await collectFleet(m)).machines;
+  const profiles = localOnly
+    ? localProfiles
+    : fleetMachineProfiles(machines as Parameters<typeof fleetMachineProfiles>[0], localProfiles);
   const now = Date.now();
   const accounts = fleetAccounts(machines, now, profiles);
-  const problems = problemsOf(
-    m.rcPrefix,
-    profiles.map((p) => p.view),
-  );
+  const problems = problemsOf(profiles);
   if (flags.bool('json')) {
     await printLine(
       JSON.stringify({

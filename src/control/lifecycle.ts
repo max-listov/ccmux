@@ -1,6 +1,7 @@
 import { dirname } from 'node:path';
 import type { z } from 'zod';
 import { validateAntigravitySelection } from '../agent/antigravity/catalog.ts';
+import { selectAntigravityProfile } from '../agent/antigravity/namedProfiles.ts';
 import { selectClaudeProfile } from '../agent/claude/namedProfiles.ts';
 import { validateClaudeSelection } from '../agent/claude/native/catalog.ts';
 import { customModel, prepareCustomHost } from '../agent/custom/host.ts';
@@ -9,6 +10,10 @@ import { validateOpenCodeSelection } from '../agent/opencode/catalog.ts';
 import { inheritAttachmentPins } from '../attachments/pins.ts';
 import { managedPeer } from '../chat/identity.ts';
 import type { ManagedPeerSchema } from '../chat/identitySchema.ts';
+import {
+  isAntigravityProfileBinding,
+  isClaudeProfileBinding,
+} from '../config/antigravityProfileSchema.ts';
 import { resolveControlLaunchRecipe } from '../config/launchRecipes.ts';
 import { validateModelSelection } from '../config/modelSelection.ts';
 import { modelSelectionFlags } from '../config/modelSelectionFlags.ts';
@@ -157,17 +162,27 @@ export async function createControlSession(
   const profileName = input.profile ?? fork?.launch.profile?.name;
   if (priorCreate !== undefined && priorCreate.profile?.name !== profileName)
     throw refusals.errors.IDEMPOTENCY_CONFLICT({ message: 'Create request profile changed' });
-  if (profileName !== undefined && runtime !== 'claude')
-    throw refusals.errors.UNSUPPORTED({ message: 'Named profiles are available for Claude only' });
+  if (profileName !== undefined && runtime !== 'claude' && runtime !== 'antigravity')
+    throw refusals.errors.UNSUPPORTED({
+      message: 'Named profiles are available for Claude and Antigravity only',
+    });
   let profile = priorCreate?.profile ?? fork?.launch.profile;
   if (profileName !== undefined && profile === undefined) {
     try {
-      profile = selectClaudeProfile(m, runtime, profileName);
+      profile =
+        runtime === 'antigravity'
+          ? selectAntigravityProfile(m, profileName)
+          : selectClaudeProfile(m, runtime, profileName);
     } catch (error) {
-      await recordRuntimeDiagnostic(m, null, 'claude-profile-selection', error);
+      await recordRuntimeDiagnostic(
+        m,
+        null,
+        runtime === 'antigravity' ? 'antigravity-profile-selection' : 'claude-profile-selection',
+        error,
+      );
       // The cause is in the runtime diagnostic just recorded; the refusal names the code only.
       throw refusals.errors.PROFILE_UNAVAILABLE({
-        message: 'The selected Claude profile is unavailable on this host',
+        message: `The selected ${runtime === 'antigravity' ? 'Antigravity' : 'Claude'} profile is unavailable on this host`,
       });
     }
   }
@@ -200,9 +215,19 @@ export async function createControlSession(
       await validateOpenCodeSelection(m, workspace, modelSelection, signal);
     else if (runtime === 'codex')
       await validateSelection(m, resolved, workspace, modelSelection, signal);
-    else if (runtime === 'claude') validateClaudeSelection(m, modelSelection, profile);
+    else if (runtime === 'claude')
+      validateClaudeSelection(
+        m,
+        modelSelection,
+        isClaudeProfileBinding(profile) ? profile : undefined,
+      );
     else if (runtime === 'antigravity')
-      await validateAntigravitySelection(m, modelSelection, signal);
+      await validateAntigravitySelection(
+        m,
+        modelSelection,
+        signal,
+        isAntigravityProfileBinding(profile) ? profile : undefined,
+      );
   }
   privateRuntimeDirectory(dirname(storeLockPath(m)));
   return withLock(

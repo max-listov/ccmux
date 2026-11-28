@@ -114,8 +114,6 @@ export async function retirePreviousBootUnits(
     readonly run: (argv: string[]) => Promise<unknown>;
     readonly exists: (path: string) => boolean;
     readonly unlink: (path: string) => void;
-    /** Copy a directory and what is in it, keeping a target that already exists. */
-    readonly copyDir: (from: string, to: string) => void;
     readonly plistPath: (label: string) => string;
     readonly unitPath: (unit: string) => string;
   } = {
@@ -123,7 +121,6 @@ export async function retirePreviousBootUnits(
     run,
     exists: existsSync,
     unlink: unlinkSync,
-    copyDir: (from, to) => cpSync(from, to, { recursive: true, force: false }),
     plistPath: launchdPlistPath,
     unitPath: systemdUnitPath,
   },
@@ -147,11 +144,6 @@ export async function retirePreviousBootUnits(
     const daemon = PREVIOUS_BOOT_UNITS.systemdDaemon;
     const unit = deps.unitPath(daemon);
     if (m.bootLabel !== daemon && deps.exists(unit)) {
-      // The machine's own settings for the daemon — a fleet resource slice, memory ceiling or OOM
-      // score — live in the unit's drop-in directory. They belong to the daemon, not to its name.
-      const dropIns = `${unit}.d`;
-      const next = `${deps.unitPath(m.bootLabel)}.d`;
-      if (deps.exists(dropIns) && !deps.exists(next)) deps.copyDir(dropIns, next);
       await deps.run(['systemctl', 'disable', '--now', daemon]);
       deps.unlink(unit);
       await deps.run(['systemctl', 'daemon-reload']);
@@ -160,6 +152,39 @@ export async function retirePreviousBootUnits(
   }
   for (const unit of retired) console.log(`retired the previous release's boot unit ${unit}`);
   return retired;
+}
+
+/**
+ * Rename window, Linux: the machine's own settings for the daemon — a fleet resource slice, a memory
+ * ceiling, an OOM score — live in the previous unit's drop-in directory, and they belong to the
+ * daemon, not to its name. They are carried once the new unit is installed: installing refuses a
+ * unit that already has drop-ins it did not write (0.96.2 on a development host: the copy made
+ * before the install stopped it, and the machine ran without a daemon until it was moved aside).
+ * Then the unit restarts so its slice applies. REMOVE with `src/migration/renameFromCcmux.ts`.
+ */
+export async function carryPreviousDropIns(
+  m: MachineConfig,
+  deps: {
+    readonly run: (argv: string[]) => Promise<unknown>;
+    readonly exists: (path: string) => boolean;
+    readonly copyDir: (from: string, to: string) => void;
+    readonly unitPath: (unit: string) => string;
+  } = {
+    run,
+    exists: existsSync,
+    copyDir: (from, to) => cpSync(from, to, { recursive: true, force: false }),
+    unitPath: systemdUnitPath,
+  },
+): Promise<boolean> {
+  const previous = `${deps.unitPath(PREVIOUS_BOOT_UNITS.systemdDaemon)}.d`;
+  const next = `${deps.unitPath(m.bootLabel)}.d`;
+  if (m.bootLabel === PREVIOUS_BOOT_UNITS.systemdDaemon) return false;
+  if (!deps.exists(previous) || deps.exists(next)) return false;
+  deps.copyDir(previous, next);
+  await deps.run(['systemctl', 'daemon-reload']);
+  await deps.run(['systemctl', 'restart', m.bootLabel]);
+  console.log(`carried the previous unit's drop-ins to ${next} and restarted ${m.bootLabel}`);
+  return true;
 }
 
 export async function installBoot(
@@ -232,6 +257,7 @@ export async function installBoot(
       content: renderSystemdUnit(ctx),
     });
     console.log(`wrote ${unit} and enabled systemd ${m.bootLabel}`);
+    await carryPreviousDropIns(m);
   }
 }
 

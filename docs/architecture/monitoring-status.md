@@ -4,7 +4,7 @@ description: A bounded local snapshot from the daemon observation loop, with no 
 type: architecture
 status: active
 created: 2026-08-27
-updated: 2026-11-27 22:59 +08:00
+updated: 2026-11-28 07:32 +08:00
 ---
 
 # Monitoring status
@@ -243,18 +243,22 @@ falling back to an expensive scan. There is no implicit consumer-side fallback.
 ## Account quota: every signed-in account, from every source
 
 `stitchmux accounts [--json] [--refresh] [--local]` is the one request that answers "which accounts do we
-have and how full are they": every Claude and Codex account — those with sessions on any fleet
-machine, and the profiles on this machine that no session runs under — with the plan windows, where
-each number came from and how old it is. `fleet --json` carries the same `accounts[]`, and every
-session row (`list --json`, the fleet slice) carries its account's `account` and `planLimits`.
+have and how full are they": every Claude, Codex and Antigravity account — those with sessions on
+any fleet machine, and the signed-in profiles on this machine or on peers that no session runs
+under — with the plan windows, where each number came from and how old it is. `fleet --json` carries
+the same `accounts[]`, and every session row (`list --json`, the fleet slice) carries its account's
+`account` and `planLimits`.
 
 **Profiles.** A profile is a directory the vendor's program keeps a login in: a Claude config
-directory or a Codex home (see [the profile layer](launch-recipe.md)). They are found from the
-registered sessions (their declared env files), from the default profile, and from sibling
-directories in the home folder (`.claude-*`, `.codex-*`) that hold a login — so an account signed in
-by hand, with no session, is found too. The per-row view uses only what sessions name; the home-folder
-scan runs for `accounts`, `fleet` and the refresh, with the large login file cached by modification
-time.
+directory, a Codex home, or an Antigravity data directory (the default `antigravityDataDir` plus
+configured `antigravityProfiles`; see [the profile layer](launch-recipe.md)). They are found from
+the registered sessions (their declared env files or session profile bindings), from the default
+profiles, from configured `antigravityProfiles`, and from sibling directories in the home folder
+(`.claude-*`, `.codex-*`) that hold a login — so an account signed in by hand, with no session, is
+found too. The per-row view uses only what sessions name; the full scan runs for `accounts`,
+`fleet`, `_peer-read list` (`profiles[]`), and the refresh pass, with the large login file cached by
+modification time. A measured profile without an email label renders as its own machine-scoped row
+rather than being dropped or merged across machines.
 
 **Three sources, newest wins.** On a tie in time the runtime's own answer is preferred, then the status line, then the probe. The same account is measured by (1) a native runtime's own session
 (`source: native`), (2) the status line of any terminal session under the profile (`statusline`), and
@@ -286,6 +290,18 @@ every few minutes and is stale after five.
   ask the same profile together make one call (a lock per profile; the second reads the first's answer).
 - Codex: a short `codex app-server` with `CODEX_HOME` answers `account/read` (`email`, `planType`, `type`)
   and `account/rateLimits/read`, mapped by the same reader the native Codex runtime uses.
+- Antigravity: before running `agy -p "/usage" --output-format json`, a fail-closed preflight
+  verifies cached login state (a valid `<dataDir>/antigravity-oauth-token` file for file-backed
+  profiles, or `antigravityAuthPresent` plus metadata-only `security find-generic-password -s gemini
+  -a antigravity` without `-w`/`-g` on macOS default profiles) so an unsigned profile never launches
+  an interactive browser OAuth window. Responses must satisfy `status === "SUCCESS"`,
+  `num_turns === 0`, and `command.name === "usage"`; `remaining_fraction` is inverted into used
+  percentage, `reset_time <= 1970-01-01T00:00:00Z` normalizes to `resetsAt: null`, and buckets with
+  `disabled: true` are omitted. Account identity comes from `id_token_email` / `auth_method` in
+  `antigravity-oauth-token` (the `token` field is never read), or for Keychain-backed default
+  profiles from the ephemeral `--log-file` written by the `/usage` command itself (`applyAuthResult:
+  email=…`), with zero Keychain secret reads. Named profiles pass `--gemini_dir`/`--app_data_dir`
+  and `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1`.
 
 **Plan is the vendor's word or nothing.** `plan` is what the freshest measurement names (`max`, `pro`);
 `subscription` is a display name when a source gives one (`Claude Max` from a native session). Neither

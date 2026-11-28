@@ -5,6 +5,7 @@ import { InventorySnapshotSchema } from '../events/schema.ts';
 import {
   ContextInfoSchema,
   ListItemSchema,
+  MachineProfileSchema,
   ReleaseStandingSchema,
 } from '../inventory/listSchema.ts';
 import { PlanLimitsSchema, PlanWindowSchema } from '../runtime/planLimitsSchema.ts';
@@ -168,6 +169,8 @@ export const FleetMachineSchema = z.object({
   /** Why this machine was asked over ssh although its route is the remote transport; null when it
    *  was asked on its configured route. */
   fallback: z.string().nullable(),
+  /** Signed-in profiles reported by this machine (including 0-session profiles). */
+  profiles: z.array(MachineProfileSchema).optional(),
 });
 export type FleetMachine = z.infer<typeof FleetMachineSchema>;
 

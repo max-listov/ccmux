@@ -1,10 +1,18 @@
 # Changelog
 
-All notable changes to ccmux. The `[Unreleased]` section accumulates as work lands;
+All notable changes to stitchmux. The `[Unreleased]` section accumulates as work lands;
 `bun run release X.Y.Z "notes"` rolls it into a dated version section, and CI publishes
 the GitHub Release with that section as the notes.
 
 ## [Unreleased]
+
+- Release verification trusts the new `stitchmux-2026-11` Ed25519 signing key alongside `ccmux-2026-09`, preparing zero-downtime key rotation off the previous key id on the next release.
+
+- `@stitchmux/client` loads in a browser: its root holds the contract, the schemas, `refusals` and `createInjectedControlClient` and runs no Node code when imported. `createControlClient` for the local daemon socket moved to `@stitchmux/client/socket`. Before, importing any schema from the root failed in a browser with `SharedArrayBuffer is not defined`.
+- `stitchmux install` carries the previous unit's systemd drop-ins after the new unit is installed and restarts it; copying them first made the install refuse the unit.
+- `agy --version` preflight is non-blocking, deduplicates concurrent probes, caches only successful version reads, separates probe failure (`runtime-version-probe-failed`) from unsupported versions (`runtime-version-unsupported`), reports the resolved executable path in diagnostics, and prefers `~/.local/bin/agy` over older wrappers on `PATH`.
+- `stitchmux accounts` (local and fleet, including peers with zero running sessions) includes Antigravity accounts, plan tiers from ACP `_meta.antigravity.tier` (via `stitchkit` 0.133.2), and model-group quota windows via fail-closed `agy -p "/usage" --output-format json` probes without triggering interactive OAuth or reading OAuth tokens; unlabelled measured profiles render as machine-scoped rows instead of being dropped.
+- Named Antigravity profiles (`antigravityProfiles` in `machine.json`) run multiple Google accounts simultaneously on one machine on `agy >= 1.5.18` using `--app_data_dir`/`--gemini_dir` and `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` without overriding `HOME`, with per-profile host model caches, transcripts, account-swap protection, `stitchmux new --agent antigravity --profile <name>`, and `stitchmux profiles list|doctor|login --agent antigravity`.
 
 ## [0.96.2] — 2026-11-27
 

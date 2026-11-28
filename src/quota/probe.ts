@@ -1,5 +1,15 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
+import { antigravityCanProbeUsage, antigravityFileAccount } from '../agent/antigravity/account.ts';
+import { cachedAntigravityTier } from '../agent/antigravity/catalog.ts';
+import { antigravityProfileId } from '../agent/antigravity/namedProfiles.ts';
+import {
+  antigravityBin,
+  antigravityDataDir,
+  antigravityDirFlags,
+} from '../agent/antigravity/preflight.ts';
 import { CLAUDE_PROFILE_AUTH_ENV } from '../agent/claude/profileRoot.ts';
 import { isReservedEnvKey, readEnvFile } from '../agent/launch/sessionEnv.ts';
 import { STATE_DIR } from '../config/paths.ts';
@@ -7,7 +17,9 @@ import { codexPlanLimits } from '../runtime/planLimits.ts';
 import type { PlanLimits } from '../runtime/planLimitsSchema.ts';
 import type { MachineConfig } from '../types.ts';
 import { run } from '../util/spawn.ts';
+import { parseAntigravityLogIdentity, parseAntigravityUsage } from './antigravityUsage.ts';
 import { parseClaudeUsage, usageLimits } from './claudeUsage.ts';
+import type { QuotaProvider } from './store.ts';
 
 /**
  * One account's quota, asked of the vendor's own command-line program.
@@ -20,8 +32,8 @@ import { parseClaudeUsage, usageLimits } from './claudeUsage.ts';
  */
 
 export interface ProbeTarget {
-  provider: 'claude' | 'codex';
-  /** `claude:<config dir>` / `codex:<home>`; `default` for the profile with no declaration. */
+  provider: QuotaProvider;
+  /** `claude:<config dir>` / `codex:<home>` / `antigravity:<dataDir>`; `default` for the default profile. */
   key: string;
   /** The profile's directory, or null for the default one. */
   home: string | null;
@@ -54,6 +66,7 @@ const STRIPPED = [
   'CLAUDE_CODE_ENTRYPOINT',
   'CODEX_HOME',
   'OPENAI_API_KEY',
+  'AGY_CLI_FORCE_FILE_TOKEN_STORAGE',
   ...CLAUDE_PROFILE_AUTH_ENV,
 ];
 
@@ -65,8 +78,11 @@ function childEnv(target: ProbeTarget): Record<string, string> {
     for (const [key, value] of Object.entries(readEnvFile(target.envFile, env)))
       if (!isReservedEnvKey(key)) env[key] = value;
   }
-  if (target.home !== null)
-    env[target.provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME'] = target.home;
+  if (target.home !== null) {
+    if (target.provider === 'claude') env.CLAUDE_CONFIG_DIR = target.home;
+    else if (target.provider === 'codex') env.CODEX_HOME = target.home;
+    else if (target.provider === 'antigravity') env.AGY_CLI_FORCE_FILE_TOKEN_STORAGE = '1';
+  }
   return env;
 }
 
@@ -328,15 +344,85 @@ export async function probeCodex(
   };
 }
 
+export async function probeAntigravity(
+  m: MachineConfig,
+  target: ProbeTarget,
+  signal?: AbortSignal,
+): Promise<ProbeOutcome> {
+  const executable = antigravityBin(m);
+  if (executable === undefined)
+    return { ok: false, error: 'no antigravity executable is configured' };
+  const dataDir = target.home ?? antigravityDataDir(m);
+  const forceFileStorage = target.home !== null;
+  const gate = await antigravityCanProbeUsage(dataDir, { forceFileStorage });
+  if (!gate.ok) return { ok: false, error: gate.reason };
+
+  const env = childEnv(target);
+  const logDir = mkdtempSync(join(tmpdir(), 'stitchmux-agy-usage-'));
+  const logFile = join(logDir, 'usage.log');
+  try {
+    const argv = [
+      executable,
+      ...antigravityDirFlags(dataDir),
+      '-p',
+      '/usage',
+      '--output-format',
+      'json',
+      '--log-file',
+      logFile,
+    ];
+    const usage = await run(argv, {
+      cwd: probeDirectory(),
+      env,
+      timeoutMs: 30_000,
+      signal,
+    });
+    if (usage.timedOut) return { ok: false, error: 'agy /usage timed out' };
+    if (usage.code !== 0) return { ok: false, error: `agy /usage exited ${usage.code}` };
+    const parsed = parseAntigravityUsage(usage.stdout, Date.now());
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+
+    let label = clean(antigravityFileAccount(dataDir)?.label, 256);
+    if (label === null && existsSync(logFile)) {
+      try {
+        label = clean(parseAntigravityLogIdentity(readFileSync(logFile, 'utf8')).email, 256);
+      } catch {
+        label = null;
+      }
+    }
+    const profileId =
+      target.home === null
+        ? 'default'
+        : antigravityProfileId({
+            agent: 'antigravity',
+            source: 'machine',
+            name: 'named',
+            dataDir: target.home,
+            storage: 'file',
+          });
+    const plan = clean(cachedAntigravityTier(m, profileId), 64);
+    const limits = plan === null ? parsed.limits : { ...parsed.limits, plan };
+    return {
+      ok: true,
+      label,
+      plan,
+      provider: 'antigravity',
+      limits,
+    };
+  } finally {
+    rmSync(logDir, { recursive: true, force: true });
+  }
+}
+
 export async function probe(
   m: MachineConfig,
   target: ProbeTarget,
   signal?: AbortSignal,
 ): Promise<ProbeOutcome> {
   try {
-    return target.provider === 'claude'
-      ? await probeClaude(m, target, signal)
-      : await probeCodex(m, target, signal);
+    if (target.provider === 'claude') return await probeClaude(m, target, signal);
+    if (target.provider === 'codex') return await probeCodex(m, target, signal);
+    return await probeAntigravity(m, target, signal);
   } catch (error) {
     return {
       ok: false,

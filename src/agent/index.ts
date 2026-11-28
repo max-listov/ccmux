@@ -70,7 +70,7 @@ export interface ChatPaneInspection {
 export interface AgentProvider {
   id: AgentKind;
   /** Deterministic configuration checks performed before any registry/tmux mutation. */
-  preflight(m: MachineConfig): void;
+  preflight(m: MachineConfig, profile?: Session['profile']): void | Promise<void>;
   // launch — `cli` is how the injected prompt should tell the agent to invoke stitchmux
   // (bare shim when installed, else absolute; see env.promptInvocation)
   buildArgv(s: Session, m: MachineConfig, cli: string, historyPresent: boolean): string[];

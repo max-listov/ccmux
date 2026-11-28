@@ -165,8 +165,8 @@ export async function createNativeBootstrap(
       uuid: input.registrationGeneration ?? randomUUID(),
     }),
   );
-  nativeDriver(sessionFields(input))?.preflight(m, input.flags);
-  getProvider(input.agent).preflight(m);
+  await nativeDriver(sessionFields(input))?.preflight(m, input.flags, input.profile);
+  await getProvider(input.agent).preflight(m, input.profile);
   if (
     findSession(loadSessions(m), input.name) ||
     loadPendingSessions(m).some((item) => item.session.name === input.name)
@@ -297,17 +297,17 @@ export async function createManagedSession(
   // `runtimeAvailability` answers, and it distinguishes "not enabled" from "not installed".
   if (
     fields.runtime !== undefined &&
-    runtimeAvailability(m, fields.agent, fields.runtime).reason === 'runtime-not-enabled'
+    (await runtimeAvailability(m, fields.agent, fields.runtime)).reason === 'runtime-not-enabled'
   )
     throw refusals.errors.PRECONDITION_FAILED({
       message: 'The native Claude runtime is not enabled on this host',
     });
   if (fields.runtime === undefined && runtimeModes[fields.agent].interactive === null)
     throw new Error('This provider requires a native runtime');
-  nativeDriver(fields)?.preflight(m, input.flags);
+  await nativeDriver(fields)?.preflight(m, input.flags, input.profile);
   if (fields.agent === 'custom')
     customModel(prepareCustomHost(m, fields).config, fields.modelSelection);
-  getProvider(input.agent).preflight(m);
+  await getProvider(input.agent).preflight(m, input.profile);
   if (
     findSession(loadSessions(m), input.name) ||
     loadPendingSessions(m).some((item) => item.session.name === input.name)

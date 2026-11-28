@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { isClaudeProfileBinding } from '../../config/antigravityProfileSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { HOME } from '../../util/home.ts';
 import { envFilePath } from '../launch/launchInputs.ts';
@@ -105,17 +106,18 @@ export function claudeProfile(
   m: Pick<MachineConfig, 'projectsDir'>,
 ): ClaudeProfile {
   const path = envFilePath(session);
+  const binding = isClaudeProfileBinding(session.profile) ? session.profile : undefined;
   const { configDir, ownCredentials } =
-    session.profile === undefined
+    binding === undefined
       ? path === null
         ? NONE
         : declaredProfile(path)
-      : { configDir: session.profile.configDir, ownCredentials: false };
+      : { configDir: binding.configDir, ownCredentials: false };
   if (configDir === null)
     return {
       configDir: null,
       projectsDir:
-        session.profile?.source === 'default' ? join(HOME, '.claude', 'projects') : m.projectsDir,
+        binding?.source === 'default' ? join(HOME, '.claude', 'projects') : m.projectsDir,
       globalConfigFile: `${HOME}/.claude.json`,
       userDir: `${HOME}/.claude`,
       ownCredentials,

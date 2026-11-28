@@ -19,8 +19,15 @@ const PackageSchema = z.looseObject({
   peerDependencies: z.object({ stitchkit: z.string().min(1) }),
 });
 
-/** The package's entry points: the one client, and the monitoring snapshot reader. */
-const ENTRIES = { index: 'src/client.ts', monitoring: 'src/monitoring-reader.ts' } as const;
+/**
+ * The package's entry points: the contract and the injected-transport client (loads in a browser),
+ * the client over the local daemon's socket, and the monitoring snapshot reader.
+ */
+const ENTRIES = {
+  index: 'src/client.ts',
+  socket: 'src/client-socket.ts',
+  monitoring: 'src/monitoring-reader.ts',
+} as const;
 
 /**
  * `src/util/version.ts` imports the whole root `package.json` for one field; in the published client
@@ -70,6 +77,7 @@ export async function packageClient(directory: string): Promise<{
   });
   if (!build.success) throw new Error(`Client build failed: ${build.logs.join('\n')}`);
   await rename(join(stage, 'dist', 'client.js'), join(stage, 'dist', 'index.js'));
+  await rename(join(stage, 'dist', 'client-socket.js'), join(stage, 'dist', 'socket.js'));
   await rename(join(stage, 'dist', 'monitoring-reader.js'), join(stage, 'dist', 'monitoring.js'));
 
   const types = Bun.spawn(
@@ -108,7 +116,7 @@ export async function packageClient(directory: string): Promise<{
         name: CLIENT_NAME,
         version: VERSION,
         description:
-          'The Stitchmux client: typed control over the local daemon socket or an injected transport, and monitoring snapshots.',
+          'The Stitchmux client: the control contract and schemas with an injected-transport client (browser-safe), a client over the local daemon socket, and monitoring snapshots.',
         license: 'MIT',
         repository: { type: 'git', url: 'git+https://github.com/max-listov/stitchmux.git' },
         publishConfig: { access: 'public', registry: NPM_REGISTRY },
@@ -116,6 +124,7 @@ export async function packageClient(directory: string): Promise<{
         files: ['dist', 'types', 'native-stream.json', 'README.md', 'LICENSE'],
         exports: {
           '.': { types: './types/src/client.d.ts', import: './dist/index.js' },
+          './socket': { types: './types/src/client-socket.d.ts', import: './dist/socket.js' },
           './monitoring': {
             types: './types/src/monitoring-reader.d.ts',
             import: './dist/monitoring.js',

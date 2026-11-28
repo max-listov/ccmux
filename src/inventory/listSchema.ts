@@ -194,6 +194,24 @@ export const ReleaseStandingSchema = z.object({
   checksOverdue: z.boolean().default(false),
 });
 
+/**
+ * One signed-in agent profile of a machine, serialized so fleet `accounts` sees remote profiles
+ * even when no session on that peer currently runs under them.
+ */
+export const MachineProfileSchema = z
+  .object({
+    key: z.string(),
+    provider: z.enum(['claude', 'codex', 'antigravity']),
+    account: NativeAccountSchema.nullable().default(null),
+    limits: PlanLimitsSchema.loose().nullable().default(null),
+    error: z.string().nullable().default(null),
+    attemptedAt: z.string().nullable().default(null),
+    home: z.string().nullable().default(null),
+    sessions: z.array(z.string()).default([]),
+  })
+  .loose();
+export type MachineProfile = z.infer<typeof MachineProfileSchema>;
+
 export const ListJsonSchema = z.object({
   version: z.string(),
   generatedAt: z.string(),
@@ -206,4 +224,6 @@ export const ListJsonSchema = z.object({
    * no live daemon publishes one. `sessions` above is this call's own fresh answer and is not it.
    */
   inventory: InventorySnapshotSchema.nullable(),
+  /** Signed-in profiles known to this machine (including 0-session profiles); omitted on older peers. */
+  profiles: z.array(MachineProfileSchema).optional(),
 });

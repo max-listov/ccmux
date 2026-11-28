@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { retirePreviousBootUnits } from '../src/boot/install.ts';
+import { carryPreviousDropIns, retirePreviousBootUnits } from '../src/boot/install.ts';
 import { makeMachine } from './helpers.ts';
 
 function host(mac: boolean, present: string[]) {
@@ -62,16 +62,18 @@ test('nothing is retired when no previous unit exists or the machine still uses 
   expect(same.calls).toEqual([]);
 });
 
-test('on Linux the machine’s drop-ins for the previous service carry over to the new one', async () => {
+test('on Linux the previous service’s drop-ins move only after the new unit is installed, then it restarts', async () => {
   const h = host(false, ['/units/ccmux.service', '/units/ccmux.service.d']);
-  await retirePreviousBootUnits(makeMachine({ bootLabel: 'stitchmux.service' }), h.deps);
+  const m = makeMachine({ bootLabel: 'stitchmux.service' });
+  // Retiring touches no drop-ins: the install that follows refuses a unit that already has some.
+  await retirePreviousBootUnits(m, h.deps);
+  expect(h.copied).toEqual([]);
+  expect(await carryPreviousDropIns(m, h.deps)).toBe(true);
   expect(h.copied).toEqual([['/units/ccmux.service.d', '/units/stitchmux.service.d']]);
-  // Drop-ins the new service already has are the machine's newer word and stay.
-  const again = host(false, [
-    '/units/ccmux.service',
-    '/units/ccmux.service.d',
-    '/units/stitchmux.service.d',
+  expect(h.calls.slice(-2)).toEqual([
+    ['systemctl', 'daemon-reload'],
+    ['systemctl', 'restart', 'stitchmux.service'],
   ]);
-  await retirePreviousBootUnits(makeMachine({ bootLabel: 'stitchmux.service' }), again.deps);
-  expect(again.copied).toEqual([]);
+  // Drop-ins the new service already has are the machine's newer word and stay.
+  expect(await carryPreviousDropIns(m, h.deps)).toBe(false);
 });

@@ -1,8 +1,14 @@
 # @stitchmux/client
 
-The Stitchmux client: typed control of Stitchmux sessions and monitoring snapshots, for Bun and
-Node.js (ESM, TypeScript declarations included). `zod` and `stitchkit` are peer dependencies — the
-client takes and returns their schemas and contracts.
+The Stitchmux client: typed control of Stitchmux sessions and monitoring snapshots (ESM, TypeScript
+declarations included). `zod` and `stitchkit` are peer dependencies — the client takes and returns
+their schemas and contracts.
+
+| Entry | What | Runs in |
+|---|---|---|
+| `@stitchmux/client` | `controlContract`, every schema, `refusals`, `createInjectedControlClient` | a browser, Bun, Node.js — loading it runs no Node code |
+| `@stitchmux/client/socket` | `createControlClient` over the local daemon's socket | Bun, Node.js |
+| `@stitchmux/client/monitoring` | `readMonitoringStatus` and the snapshot schemas | Bun, Node.js |
 
 ```sh
 bun add @stitchmux/client zod stitchkit
@@ -13,7 +19,7 @@ bun add @stitchmux/client zod stitchkit
 On the machine running Stitchmux, connect to its daemon's socket:
 
 ```ts
-import { createControlClient } from '@stitchmux/client';
+import { createControlClient } from '@stitchmux/client/socket';
 
 const client = createControlClient({ socket: '/path/to/control/api.sock' });
 const fleet = await client['fleet.list']({});

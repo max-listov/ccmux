@@ -557,11 +557,14 @@ absent from the service on every machine, with nothing saying so.
   descriptor carries (`test/control-service.test.ts`); a parameterised route or a stream would make
   the projection refuse the whole service.
 
-The npm package `@stitchmux/client` (`src/client.ts`, built by `scripts/package-client.ts`) is the one
-client: its root exports both transports — `createControlClient` for the local daemon socket and
-`createInjectedControlClient` for a caller's transport — with the schemas, `refusals` and resident
-status frames; `./monitoring` exports the monitoring snapshot reader. Both entry points come from one
-`Bun.build` with a shared chunk, so a schema reached through either is the same object; `zod` and
+The npm package `@stitchmux/client` (built by `scripts/package-client.ts`) has three entry points.
+The root (`src/client.ts`) exports the contract, the schemas, `refusals`, the resident status frames
+and `createInjectedControlClient` for a caller's transport, and loading it runs no Node code: a
+browser imports it as it is (`test/client-browser-entry.test.ts`; `scripts/verify-client.ts` runs the
+installed root in a context with a browser's globals only). `./socket` (`src/client-socket.ts`) has
+`createControlClient` for the local daemon socket, which reads the machine's configuration and
+loads the Unix transport; `./monitoring` exports the monitoring snapshot reader. All entry points
+come from one `Bun.build` with a shared chunk, so a schema reached through any is the same object; `zod` and
 `stitchkit` are peers, and the code carries the package version, not the source's `package.json`,
 nor the command line's self re-exec (`src/util/env.ts`; the default state root takes its home
 directory from `src/util/home.ts`). `scripts/verify-client.ts` installs the archive and refuses

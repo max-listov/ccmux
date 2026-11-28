@@ -1,3 +1,5 @@
+import { antigravityFileAccount } from '../agent/antigravity/account.ts';
+import { antigravityDataDir } from '../agent/antigravity/preflight.ts';
 import { profileAccount } from '../agent/claude/account.ts';
 import { claudeProfile } from '../agent/claude/profileRoot.ts';
 import {
@@ -11,7 +13,7 @@ import { readMetricsFile } from '../session/metricsFile.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { HOME } from '../util/home.ts';
 import { discoverTargets, type QuotaTarget } from './discover.ts';
-import { type QuotaRecord, readQuotaRecord } from './store.ts';
+import { type QuotaProvider, type QuotaRecord, readQuotaRecord } from './store.ts';
 
 /**
  * What this machine knows about each profile's account and quota, from every source at once.
@@ -25,7 +27,7 @@ import { type QuotaRecord, readQuotaRecord } from './store.ts';
 
 export interface ProfileView {
   key: string;
-  provider: 'claude' | 'codex';
+  provider: QuotaProvider;
   /** Who is signed in; null until something has said. */
   account: NativeAccount | null;
   limits: PlanLimits | null;
@@ -114,6 +116,9 @@ function viewOf(
     );
     const file = target.home === null ? profile.globalConfigFile : `${target.home}/.claude.json`;
     current = profileAccount(file);
+  } else if (target.provider === 'antigravity') {
+    const dir = target.home ?? antigravityDataDir(m);
+    current = antigravityFileAccount(dir);
   }
   const identityChanged =
     stored !== null &&

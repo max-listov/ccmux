@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   antigravityModelsFromConfigOptions,
@@ -14,6 +15,7 @@ import {
   fromAcpMode,
   parseAntigravityVersion,
   preflightAntigravity,
+  readAntigravityVersion,
   supportsAntigravityVersion,
   toAcpMode,
 } from '../src/agent/antigravity/preflight.ts';
@@ -22,6 +24,7 @@ import {
   parseAntigravityTranscript,
 } from '../src/agent/antigravity/transcript.ts';
 import { managedPeer } from '../src/chat/identity.ts';
+import { detectAntigravityBin } from '../src/config/machine.ts';
 import { readContent } from '../src/content/read.ts';
 import { readTranscriptWindow } from '../src/context/transcriptWindow.ts';
 import { ControlPublisher } from '../src/control/publisher.ts';
@@ -42,7 +45,7 @@ import { readManagedRuntimeStatus } from '../src/runtime/status.ts';
 import { appendSession } from '../src/session/registry.ts';
 import { antigravityFixture } from './fixtures/antigravity.ts';
 
-test('antigravity preflight & negative controls: missing binary, old version, missing auth', () => {
+test('antigravity preflight & negative controls: missing binary, old version, missing auth', async () => {
   expect(parseAntigravityVersion('1.5.14')).toBe('1.5.14');
   expect(supportsAntigravityVersion('1.5.14')).toBe(true);
   expect(supportsAntigravityVersion('1.5.13')).toBe(false);
@@ -55,24 +58,24 @@ test('antigravity preflight & negative controls: missing binary, old version, mi
   try {
     // Missing binary
     expect(
-      antigravityAvailability({ antigravityBin: undefined, antigravityDataDir: f.dataDir }),
+      await antigravityAvailability({ antigravityBin: undefined, antigravityDataDir: f.dataDir }),
     ).toEqual({ availability: 'unavailable', reason: 'runtime-not-configured' });
-    expect(() =>
+    await expect(
       preflightAntigravity({ antigravityBin: undefined, antigravityDataDir: f.dataDir }),
-    ).toThrow(/not configured/i);
+    ).rejects.toThrow(/not configured/i);
 
     // Missing auth state (empty dataDir)
     const emptyAuth = join(f.dir, 'no-auth');
     mkdirSync(emptyAuth, { recursive: true });
     expect(
-      antigravityAvailability({ antigravityBin: f.binPath, antigravityDataDir: emptyAuth }),
+      await antigravityAvailability({ antigravityBin: f.binPath, antigravityDataDir: emptyAuth }),
     ).toEqual({ availability: 'unavailable', reason: 'runtime-auth-unavailable' });
-    expect(() =>
+    await expect(
       preflightAntigravity({ antigravityBin: f.binPath, antigravityDataDir: emptyAuth }),
-    ).toThrow(/authentication/i);
+    ).rejects.toThrow(/authentication/i);
 
     // Configured host publishes antigravity in runtime.list with expected capabilities
-    const catalog = readRuntimeCatalog(f.m);
+    const catalog = await readRuntimeCatalog(f.m);
     const row = catalog.runtimes.find((r) => r.runtime === 'antigravity');
     expect(row).toBeDefined();
     expect(row?.mode).toBe('native');
@@ -92,6 +95,100 @@ test('antigravity preflight & negative controls: missing binary, old version, mi
     });
   } finally {
     rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('version probe timeout does not poison cache, stays non-blocking, and differs from old versions', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-agy-probe-'));
+  const dataDir = join(root, 'data');
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(join(dataDir, 'installation_id'), 'test-id\n');
+
+  const slowThenFast = join(root, 'agy-flaky');
+  const ready = join(root, 'ready');
+  writeFileSync(
+    slowThenFast,
+    `#!/bin/sh
+if [ -f "${ready}" ]; then
+  echo "1.5.18"
+  exit 0
+fi
+exec sleep 5
+`,
+    { mode: 0o700 },
+  );
+
+  const oldBin = join(root, 'agy-old');
+  writeFileSync(oldBin, '#!/bin/sh\necho "1.5.13"\n', { mode: 0o700 });
+
+  const slowBin = join(root, 'agy-slow');
+  writeFileSync(slowBin, '#!/bin/sh\nsleep 0.25\necho "1.5.18"\n', { mode: 0o700 });
+
+  try {
+    // 1. First probe times out → distinct probe-failed reason, NOT version-unsupported.
+    const first = await antigravityAvailability(
+      { antigravityBin: slowThenFast, antigravityDataDir: dataDir },
+      150,
+    );
+    expect(first).toEqual({
+      availability: 'unavailable',
+      reason: 'runtime-version-probe-failed',
+    });
+
+    // 2. Second probe against the exact same file stamp recovers without daemon restart.
+    writeFileSync(ready, '1');
+    const second = await antigravityAvailability(
+      { antigravityBin: slowThenFast, antigravityDataDir: dataDir },
+      2_000,
+    );
+    expect(second).toEqual({ availability: 'configured', reason: null });
+
+    // 3. Old version (< 1.5.14) reports runtime-version-unsupported and names the binary path.
+    const oldAvail = await antigravityAvailability({
+      antigravityBin: oldBin,
+      antigravityDataDir: dataDir,
+    });
+    expect(oldAvail).toEqual({
+      availability: 'unavailable',
+      reason: 'runtime-version-unsupported',
+    });
+    await expect(
+      preflightAntigravity({ antigravityBin: oldBin, antigravityDataDir: dataDir }),
+    ).rejects.toThrow(oldBin);
+
+    // 4. Async version check leaves the event loop responsive while the child runs.
+    let ticks = 0;
+    const interval = setInterval(() => {
+      ticks++;
+    }, 20);
+    try {
+      const probe = await readAntigravityVersion(slowBin, 2_000);
+      expect(probe).toEqual({ ok: true, version: '1.5.18' });
+    } finally {
+      clearInterval(interval);
+    }
+    expect(ticks).toBeGreaterThanOrEqual(4);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('detectAntigravityBin prefers user-local native install over an older PATH wrapper', () => {
+  const root = mkdtempSync(join(tmpdir(), 'stitchmux-agy-detect-'));
+  const localDir = join(root, '.local', 'bin');
+  const brewDir = join(root, 'brew', 'bin');
+  mkdirSync(localDir, { recursive: true });
+  mkdirSync(brewDir, { recursive: true });
+  const localBin = join(localDir, 'agy');
+  const brewBin = join(brewDir, 'agy');
+  writeFileSync(localBin, '#!/bin/sh\necho 1.5.18\n', { mode: 0o700 });
+  writeFileSync(brewBin, '#!/bin/sh\necho 1.5.14\n', { mode: 0o700 });
+  try {
+    expect(detectAntigravityBin(root, () => brewBin)).toBe(localBin);
+    rmSync(localBin);
+    expect(detectAntigravityBin(root, () => brewBin)).toBe(brewBin);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

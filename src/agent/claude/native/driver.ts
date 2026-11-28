@@ -9,6 +9,7 @@ import type {
   ClaudeSdkQueryExitContext,
   ClaudeSdkTurnUsage,
 } from 'stitchkit/agent-executor/claude-sdk';
+import { isClaudeProfileBinding } from '../../../config/antigravityProfileSchema.ts';
 import { delegatedClaudeOptions } from '../../../delegation/claude.ts';
 import type { MachineConfig, Session } from '../../../types.ts';
 import { HOME } from '../../../util/home.ts';
@@ -51,7 +52,9 @@ export function claudeExecutorProfile(
     profile.configDir === null && resolve(home) === resolve(env.HOME ?? HOME, '.claude');
   return {
     engine: 'claude-sdk',
-    profileId: session.profile ? claudeProfileId(session.profile) : session.name,
+    profileId: isClaudeProfileBinding(session.profile)
+      ? claudeProfileId(session.profile)
+      : session.name,
     home,
     ...(implicit ? { claudeConfigDir: 'default' } : {}),
     env: executorProfileEnv(env),

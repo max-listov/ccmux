@@ -177,8 +177,8 @@ A folder is a domain; a module lives with the domain that owns its meaning, and 
 it — `config/` holds configuration only, not every schema. `src/` root holds entry points and nothing
 else: `cli.ts`, one file per published package export named exactly as the export
 (`session-reader.ts`, `monitoring-reader.ts`, `codex-runtime-reader.ts`, `control-client.ts`,
-`client.ts` — the npm package `@stitchmux/client`, built by `scripts/package-client.ts`) and the
-shared `types.ts`.
+`client.ts` — the root of the npm package `@stitchmux/client`, which loads in a browser, and
+`client-socket.ts` — its `./socket` entry, built by `scripts/package-client.ts`) and the shared `types.ts`.
 
 - `agent/` — providers (`claude/`, `codex/` with the App Server owner in `codex/owned/`, `opencode/`,
   `custom/`), transcript reading (`transcript/`), launch inputs and environment (`launch/`), the

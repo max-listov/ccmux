@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import { readInventory } from '../events/inventory.ts';
 import { InventorySnapshotSchema } from '../events/schema.ts';
-import { ReleaseStandingSchema } from '../inventory/listSchema.ts';
+import { MachineProfileSchema, ReleaseStandingSchema } from '../inventory/listSchema.ts';
 import { collectRows, rowStateLabel, toListItem } from '../inventory/rows.ts';
 import { machineProfiles } from '../quota/view.ts';
 import { behindBy, bestKnownRelease, releaseStanding } from '../release/check.ts';
 import { loadSessions } from '../session/registry.ts';
 import type { MachineConfig } from '../types.ts';
 import { VERSION } from '../util/version.ts';
-import { fleetAccounts } from './accounts.ts';
+import { fleetAccounts, fleetMachineProfiles } from './accounts.ts';
 import {
   type FleetAnswer,
   type FleetMachine,
@@ -41,6 +41,7 @@ const RemoteListSchema = z.object({
   sessions: z.array(RemoteSessionSchema).default([]),
   // A peer too old to publish one says nothing, and an unreadable one costs only itself.
   inventory: InventorySnapshotSchema.nullable().default(null).catch(null),
+  profiles: z.array(MachineProfileSchema).default([]).catch([]),
 });
 
 /** A peer's `_peer-read list` envelope: the two row arrays arrive packed (see `peerDelta.ts`). */
@@ -96,6 +97,9 @@ export async function collectFleet(m: MachineConfig): Promise<FleetMachine[]> {
     behind: null, // filled by `fleetView`, which is the only place that holds the yardstick
     inventory: readInventory(m),
     fallback: null,
+    profiles: machineProfiles(m, loadSessions(m)).map(
+      ({ view: { identityChanged: _, ...profile } }) => profile,
+    ),
     // This machine's own rows, built by the same function that builds `list --json`. Two builders
     // for one row is what made a field arrive locally and vanish remotely for a release at a time;
     // the fleet view simply relabels the state, which is the only thing it says differently.
@@ -183,6 +187,7 @@ export function peerListMachine(
     behind: null,
     inventory: parsed.inventory,
     fallback: r.fallback ?? null,
+    profiles: parsed.profiles,
     // A peer reports its raw run-state; the parked/running verdict is reached here so both
     // halves of the map are read by the same rule.
     sessions: parsed.sessions.map((session) => ({
@@ -225,6 +230,10 @@ export async function fleetAnswer(m: MachineConfig): Promise<FleetAnswer> {
     ...view,
     // `now` is the response's own clock: whether a window has ended and whether a sample is stale
     // are true at READ time, so they are computed here and never stored.
-    accounts: fleetAccounts(view.machines, now, machineProfiles(m, loadSessions(m))),
+    accounts: fleetAccounts(
+      view.machines,
+      now,
+      fleetMachineProfiles(view.machines, machineProfiles(m, loadSessions(m))),
+    ),
   };
 }

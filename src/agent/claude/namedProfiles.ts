@@ -3,17 +3,26 @@ import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
 import {
+  isAntigravityProfileBinding,
+  isClaudeProfileBinding,
+} from '../../config/antigravityProfileSchema.ts';
+import {
   type ClaudeProfileBinding,
   ProfileDirectorySchema,
   ProfileNameSchema,
 } from '../../config/claudeProfileSchema.ts';
 import type { AgentKind, MachineConfig, Session } from '../../types.ts';
 import { HOME } from '../../util/home.ts';
+import { verifyAntigravityProfile } from '../antigravity/namedProfiles.ts';
 import { digestOf, envFilePath } from '../launch/launchInputs.ts';
 import { readEnvFile } from '../launch/sessionEnv.ts';
 import { CLAUDE_PROFILE_AUTH_ENV } from './profileRoot.ts';
 
 type ProfileHost = Pick<MachineConfig, 'claudeProfiles'>;
+type SessionProfileHost = Pick<
+  MachineConfig,
+  'claudeProfiles' | 'antigravityDataDir' | 'antigravityProfiles'
+>;
 const RegistrySchema = z.object({
   version: z.literal(1),
   profiles: z.array(
@@ -114,7 +123,8 @@ export function selectClaudeProfile(
   agent: AgentKind,
   name: string,
 ): ClaudeProfileBinding {
-  if (agent !== 'claude') throw new Error('Named profiles are available for Claude only');
+  if (agent !== 'claude')
+    throw new Error('Named profiles are available for Claude and Antigravity only');
   const declared =
     name === implicit.name ? implicit : namedClaudeProfiles(m).find((p) => p.name === name);
   if (!declared) throw new Error(`Unknown Claude profile: ${name}`);
@@ -164,12 +174,19 @@ export function verifyClaudeProfile(m: ProfileHost, binding: ClaudeProfileBindin
 }
 
 export function verifySessionProfile(
-  m: ProfileHost,
+  m: SessionProfileHost,
   session: Pick<Session, 'agent' | 'dir' | 'envFile' | 'profile'>,
 ): void {
   const binding = session.profile;
   if (!binding) return;
-  if (session.agent !== 'claude') throw new Error('Named profiles are available for Claude only');
+  if (session.agent === 'antigravity') {
+    if (!isAntigravityProfileBinding(binding))
+      throw new Error('Antigravity session requires an Antigravity profile binding');
+    verifyAntigravityProfile(m, binding);
+    return;
+  }
+  if (session.agent !== 'claude' || !isClaudeProfileBinding(binding))
+    throw new Error('Named profiles are available for Claude and Antigravity only');
   verifyClaudeProfile(m, binding);
   const path = envFilePath(session);
   if (!path) return;

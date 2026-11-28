@@ -24,45 +24,45 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const host = (over: Record<string, unknown> = {}) => makeMachine({ claudeBin, ...over });
 
-const row = (m: ReturnType<typeof makeMachine>, mode: string) =>
-  readRuntimeCatalog(m).runtimes.find((r) => r.runtime === 'claude' && r.mode === mode);
+const row = async (m: ReturnType<typeof makeMachine>, mode: string) =>
+  (await readRuntimeCatalog(m)).runtimes.find((r) => r.runtime === 'claude' && r.mode === mode);
 
-test('both Claude modes are reported, so a caller can tell them apart', () => {
+test('both Claude modes are reported, so a caller can tell them apart', async () => {
   // A mode that is absent from the catalog cannot be distinguished from a build that has no such
   // mode at all, and those call for different actions by whoever is reading.
-  const modes = readRuntimeCatalog(host())
-    .runtimes.filter((r) => r.runtime === 'claude')
+  const modes = (await readRuntimeCatalog(host())).runtimes
+    .filter((r) => r.runtime === 'claude')
     .map((r) => r.mode);
   expect(modes).toEqual(['tui', 'native']);
 });
 
-test('a host that has not enabled the mode says so, and says it differently from missing', () => {
-  const disabled = row(host(), 'native');
+test('a host that has not enabled the mode says so, and says it differently from missing', async () => {
+  const disabled = await row(host(), 'native');
   expect(disabled).toMatchObject({ availability: 'unavailable', reason: 'runtime-not-enabled' });
   // Not the same answer as a host with no Claude binary at all.
-  const absent = row(makeMachine({ claudeBin: join(root, 'absent-claude') }), 'native');
+  const absent = await row(makeMachine({ claudeBin: join(root, 'absent-claude') }), 'native');
   expect(absent).toMatchObject({ availability: 'unavailable', reason: 'runtime-not-configured' });
 });
 
-test('the native row always advertises the structured capabilities of the mode', () => {
+test('the native row always advertises the structured capabilities of the mode', async () => {
   // Capabilities describe what the mode IS, so they do not change with whether this host can start
   // it — availability is the field that answers that, and conflating the two would make a reader
   // unable to learn what the mode offers before enabling it.
-  const enabled = row(host({ claudeNativeRuntime: true }), 'native');
+  const enabled = await row(host({ claudeNativeRuntime: true }), 'native');
   expect(enabled?.capabilities).toMatchObject({ structured: true, approval: true, input: true });
 });
 
-test('the interactive row is untouched by the flag in either position', () => {
+test('the interactive row is untouched by the flag in either position', async () => {
   // The promise the whole task rests on: an operator who never enables the mode sees no change.
-  const off = row(host(), 'tui');
-  const on = row(host({ claudeNativeRuntime: true }), 'tui');
+  const off = await row(host(), 'tui');
+  const on = await row(host({ claudeNativeRuntime: true }), 'tui');
   expect(off).toEqual(on);
   expect(off).toMatchObject({ availability: 'configured', reason: null });
   expect(off?.capabilities.structured).toBe(false);
 });
 
-test('the other agents keep exactly one row each, with their established mode', () => {
-  const rows = readRuntimeCatalog(host({ claudeNativeRuntime: true })).runtimes;
+test('the other agents keep exactly one row each, with their established mode', async () => {
+  const rows = (await readRuntimeCatalog(host({ claudeNativeRuntime: true }))).runtimes;
   for (const [runtime, mode] of [
     ['codex', 'app-server'],
     ['opencode', 'native'],
@@ -74,29 +74,29 @@ test('the other agents keep exactly one row each, with their established mode', 
   }
 });
 
-test('enabling the mode without an SDK to run is a third answer, not a vague failure', () => {
+test('enabling the mode without an SDK to run is a third answer, not a vague failure', async () => {
   // Three states, three actions: install the CLI, decide to enable the mode, point at an SDK that
   // exists. An operator told only "unavailable" has to guess which of the three applies to them.
-  const enabled = row(host({ claudeNativeRuntime: true }), 'native');
+  const enabled = await row(host({ claudeNativeRuntime: true }), 'native');
   expect(enabled).toMatchObject({
     availability: 'unavailable',
     reason: 'runtime-sdk-unavailable',
   });
 });
 
-test('a configured SDK path that is not there is reported, not assumed to work', () => {
-  const wrong = row(
+test('a configured SDK path that is not there is reported, not assumed to work', async () => {
+  const wrong = await row(
     host({ claudeNativeRuntime: true, claudeNativeSdk: join(root, 'no-such-sdk') }),
     'native',
   );
   expect(wrong?.reason).toBe('runtime-sdk-unavailable');
 });
 
-test('the mode is available only when every part of it is', () => {
+test('the mode is available only when every part of it is', async () => {
   const sdkRoot = join(root, 'sdk');
   mkdirSync(sdkRoot, { recursive: true });
   writeFileSync(join(sdkRoot, 'sdk.mjs'), 'export const query = () => {};\n');
-  const ready = row(host({ claudeNativeRuntime: true, claudeNativeSdk: sdkRoot }), 'native');
+  const ready = await row(host({ claudeNativeRuntime: true, claudeNativeSdk: sdkRoot }), 'native');
   expect(ready).toMatchObject({ availability: 'configured', reason: null });
 });
 

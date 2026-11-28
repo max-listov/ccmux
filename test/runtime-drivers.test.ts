@@ -63,7 +63,9 @@ test('runtime selection is separate from inference selection and unavailable dri
   ).rejects.toMatchObject({ code: 'LAUNCH_RECIPE_UNAVAILABLE' });
   expect(loadSessions(m)).toEqual([]);
   expect(existsSync(join(m.stateDir, 'control', 'create-requests.json'))).toBe(false);
-  expect(readRuntimeCatalog(m).runtimes.find((row) => row.runtime === 'custom')).toMatchObject({
+  expect(
+    (await readRuntimeCatalog(m)).runtimes.find((row) => row.runtime === 'custom'),
+  ).toMatchObject({
     availability: 'unavailable',
     reason: 'runtime-not-configured',
   });

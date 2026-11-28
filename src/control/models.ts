@@ -129,9 +129,12 @@ export async function readControlModels(
         message: 'Model runtime does not match the managed identity',
       });
     const runtime = target?.agent ?? input.runtime ?? 'codex';
-    if (input.profile !== undefined && (runtime !== 'claude' || target !== undefined))
+    if (
+      input.profile !== undefined &&
+      ((runtime !== 'claude' && runtime !== 'antigravity') || target !== undefined)
+    )
       throw refusals.errors.UNSUPPORTED({
-        message: 'Choose a named profile for a Claude host catalog',
+        message: 'Choose a named profile for a Claude or Antigravity host catalog',
       });
     if (runtime === 'antigravity') return await readAntigravityModels(m, input, target, signal);
     if (runtime === 'opencode') return await readOpenCodeModels(m, input, target, signal);

@@ -83,8 +83,9 @@ See [usage accounting](docs/architecture/usage.md) for coverage, cursors and sel
 
 For live control, `stitchmux control sessions` reads the prepared inventory and `stitchmux control watch`
 streams bounded full snapshots. Install the SDK with `bun add @stitchmux/client`.
-One client from the package root: `createControlClient` for the local daemon socket, or
-`createInjectedControlClient` for a transport you supply; `zod` and `stitchkit` are peers.
+The package root holds the contract, its schemas and `createInjectedControlClient` for a transport
+you supply, and loads in a browser; `@stitchmux/client/socket` has `createControlClient` for the
+local daemon socket (Bun, Node); `zod` and `stitchkit` are peers.
 It ships compiled ESM and declarations for strict TypeScript in Bundler and NodeNext.
 Releases also include a self-contained `control-client.js` and its SHA-256 checksum.
 See the [resident control contract](docs/architecture/control-plane.md).

@@ -11,8 +11,10 @@ import type { MachineConfig } from '../types.ts';
  */
 export const RELEASE_KEYS: Readonly<Record<string, string>> = {
   // The id is this key's own name, given when it was made; installed releases trust it by this id,
-  // so a product rename does not rename it.
+  // so a product rename does not rename it. Kept until every fleet node trusts `stitchmux-2026-11`.
   'ccmux-2026-09': 'vZlOErFFvHVcdGlWU7TiCKsmJCL/c+2AcJcwQYqTwFg=',
+  // Rotation target key; signing switches here in the next release once fleet nodes carry this key.
+  'stitchmux-2026-11': '+gAgiNI/IuwkchEFCcyvQQf8RnNUWccBUyIebaJEu9E=',
 };
 
 /** The keys this machine accepts: the compiled ones, plus any its own `machine.json` adds for a

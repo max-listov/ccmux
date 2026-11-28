@@ -1,5 +1,5 @@
-import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
+import { jsonEqual } from '../util/jsonEqual.ts';
 import { type ExternalStatusSnapshot, ExternalStatusSnapshotSchema } from './residentSchema.ts';
 
 /**
@@ -85,7 +85,7 @@ export function createExternalStatusEncoder(): (
         observedAt: snapshot.observedAt,
         expiresAt: snapshot.expiresAt,
       };
-      if (isDeepStrictEqual(applyExternalStatusFrame(held, renewal), snapshot)) {
+      if (jsonEqual(applyExternalStatusFrame(held, renewal), snapshot)) {
         held = snapshot;
         return renewal;
       }

@@ -141,7 +141,8 @@ The release's self-contained `control-client.js` includes this API and Zod schem
 SHA-256 asset before loading. A Bun consumer can also import the package entry point:
 
 ```ts
-import { createControlClient, currentExternalStatus } from '@stitchmux/client';
+import { currentExternalStatus } from '@stitchmux/client';
+import { createControlClient } from '@stitchmux/client/socket';
 
 const client = createControlClient();
 const stop = new AbortController();

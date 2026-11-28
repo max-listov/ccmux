@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AgentKindSchema, SESSION_NAME_RE } from '../chat/identitySchema.ts';
-import { ClaudeProfileBindingSchema } from '../config/claudeProfileSchema.ts';
+import { SessionProfileBindingSchema } from '../config/antigravityProfileSchema.ts';
 import {
   LaunchRecipeMetadataSchema,
   ModelSelectionSchema,
@@ -95,7 +95,7 @@ export const SessionSchema = z.object({
    */
   envFile: z.string().min(1).optional(),
   /** Host-resolved account context, pinned once at create and used by every continuation. */
-  profile: ClaudeProfileBindingSchema.optional(),
+  profile: SessionProfileBindingSchema.optional(),
   /** Safe immutable identity of the host recipe that produced `flags` and `envFile`. The resolved
    * definition is deliberately not stored here: the existing session fields remain launch truth. */
   launchRecipe: LaunchRecipeMetadataSchema.optional(),

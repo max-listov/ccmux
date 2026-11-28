@@ -1,4 +1,4 @@
-import { createControlClient } from 'stitchmux/client';
+import { createControlClient } from 'stitchmux/client-socket';
 
 /** Mutating example: call only after choosing a real local workspace and stable request UUID. */
 export async function createAndWatch(workspace: string, requestId: string, signal: AbortSignal) {

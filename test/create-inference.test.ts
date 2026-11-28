@@ -23,9 +23,9 @@ function fixture() {
   return { root, m: makeMachine({ stateDir: join(root, 'state'), rcPrefix: 'host-a' }) };
 }
 
-test('catalog names the inference boundary of every creatable runtime and mode', () => {
+test('catalog names the inference boundary of every creatable runtime and mode', async () => {
   const { m } = fixture();
-  const rows = readRuntimeCatalog(m).runtimes;
+  const rows = (await readRuntimeCatalog(m)).runtimes;
   expect(rows).toHaveLength(6);
   for (const row of rows) {
     if (row.runtime === 'claude' && row.mode === 'native') {
@@ -87,7 +87,7 @@ test('typed no-inference create refuses unsupported modes and missing requiremen
     await owned.server.shutdown({ gracePeriodMs: 100, forceTimeoutMs: 100 });
     await owned.observability.close();
   });
-  for (const row of readRuntimeCatalog(m).runtimes) {
+  for (const row of (await readRuntimeCatalog(m)).runtimes) {
     const input = ControlCreateSchema.parse({
       runtime: row.runtime,
       mode: row.mode === 'tui' ? 'tui' : 'native',

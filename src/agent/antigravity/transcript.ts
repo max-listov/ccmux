@@ -1,21 +1,26 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { isAntigravityProfileBinding } from '../../config/antigravityProfileSchema.ts';
 import { boundedHistoryPage, historyCursor } from '../../context/history.ts';
 import type { NativeContextApi } from '../../context/pump.ts';
 import type { NativeHistoryEntry } from '../../context/schema.ts';
 import { refusals } from '../../control/schema/refusals.ts';
 import type { MachineConfig, Session, TranscriptMessage } from '../../types.ts';
 import { clip, DEFAULT_TEXT_LIMIT, isRecord, num, str } from '../transcript/normalize.ts';
+import { antigravityProfileDataDir } from './namedProfiles.ts';
 import { antigravityDataDir } from './preflight.ts';
 
 /** Where Antigravity CLI writes a conversation's JSONL transcript under its data root. */
 export function antigravityTranscriptPath(
-  s: Pick<Session, 'nativeSession'>,
+  s: Pick<Session, 'nativeSession' | 'profile'>,
   m: Pick<MachineConfig, 'antigravityDataDir'>,
 ): string | null {
   const id = s.nativeSession?.id;
   if (!id) return null;
-  return join(antigravityDataDir(m), 'brain', id, '.system_generated', 'logs', 'transcript.jsonl');
+  const dir = isAntigravityProfileBinding(s.profile)
+    ? antigravityProfileDataDir(m, s.profile)
+    : antigravityDataDir(m);
+  return join(dir, 'brain', id, '.system_generated', 'logs', 'transcript.jsonl');
 }
 
 function parseUsage(raw: Record<string, unknown>): TranscriptMessage['usage'] {

@@ -391,9 +391,9 @@ export const COMMANDS: HelpEntry[] = [
       { name: 'profile', kind: 'string' },
       { name: 'json', kind: 'boolean' },
     ],
-    args: 'list|doctor [--agent claude] [--profile NAME] [--json]',
-    desc: 'list local Claude Code profiles or check the selected profile with Claude auth status',
-    example: 'stitchmux profiles doctor --profile work',
+    args: 'list|doctor|login [--agent claude|antigravity] [--profile NAME] [--json]',
+    desc: 'list local Claude Code or Antigravity profiles, check a profile with doctor, or sign in to an isolated Antigravity profile',
+    example: 'stitchmux profiles doctor --agent antigravity --profile 2',
   },
   {
     verb: 'accounts',
@@ -403,7 +403,7 @@ export const COMMANDS: HelpEntry[] = [
       { name: 'local', kind: 'boolean' },
     ],
     args: '[--json] [--refresh] [--local]',
-    desc: 'every signed-in Claude and Codex account — those with sessions on any fleet machine and the profiles on this one that nobody runs a session under — with plan windows, where each number came from (native, statusline, probe) and how old it is; --refresh asks the vendors now instead of trusting the last measurement; --local skips the peers',
+    desc: 'every signed-in Claude, Codex and Antigravity account — across all fleet machines, including profiles that nobody runs a session under — with plan windows, where each number came from (native, statusline, probe) and how old it is; --refresh asks the vendors now instead of trusting the last measurement; --local skips the peers',
     example: 'stitchmux accounts --json',
   },
   {

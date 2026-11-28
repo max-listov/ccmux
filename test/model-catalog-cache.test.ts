@@ -132,3 +132,21 @@ test('closing the cache cancels a read in flight', async () => {
   hosts.close();
   expect(seen?.aborted).toBe(true);
 });
+
+test('named profiles keep separate host catalog cache entries', async () => {
+  const seenProfiles: Array<string | undefined> = [];
+  const hosts = new HostCatalogCache(
+    async (req) => {
+      seenProfiles.push(req.profile);
+      return catalog(`model-${req.profile ?? 'default'}`);
+    },
+    { liveMs: 10_000, readMs: 60_000, waitMs: 100, now: () => 0 },
+  );
+  const def = await hosts.get(ControlModelsReadSchema.parse({ runtime: 'antigravity' }));
+  const second = await hosts.get(
+    ControlModelsReadSchema.parse({ runtime: 'antigravity', profile: '2' }),
+  );
+  expect(def.data[0]?.id).toBe('model-default');
+  expect(second.data[0]?.id).toBe('model-2');
+  expect(seenProfiles).toEqual([undefined, '2']);
+});

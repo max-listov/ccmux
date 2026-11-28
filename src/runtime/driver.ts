@@ -1,4 +1,9 @@
-import { preflightAntigravity } from '../agent/antigravity/preflight.ts';
+import { antigravityLaunchOptions } from '../agent/antigravity/namedProfiles.ts';
+import {
+  ANTIGRAVITY_MIN_VERSION,
+  ANTIGRAVITY_MULTIPROFILE_MIN_VERSION,
+  preflightAntigravity,
+} from '../agent/antigravity/preflight.ts';
 import { runAntigravityProcess } from '../agent/antigravity/process.ts';
 import { runClaudeNativeProcess } from '../agent/claude/native/process.ts';
 import { resolveAgentSdk } from '../agent/claude/native/resolve.ts';
@@ -7,11 +12,16 @@ import { runOwnedCodexProcess } from '../agent/codex/owned/process.ts';
 import { runCustomProcess } from '../agent/custom/process.ts';
 import { runOpenCodeProcess } from '../agent/opencode/process.ts';
 import { preflightOpenCode } from '../agent/opencode/server.ts';
+import { isAntigravityProfileBinding } from '../config/antigravityProfileSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { hasNativeRuntime } from './modes.ts';
 
 export interface ManagedRuntimeDriver {
-  preflight(machine: MachineConfig, flags: readonly string[]): void;
+  preflight(
+    machine: MachineConfig,
+    flags: readonly string[],
+    profile?: Session['profile'],
+  ): void | Promise<void>;
   run(
     machine: MachineConfig,
     session: Session,
@@ -53,8 +63,15 @@ const drivers: Partial<Record<Session['agent'], ManagedRuntimeDriver>> = {
     run: runOpenCodeProcess,
   },
   antigravity: {
-    preflight: (m, flags) => {
-      preflightAntigravity(m, flags);
+    preflight: async (m, flags, profile) => {
+      const binding = isAntigravityProfileBinding(profile) ? profile : undefined;
+      const launch = antigravityLaunchOptions(m, binding);
+      await preflightAntigravity(m, flags, {
+        minVersion: launch.forceFileStorage
+          ? ANTIGRAVITY_MULTIPROFILE_MIN_VERSION
+          : ANTIGRAVITY_MIN_VERSION,
+        dataDir: launch.dataDir,
+      });
     },
     run: runAntigravityProcess,
   },

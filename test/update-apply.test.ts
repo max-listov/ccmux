@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { CliBuildManifestSchema } from 'stitchkit/cli';
 import { APP_BUNDLE } from '../src/config/paths.ts';
 import { releaseDocument } from '../src/release/document.ts';
+import { RELEASE_KEYS, releaseTrust } from '../src/release/trust.ts';
 import { downloadVerifyApply, type FetchedRelease, restoreBackup } from '../src/release/update.ts';
 import type { MachineConfig } from '../src/types.ts';
 
@@ -143,4 +144,13 @@ test('a rollback refuses a backup that is not the one it recorded', async () => 
   writeFileSync(`${APP_BUNDLE}.bak`, bundleFor('0.0.1'));
   await expect(restoreBackup(APP_BUNDLE)).rejects.toThrow();
   expect(readFileSync(APP_BUNDLE, 'utf8')).toBe(bundleFor('1.1.0'));
+});
+
+test('compiled release trust includes both legacy and stitchmux rotation Ed25519 keys', () => {
+  const keys = releaseTrust(m).keys;
+  for (const id of ['ccmux-2026-09', 'stitchmux-2026-11']) {
+    const material = keys[id];
+    expect(material).toBe(RELEASE_KEYS[id]);
+    expect(Buffer.from(material ?? '', 'base64').length).toBe(32);
+  }
 });

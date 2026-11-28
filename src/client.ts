@@ -1,13 +1,19 @@
 /**
- * `@stitchmux/client`: the one Stitchmux client. Typed control operations over either transport —
- * `createControlClient` connects to the local daemon's socket, `createInjectedControlClient` runs the
- * same contract over a transport the caller supplies (a Stitchwire service caller, a test double) —
- * with the schemas, the refusal catalog and the resident status frames both share. Monitoring
- * snapshots are read from `@stitchmux/client/monitoring`.
+ * `@stitchmux/client`: the Stitchmux control contract, its schemas, the refusal catalog, the resident
+ * status frames and `createInjectedControlClient`, which runs the contract over a transport the
+ * caller supplies (a Stitchwire service caller, a browser's fetch, a test double). Loading it runs no
+ * Node code, so a browser imports it as it is (`test/client-browser-entry.test.ts`). The client over
+ * the local daemon's socket is `@stitchmux/client/socket`; monitoring snapshots are read from
+ * `@stitchmux/client/monitoring`.
  */
 
 export type { OperationEffect } from 'stitchkit/contract';
-export { ControlTargetSchema } from './control/schema/core.ts';
+export {
+  type ControlSnapshot,
+  ControlSnapshotSchema,
+  ControlTargetSchema,
+} from './control/schema/core.ts';
+export { controlEventsContract } from './control/schema/eventsContract.ts';
 export {
   ControlActionReceiptSchema,
   ControlInterruptSchema,
@@ -33,9 +39,10 @@ export {
   STITCHMUX_NATIVE_STREAM_PROFILE,
   StitchmuxNativeStreamProfileSchema,
 } from './control/schema/nativeStreamContract.ts';
-export { ControlWaitResultSchema } from './control/schema/runtimeOps.ts';
+export * from './control/schema/public.ts';
+export { ControlWaitResultSchema, currentControlSnapshot } from './control/schema/runtimeOps.ts';
+export type { ControlArchiveReceipt } from './control/schema/session.ts';
 export { createInjectedControlClient } from './control/transport/boundary.ts';
-export * from './control-client.ts';
 export {
   EXTERNAL_CONTENT_LIMITS,
   ExternalContentCapabilitiesSchema,
@@ -56,3 +63,19 @@ export {
   ExternalMessageResultSchema,
   ExternalMessageSchema,
 } from './external/messageSchema.ts';
+export {
+  applyExternalStatusFrame,
+  createExternalStatusEncoder,
+  type ExternalStatusFrame,
+  ExternalStatusFrameSchema,
+  type ExternalStatusRenewal,
+  ExternalStatusRenewalSchema,
+} from './external/residentFrames.ts';
+export {
+  currentExternalStatus,
+  type ExternalStatusRow,
+  ExternalStatusRowSchema,
+  type ExternalStatusSnapshot,
+  ExternalStatusSnapshotSchema,
+} from './external/residentSchema.ts';
+export { VERSION as CONTROL_CLIENT_VERSION } from './util/version.ts';

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import vm from 'node:vm';
 import compiler from 'typescript/package.json' with { type: 'json' };
 import manifest from '../package.json' with { type: 'json' };
 import { VERSION } from '../src/util/version.ts';
@@ -56,10 +57,11 @@ try {
   );
   await Bun.write(
     join(consumer, 'check.ts'),
-    `import { controlContract, createControlClient, createExternalStatusEncoder, createInjectedControlClient, currentExternalStatus, ExternalStatusSnapshotSchema, FleetAnswerSchema, LogPayloadSchema, type OperationEffect, refusals, type UsageSummary } from '@stitchmux/client';
+    `import { createControlClient } from '@stitchmux/client/socket';
+import { controlContract, createExternalStatusEncoder, createInjectedControlClient, currentExternalStatus, ExternalStatusSnapshotSchema, FleetAnswerSchema, LogPayloadSchema, type OperationEffect, refusals, type UsageSummary } from '@stitchmux/client';
 import { MonitoringSnapshotReadSchema, readMonitoringStatus } from '@stitchmux/client/monitoring';
 import packageManifest from '@stitchmux/client/package.json' with { type: 'json' };
-// One client: both transports and the refusal catalog come from the same entry point.
+// The root carries the contract, the injected client and the refusal catalog; the socket client is ./socket.
 if (refusals.errors.NOT_FOUND === undefined) throw new Error('refusal catalog missing');
 // The monitoring reader tolerates a snapshot row from a newer release.
 const later = MonitoringSnapshotReadSchema.safeParse({ v: 1, rows: [{ state: 'from-the-future', agent: 'next' }] });
@@ -191,6 +193,37 @@ assert.throws(
     if (body.includes('resolveSelfArgv'))
       throw new Error(`${file} embeds the command line's self re-exec`);
   }
+  // The installed root loads in a browser: built for it with its peers and run with a browser's
+  // globals only — no process, require or SharedArrayBuffer (a page without cross-origin isolation).
+  const browser = await Bun.build({
+    entrypoints: [join(consumer, 'node_modules/@stitchmux/client/dist/index.js')],
+    target: 'browser',
+    format: 'esm',
+  });
+  if (!browser.success)
+    throw new Error(`the package root does not build for a browser: ${browser.logs.join('\n')}`);
+  const page = vm.createContext({
+    console,
+    URL,
+    URLSearchParams,
+    TextEncoder,
+    TextDecoder,
+    AbortController,
+    AbortSignal,
+    Headers,
+    Request,
+    Response,
+    setTimeout,
+    clearTimeout,
+    queueMicrotask,
+    structuredClone,
+    crypto: globalThis.crypto,
+  });
+  const bundled = (await (browser.outputs[0] as Bun.BuildArtifact).text()).replace(
+    /export\s*\{[^}]*\};?\s*$/,
+    '',
+  );
+  vm.runInContext(bundled, page);
   // One build of both entries: a module both import is emitted once, in a shared chunk. Two builds
   // would put the version module, which both entries import, in each of them.
   const versionCopies = [

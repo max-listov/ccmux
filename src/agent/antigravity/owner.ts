@@ -8,6 +8,7 @@ import {
 } from 'stitchkit/agent-executor/acp';
 import type { AgentMessagePart } from 'stitchkit/agent-runtime';
 import { resolveMessageAttachments } from '../../attachments/pins.ts';
+import { isAntigravityProfileBinding } from '../../config/antigravityProfileSchema.ts';
 import { ContentProducer } from '../../content/producer.ts';
 import { applyContextCommands, NativeContextPump } from '../../context/pump.ts';
 import { withNativeAdmission } from '../../runtime/admission.ts';
@@ -23,8 +24,12 @@ import { readRuntimeMode, shouldRestoreMode, writeRuntimeMode } from '../../runt
 import { ManagedRuntimeStatusWriter } from '../../runtime/status.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { HOME } from '../../util/home.ts';
+import { verifySessionProfile } from '../claude/namedProfiles.ts';
 import { writeAntigravityCatalog } from './catalog.ts';
+import { antigravityLaunchOptions } from './namedProfiles.ts';
 import {
+  ANTIGRAVITY_MIN_VERSION,
+  ANTIGRAVITY_MULTIPROFILE_MIN_VERSION,
   fromAcpMode,
   preflightAntigravity,
   readAntigravityVersion,
@@ -87,8 +92,19 @@ export class AntigravityOwner {
   async open(): Promise<void> {
     if (!this.session.registrationGeneration)
       throw new Error('Antigravity runtime requires a managed registration');
-    const executable = preflightAntigravity(this.m, this.session.flags);
-    const version = readAntigravityVersion(executable) ?? 'unknown';
+    verifySessionProfile(this.m, this.session);
+    const binding = isAntigravityProfileBinding(this.session.profile)
+      ? this.session.profile
+      : undefined;
+    const launch = antigravityLaunchOptions(this.m, binding);
+    const executable = await preflightAntigravity(this.m, this.session.flags, {
+      minVersion: launch.forceFileStorage
+        ? ANTIGRAVITY_MULTIPROFILE_MIN_VERSION
+        : ANTIGRAVITY_MIN_VERSION,
+      dataDir: launch.dataDir,
+    });
+    const probe = await readAntigravityVersion(executable);
+    const version = probe.ok ? probe.version : 'unknown';
 
     const savedMode = readRuntimeMode(this.m, this.session);
     const desiredMode =
@@ -105,7 +121,7 @@ export class AntigravityOwner {
 
     this.driver = this.driverFactory({
       executable,
-      args: ['acp', '--stdio', '--process-per-session', '--sandbox'],
+      args: ['acp', '--stdio', '--process-per-session', '--sandbox', ...launch.dirFlags],
       ...(desiredModel === undefined ? {} : { model: desiredModel }),
       ...(desiredEffort === undefined ? {} : { thoughtLevel: desiredEffort }),
       ...(desiredMode === undefined ? {} : { mode: desiredMode }),
@@ -126,7 +142,12 @@ export class AntigravityOwner {
         ? this.session.nativeSession.id
         : undefined;
     const acpSession = await this.driver.open({
-      profile: { engine: 'acp', profileId: 'local', home: HOME },
+      profile: {
+        engine: 'acp',
+        profileId: launch.profileId,
+        home: HOME,
+        ...(Object.keys(launch.extraEnv).length === 0 ? {} : { env: launch.extraEnv }),
+      },
       cwd: this.session.dir,
       ...(resumedId === undefined ? {} : { nativeThreadId: resumedId }),
       signal: this.abort.signal,
@@ -236,6 +257,7 @@ export class AntigravityOwner {
       this.session,
       configOptions,
       this.driver?.capabilities.images === true,
+      this.acpSession?.sessionMeta,
     );
     const modelOpt = configOptions.find((option) => option.category === 'model');
     const effortOpt = configOptions.find((option) => option.category === 'thought_level');

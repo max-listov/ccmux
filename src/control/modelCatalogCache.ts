@@ -49,6 +49,7 @@ export class HostCatalogCache {
   private static key(input: ModelsReadInput): string {
     return JSON.stringify([
       input.runtime ?? 'codex',
+      input.profile ?? null,
       input.launchRecipe?.id ?? null,
       input.launchRecipe?.revision ?? null,
       input.includeHidden,

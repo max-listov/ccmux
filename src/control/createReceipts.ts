@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { stableJson } from '../agent/launch/launchInputs.ts';
 import { AgentKindSchema } from '../chat/identitySchema.ts';
-import { ClaudeProfileBindingSchema } from '../config/claudeProfileSchema.ts';
+import { SessionProfileBindingSchema } from '../config/antigravityProfileSchema.ts';
 import type { ResolvedControlLaunch } from '../config/launchRecipes.ts';
 import { LaunchRecipeMetadataSchema, ModelSelectionSchema } from '../config/launchSchema.ts';
 import { type NativeForkSource, NativeForkSourceSchema } from '../context/fork.ts';
@@ -32,7 +32,7 @@ export const CreateRowSchema = z
     workspace: z.string(),
     flags: z.array(z.string()),
     envFile: z.string().min(1).optional(),
-    profile: ClaudeProfileBindingSchema.optional(),
+    profile: SessionProfileBindingSchema.optional(),
     launchRecipe: LaunchRecipeMetadataSchema.optional(),
     modelSelection: ModelSelectionSchema.optional(),
     initialization: z.literal('no-inference').optional(),

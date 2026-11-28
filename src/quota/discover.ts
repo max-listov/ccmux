@@ -1,8 +1,14 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  antigravityAuthPresentAt,
+  antigravityBin,
+  antigravityDataDir,
+} from '../agent/antigravity/preflight.ts';
 import { claudeProfile } from '../agent/claude/profileRoot.ts';
 import { codexProfile } from '../agent/codex/profileRoot.ts';
 import { envFilePath } from '../agent/launch/launchInputs.ts';
+import { isAntigravityProfileBinding } from '../config/antigravityProfileSchema.ts';
 import type { MachineConfig, Session } from '../types.ts';
 import { HOME } from '../util/home.ts';
 import type { ProbeTarget } from './probe.ts';
@@ -75,7 +81,8 @@ function ordered(found: ReadonlyMap<string, QuotaTarget>): QuotaTarget[] {
 }
 
 export function discoverTargets(
-  m: Pick<MachineConfig, 'projectsDir'>,
+  m: Pick<MachineConfig, 'projectsDir'> &
+    Partial<Pick<MachineConfig, 'antigravityBin' | 'antigravityDataDir' | 'antigravityProfiles'>>,
   sessions: readonly Session[],
   opts: { scan?: boolean; home?: string } = {},
 ): QuotaTarget[] {
@@ -117,6 +124,18 @@ export function discoverTargets(
         { provider: 'codex', key: `codex:${dir ?? 'default'}`, home: dir, envFile: path },
         session.name,
       );
+    } else if (session.agent === 'antigravity') {
+      const binding = isAntigravityProfileBinding(session.profile) ? session.profile : undefined;
+      const dir = binding?.dataDir ?? null;
+      add(
+        {
+          provider: 'antigravity',
+          key: `antigravity:${dir ?? 'default'}`,
+          home: dir,
+          envFile: null,
+        },
+        session.name,
+      );
     }
   }
 
@@ -135,6 +154,25 @@ export function discoverTargets(
   for (const dir of siblings(home, '.codex'))
     if (existsSync(join(dir, 'auth.json')))
       add({ provider: 'codex', key: `codex:${dir}`, home: dir, envFile: null }, null);
+
+  if (antigravityBin(m) !== undefined) {
+    if (antigravityAuthPresentAt(antigravityDataDir(m, home))) {
+      add({ provider: 'antigravity', key: 'antigravity:default', home: null, envFile: null }, null);
+    }
+    for (const entry of Object.values(m.antigravityProfiles ?? {})) {
+      if (antigravityAuthPresentAt(entry.dataDir)) {
+        add(
+          {
+            provider: 'antigravity',
+            key: `antigravity:${entry.dataDir}`,
+            home: entry.dataDir,
+            envFile: null,
+          },
+          null,
+        );
+      }
+    }
+  }
 
   return ordered(found);
 }

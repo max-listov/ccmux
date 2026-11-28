@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { isAntigravityProfileBinding } from '../../config/antigravityProfileSchema.ts';
 import { recordRuntimeDiagnostic } from '../../runtime/diagnostics.ts';
 import { managedRuntimeRoot } from '../../runtime/status.ts';
 import { privateRuntimeDirectory } from '../../runtime/store.ts';
@@ -9,9 +10,15 @@ import type { MachineConfig, Session } from '../../types.ts';
 import { promptInvocation } from '../../util/env.ts';
 import { withLock } from '../../util/lock.ts';
 import { log } from '../../util/log.ts';
+import { verifySessionProfile } from '../claude/namedProfiles.ts';
 import { computeStamp } from '../launch/launchStamp.ts';
+import { antigravityLaunchOptions } from './namedProfiles.ts';
 import { AntigravityOwner } from './owner.ts';
-import { preflightAntigravity } from './preflight.ts';
+import {
+  ANTIGRAVITY_MIN_VERSION,
+  ANTIGRAVITY_MULTIPROFILE_MIN_VERSION,
+  preflightAntigravity,
+} from './preflight.ts';
 
 /**
  * The pane process that owns one Antigravity ACP conversation.
@@ -25,7 +32,15 @@ export async function runAntigravityProcess(
   initial: Session,
   promote?: (session: Session) => Promise<Session>,
 ): Promise<void> {
-  preflightAntigravity(m, initial.flags);
+  verifySessionProfile(m, initial);
+  const binding = isAntigravityProfileBinding(initial.profile) ? initial.profile : undefined;
+  const launch = antigravityLaunchOptions(m, binding);
+  await preflightAntigravity(m, initial.flags, {
+    minVersion: launch.forceFileStorage
+      ? ANTIGRAVITY_MULTIPROFILE_MIN_VERSION
+      : ANTIGRAVITY_MIN_VERSION,
+    dataDir: launch.dataDir,
+  });
   const root = managedRuntimeRoot(m, initial);
   privateRuntimeDirectory(root);
   await withLock(

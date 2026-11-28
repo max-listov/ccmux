@@ -10,6 +10,7 @@
   },
   "exports": {
     "./client": "./src/client.ts",
+    "./client-socket": "./src/client-socket.ts",
     "./session-reader": "./src/session-reader.ts",
     "./monitoring-reader": "./src/monitoring-reader.ts",
     "./codex-runtime-reader": "./src/codex-runtime-reader.ts",
@@ -41,7 +42,7 @@
     "@types/react": "^19.3.3",
     "ink-testing-library": "^4.0.0",
     "socket.io": "4.8.4",
-    "stitchkit": "0.133.0",
+    "stitchkit": "0.133.2",
     "typescript": "^7.0.2"
   },
   "dependencies": {
@@ -60,7 +61,7 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "stitchkit": ">=0.133.0 <1"
+    "stitchkit": ">=0.133.2 <1"
   },
   "packageManager": "bun@1.4.5"
 }

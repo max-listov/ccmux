@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { antigravityProfileDataDir } from '../../agent/antigravity/namedProfiles.ts';
+import { antigravityDataDir } from '../../agent/antigravity/preflight.ts';
 import { claudeProfile } from '../../agent/claude/profileRoot.ts';
 import { codexProfile } from '../../agent/codex/profileRoot.ts';
 import { envFilePath, expandHome } from '../../agent/launch/launchInputs.ts';
+import { isAntigravityProfileBinding } from '../../config/antigravityProfileSchema.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { HOME } from '../../util/home.ts';
 import { LOCK_TIMEOUT_MS, withLock } from '../../util/lock.ts';
@@ -46,8 +49,9 @@ export type SessionProfileResult = { readonly key: string } | { readonly unavail
  * - An unreadable declared `envFile` makes the profile unavailable.
  */
 export function sessionProfileKey(
-  session: Pick<Session, 'agent' | 'dir' | 'envFile'>,
-  m: Pick<MachineConfig, 'projectsDir' | 'codexHome' | 'codexSessionsDir'>,
+  session: Pick<Session, 'agent' | 'dir' | 'envFile' | 'profile'>,
+  m: Pick<MachineConfig, 'projectsDir' | 'codexHome' | 'codexSessionsDir'> &
+    Partial<Pick<MachineConfig, 'antigravityDataDir'>>,
   home = HOME,
 ): SessionProfileResult {
   const declaredEnv = envFilePath(session);
@@ -75,6 +79,13 @@ export function sessionProfileKey(
     const profile = codexProfile(session, m, home);
     const effective = profile.codexHome ?? join(home, '.codex');
     return { key: `codex:${canonicalDir(effective, session.dir, home)}` };
+  }
+  if (session.agent === 'antigravity') {
+    const binding = isAntigravityProfileBinding(session.profile) ? session.profile : undefined;
+    const dataDir = binding
+      ? antigravityProfileDataDir(m, binding, home)
+      : antigravityDataDir(m, home);
+    return { key: `antigravity:${canonicalDir(dataDir, session.dir, home)}` };
   }
   return { key: `${session.agent}:default` };
 }

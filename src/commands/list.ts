@@ -34,7 +34,10 @@ function printTable(m: MachineConfig, rows: ListRow[]): void {
   console.log(lines[0]);
   rows.forEach((r, index) => {
     console.log(lines[index + 1]);
-    if (r.session.profile) console.log(`  Claude profile: ${r.session.profile.name}`);
+    if (r.session.profile) {
+      const label = r.session.agent === 'antigravity' ? 'Antigravity' : 'Claude';
+      console.log(`  ${label} profile: ${r.session.profile.name}`);
+    }
     if (r.lifecycleError !== null) console.log(`  blocked: ${r.lifecycleError}`);
     // A declared env file that is not on disk. The session still starts — that was the deliberate
     // choice, since a supervisor whose sessions refuse to boot is worse than one variable short — so

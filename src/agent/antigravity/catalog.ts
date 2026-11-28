@@ -8,6 +8,10 @@ import {
   createAcpDriver,
 } from 'stitchkit/agent-executor/acp';
 import { z } from 'zod';
+import {
+  type AntigravityProfileBinding,
+  isAntigravityProfileBinding,
+} from '../../config/antigravityProfileSchema.ts';
 import { pageModelCatalog } from '../../control/modelPage.ts';
 import type {
   ControlModel,
@@ -23,7 +27,16 @@ import { loadSessions } from '../../session/registry.ts';
 import type { MachineConfig, Session } from '../../types.ts';
 import { atomicWrite } from '../../util/atomic.ts';
 import { HOME } from '../../util/home.ts';
-import { preflightAntigravity } from './preflight.ts';
+import {
+  antigravityLaunchOptions,
+  antigravityProfileId,
+  selectAntigravityProfile,
+} from './namedProfiles.ts';
+import {
+  ANTIGRAVITY_MIN_VERSION,
+  ANTIGRAVITY_MULTIPROFILE_MIN_VERSION,
+  preflightAntigravity,
+} from './preflight.ts';
 
 const ModelSchema = z
   .object({
@@ -51,6 +64,7 @@ const PreparedSchema = z
     registrationGeneration: z.uuid(),
     observedAt: z.string().max(64).optional(),
     models: z.array(ModelSchema).max(128),
+    tierName: z.string().min(1).max(64).nullable().optional(),
   })
   .strict();
 
@@ -63,29 +77,86 @@ const catalogPath = (m: MachineConfig, s: Session) => join(managedRuntimeRoot(m,
  */
 export const HOST_CATALOG_TTL_MS = 10 * 60_000;
 const HostCatalogSchema = z
-  .object({ observedAt: z.iso.datetime(), models: z.array(ModelSchema).max(128) })
+  .object({
+    observedAt: z.iso.datetime(),
+    models: z.array(ModelSchema).max(128),
+    tierName: z.string().min(1).max(64).nullable().optional(),
+  })
   .strict();
+
+const AntigravitySessionMetaSchema = z.object({
+  antigravity: z
+    .object({
+      tier: z
+        .object({
+          name: z.string().min(1).max(64).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+/** Extract `_meta.antigravity.tier.name` from ACP session metadata when the executor exposes it. */
+export function antigravityTierName(sessionMeta: unknown): string | null {
+  const parsed = AntigravitySessionMetaSchema.safeParse(sessionMeta);
+  const name = parsed.data?.antigravity?.tier?.name?.trim() ?? '';
+  return name === '' ? null : name.slice(0, 64);
+}
+
 const hostCatalogDir = (m: MachineConfig) => join(m.stateDir, 'native-runtime');
-const hostCatalogPath = (m: MachineConfig) =>
-  join(hostCatalogDir(m), 'antigravity-host-models.json');
+const hostCatalogPath = (m: MachineConfig, profileId = 'default') =>
+  join(
+    hostCatalogDir(m),
+    profileId === 'default'
+      ? 'antigravity-host-models.json'
+      : `antigravity-host-models-${profileId}.json`,
+  );
 
 async function writeHostCatalog(
   m: MachineConfig,
-  catalog: { models: ControlModel[]; observedAt: string },
+  catalog: { models: ControlModel[]; observedAt: string; tierName?: string | null },
+  profileId = 'default',
 ): Promise<void> {
   privateRuntimeDirectory(hostCatalogDir(m));
-  await atomicWrite(hostCatalogPath(m), JSON.stringify(HostCatalogSchema.parse(catalog)), 0o600);
+  await atomicWrite(
+    hostCatalogPath(m, profileId),
+    JSON.stringify(HostCatalogSchema.parse(catalog)),
+    0o600,
+  );
 }
 
 /** The last host probe while it is younger than `HOST_CATALOG_TTL_MS`, else null. */
 export function freshHostCatalog(
   m: MachineConfig,
   now = Date.now(),
-): { models: ControlModel[]; observedAt: string } | null {
-  const cached = readPrivateJson(hostCatalogPath(m), HostCatalogSchema, MAX_BYTES);
+  profileId = 'default',
+): { models: ControlModel[]; observedAt: string; tierName?: string | null | undefined } | null {
+  const cached = readPrivateJson(hostCatalogPath(m, profileId), HostCatalogSchema, MAX_BYTES);
   if (cached === null) return null;
   const age = now - Date.parse(cached.observedAt);
   return age >= 0 && age < HOST_CATALOG_TTL_MS ? cached : null;
+}
+
+/** Cached Antigravity plan tier name from the host ACP catalog or a session catalog for the same profile. */
+export function cachedAntigravityTier(m: MachineConfig, profileId = 'default'): string | null {
+  const cached = readPrivateJson(hostCatalogPath(m, profileId), HostCatalogSchema, MAX_BYTES);
+  if (cached?.tierName) return cached.tierName;
+  let best: { tierName: string; observedAt: string; live: boolean } | null = null;
+  for (const candidate of loadSessions(m)) {
+    if (candidate.agent !== 'antigravity' || !hasNativeRuntime(candidate)) continue;
+    const candidateProfile = isAntigravityProfileBinding(candidate.profile)
+      ? candidate.profile
+      : undefined;
+    if (antigravityProfileId(candidateProfile) !== profileId) continue;
+    const prepared = readPrivateJson(catalogPath(m, candidate), PreparedSchema, MAX_BYTES);
+    if (!prepared?.tierName) continue;
+    const observedAt = prepared.observedAt ?? '';
+    const live = readManagedRuntimeStatus(m, candidate).status === 'live';
+    const better =
+      best === null || (live && !best.live) || (live === best.live && observedAt > best.observedAt);
+    if (better) best = { tierName: prepared.tierName, observedAt, live };
+  }
+  return best?.tierName ?? null;
 }
 
 /**
@@ -148,13 +219,16 @@ export async function writeAntigravityCatalog(
   s: Session,
   configOptions: readonly AcpConfigOption[],
   images: boolean,
+  sessionMeta?: unknown,
 ): Promise<ControlModel[]> {
   const models = antigravityModelsFromConfigOptions(configOptions, images);
+  const tierName = antigravityTierName(sessionMeta);
   const bytes = JSON.stringify(
     PreparedSchema.parse({
       registrationGeneration: s.registrationGeneration,
       observedAt: new Date().toISOString(),
       models,
+      ...(tierName === null ? {} : { tierName }),
     }),
   );
   if (Buffer.byteLength(bytes) > MAX_BYTES)
@@ -166,11 +240,21 @@ export async function writeAntigravityCatalog(
 
 function cachedSessionCatalog(
   m: MachineConfig,
+  profile?: AntigravityProfileBinding,
 ): { models: readonly ControlModel[]; observedAt: string | null; live: boolean } | null {
   let best: { models: readonly ControlModel[]; observedAt: string | null; live: boolean } | null =
     null;
+  const targetId = antigravityProfileId(profile);
   for (const candidate of loadSessions(m)) {
     if (candidate.agent !== 'antigravity' || !hasNativeRuntime(candidate)) continue;
+    const candidateProfile = isAntigravityProfileBinding(candidate.profile)
+      ? candidate.profile
+      : undefined;
+    if (
+      antigravityProfileId(candidateProfile) !== targetId ||
+      candidateProfile?.accountDigest !== profile?.accountDigest
+    )
+      continue;
     const file = catalogPath(m, candidate);
     const prepared = readPrivateJson(file, PreparedSchema, MAX_BYTES);
     if (prepared === null) continue;
@@ -196,10 +280,17 @@ function cachedSessionCatalog(
 export async function probeAntigravityHostModels(
   machine: MachineConfig,
   signal: AbortSignal,
-): Promise<{ models: ControlModel[]; observedAt: string }> {
+  profile?: AntigravityProfileBinding,
+): Promise<{ models: ControlModel[]; observedAt: string; tierName?: string | null }> {
+  const launch = antigravityLaunchOptions(machine, profile);
   let executable: string;
   try {
-    executable = preflightAntigravity(machine);
+    executable = await preflightAntigravity(machine, [], {
+      minVersion: launch.forceFileStorage
+        ? ANTIGRAVITY_MULTIPROFILE_MIN_VERSION
+        : ANTIGRAVITY_MIN_VERSION,
+      dataDir: launch.dataDir,
+    });
   } catch (error) {
     throw refusals.errors.UNAVAILABLE({
       message: error instanceof Error ? error.message : 'Antigravity CLI is unavailable',
@@ -207,18 +298,24 @@ export async function probeAntigravityHostModels(
   }
   const driver = createAcpDriver({
     executable,
-    args: ['acp', '--stdio', '--process-per-session', '--sandbox'],
+    args: ['acp', '--stdio', '--process-per-session', '--sandbox', ...launch.dirFlags],
     requestTimeoutMs: 25_000,
   });
   // The metadata worker gets an empty workspace, never the whole shared temp directory.
   const cwd = await mkdtemp(join(tmpdir(), 'stitchmux-acp-'));
   try {
     const probe = await driver.probeCapabilities({
-      profile: { engine: 'acp', profileId: 'local', home: HOME },
+      profile: {
+        engine: 'acp',
+        profileId: launch.profileId,
+        home: HOME,
+        ...(Object.keys(launch.extraEnv).length === 0 ? {} : { env: launch.extraEnv }),
+      },
       cwd,
       signal,
       eachModel: true,
     });
+    const tierName = antigravityTierName(probe.sessionMeta);
     const probed = {
       models: antigravityModelsFromConfigOptions(
         probe.configOptions,
@@ -226,8 +323,9 @@ export async function probeAntigravityHostModels(
         probe.optionsByModel,
       ),
       observedAt: new Date().toISOString(),
+      ...(tierName === null ? {} : { tierName }),
     };
-    await writeHostCatalog(machine, probed);
+    await writeHostCatalog(machine, probed, launch.profileId);
     return probed;
   } finally {
     await rm(cwd, { recursive: true, force: true });
@@ -239,13 +337,17 @@ export async function validateAntigravitySelection(
   m: MachineConfig,
   selection: NativeModelSelection,
   signal: AbortSignal,
+  profile?: AntigravityProfileBinding,
 ): Promise<void> {
   if (selection.provider !== 'antigravity')
     throw refusals.errors.MODEL_UNAVAILABLE({
       message: `Model ${modelSelectionLabel(selection)} is absent from this host's catalog`,
     });
-  const cached = cachedSessionCatalog(m) ?? freshHostCatalog(m);
-  const models = cached ? cached.models : (await probeAntigravityHostModels(m, signal)).models;
+  const profileId = antigravityProfileId(profile);
+  const cached = cachedSessionCatalog(m, profile) ?? freshHostCatalog(m, Date.now(), profileId);
+  const models = cached
+    ? cached.models
+    : (await probeAntigravityHostModels(m, signal, profile)).models;
   if (!models.some((row) => (row.model ?? row.id) === selection.model))
     throw refusals.errors.MODEL_UNAVAILABLE({
       message: `Model ${modelSelectionLabel(selection)} is absent from this host's catalog`,
@@ -276,6 +378,7 @@ export async function readAntigravityModels(
       input,
       {
         kind: 'session',
+        ...(session.profile ? { profile: session.profile.name } : {}),
         machine: machine.rcPrefix,
         provider: 'antigravity',
         providerLabel: null,
@@ -286,9 +389,15 @@ export async function readAntigravityModels(
       input.target,
     );
   }
-  const probed = freshHostCatalog(machine) ?? (await probeAntigravityHostModels(machine, signal));
+  const profile =
+    input.profile === undefined ? undefined : selectAntigravityProfile(machine, input.profile);
+  const profileId = antigravityProfileId(profile);
+  const probed =
+    freshHostCatalog(machine, Date.now(), profileId) ??
+    (await probeAntigravityHostModels(machine, signal, profile));
   return pageModelCatalog(probed.models, input, {
     kind: 'host',
+    ...(profile ? { profile: profile.name } : {}),
     machine: machine.rcPrefix,
     provider: 'antigravity',
     providerLabel: null,

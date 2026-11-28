@@ -3,6 +3,7 @@ import { localRows, mergeFleetLog } from '../chat/fleetLog.ts';
 import { loadLedger } from '../chat/ledger.ts';
 import { readInventory } from '../events/inventory.ts';
 import { collectRows, type ListRow, toListItem } from '../inventory/rows.ts';
+import { profileViews } from '../quota/view.ts';
 import { releaseStanding } from '../release/check.ts';
 import { type IdentityCache, sessionIdentities } from '../session/identity.ts';
 import { loadSessions } from '../session/registry.ts';
@@ -28,6 +29,9 @@ import { pack } from './peerDelta.ts';
 
 /** This machine's `list --json` answer. */
 export function listAnswer(m: MachineConfig, rows: readonly ListRow[]): ListJson {
+  const profiles = profileViews(m, loadSessions(m), { scan: true }).map(
+    ({ identityChanged: _, ...profile }) => profile,
+  );
   return {
     version: VERSION,
     generatedAt: new Date().toISOString(),
@@ -36,6 +40,7 @@ export function listAnswer(m: MachineConfig, rows: readonly ListRow[]): ListJson
     release: releaseStanding(m, VERSION),
     sessions: rows.map((r) => toListItem(m, r)),
     inventory: readInventory(m),
+    profiles,
   };
 }
 

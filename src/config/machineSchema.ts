@@ -6,6 +6,7 @@ import { ApplicationDelegationGrantSchema } from '../delegation/applicationSchem
 import { DelegationAuthoritySchema } from '../delegation/schema.ts';
 import { AgentPoliciesSchema } from '../policy/schema.ts';
 import { FiniteWorkloadsSchema } from '../runtime/workloadContract.ts';
+import { AntigravityProfileConfigSchema } from './antigravityProfileSchema.ts';
 import { ProfileDirectorySchema, ProfileNameSchema } from './claudeProfileSchema.ts';
 import {
   LaunchRecipeIdSchema,
@@ -44,6 +45,8 @@ export const MachineConfigSchema = z.object({
   opencodeBin: z.string().startsWith('/').optional(),
   antigravityBin: z.string().startsWith('/').optional(),
   antigravityDataDir: z.string().startsWith('/').optional(),
+  /** Locally declared named Antigravity CLI profiles (`dataDir` per profile, file-backed tokens). */
+  antigravityProfiles: z.record(ProfileNameSchema, AntigravityProfileConfigSchema).optional(),
   antigravityMcpServers: z.array(AcpMcpServerSchema).max(32).optional(),
   /**
    * Opt-in for the native Claude execution mode, off unless this host turns it on.

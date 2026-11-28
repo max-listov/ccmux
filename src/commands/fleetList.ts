@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import { ROLE_SIGIL } from '../chat/roleAddress.ts';
 import { loadMachineConfig } from '../config/machine.ts';
+import { fleetMachineProfiles } from '../fleet/accounts.ts';
 import { fleetAnswer } from '../fleet/fleetList.ts';
 import type { FleetMachine, RemoteSessionSchema } from '../fleet/fleetSchema.ts';
 import { stateCell } from '../inventory/rows.ts';
@@ -155,7 +156,11 @@ export async function cmdFleet(args: string[] = []): Promise<number> {
     }
     if (parked > 0) console.log(`  … ${parked} archived (stitchmux fleet --all)`);
   }
-  for (const line of accountLines(view.machines, Date.now(), machineProfiles(m, loadSessions(m))))
+  for (const line of accountLines(
+    view.machines,
+    Date.now(),
+    fleetMachineProfiles(view.machines, machineProfiles(m, loadSessions(m))),
+  ))
     console.log(line);
   return 0; // unreachable machines are routine, never a failure exit
 }

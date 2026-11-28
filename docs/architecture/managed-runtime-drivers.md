@@ -4,7 +4,7 @@ description: Capability-aware native session supervision with exact continuation
 type: architecture
 status: active
 created: 2026-08-30
-updated: 2026-11-28 01:39 +08:00
+updated: 2026-11-28 07:32 +08:00
 ---
 
 # Managed runtime drivers
@@ -103,15 +103,31 @@ fixtures. Its optional coexistence, coding and resident lanes report independent
 `mode: 'native'`) on top of `stitchkit/agent-executor/acp` (`agy acp --stdio --process-per-session
 --sandbox`). Stitchmux does not duplicate ACP v1 JSON-RPC framing or delta classification.
 
-- **Preflight and availability (`preflight.ts`):** `antigravityBin` (auto-detected via `agy` or
-  pinned in `machine.json`), minimum version `1.5.14`, and cached host auth state under
-  `antigravityDataDir` (default `~/.gemini/antigravity-cli`) are checked fail-closed without
-  triggering interactive OAuth. Missing binary, unsupported version or absent cached auth report
-  `availability: 'unavailable'` with explicit reasons (`runtime-not-configured`,
-  `runtime-version-unsupported`, `runtime-auth-unavailable`).
-- **Model catalog (`catalog.ts`):** Host `models.read({ runtime: 'antigravity' })` opens an
-  ephemeral private workspace session (`session/new` → `configOptions` → `session/close`) with zero
-  inference and is cached for `HOST_CATALOG_TTL_MS` in `native-runtime/antigravity-host-models.json`.
+- **Preflight and availability (`preflight.ts`):** `antigravityBin` (auto-detected by checking
+  `~/.local/bin/agy` and `~/.gemini/bin/agy` before `PATH` so a native user install wins over an
+  older wrapper, or pinned in `machine.json`), minimum version `1.5.14` (`1.5.18` for named
+  profiles), and cached host auth state under `antigravityDataDir` (default
+  `~/.gemini/antigravity-cli`) are checked asynchronously and fail-closed without triggering
+  interactive OAuth. `readAntigravityVersion` uses the bounded async process helper with in-flight
+  deduplication and caches only positive version probes by `(mtimeMs:size)`: a transient timeout or
+  launch failure is never cached permanently and reports `runtime-version-probe-failed` separately
+  from `runtime-version-unsupported` (`< 1.5.14`), with the resolved executable path in diagnostics.
+- **Named Antigravity profiles (`namedProfiles.ts`, `antigravityProfileSchema.ts`):** Hosts declare
+  additional profiles in `machine.json` under `antigravityProfiles` (`<name> -> { dataDir }`),
+  alongside the reserved `default` profile (`antigravityDataDir`). Named profiles require
+  `agy >= 1.5.18`, pass `--app_data_dir <relName>` (plus `--gemini_dir <parent>` when outside
+  `~/.gemini`) and `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1` while preserving the real `HOME`. Session
+  creation pins the canonical directory and a SHA-256 `accountDigest` of the signed-in email;
+  restarts refuse if the directory is retargeted or the signed-in account changes. `stitchmux
+  profiles list|doctor|login --agent antigravity` inspects readiness and runs native
+  `agy acp ... --login` for file-backed profiles.
+- **Model catalog (`catalog.ts`):** Host `models.read({ runtime: 'antigravity', profile? })` opens
+  an ephemeral private workspace session (`session/new` → `configOptions` → `session/close`) with
+  zero inference and caches per profile for `HOST_CATALOG_TTL_MS` in
+  `native-runtime/antigravity-host-models.json` (default) or
+  `native-runtime/antigravity-host-models-<profileId>.json` (named profile). Both host probes and
+  live sessions record `sessionMeta._meta.antigravity.tier.name` as `tierName` in their catalog
+  files so quota probes populate `plan` without spawning a second ACP process.
   The agent describes `thought_level` only for the selected model, so the probe runs with
   `eachModel` and selects every model in turn before closing and deleting the session: each row
   carries that model's own reasoning efforts, and a model answered without `thought_level` carries
@@ -128,7 +144,7 @@ fixtures. Its optional coexistence, coding and resident lanes report independent
   process restart resume via `session/resume` / `session/load` preserving `threadId` and
   `nativeSession.id`. Because ACP declares `reconcile: 'none'`, an interrupted `dispatching`
   receipt settles as `uncertain` on startup rather than re-sending automatically.
-- **Transcript and history (`transcript.ts`):** Reads `brain/<nativeSession.id>/.system_generated/logs/transcript.jsonl`
+- **Transcript and history (`transcript.ts`):** Reads `<profileDataDir>/brain/<nativeSession.id>/.system_generated/logs/transcript.jsonl`
   with monotonic line cursors for both `transcript.read` and `context.history`.
 
 ## Custom execution owner

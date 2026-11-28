@@ -19,11 +19,11 @@ export interface RuntimeAvailability {
 const answer = (present: boolean, reason: string): RuntimeAvailability =>
   present ? { availability: 'configured', reason: null } : { availability: 'unavailable', reason };
 
-export function runtimeAvailability(
+export async function runtimeAvailability(
   m: MachineConfig,
   agent: Session['agent'],
   mode: RuntimeMode,
-): RuntimeAvailability {
+): Promise<RuntimeAvailability> {
   if (agent === 'claude') {
     const installed = existsSync(m.claudeBin);
     if (mode !== runtimeModes.claude.native) return answer(installed, 'runtime-not-configured');

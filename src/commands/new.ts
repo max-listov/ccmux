@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { selectAntigravityProfile } from '../agent/antigravity/namedProfiles.ts';
 import { selectClaudeProfile } from '../agent/claude/namedProfiles.ts';
 import { providerFor } from '../agent/index.ts';
 import { AgentKindSchema } from '../chat/identitySchema.ts';
@@ -64,7 +65,12 @@ export async function cmdNew(
       ...(opts.envFile === undefined ? {} : { envFile: opts.envFile }),
       ...(opts.profile === undefined
         ? {}
-        : { profile: selectClaudeProfile(m, agent, opts.profile) }),
+        : {
+            profile:
+              agent === 'antigravity'
+                ? selectAntigravityProfile(m, opts.profile)
+                : selectClaudeProfile(m, agent, opts.profile),
+          }),
     });
     log.info({ msg: 'session registered', name, dir: abs, uuid: session.uuid });
     const display =

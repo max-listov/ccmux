@@ -13,13 +13,16 @@ import { atomicWrite } from '../util/atomic.ts';
  * than replacing it — the old windows still stand (with their own age), and the reason the newest
  * attempt did not refresh them is what tells "nobody spent since" from "we could not ask".
  */
+export const QuotaProviderSchema = z.enum(['claude', 'codex', 'antigravity']);
+export type QuotaProvider = z.infer<typeof QuotaProviderSchema>;
+
 export const QuotaRecordSchema = z.object({
   key: z.string().min(1).max(512),
-  provider: z.enum(['claude', 'codex']),
+  provider: QuotaProviderSchema,
   /** Who was signed in at the last good answer. */
   label: z.string().min(1).max(256).nullable(),
   plan: z.string().min(1).max(64).nullable(),
-  /** The vendor's own name for how the account is served (`firstParty`, `chatgpt`). */
+  /** The vendor's own name for how the account is served (`firstParty`, `chatgpt`, `antigravity`). */
   accountProvider: z.string().min(1).max(64).nullable().default(null),
   limits: PlanLimitsSchema.nullable(),
   /** Why the newest attempt failed; null when it succeeded. */

@@ -210,8 +210,8 @@ test('new refuses unknown names, unsupported agents and env declarations for a d
   const unknown = await create('--profile', 'absent');
   expect(unknown.code).toBe(1);
   expect(unknown.out).toContain('Unknown Claude profile');
-  const wrongAgent = await create('--profile', '2', '--agent', 'antigravity');
-  expect(wrongAgent.out).toContain('available for Claude only');
+  const wrongAgent = await create('--profile', '2', '--agent', 'codex');
+  expect(wrongAgent.out).toContain('available for Claude and Antigravity only');
   const env = join(w.dir, 'other.env');
   writeFileSync(env, `CLAUDE_CONFIG_DIR=${w.local}\n`);
   expect((await create('--profile', '2', '--env-file', env)).out).toContain(
